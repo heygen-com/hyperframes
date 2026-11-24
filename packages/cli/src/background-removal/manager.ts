@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { homedir, platform, arch } from "node:os";
+import { platform, arch } from "node:os";
 import { join } from "node:path";
-import { downloadFile } from "../utils/download.js";
+import { ensurePinnedFile } from "../utils/pinnedFile.js";
+import type { ModelFile } from "../whisper/modelFile.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
-export const MODELS_DIR = join(homedir(), ".cache", "hyperframes", "background-removal", "models");
+const CACHE_ROOT = hyperframesCacheDir();
+export const MODELS_DIR = join(CACHE_ROOT, "background-removal", "models");
 
 export const DEFAULT_MODEL = "u2net_human_seg" as const;
 export type ModelId = typeof DEFAULT_MODEL;
@@ -11,6 +13,14 @@ export type ModelId = typeof DEFAULT_MODEL;
 const MODEL_URLS: Record<ModelId, string> = {
   u2net_human_seg:
     "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx",
+};
+
+const MODEL_PINS: Record<ModelId, ModelFile> = {
+  u2net_human_seg: {
+    name: "u2net_human_seg.onnx",
+    bytes: 175_997_641,
+    sha256: "01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c",
+  },
 };
 
 export const MODEL_MEMORY_MB: Record<ModelId, number> = {
@@ -82,15 +92,8 @@ export async function ensureModel(
   model: ModelId = DEFAULT_MODEL,
   options?: { onProgress?: (message: string) => void },
 ): Promise<string> {
-  const dest = modelPath(model);
-  if (existsSync(dest)) return dest;
-
-  mkdirSync(MODELS_DIR, { recursive: true });
-  options?.onProgress?.(`Downloading ${model} weights (~168 MB)...`);
-  await downloadFile(MODEL_URLS[model], dest);
-
-  if (!existsSync(dest)) {
-    throw new Error(`Model download failed: ${model}`);
-  }
-  return dest;
+  return ensurePinnedFile(MODEL_URLS[model], modelPath(model), CACHE_ROOT, MODEL_PINS[model], {
+    downloading: `Downloading ${model} weights (~168 MB)...`,
+    onProgress: options?.onProgress,
+  });
 }

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { JSDOM } from "jsdom";
 import {
+  AUTHORED_SOURCE_BEGIN,
+  AUTHORED_SOURCE_END,
   buildVariablesByCompScript,
   dedupeFontFaceRules,
   scopeCssToComposition,
@@ -9,6 +11,7 @@ import {
   scopedModulePrelude,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
+import { escapeCssIdentifier } from "./selectorIdTokens";
 
 describe("composition scoping", () => {
   it("reports the child source before authored code and finishes after a thrown script", () => {
@@ -483,6 +486,37 @@ body { margin: 0; }
     new Function("window", wrapped)(fakeWindow);
 
     expect(fakeWindow.__capturedMountCharsType).toBe("function");
+  });
+
+  it("scopes a selector naming the authored composition id to each mount of a shared scene", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="step__hf1"><i class="sc">first</i></div>
+      <div data-composition-id="step__hf2"><i class="sc">second</i></div>
+    `);
+    const gsapTargets: string[][] = [];
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      gsap: {
+        timeline: () => ({
+          to(targets: Element[]) {
+            gsapTargets.push(Array.from(targets).map((target) => target.textContent || ""));
+            return this;
+          },
+        }),
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `gsap.timeline({ paused: true }).to('[data-composition-id="step"] .sc', { x: 1 });`,
+      "step",
+      undefined,
+      '[data-composition-id="step__hf2"]',
+      "step__hf2",
+    );
+
+    new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+
+    expect(gsapTargets).toEqual([["second"]]);
   });
 
   it("executes document and GSAP selectors inside the composition root", () => {
@@ -1008,6 +1042,31 @@ window.__afterTimeline = window.__timelines.scene;
     expect(scoped).not.toMatch(
       /\[data-composition-id="chrome-overlay"\]\s+\[data-hf-authored-id="chrome-overlay-root"\]\s+\.chrome/,
     );
+  });
+
+  it("scopes an authored root id compounded with its own composition id for both host shapes", () => {
+    const scope = '[data-composition-id="scene__hf1"]';
+    const scoped = scopeCssToComposition(
+      '#root[data-composition-id="scene"] .title { x: 1; }',
+      "scene",
+      scope,
+      "root",
+    );
+    expect(scoped).toContain(`${scope} [data-hf-authored-id="root"] .title`);
+    expect(scoped).toContain(`[data-hf-authored-id="root"]${scope} .title`);
+  });
+
+  it("keeps a pseudo-element valid on both alternatives of a compounded authored root", () => {
+    const scope = '[data-composition-id="scene__hf1"]';
+    const scoped = scopeCssToComposition(
+      '#root[data-composition-id="scene"]::before { content: ""; }',
+      "scene",
+      scope,
+      "root",
+    );
+    expect(scoped).not.toContain(":is(");
+    expect(scoped).toContain(`${scope} [data-hf-authored-id="root"]::before`);
+    expect(scoped).toContain(`[data-hf-authored-id="root"]${scope}::before`);
   });
 
   it("still uses descendant selector for non-root selectors with authoredRootId", () => {
@@ -1536,3 +1595,57 @@ describe("composition scoping – renamed-id selector runtime", () => {
     expect(captured.bracket).toBe("circle");
   });
 });
+
+describe("wrapScopedCompositionScript — authored source delimiters", () => {
+  it("puts exactly the authored source between the markers, apart from the wrapper's own __timelines use", () => {
+    const wrapped = wrapScopedCompositionScript("draw();", "scene");
+    const authored = wrapped.split(AUTHORED_SOURCE_BEGIN)[1]!.split(AUTHORED_SOURCE_END)[0]!;
+    expect(authored.trim()).toBe("draw();");
+    expect(wrapped).toContain("__timelines");
+    expect(wrapped.replace(authored, "")).toContain("__timelines");
+  });
+});
+
+// fails without the fix: the scope went to String.replace as the replacement, so $' and $` in an id expanded.
+it.each(["a$'b", "a$`b", "a$&b"])(
+  "scopes the id %s exactly as a plain id, its $ kept as text",
+  (id) => {
+    const css = (compId: string) =>
+      `[data-composition-id="${compId}"] .title { opacity: 0; }\n` +
+      `[data-composition-id="${compId}"][data-start="0"] { opacity: 1; }\n` +
+      `[data-duration="2"][data-composition-id="${compId}"] .card { color: red; }`;
+    const plain = scopeCssToComposition(css("aZZb"), "aZZb");
+
+    expect(scopeCssToComposition(css(id), id)).toBe(plain.split("aZZb").join(id));
+  },
+);
+
+// Scoping escapes `<` in ids itself, so a selector can't end its style element even without postcss.
+it.each([false, true])(
+  "writes `<` in scoped ids as a CSS escape itself, and the selector still matches (compound root: %s)",
+  (compoundAuthoredRoot) => {
+    const id = "scene</style><script>window.ran = 1</script>";
+    const rootId = "root</style><script>window.ran = 2</script>";
+    const css = scopeCssToComposition(
+      `#${escapeCssIdentifier(rootId)} .title { color: red; }`,
+      id,
+      undefined,
+      rootId,
+      { compoundAuthoredRoot },
+    );
+
+    expect(css).not.toMatch(/<\/style|<script/i);
+    const { document } = new JSDOM(
+      `<style>${css}</style><div><div><p class="title"></p></div></div>`,
+    ).window;
+    const host = document.querySelector("body > div")!;
+    host.setAttribute("data-composition-id", id);
+    (compoundAuthoredRoot ? host : host.firstElementChild!).setAttribute(
+      "data-hf-authored-id",
+      rootId,
+    );
+    expect(document.querySelectorAll("style, script").length).toBe(1);
+    const rule = document.styleSheets[0]!.cssRules[0] as CSSStyleRule;
+    expect(document.querySelector(".title")!.matches(rule.selectorText)).toBe(true);
+  },
+);

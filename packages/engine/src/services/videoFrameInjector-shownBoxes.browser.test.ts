@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Browser, Page } from "puppeteer-core";
 import { resolveHeadlessShellPath } from "./browserManager.js";
-import { measureVideoShownBoxes } from "./videoFrameInjector.js";
+import { measureVideoShownBoxRanges, measureVideoShownBoxes } from "./videoFrameInjector.js";
 import { closeTestChrome, launchTestChrome } from "./__fixtures__/loopback.js";
 
 const chromePath = resolveHeadlessShellPath();
@@ -13,6 +13,8 @@ const page1 = `<body style="margin:0">
   <video id="zoom" style="position:absolute;width:400px;height:225px;transform-origin:0 0"></video>
   <video id="late" style="position:absolute;top:500px;width:320px;height:180px;display:none"></video>
   <video id="graded" data-color-grading="warm" style="width:200px;height:100px"></video>
+  <hf-color-group id="lane" data-color-grading="warm"></hf-color-group>
+  <video id="lane-clip" data-color-group="lane" style="width:200px;height:100px"></video>
   <video id="natural" style="width:200px;height:100px;object-fit:none"></video>
   <script>
     window.__hf = { seek(t) {
@@ -39,11 +41,22 @@ describe.skipIf(!hasBrowser)("measureVideoShownBoxes in Chrome", () => {
 
   it("returns each video's largest box over the seeked times, in device pixels", async () => {
     const page = await open(page1, 2);
-    const ids = ["zoom", "late", "graded", "natural", "missing"];
+    const ids = ["zoom", "late", "graded", "lane-clip", "natural", "missing"];
     const boxes = await measureVideoShownBoxes(page, ids, [0, 0.25, 1]);
     expect(Object.fromEntries(boxes)).toEqual({
       zoom: { width: 1600, height: 900 },
       late: { width: 640, height: 360 },
+    });
+    await page.close();
+  });
+
+  it("reports each video's smallest laid-out box beside its largest", async () => {
+    const page = await open(page1, 2);
+    const ranges = await measureVideoShownBoxRanges(page, ["zoom", "late"], [0, 0.25, 1]);
+    expect(Object.fromEntries(ranges)).toEqual({
+      zoom: { largest: { width: 1600, height: 900 }, smallest: { width: 800, height: 450 } },
+      // not laid out before 0.5, which is no smaller box
+      late: { largest: { width: 640, height: 360 }, smallest: { width: 640, height: 360 } },
     });
     await page.close();
   });

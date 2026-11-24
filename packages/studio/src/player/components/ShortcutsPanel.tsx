@@ -1,9 +1,11 @@
-import { useState, useCallback, useRef, memo } from "react";
+import { useState, useCallback, useEffect, useRef, memo } from "react";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Popover, Tooltip } from "../../components/ui";
 import { flatActive, flatIdle } from "../../components/timelineToolbarStyles";
 import { usePlayerStore } from "../store/playerStore";
-import { DEFAULT_SHORTCUT_SECTIONS, type ShortcutSection } from "./studioShortcuts";
+import { useCompositionFps } from "../../utils/linkedClipPreferences";
+import { matchesKey, useShortcutSections, type ShortcutSection } from "./studioShortcuts";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 
 interface ShortcutsPanelProps {
   disabled: boolean;
@@ -19,6 +21,21 @@ interface ShortcutsPanelProps {
 /** Stays above its button, shrinking to the room there, rather than flipping down over the timeline. */
 const STAY_ABOVE = { side: "none", align: "shift", fallbackAxisSide: "none" } as const;
 
+function useShortcutsOpen() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.repeat || isTypingTarget(e.target)) return;
+      if (!matchesKey(e, "shortcuts")) return;
+      e.preventDefault();
+      setOpen((wasOpen) => !wasOpen);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+  return [open, setOpen] as const;
+}
+
 export const ShortcutsPanel = memo(function ShortcutsPanel({
   disabled,
   duration,
@@ -27,10 +44,12 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
   setInPoint,
   setOutPoint,
   onSeek,
-  sections = DEFAULT_SHORTCUT_SECTIONS,
+  sections: hostSections,
 }: ShortcutsPanelProps) {
-  const [showShortcuts, setShowShortcuts] = useState(false);
+  const sections = useShortcutSections(hostSections);
+  const [showShortcuts, setShowShortcuts] = useShortcutsOpen();
   const [jumpFrame, setJumpFrame] = useState("");
+  const compositionFps = useCompositionFps();
   // Focus lands on the scrolling body, not the frame input, so keyboard users can scroll and read it.
   const panelBodyRef = useRef<HTMLDivElement>(null);
 
@@ -38,8 +57,8 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     if (disabled) return;
     const frame = Number.parseInt(jumpFrame, 10);
     if (!Number.isFinite(frame) || duration <= 0) return;
-    onSeek(Math.min(duration, frameToSeconds(Math.max(0, frame))));
-  }, [disabled, duration, jumpFrame, onSeek]);
+    onSeek(Math.min(duration, frameToSeconds(Math.max(0, frame), compositionFps)));
+  }, [compositionFps, disabled, duration, jumpFrame, onSeek]);
 
   const handleJumpSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -59,7 +78,7 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
   );
 
   return (
-    <Tooltip label="Shortcuts and tools">
+    <Tooltip label="Shortcuts and tools" disabled={showShortcuts}>
       <Popover
         open={showShortcuts}
         onOpenChange={setShowShortcuts}

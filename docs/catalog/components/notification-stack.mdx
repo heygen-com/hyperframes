@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Notification Stack</h1>
+  <p>1 to 5 token notification cards slide-settle into a vertical stack on cues, newest on top; one card grows slightly and brightens as the focus while the rest dim by position.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/notification-stack.json"
   compositionId="notification-stack"
   compositionSrc="compositions/components/notification-stack.html"
   title="Notification Stack"
-  description="1 to 5 token notification cards slide-settle into a vertical stack on cues, newest on top; one card grows slightly and brightens as the focus while the rest dim by position."
   variables={[{"id":"titles","type":"string","role":"content","label":"Titles","description":"Comma-separated card titles (1 to 5 cards).","default":"Build queued,Checks passed,Deploy live"},{"id":"bodies","type":"string","role":"content","label":"Bodies","description":"Comma-separated body lines matched to titles by index. Blank entries hide that body line.","default":"Pipeline started for main,All 42 checks green,Now serving version 2.4"},{"id":"expand","type":"number","role":"content","label":"Expand","description":"Index of the focus card in the titles list. -1 focuses the newest card (top of the stack).","default":-1,"min":-1,"max":4,"step":1},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated per-card arrival times in seconds. Blank entries use the default rhythm.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used by the icon dots.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"How the stack leaves the frame. Default none: the hold ends the film.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":387}}
   attribution={{"path":"registry/components/notification-stack","tags":["motion-primitive","product-demo","notification","stack","stagger"]}}
@@ -422,7 +426,9 @@ That writes one file: `compositions/components/notification-stack.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -466,6 +472,4 @@ Tagged `motion-primitive` `product-demo` `notification` `stack` `stagger`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

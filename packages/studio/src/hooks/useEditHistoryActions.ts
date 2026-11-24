@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
+import { whileScriptWrites } from "../player/previewReloading";
 import {
   beginStudioShownRestore,
   cancelNewestStudioWaitingPress,
@@ -19,6 +20,7 @@ interface HistoryResult {
   undoes?: string;
   /** Per-file restored/previous content, used to soft-apply the preview. */
   files?: RestoreFiles;
+  revision?: number;
 }
 interface HistoryFileCallbacks {
   readFile: (path: string) => Promise<string>;
@@ -129,7 +131,7 @@ export function useEditHistoryActions({
           serverSteppedShown && predictedShown
             ? fromShown(result.files, predicted!.files)
             : result.files;
-        const restore = { paths: result.paths, files };
+        const restore = { paths: result.paths, files, revision: result.revision };
         onAfterUndoRedo?.(restore);
         if (activeCompPath && result.paths?.includes(activeCompPath)) {
           forceReloadSdkSession?.();
@@ -152,8 +154,8 @@ export function useEditHistoryActions({
     ],
   );
 
-  const undo = useCallback(() => apply("undo"), [apply]);
-  const redo = useCallback(() => apply("redo"), [apply]);
+  const undo = useCallback(() => whileScriptWrites(() => apply("undo")), [apply]);
+  const redo = useCallback(() => whileScriptWrites(() => apply("redo")), [apply]);
   return useMemo(() => ({ undo, redo }), [undo, redo]);
 }
 

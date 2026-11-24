@@ -14,24 +14,22 @@
 #   - ffmpeg, ffprobe, python3 on PATH
 #   - node 22 (for the HF CLI)
 #   - npm (for Remotion installs)
-#   - HF CLI built at packages/cli/dist/cli.js (run `bun run --filter @hyperframes/cli build`
-#     in the repo root if missing)
+#   - HYPERFRAMES_CLI_ENTRY set to the absolute path of the HF CLI to test (a checkout's built
+#     packages/cli/dist/cli.js, or an installed CLI's bin/hyperframes.mjs)
 #
 # Output:
 #   <fixture>/diff/summary.json   per-fixture SSIM summary
-#   <fixture>/strip/strip.png     per-fixture comparison strip (only on fail)
+#   <fixture>/diff/worst.jpg      per-fixture sheet of the worst moments
 #   ./run-report.json             aggregate report
 
 set -euo pipefail
 
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(cd "$THIS_DIR/../.." && pwd)"
-REPO_ROOT="$(cd "$SKILL_DIR/../.." && pwd)"
 
 LINT="$SKILL_DIR/scripts/lint_source.py"
-DIFF="$SKILL_DIR/scripts/render_diff.sh"
-STRIP="$SKILL_DIR/scripts/frame_strip.sh"
-HF_CLI="$REPO_ROOT/packages/cli/dist/cli.js"
+# Only the CLI the person names: the folder above an installed skill is the project's, never a checkout to trust.
+HF_CLI="${HYPERFRAMES_CLI_ENTRY:-}"
 REPORT="$THIS_DIR/run-report.json"
 
 # Per-fixture results land here as one JSON file each, then the aggregator
@@ -44,9 +42,9 @@ trap 'rm -rf "$RESULTS_DIR"' EXIT
 # toolchain checks until run_render_tier() actually runs, so
 # `./run.sh tier-4-escape-hatch` works on a clean checkout.
 require_render_tier_tools() {
-  if [[ ! -f "$HF_CLI" ]]; then
-    echo "error: HF CLI not built at $HF_CLI" >&2
-    echo "       Run 'bun run --filter @hyperframes/cli build' in $REPO_ROOT" >&2
+  if [[ "$HF_CLI" != /* || ! -f "$HF_CLI" ]]; then
+    echo "error: set HYPERFRAMES_CLI_ENTRY to the absolute path of the HF CLI to test" >&2
+    echo "       (in a checkout: packages/cli/dist/cli.js after 'bun run --filter @hyperframes/cli build')" >&2
     return 2
   fi
   if ! command -v ffmpeg >/dev/null 2>&1; then
@@ -146,22 +144,21 @@ run_render_tier() {
     return 0
   fi
 
-  if R2HF_SSIM_THRESHOLD="$threshold" "$DIFF" \
+  # Gate on the tier's mean threshold only, as the calibration runs did; the
+  # worst-moment sheet lands in diff/worst.jpg either way.
+  mkdir -p "$fixture_dir/diff"
+  local mean
+  if node "$HF_CLI" diff \
       "$fixture_dir/remotion-src/out/baseline.mp4" \
       "$fixture_dir/hf.mp4" \
-      "$fixture_dir/diff" >/dev/null; then
-    local mean
-    mean=$(read_json_value "$fixture_dir/diff/summary.json" "mean")
+      --min-mean "$threshold" --min-p05 0 --min-cell 0 \
+      --out "$fixture_dir/diff" --json >"$fixture_dir/diff/summary.json" 2>/dev/null; then
+    mean=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['ssim']['mean'])" "$fixture_dir/diff/summary.json")
     echo "    ✓ pass (mean SSIM $mean, threshold $threshold)"
     write_result "$fixture_name" "pass" mean_ssim "$mean" threshold "$threshold"
   else
-    local mean
-    mean=$(read_json_value "$fixture_dir/diff/summary.json" "mean")
-    echo "    ✗ fail (mean SSIM $mean, threshold $threshold)"
-    "$STRIP" \
-      "$fixture_dir/remotion-src/out/baseline.mp4" \
-      "$fixture_dir/hf.mp4" \
-      "$fixture_dir/strip" 8 >/dev/null
+    mean=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('ssim', {}).get('mean', ''))" "$fixture_dir/diff/summary.json")
+    echo "    ✗ fail (mean SSIM $mean, threshold $threshold; sheet $fixture_dir/diff/worst.jpg)"
     write_result "$fixture_name" "fail" stage "ssim" mean_ssim "$mean" threshold "$threshold"
   fi
 }

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>App Showcase</h1>
+  <p>Fitness app product showcase with three floating smartphone screens</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/app-showcase.json"
   compositionId="app-showcase"
   compositionSrc="compositions/app-showcase.html"
   title="App Showcase"
-  description="Fitness app product showcase with three floating smartphone screens"
   variables={[]}
   meta={{"duration":5.5,"width":1920,"height":1080,"category":"Showcases","badge":"Stable","codeLines":947}}
   attribution={{"path":"registry/blocks/app-showcase","tags":["showcase","app","3d"]}}
@@ -982,7 +986,9 @@ That writes one file: `compositions/app-showcase.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -1013,6 +1019,4 @@ Tagged `showcase` `app` `3d`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

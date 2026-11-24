@@ -10,7 +10,7 @@
 #   docker run --rm -v ./packages/producer/tests:/app/packages/producer/tests hyperframes-producer:test
 #   docker run --rm -v ./packages/producer/tests:/app/packages/producer/tests hyperframes-producer:test --update
 
-FROM node:22.23.3-bookworm-slim
+FROM node:22.23.5-bookworm-slim
 
 # ── System dependencies (identical to production) ────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -80,7 +80,7 @@ ENV CONTAINER=true
 # baselines in packages/producer/tests/*/output/output.mp4 stay reproducible.
 # Each Chrome stable bump shifts pixel output enough to fail PSNR. Bump this
 # version together with regenerating baselines via `docker:test:update`.
-RUN npx --yes @puppeteer/browsers install chrome-headless-shell@152.0.7977.30 \
+RUN npx --yes @puppeteer/browsers install chrome-headless-shell@158.0.8127.36 \
       --path /root/.cache/puppeteer \
     && find /root/.cache/puppeteer/chrome-headless-shell -name "chrome-headless-shell" -type f \
     && echo "chrome-headless-shell installed"
@@ -88,7 +88,7 @@ RUN npx --yes @puppeteer/browsers install chrome-headless-shell@152.0.7977.30 \
 WORKDIR /app
 
 # Install bun
-RUN curl -fsSL https://bun.sh/install | BUN_INSTALL="/root/.bun" bash -s "bun-v1.3.13"
+RUN curl -fsSL https://bun.sh/install | BUN_INSTALL="/root/.bun" bash -s "bun-v1.4.4"
 ENV PATH="/root/.bun/bin:$PATH"
 
 # Install dependencies (full, including devDependencies for tsx + test harness).
@@ -104,6 +104,8 @@ COPY packages/engine/package.json packages/engine/package.json
 COPY packages/player/package.json packages/player/package.json
 COPY packages/producer/package.json packages/producer/package.json
 COPY packages/cli/package.json packages/cli/package.json
+# Sharing runs its prepare script at install time, so include its build inputs.
+COPY packages/share/ packages/share/
 COPY packages/studio/package.json packages/studio/package.json
 COPY packages/shader-transitions/package.json packages/shader-transitions/package.json
 COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
@@ -137,7 +139,7 @@ COPY packages/studio-server/ packages/studio-server/
 COPY packages/core/ packages/core/
 
 # Build workspace packages so "node" export conditions resolve to built dist
-RUN bun run --filter '@hyperframes/{parsers,lint,studio-server}' build \
+RUN bun run --filter '@hyperframes/{parsers,lint,studio-server,share}' build \
     && bun run --cwd packages/core build
 
 # Build core runtime artifacts (needed by renderer)

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Curtain Reveal</h1>
+  <p>Two pleated stage curtains gather outward from center, the way real velvet bunches at the tieback, revealing the stage underneath. A static pelmet frames the top; a soft spotlight can bloom in as they part.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/curtain-reveal.json"
   compositionId="curtain-reveal"
   compositionSrc="compositions/components/curtain-reveal.html"
   title="Curtain Reveal"
-  description="Two pleated stage curtains gather outward from center, the way real velvet bunches at the tieback, revealing the stage underneath. A static pelmet frames the top; a soft spotlight can bloom in as they part."
   variables={[{"id":"tone","type":"enum","role":"style","label":"Curtain tone","description":"Curtain color.","default":"burgundy","options":[{"value":"red","label":"Red"},{"value":"burgundy","label":"Burgundy"},{"value":"navy","label":"Navy"},{"value":"forest","label":"Forest"}]},{"id":"pelmet","type":"enum","role":"style","label":"Pelmet","description":"Static valance framing the top of the stage.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"spotlight","type":"enum","role":"style","label":"Spotlight","description":"Soft glow blooming over the stage as the curtains part.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":377}}
   attribution={{"path":"registry/components/curtain-reveal","tags":["curtain","stage reveal","transition","motion-primitive"]}}
@@ -412,7 +416,9 @@ That writes one file: `compositions/components/curtain-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -453,6 +459,4 @@ Tagged `curtain` `stage reveal` `transition` `motion-primitive`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

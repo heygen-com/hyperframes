@@ -1,5 +1,7 @@
 import type { StoreApi } from "zustand";
 import { isPreviewQuality, type PreviewQuality } from "@hyperframes/core/preview-quality";
+import type { PlaybackHeldBy } from "@hyperframes/core";
+import type { MediaLoadFailure } from "@hyperframes/core/runtime/protocol";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 /** The lighter copies of heavy videos the preview wants at its current quality. */
@@ -18,6 +20,13 @@ export interface PlaybackHealth {
   choppy: boolean;
   fps: number;
   worstFrameMs: number;
+  skippedShare?: number;
+  waitingShare?: number;
+  frozenShare?: number;
+  gapP50Ms?: number;
+  gapP95Ms?: number;
+  clockSource?: "audio" | "webaudio" | "monotonic";
+  heldBy?: PlaybackHeldBy | null;
   mode: "play";
 }
 
@@ -49,6 +58,8 @@ export interface PreviewQualitySlice {
   setPlaybackHealth: (health: PlaybackHealth | null) => void;
   previewFacts: PreviewFacts | null;
   setPreviewFacts: (facts: PreviewFacts | null) => void;
+  mediaLoadFailure: MediaLoadFailure | null;
+  setMediaLoadFailure: (failure: MediaLoadFailure | null) => void;
   /** Bumped by requestPreviewFacts; the preview owner forwards each bump and the answer lands in previewFacts. */
   previewFactsRequests: number;
   requestPreviewFacts: () => void;
@@ -83,6 +94,8 @@ export function createPreviewQualitySlice(
     setPlaybackHealth: (playbackHealth) => set({ playbackHealth }),
     previewFacts: null,
     setPreviewFacts: (previewFacts) => set({ previewFacts }),
+    mediaLoadFailure: null,
+    setMediaLoadFailure: (mediaLoadFailure) => set({ mediaLoadFailure }),
     previewFactsRequests: 0,
     requestPreviewFacts: () =>
       set((state) => ({ previewFactsRequests: state.previewFactsRequests + 1 })),
@@ -104,8 +117,22 @@ export function parsePreviewCopies(value: unknown): PreviewCopies | null {
   };
 }
 
+const optionalNumber = (n: unknown) => (typeof n === "number" ? n : undefined);
+const CLOCK_SOURCES = ["audio", "webaudio", "monotonic"] as const;
+const optionalClock = (clock: unknown) => CLOCK_SOURCES.find((known) => known === clock);
+function parseHeldBy(value: unknown): PlaybackHealth["heldBy"] {
+  if (value === null) return null;
+  if (typeof value !== "object") return undefined;
+  const { kind, readyState, networkState, fetchMs } = value as Record<string, unknown>;
+  if (kind !== "audio" && kind !== "video") return undefined;
+  if (typeof readyState !== "number" || typeof networkState !== "number") return undefined;
+  if (typeof fetchMs !== "number" && fetchMs !== null) return undefined;
+  return { kind, readyState, networkState, fetchMs };
+}
+
 export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {
   if (typeof value !== "object" || value === null) return null;
+  const extra = value as Record<string, unknown>;
   const { droppedShare, seconds, choppy, fps, worstFrameMs } = value as Record<string, unknown>;
   const numbers = [droppedShare, seconds, fps, worstFrameMs].every((n) => typeof n === "number");
   if (!numbers || typeof choppy !== "boolean") return null;
@@ -115,6 +142,13 @@ export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {
     choppy,
     fps: fps as number,
     worstFrameMs: worstFrameMs as number,
+    skippedShare: optionalNumber(extra.skippedShare),
+    waitingShare: optionalNumber(extra.waitingShare),
+    frozenShare: optionalNumber(extra.frozenShare),
+    gapP50Ms: optionalNumber(extra.gapP50Ms),
+    gapP95Ms: optionalNumber(extra.gapP95Ms),
+    clockSource: optionalClock(extra.clockSource),
+    heldBy: parseHeldBy(extra.heldBy),
     mode: "play",
   };
 }

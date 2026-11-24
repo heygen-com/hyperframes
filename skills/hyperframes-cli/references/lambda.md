@@ -23,6 +23,8 @@ npx hyperframes lambda render ./my-project --width 1920 --height 1080 --wait
 npx hyperframes lambda destroy
 ```
 
+`destroy` deletes their deployed stack: ask the person first and run it only after they say yes.
+
 ## Choose Lambda or local rendering
 
 - **Local `render`** — dev-loop iteration, single host, anything under a few minutes at 1080p.
@@ -92,6 +94,9 @@ Starts a Step Functions execution. Returns immediately with a `renderId` unless 
 | `--chunk-size`          | Frames per chunk (default `240`)                                                                                                                                                                                                                                                                                                                              |
 | `--max-parallel-chunks` | Max concurrent chunks (default `16`)                                                                                                                                                                                                                                                                                                                          |
 | `--target-chunk-frames` | Cap frames per chunk and let the planner add chunks up to the parallel limit                                                                                                                                                                                                                                                                                  |
+| `--keyframe-interval`   | MP4 only: a keyframe at least every N seconds (a maximum: chunk joins add keyframes)                                                                                                                                                                                                                                                                          |
+| `--max-bitrate`         | MP4 only: peak bitrate cap, held per chunk (a join can burst up to one buffer)                                                                                                                                                                                                                                                                                |
+| `--buffer-size`         | MP4 only: buffer for `--max-bitrate` (default twice it)                                                                                                                                                                                                                                                                                                       |
 | `--site-id`             | Reuse an existing site (skip upload)                                                                                                                                                                                                                                                                                                                          |
 | `--execution-name`      | Explicit Step Functions execution name                                                                                                                                                                                                                                                                                                                        |
 | `--output-key`          | Explicit final S3 object key                                                                                                                                                                                                                                                                                                                                  |
@@ -153,6 +158,8 @@ Prints one snapshot — overall percent, frames rendered, Lambda invocations, ac
 npx hyperframes lambda destroy
 ```
 
+Ask the person before `destroy` and run it only after they say yes: it deletes their deployed Lambda stack.
+
 Calls `sam delete --no-prompts` and drops the local state file. **The render S3 bucket is configured `Retain`** so it survives stack destruction — empty + delete it via the AWS console / CLI if you want the storage back.
 
 ### Non-retryable errors
@@ -178,7 +185,7 @@ The default action set is deliberately broad (`Resource: "*"`) because CloudForm
 
 ## State, cost, and cleanup
 
-`hyperframes lambda` stores per-stack metadata under `<cwd>/.hyperframes/lambda-stack-<name>.json` (bucket name, state-machine ARN, region). Not secret, but AWS-account-identifying. Commit it to a repo or `.gitignore` it per your workflow.
+`hyperframes lambda` stores per-stack metadata under `<cwd>/.hyperframes/lambda-stack-<name>.json` (bucket name, state-machine ARN, region). Not secret, but AWS-account-identifying. Commit it to a repo or `.gitignore` it per your workflow. The CLI refuses a state file with malformed fields or one that is a symlink, and uploads only to a bucket owned by the account of the file's state machine.
 
 - `lambda destroy` removes the SAM stack but **leaves the S3 bucket** (`Retain`). Delete it manually if you want the storage back.
 - Lambda billing is per-invocation + duration. `progress` reports the accrued cost.

@@ -1,4 +1,6 @@
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { readJsonFileText } from "../utils/jsonFlag.js";
 import { extname, join } from "node:path";
 import { parseExpressionAt, tokenizer } from "acorn";
 import { parseHTML } from "linkedom";
@@ -40,7 +42,7 @@ export function detectFormat(filePath: string): TranscriptFormat {
   const ext = extname(filePath).toLowerCase();
   if (ext === ".srt") return "srt";
   if (ext === ".vtt") return "vtt";
-  if (ext === ".json") return detectJsonFormat(JSON.parse(readFileSync(filePath, "utf-8")));
+  if (ext === ".json") return detectJsonFormat(parseWhisperJson(readJsonFileText(filePath)));
   throw new Error(`Unsupported transcript file extension: ${ext}. Use .json, .srt, or .vtt`);
 }
 
@@ -498,6 +500,15 @@ export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
 // Public API
 // ---------------------------------------------------------------------------
 
+const BARE_NAN_OR_INF_OUTSIDE_STRINGS =
+  /"(?:[^"\\]|\\.)*"|-?\b(?:nan(?:\([^)]*\))?|inf(?:inity)?)(?!\w)/gi;
+
+export function parseWhisperJson(text: string): any {
+  return JSON.parse(
+    text.replace(BARE_NAN_OR_INF_OUTSIDE_STRINGS, (m) => (m.startsWith('"') ? m : "null")),
+  );
+}
+
 /**
  * Load and normalize a transcript file to a standard word array.
  *
@@ -510,7 +521,7 @@ export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
  */
 export function loadTranscript(filePath: string): { words: Word[]; format: TranscriptFormat } {
   const ext = extname(filePath).toLowerCase();
-  const content = readFileSync(filePath, "utf-8");
+  const content = readJsonFileText(filePath);
 
   if (ext === ".srt") {
     const words = parseSrt(content).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));
@@ -522,7 +533,7 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
   }
 
   // JSON formats — parse once, detect, then extract words
-  const parsed = JSON.parse(content);
+  const parsed = parseWhisperJson(content);
   const format = detectJsonFormat(parsed);
 
   // JSON parsers never set id — assign w{index} like the srt/vtt branches above
@@ -590,7 +601,7 @@ export function patchCaptionHtml(dir: string, words: Word[]): void {
     if (match) {
       const varName = scriptMatch ? "script" : "TRANSCRIPT";
       content = content.replace(match, () => `const ${varName} = ${wordsJson};`);
-      writeFileSync(file, content, "utf-8");
+      replaceFileAtomically(file, content);
     }
   }
 }

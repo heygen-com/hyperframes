@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Editorial Emphasis</h1>
+  <p>Dual-font system with dramatic size contrast for emphasis words</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-editorial-emphasis.json"
   compositionId="caption-editorial-emphasis"
   compositionSrc="compositions/components/caption-editorial-emphasis.html"
   title="Editorial Emphasis"
-  description="Dual-font system with dramatic size contrast for emphasis words"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":412}}
   attribution={{"path":"registry/components/caption-editorial-emphasis","tags":["captions","caption-style","editorial","typography","emphasis"]}}
@@ -447,7 +451,9 @@ That writes one file: `compositions/components/caption-editorial-emphasis.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -466,6 +472,4 @@ Tagged `captions` `caption-style` `editorial` `typography` `emphasis`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

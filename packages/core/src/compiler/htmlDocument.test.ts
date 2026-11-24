@@ -6,11 +6,14 @@ import {
   findStartTags,
   injectScriptsAtHeadStart,
   injectScriptsIntoHtml,
+  headContentStart,
   injectTagsAtHeadStart,
   insertBeforeCloseTag,
   insertRuntimeTag,
   hasCompositionOutsideTemplates,
   isFullHtmlDocument,
+  mapStartTagsAndStyles,
+  tagsOutsideCommentsAndRawText,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument.js";
@@ -63,7 +66,41 @@ function scannedChars(run: () => void): number {
 const workGrowth = (scan: (n: number) => void) =>
   scannedChars(() => scan(20_000)) / scannedChars(() => scan(10_000));
 
+/** Lowercased copies `run` makes of any string at least `size` long. */
+function lowercasedCopies(size: number, run: () => void): number {
+  const proto = String.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const originals = ["replace", "toLowerCase"].map((name) => [name, proto[name]!] as const);
+  let copies = 0;
+  for (const [name, original] of originals) {
+    proto[name] = function (this: string, ...args: unknown[]) {
+      if (this.length >= size) copies += 1;
+      return original.apply(this, args);
+    };
+  }
+  try {
+    run();
+  } finally {
+    for (const [name, original] of originals) proto[name] = original;
+  }
+  return copies;
+}
+
 describe("htmlDocument helpers", () => {
+  it("finds a large page's tags without lowercasing a copy of the page for each pass", () => {
+    const clip = '<VIDEO SRC="a.mov" DATA-HF-ID="v" MUTED></VIDEO>';
+    const page = `<!DOCTYPE html><HTML><HEAD><TITLE>x</TITLE></HEAD><BODY>${clip.repeat(20_000)}<SCRIPT>window.x = 1;</SCRIPT></BODY></HTML>`;
+    const copies = lowercasedCopies(page.length / 2, () => {
+      insertBeforeCloseTag(page, "head", "<meta>");
+      insertBeforeCloseTag(page, "body", "<i></i>");
+      injectTagsAtHeadStart(page, "<meta>");
+      findStartTags(page, "base");
+      mapStartTagsAndStyles(page, { tag: (tag) => tag, style: (css) => css });
+      hasCompositionOutsideTemplates(page);
+      stripEmbeddedRuntimeScripts(page);
+    });
+    expect(copies).toBe(0);
+  });
+
   it("strips runtimes from large mixed-case base64 HTML within a bounded heap", () => {
     const moduleUrl = pathToFileURL(resolve(__dirname, "htmlDocument.ts")).href;
     const result = spawnSync(
@@ -412,6 +449,45 @@ describe("injectTagsAtHeadStart on long adversarial input", () => {
   });
 });
 
+describe("headContentStart", () => {
+  it.each([
+    [
+      "<!doctype html><html lang='en'><head id='h'>x",
+      "<!doctype html><html lang='en'><head id='h'>",
+    ],
+    ["<!doctype html><html lang='en'><body>x", "<!doctype html><html lang='en'>"],
+    [" \n<!DOCTYPE html><div>x", " \n<!DOCTYPE html>"],
+    ["<div>x", ""],
+    ["text<head>x", ""],
+    [
+      "<html a=\"<head>\" b='<head>' c=<head><HEAD>x",
+      "<html a=\"<head>\" b='<head>' c=<head><HEAD>",
+    ],
+    [
+      "<!-- <head> --><!doctype html><!-- <html> --><head>x",
+      "<!-- <head> --><!doctype html><!-- <html> --><head>",
+    ],
+    ["<!--><html a='--><head>'><head>x", "<!--><html a='--><head>'><head>"],
+    ["<!-- <head> never closed", ""],
+    ["<!doctype html><html><body><head>x", "<!doctype html><html>"],
+    ["<!doctype html><title><head></title>", "<!doctype html>"],
+    ["<html a='<head>x", ""],
+    ["<headless><head>x", ""],
+    ["\uFEFF<div>x", "\uFEFF"],
+    ["\uFEFF<!doctype html><html><head>x", "\uFEFF<!doctype html><html><head>"],
+  ])("reads %j up to the end of its own head start tag", (html, before) => {
+    expect(headContentStart(html)).toBe(before.length);
+  });
+
+  it("is one pass over long runs of comments, attributes and unclosed tags", () => {
+    const prolog = "<!-- <head> -->".repeat(20_000) + "<html" + " a='<head>'".repeat(20_000) + ">";
+    expect(headContentStart(prolog + "<head>x")).toBe(prolog.length + 6);
+    expect(headContentStart("<!-- a --!>".repeat(20_000) + "<head>")).toBe(11 * 20_000 + 6);
+    expect(headContentStart("<html " + "a=".repeat(20_000))).toBe(0);
+    expect(headContentStart("<head".repeat(20_000) + ">")).toBe(0);
+  });
+});
+
 describe("hasCompositionOutsideTemplates", () => {
   it.each([
     ["a root in <body>", '<body><div data-composition-id="main"></div></body>', true],
@@ -469,6 +545,14 @@ describe("insertRuntimeTag", () => {
     expect(out.indexOf("window.author")).toBeLessThan(out.indexOf(runtime));
   });
 
+  it("keeps the tracker and runtime ahead of author scripts for Studio previews", () => {
+    const out = insertRuntimeTag(page('data-motion-blur="on"'), runtime, true);
+    const tracker = out.indexOf("data-hf-accel-tracker");
+    expect(tracker).toBeGreaterThan(-1);
+    expect(tracker).toBeLessThan(out.indexOf(runtime));
+    expect(out.indexOf(runtime)).toBeLessThan(out.indexOf("window.author"));
+  });
+
   it("adds the tracker once, however many times the runtime is placed", () => {
     const once = insertRuntimeTag(page('data-motion-blur="on"'), runtime);
     const twice = insertRuntimeTag(once, runtime);
@@ -479,5 +563,24 @@ describe("insertRuntimeTag", () => {
     for (const attrs of ["", 'data-motion-blur="off"', 'data-motion-blur-shutter="on"']) {
       expect(insertRuntimeTag(page(attrs), runtime)).not.toContain("data-hf-accel-tracker");
     }
+  });
+});
+
+describe("tagsOutsideCommentsAndRawText", () => {
+  it("lists the real tags only, never tag text inside a script, style, title or comment", () => {
+    const html = `<P id="a">x</P><script>'<b data-hf-id="w">'</script><!-- <i> --><style>/* <u> */</style><br/>`;
+    const tags = [...tagsOutsideCommentsAndRawText(html)].map(
+      ({ lowercaseName, closing, start, endAfterBracket }) =>
+        `${closing ? "/" : ""}${lowercaseName}:${html.slice(start, endAfterBracket)}`,
+    );
+    expect(tags).toEqual([
+      'p:<P id="a">',
+      "/p:</P>",
+      "script:<script>",
+      "/script:</script>",
+      "style:<style>",
+      "/style:</style>",
+      "br:<br/>",
+    ]);
   });
 });

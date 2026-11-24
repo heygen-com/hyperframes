@@ -19,7 +19,7 @@ Use Player when an application needs to play and seek an HTML composition. Use
 ### Via CDN
 
 ```html title="index.html"
-<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player/dist/hyperframes-player.js"></script>
 
 <hyperframes-player
   src="./my-composition/index.html"
@@ -44,7 +44,9 @@ import "@hyperframes/player";
 Set `autoplay muted` only when playback should start without a user gesture.
 
 Add or remove `controls` at any time. When shown, the controls reflect the current
-playback state, position and speed.
+playback state, position and speed. Clicking or dragging the scrubber keeps a
+playing film playing from the new spot, as a `<video>`'s own controls do, and
+leaves a paused film paused.
 
 ## Attributes
 
@@ -55,7 +57,7 @@ playback state, position and speed.
 | `srcdoc`        | string  | —       | Composition HTML already available as a string            |
 | `width`         | number  | 1920    | Native composition width used for aspect ratio            |
 | `height`        | number  | 1080    | Native composition height used for aspect ratio           |
-| `controls`      | boolean | false   | Show playback, scrub, speed, time, and volume controls    |
+| `controls`      | boolean | false   | Show playback, scrub, speed, time, volume, and fullscreen controls |
 | `autoplay`      | boolean | false   | Start when the composition is ready                       |
 | `loop`          | boolean | false   | Restart at the end                                        |
 | `muted`         | boolean | false   | Mute audio                                                |
@@ -67,11 +69,14 @@ playback state, position and speed.
 | `assets-loading-ui` | `player` or `none` | `player` | `none` hides the loading-assets card; asset events still fire |
 | `low-power-idle` | boolean | false | While paused, check in once a second, not every 80 ms (many-player pages) |
 | `disable-click-to-play` | boolean | false | A click on the player no longer plays or pauses, so the page can handle it |
-| `no-load-timeout` | boolean | false | A slow load never fails at 8 s, so the page owns the deadline; script and runtime errors still fail at once |
+| `disable-fullscreen` | boolean | false | Hide the fullscreen button in the controls (`disableFullscreen`) |
+| `no-load-timeout` | boolean | false | A slow load never fails at the load limit, so the page owns the deadline; script and runtime errors still fail at once |
 | `range-start` | number | — | Film second where playback starts, loops back to and parks when paused (`rangeStart`) |
 | `range-end` | number | — | Film second the range ends before: it stops or loops on the frame before it (`rangeEnd`) |
 
 `range-start` and `range-end` play the moment [start, end) of the film. The player parks on `range-start` at `ready`, and again when a paused playhead falls outside a new range; `play()` from outside the range starts there. At the end it holds the last frame before `range-end` and fires `ended`, or wraps to `range-start` with `loop`. `currentTime` at `ended` is then inside that frame, not `range-end` itself, so listen for `ended` rather than comparing times. A current runtime stops on that frame itself; video and `__timelines` players stop one clock tick early, predicted from the smaller of their last two steps, and a video in a background tab checks on its own `timeupdate`; an older runtime stops when the player sees its time pass the end. `currentTime` and `duration` stay in film time. A range past the film is cut to its end and an empty or negative one is ignored; both fire `rangeclamped`.
+
+The fullscreen button fills the screen with the whole player, controls included. It appears only where the page can go fullscreen, so not on iPhone Safari and not inside a cross-origin iframe without `allow="fullscreen"`. It follows every exit, including Esc. Set `disable-fullscreen` to hide it. A refused request fires the browser's `fullscreenerror` on the player.
 
 Player also accepts `shader-capture-scale` and `shader-loading` for previewing
 projects that use shader transitions. These are preview controls, not composition
@@ -80,6 +85,8 @@ authoring attributes.
 With a `video/...` `type`, `src` plays in a `<video>` behind the same playback API and
 events. `scenes`, `setRuntimeData()`, `setColorGrading()`, `iframeElement` and `stopMedia()`
 are composition-only, and `srcdoc` wins over a video `src`, as it does in an iframe.
+
+Removing a video player's `src` attribute or setting it to an empty string unloads the film and resets playback to paused at 0:00. Set a new `src` to load another video.
 
 ## JavaScript API
 
@@ -91,6 +98,7 @@ const player = document.querySelector("hyperframes-player");
 player.play();
 player.pause();
 player.seek(2.5);
+player.seek(2.5, { keepPlaying: true });
 
 player.currentTime = 5;
 player.playbackRate = 1.5;
@@ -99,6 +107,16 @@ player.muted = true;
 console.log(player.duration, player.paused, player.ready);
 console.log(player.compositionWidth, player.compositionHeight);
 ```
+
+`seek()` and setting `currentTime` pause at the new time. Pass `{ keepPlaying: true }`
+to keep a playing film playing from there, as setting a `<video>`'s `currentTime`
+does; a paused film stays paused.
+
+In Studio previews, scrubbing keeps the last complete picture visible while video
+layers decode at the requested time. Rapid seeks keep only the latest queued
+destination, and the captions and video layers appear together once it is ready.
+Complete intermediate pictures can appear during a drag. Jumping to a different
+clip supersedes an earlier pending seek; failed sources do not hold up the preview.
 
 ## Events
 
@@ -116,7 +134,7 @@ player.addEventListener("timeupdate", (event) => {
 
 | Event          | Detail            | Description                                                  |
 | -------------- | ----------------- | ------------------------------------------------------------ |
-| `ready`        | `{ duration, compositionWidth, compositionHeight }` | Composition loaded and timeline discovered |
+| `ready`        | `{ duration, compositionWidth, compositionHeight, readyMs, loadLimitMs }` | Composition loaded and timeline discovered. `readyMs`: milliseconds from the frame's load to its timeline; `loadLimitMs`: the load limit it had. Both `null` for a video |
 | `durationchange` | `{ duration }`  | The duration changed after `ready`                           |
 | `resize`       | `{ compositionWidth, compositionHeight }` | The composition's size changed           |
 | `timeupdate`   | `{ currentTime }` | Playback position changed, approximately 10 times per second |
@@ -127,8 +145,43 @@ player.addEventListener("timeupdate", (event) => {
 | `ratechange`   | —                 | Playback rate changed                                        |
 | `volumechange` | —                 | Volume or muted state changed                                |
 | `scenes`       | `{ scenes }`      | The runtime reported its scene list                          |
-| `error`        | `{ message }`     | Load or runtime error; a video adds its `MediaError` `code`  |
+| `error`        | `{ message }`     | Load or runtime error, or no timeline within the load limit (Windows 90 s, Linux 30 s, other systems 120 s). The player keeps listening, so a timeline that comes later still fires `ready`. A video adds its `MediaError` `code` |
 | `playbackerror` | `{ source, error }` | The browser blocked playback, for example unmuted autoplay |
+
+## Custom icons and loading mark
+
+Put an element with a `slot` attribute inside the player to replace a control glyph or the loading mark. Anything you leave out keeps the default.
+
+| Slot                | Shown when                                                  | Default size |
+| ------------------- | ----------------------------------------------------------- | ------------ |
+| `play-icon`         | Paused                                                      | 24 px        |
+| `pause-icon`        | Playing                                                     | 24 px        |
+| `volume-high-icon`  | Unmuted, volume 0.5 or higher                               | 20 px        |
+| `volume-low-icon`   | Unmuted, volume below 0.5                                   | 20 px        |
+| `volume-muted-icon` | Muted                                                       | 20 px        |
+| `loading-mark`      | Preparing shader transitions, loading assets, and buffering | 78 px        |
+
+```html title="index.html"
+<hyperframes-player src="/compositions/intro.html" controls>
+  <svg slot="play-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M8 5v14l11-7z" />
+  </svg>
+  <svg slot="pause-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+  </svg>
+  <img slot="loading-mark" src="/brand-mark.svg" width="78" height="78" alt="" />
+</hyperframes-player>
+```
+
+Glyphs take the control bar's color through `currentColor`, and you set their size. Put `slot` on the `<svg>` or `<img>` itself, as a direct child of the player; a wrapper element needs `display: contents` to keep the glyph centered. A custom mark replaces the HyperFrames light sweep and glow, so add your own CSS animation if you want motion.
+
+Until the element is defined, its children show as plain content. Hide them:
+
+```css title="styles.css"
+hyperframes-player:not(:defined) > [slot] {
+  display: none;
+}
+```
 
 ## Advanced: iframe access
 
@@ -170,7 +223,11 @@ iframeRef.current = resolveIframe(player);
 
 The composition runs in a sandboxed iframe inside the player's Shadow DOM. This
 isolates its styles, scales it to the player container, and lets the player
-communicate with the HyperFrames runtime through `postMessage`.
+communicate with the HyperFrames runtime through `postMessage`. Set
+`sandbox-origin="opaque"` to seal the frame, so the composition cannot read
+your page or its cookies. The player adds the runtime itself to a composition
+from your own site; a composition from another site must include the runtime
+script.
 
 ## Related topics
 

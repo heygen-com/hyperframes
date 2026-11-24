@@ -16,24 +16,31 @@ describe("getAvailableMemoryMb", () => {
       platform: () => "darwin",
       freemem: () => 100 * 1024 * 1024,
     }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", async () => ({
+      ...(await vi.importActual<object>("@hyperframes/parsers/ff-binaries")),
+      findTrustedExecutable: (name: string) => `/usr/bin/${name}`,
+    }));
+    const execFileSync = vi.fn(() =>
+      [
+        "Mach Virtual Memory Statistics: (page size of 16384 bytes)",
+        "Pages free:                             5000.",
+        "Pages active:                         200000.",
+        "Pages inactive:                       100000.",
+        "Pages speculative:                      2000.",
+        "Pages throttled:                           0.",
+        "Pages wired down:                     150000.",
+        "Pages purgeable:                        3000.",
+      ].join("\n"),
+    );
     vi.doMock("node:child_process", async () => ({
       ...(await vi.importActual<typeof import("node:child_process")>("node:child_process")),
-      execSync: (_cmd: string) =>
-        [
-          "Mach Virtual Memory Statistics: (page size of 16384 bytes)",
-          "Pages free:                             5000.",
-          "Pages active:                         200000.",
-          "Pages inactive:                       100000.",
-          "Pages speculative:                      2000.",
-          "Pages throttled:                           0.",
-          "Pages wired down:                     150000.",
-          "Pages purgeable:                        3000.",
-        ].join("\n"),
+      execFileSync,
     }));
 
     const { getAvailableMemoryMb } = await import("./systemMemory.js");
     const result = getAvailableMemoryMb();
 
+    expect(execFileSync).toHaveBeenCalledWith("/usr/bin/vm_stat", [], expect.anything());
     // (5000 + 100000 + 3000 + 2000) * 16384 = 110000 * 16384 = 1,802,240,000 bytes
     // 1,802,240,000 / (1024 * 1024) = ~1718 MB
     expect(result).toBe(Math.trunc((110000 * 16384) / (1024 * 1024)));
@@ -45,9 +52,13 @@ describe("getAvailableMemoryMb", () => {
       platform: () => "darwin",
       freemem: () => 4 * 1024 * 1024 * 1024,
     }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", async () => ({
+      ...(await vi.importActual<object>("@hyperframes/parsers/ff-binaries")),
+      findTrustedExecutable: (name: string) => `/usr/bin/${name}`,
+    }));
     vi.doMock("node:child_process", async () => ({
       ...(await vi.importActual<typeof import("node:child_process")>("node:child_process")),
-      execSync: () => {
+      execFileSync: () => {
         throw new Error("vm_stat not found");
       },
     }));

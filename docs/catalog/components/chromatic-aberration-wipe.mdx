@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Chromatic Aberration Wipe</h1>
+  <p>A fast slide wipe with RGB channel split on peak frames.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/chromatic-aberration-wipe.json"
   compositionId="chromatic-aberration-wipe"
   compositionSrc="compositions/components/chromatic-aberration-wipe.html"
   title="Chromatic Aberration Wipe"
-  description="A fast slide wipe with RGB channel split on peak frames."
   variables={[{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"The direction the reveal travels; both scenes slide the same way and the wipe edge follows.","default":"left","options":[{"value":"left","label":"Left"},{"value":"right","label":"Right"},{"value":"up","label":"Up"},{"value":"down","label":"Down"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour family of the incoming scene's gradient.","default":"blue","options":[{"value":"blue","label":"Blue"},{"value":"green","label":"Green"},{"value":"violet","label":"Violet"}]},{"id":"aberration","type":"number","role":"style","label":"Aberration","description":"Multiplies the red/cyan channel split: 0 removes it, 1 is the stock strength, 2 doubles the offset and saturates the flash.","default":1,"min":0,"max":2,"step":0.1,"unit":"x"}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":165}}
   attribution={{"path":"registry/components/chromatic-aberration-wipe","tags":["video-primitive","transition-primitive"]}}
@@ -200,7 +204,9 @@ That writes one file: `compositions/components/chromatic-aberration-wipe.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -242,6 +248,4 @@ Tagged `video-primitive` `transition-primitive`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

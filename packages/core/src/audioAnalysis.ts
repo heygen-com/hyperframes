@@ -6,6 +6,7 @@
 import type { AudioAnalysisProvider, AudioCapability } from "./audioAnalysisLadder";
 import { finish, type Steps } from "./audioSteps";
 import { fft } from "./fft";
+import { voicedShare } from "./audioPitch";
 import { rhythm } from "./audioRhythm";
 import { sections, type SectionOptions } from "./audioSections";
 
@@ -116,6 +117,7 @@ export interface KindFeatures {
   syllables: number;
   /** Share of 50 ms frames within 20 dB of the loud end (95th percentile), 0–1: high for beds and speech, low for hits. */
   sustain: number;
+  voiced?: number;
 }
 
 const DB_FLOOR = -120;
@@ -588,26 +590,34 @@ export function kindFeatures(signal: AudioSignal): KindFeatures {
   };
 }
 
+const VOICED_SPEECH = 0.15;
+const VOICED_STEADY_SPEECH = 0.25;
+
 /**
  * A first guess at what the audio is. Length decides most of it: beds run long, effects short. Long audio is voice
- * when its envelope moves at syllable rate without a beat; short audio is voice when it also holds its level.
+ * when its envelope moves at syllable rate without a beat; short audio also holds its level. Both need a voice pitch.
  */
 export function classify(signal: AudioSignal): KindGuess {
   const features = kindFeatures(signal);
   const { duration, regularity, syllables, sustain } = features;
   const speechLike = syllables >= 0.35 && regularity < 0.35;
+  const voiced = () => (features.voiced ??= round(voicedShare(signal.channels, signal.sampleRate)));
+  const pitched = () => voiced() >= VOICED_SPEECH;
   if (duration >= 8) {
     if (sustain < 0.4) return { value: "sfx", confidence: 0.6, features };
-    if (speechLike)
+    if (speechLike && pitched())
       return { value: "voice", confidence: round(Math.min(0.9, 0.4 + syllables)), features };
+    if (regularity < 0.2 && syllables >= 0.17 && voiced() >= VOICED_STEADY_SPEECH)
+      return { value: "voice", confidence: 0.6, features };
     return { value: "music", confidence: round(Math.min(0.9, 0.5 + regularity)), features };
   }
-  if (duration >= 1.5 && syllables >= 0.17 && regularity < 0.3 && sustain >= 0.7)
+  if (duration >= 1.5 && syllables >= 0.17 && regularity < 0.3 && sustain >= 0.7 && pitched())
     return { value: "voice", confidence: speechLike ? 0.8 : 0.6, features };
   return { value: "sfx", confidence: duration <= 2 ? 0.85 : 0.65, features };
 }
 
 export * from "./audioAnalysisLadder";
+export * from "./audioPitch";
 export * from "./audioRhythm";
 export * from "./audioSections";
 export * from "./audioSnap";

@@ -8,7 +8,9 @@ import { getFfmpegBinary } from "@hyperframes/engine";
 import {
   canEncodeWhileCapturing,
   encodeWhileCapturing,
+  overlapEncoderThreads,
   runEncodeStage,
+  videoEncoderOptions,
   type EncodeStageInput,
 } from "./encodeStage.js";
 
@@ -97,9 +99,28 @@ describe("encodeWhileCapturing", () => {
     expect(canEncodeWhileCapturing(input, 4, 8)).toBe(true);
     expect(canEncodeWhileCapturing(input, 4, 4)).toBe(false);
     expect(canEncodeWhileCapturing(input, 1, 8)).toBe(false);
+    const gpu = { ...input, job: { ...input.job, config: { ...input.job.config, useGpu: true } } };
+    expect(canEncodeWhileCapturing(gpu, 4, 8)).toBe(true);
     expect(
       canEncodeWhileCapturing({ ...input, lockGopForChunkConcat: true, gopSize: FRAMES }, 4, 8),
     ).toBe(true);
+  });
+
+  it("caps the software encoder to the cores capture leaves free", () => {
+    expect(overlapEncoderThreads(4, 8)).toBe(4);
+    expect(overlapEncoderThreads(6, 8)).toBe(2);
+    expect(overlapEncoderThreads(7, 8)).toBe(1);
+    // Never zero, even when the caller passes every core to capture.
+    expect(overlapEncoderThreads(8, 8)).toBe(1);
+
+    const input = makeInput("/r", "/r/frames", "v.mp4");
+    expect(
+      videoEncoderOptions(input, { vp9CpuUsed: undefined }, overlapEncoderThreads(6, 8)),
+    ).toMatchObject({ softwareEncoderThreads: 2 });
+    // The post-capture encode keeps the encoder default (all usable cores).
+    expect(videoEncoderOptions(input, { vp9CpuUsed: undefined })).toMatchObject({
+      softwareEncoderThreads: undefined,
+    });
   });
 
   it("encodes a closed-GOP distributed chunk byte-identical to the encode after capture", async () => {

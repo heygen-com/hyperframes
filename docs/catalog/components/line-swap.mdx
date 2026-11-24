@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Line Swap</h1>
+  <p>A masked full-line beat replacement: line A holds center then exits up through an overflow-hidden mask as line B enters bottom-up on the same beat, with an optional accent underline drawing beneath one word of line B.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/line-swap.json"
   compositionId="line-swap"
   compositionSrc="compositions/components/line-swap.html"
   title="Line Swap"
-  description="A masked full-line beat replacement: line A holds center then exits up through an overflow-hidden mask as line B enters bottom-up on the same beat, with an optional accent underline drawing beneath one word of line B."
   variables={[{"id":"line_a","type":"string","role":"content","label":"Line A","description":"First line; holds center inside the mask, then exits up on the swap beat.","default":"Everyone promised you AI."},{"id":"line_b","type":"string","role":"content","label":"Line B","description":"Replacement line; enters bottom-up on the swap beat and holds.","default":"Almost nobody promised you control."},{"id":"swap_at","type":"number","role":"timing","label":"Swap at","description":"Second (from mount start) of the beat replacement. Clamped so the swap and underline complete before any exit.","default":1.5,"min":0,"step":0.1,"unit":"s"},{"id":"underline_word","type":"string","role":"content","label":"Underline word","description":"First case-insensitive substring match in line B gets the accent underline after landing. Empty disables it.","default":"control"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Underline color from the contract token map.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the landed line holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":309}}
   attribution={{"path":"registry/components/line-swap","tags":["motion-primitive","text-effects","swap","beat","deterministic"]}}
@@ -344,7 +348,9 @@ That writes one file: `compositions/components/line-swap.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -388,6 +394,4 @@ Tagged `motion-primitive` `text-effects` `swap` `beat` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

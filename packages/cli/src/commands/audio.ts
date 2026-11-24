@@ -1,5 +1,6 @@
-import { join, resolve } from "node:path";
-import { defineCommand } from "citty";
+import { join, relative, resolve } from "node:path";
+import { terminalText } from "@hyperframes/core";
+import { defineCommand } from "../utils/defineCommand.js";
 import type {
   AnalysisQuality,
   AudioCapability,
@@ -8,14 +9,17 @@ import type {
 import type { Example } from "./_examples.js";
 import { DEFAULT_CAPABILITIES, type AnalyzeOptions } from "../audio/analysis/analyze.js";
 import { formatReport } from "../audio/analysis/format.js";
+import { refuseUnadmittedFilmSources } from "../audio/analysis/filmSources.js";
 import { analyzeTargets, previewTarget } from "../audio/analysis/run.js";
 import { filmTargets, type AudioTarget, type FilmQuery } from "../audio/analysis/targets.js";
 import { formatRead } from "../audio/read/format.js";
 import { readAudio } from "../audio/read/read.js";
+import { LAYERS, type Layer } from "../audio/read/types.js";
 import { describeProject } from "../timeline/describeProject.js";
 import { CliUsageError } from "../utils/commandResult.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 import { withMeta } from "../utils/updateCheck.js";
 
@@ -122,6 +126,7 @@ interface AudioFlags {
   "silence-db"?: string;
   read?: boolean;
   transcript?: string;
+  layer?: string;
   json?: boolean;
 }
 
@@ -171,7 +176,12 @@ async function clipTargets(flags: AudioFlags, query: FilmQuery | null): Promise<
   const project = resolveProject(flags.dir);
   ensureDOMParser();
   const timeline = await describeProject(project.indexPath);
-  return filmTargets(project.dir, timeline, query ?? { by: "all" });
+  const targets = filmTargets(project.dir, timeline, query ?? { by: "all" });
+  return refuseUnadmittedFilmSources(project.dir, targets, () =>
+    outsideAssetsAllowed(project.dir, relative(project.dir, project.indexPath), (line) =>
+      console.warn(terminalText(line)),
+    ),
+  );
 }
 
 function readQuality(files: string[], flags: AudioFlags): AnalysisQuality {
@@ -181,19 +191,31 @@ function readQuality(files: string[], flags: AudioFlags): AnalysisQuality {
   return parseQuality(flags);
 }
 
+function parseLayer(flags: AudioFlags): Layer | undefined {
+  if (flags.layer === undefined) return undefined;
+  if (!flags.read) throw new CliUsageError("--layer only works with --read");
+  if (!LAYERS.includes(flags.layer as Layer))
+    throw new CliUsageError(`--layer is ${LAYERS.join(", ")}; got ${flags.layer}`);
+  return flags.layer as Layer;
+}
+
 async function read(files: string[], flags: AudioFlags) {
   const quality = readQuality(files, flags);
   const range = pair("range", flags.range);
+  const layer = parseLayer(flags);
   const result = await readAudio(resolve(process.cwd(), files[0]!), files[0]!, {
     cacheDir: join(resolve(flags.dir ?? process.cwd()), ".hyperframes", "read-audio"),
     transcript: flags.transcript ? resolve(process.cwd(), flags.transcript) : undefined,
     quality,
+    layer,
   });
   if (flags.json) {
     console.log(JSON.stringify(withMeta(result)));
     return;
   }
-  console.log(`${formatRead(result.analysis, range)}\n\nwhole recording: ${result.textPath}`);
+  console.log(
+    `${formatRead(result.analysis, range)}\n\nwhole recording: ${terminalText(result.textPath)}`,
+  );
 }
 
 export default defineCommand({
@@ -259,6 +281,11 @@ export default defineCommand({
       type: "string",
       description: "With --read: the recording's transcript (default <file>.transcript.json)",
     },
+    layer: {
+      type: "string",
+      description:
+        "With --read: the file holds only this layer (music, sfx or voice); it is read whole, with no separation",
+    },
     json: { type: "boolean", description: "Output as JSON", default: false },
   },
   setup({ rawArgs, cmd }) {
@@ -268,13 +295,19 @@ export default defineCommand({
     const flags = args as unknown as AudioFlags;
     const files = args._.map(String);
     if (flags.read) return read(files, flags);
+    if (flags.layer !== undefined) throw new CliUsageError("--layer only works with --read");
     if (flags.transcript) throw new CliUsageError("--transcript only works with --read");
     const query = filmQuery(flags);
     if (files.length && query) throw new CliUsageError("give files or a film query, not both");
     const targets = files.length
       ? await fileTargets(files, flags)
       : await clipTargets(flags, query);
-    const report = await analyzeTargets(targets, analyzeRequest(flags), Boolean(args.full));
+    const report = await analyzeTargets(
+      targets,
+      analyzeRequest(flags),
+      Boolean(args.full),
+      join(resolve(flags.dir ?? process.cwd()), ".hyperframes", "audio-kind"),
+    );
     console.log(args.json ? JSON.stringify(withMeta(report)) : formatReport(report));
   },
 });

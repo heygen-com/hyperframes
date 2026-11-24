@@ -41,6 +41,10 @@ const GSAP_METHODS = new Set(["set", "to", "from", "fromTo"]);
 // Bounds on synthetic expansion (recursion + iteration runaway guards).
 const MAX_DEPTH = 8;
 const MAX_ITERS = 512;
+// ponytail: clone budget per script; >10x the measured max of 21,000 (registry, examples, skills, docs, producer tests).
+const MAX_EXPANDED_NODES = 250_000;
+
+class ExpansionBudgetExceeded extends Error {}
 
 export function isFunctionNode(node: Node): boolean {
   return !!node && FUNCTION_TYPES.has(node.type);
@@ -172,6 +176,7 @@ interface ExpandCtx {
   order: { n: number };
   /** Source offset of the top-level statement being expanded; tweens inherit it as their sort site. */
   rootStart: number;
+  budget: { left: number };
 }
 
 function walkNodes(node: Node, fn: (n: Node) => void): void {
@@ -395,9 +400,17 @@ function isExplicitUndefined(node: Node | undefined): boolean {
   );
 }
 
+function hasSpreadArgument(call: Node): boolean {
+  return !!call.arguments?.some((arg: Node) => arg?.type === "SpreadElement");
+}
+
 /** Resolve one call exactly as JavaScript binds identifier/default parameters. */
-function resolveHelperBindings(call: Node, params: SupportedParam[]): Map<string, Node> | null {
-  if (call.arguments?.some((arg: Node) => arg?.type === "SpreadElement")) return null;
+function resolveHelperBindings(
+  call: Node,
+  params: SupportedParam[],
+  ctx: ExpandCtx,
+): Map<string, Node> | null {
+  if (hasSpreadArgument(call)) return null;
 
   const bindings = new Map<string, Node>();
   for (let i = 0; i < params.length; i++) {
@@ -406,6 +419,7 @@ function resolveHelperBindings(call: Node, params: SupportedParam[]): Map<string
     if (arg && !isExplicitUndefined(arg)) {
       bindings.set(param.name, arg);
     } else if (param.defaultExpression) {
+      chargeBudget([param.defaultExpression], bindings, ctx);
       bindings.set(param.name, substituteParams(cloneNode(param.defaultExpression), bindings));
     } else {
       // Omitted required parameters are still bound by JavaScript. Keeping an
@@ -443,7 +457,7 @@ function safelyDroppable(program: Node, candidates: Map<string, Node>): Map<stri
     bump(stmtCalls, call.callee.name);
     const fn = candidates.get(call.callee.name);
     const params = fn && supportedParams(fn);
-    if (!params || !resolveHelperBindings(call, params)) unbindable.add(call.callee.name);
+    if (!params || hasSpreadArgument(call)) unbindable.add(call.callee.name);
   });
   const safe = new Map<string, Node>();
   for (const [name, fn] of candidates) {
@@ -499,6 +513,32 @@ function tagTimelineCalls(stmts: Node[], prov: GsapProvenance, ctx: ExpandCtx): 
   }
 }
 
+function nodeCount(root: Node): number {
+  let n = 0;
+  walkNodes(root, () => n++);
+  return n;
+}
+
+/** Charge the nodes about to be cloned (and a fixed cost), plus each bound argument's size per use; abort past the budget. */
+function chargeBudget(
+  stmts: Node[],
+  bindings: Map<string, Node>,
+  ctx: ExpandCtx,
+  fixedCost = 0,
+): void {
+  const bindingSize = new Map<string, number>();
+  ctx.budget.left -= fixedCost;
+  for (const stmt of stmts) {
+    walkNodes(stmt, (n) => {
+      ctx.budget.left--;
+      if (n.type !== "Identifier" || !bindings.has(n.name)) return;
+      if (!bindingSize.has(n.name)) bindingSize.set(n.name, nodeCount(bindings.get(n.name)));
+      ctx.budget.left -= bindingSize.get(n.name)!;
+    });
+  }
+  if (ctx.budget.left < 0) throw new ExpansionBudgetExceeded();
+}
+
 /** Clone a body as one scope, substitute the bindings, tag provenance, recurse. */
 function expandBody(
   bodyStmts: Node[],
@@ -506,6 +546,7 @@ function expandBody(
   prov: GsapProvenance,
   ctx: ExpandCtx,
 ): Node[] {
+  chargeBudget(bodyStmts, bindings, ctx, 1 + bindings.size);
   const block = substituteParams(cloneNode({ type: "BlockStatement", body: bodyStmts }), bindings);
   tagProvenance(block, prov);
   tagTimelineCalls(block.body, prov, ctx);
@@ -521,7 +562,7 @@ function inlineHelper(call: Node, ctx: ExpandCtx): Node[] | null {
   if (!fn) return null;
   const params = supportedParams(fn);
   if (!params) return null;
-  const bindings = resolveHelperBindings(call, params);
+  const bindings = resolveHelperBindings(call, params, ctx);
   if (!bindings) return null;
   const prov: GsapProvenance = {
     kind: "helper",
@@ -602,10 +643,13 @@ function unrollFor(stmt: Node, ctx: ExpandCtx): Node[] | null {
   if (!h) return null;
   const body = bodyStatements(stmt.body);
   const out: Node[] = [];
+  let count = 0;
+  for (let x = h.start; loopSatisfied(h.op, x, h.end); x += h.step) {
+    if (++count > MAX_ITERS) return null;
+  }
   const site = ++ctx.site.n;
   let iteration = 0;
   for (let x = h.start; loopSatisfied(h.op, x, h.end); x += h.step) {
-    if (iteration >= MAX_ITERS) return null;
     const prov: GsapProvenance = {
       kind: "loop",
       callSite: site,
@@ -634,7 +678,8 @@ function unrollOverArray(
   idxName: string | null,
   range: [number, number] | undefined,
   ctx: ExpandCtx,
-): Node[] {
+): Node[] | null {
+  if (elements.length > MAX_ITERS) return null;
   const out: Node[] = [];
   const site = ++ctx.site.n;
   elements.forEach((el, i) => {
@@ -737,6 +782,8 @@ function expandStatements(stmts: Node[], ctx: ExpandCtx): Node[] {
  * statements, each tagged with provenance. Mutates `ast` in place (caller owns
  * the freshly-parsed tree). Constructs it can't statically resolve are left
  * untouched, so the parser falls back to current behavior for them.
+ *
+ * An overrun leaves `ast` as received: `ast.body` is assigned only after every statement expanded.
  */
 export function inlineComputedTimelines(
   ast: Node,
@@ -752,10 +799,15 @@ export function inlineComputedTimelines(
     site: { n: 0 },
     order: { n: 0 },
     rootStart: 0,
+    budget: { left: MAX_EXPANDED_NODES },
   };
   const body = (ast.body ?? []).filter((stmt: Node) => !isHelperDecl(stmt, helpers));
-  ast.body = body.flatMap((stmt: Node) => {
-    ctx.rootStart = stmt.start;
-    return expandStatements([stmt], ctx);
-  });
+  try {
+    ast.body = body.flatMap((stmt: Node) => {
+      ctx.rootStart = stmt.start;
+      return expandStatements([stmt], ctx);
+    });
+  } catch (error) {
+    if (!(error instanceof ExpansionBudgetExceeded)) throw error;
+  }
 }

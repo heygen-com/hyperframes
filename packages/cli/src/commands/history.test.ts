@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { spawn, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -36,33 +36,6 @@ const clock = { at: 0 };
 const advance = (ms: number) => void (clock.at += ms);
 
 const tracked = vi.hoisted(() => [] as Array<{ action: string; via: string }>);
-const outputRace = vi.hoisted(() => ({ enabled: false, replacements: 0 }));
-vi.mock("node:child_process", async (importOriginal) => {
-  const original = await importOriginal<typeof import("node:child_process")>();
-  const { renameSync, writeFileSync } = await import("node:fs");
-  const { join } = await import("node:path");
-  return {
-    ...original,
-    spawnSync(
-      command: string,
-      args: readonly string[],
-      options: SpawnSyncOptionsWithStringEncoding,
-    ) {
-      const result = original.spawnSync(command, args, options);
-      if (
-        outputRace.enabled &&
-        command === "git" &&
-        args[0] === "diff" &&
-        typeof options.cwd === "string"
-      ) {
-        renameSync(join(options.cwd, "diff"), join(options.cwd, "written-diff"));
-        writeFileSync(join(options.cwd, "diff"), "replacement-file-content");
-        outputRace.replacements++;
-      }
-      return result;
-    },
-  };
-});
 vi.mock("../telemetry/events.js", () => ({
   trackHistoryAction: (props: { action: string; via: string }) => tracked.push(props),
 }));
@@ -75,6 +48,14 @@ function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
+}
+
+/** The drive stamps the turn marker by the same clock as the project's files: here, the test's. */
+function stampTurnMarker(dir: string) {
+  const marker = join(dir, ".hyperframes", "history-turn.json");
+  if (!existsSync(marker)) return;
+  const { writtenAt } = JSON.parse(readFileSync(marker, "utf-8")) as { writtenAt?: number };
+  if (writtenAt) utimesSync(marker, writtenAt / 1000, writtenAt / 1000);
 }
 
 /** A project of index.html "A" and notes.html "N", its history kept in a temp root, no preview running. */
@@ -99,6 +80,7 @@ function project() {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await runCommand(historyCommand, { rawArgs: [...args, "--dir", dir] });
+      stampTurnMarker(dir);
       const out = log.mock.calls.map((call) => call.join(" ")).join("\n");
       const err = error.mock.calls.map((call) => call.join(" ")).join("\n");
       return { out, err, code: consumeCommandResult().exitCode };
@@ -180,7 +162,12 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
       held.noteChange(path);
       await vi.waitFor(() => expect(held.list().at(-1)?.files[0]?.path).toBe(path));
     }
-    return { ...p, personWrites };
+    /** Preview takes in an agent's write when its watcher reports it, as a scan does here. */
+    const agentWrites = async (path: string, text: string) => {
+      p.write(path, text);
+      await held?.claim({ kind: "person", name: "You" }, "scan", []);
+    };
+    return { ...p, personWrites, agentWrites };
   }
 
   it("refuses an empty start restore with exit 2 and leaves files intact", async () => {
@@ -230,16 +217,28 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
   });
 
   it("a turn left open ends after the idle limit: a person's later edit stays theirs through undo of the turn", async () => {
-    const { write, hf, personWrites, files } = await setup();
+    const { agentWrites, hf, personWrites, files } = await setup();
     historyDeps.turnIdleMs = 300;
     await hf("begin", "--who", "claude", "--label", "Retitle");
-    write("index.html", "A2");
+    await agentWrites("index.html", "A2");
     advance(600);
     await personWrites("notes.html", "N2");
 
     const undo = await hf("undo", "--who", "claude");
     expect(undo.code, undo.err).toBe(0);
     expect(files()).toEqual(["A", "N2"]);
+  });
+
+  it("a turn with a long label and agent name still ends and undoes as that agent's", async () => {
+    const { write, json, hf, files } = await setup();
+    const name = "agent-".repeat(40);
+    await hf("begin", "--who", name, "--label", "x".repeat(201));
+    write("index.html", "A2");
+
+    const ended = await json("end");
+    expect(ended.entry).toMatchObject({ who: { kind: "agent", name }, files: ["index.html"] });
+    expect((await hf("undo", "--who", name)).code).toBe(0);
+    expect(files()[0]).toBe("A");
   });
 
   it("undo by one agent leaves another agent's open turn open", async () => {
@@ -290,6 +289,25 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect(diff).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
   });
 
+  it("--diff names a video it never keeps, one line, and still shows the page's change", async () => {
+    const { hf, json, write } = await setup();
+    await hf("begin", "--who", "claude", "--label", "Import clip");
+    write("clip.mp4", "video bytes the history only hashes");
+    write("index.html", "A2");
+    const { entry } = await json("end");
+
+    const shown = await hf("show", entry.id, "--diff");
+
+    expect(shown.code, shown.err).toBe(0);
+    expect(shown.out).toContain("Media clip.mp4 changed, not kept in history");
+    expect(shown.out).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
+    const peeked = await hf("peek", entry.id, "clip.mp4");
+    expect([peeked.code, peeked.err]).toEqual([
+      2,
+      "clip.mp4 is video or audio: the history keeps that it changed, not its bytes",
+    ]);
+  });
+
   it.each([false, true])("shows a large text diff completely (json=%s)", async (json) => {
     const { hf, turn } = await setup();
     const before = `before-${"a".repeat(600_000)}-end-before\n`;
@@ -302,23 +320,6 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect(result.code, result.err).toBe(0);
     const diff = json ? JSON.parse(result.out).diff : result.out;
     expect(diff).toContain(`-${before}+${after.trimEnd()}`);
-  });
-
-  it("reads the written diff when its pathname is replaced after Git exits", async () => {
-    const { hf, turn } = await setup();
-    const entry = await turn("claude", "Retitle", "index.html", "A2");
-    outputRace.enabled = true;
-    outputRace.replacements = 0;
-    try {
-      const result = await hf("show", entry.id, "--diff", "--json");
-
-      expect(outputRace.replacements).toBe(1);
-      expect(result.code, result.err).toBe(0);
-      expect(JSON.parse(result.out).diff).toMatch(/-A\n\\ No newline at end of file\n\+A2/);
-      expect(result.out).not.toContain("replacement-file-content");
-    } finally {
-      outputRace.enabled = false;
-    }
   });
 
   it("peek reads a file as it was without writing, and restore puts every file back", async () => {
@@ -383,7 +384,7 @@ describe("hyperframes history, one owner", () => {
     await hf();
     const turn = {
       via: "preview",
-      id: "turn-1",
+      id: "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f60",
       who: { kind: "agent", name: "claude" },
       label: "Retitle",
       startedAt: 1,
@@ -393,7 +394,7 @@ describe("hyperframes history, one owner", () => {
     write("index.html", "A2");
 
     expect((await json("end")).entry).toMatchObject({
-      id: "turn-1",
+      id: "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f60",
       who: turn.who,
       files: ["index.html"],
     });
@@ -500,7 +501,8 @@ describe("hyperframes history, one owner", () => {
     const { dir, write, json, hf } = project();
     await hf();
     const who = { kind: "agent", name: "claude" };
-    const marker = { via: "direct", id: "turn-1", who, label: "Retitle", startedAt: 1 };
+    const id = "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f61";
+    const marker = { via: "direct", id, who, label: "Retitle", startedAt: 1 };
     writeFileSync(join(dir, ".hyperframes", "history-turn.json"), JSON.stringify(marker));
     write("index.html", "A2");
 
@@ -710,14 +712,14 @@ describe("hyperframes history, refusals", () => {
     expect((await hf("end", "--who", "codex")).code).toBe(0);
   });
 
-  it("--json refusals go to stdout as {ok: false, error}", async () => {
+  it("--json refusals go to stdout as {ok: false, error: expect.objectContaining({ message: error })}", async () => {
     const { hf } = project();
     await hf();
     const refused = await hf("show", "zzzz", "--json");
     expect(refused.code).toBe(2);
     expect(JSON.parse(refused.out)).toMatchObject({
       ok: false,
-      error: 'No entry "zzzz" in this history',
+      error: expect.objectContaining({ message: 'No entry "zzzz" in this history' }),
     });
     expect((await hf("--limit", "0")).code).toBe(2);
   });
@@ -824,6 +826,24 @@ describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       expect(listed.err).toMatch(/could not write this project's history/i);
     });
 
+    // fails without the fix: the refused claim draft (EPERM in a macOS sandbox, EACCES here) is warned on stderr.
+    it("lists a history another app holds quietly when its folder cannot be written", async () => {
+      const { hf, turn } = project();
+      await hf();
+      const entry = await turn("claude", "Retitle", "index.html", "A2");
+      const [id] = readdirSync(historyDeps.historyRoot).filter((name) =>
+        existsSync(join(historyDeps.historyRoot, name, "log.jsonl")),
+      );
+      writeFileSync(join(historyDeps.historyRoot, id!, "owner.pid"), String(process.ppid));
+      lock(0o555);
+      const listed = await hf("--json");
+      expect(listed.code).toBe(0);
+      expect(JSON.parse(listed.out).entries.map((item: { id: string }) => item.id)).toContain(
+        entry.id,
+      );
+      expect(listed.err).not.toMatch(/could not write/i);
+    });
+
     it("lists the history when its log can be read but not appended to", async () => {
       const { hf, write, turn } = project();
       await hf();
@@ -914,3 +934,21 @@ describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     });
   },
 );
+
+// fails without the fix: a refusal reached the terminal with its control characters live.
+it("prints a refusal's control characters as visible escapes", async () => {
+  const { hf } = project();
+  const refused = await hf("--since", "20\u001b[2J26");
+  expect([refused.code, refused.err]).toEqual([2, 'No entry "20\\x1b[2J26" in this history']);
+});
+
+// fails without the fix: a changed file's text reached the terminal with its control characters live.
+it("prints a diff's control characters as visible escapes", async () => {
+  const { hf, turn } = project();
+  await hf("begin", "--who", "claude", "--label", "Start");
+  await hf("end");
+  const entry = await turn("claude", "Retitle", "index.html", "A\u001b[2J2");
+  const diff = (await hf("show", entry.id, "--diff")).out;
+  expect(diff).toContain("+A\\x1b[2J2");
+  expect(diff).not.toContain("\u001b");
+});

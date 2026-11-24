@@ -1,5 +1,7 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
+import { matchesKey } from "./studioShortcuts";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { markTimelineMotion } from "./timelineMotion";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -31,7 +33,7 @@ import type {
 } from "./timelineClipDragTypes";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 import { dropMisalignedTrimPartners, linkedGestureKeys } from "./audioClipLink";
-import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
+import { isLinkedSelectionOn, useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import { useTimelineClipCapabilities } from "./timelineReadOnly";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import {
@@ -46,6 +48,7 @@ import {
   type TimelineTrackInsertLayout,
 } from "./timelineTrackInsertLayout";
 import type { TimelineRowGeometry } from "./timelineLayout";
+import type { DragCommitDeps } from "./timelineClipDragCommit";
 import {
   mountTimelineClipDragGestureLifecycle,
   type TimelineGestureKind,
@@ -61,7 +64,7 @@ export type {
 const EMPTY_BEAT_TIMES: number[] = [];
 
 /* ── Hook ───────────────────────────────────────────────────────── */
-interface UseTimelineClipDragInput {
+interface UseTimelineClipDragInput extends ClipDropOptions {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   ppsRef: React.RefObject<number>;
   durationRef: React.RefObject<number>;
@@ -88,7 +91,7 @@ interface UseTimelineClipDragInput {
    * iframe + the canvas z-order persist path; forwarded straight to
    * commitDraggedClipMove. Both optional → absent = no-op (backward compatible).
    */
-  readZIndex?: (element: TimelineElement) => number;
+  readZIndex?: DragCommitDeps["readZIndex"];
   onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
   refreshAfterLaneMove?: () => void;
   sessionEpoch?: number;
@@ -113,6 +116,8 @@ export function useTimelineClipDrag({
   onStackingPatches,
   refreshAfterLaneMove,
   sessionEpoch = 0,
+  insertOnClipDrop,
+  onDropRefused,
 }: UseTimelineClipDragInput) {
   const getClipCapabilities = useTimelineClipCapabilities();
   const commitGestureRef = useRef<() => void>(() => {});
@@ -184,7 +189,10 @@ export function useTimelineClipDrag({
   // The ruler's line spacing at the current zoom; 0 with the magnet off, like the targets.
   const snapGridStep = useCallback(() => {
     if (!snapContextRef.current.enabled) return 0;
-    const frameRate = rulerFrameRate(usePlayerStore.getState().timeDisplayMode);
+    const frameRate = rulerFrameRate(
+      usePlayerStore.getState().timeDisplayMode,
+      useLinkedClipPreferences.getState().compositionFps,
+    );
     return getTimelineGridStep(durationRef.current, ppsRef.current, frameRate);
   }, [durationRef, ppsRef]);
 
@@ -198,6 +206,7 @@ export function useTimelineClipDrag({
   const [resizingClip, setResizingClipState] = useState<ResizingClipState | null>(null);
   const resizingClipRef = useRef<ResizingClipState | null>(null);
   const publishResizingClip = useCallback((next: ResizingClipState | null) => {
+    if (next) markTimelineMotion();
     resizingClipRef.current = next;
     setResizingClipState(next);
   }, []);
@@ -290,6 +299,8 @@ export function useTimelineClipDrag({
   onStackingPatchesRef.current = onStackingPatches;
   const refreshAfterLaneMoveRef = useRef(refreshAfterLaneMove);
   refreshAfterLaneMoveRef.current = refreshAfterLaneMove;
+  const dropOptionsRef = useRef({ insertOnClipDrop, onDropRefused });
+  dropOptionsRef.current = { insertOnClipDrop, onDropRefused };
 
   const clipDragScrollRaf = useRef(0);
   const clipDragPointerRef = useRef<{
@@ -454,6 +465,7 @@ export function useTimelineClipDrag({
       commitGestureRef,
       onStackingPatchesRef,
       refreshAfterLaneMoveRef,
+      dropOptionsRef,
       readZIndexRef,
       onBlockedEditAttemptRef,
       onLinkEditRef,
@@ -541,7 +553,7 @@ export function useTimelineClipDrag({
         return;
       }
       if (resizingClipRef.current) return;
-      if (event.key !== " " || event.repeat) return;
+      if (!matchesKey(event, "pickupClip") || event.repeat) return;
       if (viewport) pickup(event, viewport);
     };
     window.addEventListener("keydown", handleKeyDown, true);
@@ -581,3 +593,5 @@ export function useTimelineClipDrag({
     stopClipDragAutoScroll,
   };
 }
+
+export type ClipDropOptions = Pick<DragCommitDeps, "insertOnClipDrop" | "onDropRefused">;

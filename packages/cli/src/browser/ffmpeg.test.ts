@@ -19,6 +19,16 @@ vi.mock("./linuxDeps.js", async (importOriginal) => ({
 vi.mock("../utils/cancellableProcess.js", () => ({ runCancellableProcess: vi.fn() }));
 const mockRun = vi.mocked(runCancellableProcess);
 
+// The render's own GPU probe and the engine's must be one answer, so the encoder check asks the shared one.
+const gpuProbes = vi.hoisted(() => ({
+  shared: vi.fn(async () => "nvenc"),
+  fresh: vi.fn(async () => "nvenc"),
+}));
+vi.mock("@hyperframes/engine", () => ({
+  getCachedGpuEncoder: gpuProbes.shared,
+  detectGpuEncoder: gpuProbes.fresh,
+}));
+
 afterEach(() => {
   vi.clearAllMocks();
   delete process.env.HYPERFRAMES_FFMPEG_PATH;
@@ -110,6 +120,15 @@ describe("resolveH264EncoderMode", () => {
       detectH264EncoderModeForRender("/custom/ffmpeg", true, signal, probeGpu),
     ).rejects.toThrow(H264EncoderUnavailableError);
     expect(probeGpu).toHaveBeenCalledOnce();
+
+    await expect(
+      detectH264EncoderModeForRender("/custom/ffmpeg", true, signal, probeGpu),
+    ).rejects.toThrow("/custom/ffmpeg has no libx264");
+
+    mockRun.mockResolvedValue({ stdout: " V....D h264_nvenc H.264\n" } as never);
+    expect(await detectH264EncoderModeForRender("/custom/ffmpeg", true, signal)).toBe("gpu");
+    expect(gpuProbes.shared).toHaveBeenCalledOnce();
+    expect(gpuProbes.fresh).not.toHaveBeenCalled();
 
     const timeout = new Error("ETIMEDOUT");
     mockRun.mockRejectedValueOnce(timeout);

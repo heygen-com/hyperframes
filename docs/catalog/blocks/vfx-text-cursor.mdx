@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>VFX Text Cursor</h1>
+  <p>Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/vfx-text-cursor.json"
   compositionId="vfx-text-cursor"
   compositionSrc="compositions/vfx-text-cursor.html"
   title="VFX Text Cursor"
-  description="Dramatic text reveal with cursor glow, chromatic shadow rays, and directional lighting on a black stage. Canvas-based shader post-processing with spectral color edges."
   variables={[]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":855}}
   attribution={{"path":"registry/blocks/vfx-text-cursor","tags":["html-in-canvas","text","shader","cursor","chromatic"]}}
@@ -890,7 +894,9 @@ That writes one file: `compositions/vfx-text-cursor.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -927,6 +933,4 @@ Tagged `html-in-canvas` `text` `shader` `cursor` `chromatic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

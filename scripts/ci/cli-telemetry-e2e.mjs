@@ -140,7 +140,12 @@ const childProcess = require("node:child_process");
 const realSpawn = childProcess.spawn;
 childProcess.spawn = function (command, args, options) {
   if (Array.isArray(args) && args[0] === "-e" && String(args[1]).includes("posthog")) {
-    (0, eval)(args[1]);
+    // The real child reads and deletes args[2]; do the same, then run only its fetch.
+    const file = String(args[2]);
+    const body = require("node:fs").readFileSync(file, "utf8");
+    require("node:fs").unlinkSync(file);
+    const fetchOnly = String(args[1]).slice(String(args[1]).indexOf("fetch("));
+    (0, eval)(fetchOnly.replace("body:b,", "body:" + JSON.stringify(body) + ","));
     return { unref() {}, on() { return this; } };
   }
   return realSpawn.call(this, command, args, options);

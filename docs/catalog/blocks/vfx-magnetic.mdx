@@ -7,11 +7,15 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Magnetic</h1>
+  <p>VFX composition block</p>
+</div>
+
 <CatalogDetail
   compositionId="vfx-magnetic"
   compositionSrc="compositions/vfx-magnetic.html"
   title="Magnetic"
-  description="VFX composition block"
   variables={[]}
   meta={{"duration":15,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":464}}
   attribution={{"path":"registry/blocks/vfx-magnetic","tags":["html-in-canvas","webgl"]}}
@@ -500,7 +504,9 @@ That writes one file: `compositions/vfx-magnetic.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -544,6 +550,4 @@ Tagged `html-in-canvas` `webgl`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { desktopDownloadUrl, type DesktopOpenResult } from "../utils/desktopApp.js";
-import { mountDesktopRoutes, sameOriginPost } from "./desktopRoutes.js";
+import { mountDesktopRoutes } from "./desktopRoutes.js";
+import { sameOriginPost } from "@hyperframes/studio-server/request-identity";
 
 const STUDIO = {
   host: "localhost:3002",
@@ -19,7 +20,9 @@ function server(
   place: { platform?: NodeJS.Platform; installed?: () => boolean } = {},
 ) {
   const app = new Hono();
-  const open = vi.fn((_dir: string, _cta?: string): DesktopOpenResult => OPENED);
+  const open = vi.fn(
+    (_dir: string, _cta?: string, _doc?: "storyboard"): DesktopOpenResult => OPENED,
+  );
   mountDesktopRoutes(app, "/films/a", { ready, open, ...place });
   const post = (headers: Record<string, string>, body?: unknown) =>
     app.request("/api/open-in-desktop", {
@@ -35,7 +38,7 @@ describe("open-in-desktop routes", () => {
     const body = await (
       await server(false, { installed: () => false }).app.request("/api/open-in-desktop")
     ).json();
-    const downloadUrl = desktopDownloadUrl();
+    const downloadUrl = desktopDownloadUrl(process.platform, "browser-editor");
     expect(body).toEqual({
       available: downloadUrl !== null,
       handoff: false,
@@ -45,10 +48,10 @@ describe("open-in-desktop routes", () => {
     });
   });
 
-  it("shows the button where the app is installed even without a download (Windows)", async () => {
+  it("shows the button where the app is installed even without a download (FreeBSD)", async () => {
     const get = async (installed: boolean) =>
       (
-        await server(true, { platform: "win32", installed: () => installed }).app.request(
+        await server(true, { platform: "freebsd", installed: () => installed }).app.request(
           "/api/open-in-desktop",
         )
       ).json();
@@ -56,10 +59,28 @@ describe("open-in-desktop routes", () => {
       available: true,
       handoff: true,
       downloadUrl: null,
-      os: "win32",
+      os: "freebsd",
       installed: true,
     });
     expect(await get(false)).toMatchObject({ available: false });
+  });
+
+  it("offers the Windows download, and the hand-off once the app is installed", async () => {
+    const get = async (installed: boolean) =>
+      (
+        await server(true, { platform: "win32", installed: () => installed }).app.request(
+          "/api/open-in-desktop",
+        )
+      ).json();
+    const downloadUrl = "https://hyperframes.studio/studio/download?os=windows&src=browser-editor";
+    expect(await get(false)).toEqual({
+      available: true,
+      handoff: false,
+      downloadUrl,
+      os: "win32",
+      installed: false,
+    });
+    expect(await get(true)).toMatchObject({ available: true, handoff: true, downloadUrl });
   });
 
   it("offers the hand-off only where the app is installed, so a press without it goes to the download", async () => {
@@ -73,7 +94,7 @@ describe("open-in-desktop routes", () => {
     expect(await get(false)).toEqual({
       available: true,
       handoff: false,
-      downloadUrl: desktopDownloadUrl("darwin"),
+      downloadUrl: "https://hyperframes.studio/studio/download?src=browser-editor",
       os: "darwin",
       installed: false,
     });
@@ -100,7 +121,7 @@ describe("open-in-desktop routes", () => {
   it("once live, opens this server's project for Studio's own POST", async () => {
     const { open, post } = server(true);
     expect(await (await post(STUDIO)).json()).toEqual(OPENED);
-    expect(open).toHaveBeenCalledWith("/films/a", undefined);
+    expect(open).toHaveBeenCalledWith("/films/a", undefined, undefined);
   });
 
   it("passes the press's page id on to the hand-off, and drops anything that is not one", async () => {
@@ -110,9 +131,19 @@ describe("open-in-desktop routes", () => {
     await post(STUDIO, { cta: "../../etc/passwd" });
     await post(STUDIO, { cta: 42 });
     expect(open.mock.calls).toEqual([
-      ["/films/a", id],
-      ["/films/a", undefined],
-      ["/films/a", undefined],
+      ["/films/a", id, undefined],
+      ["/films/a", undefined, undefined],
+      ["/films/a", undefined, undefined],
+    ]);
+  });
+
+  it("passes on only the storyboard as the page to open the project on", async () => {
+    const { open, post } = server(true);
+    await post(STUDIO, { doc: "storyboard" });
+    await post(STUDIO, { doc: "../index.html" });
+    expect(open.mock.calls).toEqual([
+      ["/films/a", undefined, "storyboard"],
+      ["/films/a", undefined, undefined],
     ]);
   });
 });

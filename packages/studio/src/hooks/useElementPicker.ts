@@ -1,18 +1,26 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useMountEffect } from "./useMountEffect";
 import {
   resolveSourceFile,
   applyPatch,
   applyPatchByTarget,
-  findTagByTarget,
+  readTagSnippetByTarget,
   type PatchOperation,
 } from "../utils/sourcePatcher";
 import {
   acceptStudioRuntimeMessage,
   postRuntimeControlMessage,
 } from "../player/lib/runtimeProtocol";
-import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
-import { getSourceFileForElement } from "../components/editor/domEditingDom";
+import { frameOrigins } from "../player/lib/bridgePlayback";
+import { previewComputedStyles, previewFrameOpaque } from "../player/lib/previewChannel";
+import { escapeHtmlText } from "../components/editor/domEditingLayers";
+import { writePicked, type PickedSource, type PickedWrite } from "./elementPickerWrites";
+import { PICKED_STYLE_PROPERTIES, readComputedStyles } from "./elementPickerStyles";
+import {
+  createElementPickerHoverLabel,
+  type ElementPickerHoverInfo,
+  type ElementPickerHoverLabel,
+} from "./elementPickerHoverLabel";
 
 export interface PickedElement {
   id: string | null;
@@ -51,53 +59,153 @@ interface PickerOptions {
   onSyncFiles?: (files: Record<string, string>) => void;
 }
 
-/**
- * Hook for element picking via the HyperFrame runtime's picker API.
- * Communicates with the iframe via postMessage.
- */
-export function useElementPicker(
+interface UseElementPickerSessionReturn extends Omit<
+  UseElementPickerReturn,
+  "setStyle" | "setDataAttr" | "setTextContent"
+> {
+  setPickedElement: React.Dispatch<React.SetStateAction<PickedElement | null>>;
+  getActiveIframe: () => HTMLIFrameElement | null;
+}
+
+function usePickerHoverLabel(): {
+  clearHover: () => void;
+  disposeHover: () => void;
+  showHover: (info: ElementPickerHoverInfo, iframe: HTMLIFrameElement) => void;
+} {
+  const hoverLabelRef = useRef<ElementPickerHoverLabel | null>(null);
+  const clearHover = useCallback(() => hoverLabelRef.current?.clear(), []);
+  const disposeHover = useCallback(() => hoverLabelRef.current?.dispose(), []);
+  const showHover = useCallback((info: ElementPickerHoverInfo, iframe: HTMLIFrameElement) => {
+    hoverLabelRef.current ??= createElementPickerHoverLabel();
+    hoverLabelRef.current.show(info, iframe);
+  }, []);
+  return { clearHover, disposeHover, showHover };
+}
+
+function useActivePickerIframe(
   iframeRef: React.RefObject<HTMLIFrameElement | null>,
-  options?: PickerOptions,
-): UseElementPickerReturn {
+  isPickModeRef: React.RefObject<boolean>,
+  clearHover: () => void,
+): {
+  activeIframeRef: React.RefObject<HTMLIFrameElement | null>;
+  getActiveIframe: () => HTMLIFrameElement | null;
+  setActiveIframe: (el: HTMLIFrameElement | null) => void;
+} {
+  const activeOverrideRef = useRef<HTMLIFrameElement | null>(null);
+  const activeIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const lastRenderedActiveIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const getActiveIframe = useCallback(
+    () => activeOverrideRef.current ?? iframeRef.current,
+    [iframeRef],
+  );
+  const setActiveIframe = useCallback(
+    (el: HTMLIFrameElement | null) => {
+      const previous = activeOverrideRef.current ?? iframeRef.current;
+      const next = el ?? iframeRef.current;
+      if (previous === next) return;
+      clearHover();
+      if (isPickModeRef.current) postPickerControl(previous, "disable-pick-mode");
+      activeOverrideRef.current = el;
+      activeIframeRef.current = next;
+      lastRenderedActiveIframeRef.current = next;
+      if (isPickModeRef.current) postPickerControl(next, "enable-pick-mode");
+    },
+    [clearHover, iframeRef, isPickModeRef],
+  );
+  const renderedActiveIframe = getActiveIframe();
+  useEffect(() => {
+    const previous = lastRenderedActiveIframeRef.current;
+    if (previous !== renderedActiveIframe) {
+      clearHover();
+      if (isPickModeRef.current) {
+        postPickerControl(previous, "disable-pick-mode");
+        postPickerControl(renderedActiveIframe, "enable-pick-mode");
+      }
+    }
+    lastRenderedActiveIframeRef.current = renderedActiveIframe;
+  }, [clearHover, isPickModeRef, renderedActiveIframe]);
+  activeIframeRef.current = getActiveIframe();
+  return { activeIframeRef, getActiveIframe, setActiveIframe };
+}
+
+function useElementPickerSession(
+  iframeRef: React.RefObject<HTMLIFrameElement | null>,
+): UseElementPickerSessionReturn {
   const [isPickMode, setIsPickMode] = useState(false);
   const [pickedElement, setPickedElement] = useState<PickedElement | null>(null);
-
-  // Secondary/override iframe ref — set when a zoomed frame is active.
-  // When set, all postMessage sends and DOM reads go to this ref instead.
-  const activeOverrideRef = useRef<HTMLIFrameElement | null>(null);
-
-  const getActiveIframe = useCallback((): HTMLIFrameElement | null => {
-    return activeOverrideRef.current ?? iframeRef.current;
-  }, [iframeRef]);
-
-  // Exposed so the host page can wire the focused view's iframe into the picker
-  const setActiveIframe = useCallback((el: HTMLIFrameElement | null) => {
-    activeOverrideRef.current = el;
-  }, []);
+  const isPickModeRef = useRef(false);
+  const pickedElementRef = useRef<PickedElement | null>(null);
+  pickedElementRef.current = pickedElement;
+  const pickStartSelectionRef = useRef<PickedElement | null | undefined>(undefined);
+  const { clearHover, disposeHover, showHover } = usePickerHoverLabel();
+  const { activeIframeRef, getActiveIframe, setActiveIframe } = useActivePickerIframe(
+    iframeRef,
+    isPickModeRef,
+    clearHover,
+  );
 
   const enablePick = useCallback(() => {
-    try {
-      postRuntimeControlMessage(getActiveIframe()?.contentWindow, "enable-pick-mode");
-      setIsPickMode(true);
-    } catch {
-      /* cross-origin */
-    }
+    if (isPickModeRef.current || !postPickerControl(getActiveIframe(), "enable-pick-mode")) return;
+    pickStartSelectionRef.current = pickedElementRef.current;
+    isPickModeRef.current = true;
+    setIsPickMode(true);
   }, [getActiveIframe]);
 
-  const disablePick = useCallback(() => {
-    try {
-      postRuntimeControlMessage(getActiveIframe()?.contentWindow, "disable-pick-mode");
-    } catch {
-      /* cross-origin */
-    }
-    setIsPickMode(false);
-  }, [getActiveIframe]);
+  const cancelPick = useCallback(
+    (notifyRuntime: boolean) => {
+      if (notifyRuntime) {
+        postPickerControl(getActiveIframe(), "disable-pick-mode");
+      }
+      const selection = pickStartSelectionRef.current;
+      pickStartSelectionRef.current = undefined;
+      if (selection !== undefined) {
+        pickedElementRef.current = selection;
+        setPickedElement(selection);
+      }
+      isPickModeRef.current = false;
+      clearHover();
+      setIsPickMode(false);
+    },
+    [clearHover, getActiveIframe],
+  );
+
+  const disablePick = useCallback(() => cancelPick(true), [cancelPick]);
 
   const clearPick = useCallback(() => {
+    pickedElementRef.current = null;
     setPickedElement(null);
   }, []);
 
-  const windowsThatWerePrimary = useRef(new WeakSet<MessageEventSource>());
+  const originsOfWindowsThatWerePrimary = useRef(new WeakMap<MessageEventSource, string[]>());
+
+  const showPicked = useCallback((next: PickedElement, iframe: HTMLIFrameElement) => {
+    pickedElementRef.current = next;
+    setPickedElement(next);
+    if (!previewFrameOpaque(iframe)) return;
+    void previewComputedStyles(iframe, next.selector, PICKED_STYLE_PROPERTIES).then((styles) => {
+      if (!styles || pickedElementRef.current !== next) return;
+      const filled = { ...next, computedStyles: styles };
+      pickedElementRef.current = filled;
+      setPickedElement(filled);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isPickMode) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        elementOwnsEscape(event.target)
+      )
+        return;
+      event.preventDefault();
+      disablePick();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [disablePick, isPickMode]);
 
   // Listen for picker messages from the iframe
   useMountEffect(() => {
@@ -111,51 +219,95 @@ export function useElementPicker(
       const activeIframe = getActiveIframe();
       if (!activeIframe) return;
       if (!e.source) return;
-      if (e.source === iframeRef.current?.contentWindow)
-        windowsThatWerePrimary.current.add(e.source);
-      else if (
-        e.source !== activeIframe.contentWindow &&
-        !windowsThatWerePrimary.current.has(e.source)
-      )
+      const primary = iframeRef.current;
+      if (primary && e.source === primary.contentWindow)
+        originsOfWindowsThatWerePrimary.current.set(e.source, frameOrigins(primary));
+      const origins =
+        e.source === activeIframe.contentWindow
+          ? frameOrigins(activeIframe)
+          : originsOfWindowsThatWerePrimary.current.get(e.source);
+      if (!origins?.includes(e.origin)) return;
+
+      if (data.type === "element-hovered") {
+        if (e.source !== activeIframe.contentWindow || !isPickModeRef.current) return;
+        const info = toHoverInfo(data.elementInfo);
+        if (info) showHover(info, activeIframe);
         return;
+      }
 
       if (data.type === "element-picked" && data.elementInfo) {
-        setPickedElement(toPickedElement(data.elementInfo, activeIframe));
+        showPicked(toPickedElement(data.elementInfo, activeIframe), activeIframe);
+        pickStartSelectionRef.current = undefined;
+        isPickModeRef.current = false;
+        clearHover();
         setIsPickMode(false);
       } else if (data.type === "element-pick-candidates") {
         // Multiple candidates at click point — pick the first one
         const el = data.candidates?.[data.selectedIndex ?? 0];
-        if (el) setPickedElement(toPickedElement(el, activeIframe));
+        if (el) showPicked(toPickedElement(el, activeIframe), activeIframe);
       }
 
       if (data.type === "pick-mode-cancelled") {
-        setIsPickMode(false);
+        cancelPick(false);
       }
     };
 
     window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      if (isPickModeRef.current) {
+        postPickerControl(getActiveIframe(), "disable-pick-mode");
+      }
+      disposeHover();
+    };
   });
 
-  // Ref for options to avoid stale closures in debounced callback
+  return {
+    isPickMode,
+    pickedElement,
+    setPickedElement,
+    getActiveIframe,
+    enablePick,
+    disablePick,
+    clearPick,
+    setActiveIframe,
+    activeIframeRef,
+  };
+}
+
+/** Element picking through the HyperFrame runtime's postMessage API. */
+export function useElementPicker(
+  iframeRef: React.RefObject<HTMLIFrameElement | null>,
+  options?: PickerOptions,
+): UseElementPickerReturn {
+  const {
+    isPickMode,
+    pickedElement,
+    setPickedElement,
+    getActiveIframe,
+    enablePick,
+    disablePick,
+    clearPick,
+    setActiveIframe,
+    activeIframeRef,
+  } = useElementPickerSession(iframeRef);
+
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const pendingWritesRef = useRef(new Map<string, PendingWrite>());
   settlePendingWrites(pendingWritesRef.current, options?.workspaceFiles);
 
-  // Sync immediately (not debounced) — save on every change for reliability
   const syncToSource = useCallback(
-    (picked: PickedElement, live: HTMLElement, iframe: HTMLIFrameElement, op: PatchOperation) => {
+    (picked: PickedElement, source: PickedSource, op: PatchOperation) => {
       const opts = optionsRef.current;
       if (!opts?.workspaceFiles || !opts.onSyncFiles) return;
       // No id: the preview's hf-id names the element, in the file it was served from.
-      const hfId = live.getAttribute("data-hf-id");
       const pending = pendingWritesRef.current;
       const files = withPendingWrites(opts.workspaceFiles, pending);
       const patch = picked.id
         ? patchById(files, picked.id, picked.selector, op)
-        : hfId
-          ? patchByHfId(files, hfId, ownSourceFile(live, iframe), op)
+        : source.hfId
+          ? patchByHfId(files, source.hfId, source.ownFile, op)
           : null;
       if (!patch || patch.after === patch.before) return;
       recordPendingWrite(pending, patch.path, opts.workspaceFiles[patch.path], patch.after);
@@ -164,92 +316,60 @@ export function useElementPicker(
     [],
   );
 
-  const setStyle = useCallback(
-    (prop: string, value: string) => {
+  const writePickedElement = useCallback(
+    (write: PickedWrite, shown: (prev: PickedElement) => PickedElement, op: PatchOperation) => {
       const activeIframe = getActiveIframe();
-      if (!pickedElement?.selector || !activeIframe) return;
-      try {
-        const doc = activeIframe.contentDocument;
-        const el = doc?.querySelector(pickedElement.selector) as HTMLElement | null;
-        if (el) {
-          el.style.setProperty(prop, value);
-          setPickedElement((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  computedStyles: { ...prev.computedStyles, [prop]: value },
-                }
-              : null,
-          );
-          syncToSource(pickedElement, el, activeIframe, {
-            type: "inline-style",
-            property: prop,
-            value,
-          });
-        }
-      } catch {
-        /* cross-origin */
-      }
+      const picked = pickedElement;
+      if (!picked?.selector || !activeIframe) return;
+      const saved = (source: PickedSource | null) => {
+        if (!source) return;
+        setPickedElement((prev) => (prev && samePick(prev, picked) ? shown(prev) : prev));
+        syncToSource(picked, source, op);
+      };
+      const source = writePicked(activeIframe, picked.selector, write);
+      if (source instanceof Promise) void source.then(saved);
+      else saved(source);
     },
-    [pickedElement, getActiveIframe, syncToSource],
+    [pickedElement, getActiveIframe, setPickedElement, syncToSource],
+  );
+
+  const setStyle = useCallback(
+    (prop: string, value: string) =>
+      writePickedElement(
+        { live: (el) => el.style.setProperty(prop, value), sealed: { styles: [[prop, value]] } },
+        (prev) => ({ ...prev, computedStyles: { ...prev.computedStyles, [prop]: value } }),
+        { type: "inline-style", property: prop, value },
+      ),
+    [writePickedElement],
   );
 
   const setDataAttr = useCallback(
-    (attr: string, value: string) => {
-      const activeIframe = getActiveIframe();
-      if (!pickedElement?.selector || !activeIframe) return;
-      try {
-        const doc = activeIframe.contentDocument;
-        const el = doc?.querySelector(pickedElement.selector);
-        if (el) {
-          el.setAttribute(`data-${attr}`, value);
-          setPickedElement((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  dataAttributes: { ...prev.dataAttributes, [attr]: value },
-                }
-              : null,
-          );
-          syncToSource(pickedElement, el as HTMLElement, activeIframe, {
-            type: "attribute",
-            property: attr,
-            value,
-          });
-        }
-      } catch {
-        /* cross-origin */
-      }
-    },
-    [pickedElement, getActiveIframe, syncToSource],
+    (attr: string, value: string) =>
+      writePickedElement(
+        {
+          live: (el) => el.setAttribute(`data-${attr}`, value),
+          sealed: { attributes: [[`data-${attr}`, value]] },
+        },
+        (prev) => ({ ...prev, dataAttributes: { ...prev.dataAttributes, [attr]: value } }),
+        { type: "attribute", property: attr, value },
+      ),
+    [writePickedElement],
   );
 
   const setTextContent = useCallback(
-    (text: string) => {
-      const activeIframe = getActiveIframe();
-      if (!pickedElement?.selector || !activeIframe) return;
-      try {
-        const doc = activeIframe.contentDocument;
-        const el = doc?.querySelector(pickedElement.selector);
-        if (el) {
-          el.textContent = text;
-          setPickedElement((prev) => (prev ? { ...prev, textContent: text } : null));
-          syncToSource(pickedElement, el as HTMLElement, activeIframe, {
-            type: "text-content",
-            property: "textContent",
-            value: text,
-          });
-        }
-      } catch {
-        /* cross-origin */
-      }
-    },
-    [pickedElement, getActiveIframe, syncToSource],
+    (text: string) =>
+      writePickedElement(
+        {
+          live: (el) => {
+            el.textContent = text;
+          },
+          sealed: { html: escapeHtmlText(text) },
+        },
+        (prev) => ({ ...prev, textContent: text }),
+        { type: "text-content", property: "textContent", value: text },
+      ),
+    [writePickedElement],
   );
-
-  // Ref-like object that always points to the active iframe (override or primary)
-  const activeIframeRef = useRef<HTMLIFrameElement | null>(null);
-  activeIframeRef.current = getActiveIframe();
 
   return {
     isPickMode,
@@ -263,6 +383,58 @@ export function useElementPicker(
     setActiveIframe,
     /** Ref that always points to the active iframe (focused canvas frame or preview panel) */
     activeIframeRef,
+  };
+}
+
+const samePick = (a: PickedElement, b: PickedElement) => a.selector === b.selector && a.id === b.id;
+
+function elementOwnsEscape(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      'dialog,[role="dialog"],[aria-modal="true"],input,textarea,select,[contenteditable="true"],[contenteditable=""],[data-studio-escape-owner]',
+    ),
+  );
+}
+
+function postPickerControl(
+  iframe: HTMLIFrameElement | null | undefined,
+  action: "enable-pick-mode" | "disable-pick-mode",
+): boolean {
+  try {
+    postRuntimeControlMessage(iframe?.contentWindow, action);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isOptionalString(value: unknown): value is string | null | undefined {
+  return value === null || value === undefined || typeof value === "string";
+}
+
+function toHoverInfo(value: unknown): ElementPickerHoverInfo | null {
+  if (!isUnknownRecord(value)) return null;
+  const info = value;
+  const box = info.boundingBox;
+  if (typeof info.tagName !== "string" || !isUnknownRecord(box)) return null;
+  const coordinates = [box.x, box.y, box.width, box.height];
+  if (!coordinates.every(isFiniteNumber)) return null;
+  const [x, y, width, height] = coordinates as [number, number, number, number];
+  if (!isOptionalString(info.id) || !isOptionalString(info.className)) return null;
+  return {
+    id: typeof info.id === "string" ? info.id : null,
+    className: typeof info.className === "string" ? info.className : null,
+    tagName: info.tagName,
+    boundingBox: { x, y, width, height },
   };
 }
 
@@ -344,67 +516,16 @@ function patchById(
   return path && before ? { path, before, after: applyPatch(before, id, op) } : null;
 }
 
-function ownSourceFile(live: HTMLElement, iframe: HTMLIFrameElement): string {
-  const previewed = compositionPathOfPreviewUrl(iframe.getAttribute("src") ?? "");
-  return getSourceFileForElement(live, previewed).sourceFile;
-}
-
 function patchByHfId(
   files: Record<string, string>,
   hfId: string,
   ownFile: string,
   op: PatchOperation,
 ): SourcePatch | null {
-  const matches = Object.keys(files).filter((file) => findTagByTarget(files[file] ?? "", { hfId }));
+  const matches = Object.keys(files).filter(
+    (file) => readTagSnippetByTarget(files[file] ?? "", { hfId }) !== undefined,
+  );
   const path = matches.includes(ownFile) ? ownFile : matches.length === 1 ? matches[0] : undefined;
   const before = path ? files[path] : undefined;
   return path && before ? { path, before, after: applyPatchByTarget(before, { hfId }, op) } : null;
-}
-
-/** Read a subset of computed styles from an element in the iframe */
-function readComputedStyles(iframe: HTMLIFrameElement, selector: string): Record<string, string> {
-  const styles: Record<string, string> = {};
-  try {
-    const doc = iframe.contentDocument;
-    const el = doc?.querySelector(selector);
-    if (!el) return styles;
-    const computed = iframe.contentWindow?.getComputedStyle(el);
-    if (!computed) return styles;
-
-    const props = [
-      "position",
-      "top",
-      "left",
-      "right",
-      "bottom",
-      "width",
-      "height",
-      "margin-top",
-      "margin-right",
-      "margin-bottom",
-      "margin-left",
-      "padding-top",
-      "padding-right",
-      "padding-bottom",
-      "padding-left",
-      "font-size",
-      "font-weight",
-      "font-family",
-      "color",
-      "background-color",
-      "background",
-      "opacity",
-      "border-radius",
-      "transform",
-      "z-index",
-    ];
-
-    for (const prop of props) {
-      const val = computed.getPropertyValue(prop);
-      if (val) styles[prop] = val;
-    }
-  } catch {
-    /* cross-origin */
-  }
-  return styles;
 }

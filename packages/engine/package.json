@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.8.204",
+  "version": "0.9.90",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -9,6 +9,8 @@
   },
   "files": [
     "dist",
+    "!dist/services/__fixtures__/blurDifferential.*",
+    "!dist/services/__fixtures__/motionBlur",
     "README.md"
   ],
   "type": "module",
@@ -30,6 +32,11 @@
       "import": "./src/services/chromeHostCeiling.ts",
       "types": "./src/services/chromeHostCeiling.ts"
     },
+    "./chrome-startup": {
+      "bun": "./src/services/chromeStartup.ts",
+      "import": "./src/services/chromeStartup.ts",
+      "types": "./src/services/chromeStartup.ts"
+    },
     "./system-memory": {
       "bun": "./src/services/systemMemory.ts",
       "import": "./src/services/systemMemory.ts",
@@ -45,7 +52,17 @@
       "import": "./src/utils/shaderTransitions.ts",
       "types": "./src/utils/shaderTransitions.ts"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./network-policy": {
+      "bun": "./src/utils/networkPolicy.ts",
+      "import": "./src/utils/networkPolicy.ts",
+      "types": "./src/utils/networkPolicy.ts"
+    },
+    "./public-network": {
+      "bun": "./src/services/publicNetwork/index.ts",
+      "import": "./src/services/publicNetwork/index.ts",
+      "types": "./src/services/publicNetwork/index.ts"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -62,6 +79,10 @@
         "import": "./dist/services/chromeHostCeiling.js",
         "types": "./dist/services/chromeHostCeiling.d.ts"
       },
+      "./chrome-startup": {
+        "import": "./dist/services/chromeStartup.js",
+        "types": "./dist/services/chromeStartup.d.ts"
+      },
       "./system-memory": {
         "import": "./dist/services/systemMemory.js",
         "types": "./dist/services/systemMemory.d.ts"
@@ -74,7 +95,15 @@
         "import": "./dist/utils/shaderTransitions.js",
         "types": "./dist/utils/shaderTransitions.d.ts"
       },
-      "./package.json": "./package.json"
+      "./package.json": "./package.json",
+      "./network-policy": {
+        "import": "./dist/utils/networkPolicy.js",
+        "types": "./dist/utils/networkPolicy.d.ts"
+      },
+      "./public-network": {
+        "import": "./dist/services/publicNetwork/index.js",
+        "types": "./dist/services/publicNetwork/index.d.ts"
+      }
     },
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts"
@@ -85,19 +114,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^2.0.5",
+    "@hono/node-server": "^2.1.6",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
-    "hono": "^4.6.0",
+    "hono": "^4.13.16",
     "linkedom": "^0.18.12",
-    "puppeteer": "^25.8.0",
-    "puppeteer-core": "^25.8.0"
+    "puppeteer": "~25.13.0",
+    "puppeteer-core": "^25.13.0",
+    "undici": "7.30.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
+    "selfsigned": "5.5.0",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "engines": {
     "node": ">=22"

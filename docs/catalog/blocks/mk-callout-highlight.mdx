@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Word-Sweep Highlight</h1>
+  <p>A sentence whose word-by-word emphasis is driven by a single scalar — tween it to sync the highlight with a voiceover</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/mk-callout-highlight.json"
   compositionId="mk-callout-highlight"
   compositionSrc="compositions/mk-callout-highlight.html"
   title="Word-Sweep Highlight"
-  description="A sentence whose word-by-word emphasis is driven by a single scalar — tween it to sync the highlight with a voiceover"
   variables={[]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Captions","badge":"Stable","codeLines":156}}
   attribution={{"path":"registry/blocks/mk-callout-highlight","tags":["typography","karaoke","captions","minimal"]}}
@@ -191,7 +195,9 @@ That writes one file: `compositions/mk-callout-highlight.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -222,6 +228,4 @@ Tagged `typography` `karaoke` `captions` `minimal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

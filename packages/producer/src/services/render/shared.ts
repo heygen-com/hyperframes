@@ -24,13 +24,15 @@ import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
   type CanvasResolution,
+  terminalText,
 } from "@hyperframes/core";
-import type {
-  AudioElement,
-  ExtractedFrames,
-  ImageElement,
-  ParallelProgress,
-  VideoElement,
+import {
+  mediaIdPathSegment,
+  type AudioElement,
+  type ExtractedFrames,
+  type ImageElement,
+  type ParallelProgress,
+  type VideoElement,
 } from "@hyperframes/engine";
 import type { CompiledComposition } from "../htmlCompiler.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
@@ -47,6 +49,7 @@ export interface CompositionMetadata {
   videos: VideoElement[];
   audios: AudioElement[];
   images: ImageElement[];
+  gradedCanvas?: boolean;
   masterFxChain?: string;
   width: number;
   height: number;
@@ -58,6 +61,10 @@ export interface CompositionMetadata {
  * slightly different `end` / `mediaStart` / `volume` than the compiled
  * HTML and we want to ignore sub-millisecond float noise.
  */
+export function audioWorkDir(workDir: string): string {
+  return join(workDir, "audio-work");
+}
+
 export const BROWSER_MEDIA_EPSILON = 0.0001;
 
 /**
@@ -161,6 +168,10 @@ export function writeCompiledArtifacts(
 
   for (const [srcPath, html] of compiled.subCompositions) {
     const outPath = join(compileDir, srcPath);
+    if (!isPathInside(outPath, compileDir)) {
+      console.warn(`[Render] Skipping sub-composition with unsafe path: ${terminalText(srcPath)}`);
+      continue;
+    }
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, html, "utf-8");
   }
@@ -173,7 +184,9 @@ export function writeCompiledArtifacts(
   for (const [relativePath, absolutePath] of compiled.externalAssets) {
     const outPath = resolve(join(compileDir, relativePath));
     if (!isPathInside(outPath, compileDir)) {
-      console.warn(`[Render] Skipping external asset with unsafe path: ${relativePath}`);
+      console.warn(
+        `[Render] Skipping external asset with unsafe path: ${terminalText(relativePath)}`,
+      );
       continue;
     }
     mkdirSync(dirname(outPath), { recursive: true });
@@ -319,6 +332,29 @@ export function reportFrameProgress(
   });
 }
 
+const lastExtractReportAt = new WeakMap<RenderJob, number>();
+
+/** Frames ffmpeg has written for the source videos, 10% to 20%. */
+export function reportExtractProgress(
+  job: RenderJob,
+  done: number,
+  total: number,
+  onProgress: ProgressCallback | undefined,
+): void {
+  if (total <= 0) return;
+  const frames = Math.min(done, total);
+  reportThrottled(
+    lastExtractReportAt,
+    job,
+    "Extracting video frames",
+    10 + (10 * frames) / total,
+    onProgress,
+    frames === total,
+    { code: "extract_video", done: frames, total },
+    "preprocessing",
+  );
+}
+
 const lastEncodeReportAt = new WeakMap<RenderJob, number>();
 
 /** Frames ffmpeg has encoded, from where capture left the bar up to 90%; same cadence as capture. */
@@ -341,6 +377,34 @@ export function reportEncodeProgress(
     { code: "encode", done: frames, total },
     "encoding",
   );
+}
+
+export const AUDIO_STAGE = "Processing audio tracks";
+const AUDIO_WAIT_REPORT_MS = 5_000;
+
+/** Once capture waits on the audio mix: a line at most every 5 s in which an FFmpeg of the mix wrote more, so whoever
+ * watches the render for silence hears it working, and a mix that writes nothing stays silent. */
+export function audioWaitReporter(job: RenderJob, onProgress: ProgressCallback | undefined) {
+  let waiting = false;
+  let reportedAt = -Infinity;
+  return {
+    progressed(): void {
+      const now = Date.now();
+      if (!waiting || now - reportedAt < AUDIO_WAIT_REPORT_MS) return;
+      reportedAt = now;
+      updateJobStatus(job, job.status, AUDIO_STAGE, job.progress, onProgress, {
+        code: "process_audio",
+      });
+    },
+    async wait<T>(audio: Promise<T>): Promise<T> {
+      waiting = true;
+      try {
+        return await audio;
+      } finally {
+        waiting = false;
+      }
+    },
+  };
 }
 
 const lastAssembleReportAt = new WeakMap<RenderJob, number>();
@@ -366,7 +430,28 @@ export function reportAssembleProgress(
   );
 }
 
-const workerPhasesByJob = new WeakMap<RenderJob, Map<number, string>>();
+const workerPhasesByJob = new WeakMap<object, Map<number, string>>();
+
+export function forgetWorkerPhases(job: object): void {
+  workerPhasesByJob.delete(job);
+}
+
+const captureActivityByJob = new WeakMap<object, number>();
+
+/** Counts capture work between frames (still checks, a chunk's video frames); the stall watcher reads it. */
+export function noteCaptureActivity(job: object): void {
+  captureActivityByJob.set(job, (captureActivityByJob.get(job) ?? 0) + 1);
+}
+
+export function captureActivity(job: object): number {
+  return captureActivityByJob.get(job) ?? 0;
+}
+
+export function describeWorkerPhases(job: object): string | undefined {
+  const phases = workerPhasesByJob.get(job);
+  if (!phases?.size) return undefined;
+  return `Last phase per worker: ${[...phases].map(([id, phase]) => `worker ${id} ${phase}`).join(", ")}.`;
+}
 
 /** Browser warm-up before the first frame, from the parallel workers' phase events. */
 export function reportWorkerStartup(
@@ -547,6 +632,11 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
 // One-time guard for the symlink→copy fallback notice below.
 let warnedSymlinkFallback = false;
 
+const copyCannotFix = (error: unknown): boolean =>
+  ["ENOSPC", "EDQUOT", "EEXIST", "ENOENT"].includes(
+    (error as NodeJS.ErrnoException | undefined)?.code ?? "",
+  );
+
 // Junctions avoid Windows symlink privileges. POSIX keeps its copy fallback.
 function tryWindowsFrameJunction(
   fileSystem: MaterializeFileSystem,
@@ -558,30 +648,20 @@ function tryWindowsFrameJunction(
     fileSystem.symlinkSync(src, dest, "junction");
     return true;
   } catch (error) {
-    const code =
-      error instanceof Error && "code" in error && typeof error.code === "string"
-        ? error.code
-        : undefined;
-    if (
-      ["EPERM", "EACCES", "UNKNOWN", "EINVAL", "ENOSYS", "EOPNOTSUPP", "ENOTSUP"].includes(
-        code ?? "",
-      )
-    ) {
-      return false;
-    }
-    throw error;
+    if (copyCannotFix(error)) throw error;
+    return false;
   }
 }
 
-// Create the symlink, degrading to a copy on Windows' no-symlink-privilege
-// errors (EPERM/EACCES, plus UNKNOWN), trying a Windows junction first.
-// Other symlink errors and non-capability junction errors propagate.
+// Create the symlink; a drive that refuses it, with any code, gets a Windows junction, then a copy.
+// A full disk, a missing source or an entry already at dest (stageExtractedFrameDir clears a stale one)
+// propagate: copying would not fix them.
 function linkOrCopyFrameDir(fileSystem: MaterializeFileSystem, src: string, dest: string): void {
   try {
     fileSystem.symlinkSync(src, dest, "dir");
   } catch (err) {
+    if (copyCannotFix(err)) throw err;
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    if (code !== "EPERM" && code !== "EACCES" && code !== "UNKNOWN") throw err;
     if (tryWindowsFrameJunction(fileSystem, src, dest)) return;
     // Copying is measurably slower than symlinking, so surface the degrade once
     // — it explains a render that suddenly got heavier and saves a support
@@ -648,7 +728,7 @@ export function materializeExtractedFramesForCompiledDir(
     const resolvedOut = pathModule.resolve(ext.outputDir);
     if (isPathInside(resolvedOut, resolvedCompiledDir, { pathModule })) continue;
 
-    const linkPath = pathModule.join(compiledFrameRoot, ext.videoId);
+    const linkPath = pathModule.join(compiledFrameRoot, mediaIdPathSegment(ext.videoId));
     if (!fileSystem.existsSync(linkPath)) {
       fileSystem.mkdirSync(pathModule.dirname(linkPath), { recursive: true });
       stageExtractedFrameDir(

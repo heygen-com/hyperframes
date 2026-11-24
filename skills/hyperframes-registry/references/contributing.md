@@ -1,5 +1,7 @@
 # Contributing a Block or Component to the Registry
 
+<!-- skill-scripts: relative-ok, runs inside a HyperFrames checkout -->
+
 Guide the user from idea to merged PR for a new registry block or component.
 
 ## Workflow
@@ -120,8 +122,9 @@ hyperframes render -o preview.mp4
 # Snapshot for visual QA
 hyperframes snapshot --at "1.0,3.0,5.0,7.0"
 
-# Publish to hyperframes.dev for review
-npx hyperframes publish
+# From the preview project, sign in and choose who can open the video review
+npx hyperframes auth login
+npx hyperframes share
 ```
 
 **Catalog preview image** — For the default PNG preview, save your snapshot at `docs/images/catalog/{kind}/{name}.png` in the repository checkout (`{kind}` is `blocks` or `components`). After upload, the catalog serves it from `https://static.heygen.ai/hyperframes-oss/docs/images/catalog/{kind}/{name}.png`. If `registry-item.json` declares `preview`, the card uses its `poster` URL; a `preview` without `poster` has no image fallback.
@@ -152,18 +155,15 @@ npx tsx scripts/generate-registry-items.ts
 # 4. Generate catalog docs page
 npx tsx scripts/generate-catalog-pages.ts
 
-# 5. Publish to hyperframes.dev so reviewers can preview
-npx hyperframes publish
-
-# 6. Stage everything
+# 5. Stage everything
 git add registry/{kind}/{name}/ registry/registry.json docs/catalog/
 
-# 7. Commit
+# 6. Commit
 git commit -m "feat(registry): add {name} — {one sentence}"
 
-# 8. Push and open PR with hyperframes.dev link
+# 7. Push and open the PR with the review link from the preview step
 git push origin feat/registry-{name}
-gh pr create --title "feat(registry): {name}" --body "preview: {hyperframes.dev-url}"
+gh pr create --title "feat(registry): {name}" --body "preview: {review-url}"
 ```
 
 **If you don't have a GitHub account:** you need one to open a PR. Sign up at https://github.com/signup, then run `gh auth login`.
@@ -175,6 +175,6 @@ gh pr create --title "feat(registry): {name}" --body "preview: {hyperframes.dev-
 - [ ] `npx oxfmt --check` passes
 - [ ] `registry/registry.json` updated with new entry
 - [ ] `scripts/generate-catalog-pages.ts` run (docs page generated)
-- [ ] `npx hyperframes publish` run (claim your project URL)
+- [ ] Video review link included in the PR and accessible to its reviewers
 - [ ] Preview MP4 attached to PR (external) or catalog PNG uploaded (internal)
 - [ ] All IDs unique and prefixed

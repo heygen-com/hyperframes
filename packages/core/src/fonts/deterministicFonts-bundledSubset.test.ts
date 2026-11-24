@@ -128,3 +128,38 @@ describe("bundled Latin precedence", () => {
     expect(bundled).toContain(`unicode-range: ${LATIN_RANGE};`);
   });
 });
+
+describe("variable supplement at bundled weights", () => {
+  it("also emits a variable face's Latin Extended subset at each bundled weight it spans", async () => {
+    const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
+    const EXT = "U+0100-02BA, U+02BD-02C5, U+1E00-1EFF";
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      if (url.startsWith("https://fonts.googleapis.com/")) {
+        return new Response(`@font-face {
+          font-family: 'Outfit'; font-style: normal; font-weight: 100 900;
+          src: url(https://fonts.gstatic.com/s/outfit/ext.woff2) format('woff2');
+          unicode-range: ${EXT};
+        }`);
+      }
+      return new Response("OUTFIT_LATIN_EXT_BYTES");
+    }) as unknown as typeof fetch;
+    const html = `<!doctype html><html><head><style>p{font-family:"Outfit";font-weight:700}</style></head><body><p>čšćžđ ąęłńśźż řěůď ğışİ őű ășț ạảấ</p></body></html>`;
+    const result = await injectDeterministicFontFaces(html, {
+      fetchImpl,
+      allowSystemFontCapture: false,
+    });
+    const faces = (result.match(/@font-face \{[\s\S]*?\}/g) ?? []).filter((face) =>
+      face.includes(b64("OUTFIT_LATIN_EXT_BYTES")),
+    );
+    const weights = faces.map((face) => /font-weight: ([\d ]+);/.exec(face)?.[1]);
+    expect(weights).toEqual(expect.arrayContaining(["400", "700", "900", "100 900"]));
+    for (const face of faces) expect(face).toContain(`unicode-range: ${EXT};`);
+    // Croatian, Polish, Czech, Turkish, Hungarian, Romanian and Vietnamese letters beyond Latin-1 are all in its range.
+    const inExt = (ch: string) => {
+      const cp = ch.codePointAt(0) ?? 0;
+      return (cp >= 0x100 && cp <= 0x2ba) || (cp >= 0x1e00 && cp <= 0x1eff);
+    };
+    for (const ch of "čšćžđąęłńśźżřěůďğışİőűășțạảấ") expect(inExt(ch)).toBe(true);
+  });
+});

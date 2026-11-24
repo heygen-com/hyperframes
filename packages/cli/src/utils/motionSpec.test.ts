@@ -142,6 +142,14 @@ describe("readMotionSpec", () => {
     if (!result.ok) expect(result.errors[0]).toContain("could not read");
   });
 
+  it("reads a spec saved with a UTF-8 BOM", () => {
+    const dir = tempDir("motion-bom-");
+    const path = join(dir, "bom.motion.json");
+    writeFileSync(path, `\uFEFF{"version":1}`);
+    const result = readMotionSpec(path);
+    expect((result.ok ? [] : result.errors).join()).not.toContain("could not read");
+  });
+
   it("returns error for a file with invalid JSON", () => {
     const dir = tempDir("motion-bad-");
     const path = join(dir, "bad.motion.json");

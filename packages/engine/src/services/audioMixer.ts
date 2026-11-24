@@ -1,11 +1,19 @@
 // fallow-ignore-file complexity code-duplication
+import { usableCpuCount } from "./systemMemory.js";
 import { isSelfOrAncestorHidden, memberGroupKey, isMemberGroupHidden } from "./mediaHidden.js";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
-import { renameWithRetry } from "../utils/renameWithRetry.js";
+import { closeSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from "fs";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
-import { extractAudioMetadata, type AudioMetadata } from "../utils/ffprobe.js";
+import {
+  extractAudioMetadata,
+  ffmpegSeekSeconds,
+  formatFfmpegSeconds,
+  type AudioMetadata,
+} from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
+import { assetRootsRefusal } from "../utils/assetRoots.js";
 import { urlInputArgs } from "../utils/urlInput.js";
 import { clampAudioGain, clipGain } from "@hyperframes/core/audio-gain";
 import { clampFadesToDuration, readElementFades } from "@hyperframes/core/audio-fade";
@@ -17,7 +25,6 @@ import {
 } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { describeFfmpegFailure, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
-import { cpus } from "node:os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { encodeAac } from "./aacEncode.js";
 import { audioSubprocessEvidence } from "./audioFailureDiagnostic.js";
@@ -63,10 +70,13 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  terminalText,
 } from "@hyperframes/core";
 import { readMasterFxChain, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
+import { mediaIdPathSegment } from "../utils/mediaPathSegment.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -129,11 +139,12 @@ function buildRampFilterComplex(
   duration: number,
   headFilter: string | null,
   tailFilter: string | null,
+  input: string,
 ): string {
   const slices = Math.min(MAX_RAMP_SLICES, Math.max(1, Math.ceil(duration / RAMP_SLICE_SECONDS)));
   const step = duration / slices;
   const split = Array.from({ length: slices }, (_, i) => `[s${i}]`).join("");
-  const parts = [`[0:a]${headFilter ? `${headFilter},` : ""}asplit=${slices}${split}`];
+  const parts = [`[${input}]${headFilter ? `${headFilter},` : ""}asplit=${slices}${split}`];
   for (let i = 0; i < slices; i += 1) {
     const from = sourceTimeAt(lane, i * step);
     const to = sourceTimeAt(lane, (i + 1) * step);
@@ -159,16 +170,23 @@ function preparedAudioOutputArgs(
   playbackRate: RateSpec,
   duration: number,
   headFilter: string | null,
+  stream: string | null,
 ): string[] {
   const channelFilter = metadata?.channels === 1 ? STEREO_CHANNEL_FILTER : null;
   const outputArgs = channelFilter ? [] : ["-ac", "2"];
   if (typeof playbackRate === "object") {
-    const graph = buildRampFilterComplex(playbackRate, duration, headFilter, channelFilter);
+    const graph = buildRampFilterComplex(
+      playbackRate,
+      duration,
+      headFilter,
+      channelFilter,
+      stream ?? "0:a",
+    );
     return ["-filter_complex", graph, "-map", "[out]", ...outputArgs];
   }
   const filters = [headFilter, channelFilter, buildAtempoFilter(playbackRate)].filter(Boolean);
   if (filters.length > 0) outputArgs.push("-af", filters.join(","));
-  return outputArgs;
+  return [...(stream ? ["-map", stream] : []), ...outputArgs];
 }
 
 function escapeExpressionCommas(expression: string): string {
@@ -194,7 +212,7 @@ function legacyFilterScriptOptionIsUnsupported(stderr: string): boolean {
  * than a piecewise-linear volume envelope needs.
  */
 // Caps the ffmpeg runs that prepare clips; all of a long mix's clips at once starved the host (200 clips, 200 ffmpeg).
-const inPrepareSlot = createConcurrencyLimit(Math.max(2, Math.floor(cpus().length / 2)));
+const inPrepareSlot = createConcurrencyLimit(Math.max(2, Math.floor(usableCpuCount() / 2)));
 // A clip read from a URL spends its time waiting on the network, so it needs no CPU-sized limit.
 const inRemotePrepareSlot = createConcurrencyLimit(16);
 
@@ -702,7 +720,7 @@ async function extractAudioSegment(
       });
   const loopDuration = (metadata?.durationSeconds ?? 0) - mediaStart;
   if (options?.loop && loopDuration > 0 && sourceDuration > loopDuration) {
-    const cycleDir = mkdtempSync(join(outputDir, ".audio-loop-"));
+    const cycleDir = createStagingDir(outputDir, ".audio-loop-");
     const cyclePath = join(cycleDir, "cycle.wav");
     try {
       const cycle = await extractAudioSegment(
@@ -718,13 +736,19 @@ async function extractAudioSegment(
         { padToDuration: true },
       );
       if (!cycle.success) return { ...cycle, outputPath };
-      const outputArgs = preparedAudioOutputArgs(metadata, normalizedPlaybackRate, duration, null);
+      const outputArgs = preparedAudioOutputArgs(
+        metadata,
+        normalizedPlaybackRate,
+        duration,
+        null,
+        null,
+      );
       const result = await runFfmpeg(
         [
           "-stream_loop",
           "-1",
           "-t",
-          String(sourceDuration),
+          formatFfmpegSeconds(sourceDuration),
           "-i",
           cyclePath,
           "-vn",
@@ -734,7 +758,7 @@ async function extractAudioSegment(
           "48000",
           ...outputArgs,
           "-t",
-          String(duration),
+          formatFfmpegSeconds(duration),
           "-y",
           outputPath,
         ],
@@ -751,16 +775,18 @@ async function extractAudioSegment(
         failure,
       };
     } finally {
-      rmSync(cycleDir, { recursive: true, force: true });
+      removeScratch(cycleDir);
     }
   }
-  const inputSeek = mediaStart >= (metadata?.latestStreamLeadSeconds ?? 0);
-  const start = formatFilterNumber(mediaStart);
+  const ffmpegStart = ffmpegSeekSeconds(metadata ?? {}, mediaStart);
+  const inputSeek =
+    ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0) && !metadata?.misstatedByteRate;
+  const start = formatFilterNumber(ffmpegStart);
   const timestampTrim = inputSeek
     ? null
-    : `atrim=start=${start}:end=${formatFilterNumber(mediaStart + sourceDuration)},asetpts=PTS-${start}/TB,aresample=async=1:first_pts=0`;
+    : `atrim=start=${start}:end=${formatFilterNumber(ffmpegStart + sourceDuration)},asetpts=PTS-${start}/TB,aresample=async=1:first_pts=0`;
   const fromSidecar = audioSidecarUrl !== undefined && inputSeek && normalizedPlaybackRate === 1;
-  const warmUp = fromSidecar ? Math.min(SIDECAR_WARM_UP_SECONDS, mediaStart) : 0;
+  const warmUp = fromSidecar ? Math.min(SIDECAR_WARM_UP_SECONDS, ffmpegStart) : 0;
   const outputArgs = preparedAudioOutputArgs(
     metadata,
     normalizedPlaybackRate,
@@ -771,6 +797,7 @@ async function extractAudioSegment(
     ]
       .filter(Boolean)
       .join(",") || null,
+    metadata ? `0:a:${metadata.audioStream}` : null,
   );
   const readFrom = fromSidecar ? audioSidecarUrl : srcPath;
 
@@ -778,13 +805,19 @@ async function extractAudioSegment(
     ...(readsUrl ? FAIL_ON_READ_ERROR_INSTEAD_OF_ENDING_THERE : []),
     ...urlInputArgs(readFrom),
     ...(inputSeek
-      ? ["-ss", String(mediaStart - warmUp), "-t", String(sourceDuration + warmUp)]
+      ? [
+          "-ss",
+          formatFfmpegSeconds(ffmpegStart - warmUp),
+          "-t",
+          formatFfmpegSeconds(sourceDuration + warmUp),
+        ]
       : []),
     "-i",
     readFrom,
   ];
   args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
-  if (normalizedPlaybackRate !== 1 || options?.padToDuration) args.push("-t", String(duration));
+  if (normalizedPlaybackRate !== 1 || options?.padToDuration)
+    args.push("-t", formatFfmpegSeconds(duration));
   args.push("-y", outputPath);
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
@@ -853,7 +886,7 @@ async function generateSilence(
     "-i",
     "anullsrc=r=48000:cl=stereo",
     "-t",
-    String(duration),
+    formatFfmpegSeconds(duration),
     "-acodec",
     "pcm_s16le",
     "-y",
@@ -947,7 +980,7 @@ async function mixAudioTracksFlat(
   const runMix = async (ignoreAutomation: boolean, useNormalize: boolean) => {
     const inputs: string[] = [];
     tracks.forEach((track) => inputs.push("-i", track.srcPath));
-    const scriptDir = mkdtempSync(join(outputDir, ".filter-complex-"));
+    const scriptDir = createStagingDir(outputDir, ".filter-complex-");
     const scriptPath = join(scriptDir, "graph.txt");
     const fd = openSync(scriptPath, "wx", 0o600);
     try {
@@ -966,7 +999,7 @@ async function mixAudioTracksFlat(
       "-ar",
       "48000",
       "-t",
-      String(totalDuration),
+      formatFfmpegSeconds(totalDuration),
       "-y",
       outputPath,
     ];
@@ -979,7 +1012,7 @@ async function mixAudioTracksFlat(
       currentArgs[currentArgs.indexOf("-filter_complex_script")] = "-/filter_complex";
       return await runFfmpeg(currentArgs, { signal, timeout: ffmpegProcessTimeout });
     } finally {
-      rmSync(scriptDir, { recursive: true, force: true });
+      removeScratch(scriptDir);
     }
   };
 
@@ -1122,7 +1155,7 @@ async function mixGroupMembersFlat(
         // global track count.
         `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0[mixed];[mixed]volume=${formatFilterNumber(memberTracks.length)}[out]`;
     const filterComplex = [...inputFilters, mixFilter].join(";");
-    const scriptDir = mkdtempSync(join(outputDir, ".group-filter-complex-"));
+    const scriptDir = createStagingDir(outputDir, ".group-filter-complex-");
     const scriptPath = join(scriptDir, "graph.txt");
     const fd = openSync(scriptPath, "wx", 0o600);
     try {
@@ -1151,7 +1184,7 @@ async function mixGroupMembersFlat(
         "-ar",
         "48000",
         "-t",
-        String(totalDuration),
+        formatFfmpegSeconds(totalDuration),
         "-y",
         outputPath,
       ];
@@ -1163,7 +1196,7 @@ async function mixGroupMembersFlat(
       currentArgs[currentArgs.indexOf("-filter_complex_script")] = "-/filter_complex";
       return await runFfmpeg(currentArgs, { signal, timeout: ffmpegProcessTimeout });
     } finally {
-      rmSync(scriptDir, { recursive: true, force: true });
+      removeScratch(scriptDir);
     }
   };
 
@@ -1249,8 +1282,8 @@ async function sumInSlices(
       signal,
       config,
     );
-    rmSync(running.srcPath, { force: true });
-    rmSync(slicePath, { force: true });
+    removeScratch(running.srcPath);
+    removeScratch(slicePath);
     if (!folded.success) return folded;
     running = wavTrack(id, foldedPath);
   }
@@ -1269,14 +1302,14 @@ async function mixGroupMembers(
     return mixGroupMembersFlat(memberTracks, outputPath, totalDuration, signal, config);
   }
   mkdirSync(dirname(outputPath), { recursive: true });
-  const scratchDir = mkdtempSync(join(dirname(outputPath), ".mix-batches-"));
+  const scratchDir = createStagingDir(dirname(outputPath), ".mix-batches-");
   try {
     const summed = await sumInSlices(memberTracks, scratchDir, totalDuration, signal, config);
     if (!summed.success) return summed;
-    renameWithRetry(summed.track.srcPath, outputPath);
+    renameWithRetry(summed.track.srcPath, outputPath, { copyFallback: true });
     return { success: true, degradedAutomation: summed.degradedAutomation };
   } finally {
-    rmSync(scratchDir, { recursive: true, force: true });
+    removeScratch(scratchDir);
   }
 }
 
@@ -1291,7 +1324,7 @@ async function mixAudioTracks(
     return mixAudioTracksFlat(tracks, outputPath, totalDuration, signal, config);
   }
   mkdirSync(dirname(outputPath), { recursive: true });
-  const scratchDir = mkdtempSync(join(dirname(outputPath), ".mix-batches-"));
+  const scratchDir = createStagingDir(dirname(outputPath), ".mix-batches-");
   try {
     const summed = await sumInSlices(tracks, scratchDir, totalDuration, signal, config);
     if (!summed.success) {
@@ -1321,7 +1354,7 @@ async function mixAudioTracks(
         }
       : mixed;
   } finally {
-    rmSync(scratchDir, { recursive: true, force: true });
+    removeScratch(scratchDir);
   }
 }
 
@@ -1374,7 +1407,8 @@ async function mixThroughFloatSum(
       failures: [failure],
     };
   }
-  if (config?.keepEncoderInputAt) renameWithRetry(encoderInput, config.keepEncoderInputAt);
+  if (config?.keepEncoderInputAt)
+    renameWithRetry(encoderInput, config.keepEncoderInputAt, { copyFallback: true });
   return {
     ...sum,
     outputPath,
@@ -1400,6 +1434,8 @@ export async function processCompositionAudio(
     urlByAbsentLocalPath?: ReadonlyMap<string, string>;
     audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
     keepEncoderInputAt?: string;
+    /** Folders a local source must be in; one outside them, or private there, is never opened. Unset allows any folder. */
+    assetRoots?: readonly string[];
   },
   compiledDir?: string,
 ): Promise<MixResult> {
@@ -1464,6 +1500,21 @@ export async function processCompositionAudio(
               audioSidecarUrl = config?.audioSidecarUrlByLocalPath?.get(srcPath);
               srcPath = remoteUrl;
               readInPlace = true;
+            } else {
+              const refusal = config?.assetRoots
+                ? assetRootsRefusal(srcPath, config.assetRoots)
+                : null;
+              if (refusal) {
+                failures.push({
+                  stage: "source",
+                  reason: "source_not_found",
+                  owner: "user",
+                  retryable: false,
+                  elementId: element.id,
+                  detail: boundedDetail(`Audio element ${element.id} source is ${refusal}`),
+                });
+                return;
+              }
             }
           }
 
@@ -1517,7 +1568,9 @@ export async function processCompositionAudio(
           // Fallback: if no duration was specified, probe the actual file
           if (element.end - element.start <= 0) {
             console.warn(
-              `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+              terminalText(
+                `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+              ),
             );
             let metadata;
             try {
@@ -1542,7 +1595,7 @@ export async function processCompositionAudio(
 
           let audioSrcPath = srcPath;
           if (element.type === "video") {
-            const extractedPath = join(workDir, `${element.id}-extracted.wav`);
+            const extractedPath = join(workDir, `${mediaIdPathSegment(element.id)}-extracted.wav`);
             const extractResult = await extractAudioSegment(
               srcPath,
               extractedPath,
@@ -1572,7 +1625,7 @@ export async function processCompositionAudio(
             }
             audioSrcPath = extractedPath;
           } else {
-            const trimmedPath = join(workDir, `${element.id}-trimmed.wav`);
+            const trimmedPath = join(workDir, `${mediaIdPathSegment(element.id)}-trimmed.wav`);
             const prepResult = await extractAudioSegment(
               srcPath,
               trimmedPath,
@@ -1641,7 +1694,7 @@ export async function processCompositionAudio(
             const fxResult = await applyAudioFxChain(
               audioSrcPath,
               chain,
-              join(workDir, `${element.id}-fx.wav`),
+              join(workDir, `${mediaIdPathSegment(element.id)}-fx.wav`),
               {
                 trackId: element.id,
                 signal: effectiveSignal,

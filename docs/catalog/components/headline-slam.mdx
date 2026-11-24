@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Headline Slam</h1>
+  <p>A heavyweight headline scales down into frame, lands with a deterministic three-frame shake, holds with subtle drift, and whips upward on exit.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/headline-slam.json"
   compositionId="headline-slam"
   compositionSrc="compositions/components/headline-slam.html"
   title="Headline Slam"
-  description="A heavyweight headline scales down into frame, lands with a deterministic three-frame shake, holds with subtle drift, and whips upward on exit."
   variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text displayed as the headline.","default":"Ship it today"},{"id":"accent_word_index","type":"number","role":"content","label":"Accent word index","description":"Zero-based word index to color. Out of range leaves the headline unaccented.","default":1,"step":1},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color applied to the selected word.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"shadow","type":"boolean","role":"style","label":"Shadow","description":"Drop shadow cast under the headline. On by default; set false for a flat matte look.","default":true}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":237}}
   attribution={{"path":"registry/components/headline-slam","tags":["motion-primitive","typography","headline","slam","impact","exit"]}}
@@ -272,7 +276,9 @@ That writes one file: `compositions/components/headline-slam.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -314,6 +320,4 @@ Tagged `motion-primitive` `typography` `headline` `slam` `impact` `exit`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

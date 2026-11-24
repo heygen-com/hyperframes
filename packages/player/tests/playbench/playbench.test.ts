@@ -121,6 +121,27 @@ describe("analyze", () => {
     expect(analyze(run).playheadHoldMedianMs).toBeCloseTo(30, 0);
   });
 
+  it("reports an incoming picture that runs 50 ms behind the playhead after its cut", () => {
+    const run = base();
+    for (const t of edit.takes.slice(1))
+      for (let i = 0; i <= 50; i++) {
+        const ph = t.start + i * 0.01;
+        run.comp.samples.push([
+          1000 + ph * 1000,
+          `v${t.index}`,
+          t.inPoint + ph - t.start - 0.05,
+          0,
+          0,
+          1,
+          1,
+          ph,
+        ]);
+      }
+    const m = analyze(run);
+    expect(m.cutPictureLagMedianMs).toBeCloseTo(50, 0);
+    expect(m.cutPictureLagMaxMs).toBeCloseTo(50, 0);
+  });
+
   it("counts a take as heard only when the audio reaching the output comes from that take's stretch of the file", () => {
     const run = base();
     run.ownership = [[1000, "parent"]];

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Device Frame Stage</h1>
+  <p>A phone or tablet mockup staged as a physical scene prop with a screen slot for arbitrary reconstructed UI, rising onto the stage, settling, and holding an idle float</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/device-frame-stage.json"
   compositionId="device-frame-stage"
   compositionSrc="compositions/components/device-frame-stage.html"
   title="Device Frame Stage"
-  description="A phone or tablet mockup staged as a physical scene prop with a screen slot for arbitrary reconstructed UI, rising onto the stage, settling, and holding an idle float"
   variables={[{"id":"device","type":"enum","role":"layout","label":"Device kind","default":"phone","options":[{"value":"phone","label":"Phone"},{"value":"tablet","label":"Tablet"}]},{"id":"cutout","type":"enum","role":"layout","label":"Camera cutout","default":"none","options":[{"value":"none","label":"None"},{"value":"island","label":"Island"},{"value":"notch","label":"Notch"}]},{"id":"body","type":"enum","role":"style","label":"Body material","default":"graphite","options":[{"value":"graphite","label":"Graphite"},{"value":"silver","label":"Silver"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":466}}
   attribution={{"path":"registry/components/device-frame-stage","tags":["prop","device","mobile","tablet","ui-props","holdable"]}}
@@ -501,7 +505,9 @@ That writes one file: `compositions/components/device-frame-stage.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -542,6 +548,4 @@ Tagged `prop` `device` `mobile` `tablet` `ui-props` `holdable`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

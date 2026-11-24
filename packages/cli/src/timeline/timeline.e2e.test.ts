@@ -254,7 +254,7 @@ describe("timeline edit command", () => {
       const before = readFileSync(join(dir, "index.html"), "utf8");
       const result = run(dir, "delete", "#clip", "--start", "2", "--end", "4");
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("is not inside #clip");
+      expect(result.stdout).toContain("is not inside #clip");
       expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -288,7 +288,7 @@ describe("timeline edit command", () => {
       writeFileSync(planPath, JSON.stringify([{ verb: "delete", ref: "#clip", at: "2" }]));
       const result = run(dir, "apply", planPath);
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("delete does not use at");
+      expect(result.stdout).toContain("delete does not use at");
       expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -316,7 +316,7 @@ describe("timeline edit command", () => {
     try {
       const result = run(dir, "move", "#clip", "4");
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("--overwrite");
+      expect(result.stdout).toContain("--overwrite");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -481,7 +481,7 @@ describe("timeline edit command", () => {
       );
       const result = run(dir, "delete", "#dup");
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("matches 2 rows");
+      expect(result.stdout).toContain("matches 2 rows");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -492,7 +492,7 @@ describe("timeline edit command", () => {
     try {
       const result = run(dir, "move", "#clip", "1.03", "--snap");
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("set data-fps");
+      expect(result.stdout).toContain("set data-fps");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -508,8 +508,8 @@ describe("timeline edit command", () => {
       );
       const result = run(dir, "move", "#clip", "50");
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("end at 60");
-      expect(result.stderr).toContain("latest valid start 43");
+      expect(result.stdout).toContain("end at 60");
+      expect(result.stdout).toContain("latest valid start 43");
       expect(readFileSync(indexPath, "utf8")).toContain('data-start="1"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -554,7 +554,7 @@ describe("timeline edit command", () => {
       );
       const result = run(dir, "move", "#inner", "45");
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("composition duration");
+      expect(result.stdout).toContain("composition duration");
       expect(readFileSync(join(dir, "sub.html"), "utf8")).toContain('data-start="0"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -758,7 +758,7 @@ describe("timeline edit command", () => {
       writeFileSync(indexPath, meeting("19.8", "6.4", "26.2"));
       const result = run(dir, "trim", "#b", "--end", "26.200000000000003");
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("trim duration must be positive");
+      expect(result.stdout).toContain("trim duration must be positive");
       expect(clip(readFileSync(indexPath, "utf8"), "b").duration).toBe("2");
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -791,7 +791,7 @@ describe("timeline edit command", () => {
       );
       const result = run(dir, "duplicate", "#clip", "--at", "3");
       expect(result.status).toBe(2);
-      expect(result.stderr).toContain("split the spanning clip first");
+      expect(result.stdout).toContain("split the spanning clip first");
       expect(readFileSync(indexPath, "utf8")).not.toContain('id="clip-copy"');
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -820,6 +820,61 @@ describe("timeline edit command", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("a plan that shifts adjacent clips", () => {
+    const row = (id: string, start: number) =>
+      `<div id="${id}" data-hf-id="${id}" data-start="${start}" data-duration="2" data-track-index="0"></div>`;
+    const track = () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-timeline-shift-"));
+      writeFileSync(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-duration="12">${row("a", 0)}${row("b", 2)}${row("c", 4)}</div>`,
+      );
+      return dir;
+    };
+    const apply = (dir: string, edits: object[]) => {
+      const planPath = join(dir, "edits.json");
+      writeFileSync(planPath, JSON.stringify(edits));
+      return run(dir, "apply", planPath);
+    };
+
+    it("applies when each clip moves forward ahead of the clip it passes", () => {
+      const dir = track();
+      try {
+        const result = apply(dir, [
+          { verb: "move", ref: "#a", time: "1" },
+          { verb: "move", ref: "#b", time: "3" },
+          { verb: "move", ref: "#c", time: "5" },
+        ]);
+        expect(result.status, result.stdout).toBe(0);
+        const source = readFileSync(join(dir, "index.html"), "utf8");
+        for (const [id, start] of [
+          ["a", 1],
+          ["b", 3],
+          ["c", 5],
+        ] as const)
+          expect(source).toMatch(new RegExp(`id="${id}"[^>]*data-start="${start}"`));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a plan whose end state overlaps, and writes nothing", () => {
+      const dir = track();
+      try {
+        const before = readFileSync(join(dir, "index.html"), "utf8");
+        const result = apply(dir, [
+          { verb: "move", ref: "#a", time: "1" },
+          { verb: "move", ref: "#b", time: "3" },
+        ]);
+        expect(result.status).toBe(2);
+        expect(result.stdout).toContain("would overlap");
+        expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 
   it("applies a JSON plan atomically and undoes its receipt", () => {
@@ -897,7 +952,7 @@ describe("timeline edit command", () => {
 
         const undone = run(dir, "undo", input);
         expect(undone.status).toBe(2);
-        expect(JSON.parse(undone.stderr)).toMatchObject({
+        expect(JSON.parse(undone.stdout)).toMatchObject({
           ok: false,
           reason:
             failure === "stale"
@@ -945,11 +1000,13 @@ describe("timeline edit command", () => {
         const undone = run(dir, "undo", input);
 
         expect(undone.status, undone.stderr).toBe(2);
-        expect(undone.stdout).toBe("");
-        expect(JSON.parse(undone.stderr)).toEqual({
+        const reason = `timeline undo: undo file is missing: ${missingFile}`;
+        const fix = "restore the missing target or backup file before retrying undo";
+        expect(JSON.parse(undone.stdout)).toEqual({
           ok: false,
-          reason: `timeline undo: undo file is missing: ${missingFile}`,
-          fix: "restore the missing target or backup file before retrying undo",
+          error: { code: "refused", message: reason, hint: fix },
+          reason,
+          fix,
         });
         expect(sources()).toEqual(current);
         expect(backups()).toEqual(currentBackups);

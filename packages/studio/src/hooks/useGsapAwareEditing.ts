@@ -31,7 +31,7 @@ import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { MoveCommitOptions } from "../components/editor/domEditOverlayGestures";
 import { runGestureTransaction } from "./gestureTransaction";
 import {
-  editsPlainCss,
+  editsPlainCssSettled,
   hasNonHoldTweenForElement,
   POSITION_CHANNELS,
 } from "./gsapRuntimeKeyframes";
@@ -150,7 +150,7 @@ export function useGsapAwareEditing({
       modifiers?: MoveCommitOptions,
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (modifiers?.plainTranslate ?? editsPlainCss(selection.element, "move")) {
+      if (modifiers?.plainTranslate ?? (await editsPlainCssSettled(selection.element, "move"))) {
         const result = await stageElementPositionOffset(selection, next, true).save();
         return writes.finish(result?.changed === true);
       }
@@ -211,10 +211,11 @@ export function useGsapAwareEditing({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
-      route?: { plainTranslate: boolean },
+      route?: { plainTranslate: boolean; sizeSavedAsScale?: boolean },
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (route?.plainTranslate ?? editsPlainCss(selection.element, "resize")) {
+      const routed = route?.plainTranslate ?? editsPlainCssSettled(selection.element, "resize");
+      if (typeof routed === "boolean" ? routed : await routed) {
         const result = await handleDomBoxSizeCommit(selection, next, offset, restore);
         return writes.finish(result?.changed === true);
       }
@@ -268,7 +269,7 @@ export function useGsapAwareEditing({
             );
             // Saved after the size, under its undo key, so the two are one step.
             await saveMove(dragOutcome, async () => {
-              const plainAfterSettle = editsPlainCss(selection.element, "move");
+              const plainAfterSettle = await editsPlainCssSettled(selection.element, "move");
               anchorMove = writes.drawKeepingUndone(() =>
                 stageElementPositionOffset(selection, offset, plainAfterSettle, coalesceKey),
               );
@@ -314,6 +315,8 @@ export function useGsapAwareEditing({
                   stamp,
                 );
                 assertGsapEditPersisted(outcome);
+                if (route)
+                  route.sizeSavedAsScale = outcome.status === "persisted" && !!outcome.savedAsScale;
                 // Saved before the buffered GSAP writes, so their reload stays the gesture's last render.
                 if (outcome.status === "element-size") {
                   const result = await writes.drawKeepingUndone(() =>
@@ -376,7 +379,11 @@ export function useGsapAwareEditing({
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: RotationCommit) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (next.plain === undefined ? editsPlainCss(selection.element, "rotate") : next.plain) {
+      const plain =
+        next.plain !== undefined
+          ? next.plain
+          : await editsPlainCssSettled(selection.element, "rotate");
+      if (plain) {
         const result = await handleDomRotationCommit(selection, next);
         return writes.finish(result?.changed === true);
       }

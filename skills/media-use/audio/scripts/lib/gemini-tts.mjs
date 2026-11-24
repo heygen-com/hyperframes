@@ -1,5 +1,6 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { replaceFile } from "../../../scripts/lib/manifest.mjs";
 import { geminiAuth } from "./gemini-auth.mjs";
 
 export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
@@ -82,17 +83,29 @@ export async function synthesizeGemini(
       throw new Error("Gemini TTS returned invalid WAV audio");
     }
     mkdirSync(dirname(wavAbs), { recursive: true });
-    writeFileSync(wavAbs, bytes);
+    replaceFile(wavAbs, bytes);
     return { ok: true, words: null };
   } catch (error) {
     // Error responses must never echo the credential into logs or metadata.
-    const message = String(error?.message ?? error);
+    const message = withCause(error);
     return {
       ok: false,
       words: null,
       error: secret ? message.split(secret).join("[redacted]") : message,
     };
   }
+}
+
+// undici reports "fetch failed" and keeps the real reason (e.g. UND_ERR_SOCKET,
+// "other side closed") in `error.cause`.
+function withCause(error) {
+  const message = String(error?.message ?? error);
+  const cause = error?.cause;
+  if (!cause) return message;
+  const detail = [cause.code, cause.message ?? (typeof cause === "string" ? cause : "")]
+    .filter(Boolean)
+    .join(": ");
+  return detail ? `${message} (${detail})` : message;
 }
 
 function pcmToWav(pcm, mime) {

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -69,7 +69,7 @@ describe("info", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       writeFileSync(join(dir, "index.html"), html);
-      await info.run?.({ args: { _: [], dir, json: true }, rawArgs: [], cmd: info });
+      await info.run?.({ args: { _: [], dir, json: true, media: false }, rawArgs: [], cmd: info });
 
       expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
         resolution: "portrait",
@@ -93,7 +93,7 @@ describe("info", () => {
           <div class="clip" data-start="1" data-duration="2"></div>
         </div></body></html>`,
       );
-      await info.run?.({ args: { _: [], dir, json: true }, rawArgs: [], cmd: info });
+      await info.run?.({ args: { _: [], dir, json: true, media: false }, rawArgs: [], cmd: info });
 
       expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
         resolution: "landscape",
@@ -106,4 +106,40 @@ describe("info", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // Windows refuses control characters in folder names.
+  it.skipIf(process.platform === "win32")(
+    "prints a folder name with control characters as visible escapes, and --json keeps it",
+    async () => {
+      // Built rather than written: a literal control character in the source is a lint error.
+      const esc = String.fromCharCode(27);
+      const name = `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`;
+      const parent = mkdtempSync(join(tmpdir(), "hf-info-"));
+      const dir = join(parent, name);
+      mkdirSync(dir);
+      writeFileSync(join(dir, "index.html"), '<div data-composition-id="main"></div>');
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        await info.run?.({
+          args: { _: [], dir, json: false, media: false },
+          rawArgs: [],
+          cmd: info,
+        });
+        const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+        log.mockClear();
+        await info.run?.({
+          args: { _: [], dir, json: true, media: false },
+          rawArgs: [],
+          cmd: info,
+        });
+
+        expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+        expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J");
+        expect(JSON.parse(String(log.mock.calls[0]?.[0])).name).toBe(name);
+      } finally {
+        log.mockRestore();
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
 });

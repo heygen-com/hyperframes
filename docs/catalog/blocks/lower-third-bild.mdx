@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Lower Third — BILD Style</h1>
+  <p>News-style lower third with tight-fit text boxes: white headline bar with red drop-shadow, red sub-line with white drop-shadow.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/lower-third-bild.json"
   compositionId="lower-third-bild"
   compositionSrc="compositions/lower-third-bild.html"
   title="Lower Third — BILD Style"
-  description="News-style lower third with tight-fit text boxes: white headline bar with red drop-shadow, red sub-line with white drop-shadow."
   variables={[{"id":"TXT_MAIN_1_Line","type":"string","default":"BILD EXKLUSIV"},{"id":"TXT_SUB","type":"string","default":"Sonderbericht"}]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Lower Thirds","badge":"Stable","codeLines":151}}
   attribution={{"path":"registry/blocks/lower-third-bild","tags":["broadcast","lower-third","news","overlay"]}}
@@ -186,7 +190,9 @@ That writes `compositions/lower-third-bild.html`, plus 2 supporting files under 
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -238,6 +244,4 @@ Tagged `broadcast` `lower-third` `news` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

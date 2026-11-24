@@ -1,6 +1,7 @@
 import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
+import { failCaught } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Add a block to the current project", "hyperframes add claude-code-window"],
@@ -13,21 +14,26 @@ export const examples: Example[] = [
 
 import { existsSync, readFileSync } from "node:fs";
 import { parseHTML } from "linkedom";
-import { resolve, relative } from "node:path";
+import { firstTemplateContent } from "@hyperframes/parsers/sub-composition-validity";
+import { join, resolve, relative, sep } from "node:path";
 import {
   isProjectRootMissing,
   ITEM_TYPE_DIRS,
   realpath,
+  terminalLines,
+  terminalText,
   type RegistryItem,
 } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import {
   DEFAULT_REGISTRY_URL,
+  isPublicRegistry,
   prepareItem,
   publishItem,
   resolveItemsByTag,
   type PreparedItem,
 } from "../registry/index.js";
+import { registryRoot } from "../registry/publication.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
 import { InvalidVariableValuesError } from "../registry/variableDefaults.js";
 import {
@@ -36,12 +42,20 @@ import {
 } from "../registry/compatibility.js";
 import {
   DEFAULT_PROJECT_CONFIG,
+  PROJECT_CONFIG_FILENAME,
   loadProjectConfig,
   projectConfigPath,
+  readProjectConfigWithStatus,
   recordProjectRegistryItems,
   createProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
+import {
+  forgetReceivedFiles,
+  receivedFiles,
+  recordReceivedFiles,
+} from "../utils/privateProjectFile.js";
+import { readJsonFlag } from "../utils/jsonFlag.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
 // ── Target-path resolution ──────────────────────────────────────────────────
@@ -70,6 +84,8 @@ export function remapTarget(
   // Examples are installed by `init`, not `add` — no remapping.
   return originalTarget;
 }
+
+const registryError = (message: string): string => c.error(terminalLines(message));
 
 // ── Include-snippet builders ────────────────────────────────────────────────
 // Shown to the user after install so they know how to wire the item into
@@ -112,7 +128,7 @@ export function primaryInstalledTarget(item: RegistryItem): string {
 /** The id a composition file's root declares (inside its `<template>` when templated); a host must carry the same one. */
 export function compositionRootId(html: string): string | undefined {
   const { document } = parseHTML(html);
-  const content = document.querySelector("template")?.content ?? document;
+  const content = firstTemplateContent(document) ?? document;
   return (
     content.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? undefined
   );
@@ -146,30 +162,85 @@ export function buildSnippet(
   return "";
 }
 
-/** `add <tag> --json` output: successful installs and each item's warnings or failure. */
-export function tagAddJson(
-  tag: string,
-  results: RunAddResult[],
-  errors: Array<{ name: string; error: string }> = [],
-) {
+function installJson(results: RunAddResult[], errors: Array<{ name: string; error: string }>) {
   return {
     ok: errors.length === 0,
-    tag,
     installed: results.map((r) => r.name),
     warnings: results.flatMap((r) => r.warnings.map((w) => `${r.name}: ${w}`)),
     errors,
   };
 }
 
-/** `--vars` is JSON an agent or the catalog page produced; a malformed one is
- *  worth a clear error rather than a snippet that silently drops the values. */
+/** `add <tag> --json` output: successful installs and each item's warnings or failure. */
+export function tagAddJson(
+  tag: string,
+  results: RunAddResult[],
+  errors: Array<{ name: string; error: string }> = [],
+) {
+  return { ...installJson(results, errors), tag };
+}
+
+export function severalAddJson(
+  results: RunAddResult[],
+  errors: Array<{ name: string; error: string }> = [],
+) {
+  return installJson(results, errors);
+}
+
+interface InstallContext {
+  projectDir: string;
+  force: boolean | undefined;
+  vars: string | undefined;
+  json: boolean;
+}
+
+type InstallOutcome = { result: RunAddResult } | { name: string; error: string };
+
+async function installOne(name: string, context: InstallContext): Promise<InstallOutcome> {
+  try {
+    const result = await runAdd({
+      name,
+      projectDir: context.projectDir,
+      skipClipboard: true,
+      force: context.force,
+      vars: context.vars,
+    });
+    if (!context.json) {
+      for (const warning of result.warnings)
+        console.log(`  ${c.warn("Warning:")} ${terminalText(warning)}`);
+      console.log(`  ${c.success("✓")} ${terminalText(result.name)}`);
+    }
+    return { result };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    if (!context.json)
+      console.log(`  ${c.error("✗")} ${terminalText(name)} (skipped: ${terminalText(reason)})`);
+    return { name, error: reason };
+  }
+}
+
+async function installEach(names: readonly string[], context: InstallContext) {
+  const results: RunAddResult[] = [];
+  const errors: Array<{ name: string; error: string }> = [];
+  for (const name of names) {
+    const outcome = await installOne(name, context);
+    if ("result" in outcome) results.push(outcome.result);
+    else errors.push(outcome);
+  }
+  return { results, errors };
+}
+
+/** `--vars` is JSON, a file or `-`; a malformed one is an error, not a snippet that drops the values. */
 export function parseVariableValues(raw: string | undefined): Record<string, unknown> | null {
   if (raw === undefined) return null;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new AddError("--vars must be a JSON object of variable values", "invalid-vars");
+    parsed = readJsonFlag("--vars", raw);
+  } catch (error: unknown) {
+    throw new AddError(
+      `--vars must be a JSON object of variable values (${error instanceof Error ? error.message : String(error)})`,
+      "invalid-vars",
+    );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new AddError("--vars must be a JSON object of variable values", "invalid-vars");
@@ -239,6 +310,34 @@ function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): st
   }
 }
 
+// A registry that a received hyperframes.json names serves files that came from its sender; a config that cannot be
+// read is not proven to be the person's own.
+function fromReceivedRegistry(projectDir: string, registry: string): boolean {
+  if (readProjectConfigWithStatus(projectDir).status === "unreadable") return true;
+  return !isPublicRegistry(registry) && receivedFiles(projectDir)(PROJECT_CONFIG_FILENAME);
+}
+
+const PLAIN_WRITES = { guard: (_: string, write: () => void) => write(), undo: () => {} };
+
+// Lists each file as received just before it is written; undo() takes back what this install listed that is not on disk.
+function receivedWrites(root: string): typeof PLAIN_WRITES {
+  const listedHere: string[] = [];
+  return {
+    guard(destPath: string, write: () => void) {
+      listedHere.push(
+        ...recordReceivedFiles(root, [relative(root, destPath).split(sep).join("/")]),
+      );
+      write();
+    },
+    undo() {
+      forgetReceivedFiles(
+        root,
+        listedHere.filter((path) => !existsSync(join(root, path))),
+      );
+    },
+  };
+}
+
 // Install a topologically-ordered plan (dependencies first, requested item
 // last). Every item is fetched and checked before any is written, so a refusal
 // or failed fetch anywhere in the plan writes nothing. Returns all written paths.
@@ -249,6 +348,8 @@ async function installAll(
   force: boolean,
   requestedName: string,
   variableValues: Record<string, unknown> | null,
+  installDirs: string[],
+  received: boolean,
 ): Promise<{
   written: string[];
   preserved: string[];
@@ -259,6 +360,7 @@ async function installAll(
   const preserved: string[] = [];
   let variablesApplied: string[] = [];
   let variablesUnknown: string[] = [];
+  const writes = received ? receivedWrites(registryRoot(destDir)) : PLAIN_WRITES;
   try {
     const prepared: PreparedItem[] = [];
     for (const planItem of installPlan) {
@@ -270,11 +372,12 @@ async function installAll(
           // Only the item the user named. A dependency dragged in behind it never
           // declared these variables and must not be rewritten by them.
           variableValues: planItem.name === requestedName ? variableValues : null,
+          installDirs,
         }),
       );
     }
     for (const [i, planItem] of installPlan.entries()) {
-      const result = publishItem(prepared[i]!);
+      const result = publishItem(prepared[i]!, writes.guard);
       written.push(...result.written);
       preserved.push(...result.preserved);
       if (planItem.name === requestedName) {
@@ -283,6 +386,7 @@ async function installAll(
       }
     }
   } catch (err) {
+    writes.undo();
     if (isProjectRootMissing(err)) throw err;
     if (err instanceof InvalidVariableValuesError) throw new AddError(err.message, "invalid-vars");
     throw new AddError(describeInstallFailure(err, baseUrl), "install-failed");
@@ -360,6 +464,14 @@ export async function addToProject(
       "example-type",
     );
   }
+  // An example lays out a whole project, so the installer trusts it with the root; a block may not bring one along.
+  const exampleDependency = resolved.find((dep) => dep.type === "hyperframes:example");
+  if (exampleDependency) {
+    throw new AddError(
+      `"${item.name}" depends on the example "${exampleDependency.name}", which \`add\` does not install.`,
+      "example-type",
+    );
+  }
 
   // 3. Compatibility-gate every item we're about to install (dependencies
   //    included) before writing anything.
@@ -383,6 +495,8 @@ export async function addToProject(
     opts.force ?? false,
     item.name,
     variableValues,
+    [config.paths.blocks, config.paths.components, config.paths.assets],
+    fromReceivedRegistry(projectDir, config.registry),
   );
 
   // Report what landed, not what was asked for: a failed install throws above,
@@ -454,7 +568,8 @@ export default defineCommand({
       type: "positional",
       description:
         "Registry item name or tag. Single items install directly (e.g. shader-wipe). " +
-        "If the name matches a tag instead, all blocks with that tag are installed (e.g. html-in-canvas, captions).",
+        "If the name matches a tag instead, all blocks with that tag are installed (e.g. html-in-canvas, captions). " +
+        "Give several names to install each of them in one call.",
       required: true,
     },
     dir: {
@@ -478,7 +593,7 @@ export default defineCommand({
     vars: {
       type: "string",
       description:
-        "JSON of variable values to bake into the printed snippet, as copied from a catalog page",
+        "JSON of variable values to bake into the printed snippet, as copied from a catalog page; or a JSON file path, or - for stdin",
     },
     force: {
       type: "boolean",
@@ -496,7 +611,40 @@ export default defineCommand({
     const json = args.json === true;
     const skipClipboard = args.clipboard === false;
 
+    if (!existsSync(projectDir)) {
+      failCaught(
+        new Error(
+          `Project folder not found: ${projectDir}. --dir is the project root, not where the block lands (that is its compositions/ folder), and it must already exist. Create one with \`hyperframes init ${JSON.stringify(args.dir)}\`.`,
+        ),
+        json,
+        c.error,
+      );
+    }
+
     const hasConfigBefore = existsSync(projectConfigPath(projectDir));
+
+    const names = Array.isArray(args._) && args._.length > 1 ? args._.map(String) : [args.name];
+    if (names.length > 1) {
+      if (!json) {
+        console.log("");
+        console.log(`${c.accent("◆")} Installing ${c.accent(String(names.length))} items`);
+      }
+      const { results, errors } = await installEach(names, {
+        projectDir,
+        force: args.force,
+        vars: args.vars,
+        json,
+      });
+      if (json) {
+        console.log(JSON.stringify(severalAddJson(results, errors)));
+      } else {
+        console.log("");
+        const summary = `Installed ${results.length}/${names.length} items`;
+        console.log(`${errors.length > 0 ? c.error("✗") : c.success("✓")} ${summary}`);
+      }
+      if (errors.length > 0) failCommand();
+      return;
+    }
 
     // Try single item first. If it fails, check if the name matches a tag.
     try {
@@ -515,33 +663,37 @@ export default defineCommand({
       }
 
       if (wroteConfig) {
-        console.log(c.dim(`Wrote default ${projectConfigPath(projectDir)}`));
+        console.log(c.dim(`Wrote default ${terminalText(projectConfigPath(projectDir))}`));
       }
       for (const warning of result.warnings) {
-        console.warn(c.warn(`Warning: ${warning}`));
+        console.warn(c.warn(`Warning: ${terminalText(warning)}`));
       }
       console.log("");
-      console.log(`${c.success("✓")} Added ${c.accent(result.name)} (${result.type})`);
+      console.log(
+        `${c.success("✓")} Added ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
+      );
       const root = realpath(projectDir);
       for (const file of result.preserved) {
         console.log(
-          `  ${c.warn("kept")} ${relative(root, file) || file} — you have edited this; --force to overwrite`,
+          `  ${c.warn("kept")} ${terminalText(relative(root, file) || file)} — you have edited this; --force to overwrite`,
         );
       }
 
       for (const file of result.written) {
-        console.log(`  ${c.dim(relative(root, file))}`);
+        console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
       }
       if (result.variablesApplied.length > 0) {
         // Say it out loud. A component's values are baked into the file rather
         // than shown in the snippet, so without this the command looks
         // identical whether --vars worked or was thrown away.
-        console.log(`  ${c.dim(`variables applied: ${result.variablesApplied.join(", ")}`)}`);
+        console.log(
+          `  ${c.dim(`variables applied: ${terminalText(result.variablesApplied.join(", "))}`)}`,
+        );
       }
       if (result.snippet) {
         console.log("");
         console.log(c.dim("Include snippet:"));
-        console.log(`  ${result.snippet}`);
+        console.log(`  ${terminalText(result.snippet)}`);
         console.log("");
         console.log(
           result.clipboardCopied
@@ -552,10 +704,7 @@ export default defineCommand({
     } catch (singleErr) {
       // Not a single item — try as a tag for bulk install
       if (!(singleErr instanceof AddError) || singleErr.code !== "unknown-item") {
-        const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
-        if (json) console.log(JSON.stringify({ ok: false, error: msg }));
-        else console.error(c.error(msg));
-        failCommand();
+        failCaught(singleErr, json, registryError);
       }
 
       let config = loadProjectConfig(projectDir);
@@ -575,41 +724,20 @@ export default defineCommand({
       }
 
       if (items.length === 0) {
-        const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
-        if (json) console.log(JSON.stringify({ ok: false, error: msg }));
-        else console.error(c.error(msg));
-        failCommand();
+        failCaught(singleErr, json, registryError);
       }
 
       if (!json) {
         console.log("");
         console.log(
-          `${c.accent("◆")} Installing ${c.accent(String(items.length))} blocks tagged ${c.accent(args.name)}`,
+          `${c.accent("◆")} Installing ${c.accent(String(items.length))} blocks tagged ${c.accent(terminalText(args.name))}`,
         );
       }
 
-      const results: RunAddResult[] = [];
-      const errors: Array<{ name: string; error: string }> = [];
-      for (const item of items) {
-        try {
-          const result = await runAdd({
-            name: item.name,
-            projectDir,
-            skipClipboard: true,
-            force: args.force,
-            vars: args.vars,
-          });
-          results.push(result);
-          for (const warning of result.warnings) {
-            if (!json) console.log(`  ${c.warn("Warning:")} ${warning}`);
-          }
-          if (!json) console.log(`  ${c.success("✓")} ${result.name}`);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          errors.push({ name: item.name, error: reason });
-          if (!json) console.log(`  ${c.error("✗")} ${item.name} (skipped: ${reason})`);
-        }
-      }
+      const { results, errors } = await installEach(
+        items.map((item) => item.name),
+        { projectDir, force: args.force, vars: args.vars, json },
+      );
 
       if (json) {
         console.log(JSON.stringify(tagAddJson(args.name, results, errors)));

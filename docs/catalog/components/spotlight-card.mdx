@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Spotlight Card</h1>
+  <p>A card with a scripted cursor spotlight and lit border.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/spotlight-card.json"
   compositionId="spotlight-card"
   compositionSrc="compositions/components/spotlight-card.html"
   title="Spotlight Card"
-  description="A card with a scripted cursor spotlight and lit border."
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":105}}
   attribution={{"path":"registry/components/spotlight-card","tags":["effect"]}}
@@ -140,7 +144,9 @@ That writes one file: `compositions/components/spotlight-card.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -160,6 +166,4 @@ Tagged `effect`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

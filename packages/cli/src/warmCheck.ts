@@ -1,3 +1,5 @@
+import "./utils/hideChildConsoles.js";
+import "./utils/windowsExeSearch.js";
 import { randomBytes } from "node:crypto";
 import { unlinkSync } from "node:fs";
 import { connect, createServer, type Socket } from "node:net";
@@ -11,18 +13,19 @@ import {
   frameForwarder,
   frameReader,
   keyed,
+  parseWarmServerArgs,
   sameProof,
   warmCheckEndpoint,
   type WarmRequest,
 } from "./warmCheckProtocol.js";
 
-const [idleMs = "0", ...checkArgs] = process.argv.slice(2);
+const { idleMs, checkArgs } = parseWarmServerArgs(process.argv.slice(2));
 const endpoint = warmCheckEndpoint();
 if (!endpoint) process.exit(0);
 const { address, token } = endpoint;
 const startDigest = envDigest(token, process.env);
 const exit = process.exit.bind(process);
-const idle = setTimeout(() => exit(0), Number(idleMs));
+const idle = setTimeout(() => exit(0), idleMs);
 registerRootExitRequester(exit);
 let listening = false;
 let served: Socket | undefined;

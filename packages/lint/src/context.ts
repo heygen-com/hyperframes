@@ -1,4 +1,4 @@
-import { mappedHtmlSource, sourcePosition, type SourceLocation } from "./sourceCoordinates";
+import { mappedHtmlSource, sourcePositions, type SourceLocation } from "./sourceCoordinates";
 import type { HyperframeLintFinding, HyperframeLinterOptions } from "./types";
 import { parseHtmlStructure, findRootTag, collectCompositionIds, readDecodedAttr } from "./utils";
 import type { OpenTag, ExtractedBlock } from "./utils";
@@ -64,19 +64,33 @@ export function buildLintContext(html: string, options: HyperframeLinterOptions 
       rootRelativePath: style.rootRelativePath,
     })),
   ];
-  const scripts = structure.scripts;
+  const scripts = [
+    ...structure.scripts,
+    ...(options.externalScripts ?? []).map((script) => ({
+      attrs: script.attrs,
+      content: script.content,
+      raw: script.content,
+      index: -1,
+      file: script.file,
+      rootRelativePath: script.rootRelativePath,
+    })),
+  ];
   const compositionIds = collectCompositionIds(tags);
   const rootTag = findRootTag(source, tags);
   const rootCompositionId = readDecodedAttr(rootTag?.raw || "", "data-composition-id");
 
+  const rawPosition = sourcePositions(rawSource);
+  const blockPositions = new WeakMap<ExtractedBlock, ReturnType<typeof sourcePositions>>();
   const locate = (block: ExtractedBlock, offset: number | undefined): SourceLocation => {
     if (offset === undefined || offset < 0 || offset > block.content.length) return {};
-    if (block.index === -1) return sourcePosition(block.content, offset, block.file);
+    if (block.index === -1) {
+      let position = blockPositions.get(block);
+      if (!position) blockPositions.set(block, (position = sourcePositions(block.content)));
+      return position(offset, block.file);
+    }
     if (block.contentStart === undefined) return {};
     const originalOffset = mapped.originalOffset(sourceStart + block.contentStart + offset);
-    return originalOffset === undefined
-      ? {}
-      : sourcePosition(rawSource, originalOffset, options.filePath);
+    return originalOffset === undefined ? {} : rawPosition(originalOffset, options.filePath);
   };
   return {
     locate,

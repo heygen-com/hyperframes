@@ -40,11 +40,11 @@ Gemini is an explicit alternative to the automatic provider order below. A
 request to use Gemini already chooses the provider; do not redirect that user
 to HeyGen sign-in. Read the Gemini section for its credential requirement.
 
-| Order | Provider          | Env trigger                                                          | Voice IDs                                                                                  | Word timestamps                           | Audio format         |
-| ----- | ----------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------- | -------------------- |
-| 1     | HeyGen (Starfish) | `$HEYGEN_ACCESS_TOKEN` / `$HEYGEN_API_KEY` / `~/.heygen/credentials` | UUIDs from `GET /v3/voices?engine=starfish`, or your cloned voice ids (`heygen-voice.mjs`) | **Yes** (`word_timestamps[]` in response) | mp3 → wav via ffmpeg |
-| 2     | ElevenLabs        | `$ELEVENLABS_API_KEY`                                                | UUIDs from elevenlabs.io dashboard                                                         | No                                        | mp3 → wav via ffmpeg |
-| 3     | Kokoro-82M        | always (local fallback)                                              | `am_michael`, `af_heart`, … (54 voices)                                                    | No                                        | wav direct           |
+| Order | Provider          | Env trigger                                                               | Voice IDs                                                                                  | Word timestamps                           | Audio format         |
+| ----- | ----------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------- | -------------------- |
+| 1     | HeyGen (Starfish) | `$HEYGEN_ACCESS_TOKEN` / `$HEYGEN_API_KEY` / `~/.hyperframes/credentials` | UUIDs from `GET /v3/voices?engine=starfish`, or your cloned voice ids (`heygen-voice.mjs`) | **Yes** (`word_timestamps[]` in response) | mp3 → wav via ffmpeg |
+| 2     | ElevenLabs        | `$ELEVENLABS_API_KEY`                                                     | UUIDs from elevenlabs.io dashboard                                                         | No                                        | mp3 → wav via ffmpeg |
+| 3     | Kokoro-82M        | always (local fallback)                                                   | `am_michael`, `af_heart`, … (54 voices)                                                    | No                                        | wav direct           |
 
 ```bash
 # Local Kokoro CLI
@@ -59,26 +59,29 @@ the skill's bundled script, which calls the HeyGen v3 REST API directly and need
 no CLI provider plumbing:
 
 The script resolves a HeyGen credential the same way the CLI does — first source
-wins: a host-injected OAuth `$HEYGEN_ACCESS_TOKEN` → `$HEYGEN_API_KEY` →
-`$HYPERFRAMES_API_KEY` → a project `.env` (auto-loaded,
-walks up ≤5 dirs) → `~/.heygen/credentials` (shared with heygen-cli;
-`$HEYGEN_CONFIG_DIR` overrides the dir). An OAuth login is sent as
-`Authorization: Bearer`; an API key as `X-Api-Key`; both include
-`X-HeyGen-Source: cli`. OAuth CLI users can consume the web-plan free allowance
-(10 min/month) before paid usage; API keys follow normal API billing. If the
-only credential is an expired OAuth token it stops with a hint to run
-`npx hyperframes auth refresh`.
+wins: a host-injected OAuth `$HEYGEN_ACCESS_TOKEN` → an unexpired login in
+`~/.hyperframes/credentials` → `$HEYGEN_API_KEY` → `$HYPERFRAMES_API_KEY` set in
+the shell → an API key saved in `~/.hyperframes/credentials` → a key from a
+project `.env` (auto-loaded, walks up ≤5 dirs), used only when nothing is saved
+(credentials isolated from heygen-cli;
+`$HYPERFRAMES_CONFIG_DIR` overrides the root; `HYPERFRAMES_ENV=dev` uses `dev/`). An OAuth login is sent as
+`Authorization: Bearer`; an API key as `X-Api-Key`; only OAuth includes
+`X-HeyGen-Source: cli`. The server decides HyperFrames eligibility and charges;
+explicit API keys use API billing. An expired or foreign OAuth session gives way
+to a key set in the shell, never to a project `.env` key; without one it stops
+rather than selecting a saved API key, with a hint to run `npx hyperframes auth refresh`
+(or `auth login` for a session from another OAuth client).
 
 ```bash
 # Only needed if you haven't run `npx hyperframes auth login`:
-export HEYGEN_API_KEY=...   # or put it in a project .env
+export HEYGEN_API_KEY=...   # a project .env key is used only when nothing is saved
 
 # Synthesize + capture word timestamps in one call (skips a Whisper pass)
-node skills/media-use/audio/scripts/heygen-tts.mjs \
+node <SKILL_DIR>/audio/scripts/heygen-tts.mjs \
   "Welcome to HyperFrames." -o narration.wav --words narration.words.json
 
-node skills/media-use/audio/scripts/heygen-tts.mjs ./script.txt -o narration.wav
-node skills/media-use/audio/scripts/heygen-tts.mjs --list   # public starfish voices
+node <SKILL_DIR>/audio/scripts/heygen-tts.mjs ./script.txt -o narration.wav
+node <SKILL_DIR>/audio/scripts/heygen-tts.mjs --list   # public starfish voices
 ```
 
 - **Voice:** `--voice <id>` must be a **starfish** voice_id (`--list`, or `GET /v3/voices?engine=starfish`) or one of your cloned voice ids (below). v2-catalog ids are rejected with HTTP 400. Omit `--voice` (English) and it defaults to **Marcia** (`05f19352e8f74b0392a8f411eba40de1`, a fixed default so the choice is deterministic). Non-English with no `--voice` falls back to the first matching catalog voice.
@@ -94,9 +97,9 @@ Clone a voice from an mp3 or wav recording, then pass the printed id to
 message to stderr and exits 1.
 
 ```bash
-node skills/media-use/audio/scripts/heygen-voice.mjs clone take.mp3 --name "My voice"  # → {"voice_id":"..."}
-node skills/media-use/audio/scripts/heygen-voice.mjs list --prefix "My"   # → [{"voice_id","name","created_at"}]
-node skills/media-use/audio/scripts/heygen-voice.mjs delete <voice_id>
+node <SKILL_DIR>/audio/scripts/heygen-voice.mjs clone take.mp3 --name "My voice"  # → {"voice_id":"..."}
+node <SKILL_DIR>/audio/scripts/heygen-voice.mjs list --prefix "My"   # → [{"voice_id","name","created_at"}]
+node <SKILL_DIR>/audio/scripts/heygen-voice.mjs delete <voice_id>
 ```
 
 `clone` waits up to 120 s for the clone to finish. `list` reads

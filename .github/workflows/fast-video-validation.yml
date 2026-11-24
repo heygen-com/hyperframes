@@ -46,8 +46,8 @@ jobs:
           file: Dockerfile.test
           load: true
           tags: hyperframes-producer:test
+          # regression.yml owns this cache's writes.
           cache-from: type=gha,scope=regression-test-image
-          cache-to: type=gha,mode=max,scope=regression-test-image
 
       - name: Validate fast-capture video (drawElement + BeginFrame)
         run: |

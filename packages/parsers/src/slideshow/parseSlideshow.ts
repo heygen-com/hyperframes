@@ -35,12 +35,30 @@ interface SceneRange {
   duration: number;
 }
 
+const ISLAND_TYPE_ATTR = new RegExp(
+  `type[\\t\\n\\f\\r ]*=[\\t\\n\\f\\r ]*["']${SLIDESHOW_ISLAND_TYPE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`,
+  "i",
+);
+
+/** Group 1 of `slideshowIslandRegex("i").exec(html)`, reading each `<script` start tag once instead of backtracking per opener. */
+function slideshowIslandJson(html: string): string | null {
+  for (const tag of html.matchAll(/<script[^>]*>?/gi)) {
+    if (!tag[0].endsWith(">")) return null;
+    if (!ISLAND_TYPE_ATTR.test(tag[0])) continue;
+    const bodyStart = tag.index + tag[0].length;
+    const close = /<\/script>/gi;
+    close.lastIndex = bodyStart;
+    const end = close.exec(html);
+    return end ? html.slice(bodyStart, end.index) : null;
+  }
+  return null;
+}
+
 /** Extract the JSON island from composition HTML. Returns null if absent. */
 export function parseSlideshowManifest(html: string): SlideshowManifest | null {
-  const re = slideshowIslandRegex("i");
-  const match = re.exec(html);
-  if (!match || match[1] === undefined) return null;
-  const raw = match[1].trim();
+  const island = slideshowIslandJson(html);
+  if (island === null) return null;
+  const raw = island.trim();
   if (raw.length === 0) return null;
   const parsed: unknown = JSON.parse(raw);
   if (!isManifest(parsed)) {
@@ -51,6 +69,10 @@ export function parseSlideshowManifest(html: string): SlideshowManifest | null {
 
 function isOptionalNumberArray(v: unknown): boolean {
   return v === undefined || (Array.isArray(v) && v.every((n) => typeof n === "number"));
+}
+
+function isOptionalFiniteNumber(v: unknown): v is number | undefined {
+  return v === undefined || (typeof v === "number" && Number.isFinite(v));
 }
 
 function isOptionalBoolean(v: unknown): v is boolean | undefined {
@@ -84,6 +106,7 @@ function isSlideRef(v: unknown): v is SlideRef {
   if (!isRecord(v)) return false;
   const r = v;
   if (typeof r["sceneId"] !== "string") return false;
+  if (![r["startTime"], r["endTime"]].every(isOptionalFiniteNumber)) return false;
   if (!isOptionalNumberArray(r["fragments"])) return false;
   if (
     r["hotspots"] !== undefined &&

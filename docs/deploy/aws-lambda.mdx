@@ -74,7 +74,7 @@ CLI versions reserved 8 by default, so they stay at 8 until you pass
 `--concurrency=N`. Pass `--concurrency=none` to remove the reservation so each
 render sizes itself to the account.
 
-`deploy` records the stack's bucket and state machine in `.hyperframes/lambda-stack-<stack-name>.json` under the current directory. Every other `lambda` command reads that file, so run them from the same directory with the same `--stack-name`, or they stop with "no stack state". Redeploying to upgrade rewrites the same file.
+`deploy` records the stack's bucket and state machine in `.hyperframes/lambda-stack-<stack-name>.json` under the current directory. Every other `lambda` command reads that file, so run them from the same directory with the same `--stack-name`, or they stop with "no stack state". Redeploying to upgrade rewrites the same file. The commands check the file's fields, and they refuse a file that is a symlink. Uploads go only to a bucket owned by the AWS account of the file's state machine, so a state file in a project someone sent you cannot send the project to their bucket.
 
 After `deploy`, render anything with:
 
@@ -104,7 +104,7 @@ The stack's bucket expires objects under `cas/sha256/` 30 days after they were l
 
 #### Upgrading from a version that deployed x86 only
 
-`lambda deploy` now runs the plan and the render chunks on an arm64 container-image function by default; audio and assemble stay on the x86 function. Redeploying an existing stack without `--video-arch` moves it to arm64 and adds the `<stack>-video` ECR repository. To keep a stack on x86, pass `--video-arch x86_64` on every deploy. `--chrome-source chrome-headless-shell` also needs `--video-arch x86_64`, because the arm64 image bundles sparticuz Chrome only.
+`lambda deploy` now runs the plan and the render chunks on an arm64 container-image function by default; audio and assemble stay on the x86 function. Redeploying an existing stack without `--video-arch` moves it to arm64 and adds the `<stack>-video` ECR repository. To keep a stack on x86, pass `--video-arch x86_64` on every deploy. `--chrome-source chrome-headless-shell` also needs `--video-arch x86_64`, because the arm64 image is built from the sparticuz handler ZIP. The arm64 image itself runs Chrome for Testing's linux-arm64 `chrome-headless-shell`, whatever `--chrome-source` says.
 
 #### Upgrading from a version before shared content storage
 

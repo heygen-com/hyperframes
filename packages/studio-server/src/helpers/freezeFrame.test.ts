@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 import { parseHTML } from "linkedom";
 import {
   applyFreezeFrameToHtml,
@@ -68,6 +69,7 @@ describe("freezeExtractArgs", () => {
       "-y",
       "-ss",
       "7.2",
+      ...MEDIA_INPUT_ARGS,
       "-i",
       "/p/a.mp4",
       "-frames:v",
@@ -161,6 +163,14 @@ describe("applyFreezeFrameToHtml", () => {
         .document.querySelector("[data-composition-id]")
         ?.getAttribute("data-duration"),
     ).toBe("11");
+  });
+
+  it("keeps a lane clip's grade group on the still, so the still is graded with its lane", () => {
+    const graded = applyFreezeFrameToHtml(
+      project.replace('id="talk"', 'id="talk" data-color-group="cam-a"'),
+      { target: { id: "talk" }, playhead: 3.2, imageSrc: "assets/freeze/talk-3200.png" },
+    );
+    expect(at(graded?.html ?? "", "talk-freeze")?.getAttribute("data-color-group")).toBe("cam-a");
   });
 
   it("returns null when the playhead is not inside the video", () => {

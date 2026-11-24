@@ -91,7 +91,8 @@
     return `${selectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
   }
 
-  function uniqueSelectorFor(element) {
+  function uniqueSelectorFor(subject) {
+    const element = authoredElement(subject);
     const preferred = selectorFor(element);
     try {
       if (document.querySelectorAll(preferred).length === 1) return preferred;
@@ -124,6 +125,10 @@
 
   function hasAllowCaptionZoneFlag(element) {
     return !!authoredElement(element).closest("[data-layout-allow-caption-zone]");
+  }
+
+  function hasAllowSafeZoneFlag(element) {
+    return !!authoredElement(element).closest("[data-layout-allow-safe-zone]");
   }
 
   function hasTextClipOptOut(element) {
@@ -196,16 +201,13 @@
   function isVisibleElement(element, opacityFloor, probeClipPath) {
     if (IGNORE_TAGS.has(element.tagName)) return false;
     if (hasIgnoreFlag(element)) return false;
-    if (
-      opacityFloor != null &&
-      typeof element.checkVisibility === "function" &&
-      !element.checkVisibility({
-        opacityProperty: true,
-        visibilityProperty: true,
-        contentVisibilityAuto: true,
-      })
-    ) {
-      return false;
+    if (typeof element.checkVisibility === "function") {
+      // Without a floor the plain call still drops content the page does not render, such as a closed <details>.
+      const options =
+        opacityFloor != null
+          ? { opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true }
+          : {};
+      if (!element.checkVisibility(options)) return false;
     }
     const style = getComputedStyle(element);
     if (
@@ -287,32 +289,297 @@
     });
   }
 
+  function cropRect(rect, region) {
+    const left = Math.max(rect.left, region.left);
+    const right = Math.min(rect.right, region.right);
+    const top = Math.max(rect.top, region.top);
+    const bottom = Math.min(rect.bottom, region.bottom);
+    if (right - left <= 0.5 || bottom - top <= 0.5) return null;
+    return toRect({ left, right, top, bottom, width: right - left, height: bottom - top });
+  }
+
+  function overflowRegion(ancestor, style) {
+    const clipX = clipsOverflowValue(style.overflowX || style.overflow);
+    const clipY = clipsOverflowValue(style.overflowY || style.overflow);
+    if (!clipX && !clipY) return null;
+    const box = ancestor.getBoundingClientRect();
+    return {
+      left: clipX ? box.left : -Infinity,
+      right: clipX ? box.right : Infinity,
+      top: clipY ? box.top : -Infinity,
+      bottom: clipY ? box.bottom : Infinity,
+    };
+  }
+
   function visibleTextClientRects(element, directOnly) {
-    // Range rects stay geometrically present outside an overflow clip. Reduce
-    // them in viewport coordinates so overlap measures only paintable text.
+    // Range rects stay geometrically present outside an overflow clip, a clip-path or a mask.
+    // Reduce them in viewport coordinates so overlap measures only paintable text.
     let rects = textClientRects(element, directOnly).map(toRect);
-    for (
-      let ancestor = element.parentElement;
-      ancestor && rects.length > 0;
-      ancestor = ancestor.parentElement
-    ) {
-      const style = getComputedStyle(ancestor);
-      const clipX = clipsOverflowValue(style.overflowX || style.overflow);
-      const clipY = clipsOverflowValue(style.overflowY || style.overflow);
-      if (!clipX && !clipY) continue;
-      const clip = toRect(ancestor.getBoundingClientRect());
-      rects = rects
-        .map((rect) => {
-          const left = clipX ? Math.max(rect.left, clip.left) : rect.left;
-          const right = clipX ? Math.min(rect.right, clip.right) : rect.right;
-          const top = clipY ? Math.max(rect.top, clip.top) : rect.top;
-          const bottom = clipY ? Math.min(rect.bottom, clip.bottom) : rect.bottom;
-          if (right - left <= 0.5 || bottom - top <= 0.5) return null;
-          return toRect({ left, right, top, bottom, width: right - left, height: bottom - top });
-        })
-        .filter(Boolean);
+    for (let node = element; node && rects.length > 0; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const regions = [
+        node === element ? null : overflowRegion(node, style),
+        clipPathRegion(node, style),
+        maskRegion(node, style),
+      ].filter(Boolean);
+      for (const region of regions) {
+        rects = rects.map((rect) => cropRect(rect, region)).filter(Boolean);
+      }
     }
     return rects;
+  }
+
+  // Lengths in a clip-path or a gradient resolve against the border box; a scale transform scales them.
+  function lengthIn(value, size, scale) {
+    const text = String(value).trim();
+    const number = Number.parseFloat(text);
+    if (!Number.isFinite(number)) return Number.NaN;
+    if (text.endsWith("%")) return (size * number) / 100;
+    return text.endsWith("px") || number === 0 ? number * scale : Number.NaN;
+  }
+
+  function boxFrame(node) {
+    const box = node.getBoundingClientRect();
+    const scale = node.offsetWidth > 0 ? box.width / node.offsetWidth : 1;
+    return { box, scale };
+  }
+
+  function insideParens(value, name) {
+    const match = new RegExp(`^${name}\\((.*)\\)$`).exec(value.trim());
+    return match ? match[1] : null;
+  }
+
+  function topLevelSplit(text, separator) {
+    const parts = [];
+    let depth = 0;
+    let start = 0;
+    for (let index = 0; index < text.length; index++) {
+      const char = text[index];
+      if (char === "(") depth++;
+      else if (char === ")") depth--;
+      else if (depth === 0 && char === separator) {
+        parts.push(text.slice(start, index).trim());
+        start = index + 1;
+      }
+    }
+    parts.push(text.slice(start).trim());
+    return parts.filter((part) => part.length > 0);
+  }
+
+  function ellipseRegion(center, radii) {
+    return {
+      left: center.x - radii.x,
+      right: center.x + radii.x,
+      top: center.y - radii.y,
+      bottom: center.y + radii.y,
+    };
+  }
+
+  function centerAt(position, frame) {
+    const [x = "50%", y = "50%"] = position ? position.trim().split(/\s+/) : [];
+    const { box, scale } = frame;
+    return {
+      x: box.left + lengthIn(x === "center" ? "50%" : x, box.width, scale),
+      y: box.top + lengthIn(y === "center" ? "50%" : y, box.height, scale),
+    };
+  }
+
+  // The bounds a clip-path lets paint, or null when its shape is not one read here (painting is then assumed).
+  function clipPathRegion(node, style) {
+    const value = style.clipPath;
+    if (!value || value === "none") return null;
+    const frame = boxFrame(node);
+    const { box, scale } = frame;
+    const inset = insideParens(value, "inset");
+    if (inset !== null) {
+      const sides = inset
+        .split(/\s+round\s+/)[0]
+        .trim()
+        .split(/\s+/);
+      const [top, right = top, bottom = top, left = right] = sides;
+      const region = {
+        top: box.top + lengthIn(top, box.height, scale),
+        right: box.right - lengthIn(right, box.width, scale),
+        bottom: box.bottom - lengthIn(bottom, box.height, scale),
+        left: box.left + lengthIn(left, box.width, scale),
+      };
+      return Object.values(region).every(Number.isFinite) ? region : null;
+    }
+    const polygon = insideParens(value, "polygon");
+    if (polygon !== null) {
+      const points = topLevelSplit(polygon, ",")
+        .filter((point) => !/^(nonzero|evenodd)$/.test(point))
+        .map((point) => {
+          const [x, y] = point.split(/\s+/);
+          return {
+            x: box.left + lengthIn(x, box.width, scale),
+            y: box.top + lengthIn(y, box.height, scale),
+          };
+        });
+      if (points.length === 0 || !points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)))
+        return null;
+      const xs = points.map((p) => p.x);
+      const ys = points.map((p) => p.y);
+      return {
+        left: Math.min(...xs),
+        right: Math.max(...xs),
+        top: Math.min(...ys),
+        bottom: Math.max(...ys),
+      };
+    }
+    for (const shape of ["circle", "ellipse"]) {
+      const args = insideParens(value, shape);
+      if (args === null) continue;
+      const [size, position] = args.split(/\s+at\s+/);
+      const lengths = size.trim().split(/\s+/);
+      const rx = lengthIn(lengths[0], box.width, scale);
+      const ry =
+        shape === "circle"
+          ? lengthIn(lengths[0], box.width, scale)
+          : lengthIn(lengths[1], box.height, scale);
+      const center = centerAt(position, frame);
+      return [rx, ry, center.x, center.y].every(Number.isFinite)
+        ? ellipseRegion(center, { x: rx, y: ry })
+        : null;
+    }
+    return null;
+  }
+
+  const MASK_PAINT_ALPHA = 0.35;
+  // Every colour function a computed style or gradient can hold; colorAlpha reads its alpha.
+  const COLOR_FN = "(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\\([^()]*\\)";
+  let colorProbe;
+
+  function colorAlphaOf(color) {
+    colorProbe = colorProbe || document.createElement("canvas").getContext("2d");
+    colorProbe.fillStyle = "#000";
+    colorProbe.fillStyle = color;
+    return colorAlpha(colorProbe.fillStyle);
+  }
+
+  // Gradient stops as [offset 0-1, alpha]; missing offsets are spread evenly, as the browser does.
+  function gradientStops(parts, length, scale) {
+    const stops = [];
+    for (const part of parts) {
+      const match = /^((?:[a-z-]+\([^)]*\))|#[0-9a-f]+|[a-z]+)\s*(.*)$/i.exec(part);
+      if (!match) return null;
+      const alpha = colorAlphaOf(match[1]);
+      const offsets = match[2].trim() ? match[2].trim().split(/\s+/) : [null];
+      for (const offset of offsets) {
+        const at = offset === null ? null : lengthIn(offset, length, scale) / length;
+        if (at !== null && !Number.isFinite(at)) return null;
+        stops.push({ at, alpha });
+      }
+    }
+    if (stops.length === 0) return null;
+    if (stops[0].at === null) stops[0].at = 0;
+    if (stops.at(-1).at === null) stops.at(-1).at = 1;
+    for (let index = 1; index < stops.length; index++) {
+      if (stops[index].at === null) {
+        let next = index;
+        while (stops[next].at === null) next++;
+        const from = stops[index - 1].at;
+        const step = (stops[next].at - from) / (next - index + 1);
+        for (let fill = index; fill < next; fill++)
+          stops[fill].at = from + step * (fill - index + 1);
+      }
+      stops[index].at = Math.max(stops[index].at, stops[index - 1].at);
+    }
+    return stops;
+  }
+
+  // The first and last offsets (0-1) at which the gradient paints at least MASK_PAINT_ALPHA.
+  function paintedSpan(stops) {
+    let first = Number.POSITIVE_INFINITY;
+    let last = Number.NEGATIVE_INFINITY;
+    const mark = (at) => {
+      first = Math.min(first, at);
+      last = Math.max(last, at);
+    };
+    if (stops[0].alpha >= MASK_PAINT_ALPHA) mark(Math.min(0, stops[0].at));
+    if (stops.at(-1).alpha >= MASK_PAINT_ALPHA) mark(Math.max(1, stops.at(-1).at));
+    for (let index = 0; index < stops.length; index++) {
+      const stop = stops[index];
+      if (stop.alpha >= MASK_PAINT_ALPHA) mark(stop.at);
+      const next = stops[index + 1];
+      if (!next || stop.alpha >= MASK_PAINT_ALPHA === next.alpha >= MASK_PAINT_ALPHA) continue;
+      const share = (MASK_PAINT_ALPHA - stop.alpha) / (next.alpha - stop.alpha);
+      mark(stop.at + (next.at - stop.at) * share);
+    }
+    return first <= last ? { first, last } : { first: 0, last: 0 };
+  }
+
+  const LINEAR_AXES = {
+    "to bottom": "down",
+    "180deg": "down",
+    "to top": "up",
+    "0deg": "up",
+    "to right": "right",
+    "90deg": "right",
+    "to left": "left",
+    "270deg": "left",
+  };
+
+  function linearMaskRegion(args, frame) {
+    const parts = topLevelSplit(args, ",");
+    const lead = parts[0];
+    const named = /^(to |-?[\d.]+(deg|turn|rad|grad))/.test(lead);
+    const axis = named ? LINEAR_AXES[lead.replace(/\s+/g, " ")] : "down";
+    if (!axis) return null;
+    const { box, scale } = frame;
+    const vertical = axis === "down" || axis === "up";
+    const length = vertical ? box.height : box.width;
+    const stops = gradientStops(named ? parts.slice(1) : parts, length / scale, 1);
+    if (!stops) return null;
+    const { first, last } = paintedSpan(stops);
+    const [from, to] = axis === "up" || axis === "left" ? [1 - last, 1 - first] : [first, last];
+    return vertical
+      ? {
+          left: -Infinity,
+          right: Infinity,
+          top: box.top + from * length,
+          bottom: box.top + to * length,
+        }
+      : {
+          top: -Infinity,
+          bottom: Infinity,
+          left: box.left + from * length,
+          right: box.left + to * length,
+        };
+  }
+
+  function radialMaskRegion(args, frame) {
+    const parts = topLevelSplit(args, ",");
+    const [size, position] = parts[0].split(/\s+at\s+/);
+    const lengths = size
+      .replace(/\b(ellipse|circle)\b/g, "")
+      .trim()
+      .split(/\s+/);
+    const { box, scale } = frame;
+    const rx = lengthIn(lengths[0], box.width, scale);
+    const ry = lengths.length > 1 ? lengthIn(lengths[1], box.height, scale) : rx;
+    const center = centerAt(position, frame);
+    if (![rx, ry, center.x, center.y].every(Number.isFinite) || rx <= 0 || ry <= 0) return null;
+    const stops = gradientStops(parts.slice(1), rx / scale, 1);
+    if (!stops || stops.at(-1).alpha >= MASK_PAINT_ALPHA) return null;
+    const { last } = paintedSpan(stops);
+    return ellipseRegion(center, { x: rx * last, y: ry * last });
+  }
+
+  // The bounds a single-layer gradient mask paints, or null when the mask is not read here (painting is then assumed).
+  function maskRegion(node, style) {
+    const value = style.maskImage || style.webkitMaskImage;
+    if (!value || value === "none" || topLevelSplit(value, ",").length !== 1) return null;
+    const size = style.maskSize || style.webkitMaskSize || "auto";
+    if (size !== "auto" && size !== "auto auto") return null;
+    const position = (style.maskPosition || style.webkitMaskPosition || "0% 0%").trim();
+    if (!/^0(%|px)? 0(%|px)?$/.test(position)) return null;
+    if ((style.maskOrigin || style.webkitMaskOrigin || "border-box") !== "border-box") return null;
+    const frame = boxFrame(node);
+    const linear = insideParens(value, "linear-gradient");
+    if (linear !== null) return linearMaskRegion(linear, frame);
+    const radial = insideParens(value, "radial-gradient");
+    return radial !== null ? radialMaskRegion(radial, frame) : null;
   }
 
   function textRectFor(element, directOnly) {
@@ -344,11 +611,7 @@
 
   function hasPaint(style) {
     const backgroundColor = style.backgroundColor || "";
-    const hasBackground =
-      backgroundColor !== "" &&
-      backgroundColor !== "transparent" &&
-      !backgroundColor.endsWith(", 0)") &&
-      backgroundColor !== "rgba(0, 0, 0, 0)";
+    const hasBackground = !isTransparentColor(backgroundColor);
     const hasImage = style.backgroundImage && style.backgroundImage !== "none";
     const hasBorder =
       parsePx(style.borderTopWidth) +
@@ -521,23 +784,11 @@
 
   function visibleTextLineRects(element, rects, style, clip, tolerance) {
     const metrics = horizontalTextMetrics(element, style);
-    const fontHeight = metrics ? metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent : 0;
-    const lineHeight = parsePx(style.lineHeight) || fontHeight;
     return rects.flatMap((rect) => {
       if (!metrics) return intersectsTextWindow(rect, clip, tolerance) ? [rect] : [];
-      const scale = rect.height / fontHeight;
-      if (!intersectsTextWindow(inkRect(rect, metrics), clip, tolerance)) return [];
-      // Negative leading belongs outside the used line box. Font metrics scale
-      // with the Range rect, so zoomed cards retain the same clipping decision.
-      const inset = Math.max(0, (rect.height - lineHeight * scale) / 2);
-      return [
-        toRect({
-          ...rect,
-          top: rect.top + inset,
-          bottom: rect.bottom - inset,
-          height: rect.height - 2 * inset,
-        }),
-      ];
+      // The glyphs' ink is what a clip cuts; a line box with negative leading hides descenders from it.
+      const ink = inkRect(rect, metrics);
+      return intersectsTextWindow(ink, clip, tolerance) ? [toRect(ink)] : [];
     });
   }
 
@@ -681,27 +932,30 @@
     return false;
   }
 
+  // Read the alpha, never the text: an opaque colour whose last channel is 0 also ends in ", 0)".
   function isTransparentColor(color) {
-    return (
-      !color || color === "transparent" || color === "rgba(0, 0, 0, 0)" || color.endsWith(", 0)")
-    );
+    return !color || colorAlpha(color) === 0;
   }
 
-  function alphaFromParts(parts, index) {
-    if (parts.length <= index) return 1;
-    const raw = parts[index].trim();
-    return raw.endsWith("%") ? parsePx(raw) / 100 : parsePx(raw);
+  function alphaValue(raw) {
+    const value = raw.trim();
+    if (/^none$/i.test(value)) return 0;
+    const alpha = Number.parseFloat(value) / (value.endsWith("%") ? 100 : 1);
+    return Number.isFinite(alpha) ? alpha : 1;
   }
 
-  // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
-  // legacy `rgba(r, g, b, a)` and modern `rgb(r g b / a)` syntaxes.
+  // Chromium retains these colour spaces in computed styles instead of converting them to RGB.
+  // Their alpha follows a slash; legacy rgba still puts it in the fourth comma-separated slot.
   function colorAlpha(color) {
-    const match = (color || "").match(/rgba?\(([^)]+)\)/);
-    if (!match) return 1;
-    const body = match[1];
-    return body.includes(",")
-      ? alphaFromParts(body.split(","), 3)
-      : alphaFromParts(body.split("/"), 1);
+    const value = (color || "").trim();
+    if (/^transparent$/i.test(value)) return 0;
+    const fn = new RegExp(COLOR_FN, "i").exec(value)?.[0];
+    if (!fn) return 1;
+    const open = fn.indexOf("(");
+    const [name, body] = [fn.slice(0, open), fn.slice(open + 1, -1)];
+    if (body.includes("/")) return alphaValue(body.slice(body.lastIndexOf("/") + 1));
+    const parts = body.split(",");
+    return parts.length === 4 && /^(rgb|hsl)a?$/i.test(name) ? alphaValue(parts[3]) : 1;
   }
 
   // A text block competes for space only when it is solid: watermark-style text
@@ -828,7 +1082,7 @@
       message: "Two text blocks overlap and may render unreadable.",
       rect: a.rect,
       fixHint:
-        "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply.",
+        "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply. Decoration nobody needs to read can take data-layout-ignore.",
     };
   }
 
@@ -907,7 +1161,9 @@
   function gradientStopCoverage(layer, backgroundSize) {
     if (!/radial-gradient/i.test(layer) || namesAColor(withoutScoredColors(layer))) return 1;
     const stops = [
-      ...layer.matchAll(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|transparent)\s+([\d.]+)(px|%)/gi),
+      ...layer.matchAll(
+        new RegExp(`(#[0-9a-fA-F]{3,8}|${COLOR_FN}|transparent)\\s+([\\d.]+)(px|%)`, "gi"),
+      ),
     ];
     const tile = pxTile(backgroundSize);
     const reach = tile ? leadingOpaqueRadius(stops, tile) : null;
@@ -973,13 +1229,15 @@
   }
 
   function gradientMaxAlpha(backgroundImage) {
-    // Any colour we cannot score (oklch/lab/named-colour fns/...) counts as opaque so real panels keep flagging.
+    // Any colour we cannot score (a named colour, an unknown function) counts as opaque so real panels keep flagging.
     const known = backgroundImage
       .replace(/(?:repeating-)?(?:linear|radial|conic)-gradient\(/gi, "(")
-      .replace(/rgba?\([^)]*\)/gi, "");
+      .replace(new RegExp(COLOR_FN, "gi"), "");
     if (/[a-z][a-z-]+\(/i.test(known)) return 1;
     if (namesAColor(known)) return 1;
-    const colors = backgroundImage.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}\b|\btransparent\b/g);
+    const colors = backgroundImage.match(
+      new RegExp(`${COLOR_FN}|#[0-9a-fA-F]{3,8}\\b|\\btransparent\\b`, "gi"),
+    );
     if (!colors) return 1;
     let max = 0;
     for (const color of colors) {
@@ -1002,7 +1260,7 @@
   }
 
   function withoutScoredColors(layer) {
-    return layer.replace(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}\b/g, " ");
+    return layer.replace(new RegExp(`${COLOR_FN}|#[0-9a-fA-F]{3,8}\\b`, "gi"), " ");
   }
 
   function namesAColor(known) {
@@ -1040,11 +1298,14 @@
       if (tokens[0] === "top" || tokens[0] === "bottom") y = tokens[0];
       else x = tokens[0];
     } else {
+      // The first token that names no side is the horizontal one, even when it is the default "50%".
+      let xGiven = false;
       for (const token of tokens) {
         if (token === "top" || token === "bottom") y = token;
-        else if (token === "left" || token === "right") x = token;
-        else if (x === "50%") x = token;
-        else y = token;
+        else if (token === "left" || token === "right" || !xGiven) {
+          x = token;
+          xGiven = true;
+        } else y = token;
       }
     }
     return { x: objectPositionOffset(x, freeX), y: objectPositionOffset(y, freeY) };
@@ -1291,13 +1552,60 @@
   // An element hides text beneath it when it paints opaque pixels at near-full
   // opacity: raster content (img/video/canvas), a background image, or a solid
   // background colour. Low-opacity overlays (grain, scrims) do not occlude.
-  function isOpaqueOccluder(element, x, y) {
+  const canvasProbe = document.createElement("canvas");
+  canvasProbe.width = 1;
+  canvasProbe.height = 1;
+
+  // The drawn alpha under the point, or null when the canvas cannot be read (then it counts as opaque).
+  function canvasAlphaAt(element, x, y) {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0 || !element.width || !element.height) return null;
+    const px = Math.min(
+      element.width - 1,
+      Math.max(0, Math.floor(((x - rect.left) / rect.width) * element.width)),
+    );
+    const py = Math.min(
+      element.height - 1,
+      Math.max(0, Math.floor(((y - rect.top) / rect.height) * element.height)),
+    );
+    try {
+      const context = canvasProbe.getContext("2d", { willReadFrequently: true });
+      if (!context) return null;
+      context.clearRect(0, 0, 1, 1);
+      context.drawImage(element, px, py, 1, 1, 0, 0, 1, 1);
+      return context.getImageData(0, 0, 1, 1).data[3] / 255;
+    } catch {
+      return null;
+    }
+  }
+
+  // A mask changes painting, not hit-testing, and its alpha is not modelled: a masked layer is never proven opaque.
+  // A mask on an ancestor of both the layer and `covered` masks them alike, so the walk stops there.
+  function hasMaskImage(layer, covered) {
+    for (
+      let current = layer;
+      current && !current.contains(covered);
+      current = current.parentElement
+    ) {
+      const style = getComputedStyle(current);
+      if ((style.maskImage || style.webkitMaskImage || "none") !== "none") return true;
+    }
+    return false;
+  }
+
+  function isOpaqueOccluder(element, x, y, covered) {
     const opacity = opacityChain(element);
     if (opacity < OCCLUDING_ALPHA) return false;
     if (IGNORE_TAGS.has(element.tagName)) return false;
+    if (hasMaskImage(element, covered)) return false;
     if (element.tagName === "IMG") {
       const alpha = imageAlphaAt(element, x, y);
       if (alpha !== null) return alpha * opacity >= OCCLUDING_ALPHA;
+    }
+    if (element.tagName === "CANVAS") {
+      const alpha = canvasAlphaAt(element, x, y);
+      if (alpha !== null)
+        return alpha * opacity >= OCCLUDING_ALPHA || hasOpaqueBackground(getComputedStyle(element));
     }
     const matte = matteFrameFor(element);
     if (matte) return matteOccludesAt(matte, x, y);
@@ -1345,6 +1653,12 @@
     return !!ctx && ctx === preserve3dContext(b);
   }
 
+  // A covering element marked to cover text, or inside a marked wrapper that does not also hold the text.
+  function allowsOcclusionOf(hit, element) {
+    const allowed = authoredElement(hit).closest("[data-layout-allow-occlusion]");
+    return !!allowed && !allowed.contains(element);
+  }
+
   // The opaque element painted over (x, y), or null when the topmost element
   // there is related to the text, non-opaque, sharing a 3D context with it, or
   // part of a transient crossfade overlap.
@@ -1360,11 +1674,12 @@
     for (const hit of stack) {
       if (!isForeignElement(element, hit)) return null;
       // Pair-specific exemptions excuse this hit only; keep walking for deeper occluders.
+      if (hasIgnoreFlag(hit) || allowsOcclusionOf(hit, element)) continue;
       if (sharedPreserve3d(element, hit)) continue;
       if (isCrossSceneTransitionOverlap(element, hit)) continue;
       const matte = seenMattes && matteFrameFor(hit);
       if (matte && !seenMattes.has(matte)) seenMattes.set(matte, hit);
-      if (isOpaqueOccluder(hit, x, y)) return hit;
+      if (isOpaqueOccluder(hit, x, y, element)) return hit;
     }
     return null;
   }
@@ -1581,6 +1896,48 @@
     return false;
   }
 
+  const COMPOSITION_HOST = "[data-composition-src], [data-composition-id], [data-composition-file]";
+
+  // The global window [start, end) the element's own timed clip is on screen, or null when any timing
+  // up the chain is not a plain number. Each timed composition host moves its children's clock to its
+  // start minus its in-point, and an in-point host cuts them to its own slot (startResolver.ts).
+  function nonNegativeNumber(value) {
+    const number = value === null || value.trim() === "" ? NaN : Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+
+  function clipLifetime(element) {
+    const own = element.closest("[data-start]");
+    if (!own) return null;
+    const start = Number(own.getAttribute("data-start"));
+    const duration = Number(own.getAttribute("data-duration"));
+    if (!Number.isFinite(start) || !(duration > 0)) return null;
+    const hosts = [];
+    for (let host = own.parentElement; host; host = host.parentElement) {
+      if (host.matches(COMPOSITION_HOST) && host.hasAttribute("data-start")) hosts.unshift(host);
+    }
+    let offset = 0;
+    let cutStart = -Infinity;
+    let cutEnd = Infinity;
+    for (const host of hosts) {
+      const hostStart = Number(host.getAttribute("data-start"));
+      if (!Number.isFinite(hostStart)) return null;
+      const inPoint =
+        nonNegativeNumber(host.getAttribute("data-playback-start")) ??
+        nonNegativeNumber(host.getAttribute("data-media-start")) ??
+        0;
+      if (inPoint > 0) {
+        const hostEnd = Number(host.getAttribute("data-end"));
+        const hostDuration = Number(host.getAttribute("data-duration")) || hostEnd - hostStart;
+        cutStart = Math.max(cutStart, offset + hostStart);
+        if (hostDuration > 0) cutEnd = Math.min(cutEnd, offset + hostStart + hostDuration);
+      }
+      offset += hostStart - inPoint;
+    }
+    const from = Math.max(start + offset, cutStart);
+    return { start: from, end: Math.max(from, Math.min(start + duration + offset, cutEnd)) };
+  }
+
   // text_occluded: atomic labels flag at any hit; prose needs coveredFraction >= proseCoverageFloor (default 0.15).
   function occludedTextIssue(element, time, proseCoverageFloor, matteResults) {
     if (hasAllowOcclusionFlag(element)) return null;
@@ -1613,6 +1970,228 @@
       fixHint:
         "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
     };
+  }
+
+  // text_over_face: headless Chrome has no face detector, so the audit only reports which text is
+  // painted in front of which opaque video and where that video's frame lands; Node finds the
+  // faces in the file and judges the cover (utils/textOverFace.ts).
+  const FACE_PROBE_MAX_COLUMNS = 16;
+  let faceVideoKinds = new Map();
+  let textOverVideo = { time: Number.NaN, candidates: [] };
+
+  // Kept apart from videoAlphaFrames: a frame that cannot be read here is skipped, never reported
+  // as judged opaque.
+  function faceVideoKind(video) {
+    let kind = faceVideoKinds.get(video);
+    if (!kind) {
+      const frame = videoAlphaFrames.get(video) || readVideoAlphaFrame(video);
+      const cutout = frame.kind === "matte" && !hasOpaqueBackground(getComputedStyle(video));
+      kind = cutout ? "cutout" : frame.kind === "unread" ? "unread" : "opaque";
+      faceVideoKinds.set(video, kind);
+    }
+    return kind;
+  }
+
+  // The opaque video the text is painted directly in front of at (x, y). Null where something
+  // opaque above hides the text, where the text sits on an opaque panel, and where the video's
+  // frame cannot be read or mapped. A transparent cutout beneath the text is looked through to the
+  // video under it; text inside the box of one above it is text_occluded's to judge, because the
+  // cutout repaints its subject, face included, over the text.
+  function videoBeneathTextAt(element, x, y) {
+    let beneath = false;
+    for (const hit of document.elementsFromPoint(x, y)) {
+      if (!isForeignElement(element, hit)) {
+        beneath = true;
+        continue;
+      }
+      if (hasIgnoreFlag(hit)) continue;
+      const media = authoredElement(hit);
+      if (media.tagName === "VIDEO" && opacityChain(hit) >= OCCLUDING_ALPHA) {
+        const kind = faceVideoKind(media);
+        if (kind === "cutout" && beneath) continue;
+        if (kind === "cutout" || !beneath) return null;
+        return kind === "opaque" ? media : null;
+      }
+      if (isOpaqueOccluder(hit, x, y, element)) return null;
+    }
+    return null;
+  }
+
+  // The stretches of one word box in front of a video, probed in columns half a line high, so a
+  // word that runs off the video or under an opaque element counts only for the part in front.
+  function wordPiecesOverVideo(element, rect, add) {
+    const columns = Math.max(
+      1,
+      Math.min(FACE_PROBE_MAX_COLUMNS, Math.round((2 * rect.width) / rect.height)),
+    );
+    const step = rect.width / columns;
+    const y = rect.top + rect.height / 2;
+    let run = null;
+    for (let column = 0; column <= columns; column++) {
+      const video =
+        column < columns ? videoBeneathTextAt(element, rect.left + (column + 0.5) * step, y) : null;
+      if (run && run.video !== video) {
+        add(run.video, {
+          x: round(rect.left + run.from * step),
+          y: round(rect.top),
+          width: round((column - run.from) * step),
+          height: round(rect.height),
+        });
+        run = null;
+      }
+      if (video && !run) run = { video, from: column };
+    }
+  }
+
+  // Where the video's whole frame lands after object-fit and object-position (it can spill past
+  // the element's box, which crops it), and the part of the box the canvas shows.
+  function videoPlacement(video, rootRect) {
+    const mapping = paintedSourceMapping(video, video.videoWidth, video.videoHeight);
+    if (!mapping) return null;
+    const { rect, offsets, paintedWidth, paintedHeight } = mapping;
+    const left = Math.max(rect.left, rootRect.left);
+    const top = Math.max(rect.top, rootRect.top);
+    const right = Math.min(rect.right, rootRect.right);
+    const bottom = Math.min(rect.bottom, rootRect.bottom);
+    if (right <= left || bottom <= top) return null;
+    return {
+      selector: uniqueSelectorFor(video),
+      src: video.currentSrc || video.src || "",
+      mediaTime: video.currentTime,
+      box: {
+        x: round(left),
+        y: round(top),
+        width: round(right - left),
+        height: round(bottom - top),
+      },
+      frame: {
+        x: round(mapping.flipX ? rect.right - offsets.x - paintedWidth : rect.left + offsets.x),
+        y: round(mapping.flipY ? rect.bottom - offsets.y - paintedHeight : rect.top + offsets.y),
+        width: round(paintedWidth),
+        height: round(paintedHeight),
+      },
+      flipX: mapping.flipX,
+      flipY: mapping.flipY,
+    };
+  }
+
+  function textOverVideoCandidates(element, videoRects, rootRect) {
+    if (videoRects.length === 0 || typeof document.elementsFromPoint !== "function") return [];
+    if (authoredElement(element).closest("[data-layout-allow-on-face]")) return [];
+    if (opacityChain(element) < OCCLUDING_ALPHA) return [];
+    const textRect = textRectFor(element, true);
+    if (!textRect || !videoRects.some((rect) => intersectionArea(textRect, rect) > 0)) return [];
+    const piecesByVideo = new Map();
+    const add = (video, piece) => {
+      const pieces = piecesByVideo.get(video);
+      if (pieces) pieces.push(piece);
+      else piecesByVideo.set(video, [piece]);
+    };
+    for (const { rects } of wordClientRects(element)) {
+      for (const rect of rects) wordPiecesOverVideo(element, rect, add);
+    }
+    const candidates = [];
+    for (const [video, wordRects] of piecesByVideo) {
+      const placement = videoPlacement(video, rootRect);
+      if (!placement || !placement.src) continue;
+      candidates.push({
+        ...candidateAnchor(element),
+        text: textContentFor(element, true),
+        rect: textRect,
+        wordRects,
+        video: placement,
+      });
+    }
+    return candidates;
+  }
+
+  // canvas_covered: an opaque element over most of the canvas with every other painted clip beneath it.
+  const COVER_CANVAS_SHARE = 0.9;
+  const COVERED_CONTENT_SHARE = 0.9;
+
+  function paintsOwnContent(element) {
+    return (
+      hasOwnTextCandidate(element, true) ||
+      FRAME_MEDIA_TAGS.has(element.tagName.toUpperCase()) ||
+      hasPaint(getComputedStyle(element))
+    );
+  }
+
+  function onCanvasRect(element, rootRect) {
+    const rect = toRect(element.getBoundingClientRect());
+    const left = Math.max(rect.left, rootRect.left);
+    const top = Math.max(rect.top, rootRect.top);
+    const right = Math.min(rect.right, rootRect.right);
+    const bottom = Math.min(rect.bottom, rootRect.bottom);
+    return right > left && bottom > top
+      ? rectFromOrigin(left, top, right - left, bottom - top)
+      : null;
+  }
+
+  // Topmost first, and a centre probe before the grid: a backdrop under its content clears on the first clip.
+  function isBuried(element, rootRect) {
+    const rect = onCanvasRect(element, rootRect);
+    if (!rect) return true;
+    if (!occluderAt(element, rect.left + rect.width / 2, rect.top + rect.height / 2)) return false;
+    return occlusionCoverage(element, [rect]).coveredFraction >= COVERED_CONTENT_SHARE;
+  }
+
+  function spansCanvas(element, rootRect) {
+    const rect = toRect(element.getBoundingClientRect());
+    return intersectionArea(rect, rootRect) >= rectArea(rootRect) * COVER_CANVAS_SHARE;
+  }
+
+  function visibleElementsIn(root) {
+    return Array.from(root.querySelectorAll("*")).filter((element) =>
+      isVisibleElement(element, 0.05),
+    );
+  }
+
+  // Only frame 0 asks: the craft sweep samples at 8 fps and the scan restores hit testing on every node.
+  function canvasCoverAt(root, rootRect) {
+    const restoreHits = restoreHitTesting(root);
+    try {
+      return canvasCoveredIssue(root, rootRect, visibleElementsIn(root), 0);
+    } finally {
+      restoreHits();
+    }
+  }
+
+  function canvasCoveredIssue(root, rootRect, elements, time) {
+    for (const cover of elements) {
+      if (cover === root || hasAllowOcclusionFlag(cover) || !spansCanvas(cover, rootRect)) continue;
+      // A buried backdrop is not a lost clip: full-frame b-roll over a background is the film.
+      const beneath = elements.filter(
+        (element) =>
+          element !== cover &&
+          !element.contains(cover) &&
+          paintsOwnContent(element) &&
+          !spansCanvas(element, rootRect),
+      );
+      if (
+        beneath.length === 0 ||
+        !beneath.reverse().every((element) => isBuried(element, rootRect))
+      )
+        continue;
+      // Last: an opaque check reads a video's frame, which a backdrop under its content never needs.
+      const matte = matteFrameFor(cover);
+      if (matte && matteCoverage([rootRect], [matte]) < COVER_CANVAS_SHARE) continue;
+      const rect = toRect(cover.getBoundingClientRect());
+      if (!isOpaqueOccluder(cover, rect.left + rect.width / 2, rect.top + rect.height / 2, root))
+        continue;
+      return {
+        code: "canvas_covered",
+        severity: "error",
+        time,
+        selector: uniqueSelectorFor(cover),
+        message:
+          "An opaque element covers the canvas above every other visible clip, so the frame shows only it.",
+        rect: toRect(cover.getBoundingClientRect()),
+        fixHint:
+          "Move the full-frame element below the content (earlier in the DOM or a lower z-index / track), or mark a deliberate full-frame card with data-layout-allow-occlusion.",
+      };
+    }
+    return null;
   }
 
   function layoutOffset(element) {
@@ -1765,6 +2344,11 @@
     // unset, so it is the effective fill directly.
     const fill = cs.webkitTextFillColor || cs.color;
     if (colorAlpha(fill) > 0.05) return null;
+    if (
+      Number.parseFloat(cs.webkitTextStrokeWidth) > 0 &&
+      colorAlpha(cs.webkitTextStrokeColor) > 0.05
+    )
+      return null;
     const clip = cs.webkitBackgroundClip || cs.backgroundClip || "";
     if (/text/i.test(clip)) {
       const bgImage = cs.backgroundImage || "none";
@@ -1839,7 +2423,8 @@
 
   // A gradient reads as content when any stop is solid; all-translucent stops are glows/vignettes.
   function gradientHasOpaqueStop(image) {
-    const colors = image.match(/rgba?\([^)]+\)|#[0-9a-f]{3,8}|\btransparent\b/gi) || [];
+    const colors =
+      image.match(new RegExp(`${COLOR_FN}|#[0-9a-f]{3,8}|\\btransparent\\b`, "gi")) || [];
     return colors.some((color) => !/^transparent$/i.test(color) && colorAlpha(color) >= 0.6);
   }
 
@@ -2374,10 +2959,34 @@
     };
   }
 
+  const CAPTION_STAGES = '[data-composition-id="captions"], .caption-layer, #caption-stage';
+
+  // One box per reading block (a caption stage counts as one), so a line split into word spans is one finding.
+  function addTextToBlock(blocks, block, element) {
+    const rect = textRectFor(element, true);
+    if (!rect) return;
+    const entry = blocks.get(block) ?? { rects: [], texts: [] };
+    entry.rects.push(rect);
+    entry.texts.push(textContentFor(element, true));
+    blocks.set(block, entry);
+  }
+
+  function blockCandidates(blocks) {
+    return Array.from(blocks, ([block, entry]) => ({
+      kind: "block",
+      tag: block.tagName.toLowerCase(),
+      text: entry.texts.join(" "),
+      rect: unionRects(entry.rects),
+      elementRect: toRect(block.getBoundingClientRect()),
+      ...candidateAnchor(block),
+    }));
+  }
+
   window.__hyperframesGeometryCandidates = function collectGeometryCandidates(options) {
     const includeText = options?.text === true;
     const includeMedia = options?.media === true;
-    if (!includeText && !includeMedia) return [];
+    const includeBlocks = options?.blocks === true;
+    if (!includeText && !includeMedia && !includeBlocks) return [];
     const tolerance = typeof options?.tolerance === "number" ? options.tolerance : 2;
     const root =
       document.querySelector("[data-composition-id][data-width][data-height]") ||
@@ -2385,11 +2994,15 @@
       document.body;
     const rootRect = rootRectFor(root);
     const candidates = [];
+    const blocks = new Map();
     for (const element of Array.from(document.querySelectorAll("body *"))) {
-      if (element.closest('[data-composition-id="captions"], .caption-layer, #caption-stage')) {
-        continue;
-      }
+      const captionStage = element.closest(CAPTION_STAGES);
+      if (captionStage && !includeBlocks) continue;
       if (!isVisibleElement(element, 0.05, false)) continue;
+      if (includeBlocks && hasOwnTextCandidate(element, true) && !hasAllowSafeZoneFlag(element)) {
+        addTextToBlock(blocks, captionStage || readingBlock(element, root), element);
+      }
+      if (captionStage) continue;
       const elementRect = toRect(element.getBoundingClientRect());
       if (includeText && hasOwnTextCandidate(element, true) && !hasAllowCaptionZoneFlag(element)) {
         const rect = textRectFor(element, true);
@@ -2405,7 +3018,7 @@
         );
       }
     }
-    return candidates;
+    return candidates.concat(blockCandidates(blocks));
   };
 
   window.__hyperframesLayoutAudit = function auditLayout(options) {
@@ -2421,12 +3034,15 @@
       document.querySelector("[data-composition-id]") ||
       document.body;
     const rootRect = rootRectFor(root);
-    const elements = Array.from(root.querySelectorAll("*")).filter((element) =>
-      isVisibleElement(element, 0.05),
-    );
+    const elements = visibleElementsIn(root);
     const issues = [];
     const matteResults = new Map();
     videoAlphaFrames = new Map();
+    faceVideoKinds = new Map();
+    const overVideo = [];
+    const videoRects = Array.from(root.querySelectorAll("video"), (video) =>
+      video.getBoundingClientRect(),
+    );
 
     const restoreHits = restoreHitTesting(root);
     try {
@@ -2436,10 +3052,17 @@
         if (clipped) issues.push(clipped);
         issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance, clipped));
         const occluded = occludedTextIssue(element, time, proseCoverageFloor, matteResults);
-        if (occluded) issues.push(occluded);
+        if (occluded) {
+          const lifetime = clipLifetime(element);
+          if (lifetime) occluded.lifetime = lifetime;
+          issues.push(occluded);
+        }
         const invisible = invisibleTextIssue(element, time);
         if (invisible) issues.push(invisible);
+        overVideo.push(...textOverVideoCandidates(element, videoRects, rootRect));
       }
+      const covered = canvasCoveredIssue(root, rootRect, elements, time);
+      if (covered) issues.push(covered);
     } finally {
       restoreHits();
     }
@@ -2454,7 +3077,14 @@
     issues.push(...canvasEdgeIssues(root, rootRect, time, tolerance));
     issues.push(...connectorDetachmentIssues(root, rootRect, time));
     issues.push(...connectorOrphanIssues(root, rootRect, time));
+    textOverVideo = { time, candidates: overVideo };
     return issues;
+  };
+
+  // What the audit call for this time found, collected in its pass: hit testing is restored there
+  // and each video's frame is read once.
+  window.__hyperframesTextOverVideo = function collectTextOverVideo(options) {
+    return options && options.time === textOverVideo.time ? textOverVideo.candidates : [];
   };
 
   // Reruns only the overlap detector (same threshold, no new surface) on a fine grid for the dense motion re-sampling pass.
@@ -2572,7 +3202,7 @@
 
   function craftTextParts(root, rootRect) {
     const candidates = [];
-    for (const element of Array.from(root.querySelectorAll("*"))) {
+    for (const element of elementsOnScreenScenes(root)) {
       if (!hasOwnTextCandidate(element, true) || !isVisibleElement(element, 0.05, false)) continue;
       const rect = unionRects(visibleTextClientRects(element, true));
       if (!rect || !intersectsRect(rect, rootRect)) continue;
@@ -2600,6 +3230,7 @@
           ...craftAnchor(element),
           blockSelector: craftAnchor(block).selector,
           text: textContentFor(element, true),
+          blockText: textContentFor(block, false),
           opacity: round(opacityChain(element)),
           fontPx: round(renderedFontPx(element, getComputedStyle(element))),
           rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
@@ -2628,13 +3259,14 @@
     return false;
   }
 
-  window.__hyperframesCraftSample = function collectCraftSample() {
+  window.__hyperframesCraftSample = function collectCraftSample(options) {
     const root =
       document.querySelector("[data-composition-id][data-width][data-height]") ||
       document.querySelector("[data-composition-id]") ||
       document.body;
     const rootRect = rootRectFor(root);
     const parts = craftTextParts(root, rootRect);
+    const cover = options && options.withCover ? canvasCoverAt(root, rootRect) : null;
     const holds = [root, ...Array.from(root.querySelectorAll("[data-hold]"))].filter((element) =>
       element.hasAttribute("data-hold"),
     );
@@ -2643,6 +3275,7 @@
       parts,
       held: holds.some((element) => isPaintedBox(element, rootRect)),
       painted: paintsContent(root, rootRect, parts),
+      coveredBy: cover ? cover.selector : null,
       signature: shared
         ? shared.compositionSignature(shared.compositionRoot(), { quantize: true })
         : "",

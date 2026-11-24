@@ -1,0 +1,161 @@
+{
+  "package": "@hyperframes/share",
+  "subpaths": {
+    ".": {
+      "source": "./src/index.mjs",
+      "runtime": "./src/index.mjs",
+      "types": "./dist/index.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./hosts": {
+      "source": "./dist/hosts.d.ts",
+      "runtime": "./dist/hosts.d.ts",
+      "types": null,
+      "environments": []
+    },
+    "./package.json": {
+      "source": "./package.json",
+      "runtime": "./package.json",
+      "types": null,
+      "environments": ["bun", "node"]
+    },
+    "./appOwnedPaths.mjs": {
+      "source": "./src/appOwnedPaths.mjs",
+      "runtime": "./src/appOwnedPaths.mjs",
+      "types": "./dist/appOwnedPaths.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./grantRefusal.mjs": {
+      "source": "./src/grantRefusal.mjs",
+      "runtime": "./src/grantRefusal.mjs",
+      "types": "./dist/grantRefusal.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./host.mjs": {
+      "source": "./src/host.mjs",
+      "runtime": "./src/host.mjs",
+      "types": "./dist/host.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./index.mjs": {
+      "source": "./src/index.mjs",
+      "runtime": "./src/index.mjs",
+      "types": "./dist/index.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./projectLock.mjs": {
+      "source": "./src/projectLock.mjs",
+      "runtime": "./src/projectLock.mjs",
+      "types": "./dist/projectLock.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./projectSnapshot.mjs": {
+      "source": "./src/projectSnapshot.mjs",
+      "runtime": "./src/projectSnapshot.mjs",
+      "types": "./dist/projectSnapshot.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewAudience.mjs": {
+      "source": "./src/reviewAudience.mjs",
+      "runtime": "./src/reviewAudience.mjs",
+      "types": "./dist/reviewAudience.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewClient.mjs": {
+      "source": "./src/reviewClient.mjs",
+      "runtime": "./src/reviewClient.mjs",
+      "types": "./dist/reviewClient.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewExport.mjs": {
+      "source": "./src/reviewExport.mjs",
+      "runtime": "./src/reviewExport.mjs",
+      "types": "./dist/reviewExport.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewFiles.mjs": {
+      "source": "./src/reviewFiles.mjs",
+      "runtime": "./src/reviewFiles.mjs",
+      "types": "./dist/reviewFiles.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewLinkStates.mjs": {
+      "source": "./src/reviewLinkStates.mjs",
+      "runtime": "./src/reviewLinkStates.mjs",
+      "types": "./dist/reviewLinkStates.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewOpenCalls.mjs": {
+      "source": "./src/reviewOpenCalls.mjs",
+      "runtime": "./src/reviewOpenCalls.mjs",
+      "types": "./dist/reviewOpenCalls.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewShare.mjs": {
+      "source": "./src/reviewShare.mjs",
+      "runtime": "./src/reviewShare.mjs",
+      "types": "./dist/reviewShare.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewSwitch.mjs": {
+      "source": "./src/reviewSwitch.mjs",
+      "runtime": "./src/reviewSwitch.mjs",
+      "types": "./dist/reviewSwitch.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewUpload.mjs": {
+      "source": "./src/reviewUpload.mjs",
+      "runtime": "./src/reviewUpload.mjs",
+      "types": "./dist/reviewUpload.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./reviewVersionSentences.mjs": {
+      "source": "./src/reviewVersionSentences.mjs",
+      "runtime": "./src/reviewVersionSentences.mjs",
+      "types": "./dist/reviewVersionSentences.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./signedInRequest.mjs": {
+      "source": "./src/signedInRequest.mjs",
+      "runtime": "./src/signedInRequest.mjs",
+      "types": "./dist/signedInRequest.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./storage.mjs": {
+      "source": "./src/storage.mjs",
+      "runtime": "./src/storage.mjs",
+      "types": "./dist/storage.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./types/access": {
+      "source": "./dist/types/access.d.ts",
+      "runtime": "./dist/types/access.d.ts",
+      "types": null,
+      "environments": []
+    },
+    "./types/review": {
+      "source": "./dist/types/review.d.ts",
+      "runtime": "./dist/types/review.d.ts",
+      "types": null,
+      "environments": []
+    },
+    "./types/reviewWire": {
+      "source": "./dist/types/reviewWire.d.ts",
+      "runtime": "./dist/types/reviewWire.d.ts",
+      "types": null,
+      "environments": []
+    },
+    "./types/share": {
+      "source": "./dist/types/share.d.ts",
+      "runtime": "./dist/types/share.d.ts",
+      "types": null,
+      "environments": []
+    },
+    "./types/shareOpen": {
+      "source": "./dist/types/shareOpen.d.ts",
+      "runtime": "./dist/types/shareOpen.d.ts",
+      "types": null,
+      "environments": []
+    }
+  }
+}

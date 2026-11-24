@@ -1,14 +1,36 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { readAudio } from "./read.js";
-import { cachedStems, fetchStems } from "./stems.js";
+import { formatRead } from "./format.js";
+import { READ_VERSION } from "./types.js";
+import { cachedStems, fetchStems, recordStems } from "./stems.js";
 
 const RATE = 22_050;
+
+/** Marks stems a test wrote by hand as this install's, as a separation would. */
+function ownStems(stemDir: string): void {
+  recordStems(
+    stemDir,
+    readdirSync(stemDir).filter((name) => lstatSync(join(stemDir, name)).isFile()),
+  );
+}
 const dir = mkdtempSync(join(tmpdir(), "hf-audio-read-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -39,6 +61,8 @@ const voiced = (t: number) =>
   (t >= 0.5 && t < 2) || (t >= 3 && t < 4.5) ? 0.3 * Math.sin(2 * Math.PI * 180 * t) : 0;
 const boom = (t: number) =>
   t < 2.4 ? 0 : 0.7 * Math.exp(-(t - 2.4) / 0.3) * Math.sin(2 * Math.PI * 55 * (t - 2.4));
+const C_MAJOR = (t: number) =>
+  [261.63, 329.63, 392].reduce((n, hz) => n + 0.06 * Math.sin(2 * Math.PI * hz * t), 0);
 const bed = (t: number) =>
   t > 5 && t < 6
     ? 0
@@ -112,7 +136,13 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((done) => server.close(() => done())));
 
 beforeEach(() => {
-  for (const name of ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HEYGEN_ACCESS_TOKEN"])
+  for (const name of [
+    "HEYGEN_API_KEY",
+    "HYPERFRAMES_API_KEY",
+    "HEYGEN_ACCESS_TOKEN",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+  ])
     vi.stubEnv(name, "");
   vi.stubEnv("HEYGEN_API_URL", origin());
 });
@@ -149,8 +179,8 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     expect(first.analysis.voice!.medianPitchHz).toBeGreaterThan(170);
     expect(first.analysis.warnings.join("\n")).toContain("no HeyGen credential");
     const text = readFileSync(first.textPath, "utf8");
-    expect(text).toContain('voice   "一口气了解。"');
-    expect(text).toContain("pause   1.0 s");
+    expect(text).toContain('voice    "一口气了解。"');
+    expect(text).toContain("pause    1.0 s, silent");
     const again = await readAudio(path, "talk.wav", { cacheDir, quality: "best" });
     expect(again.cached).toBe(true);
     writeFileSync(
@@ -182,20 +212,152 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     expect(stemKeys[1]).toBe(stemKeys[0]);
     expect(analysis).toMatchObject({
       separation: "stems",
-      stems: ["bass", "drums", "guitar", "other", "piano", "vocals"],
-      warnings: [expect.stringContaining("no transcript")],
+      stems: ["vocals", "piano"].map((name) => ({
+        name,
+        db: expect.any(Number),
+        spans: expect.any(Array),
+        description: null,
+      })),
+      stemsDir: expect.stringMatching(/stems[\\/]\w{12}[\\/]$/),
+      voiceFreeMix: expect.stringMatching(/no-vocals\.wav$/),
+      warnings: [
+        expect.stringContaining("no transcript"),
+        "stems not described: the description service answered 404",
+      ],
     });
     expect(analysis.voice!.source).toBe("activity");
     expect(analysis.effects!.events.map((e) => [Math.round(e.t * 10) / 10, e.kind])).toEqual([
-      [2.4, "boom"],
+      [2.4, "effect"],
     ]);
     expect(analysis.effects!.events[0]!.overMusicDb).toBeGreaterThan(5);
     expect(analysis.music!.breaks.map((b) => Math.round(b.start))).toEqual([5]);
     expect(analysis.music!.segments.map((s) => s.entry)).toEqual(["start", "resumes"]);
-    expect(readFileSync(textPath, "utf8")).toContain("effect  boom (S1): low");
+    const text = readFileSync(textPath, "utf8");
+    expect(text).toMatch(/\nvocals +-\d+ dB · [\d.–, ]+\npiano +-\d+ dB · [\d.–, ]+\n/);
+    expect(text).toContain("effect   (drums, S1): low");
+    expect(analysis.ambience).toEqual([]);
     expect(existsSync(join(cacheDir, "stems"))).toBe(true);
     await readAudio(path, "episode.wav", { cacheDir, quality: "best" });
     expect(stemCalls).toBe(2);
+  });
+
+  it("reads a bed of noise as ambience, not music, and names only the stems that carry sound", async () => {
+    let seed = 7;
+    const noise = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+    const roomTone = new Float32Array(Math.round(6 * RATE)).map(() => 0.006 * noise());
+    const path = wav("room.wav", 6, (t) => roomTone[Math.round(t * RATE)] ?? 0);
+    const cacheDir = join(dir, "cache-room");
+    const sha = createHash("sha256").update(readFileSync(path)).digest("hex");
+    const stemDir = join(cacheDir, "stems", sha.slice(0, 12));
+    mkdirSync(stemDir, { recursive: true });
+    writeFileSync(join(stemDir, "other.wav"), readFileSync(path));
+    writeFileSync(join(stemDir, "silence.wav"), readFileSync(wav("room-silence.wav", 6, () => 0)));
+    const names = ["vocals", "drums", "bass", "guitar", "piano"];
+    writeFileSync(
+      join(stemDir, "stems.json"),
+      JSON.stringify({
+        other: "other.wav",
+        ...Object.fromEntries(names.map((n) => [n, "silence.wav"])),
+      }),
+    );
+    ownStems(stemDir);
+    const { analysis, textPath, jsonPath } = await readAudio(path, "room.wav", {
+      cacheDir,
+      quality: "best",
+    });
+    expect(analysis.stems).toEqual([]);
+    expect(analysis.music!.segments).toEqual([]);
+    expect(analysis.ambience).toEqual([
+      { start: 0, end: expect.closeTo(6, 0), db: expect.any(Number) },
+    ]);
+    expect(analysis.ambience![0]!.db).toBeLessThan(-45);
+    const text = readFileSync(textPath, "utf8");
+    expect(text).not.toMatch(/\nother +-\d+ dB/);
+    expect(text).toMatch(/ambience quiet, -\d+ dBFS/);
+    expect(text).not.toContain("piece");
+    expect(formatRead(analysis, [2, 3])).toContain("ambience quiet");
+    expect(formatRead(analysis, [8, 9])).not.toContain("ambience quiet");
+    expect(analysis.music!.energy).toEqual([]);
+    const old = { analysis: { ...analysis, version: 2, stems: ["other"] }, transcriptKey: "none" };
+    writeFileSync(jsonPath, JSON.stringify(old));
+    const refreshed = await readAudio(path, "room.wav", { cacheDir });
+    expect(refreshed.cached).toBe(false);
+    expect(refreshed.analysis.version).toBe(READ_VERSION);
+    expect(refreshed.analysis.stems).toEqual(analysis.stems);
+    expect((await readAudio(path, "room.wav", { cacheDir })).cached).toBe(true);
+  });
+
+  it("does not measure an effect over music when its bed is only ambience", async () => {
+    let seed = 7;
+    const noise = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+    const samples = new Float32Array(6 * RATE).map(() => 0.006 * noise());
+    const other = wav("effect-room.wav", 6, (t) => samples[Math.round(t * RATE)] ?? 0);
+    const path = wav(
+      "effect-in-room.wav",
+      6,
+      (t) => (samples[Math.round(t * RATE)] ?? 0) + boom(t),
+    );
+    const cacheDir = join(dir, "cache-effect-room");
+    const sha = createHash("sha256").update(readFileSync(path)).digest("hex");
+    const stemDir = join(cacheDir, "stems", sha.slice(0, 12));
+    mkdirSync(stemDir, { recursive: true });
+    writeFileSync(join(stemDir, "other.wav"), readFileSync(other));
+    writeFileSync(join(stemDir, "drums.wav"), readFileSync(wav("room-boom.wav", 6, boom)));
+    writeFileSync(
+      join(stemDir, "silence.wav"),
+      readFileSync(wav("effect-silence.wav", 6, () => 0)),
+    );
+    writeFileSync(
+      join(stemDir, "stems.json"),
+      JSON.stringify({
+        other: "other.wav",
+        drums: "drums.wav",
+        ...Object.fromEntries(["vocals", "bass", "guitar", "piano"].map((n) => [n, "silence.wav"])),
+      }),
+    );
+    ownStems(stemDir);
+    const { analysis, textPath } = await readAudio(path, "effect-in-room.wav", { cacheDir });
+    expect(analysis.ambience).toHaveLength(1);
+    expect(analysis.effects!.events).toHaveLength(1);
+    expect(analysis.effects!.events[0]!.overMusicDb).toBeNull();
+    expect(readFileSync(textPath, "utf8")).not.toContain("over music");
+  });
+
+  const loudPad = (t: number) => 2 * C_MAJOR(t);
+  const fading = (from: number, seconds: number) => (t: number) =>
+    t < 2 || t >= from + seconds
+      ? 0
+      : loudPad(t) * 10 ** ((-60 * Math.max(0, t - from)) / seconds / 20);
+  const bridged = (t: number) =>
+    t < 1 || t >= 10 ? 0 : loudPad(t) * (t >= 5 && t < 6 ? 10 ** (-30 / 20) : 1);
+
+  it.each([
+    ["a 4 s fade", fading(6, 4)],
+    ["a 2 s fade", fading(7, 2)],
+    ["a 1 s fade", fading(7.6, 1)],
+    ["a bridge 30 dB down", bridged],
+  ])("reads no effect where music ends in %s", async (name, music) => {
+    const file = `${name.replace(/\W+/g, "-")}.wav`;
+    const path = wav(file, 14, music);
+    const cacheDir = join(dir, `cache-${file}`);
+    const sha = createHash("sha256").update(readFileSync(path)).digest("hex");
+    const stemDir = join(cacheDir, "stems", sha.slice(0, 12));
+    mkdirSync(stemDir, { recursive: true });
+    writeFileSync(join(stemDir, "other.wav"), readFileSync(path));
+    writeFileSync(join(stemDir, "silence.wav"), readFileSync(wav(`silent-${file}`, 14, () => 0)));
+    writeFileSync(
+      join(stemDir, "stems.json"),
+      JSON.stringify({
+        other: "other.wav",
+        ...Object.fromEntries(
+          ["vocals", "drums", "bass", "guitar", "piano"].map((n) => [n, "silence.wav"]),
+        ),
+      }),
+    );
+    ownStems(stemDir);
+    const { analysis } = await readAudio(path, file, { cacheDir });
+    expect(analysis.music!.segments.length).toBeGreaterThan(0);
+    expect(analysis.effects!.events).toEqual([]);
   });
 
   it("falls back on partial stems and retries instead of caching unmeasured layers as silence", async () => {
@@ -243,6 +405,106 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     },
   );
 
+  it("reads the same effects and peaks from three encodings, says what plays in a pause, and weighs the voice against the music", async () => {
+    let seed = 5;
+    const hiss = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
+    const tick = (at: number) => (t: number) =>
+      t >= at && t < at + 0.004 ? 0.9 * Math.exp(-(t - at) / 0.001) * hiss() : 0;
+    const clicks = [4, 4.5, 5, 5.5].map(tick);
+    const beep = (t: number) => (t >= 3.9 && t < 4.1 ? 0.2 * Math.sin(2 * Math.PI * 1000 * t) : 0);
+    const kick = (t: number) =>
+      t < 6
+        ? 0
+        : 0.6 * Math.exp(-((t - 6) % 0.5) / 0.05) * Math.sin(2 * Math.PI * 60 * ((t - 6) % 0.5));
+    const pad = (t: number) => (t < 6 ? 0 : C_MAJOR(t));
+    const speech = (t: number) => (t >= 9 && t < 11 ? voiced(t - 8.5) : 0);
+    const drums = (t: number) => clicks.reduce((n, c) => n + c(t), 0) + kick(t) + 0.05 * beep(t);
+    const other = (t: number) => pad(t) + beep(t) + 0.1 * clicks.reduce((n, c) => n + c(t), 0);
+    const sources = {
+      vocals: wav("enc-vocals.wav", 14, (t) => voiced(t) * (t < 2 ? 1 : 0) + speech(t)),
+      drums: wav("enc-drums.wav", 14, drums),
+      other: wav("enc-other.wav", 14, other),
+      silent: wav("enc-silent.wav", 14, () => 0),
+    };
+    const mix = wav(
+      "enc-mix.wav",
+      14,
+      (t) => voiced(t) * (t < 2 ? 1 : 0) + speech(t) + drums(t) + other(t),
+    );
+    const encodings = {
+      mono22: ["-ac", "1", "-ar", "22050"],
+      mono44: ["-ac", "1", "-ar", "44100"],
+      stereo48: ["-ac", "2", "-ar", "48000"],
+    };
+    const reads = [];
+    for (const [name, args] of Object.entries(encodings)) {
+      const path = join(dir, `enc-${name}.wav`);
+      execFileSync(String(findFfBinary("ffmpeg")), ["-v", "error", "-y", "-i", mix, ...args, path]);
+      const cacheDir = join(dir, `cache-enc-${name}`);
+      const sha = createHash("sha256").update(readFileSync(path)).digest("hex");
+      const stemDir = join(cacheDir, "stems", sha.slice(0, 12));
+      mkdirSync(stemDir, { recursive: true });
+      const names: Record<string, string> = {};
+      for (const [stem, source] of Object.entries({
+        vocals: "vocals",
+        drums: "drums",
+        other: "other",
+        bass: "silent",
+        guitar: "silent",
+        piano: "silent",
+      })) {
+        execFileSync(String(findFfBinary("ffmpeg")), [
+          "-v",
+          "error",
+          "-y",
+          "-i",
+          sources[source as keyof typeof sources],
+          ...args,
+          "-c:a",
+          "libmp3lame",
+          "-b:a",
+          "192k",
+          "-f",
+          "mp3",
+          join(stemDir, `${stem}.audio`),
+        ]);
+        names[stem] = `${stem}.audio`;
+      }
+      writeFileSync(join(stemDir, "stems.json"), JSON.stringify(names));
+      ownStems(stemDir);
+      writeFileSync(
+        `${path}.transcript.json`,
+        JSON.stringify({
+          words: [
+            { text: "Hello.", start: 0.5, end: 1.9 },
+            { text: "Under music.", start: 9, end: 10.9 },
+          ],
+        }),
+      );
+      reads.push(await readAudio(path, `enc-${name}.wav`, { cacheDir }));
+    }
+    const events = reads.map((r) => r.analysis.effects!.events);
+    const heard = events.map((list) => list.map((e) => Math.round(e.t * 10) / 10));
+    expect(heard[0]).toEqual([3.9, 4, 4.5, 5, 5.5]);
+    expect(heard[1]).toEqual(heard[0]);
+    expect(heard[2]).toEqual(heard[0]);
+    for (const list of events.slice(1))
+      list.forEach((e, i) =>
+        expect(Math.abs(e.peakDb - events[0]![i]!.peakDb)).toBeLessThanOrEqual(1),
+      );
+    const { analysis, textPath } = reads[0]!;
+    expect(analysis.music!.segments.map((m) => Math.round(m.start * 10) / 10)).toEqual([6]);
+    const text = readFileSync(textPath, "utf8");
+    expect(text).toMatch(/pause    7\.1 s; during it: 5 effects, music 6\.0–9\.0/);
+    expect(text).toMatch(/peak -\d+ dBFS, out of silence/);
+    const [, under] = analysis.voice!.sentences;
+    expect(under!.againstMusic).toEqual({
+      voiceLufs: expect.any(Number),
+      musicLufs: expect.any(Number),
+    });
+    expect(text).toMatch(/voice -\d+ LUFS, music -\d+ LUFS: voice \d+ dB over music/);
+  });
+
   it("keeps audio on the machine by default, and reads neither voice nor effects from a bare mix", async () => {
     const path = wav("local.wav", 3, voiced);
     vi.stubEnv("HEYGEN_API_KEY", "test-key");
@@ -253,5 +515,187 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     expect(analysis.warnings[0]).toContain("--quality best");
     expect(stemCalls).toBe(callsBefore);
     expect(analysis.warnings[1]).toContain("no transcript and no stems");
+  });
+});
+
+describe.skipIf(!ffmpeg)("readAudio with a declared layer", () => {
+  const read = (path: string, name: string, cache: string, layer?: "music" | "sfx" | "voice") => {
+    vi.stubEnv("HEYGEN_API_KEY", "test-key");
+    return readAudio(path, name, { cacheDir: join(dir, cache), quality: "best", layer });
+  };
+
+  it("reads a music file whole, without separating it, and keeps its cache apart from a mix read", async () => {
+    const path = wav("layer-music.wav", 8, bed);
+    const callsBefore = stemCalls;
+    const first = await read(path, "layer-music.wav", "cache-layer-music", "music");
+    expect(stemCalls).toBe(callsBefore);
+    expect(first.analysis).toMatchObject({ separation: "mix", layer: "music", voice: null });
+    expect(first.analysis.music!.segments.length).toBeGreaterThan(0);
+    expect(first.analysis.bpm).toBe(first.analysis.music!.segments[0]!.bpm);
+    expect((await read(path, "layer-music.wav", "cache-layer-music", "music")).cached).toBe(true);
+    const asMix = await read(path, "layer-music.wav", "cache-layer-music");
+    expect(asMix.cached).toBe(false);
+    expect(asMix.analysis.layer).toBeUndefined();
+  });
+
+  it("reads a voice file whole: words and pauses from the file itself", async () => {
+    const path = wav("layer-voice.wav", 6, voiced);
+    writeFileSync(
+      `${path}.transcript.json`,
+      JSON.stringify({
+        words: [
+          { text: "one", start: 0.5, end: 2 },
+          { text: "two", start: 3, end: 4.5 },
+        ],
+      }),
+    );
+    const callsBefore = stemCalls;
+    const { analysis } = await read(path, "layer-voice.wav", "cache-layer-voice", "voice");
+    expect(stemCalls).toBe(callsBefore);
+    expect(analysis).toMatchObject({ separation: "mix", layer: "voice", effects: null });
+    expect(analysis.voice!.sentences.map((s) => s.text)).toEqual(["one", "two"]);
+    expect(analysis.voice!.pauses.length).toBeGreaterThan(0);
+  });
+
+  it("reads a sound-effect file whole, with no music read", async () => {
+    const path = wav("layer-sfx.wav", 5, boom);
+    const callsBefore = stemCalls;
+    const { analysis } = await read(path, "layer-sfx.wav", "cache-layer-sfx", "sfx");
+    expect(stemCalls).toBe(callsBefore);
+    expect(analysis).toMatchObject({ separation: "mix", layer: "sfx", voice: null, music: null });
+    expect(analysis.effects!.events.length).toBeGreaterThan(0);
+  });
+
+  it("records no layer when none is declared", async () => {
+    const path = wav("layer-none.wav", 3, voiced);
+    const { analysis } = await readAudio(path, "layer-none.wav", {
+      cacheDir: join(dir, "cache-layer-none"),
+    });
+    expect("layer" in analysis).toBe(false);
+  });
+});
+
+// Links a project can hold in its .hyperframes/: the reader runs outside any sandbox, so none may be followed.
+describe.skipIf(!ffmpeg || process.platform === "win32")("readAudio cache links", () => {
+  function project(name: string) {
+    const cacheDir = join(dir, name, ".hyperframes", "read-audio");
+    const outside = join(dir, `${name}-outside`);
+    mkdirSync(cacheDir, { recursive: true });
+    mkdirSync(outside);
+    const victim = join(outside, "victim.txt");
+    writeFileSync(victim, "keep");
+    return { cacheDir, outside, victim };
+  }
+  const shaOf = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+  const isPlain = (path: string) => lstatSync(path).isFile();
+
+  it("never writes a cache entry through a link at its temp or final name", async () => {
+    const { cacheDir, victim } = project("entry-links");
+    const path = wav("entry-links.wav", 2, voiced);
+    const entry = join(cacheDir, `entry-links-${shaOf(path).slice(0, 12)}`);
+    for (const ext of ["json", "txt"]) symlinkSync(victim, `${entry}.${ext}.${process.pid}.tmp`);
+    await readAudio(path, "entry-links.wav", { cacheDir });
+    expect(readFileSync(victim, "utf8")).toBe("keep");
+
+    rmSync(`${entry}.json`);
+    rmSync(`${entry}.txt`);
+    symlinkSync(victim, `${entry}.json`);
+    symlinkSync(victim, `${entry}.txt`);
+    const again = await readAudio(path, "entry-links.wav", { cacheDir });
+    expect(again.cached).toBe(false);
+    expect(readFileSync(victim, "utf8")).toBe("keep");
+    expect(isPlain(`${entry}.json`) && isPlain(`${entry}.txt`)).toBe(true);
+  });
+
+  it.each([".hyperframes", join(".hyperframes", "read-audio")])(
+    "refuses a link in place of %s and writes nothing outside the project",
+    async (folder) => {
+      const name = `folder-link-${folder.length}`;
+      const { cacheDir, outside } = project(name);
+      const linked = join(dir, name, folder);
+      rmSync(linked, { recursive: true });
+      symlinkSync(outside, linked);
+      const path = wav(`${name}.wav`, 2, voiced);
+      await expect(readAudio(path, `${name}.wav`, { cacheDir })).rejects.toThrow(
+        /is a link or a file, not a folder/,
+      );
+      expect(readdirSync(outside)).toEqual(["victim.txt"]);
+    },
+  );
+
+  it("saves stems and their list in place of links, never through them", async () => {
+    for (const name of Object.keys(stemFiles)) delete stemFiles[name];
+    const silence = wav("stem-links-silence.wav", 1, () => 0);
+    for (const name of ["vocals", "drums", "bass", "guitar", "piano", "other"])
+      stemFiles[name] = silence;
+    const { cacheDir, outside, victim } = project("stem-links");
+    const stemDir = join(cacheDir, "stems", "0123456789ab");
+    mkdirSync(stemDir, { recursive: true });
+    symlinkSync(victim, join(stemDir, "vocals.audio"));
+    symlinkSync(join(outside, "planted.json"), join(stemDir, "stems.json"));
+    const access = {
+      url: `${origin()}/v3/audio/stems`,
+      headers: { "x-api-key": "test-key" },
+      timeoutMs: 60_000,
+    };
+    const stems = await fetchStems(wav("stem-links.wav", 1, voiced), stemDir, access);
+    expect(readFileSync(victim, "utf8")).toBe("keep");
+    expect(existsSync(join(outside, "planted.json"))).toBe(false);
+    expect(isPlain(stems.vocals!) && isPlain(join(stemDir, "stems.json"))).toBe(true);
+  });
+
+  it("reads no stems through a linked folder or a name that leaves it, and refuses to fetch into a link", async () => {
+    const { cacheDir, outside } = project("stem-folder-link");
+    const silence = wav("stem-folder-silence.wav", 1, () => 0);
+    const names = ["vocals", "drums", "bass", "guitar", "piano", "other"];
+    writeFileSync(join(outside, "stem.wav"), readFileSync(silence));
+    writeFileSync(
+      join(outside, "stems.json"),
+      JSON.stringify(Object.fromEntries(names.map((n) => [n, "stem.wav"]))),
+    );
+    mkdirSync(join(cacheDir, "stems"));
+    symlinkSync(outside, join(cacheDir, "stems", "0123456789ab"));
+    const linkedDir = join(cacheDir, "stems", "0123456789ab");
+    expect(cachedStems(linkedDir)).toBeNull();
+
+    const realDir = join(cacheDir, "stems", "ba9876543210");
+    mkdirSync(realDir);
+    writeFileSync(
+      join(realDir, "stems.json"),
+      JSON.stringify(
+        Object.fromEntries(names.map((n) => [n, "../../../../stem-folder-link-outside/stem.wav"])),
+      ),
+    );
+    expect(cachedStems(realDir)).toBeNull();
+
+    for (const name of names) stemFiles[name] = silence;
+    await expect(
+      fetchStems(wav("stem-folder.wav", 1, voiced), linkedDir, {
+        url: `${origin()}/v3/audio/stems`,
+        headers: { "x-api-key": "test-key" },
+        timeoutMs: 60_000,
+      }),
+    ).rejects.toThrow(/is a link or a file, not a folder/);
+    expect(readdirSync(outside).sort()).toEqual(["stem.wav", "stems.json", "victim.txt"]);
+  });
+
+  it("mixes the voice-free stems into a staged file, never through a link at a temp name", async () => {
+    const { cacheDir, victim } = project("mix-links");
+    const path = wav("mix-links.wav", 2, (t) => voiced(t) + bed(t));
+    const stemDir = join(cacheDir, "stems", shaOf(path).slice(0, 12));
+    mkdirSync(stemDir, { recursive: true });
+    writeFileSync(join(stemDir, "vocals.wav"), readFileSync(wav("mix-vocals.wav", 2, voiced)));
+    writeFileSync(join(stemDir, "bed.wav"), readFileSync(wav("mix-bed.wav", 2, bed)));
+    const names = { vocals: "vocals.wav", drums: "bed.wav", bass: "bed.wav" };
+    writeFileSync(
+      join(stemDir, "stems.json"),
+      JSON.stringify({ ...names, guitar: "bed.wav", piano: "bed.wav", other: "bed.wav" }),
+    );
+    ownStems(stemDir);
+    symlinkSync(victim, join(stemDir, `no-vocals.wav.${process.pid}.tmp.wav`));
+    const { analysis } = await readAudio(path, "mix-links.wav", { cacheDir, quality: "fast" });
+    expect(analysis.voiceFreeMix).toMatch(/no-vocals\.wav$/);
+    expect(readFileSync(victim, "utf8")).toBe("keep");
+    expect(isPlain(join(stemDir, "no-vocals.wav"))).toBe(true);
   });
 });

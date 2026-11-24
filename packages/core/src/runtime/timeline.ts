@@ -1,9 +1,12 @@
+import { sourceLengthOf } from "./sourceLength";
 import type {
   RuntimeTimelineClip,
   RuntimeTimelineMessage,
   RuntimeTimelineScene,
   RuntimeTimelineLike,
 } from "./types";
+import { transitionLabelsForDocument } from "./transitionLabels";
+import { unproxiedSrc } from "./proxySrc";
 import { stableClipId } from "./clipTree";
 import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
 import {
@@ -13,7 +16,7 @@ import {
 } from "./authoredTiming";
 import { swallow } from "./diagnostics";
 import { readTimelineDurationSeconds } from "./timelineDuration";
-import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
+import { readElementPlaybackRate, readMediaStart } from "./playbackRate";
 import {
   parseStrictFiniteTimingNumber,
   resolveMediaElementDurationSeconds,
@@ -22,12 +25,12 @@ import {
 } from "./playbackRate";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
-import { isClipVisibleAt } from "./clipWindow";
-import { exportClipWindow } from "../inline-scripts/parityContract";
+import { isClipOnScreenAt } from "./clipWindow";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 import { isElementNode, isMediaElement } from "./domRealm";
+import { readSentTextLayer } from "./editingElement";
 import { LOOP_INFLATED_TIMELINE_SECONDS } from "./compositionLength";
 import { cutToHostSlots } from "../mediaTiming";
 
@@ -79,21 +82,17 @@ export function isRuntimeElementVisibleAt(
     currentTime: number;
     compositionDuration: number;
     canonicalFps: number;
-    exportRenderSeek: boolean;
     timelineRegistry: Record<string, RuntimeTimelineLike | undefined>;
     resolver: ReturnType<typeof createRuntimeStartTimeResolver>;
   },
 ): boolean {
   const span = runtimeElementWindow(rawNode, options);
   if (!span) return false;
-  // Export seeks snap to frame boundaries; interactive visibility uses authored seconds.
-  const clipWindow = options.exportRenderSeek
-    ? exportClipWindow(span.start, span.end, options.canonicalFps)
-    : span;
-  return isClipVisibleAt(
+  return isClipOnScreenAt(
     options.currentTime,
-    clipWindow.start,
-    clipWindow.end,
+    span.start,
+    span.end,
+    options.canonicalFps,
     options.compositionDuration,
   );
 }
@@ -171,13 +170,13 @@ function toAbsoluteAssetUrl(rawValue: string | null | undefined): string | null 
 }
 
 function resolveNodeAssetUrl(node: Element): string | null {
-  const src = node.getAttribute("src") ?? node.getAttribute("data-src");
+  const src = unproxiedSrc(node) ?? node.getAttribute("data-src");
   if (src) return toAbsoluteAssetUrl(src);
   const compositionSrc = node.getAttribute("data-composition-src");
   if (compositionSrc) return toAbsoluteAssetUrl(compositionSrc);
   const mediaDescendant = node.querySelector("img[src], video[src], audio[src], source[src]");
   if (!mediaDescendant) return null;
-  return toAbsoluteAssetUrl(mediaDescendant.getAttribute("src"));
+  return toAbsoluteAssetUrl(unproxiedSrc(mediaDescendant));
 }
 
 function getFirstClassToken(node: Element): string | null {
@@ -272,6 +271,7 @@ export function collectRuntimeTimelinePayload(params: {
     __timelines?: Record<string, RuntimeTimelineLike | undefined>;
   };
   const timelineRegistry = runtimeWindow.__timelines ?? {};
+  const transitionLabels = transitionLabelsForDocument(document, timelineRegistry);
   const startResolver = createRuntimeStartTimeResolver({
     timelineRegistry,
     includeAuthoredTimingAttrs: true,
@@ -450,8 +450,8 @@ export function collectRuntimeTimelinePayload(params: {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if (duration == null && isMediaElement(node)) {
-      if (Number.isFinite(node.duration)) {
-        duration = resolveNaturalMediaTimelineDuration(node, node.duration);
+      if (Number.isFinite(sourceLengthOf(node))) {
+        duration = resolveNaturalMediaTimelineDuration(node, sourceLengthOf(node));
       }
     }
     if (duration == null) duration = resolveTimedImageDurationSeconds(node, start);
@@ -499,13 +499,15 @@ export function collectRuntimeTimelinePayload(params: {
       parentCompositionId: compositionContext.parentCompositionId,
       nodePath: null,
       compositionSrc: toAbsoluteAssetUrl(node.getAttribute("data-composition-src")),
-      playbackStart: readElementPlaybackStart(node),
+      playbackStart: readMediaStart(node),
       playbackRate: readElementPlaybackRate(node),
       assetUrl: resolveNodeAssetUrl(node),
       timelineRole: node.getAttribute("data-timeline-role"),
       timelineLabel: node.getAttribute("data-timeline-label"),
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
+      text: readSentTextLayer(node),
+      transitionLabel: transitionLabels.get(node) ?? null,
     };
   };
   const addClip = (clip: RuntimeTimelineClip) => {
@@ -629,13 +631,15 @@ export function collectRuntimeTimelinePayload(params: {
             parentCompositionId: rootCompositionIdForGsap,
             nodePath: null,
             compositionSrc: null,
-            playbackStart: readElementPlaybackStart(el),
+            playbackStart: readMediaStart(el),
             playbackRate: readElementPlaybackRate(el),
             assetUrl: null,
             timelineRole: el.getAttribute("data-timeline-role"),
             timelineLabel: el.getAttribute("data-timeline-label"),
             timelineGroup: el.getAttribute("data-timeline-group"),
             timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+            text: readSentTextLayer(el),
+            transitionLabel: transitionLabels.get(el) ?? null,
           });
           gsapClipIds.add(el.id);
         }
@@ -686,13 +690,15 @@ export function collectRuntimeTimelinePayload(params: {
         parentCompositionId: rootCompositionIdForGsap,
         nodePath: null,
         compositionSrc: null,
-        playbackStart: readElementPlaybackStart(el),
+        playbackStart: readMediaStart(el),
         playbackRate: readElementPlaybackRate(el),
         assetUrl: null,
         timelineRole,
         timelineLabel: el.getAttribute("data-timeline-label"),
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+        text: readSentTextLayer(el),
+        transitionLabel: transitionLabels.get(el) ?? null,
       });
       gsapClipIds.add(el.id);
     }

@@ -3,11 +3,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 
-// Studio must lint outside its own process; any in-process project lint fails the request.
+// Studio must lint outside its own process; any in-process project or page lint fails the request.
 vi.mock("@hyperframes/lint", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hyperframes/lint")>()),
   lintProject: () => {
     throw new Error("project lint ran on the Studio server's event loop");
+  },
+  lintHyperframeHtml: () => {
+    throw new Error("page lint ran on the Studio server's event loop");
   },
 }));
 
@@ -24,6 +27,9 @@ beforeEach(() => {
 <div id="root" data-composition-id="main" data-width="320" data-height="180"></div>
 </body></html>`,
   );
+  // Not linked from the entry, so the project lint skips it and the route lints it as a page.
+  fs.mkdirSync(path.join(root, "loose"));
+  fs.writeFileSync(path.join(root, "loose", "page.html"), `<div>no composition</div>`);
   server = createStudioServer({ projectDir: root, projectName: "film" });
 });
 
@@ -39,5 +45,13 @@ describe("studio lint", () => {
 
     expect(response.status).toBe(200);
     expect(body.findings?.some((f) => f.message.includes("window.__timelines"))).toBe(true);
+  }, 60_000);
+
+  it("lints a page the project lint skips in a separate process too", async () => {
+    const response = await server.app.request("/api/projects/film/lint");
+    const body = (await response.json()) as { findings?: Array<{ file?: string }> };
+
+    expect(response.status).toBe(200);
+    expect(body.findings?.some((f) => f.file === "loose/page.html")).toBe(true);
   }, 60_000);
 });

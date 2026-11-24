@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Flowchart Vertical</h1>
+  <p>Portrait animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/flowchart-vertical.json"
   compositionId="flowchart-vertical"
   compositionSrc="compositions/flowchart-vertical.html"
   title="Flowchart Vertical"
-  description="Portrait animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction"
   variables={[]}
   meta={{"duration":12,"width":1440,"height":2560,"category":"Blocks","badge":"Stable","codeLines":459}}
   attribution={{"path":"registry/blocks/flowchart-vertical","tags":["diagram","flowchart","interactive","portrait"]}}
@@ -494,7 +498,9 @@ That writes one file: `compositions/flowchart-vertical.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -525,6 +531,4 @@ Tagged `diagram` `flowchart` `interactive` `portrait`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

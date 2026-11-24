@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Echo Smear</h1>
+  <p>Distance-adaptive streak — records each element's real trajectory (position, rotation, scale, opacity), then trails time-offset copies behind it in proportion to its speed, combined by brightest pixel, so fast moves smear and slow ones stay sharp; spinning edges stay smooth</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/echo-smear.json"
   compositionId="echo-smear"
   compositionSrc="compositions/components/echo-smear.html"
   title="Echo Smear"
-  description="Distance-adaptive streak — records each element's real trajectory (position, rotation, scale, opacity), then trails time-offset copies behind it in proportion to its speed, combined by brightest pixel, so fast moves smear and slow ones stay sharp; spinning edges stay smooth"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":607}}
   attribution={{"path":"registry/components/echo-smear","tags":["effect","smear","echo","motion-blur","velocity","after-effects","animation"]}}
@@ -642,7 +646,9 @@ That writes one file: `compositions/components/echo-smear.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -662,6 +668,4 @@ Tagged `effect` `smear` `echo` `motion-blur` `velocity` `after-effects` `animati
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

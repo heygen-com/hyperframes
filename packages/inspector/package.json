@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/inspector",
-  "version": "0.8.204",
+  "version": "0.9.90",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -58,9 +58,12 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "serve": "bun run build && bun src/server.ts",
+    "test:egress": "bun tests/egress.ts",
+    "test:service-worker": "bun tests/serviceWorker.ts",
     "test:timeline": "bun tests/timeline.ts",
     "test:timeline-compositions": "bun tests/timelineCompositions.ts",
     "test:live": "bun run build && bun tests/live.ts",
+    "test:live-scenes": "bun run build && bun tests/liveScenes.ts",
     "test:source-release": "bun tests/sourceRelease.ts",
     "serve:node": "node dist/server.js"
   },
@@ -78,6 +81,6 @@
   "devDependencies": {
     "@types/node": "^25.0.10",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }

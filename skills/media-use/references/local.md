@@ -5,6 +5,7 @@ These run on this machine, free, and write into the project.
 ## Grade and style footage and images
 
 - Measure, then correct: `npx hyperframes media-treatment --selector '#hero' --analyze --json`, then `--grading '<json>' --apply`. `--dry-run` previews; `--clear` removes the treatment.
+- On Windows PowerShell, inline JSON loses its quotes: write the JSON to a file and pass its path, `--grading grading.json`, or pipe it with `--grading -`. The same goes for `--variables` and `--vars`.
 - `--file` defaults to `index.html`: for media inside a scene, pass `--file compositions/<scene>.html`.
 - Grain, blur, vignette, presets, palettes: `npx hyperframes media-treatment --capabilities --json`, then `--capability <id>` for one family's controls and ranges.
 - The result is a `data-color-grading` attribute on the media element. It treats the whole element in SDR, so it can't blur one region such as a face.

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createStallClock } from "./stallClock.js";
 import { redactTelemetryString } from "@hyperframes/core";
 import { CaptureFailure } from "@hyperframes/engine";
 import type { ProducerLogger } from "../../logger.js";
@@ -208,6 +209,8 @@ export interface RenderCaptureObservability {
   /** Segmented capture only (Phase 2): current segment and retries so far. */
   segmentIndex?: number;
   segmentRetries?: number;
+  videoFrameWindow?: "on" | "off";
+  videoFrameWindowPeakBytes?: number;
 }
 
 export interface RenderExtractionObservability {
@@ -221,6 +224,7 @@ export interface RenderExtractionObservability {
   vfrPreflightCount?: number;
   cacheHits?: number;
   cacheMisses?: number;
+  cachePublishFailures?: number;
   /** Per-source transient download/metadata/FFmpeg retries performed during extraction. */
   transientRetries?: number;
   /**
@@ -301,7 +305,7 @@ const ALLOWED_STRING_DATA_KEYS = new Set([
   "stagePhase",
   // Full-fidelity fast-capture fallback trigger — the specific reason
   // drawElement gated off ("filter:blur", "filter:drop-shadow",
-  // "backdrop-filter", "clip-path", "at_risk_timeline", "swiftshader", …).
+  // "backdrop-filter", "clip-path", "at_risk_timeline", "swiftshader", "webgl_unavailable", …).
   // Populated on the `capture_fallback_profile` checkpoint emitted by
   // `fallbackCaptureProfile.ts` when the operator opts into
   // `HF_PROFILE_FALLBACK_CAPTURE=true` so downstream metric consumers can
@@ -609,6 +613,14 @@ export interface StageStallRule {
   noProgressMs: number;
   /** Allowed silence before the current attempt's first change. */
   firstProgressMs: number;
+  /** True once every unit of work has landed: nothing more can change `progress()`, only the tail work runs. */
+  complete?: () => boolean;
+  /** Allowed silence once `complete()` holds; defaults to `noProgressMs`. */
+  tailMs?: number;
+  detail?: () => string | undefined;
+  attemptOpened?: () => void;
+  /** Bounded work that is not progress but not a stall either: a change keeps the current window open. */
+  activity?: () => number;
 }
 
 /**
@@ -620,10 +632,10 @@ export class RenderStageStalledError extends CaptureFailure {
   readonly owner = "system" as const;
   readonly retryable = false as const;
 
-  constructor(phase: string, silentMs: number, progress: number) {
+  constructor(phase: string, silentMs: number, progress: number, detail?: string) {
     super({
       kind: "protocol_timeout",
-      message: `[Render] ${phase} stalled: no progress for ${silentMs}ms (stuck at ${progress}).`,
+      message: `[Render] ${phase} stalled: no progress for ${silentMs}ms (stuck at ${progress}).${detail ? ` ${detail}` : ""}`,
     });
     this.name = "RenderStageStalledError";
   }
@@ -637,35 +649,51 @@ const STALL_POLL_MS = 5_000;
 // A trip aborts the open attempt and gives the stage one more window to retry or settle; a trip with
 // no live attempt fails the stage.
 function watchStall(phase: string, rule: StageStallRule) {
+  const detail = rule.detail ?? (() => undefined);
   let last = rule.progress();
+  let lastActivity = rule.activity?.();
   let budgetMs = rule.firstProgressMs;
-  let lastChangeAt = Date.now();
+  const silence = createStallClock();
+  const pollMs = Math.min(STALL_POLL_MS, rule.noProgressMs, rule.firstProgressMs);
   let attempt: AbortController | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
+  let inTail = false;
+  const activityMoved = (): boolean => {
+    const activity = rule.activity?.();
+    if (activity === lastActivity) return false;
+    lastActivity = activity;
+    return true;
+  };
   const restartWindow = (ms: number) => {
     last = rule.progress();
     budgetMs = ms;
-    lastChangeAt = Date.now();
+    silence.reset();
   };
   const tripped = new Promise<never>((_, reject) => {
-    timer = setInterval(
-      () => {
-        const current = rule.progress();
-        if (current !== last) return restartWindow(rule.noProgressMs);
-        if (Date.now() - lastChangeAt < budgetMs) return;
-        const error = new RenderStageStalledError(phase, budgetMs, current);
-        if (attempt && !attempt.signal.aborted) {
-          attempt.abort(error);
-          return restartWindow(rule.noProgressMs);
-        }
-        clearInterval(timer);
-        reject(error);
-      },
-      Math.min(STALL_POLL_MS, rule.noProgressMs, rule.firstProgressMs),
-    );
+    const trip = (current: number) => {
+      const error = new RenderStageStalledError(phase, budgetMs, current, detail());
+      if (attempt && !attempt.signal.aborted) {
+        attempt.abort(error);
+        return restartWindow(rule.noProgressMs);
+      }
+      clearInterval(timer);
+      reject(error);
+    };
+    timer = setInterval(() => {
+      const current = rule.progress();
+      if (rule.complete?.() && !inTail) {
+        inTail = true;
+        return restartWindow(rule.tailMs ?? rule.noProgressMs);
+      }
+      if (current !== last) return restartWindow(rule.noProgressMs);
+      if (activityMoved()) return silence.reset();
+      if (silence.idle(pollMs) >= budgetMs) trip(current);
+    }, pollMs);
   });
   const openAttempt: OpenStallAttempt = (parent) => {
     attempt = new AbortController();
+    inTail = false;
+    rule.attemptOpened?.();
     restartWindow(rule.firstProgressMs);
     return parent ? AbortSignal.any([parent, attempt.signal]) : attempt.signal;
   };

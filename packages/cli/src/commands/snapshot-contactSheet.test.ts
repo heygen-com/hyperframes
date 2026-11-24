@@ -16,6 +16,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const errorsBesideProgress = () =>
+  vi
+    .mocked(console.error)
+    .mock.calls.filter(([line]) => !String(line).startsWith("[hyperframes] snapshot:"));
+
 const capture = vi.hoisted(() => ({
   evaluate: vi.fn(),
   screenshot: vi.fn(async () => Buffer.from("captured PNG")),
@@ -123,7 +128,7 @@ describe("snapshot contact sheet failures", () => {
         }),
       ).resolves.toBeDefined();
 
-      expect(console.error).not.toHaveBeenCalled();
+      expect(errorsBesideProgress()).toEqual([]);
       for (const [index, time] of ["0.5", "1"].entries()) {
         const frame = join(project, "snapshots", `frame-0${index}-at-${time}s.png`);
         expect(readFileSync(frame)).toEqual(Buffer.from("captured PNG"));
@@ -161,7 +166,7 @@ describe("snapshot contact sheet failures", () => {
     );
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("contact-sheet.jpg"));
     expect(console.warn).not.toHaveBeenCalled();
-    expect(console.error).not.toHaveBeenCalled();
+    expect(errorsBesideProgress()).toEqual([]);
   });
 
   it("builds the sheet from this run's frames, not another frame-*.png in the folder", async () => {
@@ -262,7 +267,7 @@ describe("snapshot contact sheet failures", () => {
         }
         expect(readdirSync(out).filter((name) => name.startsWith("pair-"))).toEqual([]);
         expect(pairSheet).toHaveBeenCalledOnce();
-        expect(console.error).toHaveBeenCalledOnce();
+        expect(errorsBesideProgress()).toHaveLength(1);
         expect(console.error).toHaveBeenCalledWith(
           expect.stringContaining("Reference pair sheets skipped: Windows App Control"),
         );
@@ -325,7 +330,7 @@ describe("snapshot contact sheet failures", () => {
           join(project, "snapshots", `frame-0${index}-at-${time}s.png`),
         ),
       );
-      expect(console.error).not.toHaveBeenCalled();
+      expect(errorsBesideProgress()).toEqual([]);
       expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining("not recorded"));
     } finally {
       historyDeps.ownerWaitMs = previousWait;
@@ -371,6 +376,41 @@ describe("snapshot contact sheet failures", () => {
         "a described frame",
       );
       expect(loadSharp).not.toHaveBeenCalledWith("--describe");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  // fails without the fix: a project .env's Gemini key described frames with no note.
+  it("notes once that --describe sends frames with a project .env's Gemini key", async () => {
+    vi.stubEnv("GEMINI_API_KEY", undefined);
+    vi.stubEnv("GOOGLE_API_KEY", undefined);
+    writeFileSync(join(project, ".env"), "GEMINI_API_KEY=project-key\n");
+    const generateContent = vi.fn(async (_request: unknown) => ({ text: "a described frame" }));
+    vi.doMock("../utils/optionalPackages.js", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../utils/optionalPackages.js")>()),
+      loadInstalledSharp: () => null,
+      loadOptionalPackage: async () => ({
+        GoogleGenAI: class {
+          models = { generateContent };
+        },
+      }),
+    }));
+    const { loadProjectDotEnv } = await import("../utils/dotEnv.js");
+    loadProjectDotEnv(project, process.env, () => {});
+    const { default: command } = await import("./snapshot.js");
+
+    try {
+      await runCommand(command, {
+        rawArgs: [project, ...["--at", "0.5,1", "--no-end", "--describe", "true"]],
+      });
+
+      expect(generateContent).toHaveBeenCalledTimes(2);
+      expect(errorsBesideProgress()).toEqual([
+        [
+          `[hyperframes] Using GEMINI_API_KEY from ${join(project, ".env")}, a project .env: frames go to that key's Gemini account.`,
+        ],
+      ]);
     } finally {
       vi.unstubAllEnvs();
     }

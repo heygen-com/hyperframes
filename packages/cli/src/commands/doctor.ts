@@ -1,11 +1,13 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 // fallow-ignore-file complexity
-import { defineCommand } from "citty";
-import { execFileSync, execSync } from "node:child_process";
+import { defineCommand } from "../utils/defineCommand.js";
+import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
 import * as fs from "node:fs";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { resolveExtractCacheDir } from "@hyperframes/engine";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import type { Example } from "./_examples.js";
 import { CONFIG_PATH } from "../telemetry/config.js";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
@@ -16,6 +18,11 @@ import { KOKORO_MODULES, KOKORO_PIP, MUSICGEN_MODULES, MUSICGEN_PIP } from "../a
 import { hasPythonModules, describeRejectedPythonOverride } from "../tts/python.js";
 import { VERSION } from "../version.js";
 import { getUpdateMeta, withMeta } from "../utils/updateCheck.js";
+import {
+  installChannelLabel,
+  runningInstall,
+  updateCommandFor,
+} from "../utils/installerDetection.js";
 import {
   OPTIONAL_PACKAGES,
   installedOptionalPackageVersion,
@@ -46,22 +53,54 @@ interface CheckResult {
 
 export { parseToolVersion };
 
-function checkDocker(): CheckResult {
+export const TESTED_FFMPEG_VERSION = "8.0.1";
+
+export function ffmpegDoctorDetail(detail: string): string {
+  return new RegExp(`^ffmpeg n?${TESTED_FFMPEG_VERSION.replaceAll(".", "\\.")}(?![.\\d])`).test(
+    detail,
+  )
+    ? `${detail} (tested build)`
+    : `${detail}; loudness numbers are only comparable on ${TESTED_FFMPEG_VERSION}`;
+}
+
+const DOCKER_INSTALL_HINT = "https://docs.docker.com/get-docker/";
+
+type RunFile = (file: string, args: string[], options: ExecFileSyncOptions) => string | Buffer;
+
+const findDocker = (): string | undefined => findTrustedExecutable("docker");
+
+function dockerInsideProject(cwd = process.cwd()): string | undefined {
+  const names = process.platform === "win32" ? ["docker.exe", "docker.cmd"] : ["docker"];
+  return names.map((name) => join(cwd, "node_modules", ".bin", name)).find(existsSync);
+}
+
+function dockerNotFound(): CheckResult {
+  const skipped = dockerInsideProject();
+  return {
+    ok: false,
+    detail: "Not found",
+    hint: skipped
+      ? `Skipped ${skipped}: the CLI only runs helper programs from folders outside the project. ${DOCKER_INSTALL_HINT}`
+      : DOCKER_INSTALL_HINT,
+  };
+}
+
+export function checkDocker(find = findDocker, run: RunFile = execFileSync): CheckResult {
+  const docker = find();
+  if (!docker) return dockerNotFound();
   try {
-    const version = execSync("docker --version", { encoding: "utf-8", timeout: 5000 }).trim();
-    return { ok: true, detail: version };
+    const version = run(docker, ["--version"], { encoding: "utf-8", timeout: 5000 });
+    return { ok: true, detail: version.toString().trim() };
   } catch {
-    return {
-      ok: false,
-      detail: "Not found",
-      hint: "https://docs.docker.com/get-docker/",
-    };
+    return dockerNotFound();
   }
 }
 
-function checkDockerRunning(): CheckResult {
+export function checkDockerRunning(find = findDocker, run: RunFile = execFileSync): CheckResult {
   try {
-    execSync("docker info", { stdio: "pipe", timeout: 5000 });
+    const docker = find();
+    if (!docker) throw new Error("docker not found");
+    run(docker, ["info"], { stdio: "pipe", timeout: 5000 });
     return { ok: true, detail: "Running" };
   } catch {
     return {
@@ -72,16 +111,24 @@ function checkDockerRunning(): CheckResult {
   }
 }
 
-function checkVersion(): CheckResult {
+export function checkVersion(): CheckResult {
   const meta = getUpdateMeta();
   if (meta.updateAvailable && meta.latestVersion) {
     return {
       ok: false,
       detail: `${VERSION} \u2192 ${meta.latestVersion} available`,
-      hint: "Run: hyperframes upgrade",
+      hint: `Run: ${updateCommandFor(runningInstall(), meta.latestVersion)}`,
     };
   }
+  if (!meta.latestVersion) return { ok: true, detail: `${VERSION} (not checked yet)` };
   return { ok: true, detail: `${VERSION} (latest)` };
+}
+
+/** Which binary is running and from where: a global install per manager, project-local, npx or a plugin. */
+export function checkInstall(): CheckResult {
+  const install = runningInstall();
+  const where = install.path ?? "entry path unknown";
+  return { ok: true, detail: `${installChannelLabel(install.channel)} \u00B7 ${where}` };
 }
 
 function checkNode(): CheckResult {
@@ -210,12 +257,7 @@ function sourceLabel(source: "env" | "default"): string {
 }
 
 function commandExists(command: string): boolean {
-  try {
-    execFileSync("which", [command], { stdio: "ignore", timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
+  return findTrustedExecutable(command) !== undefined;
 }
 
 /**
@@ -361,6 +403,32 @@ export function buildDoctorReport(outcomes: CheckOutcome[], options: { redact?: 
   });
 }
 
+export function printDoctorOutcomes(outcomes: CheckOutcome[]): void {
+  const allOk = outcomes.every((o) => o.ok);
+  console.log();
+  console.log(c.bold("hyperframes doctor"));
+  console.log();
+
+  for (const outcome of outcomes) {
+    const icon = outcome.ok ? c.success("\u2713") : c.error("\u2717");
+    const name = terminalText(outcome.name).padEnd(16);
+    console.log(
+      `  ${icon} ${c.bold(name)} ${outcome.ok ? c.dim(terminalLines(outcome.detail)) : c.error(terminalLines(outcome.detail))}`,
+    );
+    if (!outcome.ok && outcome.hint) {
+      console.log(`  ${" ".repeat(19)}${c.accent(terminalLines(outcome.hint))}`);
+    }
+  }
+
+  console.log();
+  if (allOk) {
+    console.log(`  ${c.success("\u25C7")}  ${c.success("All checks passed")}`);
+  } else {
+    console.log(`  ${c.warn("\u25C7")}  ${c.warn("Some checks failed \u2014 see hints above")}`);
+  }
+  console.log();
+}
+
 export default defineCommand({
   meta: { name: "doctor", description: "Check system dependencies and environment" },
   args: {
@@ -370,6 +438,7 @@ export default defineCommand({
     const environment = await runEnvironmentChecks({ includeBrowser: true });
     const checks: Check[] = [
       { name: "Version", run: checkVersion },
+      { name: "CLI binary", run: checkInstall },
       { name: "Node.js", run: checkNode },
       { name: "CPU", run: checkCPU },
       { name: "Memory", run: checkMemory },
@@ -406,13 +475,14 @@ export default defineCommand({
       outcomes.push({
         name: result.name,
         ok: result.ok,
-        detail: result.detail,
+        detail:
+          result.name === "FFmpeg" && result.ok ? ffmpegDoctorDetail(result.detail) : result.detail,
         ...(result.hint ? { hint: result.hint } : {}),
       });
     }
     for (const check of [
-      { name: "Docker", run: checkDocker },
-      { name: "Docker running", run: checkDockerRunning },
+      { name: "Docker", run: () => checkDocker() },
+      { name: "Docker running", run: () => checkDockerRunning() },
     ]) {
       const result = await check.run();
       outcomes.push({
@@ -422,8 +492,6 @@ export default defineCommand({
         ...(result.hint ? { hint: result.hint } : {}),
       });
     }
-    const allOk = outcomes.every((o) => o.ok);
-
     if (args.json) {
       // Exit code intentionally reflects command success, not environment
       // health — `checkVersion` returns ok:false when an npm update is
@@ -435,27 +503,6 @@ export default defineCommand({
       return;
     }
 
-    console.log();
-    console.log(c.bold("hyperframes doctor"));
-    console.log();
-
-    for (const outcome of outcomes) {
-      const icon = outcome.ok ? c.success("\u2713") : c.error("\u2717");
-      const name = outcome.name.padEnd(16);
-      console.log(
-        `  ${icon} ${c.bold(name)} ${outcome.ok ? c.dim(outcome.detail) : c.error(outcome.detail)}`,
-      );
-      if (!outcome.ok && outcome.hint) {
-        console.log(`  ${" ".repeat(19)}${c.accent(outcome.hint)}`);
-      }
-    }
-
-    console.log();
-    if (allOk) {
-      console.log(`  ${c.success("\u25C7")}  ${c.success("All checks passed")}`);
-    } else {
-      console.log(`  ${c.warn("\u25C7")}  ${c.warn("Some checks failed \u2014 see hints above")}`);
-    }
-    console.log();
+    printDoctorOutcomes(outcomes);
   },
 });

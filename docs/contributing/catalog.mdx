@@ -202,9 +202,11 @@ Include:
 - the item directory;
 - the matching entry in `registry/registry.json`;
 - regenerated Catalog output;
-- a `hyperframes.dev` preview from `npx hyperframes publish`;
+- a video review link from `npx hyperframes share` (run it from the preview project and choose an audience that includes the reviewers);
 - when to use it, its useful duration range, and any known pitfalls.
 
 External contributors should attach the preview MP4. A maintainer will publish
 the final Catalog media. HeyGen contributors can use
-`scripts/upload-docs-images.sh` after preview review.
+`scripts/upload-docs-images.sh` after preview review, from a checkout that holds
+only the regenerated media, not from a contributor's branch. The script publishes
+regular files only and stops if anything under `docs/images/` is a symbolic link.

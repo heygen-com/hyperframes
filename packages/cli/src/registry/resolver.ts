@@ -4,9 +4,15 @@
  * when blocks/components need it for the `add` command.
  */
 
-import type { ItemType, RegistryItem, RegistryManifestEntry } from "@hyperframes/core";
+import {
+  terminalText,
+  type ItemType,
+  type RegistryItem,
+  type RegistryManifestEntry,
+} from "@hyperframes/core";
 import { fetchItemManifest, fetchRegistryManifest, DEFAULT_REGISTRY_URL } from "./remote.js";
 import { runWithConcurrencyLimit } from "../utils/concurrency.js";
+import { closestNames } from "../utils/didYouMean.js";
 
 export interface ResolveOptions {
   baseUrl?: string;
@@ -21,7 +27,7 @@ export interface ResolveOptions {
 }
 
 function defaultWarn(message: string): void {
-  process.stderr.write(`hyperframes:registry ${message}\n`);
+  process.stderr.write(`hyperframes:registry ${terminalText(message)}\n`);
 }
 
 /**
@@ -145,9 +151,13 @@ export async function resolveItemWithDependencies(
   const entry = entries.find((e) => e.name === name);
   if (!entry) {
     const available = entries.map((e) => e.name).join(", ");
+    const close = closestNames(
+      name,
+      entries.map((e) => e.name),
+    );
     throw new Error(
       available.length > 0
-        ? `Item "${name}" not found in registry. Available: ${available}`
+        ? `Item "${name}" not found in registry.${close.length > 0 ? ` Closest: ${close.join(", ")}.` : ""} Available: ${available}`
         : unreachableRegistryMessage(name, options.baseUrl),
     );
   }

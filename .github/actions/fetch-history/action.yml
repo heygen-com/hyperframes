@@ -1,0 +1,11 @@
+name: Fetch history
+description: >-
+  Fetches this commit's ancestry and main without file contents, so the change-detection diffs run on a shallow
+  checkout. The diffs read no other branch or tag. Needs a checkout first.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        git fetch --no-tags --filter=blob:none --unshallow origin "$(git rev-parse HEAD)"
+        git fetch --no-tags --filter=blob:none origin +refs/heads/main:refs/remotes/origin/main

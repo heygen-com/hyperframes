@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Thin Film</h1>
+  <p>An orb's rim shimmers with soap-bubble iridescence on black. A WebGPU shader from the Shaders library (shaders.com, MIT).</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/thin-film.json"
   compositionId="thin-film"
   compositionSrc="compositions/thin-film.html"
   title="Thin Film"
-  description="An orb's rim shimmers with soap-bubble iridescence on black. A WebGPU shader from the Shaders library (shaders.com, MIT)."
   variables={[]}
   meta={{"duration":2,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":31}}
   attribution={{"path":"registry/blocks/thin-film","tags":["webgpu","webgpu-shader","object","iridescent","bubble","rainbow"]}}
@@ -68,7 +72,9 @@ That writes `compositions/thin-film.html`, plus 2 supporting files under `compos
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -99,6 +105,4 @@ Tagged `webgpu` `webgpu-shader` `object` `iridescent` `bubble` `rainbow`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

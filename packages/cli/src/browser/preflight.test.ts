@@ -34,7 +34,11 @@ describe("runEnvironmentChecks", () => {
   const originalFfmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
   const originalFfprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
 
+  const realPlatform = process.platform;
+
   beforeEach(() => {
+    // The `--version` tests below describe the Unix path; the Windows block sets its own platform.
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     process.env.HYPERFRAMES_FFMPEG_PATH = process.execPath;
     process.env.HYPERFRAMES_FFPROBE_PATH = process.execPath;
     runProcess.mockReset();
@@ -42,6 +46,7 @@ describe("runEnvironmentChecks", () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
     if (originalFfmpegPath === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
     else process.env.HYPERFRAMES_FFMPEG_PATH = originalFfmpegPath;
     if (originalFfprobePath === undefined) delete process.env.HYPERFRAMES_FFPROBE_PATH;
@@ -125,6 +130,7 @@ describe("runEnvironmentChecks", () => {
         ok: false,
         level: "error",
         title: "FFprobe not found",
+        code: "ffprobe_not_found",
       }),
     );
     expect(result.ffprobePath).toBeUndefined();
@@ -138,6 +144,7 @@ describe("runEnvironmentChecks", () => {
 
     expect(ffmpeg).toMatchObject({
       ok: false,
+      code: "ffmpeg_not_found",
       detail: 'Configured path does not exist: HYPERFRAMES_FFMPEG_PATH="/missing/ffmpeg.exe"',
     });
   });
@@ -163,6 +170,24 @@ describe("runEnvironmentChecks", () => {
     expect(ffmpeg?.detail).toContain(process.execPath);
     expect(ffmpeg?.detail).toContain("3221225781");
     expect(result.ffmpegPath).toBeUndefined();
+  });
+
+  it.each([
+    { error: { code: "ENOENT" }, said: "(ENOENT)" },
+    { error: { code: "EACCES" }, said: "(EACCES)" },
+    { error: { signal: "SIGKILL" }, said: "(signal SIGKILL)" },
+    { error: { code: "ETIMEDOUT", signal: "SIGTERM" }, said: "(ETIMEDOUT)" },
+  ])("names how FFmpeg failed to start: $said", async ({ error, said }) => {
+    runProcess.mockImplementation((binaryPath: string) => {
+      if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+        return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
+      throw Object.assign(new Error("spawn failed"), error);
+    });
+
+    const result = await runEnvironmentChecks();
+    const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+    expect(ffmpeg?.detail).toBe(`Failed to run "${process.execPath}" -version ${said}.`);
   });
 
   // Windows DLL advice only on Windows; elsewhere the platform install hint.
@@ -211,6 +236,48 @@ describe("runEnvironmentChecks", () => {
     expect(result.browserInstall).toMatchObject({ pathAscii: true });
   });
 
+  describe("on Windows", () => {
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    });
+
+    it("reads Chrome's version from the file, never from a `--version` run that exits 21", async () => {
+      runProcess.mockImplementation((binaryPath: string, args: string[]) => {
+        if (binaryPath === process.execPath && args[0] === "--version")
+          throw Object.assign(new Error("exit 21"), { status: 21 });
+        if (binaryPath === "powershell.exe")
+          return Promise.resolve({ stdout: "131.0.6778.85\r\n", stderr: "" });
+        return Promise.resolve({ stdout: "ffmpeg version 7.1.1\n", stderr: "" });
+      });
+
+      const result = await runEnvironmentChecks({
+        includeBrowser: true,
+        browserPath: process.execPath,
+      });
+
+      expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
+        ok: true,
+        versionMajor: 131,
+      });
+    });
+
+    it("still reports Chrome usable when its version cannot be read", async () => {
+      runProcess.mockImplementation((binaryPath: string) => {
+        if (binaryPath === "powershell.exe") throw new Error("powershell unavailable");
+        return Promise.resolve({ stdout: "ffmpeg version 7.1.1\n", stderr: "" });
+      });
+
+      const result = await runEnvironmentChecks({
+        includeBrowser: true,
+        browserPath: process.execPath,
+      });
+
+      const chrome = result.outcomes.find((outcome) => outcome.name === "Chrome");
+      expect(chrome?.ok).toBe(true);
+      expect(chrome?.versionMajor).toBeUndefined();
+    });
+  });
+
   it("reports Chrome as not found (no throw) when browser discovery throws on a corrupt cache", async () => {
     const spy = vi.spyOn(manager, "findBrowser").mockRejectedValue(
       Object.assign(new Error("ENOTDIR: not a directory, scandir 'chrome-headless-shell'"), {
@@ -224,6 +291,7 @@ describe("runEnvironmentChecks", () => {
       expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
         ok: false,
         title: "Chrome not found",
+        code: "chrome_not_found",
         detail: "ENOTDIR: not a directory, scandir 'chrome-headless-shell'",
         hint: "Run: npx hyperframes browser ensure",
       });
@@ -276,6 +344,7 @@ describe("runEnvironmentChecks", () => {
     expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
       ok: false,
       title: "Chrome not found",
+      code: "chrome_not_found",
     });
   });
 });

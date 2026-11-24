@@ -19,6 +19,7 @@ import * as whisper from "./whisper/transcribe.js";
 import {
   RemoveBackgroundError,
   TranscribeError,
+  offloadHeavyMedia,
   removeBackground,
   transcribe,
   type TranscribeOptions,
@@ -328,7 +329,11 @@ describe("transcribe", () => {
       vi.spyOn(manager, "ensureModel").mockResolvedValue(join(dir, "ggml-small.en.bin"));
       const ffmpeg = join(dir, "ffmpeg");
       const pidFile = join(dir, "ffmpeg.pid");
-      hangingTool(ffmpeg, pidFile, 'for out; do :; done\nprintf partial > "$out"\n');
+      hangingTool(
+        ffmpeg,
+        pidFile,
+        'case "$*" in *-demuxers*) exit 0;; esac\nfor out; do :; done\nprintf partial > "$out"\n',
+      );
       vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", ffmpeg);
       vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", join(dir, "no-ffprobe"));
       const input = join(dir, "narration.mp3");
@@ -479,5 +484,11 @@ describe("removeBackground", () => {
 
     expect(err).toBeInstanceOf(RemoveBackgroundError);
     expect(err).toMatchObject({ code: "failed", message: failure.message, cause: failure });
+  });
+});
+
+describe("offloadHeavyMedia", () => {
+  it("is exported for apps that upload a project's heavy media themselves", () => {
+    expect(typeof offloadHeavyMedia).toBe("function");
   });
 });

@@ -7,6 +7,7 @@ const shouldTrack = vi.fn(() => true);
 vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
   flush: () => flush(),
+  flushSync: () => undefined,
   shouldTrack: () => shouldTrack(),
 }));
 
@@ -21,8 +22,17 @@ vi.mock("./system.js", async () => ({
 
 // identifyUser reads the install anonymousId; pin it so the $identify alias is
 // deterministic and the test never touches disk.
+const cachedSkills = vi.hoisted(() => ({
+  installed: undefined as string[] | undefined,
+  outdated: undefined as string[] | undefined,
+}));
 vi.mock("./config.js", () => ({
-  readConfig: () => ({ anonymousId: "anon-test-123", telemetryEnabled: true }),
+  readConfig: () => ({
+    anonymousId: "anon-test-123",
+    telemetryEnabled: true,
+    skillsInstalled: cachedSkills.installed,
+    skillsOutdated: cachedSkills.outdated,
+  }),
 }));
 
 const {
@@ -41,8 +51,40 @@ const {
   trackAuthLoginStarted,
   trackAuthLoginCompleted,
   trackAuthLoginFailed,
+  trackSkillCommandRan,
   identifyUser,
 } = await import("./events.js");
+const { default: beaconCommand } = await import("../commands/events.js");
+
+describe("a skill run seen by its beacon and by its command", () => {
+  it("leaves skill_invoked one observation: the command and its retry go to skill_command_ran", async () => {
+    trackEvent.mockClear();
+    await beaconCommand.run?.({
+      args: { _: [], skill: "reverse-any-video", event: "skill_invoked" },
+      rawArgs: [],
+      cmd: beaconCommand,
+    } as never);
+    trackSkillCommandRan({ skill: "reverse-any-video", command: "reverse start", signedIn: false });
+    trackSkillCommandRan({
+      skill: "reverse-any-video",
+      command: "reverse start",
+      signedIn: true,
+      sessionId: "rvs_1",
+    });
+    const names = trackEvent.mock.calls.map((call) => call[0]);
+    expect(names.filter((n) => n === "skill_invoked")).toHaveLength(1);
+    expect(trackEvent).toHaveBeenCalledWith("skill_invoked", {
+      authoring_skill: "reverse-any-video",
+    });
+    expect(names.filter((n) => n === "skill_command_ran")).toHaveLength(2);
+    expect(trackEvent).toHaveBeenLastCalledWith("skill_command_ran", {
+      authoring_skill: "reverse-any-video",
+      command: "reverse start",
+      signed_in: true,
+      session_id: "rvs_1",
+    });
+  });
+});
 
 describe("command telemetry events", () => {
   beforeEach(() => {
@@ -56,6 +98,21 @@ describe("command telemetry events", () => {
       command: "check",
       run_id: "run-123",
     });
+  });
+
+  it("says which HyperFrames skills the last check found, once one has run", () => {
+    cachedSkills.installed = ["hyperframes", "media-use", "reverse-any-video"];
+    cachedSkills.outdated = ["media-use"];
+    trackCommand("render");
+    expect(trackEvent).toHaveBeenLastCalledWith("cli_command", {
+      command: "render",
+      skills_installed: "hyperframes,media-use,reverse-any-video",
+      skills_outdated: "media-use",
+    });
+    cachedSkills.installed = undefined;
+    cachedSkills.outdated = undefined;
+    trackCommand("render");
+    expect(trackEvent.mock.lastCall?.[1]).not.toHaveProperty("skills_installed");
   });
 
   it("omits run_id from cli_command when no run ID is provided", () => {
@@ -120,8 +177,13 @@ describe("trackCheckReport", () => {
       contrastWarnings: 10,
       craftWarnings: 16,
       launchSettleMs: 11,
+      renderReadyTimedOut: true,
       seekLoopMs: 12,
       contrastMs: 13,
+      gridMs: 17,
+      craftMs: 18,
+      overlapMs: 19,
+      durationSec: 20,
       gridPoints: 14,
       contrastPoints: 15,
       ok: false,
@@ -147,14 +209,103 @@ describe("trackCheckReport", () => {
       contrast_warnings: 10,
       craft_warnings: 16,
       launch_settle_ms: 11,
+      render_ready_timed_out: true,
       seek_loop_ms: 12,
       contrast_ms: 13,
+      grid_ms: 17,
+      craft_ms: 18,
+      overlap_ms: 19,
+      composition_s: 20,
       grid_points: 14,
       contrast_points: 15,
       ok: false,
       exit_code: 1,
       run_id: "run-123",
     });
+  });
+
+  it("names the finding that stopped the check, and omits it when none did", () => {
+    const props = {
+      contrastGate: false,
+      motionGate: false,
+      captionZoneGate: false,
+      frameCheckGate: false,
+      snapshotsGate: false,
+      lintErrors: 0,
+      lintWarnings: 0,
+      runtimeErrors: 1,
+      runtimeWarnings: 0,
+      layoutErrors: 0,
+      layoutWarnings: 0,
+      motionErrors: 0,
+      motionWarnings: 0,
+      contrastErrors: 0,
+      contrastWarnings: 0,
+      craftWarnings: 0,
+      launchSettleMs: 0,
+      renderReadyTimedOut: false,
+      seekLoopMs: 0,
+      contrastMs: 0,
+      gridMs: 0,
+      craftMs: 0,
+      overlapMs: 0,
+      durationSec: 0,
+      gridPoints: 0,
+      contrastPoints: 0,
+      ok: false,
+      exitCode: 1,
+    };
+    trackCheckReport({ ...props, stopCode: "media_copies_unfinished" });
+    expect(trackEvent).toHaveBeenLastCalledWith(
+      "check_report",
+      expect.objectContaining({ stop_code: "media_copies_unfinished" }),
+    );
+    trackCheckReport(props);
+    expect(trackEvent.mock.calls.at(-1)?.[1]).not.toHaveProperty("stop_code");
+  });
+
+  it("sends what making browser-playable copies cost as counts and milliseconds, and omits it without videos", () => {
+    const props = {
+      contrastGate: false,
+      motionGate: false,
+      captionZoneGate: false,
+      frameCheckGate: false,
+      snapshotsGate: false,
+      lintErrors: 0,
+      lintWarnings: 0,
+      runtimeErrors: 0,
+      runtimeWarnings: 0,
+      layoutErrors: 0,
+      layoutWarnings: 0,
+      motionErrors: 0,
+      motionWarnings: 0,
+      contrastErrors: 0,
+      contrastWarnings: 0,
+      craftWarnings: 0,
+      launchSettleMs: 0,
+      renderReadyTimedOut: false,
+      seekLoopMs: 0,
+      contrastMs: 0,
+      gridMs: 0,
+      craftMs: 0,
+      overlapMs: 0,
+      durationSec: 0,
+      gridPoints: 0,
+      contrastPoints: 0,
+      ok: true,
+      exitCode: 0,
+    };
+    trackCheckReport({ ...props, mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 } });
+    expect(trackEvent).toHaveBeenLastCalledWith(
+      "check_report",
+      expect.objectContaining({
+        copies_total: 47,
+        copies_waited_ms: 120_000,
+        copies_unfinished: 12,
+      }),
+    );
+    trackCheckReport(props);
+    expect(trackEvent.mock.calls.at(-1)?.[1]).not.toHaveProperty("copies_total");
   });
 
   it("omits run_id when no run ID is provided", () => {
@@ -176,8 +327,13 @@ describe("trackCheckReport", () => {
       contrastWarnings: 0,
       craftWarnings: 0,
       launchSettleMs: 0,
+      renderReadyTimedOut: false,
       seekLoopMs: 0,
       contrastMs: 0,
+      gridMs: 0,
+      craftMs: 0,
+      overlapMs: 0,
+      durationSec: 0,
       gridPoints: 0,
       contrastPoints: 0,
       ok: true,
@@ -532,6 +688,24 @@ describe("render telemetry events", () => {
     });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(props.hf_env_overrides).toEqual(["HF_DE_VERIFY", "HYPERFRAMES_FONT_CACHE_DIR"]);
+  });
+
+  it("sends only the closed-list missing-path facts on render_error", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      missingPath: { scope: "cache_entry", synced: true, root: "system_temp" },
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      missing_path_scope: "cache_entry",
+      missing_path_synced: true,
+      missing_path_root: "system_temp",
+    });
+    expect(Object.values(props).filter((v) => typeof v === "string" && /[\\/]/.test(v))).toEqual(
+      [],
+    );
   });
 
   it("reports an empty array, not an absent field, when no override was resolved", () => {
@@ -1035,6 +1209,10 @@ describe("render telemetry events", () => {
       stageCaptureSetupMs: 1860,
       stageCaptureFrameMs: 3240,
       captureAvgMs: 27,
+      captureSeekAvgMs: 6,
+      captureBeforeCaptureAvgMs: 2,
+      captureScreenshotAvgMs: 15,
+      encoderWaitAvgMs: 4,
     });
 
     expect(trackEvent).toHaveBeenCalledWith(
@@ -1044,6 +1222,10 @@ describe("render telemetry events", () => {
         stage_capture_setup_ms: 1860,
         stage_capture_frame_ms: 3240,
         capture_avg_ms: 27,
+        capture_seek_avg_ms: 6,
+        capture_before_capture_avg_ms: 2,
+        capture_screenshot_avg_ms: 15,
+        encoder_wait_avg_ms: 4,
       }),
       undefined,
     );
@@ -1380,11 +1562,14 @@ describe("auth login telemetry events", () => {
   });
 
   it("identifyUser emits a $identify alias linking the anon install to the identity", () => {
-    identifyUser("alice@example.com");
+    identifyUser("user-id-1", { email: "alice@example.com", heygen_username: "alice" });
     expect(trackEvent).toHaveBeenCalledWith(
       "$identify",
-      { $anon_distinct_id: "anon-test-123" },
-      "alice@example.com",
+      {
+        $anon_distinct_id: "anon-test-123",
+        $set: { email: "alice@example.com", heygen_username: "alice" },
+      },
+      "user-id-1",
     );
   });
 

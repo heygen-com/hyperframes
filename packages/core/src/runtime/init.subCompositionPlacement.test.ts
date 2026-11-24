@@ -1,5 +1,6 @@
 import gsap from "gsap";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { initSandboxRuntimeModular } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
@@ -56,6 +57,94 @@ describe("runtime sub-composition placement", () => {
     expect(shownX()).toBe(50);
     window.__player?.seek(4.5);
     expect(shownX()).toBe(25);
+  });
+
+  // fails without the fix: a scene's script re-run left the root at 0 after the rebind nested the new timeline.
+  it("keeps the playhead when a scene's script re-runs and the rebind nests its new timeline", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="3">` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="0" data-duration="3">` +
+      `<div id="s"></div></div></div>`;
+    const slide = () =>
+      gsap.timeline({ paused: true }).to("#s", { x: 90, duration: 3, ease: "none" }, 0);
+    const root = gsap.timeline({ paused: true });
+    const scene = slide();
+    window.__timelines = { main: root, scene } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(1);
+    expect(shownX()).toBeCloseTo(30);
+
+    scene.kill();
+    gsap.set("#s", { clearProps: "transform" });
+    window.__timelines!.scene = slide() as unknown as RuntimeTimelineLike;
+    window.__player?.seek(1);
+    window.__hfForceTimelineRebind?.();
+
+    expect(root.time()).toBeCloseTo(1);
+    expect(shownX()).toBeCloseTo(30);
+  });
+
+  it("keeps a playing film where it plays when a scene's script re-runs mid-play", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="3">` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="0" data-duration="3">` +
+      `<div id="s"></div></div></div>`;
+    const slide = () =>
+      gsap.timeline({ paused: true }).to("#s", { x: 90, duration: 3, ease: "none" }, 0);
+    const root = gsap.timeline({ paused: true });
+    const scene = slide();
+    window.__timelines = { main: root, scene } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(1);
+    window.__player?.play();
+
+    scene.kill();
+    window.__timelines!.scene = slide() as unknown as RuntimeTimelineLike;
+    window.__hfForceTimelineRebind?.();
+
+    expect(window.__player?.isPlaying()).toBe(true);
+    expect(root.time()).toBeCloseTo(window.__player!.getTime(), 1);
+  });
+
+  // fails without the fix: with no GSAP on the page, the rebind read time() off a bare registered root.
+  it("rebinds a root registered as a bare object on a page without GSAP, without rendering it", () => {
+    delete (window as { gsap?: unknown }).gsap;
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="1">` +
+      `<div data-composition-id="scene" data-start="0" data-duration="1"></div></div>`;
+    window.__timelines = { main: {}, scene: {} } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+
+    expect(() => {
+      window.__hfForceTimelineRebind?.();
+      window.__hfForceTimelineRebind?.();
+    }).not.toThrow();
+  });
+
+  it("renders the root once at a scene's new end when its re-run shortens it past the playhead", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true">` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="0">` +
+      `<div id="s"></div></div></div>`;
+    const slide = (duration: number) =>
+      gsap.timeline({ paused: true }).to("#s", { x: 90, duration, ease: "none" }, 0);
+    const root = gsap.timeline({ paused: true });
+    const scene = slide(3);
+    window.__timelines = { main: root, scene } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(2.5);
+
+    scene.kill();
+    gsap.set("#s", { clearProps: "transform" });
+    window.__timelines!.scene = slide(2) as unknown as RuntimeTimelineLike;
+    window.__hfForceTimelineRebind?.();
+    expect(window.__player?.getTime()).toBeCloseTo(2);
+    expect(root.time()).toBeCloseTo(2);
+    expect(Number(gsap.getProperty("#s", "x"))).toBeCloseTo(90);
+
+    const rendered = vi.spyOn(root, "totalTime");
+    window.__hfForceTimelineRebind?.();
+    expect(rendered).not.toHaveBeenCalled();
   });
 
   it("leaves a scene where the root script places it after a re-run, as a fresh load does", () => {
@@ -409,16 +498,16 @@ describe("runtime sub-composition placement", () => {
   it("shifts a split scene's videos by each half's in-point and cuts them to that half", () => {
     loadSplitScene();
     window.__player?.renderSeek(4.5);
-    expect(sourceTimeOf("scene", "v2")).toBe(5.5);
+    expect(sourceTimeOf("scene", "v2")).toBe(mediaElementTime(5.5));
     // The second half's v2 lands at 4-8 but is cut until that half starts at 5.
     expect(sourceTimeOf("scene-split", "v2")).toBe(-1);
 
     window.__player?.renderSeek(5);
-    expect(sourceTimeOf("scene-split", "v2")).toBe(6);
+    expect(sourceTimeOf("scene-split", "v2")).toBe(mediaElementTime(6));
     window.__player?.renderSeek(8.5);
-    expect(sourceTimeOf("scene-split", "v3")).toBe(2.5);
+    expect(sourceTimeOf("scene-split", "v3")).toBe(mediaElementTime(2.5));
     window.__player?.renderSeek(10);
-    expect(sourceTimeOf("scene-split-split", "v3")).toBe(4);
+    expect(sourceTimeOf("scene-split-split", "v3")).toBe(mediaElementTime(4));
   });
 
   it("lets a scene's video play past a shorter root animation when the root authors no length", () => {
@@ -435,7 +524,7 @@ describe("runtime sub-composition placement", () => {
     initSandboxRuntimeModular();
 
     const at = (t: number) => (window.__player?.renderSeek(t), video("long").currentTime);
-    expect([at(1), at(5), at(8)]).toEqual([1, 5, 8]);
+    expect([at(1), at(5), at(8)]).toEqual([1, 5, 8].map(mediaElementTime));
   });
 
   it("keeps a scene trimmed to 3 s driving its 6 s file past the trim, as before in-points", () => {
@@ -445,7 +534,7 @@ describe("runtime sub-composition placement", () => {
         `<div data-composition-id="scene" data-duration="6"><video id="body" data-start="0"></video></div></div>`,
     );
     window.__player?.renderSeek(6);
-    expect(video("body").currentTime).toBe(4);
+    expect(video("body").currentTime).toBe(mediaElementTime(4));
   });
 
   it("cuts a split half that has no id at its own end, not its file's", () => {
@@ -456,9 +545,9 @@ describe("runtime sub-composition placement", () => {
         `<video id="late" data-start="8" data-duration="4"></video></div></div>`,
     );
     window.__player?.renderSeek(8.5);
-    expect(video("late").currentTime).toBe(0.5);
+    expect(video("late").currentTime).toBe(mediaElementTime(0.5));
     window.__player?.renderSeek(10);
-    expect(video("late").currentTime).toBe(0.5);
+    expect(video("late").currentTime).toBe(mediaElementTime(0.5));
   });
 
   it("keeps a video in a composition nested inside the half silent until the half starts", () => {
@@ -469,7 +558,7 @@ describe("runtime sub-composition placement", () => {
     window.__player?.renderSeek(1);
     expect(video("deep").currentTime).toBe(-1);
     window.__player?.renderSeek(6);
-    expect(video("deep").currentTime).toBe(6);
+    expect(video("deep").currentTime).toBe(mediaElementTime(6));
   });
 
   it("loops a straddling clip over its whole file, not from the cut", () => {
@@ -478,7 +567,7 @@ describe("runtime sub-composition placement", () => {
       4,
     );
     const at = (t: number) => (window.__player?.renderSeek(t), video("loop").currentTime);
-    expect([at(5), at(6), at(7.5)]).toEqual([3, 0, 1.5]);
+    expect([at(5), at(6), at(7.5)]).toEqual([3, 0, 1.5].map(mediaElementTime));
   });
 
   it("follows a straddling clip's speed ramp from the clip's own start", () => {
@@ -499,7 +588,7 @@ describe("runtime sub-composition placement", () => {
     );
     window.__player?.renderSeek(7);
     expect(video("ramp").currentTime).toBeCloseTo(
-      sourceTimeAt(readElementRateSpec(video("ramp")), 5),
+      mediaElementTime(sourceTimeAt(readElementRateSpec(video("ramp")), 5)),
       6,
     );
   });

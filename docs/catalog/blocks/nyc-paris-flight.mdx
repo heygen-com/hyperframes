@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>NYC Paris Flight</h1>
+  <p>Apple-style realistic map animation with a plane flying from New York to Paris, marker circle, landing pop, and sound effects.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/nyc-paris-flight.json"
   compositionId="nyc-paris-flight"
   compositionSrc="compositions/nyc-paris-flight.html"
   title="NYC Paris Flight"
-  description="Apple-style realistic map animation with a plane flying from New York to Paris, marker circle, landing pop, and sound effects."
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Showcases","badge":"Stable","codeLines":525}}
   attribution={{"author":"Stronkter","authorUrl":"https://x.com/Stronkter","path":"registry/blocks/nyc-paris-flight","tags":["showcase","travel","map","youtube","sfx"]}}
@@ -560,7 +564,9 @@ That writes `compositions/nyc-paris-flight.html`, plus 2 supporting files under 
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -601,6 +607,4 @@ Created by [Stronkter](https://x.com/Stronkter).
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

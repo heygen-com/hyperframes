@@ -3,6 +3,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { parseTimelineFromDOM } from "../player/lib/timelineDOM";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { createAudioGroupAndAssignMembers } from "./timelineAudioGroupCreate";
 import { toggleTimelineElementHidden, toggleTimelineTrackHidden } from "./timelineTrackVisibility";
@@ -302,6 +304,38 @@ describe("toggleTimelineTrackHidden", () => {
 });
 
 describe("toggleTimelineElementHidden", () => {
+  it("hides a clip whose file has no ids yet, by the id the preview served it with", async () => {
+    // A clip added outside Studio: no id, no class, and nothing has stamped the file since.
+    const onDisk = `<div data-composition-id="main" data-start="0" data-duration="10"><p data-start="1" data-duration="3" data-track-index="0">Title</p></div>`;
+    stubProjectFiles(new Map([["index.html", onDisk]]));
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) throw new Error("expected iframe document");
+    doc.body.innerHTML = ensureHfIds(onDisk);
+    const [clip] = parseTimelineFromDOM(doc, 10);
+    if (!clip?.hfId) throw new Error("expected the served clip to carry an hf-id");
+    const writes = new Map<string, string>();
+
+    await toggleTimelineElementHidden({
+      projectId: "project-1",
+      activeCompPath: "index.html",
+      timelineElements: [clip],
+      elementKey: clip.key ?? clip.id,
+      hidden: true,
+      previewIframe: iframe,
+      writeProjectFile: async (path, content) => {
+        writes.set(path, content);
+      },
+      recordEdit: vi.fn(),
+      pendingTimelineEditPathRef: { current: new Set() },
+    });
+
+    expect(readTagSnippetByTarget(writes.get("index.html") ?? "", { hfId: clip.hfId })).toContain(
+      'data-hidden=""',
+    );
+  });
+
   it("persists data-hidden for only the selected element and updates the player store", async () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);

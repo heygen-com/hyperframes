@@ -2,10 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { gsap } from "gsap";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import {
-  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
-  HF_COLOR_GRADING_CANVAS_ID_PREFIX,
-} from "@hyperframes/core/color-grading";
+import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 
 /**
@@ -52,7 +49,7 @@ afterEach(() => {
 });
 
 describe("readAllAnimatedProperties group filter", () => {
-  it("keeps other tweens' out-of-group properties out of a grouped resolve", () => {
+  it("keeps other tweens' out-of-group properties out of a grouped resolve", async () => {
     const el = document.createElement("div");
     el.id = "clip";
     document.body.appendChild(el);
@@ -61,58 +58,26 @@ describe("readAllAnimatedProperties group filter", () => {
       otherTweenVars: { opacity: 0, rotationX: 52, rotationY: -47 },
     });
 
-    const result = readAllAnimatedProperties(iframe, "#clip", rotationSetAnim(), "rotation");
+    const result = await readAllAnimatedProperties(iframe, "#clip", rotationSetAnim(), "rotation");
 
     expect(result).toEqual({ rotation: -28.1 });
   });
 });
 
 describe("color-grading opacity truth", () => {
-  function gradedElement(): HTMLElement {
+  it("reads a graded source's opacity from GSAP, as for any element", () => {
     const el = document.createElement("img");
     el.id = "clip";
-    el.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "");
-    const canvas = document.createElement("canvas");
-    canvas.id = `${HF_COLOR_GRADING_CANVAS_ID_PREFIX}clip`;
-    canvas.style.opacity = "0.98";
-    document.body.append(el, canvas);
-    return el;
-  }
-
-  it("resolves opacity from the grading canvas, not the runtime hide", () => {
-    const el = gradedElement();
-    const iframe = fakeIframe(el, { gsapValues: { opacity: 0 } });
-    const anim = {
-      id: "#clip-from-200-visual",
-      targetSelector: "#clip",
-      method: "from",
-      properties: { opacity: 0.5 },
-    } as unknown as GsapAnimation;
-
-    const result = readAllAnimatedProperties(iframe, "#clip", anim);
-
-    expect(result.opacity).toBe(0.98);
-  });
-
-  it("readGsapProperty takes the same detour", () => {
-    const el = gradedElement();
-    const iframe = fakeIframe(el, { gsapValues: { opacity: 0 } });
+    el.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "true");
+    document.body.appendChild(el);
+    const iframe = fakeIframe(el, { gsapValues: { opacity: 0.98 } });
 
     expect(readGsapProperty(iframe, "#clip", "opacity")).toBe(0.98);
-  });
-
-  it("reads GSAP directly when the source is not grading-hidden", () => {
-    const el = document.createElement("div");
-    el.id = "clip";
-    document.body.appendChild(el);
-    const iframe = fakeIframe(el, { gsapValues: { opacity: 0.3 } });
-
-    expect(readGsapProperty(iframe, "#clip", "opacity")).toBe(0.3);
   });
 });
 
 describe("readAllAnimatedProperties with a sibling tween", () => {
-  it("leaves a sibling tween's rotation to that tween after an opacity keyframe edit", () => {
+  it("leaves a sibling tween's rotation to that tween after an opacity keyframe edit", async () => {
     const el = document.createElement("div");
     el.id = "clip";
     document.body.appendChild(el);
@@ -142,7 +107,7 @@ describe("readAllAnimatedProperties with a sibling tween", () => {
     } as unknown as GsapAnimation;
 
     // commitKeyframeProps: these values plus the edit at the playhead, and backfilled into the rest.
-    const read = readAllAnimatedProperties(iframe, "#clip", anim);
+    const read = await readAllAnimatedProperties(iframe, "#clip", anim);
     live.kill();
     gsap.set(el, { clearProps: "all" });
     const edited = build({

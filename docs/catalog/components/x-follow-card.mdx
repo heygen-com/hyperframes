@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>X Follow Card</h1>
+  <p>A social follow card with avatar, handle, and follower motion.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/x-follow-card.json"
   compositionId="x-follow-card"
   compositionSrc="compositions/components/x-follow-card.html"
   title="X Follow Card"
-  description="A social follow card with avatar, handle, and follower motion."
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":89}}
   attribution={{"path":"registry/components/x-follow-card","tags":["social-overlay"]}}
@@ -124,7 +128,9 @@ That writes one file: `compositions/components/x-follow-card.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -144,6 +150,4 @@ Tagged `social-overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

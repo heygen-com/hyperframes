@@ -1,4 +1,4 @@
-import { lintHyperframeHtml } from "@hyperframes/lint";
+import { linkedSources, lintHyperframeHtml } from "@hyperframes/lint";
 
 export type HyperframeStaticFailureReason =
   | "missing_composition_id"
@@ -15,8 +15,12 @@ export type HyperframeStaticGuardResult = {
 
 export async function validateHyperframeHtmlContract(
   html: string,
+  project?: { dir: string; compSrcPath?: string },
 ): Promise<HyperframeStaticGuardResult> {
-  const result = await lintHyperframeHtml(html);
+  const result = await lintHyperframeHtml(
+    html,
+    project && linkedSources(project.dir, html, project.compSrcPath),
+  );
   const missingKeys = result.findings
     .filter((finding) => finding.severity === "error")
     .map((finding) => finding.message);

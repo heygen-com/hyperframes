@@ -9,12 +9,22 @@ export async function listenOnLoopback(server: Server): Promise<string> {
   return `http://127.0.0.1:${address.port}`;
 }
 
-export function launchTestChrome(executablePath: string | undefined): Promise<Browser> {
-  return puppeteer.launch({
+export async function launchTestChrome(
+  executablePath: string | undefined,
+  extraArgs: readonly string[] = [],
+): Promise<Browser> {
+  const startedAt = Date.now();
+  const browser = await puppeteer.launch({
     executablePath,
     headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    args: ["--no-sandbox", "--disable-dev-shm-usage", ...extraArgs],
   });
+  const launchedAt = Date.now();
+  await (await browser.newPage()).close();
+  console.info(
+    `[engine-test-chrome] launch ${launchedAt - startedAt} ms, first page ${Date.now() - launchedAt} ms`,
+  );
+  return browser;
 }
 
 /** Closes a test Chrome, killing it when close hangs (seen on Windows runners) so afterAll never times out. */

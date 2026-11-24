@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { appendRecord } from "../../../scripts/lib/manifest.mjs";
@@ -16,6 +25,118 @@ import {
 // must be a proper bed (≈ -18 dB); a silent film keeps the louder default.
 
 const dbfs = (linear) => 20 * Math.log10(linear);
+
+// fails without the fix: MusicGen started in the project, and transformers reads
+// "facebook/musicgen-small" as a folder when the working directory has one.
+test(
+  "local MusicGen starts in the home folder, so a project folder named like the model is never read",
+  { skip: process.platform === "win32" ? "the stand-in python is an sh script" : false },
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "bgm-musicgen-cwd-"));
+    try {
+      const home = join(root, "home");
+      const project = join(root, "project");
+      mkdirSync(home);
+      mkdirSync(join(project, "facebook", "musicgen-small"), { recursive: true });
+      const python = join(root, "python");
+      const record = join(root, "record");
+      writeFileSync(
+        python,
+        `#!/bin/sh\ncase "$*" in --version) echo "Python 3.12.0";; *from_pretrained*) printf '%s' "$PWD" > "${record}";; esac\nexit 0\n`,
+        { mode: 0o755 },
+      );
+      const bgm = new URL("./bgm.mjs", import.meta.url).href;
+      const ran = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `const { generateBgmDetached } = await import(${JSON.stringify(bgm)});
+           const meta = generateBgmDetached({ prompt: "calm", durationS: 5, hyperframesDir: process.cwd(), hasVoice: false });
+           console.log(JSON.stringify(meta));`,
+        ],
+        {
+          cwd: project,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            HOME: home,
+            HYPERFRAMES_PYTHON: python,
+            GEMINI_API_KEY: "",
+            GOOGLE_API_KEY: "",
+          },
+        },
+      );
+      assert.equal(ran.status, 0, ran.stderr);
+      assert.equal(JSON.parse(ran.stdout).provider, "musicgen", ran.stdout);
+      for (let i = 0; i < 50 && !existsSync(record); i++)
+        await new Promise((r) => setTimeout(r, 100));
+      assert.equal(readFileSync(record, "utf8"), realpathSync(home));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+// fails without the fix: a project .env's Gemini key generated music with no note.
+test(
+  "Lyria music with a project .env's Gemini key prints one note naming the file",
+  { skip: process.platform === "win32" ? "the stand-in python is an sh script" : false },
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "bgm-project-key-"));
+    try {
+      const project = join(root, "project");
+      mkdirSync(project);
+      writeFileSync(join(project, ".env"), "GEMINI_API_KEY=from-project\n");
+      const python = join(root, "python");
+      writeFileSync(
+        python,
+        `#!/bin/sh\ncase "$*" in --version) echo "Python 3.12.0";; esac\nexit 0\n`,
+        {
+          mode: 0o755,
+        },
+      );
+      const recipe = join(root, "lyria-recipe.py");
+      writeFileSync(recipe, "");
+      const env = { ...process.env, HOME: root, HYPERFRAMES_PYTHON: python };
+      for (const name of [
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GCS_CREDS",
+        "HYPERFRAMES_PROJECT_ENV_ORIGINS",
+      ])
+        delete env[name];
+      const bgm = new URL("./bgm.mjs", import.meta.url).href;
+      const heygen = new URL("./heygen.mjs", import.meta.url).href;
+      const ran = spawnSync(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `const { generateBgmDetached } = await import(${JSON.stringify(bgm)});
+           const { loadEnvFromDir } = await import(${JSON.stringify(heygen)});
+           loadEnvFromDir(process.cwd());
+           for (let i = 0; i < 2; i++) {
+             const meta = generateBgmDetached({ prompt: "calm", durationS: 5, hyperframesDir: process.cwd(), lyriaRecipe: ${JSON.stringify(recipe)}, hasVoice: false });
+             console.log(meta.provider);
+           }`,
+        ],
+        { cwd: project, encoding: "utf8", env },
+      );
+      assert.equal(ran.status, 0, ran.stderr);
+      assert.equal(ran.stdout, "lyria\nlyria\n");
+      const notes = ran.stderr.match(/\[hyperframes\] Using GEMINI_API_KEY from .*/g) ?? [];
+      assert.equal(notes.length, 1, ran.stderr);
+      assert.match(
+        notes[0],
+        /\.env, a project \.env: music requests go to that key's Gemini account\.$/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("BGM under narration is a bed near -18 dB", () => {
   assert.equal(bgmDefaultVolume(true), BGM_BED_VOLUME);

@@ -9,6 +9,8 @@ const glide = (start: number, end: number, from: number, to: number, step = 0.04
   return points;
 };
 
+const silent = () => -120;
+
 describe("voiceFromWords", () => {
   const words = [
     { text: "伊", start: 1.0, end: 1.2 },
@@ -20,19 +22,19 @@ describe("voiceFromWords", () => {
   ];
 
   it("splits sentences at end punctuation, counts Han characters per second and lists pauses", () => {
-    const voice = voiceFromWords(words, []);
+    const voice = voiceFromWords(words, [], silent);
     expect(voice.unit).toBe("chars");
     expect(voice.sentences.map((s) => [s.text, s.start, s.end, s.rate])).toEqual([
       ["伊朗经济。", 1, 2, 4],
       ["涨了", 3, 3.5, 4],
     ]);
-    expect(voice.pauses).toEqual([{ start: 2, end: 3 }]);
+    expect(voice.pauses).toEqual([{ start: 2, end: 3, recordingDb: -120 }]);
     expect(voice.meanRate).toBe(4);
   });
 
   it("says a sentence ends rising when its last third lifts two semitones or more", () => {
     const track = [...glide(1, 1.7, 180, 180), ...glide(1.7, 2, 180, 240)];
-    const voice = voiceFromWords(words, track);
+    const voice = voiceFromWords(words, track, silent);
     expect(voice.sentences[0]).toMatchObject({ ending: "rising", pitchHz: 180 });
     expect(voice.sentences[1]!.ending).toBeNull();
   });
@@ -45,6 +47,7 @@ describe("voiceFromWords", () => {
         { text: "fast.", start: 0.8, end: 1 },
       ],
       [],
+      silent,
     );
     expect(voice.unit).toBe("words");
     expect(voice.sentences[0]).toMatchObject({ text: "Prices rose fast.", rate: 3 });
@@ -59,7 +62,7 @@ describe("voiceFromActivity", () => {
       if ((t >= 0.5 && t < 1.5) || (t >= 2.5 && t < 3.5))
         samples[i] = 0.3 * Math.sin(2 * Math.PI * 200 * t);
     }
-    const voice = voiceFromActivity(samples, READ_RATE, []);
+    const voice = voiceFromActivity(samples, READ_RATE, [], silent);
     expect(voice.source).toBe("activity");
     expect(voice.sentences.map((s) => [s.text, Math.round(s.start * 10) / 10])).toEqual([
       [null, 0.5],

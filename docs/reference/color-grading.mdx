@@ -33,6 +33,43 @@ npx hyperframes media-treatment \
 Add `--dry-run --json` to inspect the change without writing it. Use `--clear`
 to remove the treatment.
 
+## Grade a whole lane
+
+A camera cut into hundreds of clips takes one grade, set once. Put the grade
+on an `<hf-color-group>` and point each clip at it with `data-color-group`:
+
+```html
+<hf-color-group
+  id="tamer-cam"
+  data-label="Tamer"
+  data-color-grading='{"preset":"skin-soft","intensity":0.7}'
+></hf-color-group>
+
+<video id="tamer-01" data-color-group="tamer-cam" src="./assets/tamer.mp4" …></video>
+<video id="tamer-02" data-color-group="tamer-cam" src="./assets/tamer.mp4" …></video>
+<video
+  id="tamer-03"
+  data-color-group="tamer-cam"
+  data-color-grading='{"adjust":{"exposure":0.3}}'
+  src="./assets/tamer.mp4"
+  …
+></video>
+```
+
+- `data-color-grading` on the group takes the same JSON as on a clip. Editing it
+  regrades every member, in preview and in render.
+- `data-color-group` goes on the `<video>`, `<img>` or `<canvas>`. Membership is
+  held by the member, so a deleted clip simply leaves the group.
+- **A clip's own `data-color-grading` wins.** It replaces the group's grade for
+  that clip, so `tamer-03` above gets only its exposure lift, not skin-soft.
+- `data-color-group=""` is no group, and a group id with no `<hf-color-group>`
+  element leaves the clip ungraded. Removing the element, or its
+  `data-color-grading`, ungrades its members.
+- Groups do not nest. Group ids share the element-id namespace.
+- The element is inert: the runtime injects
+  `hf-color-group{display:contents!important}`. Close it with
+  `</hf-color-group>`, since HTML ignores `/>` on a custom element.
+
 ## Animate a supported property
 
 Nine grading properties expose CSS custom properties that a paused timeline

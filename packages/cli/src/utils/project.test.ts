@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
@@ -21,6 +21,25 @@ describe("resolveProjectOrThrow", () => {
   it("rejects a missing directory", () => {
     const missing = join(tmpdir(), `hf-missing-${Date.now()}`);
     expect(() => resolveProjectOrThrow(missing)).toThrowError(/Not a directory/);
+  });
+
+  it("names the project folder when given a file inside it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-file-arg-project-"));
+    try {
+      mkdirSync(join(dir, "assets"));
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      writeFileSync(join(dir, "assets", "music.mp3"), "x");
+      const file = join(dir, "assets", "music.mp3");
+      expect(() => resolveProjectOrThrow(file)).toThrowError(
+        expect.objectContaining({
+          title: "Not a directory: " + file,
+          hint: "music.mp3 is a file; this command takes the project folder.",
+          suggestion: "Pass the folder that holds index.html: " + dir,
+        }),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("rejects a directory without index.html", () => {
@@ -98,4 +117,21 @@ describe("resolveLintTarget", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+it("finds a parent project only when no directory was explicitly supplied", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-parent-project-"));
+  const child = join(dir, "compositions");
+  mkdirSync(child);
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  const cwd = vi.spyOn(process, "cwd").mockReturnValue(child);
+  try {
+    expect(resolveProjectOrThrow(undefined, { searchParents: true }).dir).toBe(dir);
+    expect(() => resolveProjectOrThrow(child, { searchParents: true })).toThrow(
+      "No composition found",
+    );
+  } finally {
+    cwd.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

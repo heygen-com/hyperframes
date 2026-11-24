@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>CTA Lockup</h1>
+  <p>A canonical closing lockup that reveals an action line, pops in an accent CTA capsule, settles supporting microcopy, and holds with confidence.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cta-lockup.json"
   compositionId="cta-lockup"
   compositionSrc="compositions/components/cta-lockup.html"
   title="CTA Lockup"
-  description="A canonical closing lockup that reveals an action line, pops in an accent CTA capsule, settles supporting microcopy, and holds with confidence."
   variables={[{"id":"action_line","type":"string","role":"content","label":"Action line","description":"Primary action statement shown above the CTA.","default":"Start building today"},{"id":"button_label","type":"string","role":"content","label":"Button label","description":"Text displayed inside the CTA capsule.","default":"Get HyperFrames"},{"id":"microcopy","type":"string","role":"content","label":"Microcopy","description":"Supporting detail shown below the CTA capsule.","default":"Free while in beta"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Fill color used by the CTA capsule.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":258}}
   attribution={{"path":"registry/components/cta-lockup","tags":["motion-primitive","ui-props","cta","end-card","lockup","ask"]}}
@@ -293,7 +297,9 @@ That writes one file: `compositions/components/cta-lockup.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -335,6 +341,4 @@ Tagged `motion-primitive` `ui-props` `cta` `end-card` `lockup` `ask`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

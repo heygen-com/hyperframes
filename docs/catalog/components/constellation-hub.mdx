@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Constellation Hub</h1>
+  <p>Feature nodes brighten in narration order as real-length SVG connectors draw outward from a fixed central hub, then settle into one lockup.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/constellation-hub.json"
   compositionId="constellation-hub"
   compositionSrc="compositions/components/constellation-hub.html"
   title="Constellation Hub"
-  description="Feature nodes brighten in narration order as real-length SVG connectors draw outward from a fixed central hub, then settle into one lockup."
   variables={[{"id":"hub_label","type":"string","role":"content","label":"Hub label","description":"Text displayed inside the fixed central hub.","default":"Product"},{"id":"nodes","type":"string","role":"content","label":"Feature nodes","description":"Comma-separated feature labels introduced in narration order.","default":"Capture,Compose,Render,Share"},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated seconds (from mount start) for each node reveal. Empty keeps the authored even spread.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color used by the hub, connectors, and active nodes.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the lockup holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":427}}
   attribution={{"path":"registry/components/constellation-hub","tags":["motion-primitive","feature-tour","hub","nodes","connector","reveal"]}}
@@ -462,7 +466,9 @@ That writes one file: `compositions/components/constellation-hub.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -505,6 +511,4 @@ Tagged `motion-primitive` `feature-tour` `hub` `nodes` `connector` `reveal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

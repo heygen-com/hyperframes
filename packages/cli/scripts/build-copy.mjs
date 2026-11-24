@@ -48,12 +48,15 @@ function copyDir(src, dest) {
 }
 
 // Source maps stay out: the CLI ships none of its own (tsup sourcemap: false).
+// Tests stay out too: the published skills run their scripts, never their tests.
+const isTestFile = (path) => /\.test\.[cm]?[jt]s$/.test(path);
+
 function copyDirContents(src, dest) {
   for (const entry of readdirSync(src)) {
     cpSync(join(src, entry), join(dest, entry), {
       recursive: true,
       force: true,
-      filter: (path) => !path.endsWith(".map"),
+      filter: (path) => !path.endsWith(".map") && !isTestFile(path),
     });
   }
 }
@@ -89,11 +92,25 @@ function copyGsapVendorFiles() {
   }
   const vendorDir = join(DIST, "vendor", "npm");
   rmSync(vendorDir, { recursive: true, force: true });
-  const dest = join(vendorDir, `gsap@${version}`, "dist");
-  mkdirSync(dest, { recursive: true });
-  for (const file of GSAP_VENDOR_FILES) {
-    copyFileSync(join(gsapRoot, "dist", file), join(dest, file));
-    chmodSync(join(dest, file), 0o644);
+  // Older versions templates still name ship too, as the CDN's exact files: package.json's `gsap-<version>` aliases
+  // (src/server/gsapVendor.test.ts pins their bytes).
+  const cliManifest = join(REPO_ROOT, "packages", "cli", "package.json");
+  const cliRequire = createRequire(cliManifest);
+  const aliases = Object.keys(JSON.parse(readFileSync(cliManifest, "utf-8")).devDependencies ?? {});
+  const roots = [
+    gsapRoot,
+    ...aliases
+      .filter((name) => /^gsap-\d+\.\d+\.\d+$/.test(name))
+      .map((name) => dirname(cliRequire.resolve(`${name}/package.json`))),
+  ];
+  for (const root of roots) {
+    const { version: shipped } = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
+    const dest = join(vendorDir, `gsap@${shipped}`, "dist");
+    mkdirSync(dest, { recursive: true });
+    for (const file of GSAP_VENDOR_FILES) {
+      copyFileSync(join(root, "dist", file), join(dest, file));
+      chmodSync(join(dest, file), 0o644);
+    }
   }
 }
 
@@ -103,6 +120,13 @@ async function main() {
     mkdirSync(join(DIST, sub), { recursive: true });
   }
   mkdirSync(join(DIST, "commands"), { recursive: true });
+
+  // The bundled sharing modules resolve their policy and Unicode tables beside
+  // the CLI chunks, rather than from the share package's source directory.
+  copyDir(
+    join(REPO_ROOT, "packages", "share", "src", "sources", "contract"),
+    join(DIST, "contract"),
+  );
 
   const studioDist = resolve(CLI_ROOT, "..", "studio", "dist");
   await waitForStudioDist(studioDist);
@@ -126,7 +150,7 @@ async function main() {
   // Skills bundled into the published CLI. Branches don't all carry the same
   // skills/ tree (it gets restructured), so each entry is existsSync-guarded:
   // a missing skill dir warns + skips instead of crashing the build.
-  for (const skill of ["hyperframes", "hyperframes-cli", "gsap", "media-use"]) {
+  for (const skill of ["hyperframes", "hyperframes-cli", "media-use"]) {
     const src = join(REPO_ROOT, "skills", skill);
     if (!existsSync(src)) {
       console.warn(`[build-copy] skill not found, skipping: skills/${skill}`);
@@ -134,7 +158,7 @@ async function main() {
     }
     const destination = join(DIST, "skills", skill);
     rmSync(destination, { recursive: true, force: true });
-    copyDir(src, destination);
+    cpSync(src, destination, { recursive: true, force: true, filter: (path) => !isTestFile(path) });
   }
 
   // The media-use engine lives with the CLI source, but keeps its published
@@ -147,6 +171,12 @@ async function main() {
   cpSync(
     join(mediaEngine, "resolve.mjs"),
     join(DIST, "skills", "media-use", "scripts", "resolve.mjs"),
+  );
+  // The SFX media index ships with the release whose bundled SFX files it names.
+  mkdirSync(join(DIST, "catalog-artifact"), { recursive: true });
+  cpSync(
+    join(REPO_ROOT, "registry", "catalog-artifact", "media-vectors.json"),
+    join(DIST, "catalog-artifact", "media-vectors.json"),
   );
 
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
@@ -198,6 +228,9 @@ async function main() {
   // The bundled inspector reads its page runtime from beside its own chunk.
   const inspectorRuntime = join(REPO_ROOT, "packages", "inspector", "dist", "inspection.js");
   cpSync(inspectorRuntime, join(DIST, "inspection.js"));
+
+  // Windows process reads run this file with -File (utils/windowsProcesses.ts), found beside the bundled chunks.
+  cpSync(join(CLI_ROOT, "src", "utils", "processes.ps1"), join(DIST, "processes.ps1"));
 
   copyGsapVendorFiles();
 

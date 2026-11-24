@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { CliUsageError } from "../utils/commandResult.js";
 
 const mocks = vi.hoisted(() => ({
   // Never settles: waiting on it would hang the command.
@@ -9,8 +10,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../telemetry/client.js", () => ({ shouldTrack: () => true, flush: mocks.flush }));
 const trackRenderFeedback = vi.hoisted(() => vi.fn());
 const trackFeedbackComment = vi.hoisted(() => vi.fn());
+const trackCatalogSearchMiss = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/events.js", () => ({
-  trackCatalogSearchMiss: vi.fn(),
+  trackCatalogSearchMiss,
   trackFeedbackComment,
   trackRenderFeedback,
 }));
@@ -25,12 +27,30 @@ vi.mock("../utils/submitFeedback.js", () => ({
 
 it.each([
   ["a rating", { rating: "8" }, mocks.submitFeedback],
-  ["a catalog search miss", { "search-miss": "typewriter" }, mocks.submitCatalogSearchMiss],
+  [
+    "a catalog search miss",
+    { "search-miss": true, wanted: "typewriter" },
+    mocks.submitCatalogSearchMiss,
+  ],
 ])("sends %s without waiting on the telemetry upload", async (_, args, submit) => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   const { default: feedback } = await import("./feedback.js");
   await feedback.run?.({ args } as never);
   expect(submit).toHaveBeenCalled();
+});
+
+it("reports a catalog gap by the move wanted, never the query that was searched", async () => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  const { default: feedback } = await import("./feedback.js");
+  const query = "typewriter that deletes";
+  await feedback.run?.({
+    args: { "search-miss": query, wanted: "text that types then backspaces", tier: "words" },
+  } as never);
+  expect(mocks.submitCatalogSearchMiss).toHaveBeenLastCalledWith(
+    expect.objectContaining({ wanted: "text that types then backspaces", tier: "words" }),
+  );
+  expect(JSON.stringify(mocks.submitCatalogSearchMiss.mock.lastCall)).not.toContain(query);
+  expect(JSON.stringify(trackCatalogSearchMiss.mock.calls)).not.toContain(query);
 });
 
 it("tells person feedback from agent feedback, with the email only an app's env can attach", async () => {
@@ -57,7 +77,9 @@ it("refuses a source that is neither person nor agent, and sends nothing", async
   vi.spyOn(console, "error").mockImplementation(() => {});
   mocks.submitFeedback.mockClear();
   const { default: feedback } = await import("./feedback.js");
-  await expect(feedback.run?.({ args: { rating: "6", source: "bot" } } as never)).rejects.toThrow();
+  await expect(feedback.run?.({ args: { rating: "6", source: "bot" } } as never)).rejects.toThrow(
+    CliUsageError,
+  );
   expect(mocks.submitFeedback).not.toHaveBeenCalled();
 });
 
@@ -82,16 +104,16 @@ it.each([
   vi.spyOn(console, "error").mockImplementation(() => {});
   mocks.submitFeedback.mockClear();
   const { default: feedback } = await import("./feedback.js");
-  await expect(feedback.run?.({ args } as never)).rejects.toThrow();
+  await expect(feedback.run?.({ args } as never)).rejects.toThrow(CliUsageError);
   expect(mocks.submitFeedback).not.toHaveBeenCalled();
 });
 
 it("keeps the rating error for an unreadable rating, so a retry keeps the rating", async () => {
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   const { default: feedback } = await import("./feedback.js");
-  await expect(
-    feedback.run?.({ args: { rating: "8/10", comment: "x" } } as never),
-  ).rejects.toThrow();
+  await expect(feedback.run?.({ args: { rating: "8/10", comment: "x" } } as never)).rejects.toThrow(
+    CliUsageError,
+  );
   expect(String(errors.mock.calls.at(-1)?.[0])).toContain(
     "Rating must be an integer between 0 and 10",
   );

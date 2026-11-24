@@ -9,8 +9,16 @@ import type { CommitMutation } from "./gsapScriptCommitTypes";
 import { computeCurrentPercentage } from "./gsapDragCommit";
 import { commitSizeAtPlayhead, tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { liveTween, previewWith, tween } from "./gsapParsedTween.test-helpers";
+import { measurePreviewGestureStart } from "../components/editor/previewGestureStartRead";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+vi.mock("../player/lib/previewElements", async (original) => ({
+  ...(await original<object>()),
+  previewGestureStart: async () => ({
+    elements: [{ layout: { width: 260, height: 160 }, move: null, gsap: null }],
+    snap: [],
+  }),
+}));
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -303,7 +311,7 @@ async function runResize(
     commitMutation as never,
     async () => [keyframedScaleFixture()],
   );
-  expect(handled).toMatchObject({ status: "persisted" });
+  expect(handled).toMatchObject({ status: "persisted", savedAsScale: true });
   return committed;
 }
 
@@ -743,4 +751,104 @@ it.each([
   if (count) expect(trackStudioEvent).toHaveBeenCalledWith("keyframe", { action: "add" });
   el.remove();
   document.querySelector("#__hf_color_grading_clip")?.remove();
+});
+
+// fails without the fix: a width/height tween resized as a whole reported its size as saved as scale.
+describe("a resize with auto-keyframe off nudges the whole tween", () => {
+  afterEach(() => usePlayerStore.setState({ autoKeyframeEnabled: true }));
+
+  it("of a width/height tween, and says it saved the size as width and height", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: false, currentTime: 1 });
+    const selection = titleSelection();
+    selection.element.setAttribute("data-hf-studio-original-box-width", "260");
+    selection.element.setAttribute("data-hf-studio-original-box-height", "160");
+    const grow = tween({
+      id: "#title-to-0-size",
+      targetSelector: "#title",
+      propertyGroup: "size",
+      method: "to",
+      properties: { width: 320, height: 200 },
+      resolvedStart: 0,
+      duration: 2,
+      ease: "none",
+    });
+    const commitMutation = vi.fn();
+
+    const outcome = await tryGsapResizeIntercept(
+      selection,
+      { width: 300, height: 180 },
+      [grow],
+      null,
+      commitMutation,
+      async () => [grow],
+    );
+
+    expect(outcome.status).toBe("persisted");
+    expect(outcome).not.toHaveProperty("savedAsScale");
+    expect(commitMutation).toHaveBeenCalled();
+  });
+
+  it("of a scale tween, and says it saved the size as scale", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: false, currentTime: 0.5 });
+    const el = makeGradedElement();
+    const iframe = fakeIframe(el, { scale: 1, scaleX: 1, scaleY: 1, opacity: 0, rotation: 0 });
+
+    const outcome = await tryGsapResizeIntercept(
+      { id: "clip", selector: "#clip", element: el } as DomEditSelection,
+      { width: 800, height: 450 },
+      [scaleFromTween()],
+      iframe,
+      vi.fn(),
+      async () => [keyframedScaleFixture()],
+    );
+
+    expect(outcome).toMatchObject({ status: "persisted", savedAsScale: true });
+  });
+});
+
+it.each([
+  ["the draft marked the element", false],
+  ["the element is a sealed frame's stand-in, measured at the press", true],
+])("a size written at the playhead backfills the box's other side when %s", async (_, sealed) => {
+  const selection = titleSelection();
+  const el = selection.element;
+  if (sealed) {
+    selection.handle = "0123456789abcdef:1";
+    await measurePreviewGestureStart(
+      document.createElement("iframe"),
+      document.createElement("div"),
+      [selection.handle],
+    );
+  } else {
+    el.setAttribute("data-hf-studio-original-width", "260");
+    el.setAttribute("data-hf-studio-original-height", "160");
+  }
+  const slide = tween({
+    id: "#title-to-0",
+    targetSelector: "#title",
+    propertyGroup: undefined,
+    method: "to",
+    properties: { width: 320 },
+    resolvedStart: 0,
+    duration: 2,
+    ease: "none",
+  });
+  usePlayerStore.setState({ currentTime: 1 });
+  const commitMutation = vi.fn();
+  const live = liveTween(el, { start: 0, duration: 2, vars: slide.properties });
+
+  const outcome = await commitSizeAtPlayhead(
+    selection,
+    slide,
+    { width: 300, height: 200 },
+    previewWith(el, [live]),
+    undefined,
+    { commitMutation },
+  );
+
+  expect(outcome.status).toBe("persisted");
+  const keyframes = commitMutation.mock.calls[0]![1].keyframes;
+  expect(
+    keyframes.map((kf: { properties: Record<string, number> }) => kf.properties.height),
+  ).toEqual(keyframes.map((kf: { percentage: number }) => (kf.percentage === 50 ? 200 : 160)));
 });

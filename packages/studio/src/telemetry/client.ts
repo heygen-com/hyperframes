@@ -9,6 +9,7 @@ import { browserTelemetryAllowed } from "./policy";
 import { getBrowserSystemMeta } from "./system";
 import { canaryEventProperties } from "./canary";
 import { recordBreadcrumb } from "./breadcrumbs";
+import { shapeEventProperties } from "./eventShape";
 import { studioApiFetch } from "../utils/studioApiFetch";
 
 // Write-only PostHog project key, safe to embed in client code.
@@ -41,7 +42,8 @@ export function trackEvent(event: string, properties: EventProperties = {}): voi
 
   // Every studio event passes through here, so this is the one place that can
   // build a repro trail without asking each call site to opt in.
-  recordBreadcrumb(event, properties);
+  const shaped = shapeEventProperties(event, properties);
+  recordBreadcrumb(event, shaped);
 
   const sys = getBrowserSystemMeta();
   eventQueue.push({
@@ -49,7 +51,7 @@ export function trackEvent(event: string, properties: EventProperties = {}): voi
     // Canary assignments as `$feature/canary-<name>`, mirroring the CLI so a
     // rollout spanning both surfaces reads as one flag in PostHog. Resolved
     // after the shouldTrack guard, so opted-out users never pay for it.
-    properties: { ...properties, ...sys, ...canaryEventProperties() },
+    properties: { ...shaped, ...sys, ...canaryEventProperties() },
     timestamp: new Date().toISOString(),
   });
 

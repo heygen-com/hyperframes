@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Slot Machine Roll</h1>
+  <p>A vertical reel scrolls characters from one value to another.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/slot-machine-roll.json"
   compositionId="slot-machine-roll"
   compositionSrc="compositions/components/slot-machine-roll.html"
   title="Slot Machine Roll"
-  description="A vertical reel scrolls characters from one value to another."
   variables={[{"id":"result","type":"string","role":"content","label":"Result","description":"Characters the reels land on, one reel column per character. Whitespace is stripped and every reel starts on a zero.","default":"A7K"},{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Which way the reels roll: up lifts the zero out through the top, down drops it out through the bottom.","default":"up","options":[{"value":"up","label":"Up"},{"value":"down","label":"Down"}]},{"id":"size","type":"enum","role":"layout","label":"Size","description":"Reel height and type size. The roll distance scales with it so the reel always lands exactly one row on.","default":"standard","options":[{"value":"small","label":"Small"},{"value":"standard","label":"Standard"},{"value":"large","label":"Large"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Character colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":136}}
   attribution={{"path":"registry/components/slot-machine-roll","tags":["video-primitive","motion-primitive","typography"]}}
@@ -171,7 +175,9 @@ That writes one file: `compositions/components/slot-machine-roll.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -214,6 +220,4 @@ Tagged `video-primitive` `motion-primitive` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

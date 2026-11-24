@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -24,8 +33,8 @@ function fixture() {
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-function run(args) {
-  return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
+function run(args, cwd) {
+  return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", cwd });
 }
 
 function readPcm(filePath) {
@@ -338,4 +347,68 @@ test("a kept range starting on a 30 fps frame keeps that frame", { skip: !HAS_FF
     ).trim(),
   );
   assert.equal(frames, 88, `expected 88 frames, got ${frames}`);
+});
+
+// fails without the fix: ffmpeg encoded through a link at `<out>.part<ext>`, onto a file outside.
+test("the cut is never encoded through a link beside --out", { skip: !HAS_FFMPEG }, (t) => {
+  const { dir, cleanup } = fixture();
+  t.after(cleanup);
+  const outside = join(dir, "outside.txt");
+  writeFileSync(outside, "keep me");
+  const output = join(dir, "out.wav");
+  symlinkSync(outside, `${output}.part.wav`);
+  const result = run([...toneProject(dir), "--out", output, "--json"]);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(readFileSync(outside, "utf8"), "keep me");
+  assert.ok(lstatSync(output).isFile());
+});
+
+// A one-second tone and its transcript, in `dir`.
+function toneProject(dir) {
+  const source = join(dir, "source.wav");
+  execFileSync("ffmpeg", [
+    "-y",
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=duration=1",
+    source,
+  ]);
+  const transcriptPath = join(dir, "transcript.json");
+  writeFileSync(transcriptPath, JSON.stringify({ words: [{ text: "tone", start: 0, end: 1 }] }));
+  return ["--input", source, "--transcript", transcriptPath, "--keep", "0.1-0.6"];
+}
+
+// fails without the fix: a cut named inside the project landed in the folder outside that `cuts` linked to.
+test(
+  "a cut named inside the project is never written through a linked folder",
+  {
+    skip: !HAS_FFMPEG,
+  },
+  (t) => {
+    const { dir, cleanup } = fixture();
+    t.after(cleanup);
+    const project = join(dir, "project");
+    const outside = join(dir, "outside");
+    mkdirSync(project);
+    mkdirSync(outside);
+    writeFileSync(join(outside, "out.wav"), "keep me");
+    symlinkSync(outside, join(project, "cuts"));
+    const result = run([...toneProject(project), "--out", join("cuts", "out.wav")], project);
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /cuts is a link/);
+    assert.equal(readFileSync(join(outside, "out.wav"), "utf8"), "keep me");
+    assert.deepEqual(readdirSync(outside), ["out.wav"]);
+  },
+);
+
+test("a cut into a new folder inside the project is made there", { skip: !HAS_FFMPEG }, (t) => {
+  const { dir, cleanup } = fixture();
+  t.after(cleanup);
+  const result = run([...toneProject(dir), "--out", join("cuts", "deep", "out.wav")], dir);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.ok(lstatSync(join(dir, "cuts", "deep", "out.wav")).isFile());
 });

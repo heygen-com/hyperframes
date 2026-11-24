@@ -1,4 +1,5 @@
-import { defineCommand } from "citty";
+import { terminalText } from "@hyperframes/core";
+import { defineCommand } from "../utils/defineCommand.js";
 import { readHarnessUsage } from "../utils/harnessUsage.js";
 
 export default defineCommand({
@@ -18,7 +19,8 @@ export default defineCommand({
     const harness = args.harness ?? detectHarness();
     const usage = await readHarnessUsage(harness);
     if (args.json) console.log(JSON.stringify(usage));
-    else if (usage.status === "unknown") console.log(`Usage unknown (${usage.reason}).`);
+    else if (usage.status === "unknown")
+      console.log(`Usage unknown (${terminalText(usage.reason)}).`);
     else console.log(JSON.stringify(usage, null, 2));
   },
 });

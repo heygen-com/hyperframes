@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildRenderPerfSummary, roundDb } from "./perfSummary.js";
+import {
+  buildRenderPerfSummary,
+  capturedBeyondViewport,
+  roundDb,
+  withCapturedBeyondViewport,
+} from "./perfSummary.js";
+import type { CapturePerfSummary } from "@hyperframes/engine";
 import type { RenderJob } from "../renderOrchestrator.js";
 
 describe("roundDb", () => {
@@ -73,5 +79,68 @@ describe("buildRenderPerfSummary drawElement gate reason", () => {
       drawElement: { probeGateReason: "css_effect:filter", selfVerifyFallback: false },
     } as Parameters<typeof buildRenderPerfSummary>[0]);
     expect(summary.drawElement?.gateReason).toBe("css_effect:filter");
+  });
+});
+
+describe("buildRenderPerfSummary capture phases", () => {
+  it("weights each worker's phase averages by the frames it captured", () => {
+    const summary = buildRenderPerfSummary({
+      ...baseInput,
+      perfStages: { encoderDrainWaitMs: 1500 },
+      dedupPerfs: [
+        { frames: 100, avgSeekMs: 10, avgBeforeCaptureMs: 4, avgScreenshotMs: 30 },
+        { frames: 50, avgSeekMs: 40, avgBeforeCaptureMs: 1, avgScreenshotMs: 60 },
+      ],
+    } as Parameters<typeof buildRenderPerfSummary>[0]);
+    expect(summary.captureSeekAvgMs).toBe(20);
+    expect(summary.captureBeforeCaptureAvgMs).toBe(3);
+    expect(summary.captureScreenshotAvgMs).toBe(40);
+    expect(summary.encoderWaitAvgMs).toBe(10);
+  });
+
+  it("leaves the phases unset when no frames or no streaming encoder ran", () => {
+    const summary = buildRenderPerfSummary(baseInput);
+    expect(summary.captureSeekAvgMs).toBeUndefined();
+    expect(summary.encoderWaitAvgMs).toBeUndefined();
+  });
+});
+
+describe("capturedBeyondViewport", () => {
+  const perf = (captureBeyondViewport?: boolean) =>
+    ({ captureBeyondViewport }) as CapturePerfSummary;
+
+  it("reports off when every worker's session turned the requested capture off", () => {
+    expect(capturedBeyondViewport([perf(false), perf(false)], true)).toBe(false);
+  });
+
+  it("reports on when any worker kept it", () => {
+    expect(capturedBeyondViewport([perf(false), perf(true)], false)).toBe(true);
+  });
+
+  it("keeps the stage's value when no worker reported one", () => {
+    expect(capturedBeyondViewport([perf()], true)).toBe(true);
+    expect(capturedBeyondViewport([], undefined)).toBeUndefined();
+  });
+});
+
+describe("withCapturedBeyondViewport", () => {
+  const perf = (captureBeyondViewport?: boolean) =>
+    ({ captureBeyondViewport }) as CapturePerfSummary;
+
+  it("replaces the requested value with the one the sessions used", () => {
+    const capture = {
+      forceScreenshot: true,
+      captureMode: "screenshot" as const,
+      captureBeyondViewport: true,
+    };
+    expect(withCapturedBeyondViewport(capture, [perf(false), perf(false)])).toEqual({
+      ...capture,
+      captureBeyondViewport: false,
+    });
+  });
+
+  it("leaves the facts as they are when no session reported", () => {
+    const capture = { forceScreenshot: true, captureMode: "screenshot" as const };
+    expect(withCapturedBeyondViewport(capture, [])).toBe(capture);
   });
 });

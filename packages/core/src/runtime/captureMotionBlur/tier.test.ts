@@ -5,14 +5,23 @@ const defect = { code: "root-opacity", reason: "why" };
 const base = { tier: "auto", form: true, defect: null, fallback: true } as const;
 
 describe("chooseTier", () => {
-  it("draws with capture where it can run", () => {
-    expect(chooseTier(base)).toBe("capture");
+  it("draws with the filter tier on auto", () => {
+    expect(chooseTier({ ...base, tier: "auto", form: true, defect: null, fallback: true })).toBe(
+      "filter",
+    );
+  });
+
+  it("draws with capture only when the page asks", () => {
     expect(chooseTier({ ...base, tier: "capture" })).toBe("capture");
   });
 
-  it("draws with the filter tier where capture cannot run", () => {
-    expect(chooseTier({ ...base, defect })).toBe("filter");
-    expect(chooseTier({ ...base, form: false })).toBe("filter");
+  it("judges capture alone when the fallback is off", () => {
+    expect(chooseTier({ ...base, tier: "auto", fallback: false })).toBe("capture");
+  });
+
+  it("draws with the filter tier where capture cannot run, even when asked for", () => {
+    expect(chooseTier({ ...base, tier: "capture", defect })).toBe("filter");
+    expect(chooseTier({ ...base, tier: "capture", form: false })).toBe("filter");
   });
 
   it("draws with the filter tier when the page asks for it", () => {

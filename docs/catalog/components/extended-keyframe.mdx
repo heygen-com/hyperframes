@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Extended Keyframe</h1>
+  <p>The never-fully-lands arrival: an element covers most of its move in the first fifth of the duration and creeps the rest to the last frame, exits along its arrival vector, and carries shutter motion blur — from any side or by scale, one call per element, plus the ease on its own for any tween</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/extended-keyframe.json"
   compositionId="extended-keyframe"
   compositionSrc="compositions/components/extended-keyframe.html"
   title="Extended Keyframe"
-  description="The never-fully-lands arrival: an element covers most of its move in the first fifth of the duration and creeps the rest to the last frame, exits along its arrival vector, and carries shutter motion blur — from any side or by scale, one call per element, plus the ease on its own for any tween"
   variables={[]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":563}}
   attribution={{"path":"registry/components/extended-keyframe","tags":["motion","ease","arrival","kinetic-type","text","motion-blur","after-effects","slide-in","scale-in"]}}
@@ -598,7 +602,9 @@ That writes one file: `compositions/components/extended-keyframe.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -618,6 +624,4 @@ Tagged `motion` `ease` `arrival` `kinetic-type` `text` `motion-blur` `after-effe
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { deflateSync } from "node:zlib";
 import {
   extractMediaMetadata,
   resolveFinalFrameExtractionWindow,
@@ -15,7 +16,9 @@ import { createRenderJob } from "../../renderOrchestrator.js";
 import { resolveHdrVideoFrameIndex } from "../../hdrCompositor.js";
 import {
   cleanupHdrVideoFrameSource,
+  decodeHdrImageBuffers,
   extractHdrVideoFrames,
+  fitHdrImageLayoutToFrame,
   getHdrExtractionReservedBytes,
   planHdrResources,
   reserveHdrExtractionBytes,
@@ -542,6 +545,7 @@ describe("extractHdrVideoFrames", () => {
       try {
         expect(calls).toHaveLength(1);
         const args = calls[0] ?? [];
+        expect(args.slice(0, args.indexOf("-i"))).toContain("-format_whitelist");
         expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual([
           "-ss",
           "60.000000",
@@ -823,5 +827,189 @@ describe("extractHdrVideoFrames loop frame count", () => {
     } finally {
       rmSync(framesDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe.skipIf(!HAS_FFMPEG)("raw HDR windows past the first (#6556)", () => {
+  async function leaseAll(src: string, end: number, dir: string) {
+    const video = hdrVideo("counter", { src, start: 0, end });
+    const fixture = hdrExtractionFixture([video], join(dir, "frames"));
+    fixture.job = createRenderJob({ fps: { num: 30, den: 1 }, quality: "standard" });
+    fixture.composition.duration = end;
+    fixture.prep.hdrExtractionDims.set(video.id, { width: 64, height: 64 });
+    const frameSize = 64 * 64 * 6;
+    const extracted = await extractHdrVideoFrames({
+      ...fixture,
+      width: 64,
+      height: 64,
+      // 8-frame windows: frames 8 and up all come from seeked + trimmed passes.
+      windowBytes: 8 * frameSize,
+      runFfmpegImpl: runFfmpeg,
+      extractMediaMetadataImpl: extractMediaMetadata,
+      resolveFinalFrameExtractionWindowImpl: resolveFinalFrameExtractionWindow,
+    });
+    try {
+      const source = extracted.sources.get(video.id)!;
+      const frames: string[] = [];
+      const buf = Buffer.alloc(frameSize);
+      for (let i = 0; i < source.frameCount; i++) {
+        const lease = await source.windows.lease(i);
+        expect(lease).not.toBeNull();
+        readSync(lease!.fd, buf, 0, frameSize, lease!.offset);
+        lease!.release();
+        frames.push(buf.toString("base64"));
+      }
+      return frames;
+    } finally {
+      for (const s of extracted.sources.values()) cleanupHdrVideoFrameSource(s);
+      extracted.releaseReservation();
+    }
+  }
+
+  it("gives every composition frame its own source frame across window boundaries", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-hdr-window-dupes-"));
+    const src = join(dir, "counter.mp4");
+    try {
+      const synth = await runFfmpeg([
+        ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+        ...["-i", "testsrc2=s=64x64:d=4:rate=30", "-f", "lavfi", "-i", "sine=d=4"],
+        // The audio track matters: with one in the input, FFmpeg's default CFR sync pads a
+        // timestamp-less raw output from pts 0 (camera/phone clips always carry audio).
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-c:a", "aac", "-y", src],
+      ]);
+      expect(synth.success).toBe(true);
+      const frames = await leaseAll(src, 4, dir);
+      expect(frames).toHaveLength(120);
+      expect(new Set(frames).size).toBe(120);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("holds the first frame until a video that starts after its audio begins, like Chrome", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-hdr-window-delayed-"));
+    const counter = join(dir, "counter.mp4");
+    const src = join(dir, "delayed.mp4");
+    try {
+      const synth = await runFfmpeg([
+        ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+        ...["-i", "testsrc2=s=64x64:d=4:rate=30", "-f", "lavfi", "-i", "sine=d=4.5"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-c:a", "aac", "-y", counter],
+      ]);
+      expect(synth.success).toBe(true);
+      const delay = await runFfmpeg([
+        ...[
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-itsoffset",
+          "0.5",
+          "-i",
+          counter,
+          "-i",
+          counter,
+        ],
+        ...["-map", "0:v", "-map", "1:a", "-c", "copy", "-y", src],
+      ]);
+      expect(delay.success).toBe(true);
+      const frames = await leaseAll(src, 4.5, dir);
+      // The picture starts at 0.5 s = frame 15; until then the first frame shows.
+      expect(frames).toHaveLength(135);
+      expect(new Set(frames.slice(0, 16)).size).toBe(1);
+      expect(frames.slice(15)).toEqual(await leaseAll(counter, 4, dir));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+/** A 2x2 16-bit RGB PNG; the decoder does not check chunk CRCs, so they are left zero. */
+function tiny16BitPng(): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    return Buffer.concat([len, Buffer.from(type, "ascii"), data, Buffer.alloc(4)]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(2, 0);
+  ihdr.writeUInt32BE(2, 4);
+  ihdr[8] = 16;
+  ihdr[9] = 2;
+  const rows = Buffer.alloc(2 * (1 + 12), 0x40);
+  rows[0] = 0;
+  rows[13] = 0;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(rows)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+describe("fitHdrImageLayoutToFrame", () => {
+  it("keeps a box that fits and shrinks a larger one uniformly into the frame", () => {
+    const fits = { width: 1920, height: 1080 };
+    expect(fitHdrImageLayoutToFrame(fits, 1920, 1080)).toBe(fits);
+    expect(fitHdrImageLayoutToFrame({ width: 30000, height: 30000 }, 1920, 1080)).toEqual({
+      width: 1080,
+      height: 1080,
+    });
+    expect(fitHdrImageLayoutToFrame({ width: 3840, height: 100 }, 1920, 1080)).toEqual({
+      width: 1920,
+      height: 50,
+    });
+  });
+});
+
+describe("decodeHdrImageBuffers", () => {
+  let dir: string;
+  let srcPath: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-hdr-image-"));
+    srcPath = join(dir, "tiny.png");
+    writeFileSync(srcPath, tiny16BitPng());
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  function decodeArgs(layout: { width: number; height: number }) {
+    const prep = planHdrResources({
+      composition: { duration: 1, width: 1920, height: 1080, videos: [], audios: [], images: [] },
+      nativeHdrVideoIds: new Set(),
+      nativeHdrImageIds: new Set(),
+      projectDir: dir,
+      compiledDir: dir,
+    });
+    prep.hdrExtractionDims.set("img", layout);
+    return {
+      log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+      hdrImageSrcPaths: new Map([["img", srcPath]]),
+      prep,
+      hdrDiagnostics: { videoExtractionFailures: 0, imageDecodeFailures: 0 },
+      width: 1920,
+      height: 1080,
+    };
+  }
+
+  it("resamples a 30000x30000 layout box no larger than the output frame", () => {
+    const args = decodeArgs({ width: 30000, height: 30000 });
+    const { buffers, releaseReservation } = decodeHdrImageBuffers(args);
+    try {
+      const buffer = buffers.get("img");
+      expect(buffer).toMatchObject({ width: 1080, height: 1080 });
+      expect(buffer?.data.length).toBeLessThanOrEqual(1920 * 1080 * 6);
+      expect(getHdrExtractionReservedBytes()).toBe(1080 * 1080 * 6);
+      expect(args.log.warn).toHaveBeenCalledOnce();
+    } finally {
+      releaseReservation();
+    }
+  });
+
+  it("fails the render when the image buffers exceed the HDR budget", () => {
+    vi.stubEnv("HDR_EXTRACTION_MAX_BYTES", String(1000));
+    const args = decodeArgs({ width: 100, height: 100 });
+    expect(() => decodeHdrImageBuffers(args)).toThrow(
+      /HDR image decode failed for image "img": Concurrent HDR pre-extractions/,
+    );
+    expect(args.hdrDiagnostics.imageDecodeFailures).toBe(1);
   });
 });

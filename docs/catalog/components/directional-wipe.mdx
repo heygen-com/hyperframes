@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Directional Wipe</h1>
+  <p>A directional scene push that slides one panel over another.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/directional-wipe.json"
   compositionId="directional-wipe"
   compositionSrc="compositions/components/directional-wipe.html"
   title="Directional Wipe"
-  description="A directional scene push that slides one panel over another."
   variables={[{"id":"palette","type":"enum","role":"style","label":"Palette","description":"Theme token for the ring marking the incoming panel. Slate rides --accent, teal --brand, ember --accent-2; each falls back to a neutral hairline.","default":"slate","options":[{"value":"slate","label":"Slate"},{"value":"teal","label":"Teal"},{"value":"ember","label":"Ember"}]},{"id":"corner","type":"enum","role":"style","label":"Corner","description":"Corner radius of the transition card.","default":"rounded","options":[{"value":"square","label":"Square"},{"value":"rounded","label":"Rounded"},{"value":"soft","label":"Soft"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":146}}
   attribution={{"path":"registry/components/directional-wipe","tags":["transition-primitive"]}}
@@ -181,7 +185,9 @@ That writes one file: `compositions/components/directional-wipe.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -222,6 +228,4 @@ Tagged `transition-primitive`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -31,6 +31,7 @@ import type {
 } from "@hyperframes/aws-lambda/sdk";
 import type { CanvasResolution, DistributedFps } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { errorBox } from "../../ui/format.js";
 import {
   loadProjectVariableSchema,
@@ -41,6 +42,7 @@ import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import { resolveOutputResolutionFromSize } from "./_dimensions.js";
 import { runWithConcurrencyLimit } from "../../utils/concurrency.js";
 import { requireStack } from "./state.js";
+import type { DeliveryFlagValues } from "../../utils/deliveryFlags.js";
 
 // Dynamic-import the SDK so tsup keeps it out of the static-import head of
 // the CLI bundle. See sites.ts loadSDK() for the full rationale.
@@ -49,7 +51,7 @@ async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> 
 }
 
 /** Arguments accepted by `hyperframes lambda render-batch`. */
-export interface RenderBatchArgs {
+export interface RenderBatchArgs extends DeliveryFlagValues {
   projectDir: string;
   stackName: string;
   /** Path to the JSONL batch file. Each line is a {@link BatchEntry}. */
@@ -61,6 +63,7 @@ export interface RenderBatchArgs {
    * separate `sites create` step (CI / cross-machine).
    */
   siteId?: string;
+  includeOutsideFiles?: boolean;
   /** Composition config — fps/width/height/format required, rest optional. */
   fps: DistributedFps;
   width: number;
@@ -228,7 +231,8 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
   // Deploy the site once and reuse it across every entry. --site-id and
   // --dry-run both skip the deploy via a synthesised handle.
   let siteHandle: SiteHandle;
-  const { assertStackReadsSites, deploySite, siteHandleFromId } = await loadSDK();
+  const { assertStackReadsSites, deploySite, parseStateMachineArn, siteHandleFromId } =
+    await loadSDK();
   if (!args.dryRun) {
     await assertStackReadsSites({ stateMachineArn: stack.stateMachineArn, region: stack.region });
   }
@@ -240,15 +244,17 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     siteHandle = await deploySite({
       projectDir,
       bucketName: stack.bucketName,
+      expectedBucketOwner: parseStateMachineArn(stack.stateMachineArn).account,
       region: stack.region,
-      onNotice: (message) => console.error(c.dim(message)),
+      includeOutsideFiles: args.includeOutsideFiles,
+      onNotice: (message) => console.error(c.dim(terminalLines(message))),
     });
     if (!args.json) {
       console.log(
         c.success(
           siteHandle.uploaded
-            ? `Site uploaded once for the batch: ${siteHandle.siteId}`
-            : `Site already up to date (skipped upload): ${siteHandle.siteId}`,
+            ? `Site uploaded once for the batch: ${terminalText(siteHandle.siteId)}`
+            : `Site already up to date (skipped upload): ${terminalText(siteHandle.siteId)}`,
         ),
       );
       console.log();
@@ -333,9 +339,11 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
           : c.error("✗");
     const detail =
       row.status === "failed-to-start"
-        ? c.error(row.error ?? "unknown error")
-        : (row.executionArn ?? c.dim("(no execution)"));
-    console.log(`  ${tag} line ${row.inputLine}  ${c.dim(row.outputKey)}  ${detail}`);
+        ? c.error(terminalLines(row.error ?? "unknown error"))
+        : row.executionArn
+          ? terminalText(row.executionArn)
+          : c.dim("(no execution)");
+    console.log(`  ${tag} line ${row.inputLine}  ${c.dim(terminalText(row.outputKey))}  ${detail}`);
   }
   if (failed > 0) setCommandExitCode(1);
 }
@@ -361,6 +369,10 @@ export function buildLambdaBatchRenderConfig(
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
     targetChunkFrames: args.targetChunkFrames,
+    keyframeIntervalSeconds: args.keyframeIntervalSeconds,
+    proresProfile: args.proresProfile,
+    maxBitrate: args.maxBitrate,
+    bufferSize: args.bufferSize,
     workerConcurrency,
     runtimeCap: "lambda",
   };

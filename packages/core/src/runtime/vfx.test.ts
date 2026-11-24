@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HfVfxCapture } from "../vfx";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
-import { initVfx, paintVfx } from "./vfx";
+import { initVfx, paintVfx, rebuildLostVfx } from "./vfx";
 
 /**
  * No def has `capture !== "none"` until Task 2.2 registers `wave-warp`, so the
@@ -52,6 +52,7 @@ interface MockGl {
   usedPrograms: unknown[];
   shaderSources: string[];
   viewports: number[][];
+  lost: boolean;
 }
 
 /**
@@ -67,6 +68,7 @@ function createMockGl(): WebGL2RenderingContext & MockGl {
     usedPrograms: [],
     shaderSources: [],
     viewports: [],
+    lost: false,
   };
   let currentProgram: unknown = null;
   const gl = {
@@ -97,6 +99,7 @@ function createMockGl(): WebGL2RenderingContext & MockGl {
     getShaderParameter: () => true,
     getShaderInfoLog: () => "",
     deleteShader: () => {},
+    isContextLost: () => (gl as unknown as MockGl).lost,
     createProgram: () => ({ id: ++state.programCount }),
     attachShader: () => {},
     linkProgram: () => {},
@@ -405,6 +408,30 @@ describe("vfx runtime", () => {
       message: expect.stringMatching(/context lost/i) as unknown as string,
       calls: [],
     });
+  });
+
+  it("paints a host again after its lost context is restored and the chains are rebuilt", () => {
+    const host = makeHost(ONE_NODE);
+    initVfx(document.body, 30);
+    const out = host.querySelector("canvas.hf-vfx-out") as HTMLCanvasElement;
+    out.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    out.dispatchEvent(new Event("webglcontextrestored"));
+    paintVfx(0);
+    expect(gl!.calls).toEqual([]);
+
+    // Another context has not come back yet: rebuilding now would drop its host.
+    const contexts = vi.mocked(HTMLCanvasElement.prototype.getContext);
+    const asked = contexts.mock.calls.length;
+    gl!.lost = true;
+    rebuildLostVfx(document.body);
+    expect(contexts.mock.calls.length).toBe(asked);
+
+    gl!.lost = false;
+    rebuildLostVfx(document.body);
+    expect(contexts.mock.calls.length).toBeGreaterThan(asked);
+    gl!.calls.length = 0;
+    paintVfx(0);
+    expect(gl!.calls.length).toBeGreaterThan(0);
   });
 
   it("forgets the previous composition's hosts when re-initialised", () => {

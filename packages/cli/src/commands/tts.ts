@@ -1,9 +1,11 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { failCommand, failUsage } from "../utils/commandResult.js";
-import { isTextFile } from "../utils/textFile.js";
+import { isShareTextFilePath, isTextFile } from "../utils/textFile.js";
 // fallow-ignore-file code-duplication
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync } from "node:fs";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Generate speech from text", 'hyperframes tts "Welcome to HyperFrames"'],
@@ -22,7 +24,7 @@ export const examples: Example[] = [
   ["List available voices", "hyperframes tts --list"],
 ];
 import { resolve } from "node:path";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
 import {
@@ -45,12 +47,12 @@ export default defineCommand({
   args: {
     input: {
       type: "positional",
-      description: "Text to speak, or path to a .txt file",
+      description: "Text to speak, or the path of a local .txt file to read",
       required: false,
     },
     "text-file": {
       type: "string",
-      description: "Read text from a .txt file (compatibility alias)",
+      description: "Read the text from this file, whatever its path looks like",
     },
     output: {
       type: "string",
@@ -99,7 +101,12 @@ export default defineCommand({
     const input = args["text-file"] ?? args.input;
     if (!input) {
       console.error(c.error("Provide text to speak, or use --list to see available voices."));
-      failCommand();
+      failUsage();
+    }
+
+    if (args["text-file"] === undefined && isShareTextFilePath(input)) {
+      console.error(c.error("A .txt path on a network share is read only with --text-file."));
+      failUsage();
     }
 
     let text: string;
@@ -125,7 +132,7 @@ export default defineCommand({
 
     if (!Number.isFinite(speed) || speed < 0.1 || speed > 3) {
       console.error(c.error("Speed must be a number between 0.1 and 3.0"));
-      failCommand();
+      failUsage();
     }
 
     const inferredLang = inferLangFromVoiceId(voice);
@@ -134,7 +141,7 @@ export default defineCommand({
       const requested = String(args.lang).toLowerCase();
       if (!isSupportedLang(requested)) {
         errorBox("Invalid --lang", `Got "${args.lang}". Must be one of: ${langList}.`);
-        failCommand();
+        failUsage();
       }
       lang = requested;
     }
@@ -144,7 +151,7 @@ export default defineCommand({
     if (!args.json && args.lang != null && lang !== inferredLang) {
       console.log(
         c.dim(
-          `  Note: voice "${voice}" is ${inferredLang}, rendering with --lang ${lang} instead.`,
+          `  Note: voice "${terminalText(voice)}" is ${inferredLang}, rendering with --lang ${lang} instead.`,
         ),
       );
     }
@@ -152,14 +159,14 @@ export default defineCommand({
     // ── Synthesize ────────────────────────────────────────────────────
     const { synthesize } = await import("../tts/synthesize.js");
     const spin = args.json ? null : clack.spinner();
-    spin?.start(`Generating speech with ${c.accent(voice)} (${lang})...`);
+    spin?.start(`Generating speech with ${c.accent(terminalText(voice))} (${lang})...`);
 
     try {
       const result = await synthesize(text, output, {
         voice,
         speed,
         lang,
-        onProgress: spin ? (msg) => spin.message(msg) : undefined,
+        onProgress: spin ? (msg) => spin.message(terminalText(msg)) : undefined,
       });
 
       if (args.json) {
@@ -177,7 +184,7 @@ export default defineCommand({
       } else {
         spin?.stop(
           c.success(
-            `Generated ${c.accent(result.durationSeconds.toFixed(1) + "s")} of speech → ${c.accent(result.outputPath)}`,
+            `Generated ${c.accent(result.durationSeconds.toFixed(1) + "s")} of speech → ${c.accent(terminalText(result.outputPath))}`,
           ),
         );
         if (args.lang != null && !result.langApplied) {
@@ -189,13 +196,13 @@ export default defineCommand({
         }
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = failureMessage(err);
       if (args.json) {
-        console.log(JSON.stringify({ ok: false, error: message }));
+        console.log(JSON.stringify(jsonFailure("runtime_error", message)));
       } else {
-        spin?.stop(c.error(`Speech synthesis failed: ${message}`));
+        spin?.stop(c.error(`Speech synthesis failed: ${terminalLines(message)}`));
       }
-      failCommand();
+      failCommand(1, err);
     }
   },
 });

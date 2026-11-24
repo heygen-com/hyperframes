@@ -6,7 +6,8 @@
  */
 
 import { isBlockedNetworkHost } from "@hyperframes/engine";
-import { publicRequest } from "./publicNetwork.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
+import { fetchLocalPageUrl } from "./localPage.js";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
@@ -21,7 +22,7 @@ import {
   type DownloadByteBudget,
 } from "./readBoundedResponse.js";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
-import { captureImageExtension } from "./captureImageValidation.js";
+import { captureImageExtension, passiveInlineSvg } from "./captureImageValidation.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 
 interface DownloadBudgetOptions {
@@ -351,6 +352,10 @@ export async function downloadAssets(
       drops["size-ceiling"]++;
       continue;
     }
+    if (!passiveInlineSvg(svgFile)) {
+      drops.unavailable++;
+      continue;
+    }
     const slug = svgContentHashSlug(svgFile, !!svg.isLogo);
     let finalSlug = slug;
     let suffix = 2;
@@ -674,6 +679,8 @@ const MAX_FETCH_REDIRECTS = 5;
  * or on network error.
  */
 export async function safeFetch(url: string, init?: RequestInit): Promise<Response | null> {
+  const local = fetchLocalPageUrl(url, init);
+  if (local) return local;
   let current = url;
   for (let hop = 0; hop <= MAX_FETCH_REDIRECTS; hop++) {
     if (isPrivateUrl(current)) return null;

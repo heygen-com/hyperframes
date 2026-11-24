@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Camera Shake</h1>
+  <p>Procedural handheld, telephoto and rig camera shake for any wrapper: nine measured profiles with per-lens projection, closed-form and seek-safe</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/camera-shake.json"
   compositionId="camera-shake"
   compositionSrc="compositions/components/camera-shake.html"
   title="Camera Shake"
-  description="Procedural handheld, telephoto and rig camera shake for any wrapper: nine measured profiles with per-lens projection, closed-form and seek-safe"
   variables={[{"id":"shakeProfile","type":"enum","label":"Shake profile","default":"handheld-normal-mild","options":[{"value":"handheld-normal-mild","label":"Handheld - normal lens, mild"},{"value":"handheld-normal-strong","label":"Handheld - normal lens, strong"},{"value":"handheld-normal-extreme","label":"Handheld - normal lens, extreme"},{"value":"handheld-wideangle-mild","label":"Handheld - wide angle, mild"},{"value":"handheld-wideangle-strong","label":"Handheld - wide angle, strong"},{"value":"handheld-tele-mild","label":"Handheld - telephoto, mild"},{"value":"handheld-tele-strong","label":"Handheld - telephoto, strong"},{"value":"rig-6d-shake","label":"Rig - 6D shake (engine buzz)"},{"value":"rig-6d-wobble","label":"Rig - 6D wobble"}]},{"id":"shakeIntensity","type":"number","label":"Intensity multiplier","default":1,"min":0,"max":3,"step":0.05},{"id":"shakeFrequency","type":"number","label":"Frequency multiplier","default":1,"min":0.1,"max":4,"step":0.05},{"id":"shakeRotation","type":"boolean","label":"Include rotation (roll + tilt/pan)","default":true}]}
   meta={{"category":"Camera","badge":"Stable","codeLines":809}}
   attribution={{"path":"registry/components/camera-shake","tags":["camera","shake","handheld","effect","cinematic"]}}
@@ -844,7 +848,9 @@ That writes one file: `compositions/components/camera-shake.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -886,6 +892,4 @@ Tagged `camera` `shake` `handheld` `effect` `cinematic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

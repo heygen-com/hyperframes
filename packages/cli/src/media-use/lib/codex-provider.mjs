@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { copyFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
+import { terminalLines } from "./terminal-text.mjs";
 
 // Image generation via the OpenAI Codex CLI's built-in image tool (gpt-image-2)
 // on the user's ChatGPT subscription: the codex CLI owns auth, media-use holds
@@ -107,17 +109,21 @@ export async function codexImageGenerate(intent) {
     console.error(`media-use: codex image upsell unavailable: ${reason}`);
     return null;
   }
-  const outPath = join(tmpdir(), `media-use-codex-${process.pid}-${Date.now()}.png`);
+  // Codex works and saves in a fresh private folder. `project_root_markers=[]` keeps it from
+  // reading AGENTS.md in the folders above (the shared temp folder on Linux); every Codex with
+  // the image tool honours it.
+  const outPath = privateOutputPath("codex", ".png");
+  const result = generateIn(outPath, intent, flag);
+  if (!result) discardPrivateOutput(outPath);
+  return result;
+}
+
+function generateIn(outPath, intent, flag) {
   const prompt =
     `${intent}\n\n` +
     `Use your built-in image generation tool to render this, then save the image ` +
     `to ${outPath} (overwrite if it exists). Do not ask for confirmation. ` +
     `If you have no built-in image tool, do nothing (no PIL/matplotlib/SVG substitute).`;
-  try {
-    unlinkSync(outPath); // clear any prior file so verify-first can't accept a stale render
-  } catch {
-    /* no prior file */
-  }
   const started = Date.now();
   try {
     execFileSync(
@@ -125,7 +131,9 @@ export async function codexImageGenerate(intent) {
       [
         "exec",
         "--cd",
-        tmpdir(),
+        dirname(outPath),
+        "-c",
+        "project_root_markers=[]",
         "-s",
         "workspace-write",
         "--skip-git-repo-check",
@@ -137,7 +145,9 @@ export async function codexImageGenerate(intent) {
     );
   } catch (err) {
     console.error(
-      `media-use: \`codex exec\` image generation failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
+      terminalLines(
+        `media-use: \`codex exec\` image generation failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
+      ),
     );
     return null;
   }

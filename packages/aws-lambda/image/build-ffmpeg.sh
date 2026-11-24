@@ -11,20 +11,11 @@ export PKG_CONFIG_PATH="$DEPS/lib/pkgconfig:$DEPS/lib64/pkgconfig"
 export CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC"
 mkdir -p "$SRC" "$DEPS" "$PREFIX/share/licenses" /out
 
-fetch() {
-  local name=$1 sum url
-  read -r sum url < <(awk -v n="$name" '$1 == n { print $2, $3 }' /build/sources.txt)
-  curl -fsSL --retry 3 -o "$SRC/$name" "$url"
-  echo "$sum  $SRC/$name" | sha256sum -c --quiet
-  tar -xf "$SRC/$name" -C "$SRC"
-}
+source /fetch.sh
 
 license() { mkdir -p "$PREFIX/share/licenses/$1" && cp "${@:2}" "$PREFIX/share/licenses/$1/"; }
 
-read -r x264_commit x264_url < <(awk '$1 == "x264" { print $2, $3 }' /build/sources.txt)
-git clone -q "$x264_url" "$SRC/x264"
-git -C "$SRC/x264" checkout -q "$x264_commit"
-[ "$(git -C "$SRC/x264" rev-parse HEAD)" = "$x264_commit" ]
+fetch x264
 (cd "$SRC/x264" && ./configure --prefix="$DEPS" --enable-static --enable-pic --disable-cli &&
   make -j"$JOBS" && make install)
 license x264 "$SRC/x264/COPYING"

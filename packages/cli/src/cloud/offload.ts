@@ -3,33 +3,48 @@
  * staged copy's references at the asset URLs. The project on disk is never touched.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
   copyFileSync,
   createReadStream,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata } from "@hyperframes/core";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import {
   cleanAssetUrl,
   isRemoteOrInlineUrl,
   resolveLocalAssetCandidates,
 } from "@hyperframes/parsers/asset-resolution";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { probeAudio } from "../audio/analysis/decode.js";
 import { formatBytes } from "../ui/format.js";
+import { bytesMatchExtension } from "./offloadSniff.js";
+import {
+  AUDIO_EXTS,
+  CONVERTIBLE_IMAGE_EXTS,
+  mediaInputArgs,
+  startsAsMediaPlaylist,
+  VIDEO_EXTS,
+} from "@hyperframes/studio-server/outside-file";
+import { followFfmpegProgress } from "@hyperframes/parsers/ff-binaries";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
+  archiveKey,
   assertUnchanged,
   type HtmlAttributeResolver,
   readChecked,
@@ -40,14 +55,19 @@ import {
   stagedSize,
   TEXT_FILE_EXTS,
 } from "../utils/publishProject.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { runWithConcurrencyLimit } from "../utils/concurrency.js";
 
 const execFileAsync = promisify(execFile);
 
-/** Media at or above this size leaves the zip as a HeyGen asset. */
+/** Staged media this big stays on disk until it uploads; an entry GIF this big becomes a video first. */
 export const OFFLOAD_MIN_BYTES = 5 * 1024 * 1024;
+
+const OFFLOAD_CONCURRENCY = 8;
 
 const MiB = 1024 * 1024;
 const AUDIO_MAX_BYTES = 1_500_000_000;
+export const CACHE_CHECK_TIMEOUT_MS = 10_000;
 
 // What POST /v3/assets/direct-uploads takes as-is, and its per-type cap.
 const ACCEPTED: Record<string, { contentType: string; maxBytes: number }> = {
@@ -62,39 +82,6 @@ const ACCEPTED: Record<string, { contentType: string; maxBytes: number }> = {
   ".wav": { contentType: "audio/wav", maxBytes: AUDIO_MAX_BYTES },
   ".mp3": { contentType: "audio/mpeg", maxBytes: AUDIO_MAX_BYTES },
 };
-
-const VIDEO_EXTS = new Set([
-  ".mp4",
-  ".m4v",
-  ".mov",
-  ".webm",
-  ".mkv",
-  ".avi",
-  ".mpg",
-  ".mpeg",
-  ".ts",
-  ".m2ts",
-  ".mts",
-  ".flv",
-  ".wmv",
-  ".ogv",
-  ".3gp",
-]);
-const AUDIO_EXTS = new Set([
-  ".wav",
-  ".mp3",
-  ".m4a",
-  ".aac",
-  ".ogg",
-  ".oga",
-  ".opus",
-  ".flac",
-  ".aif",
-  ".aiff",
-  ".wma",
-]);
-// Still images the API refuses; converted to PNG unless animated.
-const CONVERTIBLE_IMAGE_EXTS = new Set([".gif", ".avif", ".bmp", ".tif", ".tiff"]);
 
 /** Visually lossless re-encodes for media the asset API refuses or caps. Quality lives here. */
 const REENCODE_PRESETS = {
@@ -138,6 +125,7 @@ export interface OffloadedMedia {
   /** What happened (or, on a dry run, would happen) to the file. */
   action: "upload" | "reencode" | "cached";
   url?: string;
+  asset_id?: string;
   /** Seconds of the source kept when only the parts the composition plays are uploaded. */
   trimmed_to_seconds?: number;
   /** Still referenced from a script or data file, so a copy also stays in the zip. */
@@ -164,6 +152,17 @@ export interface OffloadOptions {
   /** Overrides the renderer's GIF preparation for tests. */
   gifPrep?: GifPrep;
   onFile?: (item: OffloadedMedia) => void;
+  /** Hears a re-encode's output seconds made so far; `totalSeconds` is null when the length is unknown. */
+  onReencodeProgress?: (event: ReencodeProgress) => void;
+  variablesText?: string;
+  /** Media leaves the zip, largest first, only while the zip is over this; absent, all used media leaves. */
+  zipBudgetBytes?: number;
+}
+
+export interface ReencodeProgress {
+  path: string;
+  doneSeconds: number;
+  totalSeconds: number | null;
 }
 
 type MediaKind = "video" | "audio" | "image";
@@ -173,10 +172,13 @@ export interface Reencoder {
   choose: (sourcePath: string, kind: MediaKind) => Promise<PresetName | null>;
   /** Positions per second a cut may land on (the frame rate), or null when the file cannot be cut. */
   trimGrid?: (sourcePath: string, kind: MediaKind) => Promise<number | null>;
+  /** Whether a container named as video holds a video stream; `true` when that cannot be told. */
+  hasVideo?: (sourcePath: string) => Promise<boolean>;
   run: (
     sourcePath: string,
     preset: PresetName,
     segments?: PlayedSegment[],
+    onProgress?: (doneSeconds: number, totalSeconds: number | null) => void,
   ) => Promise<UploadableFile>;
 }
 
@@ -189,6 +191,7 @@ export type GifPrep = (
     outputSrcPrefix: string;
     cacheDir: string;
     sourceAssets: Map<string, string>;
+    assetRoot: string;
   },
 ) => Promise<{ html: string; preparedGifs: Array<{ sourceSrc: string; outputPath: string }> }>;
 
@@ -199,7 +202,7 @@ interface CacheEntry {
 }
 
 function defaultOffloadCachePath(): string {
-  return join(homedir(), ".cache", "hyperframes", "cloud-assets.json");
+  return hyperframesCacheDir("cloud-assets.json");
 }
 
 function readCache(path: string): Record<string, CacheEntry> {
@@ -219,11 +222,15 @@ function writeCache(path: string, cache: Record<string, CacheEntry>): void {
 
 // Asset URLs are public and unsigned, so HEAD needs no auth; a deleted or replaced asset fails it.
 async function stillServed(entry: CacheEntry, fetchImpl: typeof fetch): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CACHE_CHECK_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(entry.url, { method: "HEAD" });
+    const res = await fetchImpl(entry.url, { method: "HEAD", signal: controller.signal });
     return res.ok && Number(res.headers.get("content-length")) === entry.size_bytes;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -255,6 +262,7 @@ async function probeVideo(path: string): Promise<VideoProbe> {
     "stream=codec_name,pix_fmt,color_primaries,color_transfer,color_space:stream_tags",
     "-of",
     "json",
+    ...mediaInputArgs(path),
     "--",
     path,
   ]);
@@ -293,22 +301,6 @@ function hdrColorArgs({ color }: VideoProbe): string[] {
   ];
 }
 
-async function hasAudioStream(ffprobe: string, path: string): Promise<boolean> {
-  const { stdout } = await execFileAsync(ffprobe, [
-    "-v",
-    "error",
-    "-select_streams",
-    "a",
-    "-show_entries",
-    "stream=index",
-    "-of",
-    "csv=p=0",
-    "--",
-    path,
-  ]);
-  return stdout.trim() !== "";
-}
-
 // Seconds floored to the microsecond, so a frame-aligned cut never rounds past its first frame.
 const seconds = (t: number) => (Math.floor(t * 1e6) / 1e6).toFixed(6);
 
@@ -317,39 +309,150 @@ async function segmentArgs(
   sourcePath: string,
   decoder: string[],
   segments: PlayedSegment[] | undefined,
-  audioOnly: boolean,
+  media: "audio" | "image" | "video",
 ): Promise<string[]> {
-  if (!segments?.length) return [...decoder, "-i", sourcePath];
-  const inputs = segments.flatMap((s) => [
+  if (media === "image") return [...decoder, ...mediaInputArgs(sourcePath), "-i", sourcePath];
+  const audio = await keptAudio(sourcePath, media);
+  const cuts = segments?.length ? segments : [undefined];
+  const inputs = cuts.flatMap((s) => [
     ...decoder,
-    "-ss",
-    seconds(s.start),
-    "-t",
-    seconds(s.end - s.start),
+    ...seekArgs(s),
+    ...mediaInputArgs(sourcePath),
     "-i",
     sourcePath,
   ]);
-  if (segments.length === 1) return inputs;
-  const audio = audioOnly || (await hasAudioStream(findFFprobe()!, sourcePath));
-  return [...inputs, ...concatArgs(segments.length, !audioOnly, audio)];
+  const video = media === "video";
+  return [
+    ...inputs,
+    ...(cuts.length > 1 ? concatArgs(cuts.length, video, audio) : streamMaps(video, audio)),
+  ];
 }
 
-function concatArgs(count: number, video: boolean, audio: boolean): string[] {
-  const pad = (i: number) => (video ? `[${i}:v]` : "") + (audio ? `[${i}:a]` : "");
+async function keptAudio(sourcePath: string, media: "audio" | "video"): Promise<number | null> {
+  const audio = (await probeAudio(sourcePath, mediaInputArgs(sourcePath)))?.audioStream ?? null;
+  if (media === "audio" && audio === null) {
+    throw new Error("the file has no audio track ffmpeg can decode");
+  }
+  return audio;
+}
+
+const seekArgs = (s: PlayedSegment | undefined) =>
+  s ? ["-ss", seconds(s.start), "-t", seconds(s.end - s.start)] : [];
+
+const streamMaps = (video: boolean, audio: number | null) => [
+  ...(video ? ["-map", "0:V:0"] : []),
+  ...(audio === null ? [] : ["-map", `0:a:${audio}`]),
+];
+
+const mediaOf = (preset: PresetName) =>
+  preset === "audio" || preset === "image" ? preset : ("video" as const);
+
+function concatArgs(count: number, video: boolean, audio: number | null): string[] {
+  const pad = (i: number) =>
+    (video ? `[${i}:v]` : "") + (audio === null ? "" : `[${i}:a:${audio}]`);
   const pads = Array.from({ length: count }, (_, i) => pad(i)).join("");
-  const flags = `n=${count}:v=${video ? 1 : 0}:a=${audio ? 1 : 0}`;
+  const flags = `n=${count}:v=${video ? 1 : 0}:a=${audio === null ? 0 : 1}`;
   return [
     "-filter_complex",
-    `${pads}concat=${flags}${video ? "[v]" : ""}${audio ? "[a]" : ""}`,
+    `${pads}concat=${flags}${video ? "[v]" : ""}${audio === null ? "" : "[a]"}`,
     ...(video ? ["-map", "[v]"] : []),
-    ...(audio ? ["-map", "[a]"] : []),
+    ...(audio === null ? [] : ["-map", "[a]"]),
   ];
+}
+
+const LIMITED_SHARE = 0.85;
+
+/** Rate limits that keep a re-encode under `maxBytes` while crf stays the quality target; empty when none apply. */
+export function sizeLimitArgs(opts: {
+  maxBytes: number;
+  seconds: number;
+  audioBitsPerSecond: number;
+}): string[] {
+  if (!(opts.seconds > 0)) return [];
+  const bits = (opts.maxBytes * 8 * LIMITED_SHARE) / opts.seconds - opts.audioBitsPerSecond;
+  if (!(bits >= 1000)) return [];
+  const rate = `${Math.floor(bits / 1000)}k`;
+  return ["-maxrate", rate, "-bufsize", rate];
+}
+
+const bitsPerSecond = (args: readonly string[]) => {
+  const rate = args[args.indexOf("-b:a") + 1];
+  return rate ? Number.parseInt(rate, 10) * 1000 : 0;
+};
+
+async function durationSeconds(sourcePath: string): Promise<number | null> {
+  const ffprobe = findFFprobe();
+  if (!ffprobe) return null;
+  const { stdout } = await execFileAsync(ffprobe, [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    ...mediaInputArgs(sourcePath),
+    "--",
+    sourcePath,
+  ]);
+  const value = Number(stdout.trim());
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+const capOf = (presetName: PresetName) => ACCEPTED[REENCODE_PRESETS[presetName].ext]?.maxBytes ?? 0;
+
+const playedSeconds = (segments: PlayedSegment[]) =>
+  segments.reduce((sum, s) => sum + s.end - s.start, 0);
+
+const outputSeconds = (sourcePath: string, segments: PlayedSegment[] | undefined) =>
+  segments?.length ? Promise.resolve(playedSeconds(segments)) : durationSeconds(sourcePath);
+
+export async function limitFor(
+  sourcePath: string,
+  presetName: PresetName,
+  segments: PlayedSegment[] | undefined,
+  maxBytes = capOf(presetName),
+): Promise<string[]> {
+  if (mediaOf(presetName) !== "video") return [];
+  const seconds = await outputSeconds(sourcePath, segments);
+  const limit = sizeLimitArgs({
+    maxBytes,
+    seconds: seconds ?? 0,
+    audioBitsPerSecond: bitsPerSecond(REENCODE_PRESETS[presetName].audio),
+  });
+  // VP9 takes its ceiling from -b:v; the preset's `-b:v 0` is pure constant quality and ignores -maxrate.
+  return presetName === "alphaVideo" && limit.length ? [...limit, "-b:v", limit[1]!] : limit;
+}
+
+/** ffmpeg with `-progress` on stdout, so `onSeconds` hears the output time made; fails with ffmpeg's own stderr. */
+function runFfmpeg(
+  ffmpeg: string,
+  args: string[],
+  onSeconds: (seconds: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpeg, ["-progress", "pipe:1", "-nostats", ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    followFfmpegProgress(proc.stdout, onSeconds);
+    let stderr = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-16_384);
+    });
+    proc.on("error", reject);
+    proc.on("close", (code, signal) => {
+      if (code === 0) return resolve();
+      const ended = signal ? `was ended by ${signal}` : `exited with code ${code}`;
+      reject(new Error(`ffmpeg ${ended}: ${stderr.trim()}`));
+    });
+  });
 }
 
 async function ffmpegReencode(
   sourcePath: string,
   presetName: PresetName,
   segments?: PlayedSegment[],
+  onProgress?: (doneSeconds: number, totalSeconds: number | null) => void,
 ): Promise<UploadableFile> {
   const ffmpeg = findFFmpeg();
   if (!ffmpeg) throw new Error(`Re-encoding needs ffmpeg. Install it: ${getFFmpegInstallHint()}`);
@@ -357,22 +460,24 @@ async function ffmpegReencode(
   const probe = preset.contentType.startsWith("video/") ? await probeVideo(sourcePath) : undefined;
   const decoder = probe ? alphaDecoderArgs(probe) : [];
   const color = presetName === "hdrVideo" && probe ? hdrColorArgs(probe) : [];
+  const totalSeconds = onProgress ? await outputSeconds(sourcePath, segments) : null;
   const workDir = mkdtempSync(join(tmpdir(), "hf-offload-"));
   const outPath = join(workDir, `${basename(sourcePath, extname(sourcePath))}${preset.ext}`);
   try {
-    await execFileAsync(
+    await runFfmpeg(
       ffmpeg,
       [
         "-v",
         "error",
         "-y",
-        ...(await segmentArgs(sourcePath, decoder, segments, presetName === "audio")),
+        ...(await segmentArgs(sourcePath, decoder, segments, mediaOf(presetName))),
         ...preset.args,
+        ...(await limitFor(sourcePath, presetName, segments)),
         ...color,
         ...preset.audio,
         outPath,
       ],
-      { maxBuffer: 16 * MiB },
+      (doneSeconds) => onProgress?.(doneSeconds, totalSeconds),
     );
     // Never read an output the asset API would refuse: it can exceed what one read can hold.
     return {
@@ -407,6 +512,7 @@ async function isAnimatedImage(path: string): Promise<boolean> {
       "stream=nb_frames",
       "-of",
       "csv=p=0",
+      ...mediaInputArgs(path),
       "--",
       path,
     ]);
@@ -431,6 +537,7 @@ async function trimGrid(sourcePath: string, kind: MediaKind): Promise<number | n
     "stream=r_frame_rate,avg_frame_rate",
     "-of",
     "csv=p=0",
+    ...mediaInputArgs(sourcePath),
     "--",
     sourcePath,
   ]);
@@ -443,7 +550,35 @@ async function trimGrid(sourcePath: string, kind: MediaKind): Promise<number | n
   return Number.isFinite(fps) && Math.abs(fps - rate(average)) < 0.01 ? fps : null;
 }
 
-const ffmpegReencoder: Reencoder = { choose: choosePreset, trimGrid, run: ffmpegReencode };
+async function hasVideoStream(sourcePath: string): Promise<boolean> {
+  const ffprobe = findFFprobe();
+  if (!ffprobe) return true;
+  try {
+    const { stdout } = await execFileAsync(ffprobe, [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_type",
+      "-of",
+      "csv=p=0",
+      ...mediaInputArgs(sourcePath),
+      "--",
+      sourcePath,
+    ]);
+    return stdout.trim() !== "";
+  } catch {
+    return true;
+  }
+}
+
+const ffmpegReencoder: Reencoder = {
+  choose: choosePreset,
+  trimGrid,
+  hasVideo: hasVideoStream,
+  run: ffmpegReencode,
+};
 
 async function stagedSha256(file: StagedFile): Promise<string> {
   if (Buffer.isBuffer(file)) return createHash("sha256").update(file).digest("hex");
@@ -486,7 +621,12 @@ function scriptCode(fileMap: Map<string, StagedFile>): string {
     const text = textOf(path, content);
     if (text === undefined) continue;
     if (/\.html?$/i.test(path)) {
-      for (const script of parseHTML(text).document.querySelectorAll("script:not([src])")) {
+      const { document } = parseHTML(text);
+      const pages = [
+        document,
+        ...[...document.querySelectorAll("template")].flatMap((t) => templateContent(t) ?? []),
+      ];
+      for (const script of pages.flatMap((p) => [...p.querySelectorAll("script:not([src])")])) {
         parts.push(script.textContent ?? "");
       }
     } else if (/\.(m?js|cjs|json)$/i.test(path)) parts.push(text);
@@ -515,6 +655,7 @@ interface OffloadContext {
   /** Staged GIFs the entry composition no longer shows as images. */
   preparedGifSources: string[];
   fileMap: Map<string, StagedFile>;
+  uploadsInFlightByKey: Map<string, Promise<{ url: string; asset_id: string }>>;
 }
 
 interface FilePlan {
@@ -525,16 +666,45 @@ interface FilePlan {
   segments?: PlayedSegment[];
 }
 
+function readHead(file: StagedFile): Buffer {
+  if (Buffer.isBuffer(file)) return file.subarray(0, 16);
+  const fd = openSync(file.absPath, "r");
+  try {
+    const head = Buffer.alloc(16);
+    readSync(fd, head, 0, 16, 0);
+    return head;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function mediaFileKind(path: string, file: StagedFile): MediaKind | null {
+  const kind = mediaKind(path);
+  return kind && !startsAsMediaPlaylist(readHead(file)) ? kind : null;
+}
+
 async function planFile(
   ctx: OffloadContext,
   path: string,
   file: StagedFile,
 ): Promise<FilePlan | null> {
-  const kind = mediaKind(path);
   const size = stagedSize(file);
-  if (!kind || size < OFFLOAD_MIN_BYTES) return null;
-  const accepted = ACCEPTED[extname(path).toLowerCase()];
-  const asIs = accepted !== undefined && size <= accepted.maxBytes;
+  let kind = mediaFileKind(path, file);
+  if (!kind) return null;
+  const ext = extname(path).toLowerCase();
+  const accepted = ACCEPTED[ext];
+  // The API reads the stored bytes, not the name: a file whose bytes differ from its extension is re-encoded.
+  let asIs =
+    accepted !== undefined && size <= accepted.maxBytes && bytesMatchExtension(ext, readHead(file));
+  let sourcePath: string | undefined;
+  if (kind === "video" && ctx.reencoder.hasVideo) {
+    sourcePath = snapshotPath(path, file, ctx.tempFiles);
+    // An audio-only MP4 is audio whatever its name says.
+    if (!(await ctx.reencoder.hasVideo(sourcePath))) {
+      kind = "audio";
+      asIs = false;
+    }
+  }
   const mayBeCached =
     ctx.opts.upload !== undefined || (asIs ? ctx.cachedSizes.has(size) : ctx.cachedSizes.size > 0);
   const sha256 = mayBeCached ? await stagedSha256(file) : undefined;
@@ -542,7 +712,7 @@ async function planFile(
   if (asIs) {
     return { key: keyFor("as-is"), sourcePath: "", contentType: accepted?.contentType };
   }
-  const sourcePath = snapshotPath(path, file, ctx.tempFiles);
+  sourcePath ??= snapshotPath(path, file, ctx.tempFiles);
   const preset = await ctx.reencoder.choose(sourcePath, kind);
   // Files left as authored stay in the zip; the archive size check names them.
   if (!preset) return null;
@@ -560,12 +730,13 @@ async function planFileTrim(
   kind: MediaKind,
 ): Promise<PlayedSegment[] | null> {
   const entryPath = ctx.opts.entryPath ?? "index.html";
-  const entryHtml = textOf(entryPath, ctx.fileMap.get(entryPath));
-  const gridPerSecond = entryHtml ? await ctx.reencoder.trimGrid?.(sourcePath, kind) : null;
-  if (!entryHtml || !gridPerSecond) return null;
+  if (!textOf(entryPath, ctx.fileMap.get(entryPath))) return null;
+  const gridPerSecond = await ctx.reencoder.trimGrid?.(sourcePath, kind);
+  const entryHtmlAfterOthersPlanned = textOf(entryPath, ctx.fileMap.get(entryPath));
+  if (!entryHtmlAfterOthersPlanned || !gridPerSecond) return null;
   const name = basename(path);
   const plan = planTrim({
-    entryHtml,
+    entryHtml: entryHtmlAfterOthersPlanned,
     path,
     gridPerSecond,
     resolveKey: (raw) => htmlSrcKey(ctx.absDir, entryPath, raw, ctx.fileMap),
@@ -597,10 +768,10 @@ async function offloadFile(
   };
   const hit = plan.key === undefined ? undefined : ctx.cache[plan.key];
   if (hit && (!ctx.opts.upload || (await stillServed(hit, ctx.fetchImpl)))) {
-    return { ...item, action: "cached", url: hit.url };
+    return { ...item, action: "cached", url: hit.url, asset_id: hit.asset_id };
   }
   if (!ctx.opts.upload) return item;
-  return { ...item, url: await uploadPlanned(ctx, ctx.opts.upload, path, file, plan) };
+  return { ...item, ...(await uploadPlanned(ctx, ctx.opts.upload, path, file, plan)) };
 }
 
 async function uploadPlanned(
@@ -609,10 +780,31 @@ async function uploadPlanned(
   path: string,
   staged: StagedFile,
   plan: FilePlan,
-): Promise<string> {
+): Promise<{ url: string; asset_id: string }> {
+  if (plan.key === undefined) return uploadOnce(ctx, upload, path, staged, plan);
+  const pending = ctx.uploadsInFlightByKey.get(plan.key);
+  if (pending) return pending;
+  const started = uploadOnce(ctx, upload, path, staged, plan);
+  ctx.uploadsInFlightByKey.set(plan.key, started);
+  return started;
+}
+
+async function uploadOnce(
+  ctx: OffloadContext,
+  upload: NonNullable<OffloadOptions["upload"]>,
+  path: string,
+  staged: StagedFile,
+  plan: FilePlan,
+): Promise<{ url: string; asset_id: string }> {
   const filename = basename(path);
+  const report = ctx.opts.onReencodeProgress;
   const file: UploadableFile = plan.preset
-    ? await ctx.reencoder.run(plan.sourcePath, plan.preset, plan.segments)
+    ? await ctx.reencoder.run(
+        plan.sourcePath,
+        plan.preset,
+        plan.segments,
+        report && ((doneSeconds, totalSeconds) => report({ path, doneSeconds, totalSeconds })),
+      )
     : Buffer.isBuffer(staged)
       ? { bytes: staged, filename, contentType: plan.contentType! }
       : { path: staged.absPath, size: staged.size, filename, contentType: plan.contentType! };
@@ -625,7 +817,7 @@ async function uploadPlanned(
     ctx.cache[plan.key] = { asset_id: asset.asset_id, url: asset.url, size_bytes: size };
     writeCache(ctx.cachePath, ctx.cache);
   }
-  return asset.url;
+  return { url: asset.url, asset_id: asset.asset_id };
 }
 
 const GIF_PREFIX = "_animated_gif";
@@ -649,8 +841,9 @@ async function prepareEntryGifs(
     downloadDir: outputDir,
     outputDir,
     outputSrcPrefix: posix.relative(posix.dirname(entryPath), GIF_PREFIX),
-    cacheDir: join(homedir(), ".cache", "hyperframes", "animated-gif"),
+    cacheDir: hyperframesCacheDir("animated-gif"),
     sourceAssets,
+    assetRoot: outputDir,
   });
   if (result.preparedGifs.length === 0) return;
   fileMap.set(entryPath, Buffer.from(result.html, "utf-8"));
@@ -684,8 +877,8 @@ function entryGifSources(
 }
 
 /**
- * Upload each heavy media file as an asset (or reuse a cached one still served), point its references at the
- * asset URL and drop it from `fileMap`. Without `upload`, nothing uploads and only animated GIFs are encoded.
+ * Moves used media out of the zip as assets (cached ones reused), largest first, until the zip fits the budget.
+ * Without `upload`, nothing uploads and only animated GIFs are encoded.
  */
 export async function offloadHeavyMedia(
   projectDir: string,
@@ -710,22 +903,20 @@ export async function offloadHeavyMedia(
     tempFiles: [],
     preparedGifSources: [],
     fileMap,
+    uploadsInFlightByKey: new Map(),
   };
   const urls = new Map<string, string>();
   const report: OffloadedMedia[] = [];
+  let referenced = new Set<string>();
   try {
     await prepareEntryGifs(ctx, fileMap);
     // Only files a reference points at: one used through render-time --variables must stay in the zip.
-    const referenced = referencedFiles(ctx.absDir, fileMap);
-    for (const [path, file] of [...fileMap].sort(([a], [b]) => a.localeCompare(b))) {
-      if (!referenced.has(path)) continue;
-      const item = await offloadFile(ctx, path, file);
-      if (!item) continue;
-      // A dry run rewrites to a stand-in URL so the reported archive size matches the real one.
-      urls.set(path, item.url ?? `https://assets.invalid/${report.length}`);
-      report.push(item);
-      opts.onFile?.(item);
-    }
+    referenced = referencedFiles(ctx.absDir, fileMap);
+    const budget = opts.zipBudgetBytes ?? 0;
+    const zipped = [...fileMap.values()].reduce((sum, file) => sum + stagedSize(file), 0);
+    const left = dropUnusedMediaWhileOver(ctx, referenced, zipped, budget);
+    await uploadLargestWhileOver(ctx, referenced, left, budget, urls, report);
+    report.sort((a, b) => a.path.localeCompare(b.path));
   } finally {
     for (const dir of ctx.tempFiles) rmSync(dir, { recursive: true, force: true });
   }
@@ -733,6 +924,69 @@ export async function offloadHeavyMedia(
   if (urls.size > 0) rewriteReferences(ctx.absDir, fileMap, (key) => urls.get(key) ?? null);
   dropReplacedFiles(fileMap, report, ctx.preparedGifSources, [...urls.values()]);
   return report;
+}
+
+/** Drops media no page, script or variable names, largest first, while the zip is over budget; returns its size. */
+function dropUnusedMediaWhileOver(
+  ctx: OffloadContext,
+  referenced: Set<string>,
+  zipped: number,
+  budget: number,
+): number {
+  const { fileMap } = ctx;
+  const code = scriptCode(fileMap);
+  const variables = ctx.opts.variablesText ?? "";
+  const unused = [...fileMap]
+    .filter(([path]) => !referenced.has(path) && mediaKind(path) !== null)
+    .filter(([path]) => !variables.includes(basename(path)))
+    .filter(([path]) => !isStillMentioned(fileMap, path, code, (text) => text))
+    .sort(byLargest);
+  let left = zipped;
+  for (const [path, file] of unused) {
+    if (left <= budget) break;
+    fileMap.delete(path);
+    left -= stagedSize(file);
+  }
+  return left;
+}
+
+const byLargest = ([a, x]: [string, StagedFile], [b, y]: [string, StagedFile]) =>
+  stagedSize(y) - stagedSize(x) || a.localeCompare(b);
+
+async function uploadLargestWhileOver(
+  ctx: OffloadContext,
+  referenced: Set<string>,
+  zipped: number,
+  budget: number,
+  urls: Map<string, string>,
+  report: OffloadedMedia[],
+): Promise<void> {
+  const used = [...ctx.fileMap].filter(([path]) => referenced.has(path)).sort(byLargest);
+  let left = zipped;
+  let next = 0;
+  while (left > budget && next < used.length) {
+    const batch: [string, StagedFile][] = [];
+    for (let after = left; after > budget && next < used.length; next += 1) {
+      batch.push(used[next]!);
+      after -= stagedSize(used[next]![1]);
+    }
+    const items = await runWithConcurrencyLimit(
+      batch,
+      OFFLOAD_CONCURRENCY,
+      async ([path, file]) => {
+        const item = await offloadFile(ctx, path, file);
+        if (item) ctx.opts.onFile?.(item);
+        return item;
+      },
+    );
+    for (const [index, item] of items.entries()) {
+      if (!item) continue;
+      // A dry run rewrites to a stand-in URL so the reported archive size matches the real one.
+      urls.set(item.path, item.url ?? `https://assets.invalid/${report.length}`);
+      report.push(item);
+      left -= stagedSize(batch[index]![1]);
+    }
+  }
 }
 
 function dropReplacedFiles(
@@ -754,10 +1008,17 @@ function dropReplacedFiles(
   }
 }
 
-/**
- * Whether a reference rewriting could not replace may still load the file: its name anywhere, or its
- * stem and extension both in script code, which can join them at runtime ("clip" + ".mp4").
- */
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function namesFile(text: string, path: string): boolean {
+  const tokens = text.match(new RegExp(`[\\w./-]*${escapeRegExp(basename(path))}`, "g")) ?? [];
+  return tokens.some((token) => {
+    const tail = token.replace(/^[./]+/, "");
+    return path === tail || path.endsWith(`/${tail}`);
+  });
+}
+
+/** A path ending in its name, or in script code its stem as a string with the extension nearby ("clip" + ".mp4"). */
 function isStillMentioned(
   fileMap: Map<string, StagedFile>,
   path: string,
@@ -765,12 +1026,13 @@ function isStillMentioned(
   withoutUrls: (text: string) => string,
 ): boolean {
   const ext = extname(path);
-  if (code.includes(basename(path, ext)) && code.includes(ext.slice(1))) return true;
+  const stem = new RegExp(`["'\`/]${escapeRegExp(basename(path, ext))}\\.?["'\`$]`);
+  if (stem.test(code) && code.includes(ext.slice(1))) return true;
   const name = basename(path);
   for (const [entryPath, content] of fileMap) {
     const contentText = textOf(entryPath, content);
     if (entryPath === path || !contentText?.includes(name)) continue;
-    if (withoutUrls(contentText).includes(name)) return true;
+    if (namesFile(withoutUrls(contentText), path)) return true;
   }
   return false;
 }
@@ -786,9 +1048,9 @@ function htmlSrcKey(
   if (!clean || isRemoteOrInlineUrl(clean)) return null;
   const rootRelative = clean.startsWith("/")
     ? clean
-    : rewriteAssetPath(entryPath, clean, (p) => fileMap.has(p));
+    : rewriteAssetPath(entryPath, clean, (p) => fileMap.has(archiveKey(p)));
   for (const candidate of resolveLocalAssetCandidates(absDir, rootRelative)) {
-    const key = relative(absDir, candidate).replaceAll("\\", "/");
+    const key = archiveKey(relative(absDir, candidate).replaceAll("\\", "/"));
     if (fileMap.has(key)) return key;
   }
   return null;
@@ -813,7 +1075,7 @@ function rewriteReferences(
 ): void {
   const urlFor: UrlFor = (rootRelative) => {
     for (const candidate of resolveLocalAssetCandidates(absDir, rootRelative)) {
-      const url = urlForKey(relative(absDir, candidate).replaceAll("\\", "/"));
+      const url = urlForKey(archiveKey(relative(absDir, candidate).replaceAll("\\", "/")));
       if (url) return url;
     }
     return null;
@@ -857,7 +1119,29 @@ function rewriteCssEntry(absDir: string, entryPath: string, css: string, urlFor:
   return result.modified ? result.css : null;
 }
 
+const TEMPLATE_SCENE_RE = /(<template\b[^>]*>)([\s\S]*?)(<\/template>)/gi;
+
+/** An entry's HTML with each <template> scene rewritten too: the runtime stamps those scenes into the page. */
 function rewriteHtmlEntry(
+  absDir: string,
+  entryPath: string,
+  source: string,
+  urlFor: UrlFor,
+  fileMap: Map<string, StagedFile>,
+): string | null {
+  const html = source.replace(
+    TEMPLATE_SCENE_RE,
+    (full, open: string, inner: string, close: string) => {
+      const next = rewriteHtmlEntry(absDir, entryPath, inner, urlFor, fileMap);
+      return next === null ? full : open + next + close;
+    },
+  );
+  return (
+    rewriteHtmlDocument(absDir, entryPath, html, urlFor, fileMap) ?? (html === source ? null : html)
+  );
+}
+
+function rewriteHtmlDocument(
   absDir: string,
   entryPath: string,
   html: string,
@@ -867,7 +1151,11 @@ function rewriteHtmlEntry(
   const referrerAbsDir = resolve(absDir, dirname(entryPath));
   // Sub-composition srcs resolve the way the renderer inlines them.
   const resolveTarget: HtmlAttributeResolver = (raw) =>
-    localTarget(raw, (clean) => rewriteAssetPath(entryPath, clean, (p) => fileMap.has(p)), urlFor);
+    localTarget(
+      raw,
+      (clean) => rewriteAssetPath(entryPath, clean, (p) => fileMap.has(archiveKey(p))),
+      urlFor,
+    );
   const { document } = parseHTML(html);
   const attrs = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
     attrs: ["src", "poster", "href"],

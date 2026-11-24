@@ -1,12 +1,15 @@
 // fallow-ignore-file code-duplication
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -21,6 +24,8 @@ import {
   OPTIONAL_PACKAGES,
   install,
   installedOptionalPackageVersion,
+  installedPackagePath,
+  isInstalled,
   loadBesideCli,
   loadInstalledOptionalPackage,
   loadOptionalPackage,
@@ -29,6 +34,7 @@ import {
   optionalPackageDir,
   requireSharpBesideCli,
   SHARP_VERSION,
+  sweepStaleStaging,
   type OptionalPackageDeps,
 } from "./optionalPackages.js";
 
@@ -429,6 +435,67 @@ describe("a copy installed beside the CLI", () => {
     }
   });
 
+  it("finds the pinned copy past a nearer one whose manifest is broken", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    const nearer = join(root, "node_modules", "hyperframes", "node_modules", "onnxruntime-node");
+    mkdirSync(nearer, { recursive: true });
+    writeFileSync(join(nearer, "package.json"), "{ version: 1");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads the entry the package's exports name, not its main", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    const pkg = join(root, "node_modules", "onnxruntime-node");
+    writeFileSync(
+      join(pkg, "package.json"),
+      JSON.stringify({ version: pin, main: "esm.mjs", exports: { require: "./index.js" } }),
+    );
+    writeFileSync(join(pkg, "esm.mjs"), "export default {};");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("finds the pinned copy in a host folder not named node_modules, though a stray one sits above it", () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-beside-vendor-"));
+    const copy = (dir: string, version: string, label: string) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ version, main: "index.js" }));
+      writeFileSync(join(dir, "index.js"), `module.exports = { copy: ${JSON.stringify(label)} };`);
+    };
+    copy(join(root, "node_modules", "onnxruntime-node"), "0.0.1", "stray");
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    copy(join(root, "app", "vendor", "onnxruntime-node"), pin, "pinned");
+    const bundle = join(root, "app", "cli", "optionalPackages.mjs");
+    buildSync({
+      entryPoints: [fileURLToPath(new URL("./optionalPackages.ts", import.meta.url))],
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      outfile: bundle,
+    });
+    const script = `const m = await import(${JSON.stringify(pathToFileURL(bundle).href)});
+console.log(JSON.stringify(m.loadBesideCli("onnxruntime-node")));`;
+    try {
+      const child = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+        encoding: "utf-8",
+        env: { ...process.env, NODE_PATH: join(root, "app", "vendor") },
+      });
+      expect(child.stderr).toBe("");
+      expect(JSON.parse(child.stdout)).toEqual({ copy: "pinned" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("ignores it when its manifest is unreadable, instead of throwing", () => {
     const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
     writeFileSync(join(root, "node_modules", "onnxruntime-node", "package.json"), "{ version: 1");
@@ -440,13 +507,18 @@ describe("a copy installed beside the CLI", () => {
     }
   });
 
-  it("checks the copy require would load first, not a later pinned one", () => {
-    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+  it("finds the pinned copy past a nearer copy of another version, which must not send the CLI to install its own", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
     const nearer = join(root, "node_modules", "hyperframes", "node_modules", "onnxruntime-node");
     mkdirSync(nearer, { recursive: true });
-    writeFileSync(join(nearer, "index.js"), `module.exports = { copy: "unversioned" };`);
+    writeFileSync(
+      join(nearer, "package.json"),
+      JSON.stringify({ version: "0.0.1", main: "index.js" }),
+    );
+    writeFileSync(join(nearer, "index.js"), `module.exports = { copy: "stray" };`);
     try {
-      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -514,13 +586,14 @@ console.log(JSON.stringify([m.loadBesideCli("onnxruntime-node", url),
     }
   });
 
-  it("ignores a file require would load before the pinned folder", () => {
-    const { root, cliUrl } = layout(OPTIONAL_PACKAGES["onnxruntime-node"]);
+  it("finds the pinned folder past a file require would load first", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
     const nearer = join(root, "node_modules", "hyperframes", "node_modules");
     mkdirSync(nearer, { recursive: true });
     writeFileSync(join(nearer, "onnxruntime-node.js"), `module.exports = { copy: "file" };`);
     try {
-      expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -544,15 +617,169 @@ describe("install", () => {
   function setup() {
     const cache = mkdtempSync(join(tmpdir(), "hf-optional-"));
     const dir = join(cache, "pkg@1.0.0");
-    const stubNpm = async (args: string[]) => {
+    const stubNpm = async (_args: string[], prefix: string) => {
       await new Promise((r) => setTimeout(r, 50));
-      const prefix = args[args.indexOf("--prefix") + 1] as string;
       if (!existsSync(prefix)) throw new Error("ENOENT: staging dir vanished mid-install");
       mkdirSync(join(prefix, "node_modules", name), { recursive: true });
       writeFileSync(join(prefix, "node_modules", name, "package.json"), "{}");
     };
     return { cache, dir, stubNpm };
   }
+
+  describe.skipIf(process.platform === "win32")(
+    "a cached copy another account could have written",
+    () => {
+      const writePackage = (prefix: string, body: string) => {
+        mkdirSync(join(prefix, "node_modules", name), { recursive: true, mode: 0o755 });
+        writeFileSync(join(prefix, "node_modules", name, "package.json"), "{}");
+        writeFileSync(join(prefix, "node_modules", name, "index.js"), body);
+      };
+
+      it("is installed in a folder no other account can reach, even under umask 002", async () => {
+        const { cache, dir } = setup();
+        const previous = process.umask(0o002);
+        const modes: number[] = [];
+        try {
+          await install(dir, name, version, async (_args, prefix) => {
+            modes.push(statSync(prefix).mode & 0o777);
+            writePackage(prefix, "1");
+          });
+        } finally {
+          process.umask(previous);
+          rmSync(cache, { recursive: true, force: true });
+        }
+        expect(modes).toEqual([0o700]);
+      });
+
+      it("is loaded on the next run when this account installed it under umask 002", async () => {
+        const { cache, dir } = setup();
+        const previous = process.umask(0o002);
+        try {
+          await install(dir, name, version, async (_args, prefix) => writePackage(prefix, "1"));
+        } finally {
+          process.umask(previous);
+        }
+        try {
+          expect(installedPackagePath(dir, name)).toBe(
+            realpathSync(join(dir, "node_modules", name, "index.js")),
+          );
+        } finally {
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+
+      it("rejects a writable dependency beside a private package entry", () => {
+        const { cache, dir } = setup();
+        try {
+          writePackage(dir, "module.exports = 'entry'");
+          const sibling = join(dir, "node_modules", name, "dependency.js");
+          writeFileSync(sibling, "module.exports = 'dependency'");
+          chmodSync(sibling, 0o666);
+          expect(installedPackagePath(dir, name)).toBeNull();
+        } finally {
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+
+      it("is never loaded when another account owns it", () => {
+        const { cache, dir } = setup();
+        const previous = process.umask(0o022);
+        try {
+          writePackage(dir, "module.exports = 'planted'");
+          expect(installedPackagePath(dir, name)).toBe(
+            realpathSync(join(dir, "node_modules", name, "index.js")),
+          );
+          vi.spyOn(process, "getuid").mockReturnValue(process.getuid!() + 1);
+          expect(installedPackagePath(dir, name)).toBeNull();
+        } finally {
+          process.umask(previous);
+          vi.restoreAllMocks();
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+
+      it("is replaced by a fresh install when a folder of it is group- or world-writable", async () => {
+        const { cache, dir } = setup();
+        try {
+          writePackage(dir, "module.exports = 'planted'");
+          chmodSync(join(dir, "node_modules"), 0o777);
+          expect(isInstalled(dir, name)).toBe(false);
+          expect(installedPackagePath(dir, name)).toBeNull();
+
+          await install(dir, name, version, async (_args, prefix) => writePackage(prefix, "1"));
+
+          const entry = installedPackagePath(dir, name);
+          expect(entry).toBe(realpathSync(join(dir, "node_modules", name, "index.js")));
+          expect(readFileSync(entry!, "utf8")).toBe("1");
+        } finally {
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not sweep staging under a writable ancestor",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-unsafe-staging-"));
+      const dir = join(root, "cache", "pkg");
+      const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;
+      const stale = `${dir}.tmp-${deadPid}-old`;
+      mkdirSync(stale, { recursive: true });
+      chmodSync(root, 0o777);
+      const run = vi.fn();
+      try {
+        await expect(install(dir, name, version, run)).rejects.toThrow();
+        expect(existsSync(stale)).toBe(true);
+        expect(run).not.toHaveBeenCalled();
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // fails without the fix: the folder's name was printed as it is on disk.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in a stale folder it could not remove as text",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-stale-staging-"));
+      const parent = join(root, "od\u001b[2Jd\u0007");
+      const dir = join(parent, "pkg");
+      const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;
+      const stale = `${dir}.tmp-${deadPid}-old`;
+      mkdirSync(join(stale, "inner"), { recursive: true });
+      chmodSync(stale, 0o500);
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        sweepStaleStaging(dir);
+        const said = log.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+        expect(said).toContain("could not remove stale install dir");
+        expect(said).toContain("od\\x1b[2Jd\\x07");
+        expect(said).not.toContain("\u001b");
+        expect(said).not.toContain("\u0007");
+      } finally {
+        log.mockRestore();
+        chmodSync(stale, 0o700);
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("runs npm inside the staging dir, with no path on its command line", async () => {
+    const { cache, dir } = setup();
+    const seen: { args: string[]; cwd: string }[] = [];
+    try {
+      await install(dir, name, version, async (args, cwd) => {
+        seen.push({ args, cwd });
+      });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.args).not.toContain("--prefix");
+      expect(seen[0]!.args.some((arg) => arg.includes(cache))).toBe(false);
+      expect(seen[0]!.cwd.startsWith(`${dir}.tmp-`)).toBe(true);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
 
   it("gives each overlapping install in one process its own staging dir", async () => {
     const { cache, dir, stubNpm } = setup();

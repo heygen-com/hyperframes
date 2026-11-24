@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Camcorder HUD</h1>
+  <p>Responsive REC, battery, editable date placeholder, and timeline-driven counter overlay for creator-camera and camcorder treatments</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/camcorder-hud.json"
   compositionId="camcorder-hud"
   compositionSrc="compositions/camcorder-hud.html"
   title="Camcorder HUD"
-  description="Responsive REC, battery, editable date placeholder, and timeline-driven counter overlay for creator-camera and camcorder treatments"
   variables={[]}
   meta={{"duration":4,"width":1920,"height":1080,"category":"Camera","badge":"Stable","codeLines":163}}
   attribution={{"path":"registry/blocks/camcorder-hud","tags":["camcorder","camera","recording","hud","overlay","creator","media-treatment-overlay"]}}
@@ -198,7 +202,9 @@ That writes one file: `compositions/camcorder-hud.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -229,6 +235,4 @@ Tagged `camcorder` `camera` `recording` `hud` `overlay` `creator` `media-treatme
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

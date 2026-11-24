@@ -219,6 +219,35 @@ p { FONT-FAMILY: "Real Brand", sans-serif !important; }
       expect(findings).toHaveLength(0);
     });
 
+    it("reads the family list of a font shorthand, as the renderer does", async () => {
+      const findings = await findByCode(
+        `<div data-composition-id="test"><style>
+.a { font: 500 16px/1 "PingFang SC", Inter, sans-serif; }
+</style></div>`,
+        "font_family_without_font_face",
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({ line: 2, column: 6 });
+      expect(findings[0]!.message).toContain("pingfang sc");
+      expect(findings[0]!.message).not.toContain("inter");
+    });
+
+    it.each([
+      "16px / 1.5 Inter",
+      "var(--weight) 16px Inter",
+      "var(--size) 'Brand Sans'",
+      "'Brand Sans' 16px",
+    ])("does not invent a family from a valid or unreadable shorthand: font: %s", async (font) => {
+      const findings = await findByCode(
+        `<div data-composition-id="test"><style>
+:root { --weight: 700; --size: 16px; }
+p { font: ${font}; }
+</style></div>`,
+        "font_family_without_font_face",
+      );
+      expect(findings).toHaveLength(0);
+    });
+
     it("flags font-family used without @font-face", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>body { font-family: 'GT Walsheim', sans-serif; }</style>
@@ -269,12 +298,12 @@ p { FONT-FAMILY: "Real Brand", sans-serif !important; }
       expect(findings).toHaveLength(0);
     });
 
-    it("fixHint mentions the local() pattern for system fonts", async () => {
+    it("fixHint says an installed OS font does not reach a cloud render", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>body { font-family: 'GT Walsheim', sans-serif; }</style>
       </div>`;
       const findings = await findByCode(html, "font_family_without_font_face");
-      expect(findings[0]!.fixHint).toContain("local(");
+      expect(findings[0]!.fixHint).toContain("cloud render has no copy");
     });
 
     it("does not flag generic font families", async () => {
@@ -488,6 +517,32 @@ p { FONT-FAMILY: "Real Brand", sans-serif !important; }
       expect(findings).toHaveLength(1);
       expect(findings[0]!.message).toContain("aeonik");
       expect(findings[0]!.message).not.toContain("apple-system");
+    });
+  });
+
+  describe("font_face_local_only", () => {
+    it("warns when an @font-face only names a font installed on this machine", async () => {
+      const findings = await findByCode(
+        `<div data-composition-id="test"><style>
+@font-face { font-family: "PingFang SC"; src: local("PingFang SC"), local("PingFangSC-Regular"); }
+p { font-family: "PingFang SC"; }
+</style></div>`,
+        "font_face_local_only",
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({ severity: "warning", line: 2 });
+      expect(findings[0]!.message).toContain("pingfang sc");
+    });
+
+    it("stays quiet when the face also ships a font file", async () => {
+      const findings = await findByCode(
+        `<div data-composition-id="test"><style>
+@font-face { font-family: "Brand"; src: local("Brand"), url("fonts/brand.woff2") format("woff2"); }
+p { font-family: "Brand"; }
+</style></div>`,
+        "font_face_local_only",
+      );
+      expect(findings).toHaveLength(0);
     });
   });
 });

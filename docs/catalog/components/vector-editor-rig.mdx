@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Vector Editor Rig</h1>
+  <p>A dark design-tool app chrome with a live vector pen path, sequential anchor points, bezier handles, a selection frame, and theme-driven blue accents.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/vector-editor-rig.json"
   compositionId="vector-editor-rig"
   compositionSrc="compositions/components/vector-editor-rig.html"
   title="Vector Editor Rig"
-  description="A dark design-tool app chrome with a live vector pen path, sequential anchor points, bezier handles, a selection frame, and theme-driven blue accents."
   variables={[{"id":"tool","type":"enum","role":"content","label":"Active tool","description":"Tool highlighted in the editor toolbar.","default":"pen","options":[{"value":"pen","label":"Pen"},{"value":"shape","label":"Shape"},{"value":"type","label":"Type"}]},{"id":"pathLabel","type":"string","role":"content","label":"Path label","description":"Name shown for the active vector path.","default":"Logo"}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":795}}
   attribution={{"path":"registry/components/vector-editor-rig","tags":["prop","ui-props","demonstrate","vector","design-tool","pen-tool","bezier","app-chrome"]}}
@@ -830,7 +834,9 @@ That writes one file: `compositions/components/vector-editor-rig.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -870,6 +876,4 @@ Tagged `prop` `ui-props` `demonstrate` `vector` `design-tool` `pen-tool` `bezier
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

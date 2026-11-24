@@ -1,7 +1,8 @@
 import type { TimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
+import { matchesKey } from "./studioShortcuts";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { resolveTimelineDragEscape } from "./timelineEditing";
-import { commitDraggedClipMove } from "./timelineClipDragCommit";
+import { commitDraggedClipMove, type DragCommitDeps } from "./timelineClipDragCommit";
 import type {
   BlockedClipState,
   DraggedClipState,
@@ -74,11 +75,12 @@ interface TimelineClipDragGestureLifecycleInput {
     ((element: TimelineElement, intent: BlockedClipState["intent"]) => void) | undefined
   >;
   onLinkEditRef: RefObject<TimelineEditCallbacks["onLinkEdit"]>;
-  readZIndexRef: RefObject<((element: TimelineElement) => number) | undefined>;
+  readZIndexRef: RefObject<DragCommitDeps["readZIndex"]>;
   onStackingPatchesRef: RefObject<
     ((patches: StackingPatch[]) => Promise<unknown> | void) | undefined
   >;
   refreshAfterLaneMoveRef: RefObject<(() => void) | undefined>;
+  dropOptionsRef?: RefObject<Pick<DragCommitDeps, "insertOnClipDrop" | "onDropRefused">>;
 }
 
 export function mountTimelineClipDragGestureLifecycle({
@@ -117,6 +119,7 @@ export function mountTimelineClipDragGestureLifecycle({
   readZIndexRef,
   onStackingPatchesRef,
   refreshAfterLaneMoveRef,
+  dropOptionsRef,
 }: TimelineClipDragGestureLifecycleInput): () => void {
   const clearSuppressedClick = () => {
     requestAnimationFrame(() => {
@@ -307,6 +310,7 @@ export function mountTimelineClipDragGestureLifecycle({
       readZIndex: readZIndexRef.current,
       onStackingPatches: onStackingPatchesRef.current,
       refreshAfterLaneMove: refreshAfterLaneMoveRef.current,
+      ...dropOptionsRef?.current,
     });
     unlinkAltEdited(drag);
   };
@@ -407,7 +411,7 @@ export function mountTimelineClipDragGestureLifecycle({
 
   const handleWindowKeyDown = (event: KeyboardEvent) => {
     const decision = resolveTimelineDragEscape({
-      key: event.key,
+      cancelPressed: matchesKey(event, "cancel"),
       drag: draggedClipRef.current,
       resize: resizingClipRef.current,
       blocked: blockedClipRef.current,

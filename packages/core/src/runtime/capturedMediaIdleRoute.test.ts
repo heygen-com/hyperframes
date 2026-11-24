@@ -98,6 +98,7 @@ function mount(bodyHtml: string): void {
     `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10"` +
     ` data-width="1920" data-height="1080">${bodyHtml}</div>`;
   for (const el of document.querySelectorAll("audio")) {
+    Object.defineProperty(el, "readyState", { value: 4, configurable: true });
     el.load = () => {};
     el.play = vi.fn(() => Promise.resolve());
     el.pause = vi.fn();

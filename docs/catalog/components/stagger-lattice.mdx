@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Stagger Lattice</h1>
+  <p>A staggered grid reveal inspired by Anime.js v4 stagger utilities, implemented with GSAP for HyperFrames.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/stagger-lattice.json"
   compositionId="stagger-lattice"
   compositionSrc="compositions/components/stagger-lattice.html"
   title="Stagger Lattice"
-  description="A staggered grid reveal inspired by Anime.js v4 stagger utilities, implemented with GSAP for HyperFrames."
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":95}}
   attribution={{"path":"registry/components/stagger-lattice","tags":["advanced-motion","anime-inspired","hyperframes-native"]}}
@@ -130,7 +134,9 @@ That writes one file: `compositions/components/stagger-lattice.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -150,6 +156,4 @@ Tagged `advanced-motion` `anime-inspired` `hyperframes-native`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

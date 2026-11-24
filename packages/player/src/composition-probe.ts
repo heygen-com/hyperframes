@@ -4,13 +4,16 @@
  *
  * The probe interval polls every 200 ms until one of:
  *   - An adapter or the document resolves with a positive duration, or
- *   - 40 attempts (~8 s) expire without a result, unless the host owns the deadline.
+ *   - this system's `loadLimitMs` passes (reported once; polling goes on), unless the host owns the deadline.
  *
  * The `CompositionProbe` class owns the interval; the caller must call
  * `stop()` on disconnect or src change.
  */
 
-import { readStaticCompositionMeta } from "@hyperframes/core/runtime/composition-length";
+import {
+  readCompositionSizeFromDocument,
+  readStaticCompositionMeta,
+} from "@hyperframes/core/runtime/composition-length";
 import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
 import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import {
@@ -22,6 +25,15 @@ import {
 } from "./timeline-adapters.js";
 
 import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
+
+const SEALED_RUNTIME_HINT =
+  ". A sealed player adds the HyperFrames runtime only to a composition from its own site: " +
+  "include the runtime script in a composition from another site, or play a composition you trust without sandbox-origin.";
+
+export function timelineNotFound(limitMs: number, sealed: boolean): string {
+  const message = `Composition timeline not found after ${limitMs / 1000}s`;
+  return sealed ? message + SEALED_RUNTIME_HINT : message;
+}
 
 export { runtimeCdnUrlForVersion };
 
@@ -39,6 +51,7 @@ export interface ProbeCallbacks {
   onRuntimeInjected?: () => void;
   resolveRuntimeUrl?: () => string;
   hostOwnsDeadline?: () => boolean;
+  sealed?: () => boolean;
 }
 
 /**
@@ -55,16 +68,20 @@ export function readPositiveDimension(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function readCompositionSizeFromDocument(
-  doc: Document | null | undefined,
-): { width: number; height: number } | null {
-  const root =
-    doc?.querySelector("[data-composition-id][data-width][data-height]") ??
-    doc?.querySelector("[data-width][data-height]");
-  if (!root) return null;
-  const width = readPositiveDimension(root.getAttribute("data-width"));
-  const height = readPositiveDimension(root.getAttribute("data-height"));
-  return width !== null && height !== null ? { width, height } : null;
+export { readCompositionSizeFromDocument };
+
+const POLL_MS = 200;
+const LATE_POLL_MS = 1_000;
+
+type PlatformNavigator = Pick<Navigator, "userAgent"> & { userAgentData?: { platform?: string } };
+
+/** How long a film may load before it counts as failed: about p99 of first frames on that OS, plus 30%. */
+export function loadLimitMs(nav: PlatformNavigator = navigator): number {
+  const platform = nav.userAgentData?.platform || nav.userAgent;
+  if (/Android|CrOS|Chrome OS/i.test(platform)) return 120_000;
+  if (/Win/.test(platform)) return 90_000;
+  if (/Linux|X11/i.test(platform)) return 30_000;
+  return 120_000;
 }
 
 type ProbeOutcome =
@@ -86,10 +103,65 @@ export class CompositionProbe {
   private _interval: ReturnType<typeof setInterval> | null = null;
   private _runtimeInjected = false;
   private _runtimeScript: HTMLScriptElement | null = null;
-  private _failure: { document: Document | null } | null = null;
+  private _failure: { document: Document | null; deadline: boolean } | null = null;
+  private _startedAt = performance.now();
+  private _limitMs = loadLimitMs();
+  private _navigationPending = false;
+  private _timedFromNavigation = false;
+  private _preparationTimer: ReturnType<typeof setTimeout> | null = null;
+  private _limitReportedBeforeLoad = false;
+  private _preparedDocumentUnwritten = false;
 
   get failed(): boolean {
-    return this._failure !== null && this._failure.document === this._iframe.contentDocument;
+    if (this._failure === null || this._failure.deadline) return false;
+    return this._failure.document === this._iframe.contentDocument;
+  }
+
+  /** Since the host navigated the frame to this document; null for one the frame opened itself. */
+  elapsedMs(): number | null {
+    return this._timedFromNavigation ? performance.now() - this._startedAt : null;
+  }
+
+  /** The host is navigating the frame: its next document's load is timed from now. */
+  markNavigation(): void {
+    this._startedAt = performance.now();
+    this._limitMs = loadLimitMs();
+    this._navigationPending = true;
+    this._timedFromNavigation = true;
+    this._endPreparation();
+  }
+
+  markPreparation(): void {
+    this.markNavigation();
+    this._preparedDocumentUnwritten = true;
+    this._preparationTimer = setTimeout(() => this._reportLimitBeforeLoad(), this._limitMs);
+  }
+
+  frameWritten(): void {
+    this._preparedDocumentUnwritten = false;
+  }
+
+  endNavigation(): void {
+    this._navigationPending = false;
+    this._endPreparation();
+  }
+
+  private _endPreparation(): void {
+    if (this._preparationTimer !== null) clearTimeout(this._preparationTimer);
+    this._preparationTimer = null;
+    this._limitReportedBeforeLoad = false;
+    this._preparedDocumentUnwritten = false;
+  }
+
+  private _reportLimitBeforeLoad(): void {
+    this._preparationTimer = null;
+    if (!this._navigationPending || this._callbacks.hostOwnsDeadline?.()) return;
+    this._limitReportedBeforeLoad = true;
+    this._callbacks.onError(timelineNotFound(this._limitMs, this._callbacks.sealed?.() === true));
+  }
+
+  get limitMs(): number {
+    return this._limitMs;
   }
 
   constructor(
@@ -107,35 +179,52 @@ export class CompositionProbe {
     this.stop();
     this._failure = null;
     this._runtimeInjected = false;
+    if (this._preparedDocumentUnwritten) return;
+    if (!this._navigationPending) {
+      this._startedAt = performance.now();
+      this._limitMs = loadLimitMs();
+      this._timedFromNavigation = false;
+    }
+    this._navigationPending = false;
     let attempts = 0;
+    let limitReached = this._limitReportedBeforeLoad;
+    this._endPreparation();
 
-    this._interval = setInterval(() => {
+    const tick = () => {
       attempts++;
-      let outcome: ProbeOutcome = null;
-      try {
-        outcome = this._poll(attempts);
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === "SecurityError")) {
-          outcome = {
-            kind: "error",
-            message: error instanceof Error ? error.message : String(error),
-          };
-        }
-      }
-      outcome ??= this._deadlineOutcome(attempts);
-      if (outcome) {
-        this.stop();
-        if (outcome.kind === "error") {
-          this._failure = { document: this._iframe.contentDocument };
-          this._callbacks.onError(outcome.message);
-        } else this._callbacks.onReady(outcome.result);
-      }
-    }, 200);
+      const outcome = this._readOutcomeAcrossOrigins(attempts);
+      if (outcome) return this._settle(outcome);
+      if (limitReached || performance.now() - this._startedAt < this._limitMs) return;
+      limitReached = true;
+      if (!this._callbacks.hostOwnsDeadline?.()) this._failAtLimit(tick);
+    };
+    this._interval = setInterval(tick, POLL_MS);
   }
 
-  private _deadlineOutcome(attempts: number): ProbeOutcome {
-    if (attempts < 40 || this._callbacks.hostOwnsDeadline?.()) return null;
-    return { kind: "error", message: "Composition timeline not found after 8s" };
+  private _readOutcomeAcrossOrigins(attempts: number): ProbeOutcome {
+    try {
+      return this._poll(attempts);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "SecurityError") return null;
+      return { kind: "error", message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  private _settle(outcome: NonNullable<ProbeOutcome>): void {
+    this.stop();
+    if (outcome.kind === "ready") {
+      this._callbacks.onReady(outcome.result);
+      return;
+    }
+    this._failure = { document: this._iframe.contentDocument, deadline: false };
+    this._callbacks.onError(outcome.message);
+  }
+
+  private _failAtLimit(tick: () => void): void {
+    if (this._interval) clearInterval(this._interval);
+    this._interval = setInterval(tick, LATE_POLL_MS);
+    this._failure = { document: this._iframe.contentDocument, deadline: true };
+    this._callbacks.onError(timelineNotFound(this._limitMs, this._callbacks.sealed?.() === true));
   }
 
   private _poll(attempts: number): ProbeOutcome {
@@ -179,6 +268,10 @@ export class CompositionProbe {
       adapter: { ...adapter, getDuration: () => duration },
       compositionSize: readCompositionSizeFromDocument(doc),
     };
+  }
+
+  latchUntilNextLoad(): void {
+    if (this._failure) this._failure.deadline = false;
   }
 
   stop(): void {
@@ -227,7 +320,7 @@ export class CompositionProbe {
       script.onerror = () => {
         if (this._runtimeScript !== script || this._iframe.contentDocument !== doc) return;
         this.stop();
-        this._failure = { document: doc };
+        this._failure = { document: doc, deadline: false };
         this._callbacks.onError("HyperFrames runtime failed to load from " + script.src);
       };
       (doc.head || doc.documentElement).appendChild(script);

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Clip Wipe</h1>
+  <p>Left-to-right clip-path wipe reveal per word</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-clip-wipe.json"
   compositionId="caption-clip-wipe"
   compositionSrc="compositions/components/caption-clip-wipe.html"
   title="Clip Wipe"
-  description="Left-to-right clip-path wipe reveal per word"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":226}}
   attribution={{"path":"registry/components/caption-clip-wipe","tags":["captions","caption-style","wipe","clip-path","reveal"]}}
@@ -261,7 +265,9 @@ That writes one file: `compositions/components/caption-clip-wipe.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -280,6 +286,4 @@ Tagged `captions` `caption-style` `wipe` `clip-path` `reveal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

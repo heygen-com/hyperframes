@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 import { installReactActEnvironment, makeSelection } from "./domSelectionTestHarness";
 import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
 
@@ -23,7 +24,7 @@ interface HarnessProps {
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
-  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
+  applyMarqueeSelection: (selections: DomEditSelection[], mode: MarqueeSelectionMode) => void;
   onSelectionNotFound: () => void;
 }
 
@@ -79,6 +80,36 @@ function makeSyncFixture() {
 }
 
 describe("useTimelineSelectionPreviewSync", () => {
+  it("keeps an opaque frame's selection that matches a clip known only by its id", async () => {
+    // An opaque frame's rows carry only the clip id; its selections carry the frame's handle.
+    const timelineElements = [
+      { id: "clip-1", tag: "div", start: 0, duration: 1, track: 0 },
+    ] as TimelineElement[];
+    const element = document.createElement("div");
+    element.id = "clip-1";
+    const selection = { ...makeSelection("First", element), handle: "0123456789abcdef:1" };
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const buildDomSelectionForTimelineElement = vi.fn(async () => null);
+    const harness = renderHarness();
+
+    await harness.rerender({
+      selectedElementId: "clip-1",
+      selectedElementIds: new Set(["clip-1"]),
+      timelineElements,
+      domEditSelection: selection,
+      domEditGroupSelections: [selection],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
+    });
+
+    expect(buildDomSelectionForTimelineElement).not.toHaveBeenCalled();
+    expect(applyDomSelection).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
+
   it("syncs a multi-id timeline selection into preview group selections", async () => {
     const { firstSelection, secondSelection, timelineElements, selectionById } = makeSyncFixture();
     const applyDomSelection = vi.fn();
@@ -100,7 +131,10 @@ describe("useTimelineSelectionPreviewSync", () => {
       onSelectionNotFound: vi.fn(),
     });
 
-    expect(applyMarqueeSelection).toHaveBeenCalledWith([secondSelection, firstSelection], false);
+    expect(applyMarqueeSelection).toHaveBeenCalledWith(
+      [secondSelection, firstSelection],
+      "replace",
+    );
     expect(applyDomSelection).not.toHaveBeenCalled();
     harness.cleanup();
   });

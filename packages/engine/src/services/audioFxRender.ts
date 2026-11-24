@@ -19,7 +19,6 @@ import {
   openSync,
   readFileSync,
   readSync,
-  rmSync,
   statSync,
   writeFileSync,
   writeSync,
@@ -30,11 +29,14 @@ import { pathToFileURL } from "node:url";
 import { getAudioFxRuntimeScript } from "@hyperframes/core/audio-fx-runtime";
 import { enabledAudioFxNodes, type HfAudioFxChain } from "@hyperframes/core/audio-fx";
 import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
-import { acquireBrowser } from "./browserManager.js";
+import { removeScratch } from "@hyperframes/core/remove-scratch";
+import { acquireBrowser, buildChromeArgs } from "./browserManager.js";
+import { openPage } from "./openPage.js";
 import { createEnvelopeWalker } from "./audioVolumeEnvelope.js";
 import { riffChunks, wavFormatTag } from "./wavChunks.js";
 import { windowPrerollSeconds } from "./audioFxWarmup.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
+import { terminalText } from "@hyperframes/core";
 
 export class AudioFxRenderError extends Error {
   constructor(message: string) {
@@ -424,7 +426,9 @@ function chainPrerollSeconds(
   );
   if (capped) {
     console.warn(
-      `Audio FX for track ${trackId}: the chain remembers longer than the ${limits.maxPrerollSeconds}s pre-roll cap, so its oldest repeats are cut at window seams`,
+      terminalText(
+        `Audio FX for track ${trackId}: the chain remembers longer than the ${limits.maxPrerollSeconds}s pre-roll cap, so its oldest repeats are cut at window seams`,
+      ),
     );
   }
   return seconds;
@@ -606,6 +610,14 @@ export async function applyAudioFxChain(
   });
 }
 
+/** Audio processing needs no GPU, so software mode; every other launch detail is the shared one. */
+let fxBrowserArgs: string[] | undefined;
+const fxChromeArgs = () =>
+  (fxBrowserArgs ??= buildChromeArgs(
+    { width: 1280, height: 720, captureMode: "screenshot" },
+    { browserGpuMode: "software" },
+  ));
+
 /** Run `body` with a leased browser and a way to open pages on the runtime; both are released in the same try that takes them. */
 async function withFxBrowser<T>(
   options: { trackId: string; signal?: AbortSignal },
@@ -621,7 +633,7 @@ async function withFxBrowser<T>(
     if (options.signal?.aborted) {
       throw new AudioFxRenderError(`Audio FX cancelled for track ${options.trackId}`);
     }
-    lease = await acquireBrowser(["--no-sandbox", "--autoplay-policy=no-user-gesture-required"]);
+    lease = await acquireBrowser(fxChromeArgs());
     const { browser } = lease;
     return await body(() => openFxPage(browser, hostDir));
   } catch (err) {
@@ -630,7 +642,7 @@ async function withFxBrowser<T>(
       `Audio FX failed for track ${options.trackId}: ${(err as Error).message}`,
     );
   } finally {
-    rmSync(hostDir, { recursive: true, force: true });
+    removeScratch(hostDir);
     await lease?.release().catch(() => undefined);
   }
 }
@@ -642,7 +654,7 @@ async function openFxPage(
   browser: Awaited<ReturnType<typeof acquireBrowser>>["browser"],
   hostDir: string,
 ): Promise<FxPage> {
-  const page = await browser.newPage();
+  const page = await openPage(browser);
   try {
     // AudioWorklet is only exposed in a secure context, and about:blank is
     // not one — the module would fail with an opaque error. A file:// page

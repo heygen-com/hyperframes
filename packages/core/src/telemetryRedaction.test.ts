@@ -69,6 +69,35 @@ describe("redactTelemetryString", () => {
     );
   });
 
+  // fails without the fix (never finishes): every path pattern rescanned the token from each delimiter in it.
+  it.each([["=,([".repeat(1024 * 1024)], ["=.".repeat(2 * 1024 * 1024)]])(
+    "redacts a multi-megabyte token of delimiters in milliseconds",
+    (token) => {
+      const start = performance.now();
+      const out = redactTelemetryString(`Conflicting script integrity requirements for ${token}`);
+      expect(performance.now() - start).toBeLessThan(1000);
+      expect(out.length).toBeLessThanOrEqual(240);
+    },
+  );
+
+  it("still redacts a path after a run too long to be a path segment", () => {
+    const out = redactTelemetryString(`${"=".repeat(300)} /Users/kim/secret.mp4`, Infinity);
+    expect(out).not.toContain("secret");
+  });
+
+  // fails without the fix: a long run must keep the file name that makes the rest of it a path.
+  it.each(["/", "\\"])("redacts a path whose file name starts a long run (%s)", (separator) => {
+    const message = `failed: acme-secret${separator}clip.mp4?&${"x".repeat(300)}`;
+    expect(redactTelemetryString(message, 240)).toBe("failed: [path]");
+  });
+
+  // fails without the fix: the cut fell inside the path and left its start, which no longer reads as a path.
+  it("cuts long input at whitespace, so a path on the cut is never left half", () => {
+    const filler = "a ".repeat(8187);
+    const out = redactTelemetryString(`${filler}customer/acme-secret/video.mp4 tail`, Infinity);
+    expect(out).not.toMatch(/customer|acme/);
+  });
+
   it("truncates after redacting, so a long path cannot survive by being cut", () => {
     const out = redactTelemetryString(`/data/${"x".repeat(500)}/a.mp4`, 40);
     expect(out).not.toContain("xxx");
@@ -124,6 +153,42 @@ describe("non-Latin paths", () => {
     expect(redactTelemetryString("Invalid data found in 秘密视频.mp4")).toBe(
       "Invalid data found in [file]",
     );
+  });
+});
+
+describe("paths with spaces", () => {
+  it.each([
+    "/Users/kim/내 드라이브/영상 프로젝트/clip.mp4",
+    "/Users/ivan/Мои документы/Проект Видео/видео.mp4",
+    "/Users/tanaka/マイ\u3000ドライブ/動画/clip.mp4",
+    "/Users/alex/Library/CloudStorage/GoogleDrive-alex@example.com/My Drive/Claude Projects/edit.mp4",
+    "/Users/alex/Dropbox (Personal)/Client Work/edit.mov",
+    "C:\\Users\\Kim\\OneDrive - Contoso\\Client Videos\\clip.mp4",
+    "\\\\fileserver\\Team Share\\clips\\clip.mp4",
+  ])("redacts every folder of %s", (path) => {
+    expect(redactTelemetryString(`ffprobe failed reading ${path}`)).toBe(
+      "ffprobe failed reading [path]",
+    );
+  });
+
+  it("keeps the words after the path", () => {
+    expect(redactTelemetryString("could not read /Users/kim/My Drive/clip.mp4 was not found")).toBe(
+      "could not read [path] was not found",
+    );
+  });
+
+  it.each([
+    "  Duration: N/A, start: 0.000000, bitrate: N/A",
+    "Stream #0:0: Video: h264, 24/1 fps, 30000/1001 tbr",
+    "r_frame_rate=24/1 avg_frame_rate=30000/1001",
+    "input/output error then read/write failed",
+  ])("never joins ordinary ffprobe words into a path: %s", (line) => {
+    expect(redactTelemetryString(line)).toBe(line);
+  });
+
+  it("redacts spaced folders of a path that lost its root", () => {
+    const out = redactTelemetryString("could not open My Drive/Claude Projects/edit.mp4");
+    expect(out).not.toMatch(/Drive|Claude|Projects|edit/);
   });
 });
 

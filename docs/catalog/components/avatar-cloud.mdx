@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Avatar Cloud</h1>
+  <p>Lettermark avatars populate a loose elliptical cloud while fine SVG links draw between the community and its central proof label.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/avatar-cloud.json"
   compositionId="avatar-cloud"
   compositionSrc="compositions/components/avatar-cloud.html"
   title="Avatar Cloud"
-  description="Lettermark avatars populate a loose elliptical cloud while fine SVG links draw between the community and its central proof label."
   variables={[{"id":"avatarCount","type":"number","role":"layout","label":"Avatar count","description":"Number of lettermark avatars in the network cloud.","default":10,"min":6,"max":16,"step":1},{"id":"showLinks","type":"enum","role":"content","label":"Show links","description":"Show or hide the connecting network lines.","default":"yes","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},{"id":"label","type":"string","role":"content","label":"Proof label","description":"Community proof copy shown in the center hub.","default":"50k builders"}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":470}}
   attribution={{"path":"registry/components/avatar-cloud","tags":["effects","avatars","community","network","social-proof","prove"]}}
@@ -505,7 +509,9 @@ That writes one file: `compositions/components/avatar-cloud.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -546,6 +552,4 @@ Tagged `effects` `avatars` `community` `network` `social-proof` `prove`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

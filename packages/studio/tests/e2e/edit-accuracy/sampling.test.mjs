@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { sample, measure } from "./case.mjs";
+import { sample, measure, shooter } from "./case.mjs";
 
 const quad = (x, width = 20, height = 10) => [x, 0, x + width, 0, x + width, height, x, height];
 function handle(element, read) {
@@ -64,5 +64,29 @@ describe("sampling the displayed gesture", () => {
     } finally {
       iframe.remove();
     }
+  });
+});
+
+describe("evidence screenshots", () => {
+  const fakePage = () => {
+    const calls = [];
+    return { calls, screenshot: async (options) => (calls.push(options), "jpeg") };
+  };
+
+  it("skips a first run's screenshots but keeps its error screen", async () => {
+    const page = fakePage();
+    const evidence = {};
+    const shoot = shooter(page, evidence, false);
+    await shoot("committed");
+    await shoot("error");
+    expect(Object.keys(evidence.shots)).toEqual(["error"]);
+  });
+
+  it("takes a confirmation run's screenshots, of the viewport only", async () => {
+    const page = fakePage();
+    const evidence = {};
+    await shooter(page, evidence, true)("committed");
+    expect(evidence.shots).toEqual({ committed: "jpeg" });
+    expect(page.calls[0]).toMatchObject({ captureBeyondViewport: false });
   });
 });

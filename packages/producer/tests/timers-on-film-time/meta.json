@@ -1,0 +1,13 @@
+{
+  "name": "timers-on-film-time",
+  "description": "Regression test for page timers during render. A setTimeout chain and a setInterval set once rendering starts must advance on film time, not on how fast frames are captured.",
+  "tags": ["regression", "render-compat"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

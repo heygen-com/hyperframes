@@ -311,6 +311,48 @@ describe("a run's timeout", () => {
   });
 });
 
+describe("withFfmpegProgress", () => {
+  afterEach(() => {
+    vi.doUnmock("child_process");
+    vi.resetModules();
+  });
+
+  it("tells its listener each time a run inside it writes more, and never a run outside it", async () => {
+    const procs: EventEmitter[] = [];
+    vi.resetModules();
+    vi.doMock("child_process", () => ({
+      spawn: () => {
+        const proc = Object.assign(new EventEmitter(), {
+          stderr: new EventEmitter(),
+          kill: vi.fn(),
+        });
+        procs.push(proc);
+        return proc;
+      },
+    }));
+    const { runFfmpeg, withFfmpegProgress } = await import("./runFfmpeg.js");
+    const heard = vi.fn();
+    const write = (proc: EventEmitter, time: string) =>
+      (proc as unknown as { stderr: EventEmitter }).stderr.emit(
+        "data",
+        Buffer.from(`size=  100KiB time=${time}\r`),
+      );
+
+    const inside = withFfmpegProgress(heard, () => runFfmpeg(["-i", "in.wav", "out.m4a"]));
+    const outside = runFfmpeg(["-i", "in.wav", "other.m4a"]);
+    const [mine, other] = procs;
+    write(mine, "00:00:01.00");
+    write(mine, "00:00:01.00");
+    write(mine, "00:00:02.00");
+    write(other, "00:00:05.00");
+    expect(heard).toHaveBeenCalledTimes(2);
+
+    mine.emit("close", 0, null);
+    other.emit("close", 0, null);
+    await Promise.all([inside, outside]);
+  });
+});
+
 describe("a run whose signal already aborted", () => {
   afterEach(() => {
     vi.doUnmock("child_process");

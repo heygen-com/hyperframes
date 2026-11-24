@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Beat Freeze Cut</h1>
+  <p>A beat-driven speed ramp, freeze-frame hit, and hard-cut sequence for music-led promos and montages.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/beat-freeze-cut.json"
   compositionId="beat-freeze-cut"
   compositionSrc="compositions/beat-freeze-cut.html"
   title="Beat Freeze Cut"
-  description="A beat-driven speed ramp, freeze-frame hit, and hard-cut sequence for music-led promos and montages."
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":879}}
   attribution={{"path":"registry/blocks/beat-freeze-cut","tags":["transition","music","beat-driven","freeze-frame"]}}
@@ -914,7 +918,9 @@ That writes one file: `compositions/beat-freeze-cut.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -952,6 +958,4 @@ Tagged `transition` `music` `beat-driven` `freeze-frame`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

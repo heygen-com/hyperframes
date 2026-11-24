@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      preview: ${{ steps.filter.outputs.preview }}
+      preview: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.preview }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -38,6 +38,9 @@ jobs:
           git rev-parse --verify -q HEAD^2 > /dev/null || { echo "::error::HEAD is not the pull request merge commit"; exit 1; }
           sha="$(git rev-parse --verify HEAD^1)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Find a release-only diff
+        id: release
+        uses: ./.github/actions/release-only-diff
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:

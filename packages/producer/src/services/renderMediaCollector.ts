@@ -26,6 +26,7 @@ import {
 } from "@hyperframes/core/media-timing";
 import {
   parseVideoElements,
+  hasGradedCanvas,
   parseImageElements,
   parseAudioElements,
   isSelfOrAncestorHidden,
@@ -211,6 +212,7 @@ export interface RenderMedia {
   images: ImageElement[];
   /** Ids of clips in the document that never play; the browser probe must not add them back. */
   droppedMediaIds: Set<string>;
+  gradedCanvas: boolean;
 }
 
 /**
@@ -261,7 +263,7 @@ export function collectRenderMedia(html: string): RenderMedia {
     else droppedMediaIds.add(elementId);
   }
 
-  return { videos, audios, images, droppedMediaIds };
+  return { videos, audios, images, droppedMediaIds, gradedCanvas: hasGradedCanvas(html) };
 }
 
 function placeAudio(audio: AudioElement, window: HostWindow): AudioElement | null {

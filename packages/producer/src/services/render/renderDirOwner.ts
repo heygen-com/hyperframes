@@ -1,16 +1,17 @@
 import {
   existsSync,
   lstatSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
   readlinkSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { hostname, uptime } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, win32 } from "node:path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 const OWNER_FILE = "owner.json";
 /** Where a staging dir parks the previous output while swapping in the new one. */
@@ -18,11 +19,49 @@ export const TRANSACTION_BACKUP = "backup";
 /** A `--debug` render's work dir, named by its job id. */
 export const RENDER_JOB_DIR = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
+let machineIdRead: { platform: string; id: string | undefined } | undefined;
+
+/** This machine's own id where there is no /proc boot id, from the system's own tool at its fixed path. */
+function machineId(): string | undefined {
+  const read = (file: string, args: string[], pattern: RegExp) => {
+    try {
+      const out = execFileSync(file, args, {
+        encoding: "utf-8",
+        timeout: 2_000,
+        windowsHide: true,
+      });
+      return pattern.exec(out)?.[1];
+    } catch {
+      return undefined;
+    }
+  };
+  if (machineIdRead?.platform === process.platform) return machineIdRead.id;
+  const systemRoot = process.env.SystemRoot;
+  machineIdRead = {
+    platform: process.platform,
+    id:
+      process.platform === "darwin"
+        ? read(
+            "/usr/sbin/ioreg",
+            ["-rd1", "-c", "IOPlatformExpertDevice"],
+            /"IOPlatformUUID" = "([^"]+)"/,
+          )
+        : process.platform === "win32" && systemRoot && /^[A-Za-z]:\\/.test(systemRoot)
+          ? read(
+              win32.join(systemRoot, "System32", "reg.exe"),
+              ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
+              /MachineGuid\s+REG_SZ\s+(\S+)/,
+            )
+          : undefined,
+  };
+  return machineIdRead.id;
+}
+
 /**
  * Where a pid means this process: host and boot, plus the Linux pid namespace. Containers and machines on a shared
  * folder can share a hostname, and every normal Linux host has the same root pid namespace id.
  */
-function pidScope(): { host: string; boot?: string; pidns?: string } {
+function pidScope(): { host: string; boot?: string; pidns?: string; machine?: string } {
   const attempt = (read: () => string) => {
     try {
       return read();
@@ -30,19 +69,19 @@ function pidScope(): { host: string; boot?: string; pidns?: string } {
       return undefined;
     }
   };
+  const bootId = attempt(() => readFileSync("/proc/sys/kernel/random/boot_id", "utf-8").trim());
   return {
     host: hostname(),
-    // Without /proc (macOS, Windows) the boot time, to the minute, stands in for the boot id.
-    boot:
-      attempt(() => readFileSync("/proc/sys/kernel/random/boot_id", "utf-8").trim()) ??
-      attempt(() => String(Math.round(Date.now() / 60_000 - uptime() / 60))),
+    // Without /proc (macOS, Windows) the boot time in seconds stands in for the boot id, on this machine's own id.
+    boot: bootId ?? attempt(() => `s:${Math.round(Date.now() / 1000 - uptime())}`),
     pidns: attempt(() => readlinkSync("/proc/self/ns/pid")),
+    machine: bootId === undefined ? machineId() : undefined,
   };
 }
 
 /** A render's private temp dir, stamped with the process that owns it so a later sweep can tell it was abandoned. */
 export function createOwnedRenderDir(prefix: string): string {
-  const dir = mkdtempSync(prefix);
+  const dir = createStagingDir(dirname(prefix), basename(prefix));
   const owner = { pid: process.pid, ...pidScope() };
   writeFileSync(join(dir, OWNER_FILE), JSON.stringify(owner));
   return dir;
@@ -57,13 +96,30 @@ function alive(pid: number): boolean {
   }
 }
 
-type OwnerRecord = { pid?: unknown; host?: unknown; boot?: unknown; pidns?: unknown };
+type OwnerRecord = {
+  pid?: unknown;
+  host?: unknown;
+  boot?: unknown;
+  pidns?: unknown;
+  machine?: unknown;
+};
 
 function knownPidScope(): ReturnType<typeof pidScope> | undefined {
   const scope = pidScope();
   const unknown =
-    scope.boot === undefined || (process.platform === "linux" && scope.pidns === undefined);
+    scope.boot === undefined ||
+    (process.platform === "linux" && scope.pidns === undefined) ||
+    (scope.boot.startsWith("s:") && scope.machine === undefined);
   return unknown ? undefined : scope;
+}
+
+/** A boot id matches exactly; a boot estimate in seconds moves with uptime's whole-second tick, so within 2 s. */
+function sameBoot(stamped: unknown, current: string | undefined): boolean {
+  if (stamped === current) return true;
+  const seconds = (boot: unknown) =>
+    typeof boot === "string" ? /^s:(\d+)$/.exec(boot)?.[1] : undefined;
+  const [a, b] = [seconds(stamped), seconds(current)];
+  return a !== undefined && b !== undefined && Math.abs(Number(a) - Number(b)) <= 2;
 }
 
 function inThisPidScope(owner: OwnerRecord): boolean {
@@ -71,8 +127,9 @@ function inThisPidScope(owner: OwnerRecord): boolean {
   return (
     scope !== undefined &&
     owner.host === scope.host &&
-    owner.boot === scope.boot &&
-    owner.pidns === scope.pidns
+    sameBoot(owner.boot, scope.boot) &&
+    owner.pidns === scope.pidns &&
+    owner.machine === scope.machine
   );
 }
 

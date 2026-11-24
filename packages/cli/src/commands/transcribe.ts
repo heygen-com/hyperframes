@@ -1,8 +1,9 @@
 import { createProgressWriter } from "../whisper/progress.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { DEFAULT_MODEL } from "../whisper/manager.js";
 import { trackTranscribeUnavailable } from "../telemetry/events.js";
@@ -14,10 +15,15 @@ import {
   type TranscribeEngineEvent,
   type TranscribeResult,
 } from "../api/transcribe.js";
+import { jsonFailure, printFailureLine } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
   ["Transcribe a video file", "hyperframes transcribe video.mp4"],
+  [
+    "Transcribe on HeyGen, with speakers",
+    "hyperframes transcribe interview.mp4 --engine heygen --speakers",
+  ],
   ["Use a larger model for better accuracy", "hyperframes transcribe audio.mp3 --model medium.en"],
   ["Set language to filter non-target speech", "hyperframes transcribe audio.mp3 --language en"],
   ["Import an existing SRT file", "hyperframes transcribe subtitles.srt"],
@@ -51,8 +57,13 @@ export default defineCommand({
     engine: {
       type: "string",
       description:
-        "ASR engine: auto (Parakeet if installed and it covers --language, else whisper), parakeet, or whisper. Default: auto. Parakeet is more accurate and faster; install it with `hyperframes models install parakeet`.",
+        "ASR engine: auto (Parakeet if installed and it covers --language, else whisper), parakeet, whisper, or heygen (HeyGen's speech model; bills the HyperFrames plan when signed in, or API credits with a key). Default: auto. Parakeet is more accurate and faster than whisper; install it with `hyperframes models install parakeet`.",
       alias: "e",
+    },
+    speakers: {
+      type: "boolean",
+      description: "With --engine heygen: label each word with its speaker",
+      default: false,
     },
     model: {
       type: "string",
@@ -118,16 +129,17 @@ export default defineCommand({
         input: args.input,
         dir: args.dir,
         engine: args.engine,
+        speakers: args.speakers,
         model: args.model,
         language: args.language,
         installRuntime: args["runtime-install"],
         timeoutMs: readTimeout(args.timeout)?.ms,
         captions: { format: args.to, outputPath: args.output, preserveCues: args["preserve-cues"] },
         stopOnProcessSignals: true,
-        onStatus: json ? undefined : (message) => ui.spin?.message(message),
+        onStatus: json ? undefined : (message) => ui.spin?.message(terminalText(message)),
         onProgress: json ? createProgressWriter(process.stderr) : undefined,
         onEngine: (event) => {
-          if (event.notice && !json) console.error(c.dim(`  Note: ${event.notice}`));
+          if (event.notice && !json) console.error(c.dim(`  Note: ${terminalLines(event.notice)}`));
           ui.spin = showEngine(event, ui.spin, { json, model: args.model });
         },
       });
@@ -170,10 +182,14 @@ function showEngine(
   opts: { json: boolean; model?: string },
 ): Spinner | null {
   // The requested model, as the spinner has always shown it; event.model is the one whisper runs.
-  const label = c.accent(event.runner === "whisper" ? (opts.model ?? DEFAULT_MODEL) : "Parakeet");
+  const label = c.accent(
+    event.runner === "whisper" ? terminalText(opts.model ?? DEFAULT_MODEL) : "Parakeet",
+  );
   if (event.fallbackReason !== undefined) {
     spin?.clear();
-    console.error(c.warn(`${event.fallbackReason}. Using ${event.runner} for this run.`));
+    console.error(
+      c.warn(`${terminalLines(event.fallbackReason)}. Using ${event.runner} for this run.`),
+    );
     spin?.start(`Transcribing with ${label}...`);
     return spin;
   }
@@ -190,9 +206,9 @@ function showEngine(
 
 function failWith(message: string, json: boolean): never {
   if (json) {
-    console.log(JSON.stringify({ ok: false, error: message }));
+    console.log(JSON.stringify(jsonFailure("runtime_error", message)));
   } else {
-    console.error(c.error(message));
+    console.error(c.error(terminalLines(message)));
   }
   failCommand(1, message);
 }
@@ -205,7 +221,7 @@ function isRunFailure(err: TranscribeError): boolean {
 
 function reportSetupFailure(err: TranscribeError, json: boolean, timeoutFlag?: string): never {
   if (err.code === "input_not_found") {
-    console.error(c.error(err.message));
+    printFailureLine((show) => c.error(show(err.message)));
     failCommand(1, err.message);
   }
   // An unreadable transcript file keeps failing the way it always has: with the parser's own error.
@@ -227,15 +243,20 @@ function reportRunFailure(
 ): void {
   if (err.code === "whisper_unavailable") return reportWhisperUnavailable(err, spin, opts);
   if (err.code === "cancelled" || err.code === "caption_write_failed") {
-    if (opts.json) console.log(JSON.stringify({ ok: false, error: err.message }));
-    else spin?.stop(err.code === "cancelled" ? c.warn(err.message) : c.error(err.message));
+    if (opts.json) console.log(JSON.stringify(jsonFailure("runtime_error", err.message)));
+    else
+      spin?.stop(
+        err.code === "cancelled"
+          ? c.warn(terminalLines(err.message))
+          : c.error(terminalLines(err.message)),
+      );
     setCommandExitCode(err.code === "cancelled" ? 130 : 1);
     return;
   }
   if (opts.json) {
-    console.log(JSON.stringify({ ok: false, error: err.message }));
+    console.log(JSON.stringify(jsonFailure("runtime_error", err.message)));
   } else {
-    spin?.stop(c.error(`Transcription failed: ${err.message}`));
+    spin?.stop(c.error(`Transcription failed: ${terminalLines(err.message)}`));
   }
   failCommand(1, err.cause);
 }
@@ -257,7 +278,7 @@ function reportWhisperUnavailable(
     );
   } else {
     const orParakeet = install ? `\nOr transcribe with Parakeet after: ${install}` : "";
-    spin?.stop(c.warn(`Captions skipped — ${err.message}${orParakeet}`));
+    spin?.stop(c.warn(terminalLines(`Captions skipped — ${err.message}${orParakeet}`)));
   }
   // Optional callers (pipelines) treat a missing prerequisite as a clean
   // skip; explicit runs still surface non-zero. Set the status and return
@@ -267,7 +288,7 @@ function reportWhisperUnavailable(
 
 function reportSidecar(to: CaptionFormat, wordCount: number, outPath: string): void {
   console.log(
-    `${c.success("◇")}  Exported ${c.accent(String(wordCount))} words to ${c.accent(to.toUpperCase())} → ${c.accent(outPath)}`,
+    `${c.success("◇")}  Exported ${c.accent(String(wordCount))} words to ${c.accent(to.toUpperCase())} → ${c.accent(terminalText(outPath))}`,
   );
 }
 

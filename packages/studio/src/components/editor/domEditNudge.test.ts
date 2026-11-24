@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setStudioKeys } from "../../player/components/studioShortcuts";
 import {
   CANVAS_NUDGE_SHIFT_STEP_PX,
   CANVAS_NUDGE_STEP_PX,
@@ -76,5 +77,20 @@ describe("canCanvasNudgeTargets", () => {
     expect(canCanvasNudgeTargets([movable, movable])).toBe(true);
     expect(canCanvasNudgeTargets([locked])).toBe(false);
     expect(canCanvasNudgeTargets([movable, locked])).toBe(false);
+  });
+});
+
+describe("resolveCanvasNudgeDelta: remapped keys", () => {
+  afterEach(() => setStudioKeys(null));
+
+  it("a remapped direction and step key answer and the arrow goes dead", () => {
+    setStudioKeys({ nudgeLeft: "h", nudgeRightTen: "alt+l" });
+    expect(resolveCanvasNudgeDelta(mockKeyboardEvent("ArrowLeft"))).toBeNull();
+    expect(resolveCanvasNudgeDelta(mockKeyboardEvent("h"))).toEqual({ dx: -1, dy: 0 });
+    expect(resolveCanvasNudgeDelta(mockKeyboardEvent("l", { altKey: true }))).toEqual({
+      dx: 10,
+      dy: 0,
+    });
+    expect(resolveCanvasNudgeDelta(mockKeyboardEvent("ArrowRight", { shiftKey: true }))).toBeNull();
   });
 });

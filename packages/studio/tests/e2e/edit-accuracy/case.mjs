@@ -5,6 +5,7 @@ import { parseGsapScript } from "../../../../parsers/src/gsapParser.ts";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { COMPOSITION, FIXTURE_CDN, PLAYHEAD, localAsset } from "./grid.mjs";
+import { traceBench } from "./trace.mjs";
 import {
   angleOf,
   centre,
@@ -312,16 +313,28 @@ const previewFrames = (page) =>
 
 /** A hidden preview holding the target is a shadow reload not yet promoted: the visible frame is about to go stale. */
 async function hiddenTarget(page, selector = "#target") {
-  for (const f of page.frames().filter((f) => f.url().includes("/preview"))) {
-    const host = await f.frameElement().catch(() => null);
-    const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
-    if (shown === false && (await f.$(selector).catch(() => null))) return true;
-  }
+  for (const f of page.frames().filter((f) => f.url().includes("/preview")))
+    if (await hiddenIn(f, selector).catch(() => false)) return true;
   return false;
 }
 
+// Async so a frame detached mid-scan rejects: puppeteer throws that synchronously, before any `.catch`.
+async function hiddenIn(frame, selector) {
+  const host = await frame.frameElement();
+  const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
+  return shown === false && Boolean(await frame.$(selector));
+}
+
+// Studio's own word that the preview is about to change: a reload asked for, loading, or an undo or redo in flight.
+const previewChanging = (page) =>
+  Promise.resolve()
+    .then(() => page.evaluate(() => document.documentElement.hasAttribute("data-preview-changing")))
+    .catch(() => false);
+
 // Keyframed cases only: waiting out the swap lands a later undo in the preview's burst of requests.
-export const swapPending = (ctx) => Boolean(ctx.keys) && hiddenTarget(ctx.page, ctx.selector);
+export const swapPending = async (ctx) =>
+  Boolean(ctx.keys) &&
+  ((await previewChanging(ctx.page)) || (await hiddenTarget(ctx.page, ctx.selector)));
 
 // fallow-ignore-next-line complexity
 const netMoved = (start, now) =>
@@ -378,26 +391,44 @@ const callTool = (page, name, args) =>
  */
 // fallow-ignore-next-line complexity
 export async function seekBound(ctx) {
+  let unmet;
   for (const deadline = Date.now() + 30_000; Date.now() < deadline; await sleep(50)) {
     const look = await callTool(ctx.page, "studio_look", {});
-    if (!(look?.ok && look.duration > 0)) continue;
+    if (!(look?.ok && look.duration > 0)) {
+      unmet = `studio_look duration > 0, last ${JSON.stringify(lookSummary(look))}`;
+      continue;
+    }
     const seek = await callTool(ctx.page, "studio_seek", { time: ctx.playhead });
-    if (
-      seek?.ok &&
-      seek.duration > 0 &&
-      seek.playhead === ctx.playhead &&
-      (await findTarget(ctx.page))
-    )
-      return seek;
+    if (!(seek?.ok && seek.duration > 0 && seek.playhead === ctx.playhead)) {
+      unmet = `studio_seek to ${ctx.playhead}, last ${JSON.stringify(seek)}`;
+      continue;
+    }
+    if (await findTarget(ctx.page)) return seek;
+    unmet = `#target in a shown preview, last frames ${previewFrames(ctx.page) || "none"}`;
   }
-  return null;
+  throw new Error(`studio never reported a seekable composition: ${unmet}`);
 }
 
-/** Ready once Studio's own seek tool reports the composition and the playhead landed. */
+const lookSummary = (look) =>
+  look?.ok ? { duration: look.duration, playhead: look.playhead, scene: look.sceneStatus } : look;
+
+/** Runs in the page: Studio's own word that the composition loaded, a duration from its timeline bind. */
+const compositionLoaded = async () =>
+  Boolean(window.__editBench?.has("studio_look")) &&
+  (await window.__editBench.call("studio_look", {})).duration > 0;
+
+/** Ready once Studio reports the composition loaded and its own seek tool lands the playhead. */
 export async function openStudio(ctx) {
   ctx.handles = null;
-  await ctx.page.waitForFunction(() => window.__editBench?.has("studio_seek"), { timeout: 90_000 });
-  if (!(await seekBound(ctx))) throw new Error("studio never reported a seekable composition");
+  // The whole boot shares one budget: under load the composition alone has taken over 20 s after a reload.
+  await ctx.page
+    .waitForFunction(compositionLoaded, { timeout: 90_000, polling: 100 })
+    .catch(async (error) => {
+      const look = JSON.stringify(lookSummary(await callTool(ctx.page, "studio_look", {})));
+      const message = `studio never reported the composition loaded: last ${look}`;
+      throw new Error(message, { cause: error });
+    });
+  await seekBound(ctx);
   return settled(ctx);
 }
 
@@ -611,6 +642,15 @@ async function cropOutline(ctx, map) {
   return (await contentQuad(h)).map(map.toComp);
 }
 
+/** Holds each history reply back, so the next undo is pressed while this one's preview update runs. */
+function slowHistory(ms) {
+  const send = window.fetch;
+  window.fetch = (url, init) =>
+    /\/history\/step$/.test(String(url).split("?")[0])
+      ? send(url, init).then((r) => new Promise((ok) => setTimeout(() => ok(r), ms)))
+      : send(url, init);
+}
+
 /** Holds every save request `ms` before it is sent, so a later press lands while it is still in flight. */
 function slowSaves(ms) {
   const send = window.fetch;
@@ -678,10 +718,19 @@ async function waitingQuad(page, map) {
   return quad;
 }
 
+const WAITING_BOX = "[data-dom-edit-press-waiting]";
+const WAITING_ON_SAVE = `${WAITING_BOX}:not([data-dom-edit-press-waiting="frame"])`;
+
 /** The box as the preview shows it: the waiting marker's quad while a press waits for its replay, else the element. */
-export async function measureShown(ctx, gesture, read = measure, quadOf = contentQuad) {
+export async function measureShown(
+  ctx,
+  gesture,
+  read = measure,
+  quadOf = contentQuad,
+  pointerMoved = true,
+) {
   for (;;) {
-    const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
+    const waiting = await ctx.page.$(pointerMoved ? WAITING_BOX : WAITING_ON_SAVE);
     try {
       const m = await read(ctx);
       if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
@@ -700,8 +749,8 @@ export async function measureShown(ctx, gesture, read = measure, quadOf = conten
   }
 }
 
-export async function sample(ctx, gesture, point, pointerScreen) {
-  const { m, actual } = await measureShown(ctx, gesture);
+export async function sample(ctx, gesture, point, pointerScreen, pointerMoved = true) {
+  const { m, actual } = await measureShown(ctx, gesture, measure, contentQuad, pointerMoved);
   return { m, actual, p: point(m), c: m.map.toComp(pointerScreen) };
 }
 
@@ -886,9 +935,11 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   await ctx.page.mouse.move(press[0], press[1]);
   await startFrames(ctx.page, ctx.selector ?? "#target");
   await nextFrame(ctx.page, 2);
+  traceBench("press", { gesture });
   await ctx.page.mouse.down();
   await nextFrame(ctx.page);
-  const s0 = await sample(ctx, gesture, g.point, press);
+  const s0 = await sample(ctx, gesture, g.point, press, false);
+  traceBench("pressed", { gesture, jump: pre && quadDistance(s0.m.visible, pre.visible) });
   await recording(ctx.page, true);
   const errors = [];
   let last = s0;
@@ -908,6 +959,7 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   }
   const rec = await recording(ctx.page, false);
   const smooth = smoothness(rec);
+  traceBench("release", { gesture, worst: Math.max(...errors) });
   await ctx.page.mouse.up();
   const lastQuad = gesture === "crop" ? last.m.outline : last.m.visible;
   return {
@@ -974,11 +1026,28 @@ export async function serveFixtureAssetsLocally(page) {
 }
 
 /**
+ * Takes evidence screenshots into `evidence.shots` only when `shots` is on (the gate's confirmation re-runs); an
+ * error screen is always kept. Studio fills the viewport; capturing beyond it makes Chrome resize the page.
+ */
+export function shooter(page, evidence, shots) {
+  evidence.shots = {};
+  return async (name) => {
+    if (!shots && name !== "error") return;
+    evidence.shots[name] = await page.screenshot({
+      type: "jpeg",
+      quality: 70,
+      captureBeyondViewport: false,
+      optimizeForSpeed: true,
+    });
+  };
+}
+
+/**
  * Studio open on the case in a fresh browser context, snapping off, at the case's zoom, target selected;
  * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
  */
 // fallow-ignore-next-line complexity
-export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
+export async function inStudio({ browser, spec, dir, files, url, evidence, shots = true }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
   await serveFixtureAssetsLocally(page);
@@ -993,14 +1062,21 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
   };
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(e.message));
-  evidence.shots = {};
-  const shoot = async (name) =>
-    (evidence.shots[name] = await page.screenshot({ type: "jpeg", quality: 70 }));
+  page.on(
+    "console",
+    (m) =>
+      m.text().startsWith("[hf-reload]") && traceBench("reload", { line: m.text().slice(0, 400) }),
+  );
+  const shoot = shooter(page, evidence, shots);
   try {
     await page.setViewport(VIEWPORT);
+    if (process.env.HF_WRITE_TRACE)
+      await page.evaluateOnNewDocument(() => localStorage.setItem("hf-reload-debug", "1"));
     await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
     if (spec.slowSaves) await page.evaluateOnNewDocument(slowSaves, spec.slowSaves);
+    if (process.env.HF_SLOW_HISTORY)
+      await page.evaluateOnNewDocument(slowHistory, Number(process.env.HF_SLOW_HISTORY));
     await page.evaluateOnNewDocument(frameSamplerScript);
     await page.goto(url);
     let pre = await openStudio(ctx);

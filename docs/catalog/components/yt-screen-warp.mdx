@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>On-Screen Display Effect</h1>
+  <p>Grid, scanline, vignette, and sheen overlay plus a 3D-warp wrapper class that makes footage read as if playing on a physical display</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/yt-screen-warp.json"
   compositionId="yt-screen-warp"
   compositionSrc="compositions/components/yt-screen-warp.html"
   title="On-Screen Display Effect"
-  description="Grid, scanline, vignette, and sheen overlay plus a 3D-warp wrapper class that makes footage read as if playing on a physical display"
   variables={[]}
   meta={{"category":"Texture","badge":"Stable","codeLines":123}}
   attribution={{"path":"registry/components/yt-screen-warp","tags":["effect","overlay","texture"]}}
@@ -158,7 +162,9 @@ That writes one file: `compositions/components/yt-screen-warp.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -177,6 +183,4 @@ Tagged `effect` `overlay` `texture`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

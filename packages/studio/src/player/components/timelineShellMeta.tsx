@@ -29,7 +29,6 @@ export interface TimelineShellMetaInputs {
   focusProps: Pick<TimelineViewportProps, "onFocus" | "onBlur">;
   elementCount: number;
   activeTool: string;
-  shiftHeld: boolean;
   labelMode: boolean;
   contentOrigin: number;
   zoomMode: "fit" | "manual";
@@ -56,7 +55,6 @@ export function buildTimelineShellMeta(input: TimelineShellMetaInputs): Timeline
       "data-timeline-element-count": input.elementCount,
       isDragOver: input.isDragOver,
       activeTool,
-      shiftHeld: input.shiftHeld,
       accentClass: "ring-1 ring-inset ring-studio-accent/60",
       onMouseMove: razor.updateRazorGuide,
       onMouseLeave: razor.clearRazorGuide,

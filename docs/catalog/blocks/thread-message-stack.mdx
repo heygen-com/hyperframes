@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Thread Message Stack</h1>
+  <p>A source-owned editable conversation stack with arbitrary incoming and outgoing messages</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/thread-message-stack.json"
   compositionId="thread-message-stack"
   compositionSrc="compositions/thread-message-stack.html"
   title="Thread Message Stack"
-  description="A source-owned editable conversation stack with arbitrary incoming and outgoing messages"
   variables={[]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":239}}
   attribution={{"path":"registry/blocks/thread-message-stack","tags":["social","conversation","messages"]}}
@@ -274,7 +278,9 @@ That writes one file: `compositions/thread-message-stack.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -305,6 +311,4 @@ Tagged `social` `conversation` `messages`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

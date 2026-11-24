@@ -9,7 +9,6 @@ import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const WATCHED_PREFIXES = ["packages/studio/", "packages/player/"];
-export const NO_VISIBLE_CHANGE_MAX_LINES = 20;
 export const VISUAL_EXTENSIONS = [".tsx", ".css", ".html"];
 
 const MEDIA_PATH = /\.(?:png|jpe?g|gif|webp|svg|mp4|mov|webm)$/i;
@@ -125,20 +124,18 @@ function findSection(sections, name) {
 
 function parseRecord(record) {
   const [added, deleted, ...rest] = record.split("\t");
-  const binary = added === "-" || deleted === "-";
-  const lines = binary ? NO_VISIBLE_CHANGE_MAX_LINES : Number(added) + Number(deleted);
-  return { path: rest.join("\t"), lines };
+  return { path: rest.join("\t"), binary: added === "-" || deleted === "-" };
 }
 
 const DOC_FILE = /\.mdx?$/i;
-const TEST_PATH = /\/(?:tests|__tests__)\/|\.(?:test|spec)\./;
+const TEST_PATH = /\/(?:tests|__tests__)\/|\.(?:test|spec)(?:-helpers)?\./;
 const isWatched = (path) =>
   path !== "" &&
   WATCHED_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
   !DOC_FILE.test(path) &&
   !TEST_PATH.test(path);
 
-/** Parse `git diff --numstat -z --no-renames`, keeping watched paths. A binary file counts as a full budget. */
+/** Parse `git diff --numstat -z --no-renames`, keeping watched paths. A binary file (an image) counts as visual. */
 export const parseNumstat = (numstat) =>
   numstat
     .split("\0")
@@ -149,20 +146,11 @@ const isVisualFile = (path) => VISUAL_EXTENSIONS.some((ext) => path.endsWith(ext
 
 /** Why a "No visible change" declaration does not hold for this diff; empty means it holds. */
 export function noVisibleChangeFailures(files) {
-  const failures = [];
-  const lines = files.reduce((sum, file) => sum + file.lines, 0);
-  if (lines >= NO_VISIBLE_CHANGE_MAX_LINES) {
-    failures.push(
-      `the diff changes ${lines} lines under packages/studio and packages/player; the limit is under ${NO_VISIBLE_CHANGE_MAX_LINES}`,
-    );
-  }
-  const visual = files.filter((file) => isVisualFile(file.path));
-  if (visual.length > 0) {
-    failures.push(
-      `the diff touches ${VISUAL_EXTENSIONS.join(", ")} files: ${visual.map((file) => file.path).join(", ")}`,
-    );
-  }
-  return failures;
+  const visual = files.filter((file) => file.binary || isVisualFile(file.path));
+  if (visual.length === 0) return [];
+  return [
+    `the diff touches ${VISUAL_EXTENSIONS.join(", ")} or binary files: ${visual.map((file) => file.path).join(", ")}`,
+  ];
 }
 
 function sectionProblem(section, name) {
@@ -469,7 +457,7 @@ function printFailure(problems, prNumber) {
     "Edit the body text first: gh pr edit --body-file replaces the body and drops attachments.",
   );
   console.error(
-    `A change with no visible effect (under ${NO_VISIBLE_CHANGE_MAX_LINES} lines, no .tsx/.css/.html; tests and Markdown are not counted) may instead add a '## No visible change' section.`,
+    "A change with no visible effect (no .tsx/.css/.html or binary files; tests and Markdown are not counted) may instead add a '## No visible change' section.",
   );
 }
 

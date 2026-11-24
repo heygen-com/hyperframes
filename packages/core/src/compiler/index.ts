@@ -33,13 +33,16 @@ export {
   type BundledHostCompositionIdentity,
   bundleToSingleHtml,
   type BundleOptions,
+  type BundlePrivateFiles,
   type BundleScriptProvenance,
   prepareFlattenedInnerRoot,
   FLATTENED_INNER_ROOT_STRIP_ATTRS,
   emitRootCompositionVariableStyles,
+  MAX_COMPOSITION_VARIABLE_STYLE_BYTES,
   parsesAsScript,
 } from "./htmlBundler";
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+export { boundMediaSrc } from "../runtime/applyVariableBindings";
 
 export {
   extractCompiledHtmlParityContract,
@@ -68,8 +71,10 @@ export {
   AFTER_FONTS_SCRIPT_TYPE,
   compositionStyle,
   cssStyleMergeKey,
+  isAlwaysAppliedStyle,
   deferScriptsUntilFonts,
   headStyleRuns,
+  INLINED_FILE_ATTR,
   inlineScriptRuns,
   styleElementsFor,
   type CompositionStyle,
@@ -87,9 +92,24 @@ export {
 // Composition isolation helpers
 export {
   buildVariablesByCompScript,
+  emitVariablesByCompScript,
+  dedupeFontFaceRules,
   scopeCssToComposition,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
+
+// Size limits on one compile's expansion (shared between bundler and producer)
+export {
+  assertCompositionFileSize,
+  CompositionExpansionBudget,
+  ENTRY_PAGE,
+  isCompositionTooLargeError,
+  MAX_COMPOSITION_HTML_BYTES,
+  MAX_EXPANDED_COMPOSITION_BYTES,
+  MAX_EXPANDED_ELEMENTS,
+  REMOTE_SCRIPTS,
+  REMOTE_STYLESHEETS,
+} from "./compositionSizeLimit";
 
 // Sub-composition inlining (shared between bundler and producer)
 export {
@@ -120,4 +140,5 @@ export {
 } from "./mediaRenderIds";
 
 export { ensureExternalScriptTag } from "./externalScripts";
+export { dropAuthoredSvgReferenceAliases } from "./svgSelectorAliases";
 export { emitMountedModuleScripts } from "./importMaps";

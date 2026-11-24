@@ -72,6 +72,12 @@ terraform -chdir=node_modules/@hyperframes/gcp-cloud-run/terraform apply \
 
 Terraform outputs the bucket name, service URL, workflow name, and region needed by the SDK.
 
+### Page network restriction
+
+The service sets `PRODUCER_RESTRICT_PAGE_NETWORK=true`, so a rendered page reaches only its own project files and public internet addresses. Loopback, private, link-local and IPv6 addresses are refused for anything the page loads. An asset on a VPC-only host or behind private DNS is missing from the video. ffmpeg's https inputs may open only https, so an https source that redirects to http, or encrypted HLS, does not load.
+
+Keep it on when you render compositions you did not write. To turn it off, apply the module with `-var restrict_page_network=false`, or set `TF_VAR_restrict_page_network=false` before `hyperframes cloudrun deploy`.
+
 ## Using the SDK
 
 ```typescript
@@ -96,16 +102,15 @@ while (progress.status === "running") {
 console.log(progress.status, progress.outputFile, progress.costs.displayCost);
 ```
 
-Plan v2 is the default because workers fetch manifest-selected
-content-addressed artifacts. The SDK sends explicit v2 when `planProtocol` is
-omitted. Deprecated v1 compatibility remains available by passing
-`planProtocol: "v1"`.
+Plan v2 is the only supported distributed plan transport. Workers fetch
+manifest-selected content-addressed artifacts, and the SDK sends explicit v2
+without requiring a protocol option.
 
 <Warning>
   For an existing installation, pause new renders and drain active workflow
   executions. Redeploy the Cloud Run image and Cloud Workflows definition from
   the same package version before upgrading the application SDK. Older
-  workflows may default omission to v1 or lack v2 support.
+  workflows may lack the Plan v2-only request and locator contract.
 </Warning>
 
 Pass `projectDir` for one-shot uploads, or call `deploySite()` separately and reuse the returned site handle across many renders.

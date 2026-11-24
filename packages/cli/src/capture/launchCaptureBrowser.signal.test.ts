@@ -5,7 +5,8 @@ import { afterEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ launch: vi.fn(), proxyClose: vi.fn(), exit: vi.fn() }));
 vi.mock("puppeteer-core", () => ({ default: { launch: mocks.launch } }));
-vi.mock("./captureProxy.js", () => ({
+vi.mock("@hyperframes/engine/public-network", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine/public-network")>()),
   startCaptureProxy: async () => ({ url: "http://127.0.0.1:4567", close: mocks.proxyClose }),
 }));
 vi.mock("../utils/commandResult.js", () => ({ requestCliExit: mocks.exit }));
@@ -33,13 +34,15 @@ it.each(["SIGINT", "SIGTERM"] as const)(
       exitCode: null as number | null,
       signalCode: null,
     });
+    const close = vi.fn(async () => {
+      child.exitCode = 0;
+      child.emit("exit", 0);
+      browser.emit("disconnected");
+    });
     const browser = Object.assign(new EventEmitter(), {
       process: () => child,
-      close: vi.fn(async () => {
-        child.exitCode = 0;
-        child.emit("exit", 0);
-        browser.emit("disconnected");
-      }),
+      close,
+      newPage: vi.fn(),
     });
     mocks.launch.mockResolvedValue(browser);
     mocks.proxyClose.mockResolvedValue(undefined);
@@ -62,6 +65,6 @@ it.each(["SIGINT", "SIGTERM"] as const)(
     expect(await exit).toEqual({ code: signal === "SIGINT" ? 130 : 143, profileExists: false });
     await session.close();
     await session.close();
-    expect(browser.close).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
   },
 );

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Code Snippet - Apple Terminal Pro</h1>
+  <p>Apple Terminal Pro profile: black background with grey text and lime green cursor, per-character typing animation of a shell session.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/code-snippet-apple-terminal-pro.json"
   compositionId="code-snippet-apple-terminal-pro"
   compositionSrc="compositions/code-snippet-apple-terminal-pro.html"
   title="Code Snippet - Apple Terminal Pro"
-  description="Apple Terminal Pro profile: black background with grey text and lime green cursor, per-character typing animation of a shell session."
   variables={[]}
   meta={{"duration":12,"width":1920,"height":1080,"category":"Code Snippets","badge":"Stable","codeLines":247}}
   attribution={{"path":"registry/blocks/code-snippet-apple-terminal-pro","tags":["code","developer","showcase","terminal","apple","apple-terminal"]}}
@@ -282,7 +286,9 @@ That writes one file: `compositions/code-snippet-apple-terminal-pro.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -313,6 +319,4 @@ Tagged `code` `developer` `showcase` `terminal` `apple` `apple-terminal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

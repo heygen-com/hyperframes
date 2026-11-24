@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
+import { terminalLines, terminalText } from "@hyperframes/core/terminal-text";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
-  mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -12,9 +12,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
+import {
+  ensurePrivateCacheDir,
+  foreignWritablePath,
+  foreignWritableTree,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 /** Module type of each optional package; the keys are the only names the loader accepts. */
 export interface OptionalPackageModules {
@@ -37,10 +43,10 @@ export const PINNED_PACKAGES = {
 
 type PinnedPackage = keyof typeof PINNED_PACKAGES;
 
-export const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
+export const OPTIONAL_CACHE_DIR = join(trustedCacheRoot(), "optional");
 
 /** Installed on first use only when a host bundled the CLI without its sharp dependency. */
-export const SHARP_VERSION = "0.35.3";
+export const SHARP_VERSION = "0.35.5";
 
 type FirstUsePackage = OptionalPackage | "sharp";
 
@@ -55,7 +61,7 @@ export interface OptionalPackageDeps {
 }
 
 /** One directory per package and version, so a version bump never reads a stale install. */
-export function optionalPackageDir(name: FirstUsePackage, cacheDir = CACHE_DIR): string {
+export function optionalPackageDir(name: FirstUsePackage, cacheDir = OPTIONAL_CACHE_DIR): string {
   return join(cacheDir, `${name.replace("/", "__")}@${versionOf(name)}`);
 }
 
@@ -66,7 +72,7 @@ function versionOf(name: FirstUsePackage): string {
 /** Installed version, or null. Reads the manifest only, so it never loads a native binding. */
 export function installedOptionalPackageVersion(
   name: OptionalPackage,
-  cacheDir = CACHE_DIR,
+  cacheDir = OPTIONAL_CACHE_DIR,
   cliUrl = import.meta.url,
 ): string | null {
   if (pinnedPackageBesideCli(name, cliUrl)?.resolution === "entry") return OPTIONAL_PACKAGES[name];
@@ -234,13 +240,17 @@ function manifestPath(dir: string, name: string): string {
   return join(dir, "node_modules", name, "package.json");
 }
 
+const writableByOthers = (dir: string, file: string) => !!foreignWritablePath(file, dirname(dir));
+
 export function isInstalled(dir: string, name: string): boolean {
-  return existsSync(manifestPath(dir, name));
+  const manifest = manifestPath(dir, name);
+  return existsSync(manifest) && !foreignWritableTree(dir, dirname(dir));
 }
 
 export function installedPackagePath(dir: string, name: string): string | null {
   if (!isInstalled(dir, name)) return null;
-  return createRequire(join(dir, "package.json")).resolve(name);
+  const entry = createRequire(join(dir, "package.json")).resolve(name);
+  return writableByOthers(dir, entry) ? null : entry;
 }
 
 function loadInstalled(dir: string, name: string): unknown | null {
@@ -253,31 +263,32 @@ export function pinnedPackageBesideCli(
   cliUrl = import.meta.url,
 ): { resolution: "entry" | "package"; path: string } | null {
   const req = createRequire(cliUrl);
-  try {
-    let entry: string;
+  const pinnedFolder = (req.resolve.paths(name) ?? []).find((dir) =>
+    hasPinnedVersion(join(dir, name), name),
+  );
+  if (pinnedFolder === undefined) return null;
+  const copy = realpathSync(join(pinnedFolder, name));
+  const inside = (resolve: () => string) => {
     try {
-      entry = realpathSync(req.resolve(name));
+      const entry = realpathSync(resolve());
+      return entry.startsWith(copy + sep) ? entry : null;
     } catch {
-      const copy = (req.resolve.paths(name) ?? [])
-        .map((dir) => join(dir, name))
-        .find((dir) => existsSync(join(dir, "package.json")));
-      return copy && hasPinnedVersion(copy, name)
-        ? { resolution: "package", path: realpathSync(copy) }
-        : null;
+      return null;
     }
-    const copy = (req.resolve.paths(name) ?? [])
-      .map((dir) => join(dir, name))
-      .find((dir) => existsSync(dir) && entry.startsWith(realpathSync(dir) + sep));
-    if (!copy) return null;
-    return hasPinnedVersion(copy, name) ? { resolution: "entry", path: entry } : null;
-  } catch {
-    return null;
-  }
+  };
+  const entry =
+    inside(() => createRequire(join(copy, "package.json")).resolve(name)) ??
+    inside(() => req.resolve(copy));
+  return entry ? { resolution: "entry", path: entry } : { resolution: "package", path: copy };
 }
 
 function hasPinnedVersion(copy: string, name: PinnedPackage): boolean {
-  const manifest = readFileSync(join(copy, "package.json"), "utf-8");
-  return (JSON.parse(manifest) as { version?: string }).version === PINNED_PACKAGES[name];
+  try {
+    const manifest = readFileSync(join(copy, "package.json"), "utf-8");
+    return (JSON.parse(manifest) as { version?: string }).version === PINNED_PACKAGES[name];
+  } catch {
+    return false;
+  }
 }
 
 export function loadBesideCli(name: PinnedPackage, cliUrl = import.meta.url): unknown | null {
@@ -285,9 +296,9 @@ export function loadBesideCli(name: PinnedPackage, cliUrl = import.meta.url): un
   return copy?.resolution === "entry" ? createRequire(cliUrl)(copy.path) : null;
 }
 
-export function runNpm(args: string[], signal?: AbortSignal): Promise<void> {
+export function runNpm(args: string[], signal?: AbortSignal, cwd?: string): Promise<void> {
   const npm = buildNpmCommand(args);
-  const child = spawn(npm.command, npm.args, { stdio: ["ignore", "pipe", "pipe"], signal });
+  const child = spawn(npm.command, npm.args, { stdio: ["ignore", "pipe", "pipe"], signal, cwd });
   return new Promise((resolve, reject) => {
     let output = "";
     child.stdout.on("data", (chunk) => (output += chunk));
@@ -326,7 +337,9 @@ export function sweepStaleStaging(dir: string): void {
       rmSync(stale, { recursive: true, force: true });
     } catch (err) {
       // Best effort: a locked stale dir must not block a viable install, but it stays visible.
-      console.error(`could not remove stale install dir ${stale}: ${(err as Error).message}`);
+      console.error(
+        `could not remove stale install dir ${terminalText(stale)}: ${terminalLines((err as Error).message)}`,
+      );
     }
   }
 }
@@ -339,27 +352,30 @@ export async function install(
   dir: string,
   name: string,
   version: string,
-  run: (args: string[]) => Promise<void> = runNpm,
+  run: (args: string[], cwd: string) => Promise<void> = (args, cwd) => runNpm(args, undefined, cwd),
 ): Promise<void> {
+  ensurePrivateCacheDir(dirname(dir), dirname(dir));
   sweepStaleStaging(dir);
   const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
-  mkdirSync(staging, { recursive: true });
+  ensurePrivateCacheDir(staging, dirname(dir));
   writeFileSync(join(staging, "package.json"), "{}");
   try {
-    await run([
-      "install",
-      `${name}@${version}`,
-      "--prefix",
+    await run(
+      [
+        "install",
+        `${name}@${version}`,
+        "--no-audit",
+        "--no-fund",
+        "--loglevel=error",
+        // A first-use install is interactive, not a CI resolve: fail fast and name the
+        // manual command instead of sitting through npm's default multi-minute backoff.
+        "--fetch-retries=0",
+        "--fetch-timeout=20000",
+      ],
       staging,
-      "--no-audit",
-      "--no-fund",
-      "--loglevel=error",
-      // A first-use install is interactive, not a CI resolve: fail fast and name the
-      // manual command instead of sitting through npm's default multi-minute backoff.
-      "--fetch-retries=0",
-      "--fetch-timeout=20000",
-    ]);
+    );
     if (isInstalled(dir, name)) return;
+    sealCacheInstall(staging, dirname(dir));
     rmSync(dir, { recursive: true, force: true });
     renameSync(staging, dir);
   } catch (err) {
@@ -370,9 +386,9 @@ export async function install(
 }
 
 const defaultDeps: OptionalPackageDeps = {
-  cacheDir: CACHE_DIR,
+  cacheDir: OPTIONAL_CACHE_DIR,
   loadBesideCli: (name) => (name === "sharp" ? null : loadBesideCli(name)),
   loadInstalled,
   install,
-  log: (line) => console.error(line),
+  log: (line) => console.error(terminalLines(line)),
 };

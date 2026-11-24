@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Notification Cascade</h1>
+  <p>Phone notifications land one after another and stack up the screen, each banner pushing the pile down as it arrives, before the whole stack lifts away into a closing card</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/notification-cascade.json"
   compositionId="notification-cascade"
   compositionSrc="compositions/notification-cascade.html"
   title="Notification Cascade"
-  description="Phone notifications land one after another and stack up the screen, each banner pushing the pile down as it arrives, before the whole stack lifts away into a closing card"
   variables={[{"id":"notifTitle","type":"string","role":"content","label":"Notification title","description":"Bold first line on every banner.","default":"New render"},{"id":"message1","type":"string","role":"content","label":"Message 1","description":"Subtitle of the first banner to land.","default":"Launch video is ready."},{"id":"message2","type":"string","role":"content","label":"Message 2","description":"Subtitle of the second banner.","default":"All checks passed."},{"id":"message3","type":"string","role":"content","label":"Message 3","description":"Subtitle of the third banner.","default":"4K render done in 92s."},{"id":"message4","type":"string","role":"content","label":"Message 4","description":"Subtitle of the fourth banner.","default":"Published to the catalog."},{"id":"appName","type":"string","role":"content","label":"App name","description":"Name of the brand this video promotes, credited in the corner of every banner. Use the real name of that brand.","portrays":["subject_name"],"default":"HyperFrames"},{"id":"headlineTop","type":"string","role":"content","label":"End-card line 1","description":"First line of the closing card.","default":"SHIP VIDEO"},{"id":"headlineAccent","type":"string","role":"content","label":"End-card line 2","description":"Accented second line of the closing card.","default":"FROM HTML"},{"id":"footerText","type":"string","role":"content","label":"End-card footer","description":"Domain of the brand this video promotes, under the end-card headline. Use the real domain, or a call to action when no domain fits.","portrays":["subject_domain"],"default":"hyperframes.heygen.com"},{"id":"brandLogo","type":"image","role":"content","label":"Brand logo","description":"Transparent mark of the brand this video promotes, centered on the closing card.","portrays":["subject_logo"],"default":"assets/hyperframes-logo-white.svg"}]}
   meta={{"duration":14,"width":1080,"height":1920,"category":"Showcases","badge":"Stable","codeLines":520}}
   attribution={{"author":"Miao Yang","path":"registry/blocks/notification-cascade","tags":["showcase","mock-ui","notification","vertical","ad-template"]}}
@@ -555,7 +559,9 @@ That writes `compositions/notification-cascade.html`, plus 3 supporting files un
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -617,6 +623,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

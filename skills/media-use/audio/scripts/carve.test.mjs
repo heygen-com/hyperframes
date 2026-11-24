@@ -1,15 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_STRENGTH,
   carveSources,
   groupSourceRefusal,
-  loadCore,
+  mediaSource,
   parseArgs,
 } from "./carve.mjs";
 
@@ -202,34 +211,60 @@ test("the CLI still runs when invoked through a symlinked path", () => {
   });
 });
 
-test("loadCore honours an import-only export map, as the published core has", () => {
-  // The published manifest carries only `import` + `types` for these subpaths, so
-  // `require.resolve` cannot resolve them at all and the fallback has to read the
-  // export map itself. A fixture pins that without depending on npm.
+test("carve never loads @hyperframes/core from the composition's project", () => {
+  // A received project is untrusted: a core planted in its node_modules must not run.
   return inTempDir(async (dir) => {
     const pkgDir = join(dir, "node_modules", "@hyperframes", "core");
-    mkdirSync(join(pkgDir, "dist"), { recursive: true });
-    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "fixture-project" }));
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "received-project" }));
+    const planted =
+      'import { writeFileSync } from "node:fs";\nwriteFileSync(new URL("./RAN", import.meta.url), "");\n';
+    writeFileSync(join(pkgDir, "planted.mjs"), planted);
     writeFileSync(
       join(pkgDir, "package.json"),
       JSON.stringify({
         name: "@hyperframes/core",
-        version: "0.0.0-fixture",
         type: "module",
         exports: {
           "./package.json": "./package.json",
-          "./audio-carve": { import: "./dist/audioCarve.js" },
-          "./audio-fx": { import: "./dist/audioFx.js" },
+          "./audio-carve": "./planted.mjs",
+          "./audio-fx": "./planted.mjs",
         },
       }),
     );
-    writeFileSync(join(pkgDir, "dist", "audioCarve.js"), 'export const marker = "carve";\n');
-    writeFileSync(join(pkgDir, "dist", "audioFx.js"), 'export const marker = "fx";\n');
+    writeFileSync(join(dir, "index.html"), "<html><body></body></html>");
 
-    const core = await loadCore(dir);
-    assert.equal(core.carve.marker, "carve");
-    assert.equal(core.fx.marker, "fx");
+    let stderr = "";
+    try {
+      execFileSync(
+        process.execPath,
+        [join(SCRIPTS_DIR, "carve.mjs"), "--comp", "index.html", "--dry-run"],
+        {
+          cwd: dir,
+          stdio: "pipe",
+        },
+      );
+    } catch (error) {
+      stderr = String(error.stderr);
+    }
+    assert.equal(existsSync(join(pkgDir, "RAN")), false, "the project's @hyperframes/core ran");
+    assert.match(
+      stderr,
+      /media in the composition/,
+      "carve stopped before it read the composition",
+    );
   });
+});
+
+test("the bundled core exports every function carve.mjs calls", async () => {
+  const source = readFileSync(join(SCRIPTS_DIR, "carve.mjs"), "utf-8");
+  const called = new Set([...source.matchAll(/carveApi\s*\.\s*(\w+)/g)].map((m) => m[1]));
+  const bundle = await import("./lib/audio-carve.mjs");
+  assert.ok(called.size > 0);
+  assert.deepEqual(
+    [...called].filter((name) => typeof bundle[name] !== "function"),
+    [],
+  );
 });
 
 test("members is required, so dropping it cannot silently restore the group form", () => {
@@ -252,3 +287,147 @@ test("the default strength is 0.8, and --strength still overrides it", () => {
   assert.equal(parseArgs(["--comp", "x.html"]).strength, 0.8);
   assert.equal(parseArgs(["--comp", "x.html", "--strength", "0.25"]).strength, 0.25);
 });
+
+test("mediaSource accepts a regular file inside the composition's folder, by its real path", () =>
+  inTempDir((dir) => {
+    mkdirSync(join(dir, "assets"));
+    writeFileSync(join(dir, "assets", "vo.wav"), "x");
+    writeFileSync(join(dir, "bed.mp3"), "x");
+    const real = realpathSync(dir);
+    assert.equal(mediaSource(dir, "assets/vo.wav"), join(real, "assets", "vo.wav"));
+    assert.equal(mediaSource(dir, "./bed.mp3"), join(real, "bed.mp3"));
+    assert.equal(mediaSource(dir, "assets/../bed.mp3"), join(real, "bed.mp3"));
+  }));
+
+test("mediaSource refuses every name that leaves the folder, before opening it", () =>
+  inTempDir((dir) => {
+    const project = join(dir, "project");
+    mkdirSync(project);
+    const outside = join(dir, "secret.wav");
+    writeFileSync(outside, "x");
+    symlinkSync(outside, join(project, "linked.wav"));
+    for (const src of [
+      outside,
+      "../secret.wav",
+      "//attacker.example/share/x.mp3",
+      "\\\\attacker.example\\share\\x.mp3",
+      "C:secret.wav",
+      "C:\\secret.wav",
+      "file:///etc/hosts",
+      "http://attacker.example/x.mp3",
+      "linked.wav",
+    ]) {
+      assert.throws(() => mediaSource(project, src), /outside the composition's folder/, src);
+    }
+  }));
+
+test("mediaSource refuses private files, folders, missing files and ffmpeg patterns", () =>
+  inTempDir((dir) => {
+    mkdirSync(join(dir, ".git"));
+    mkdirSync(join(dir, "folder.wav"));
+    for (const name of [".env", ".git/config", "id_rsa.wav", "take%d.png"]) {
+      writeFileSync(join(dir, name), "x");
+    }
+    assert.throws(() => mediaSource(dir, ".env"), /private project file/);
+    assert.throws(() => mediaSource(dir, ".git/config"), /private project file/);
+    assert.throws(() => mediaSource(dir, "folder.wav"), /not a file in the project/);
+    assert.throws(() => mediaSource(dir, "missing.wav"), /not a file in the project/);
+    assert.throws(() => mediaSource(dir, "take%d.png"), /pattern of other files/);
+  }));
+
+/** A composition with a music bed and one narration track, both named by `src`. */
+function writeComposition(dir, voiceSrc, bedSrc = "bed.wav") {
+  writeFileSync(
+    join(dir, "index.html"),
+    `<audio id="music-bed" src="${bedSrc}" data-start="0"></audio>\n` +
+      `<audio id="narration" src="${voiceSrc}" data-start="0"></audio>\n`,
+  );
+}
+
+const runCarve = (cwd, env = process.env) =>
+  spawnSync(process.execPath, [join(SCRIPTS_DIR, "carve.mjs"), "--comp", "index.html"], {
+    cwd,
+    env,
+    encoding: "utf8",
+  });
+
+test(
+  "a composition naming an outside file or a UNC host stops before any ffmpeg process starts",
+  { skip: process.platform === "win32" && "the stand-in ffmpeg is a shell script" },
+  () =>
+    inTempDir((dir) => {
+      const bin = join(dir, "bin");
+      const ran = join(dir, "ffmpeg-ran");
+      mkdirSync(bin);
+      for (const tool of ["ffmpeg", "ffprobe"]) {
+        writeFileSync(join(bin, tool), `#!/bin/sh\necho "$0 $*" >> "${ran}"\nexit 1\n`, {
+          mode: 0o755,
+        });
+      }
+      const project = join(dir, "project");
+      mkdirSync(project);
+      writeFileSync(join(project, "bed.wav"), "x");
+      writeFileSync(join(dir, "secret.wav"), "x");
+      const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}` };
+      for (const src of ["../secret.wav", "//attacker.example/share/x.mp3"]) {
+        writeComposition(project, src);
+        const before = readFileSync(join(project, "index.html"), "utf8");
+        const run = runCarve(project, env);
+        assert.equal(run.status, 1, run.stderr);
+        assert.match(run.stderr, /outside the composition's folder/);
+        assert.equal(existsSync(ran), false, `ffmpeg ran for ${src}`);
+        assert.equal(readFileSync(join(project, "index.html"), "utf8"), before);
+      }
+    }),
+);
+
+const tone = (path, seconds = 2, frequency = 440) =>
+  spawnSync(
+    "ffmpeg",
+    [
+      "-y",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=${frequency}:duration=${seconds}`,
+    ].concat([path]),
+    { encoding: "utf8" },
+  );
+
+test("a playlist saved under a media name inside the project is refused and opens nothing it names", () =>
+  inTempDir((dir) => {
+    const project = join(dir, "project");
+    mkdirSync(project);
+    const outside = join(dir, "outside.ts");
+    const made = spawnSync(
+      "ffmpeg",
+      ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=1", "-c:a", "aac", outside],
+      { encoding: "utf8" },
+    );
+    assert.equal(made.status, 0, made.stderr);
+    assert.equal(tone(join(project, "bed.wav")).status, 0);
+    writeFileSync(
+      join(project, "narration.m3u8"),
+      `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${outside}\n#EXT-X-ENDLIST\n`,
+    );
+    writeComposition(project, "narration.m3u8");
+    const before = readFileSync(join(project, "index.html"), "utf8");
+    const run = runCarve(project);
+    assert.equal(run.status, 1, run.stderr);
+    assert.match(run.stderr, /list that points at other files|cannot read it as media/);
+    assert.equal(readFileSync(join(project, "index.html"), "utf8"), before);
+  }));
+
+test("a composition whose media are files in its folder still carves", () =>
+  inTempDir((dir) => {
+    mkdirSync(join(dir, "assets"));
+    assert.equal(tone(join(dir, "bed.wav"), 3, 220).status, 0);
+    assert.equal(tone(join(dir, "assets", "narration.m4a"), 3, 1000).status, 0);
+    writeComposition(dir, "assets/narration.m4a");
+    const run = runCarve(dir);
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /wrote index.html/);
+    assert.match(readFileSync(join(dir, "index.html"), "utf8"), /data-fx-chain=/);
+  }));

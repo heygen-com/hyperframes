@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Chat Thread</h1>
+  <p>The measured conversation as one mountable scene at full fidelity: status bar, back badge, avatar and name pill, bubbles with real iMessage tails, a Delivered receipt, large emoji rows, a media placeholder, a link card, and typing dots holding the beat. Every message picks its type by prefix - recv:/sent: text, emoji: a large row, img media, card:Title&#126;domain a link card - and heights are measured at mount so any thread fits</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/chat-thread.json"
   compositionId="chat-thread"
   compositionSrc="compositions/components/chat-thread.html"
   title="Chat Thread"
-  description="The measured conversation as one mountable scene at full fidelity: status bar, back badge, avatar and name pill, bubbles with real iMessage tails, a Delivered receipt, large emoji rows, a media placeholder, a link card, and typing dots holding the beat. Every message picks its type by prefix - recv:/sent: text, emoji: a large row, img media, card:Title~domain a link card - and heights are measured at mount so any thread fits"
   variables={[{"id":"contact","type":"string","role":"content","label":"Contact","description":"Name in the thread header; the avatar shows its first letter.","default":"Rachel"},{"id":"unread","type":"number","role":"content","label":"Unread badge","description":"Count in the back-button badge. 0 hides it.","default":12,"min":0,"max":99,"step":1},{"id":"messages","type":"string","role":"content","label":"Messages","description":"Pipe-separated thread. Each entry picks its type by prefix: recv: or sent: for a text bubble, emoji: for a large emoji row, img for a media placeholder, card:Title~domain for a link card. Example: recv:hey|sent:look 👀|card:HyperFrames~hyperframes.heygen.com|emoji:🤯🤯🤯","default":"recv:what r u using for the launch video??|sent:wait look 👀|card:HyperFrames — Write HTML, render pixel-perfect video~hyperframes.heygen.com|recv:OMG IT&#39;S HTML|emoji:🤯🤯🤯|sent:renders in 4K. no editor"},{"id":"beat","type":"number","role":"timing","label":"Beat","description":"Seconds between message arrivals.","default":1.7,"min":0.8,"max":3,"step":0.1},{"id":"dots","type":"enum","role":"timing","label":"Typing dots","description":"Show the three-dot indicator before received messages.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"receipt","type":"enum","role":"content","label":"Delivered receipt","description":"Show Delivered under the last sent bubble, as iMessage does.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":662}}
   attribution={{"author":"Miao Yang","path":"registry/components/chat-thread","tags":["motion-primitive","chat","mock-ui","conversation","vertical"]}}
@@ -697,7 +701,9 @@ That writes one file: `compositions/components/chat-thread.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -743,6 +749,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

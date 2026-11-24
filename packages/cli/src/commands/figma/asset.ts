@@ -4,7 +4,7 @@
  * provenance in the shared manifest, print a composition snippet.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   appendRecord,
   buildAssetSnippet,
@@ -13,16 +13,17 @@ import {
   findAllByFigmaNode,
   freezeBytes,
   nextId,
+  ownTypeDir,
   parseFigmaRef,
   regenerateIndex,
   sanitizeSvg,
-  typeDirPath,
   updateRecord,
   type AssetSnippet,
   type FigmaAssetFormat,
   type FigmaClient,
   type FigmaManifestRecord,
 } from "@hyperframes/core/figma";
+import { terminalText } from "@hyperframes/core";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { downloadRender } from "./download.js";
@@ -134,7 +135,7 @@ async function freezeAndRecord(
     bytes = new TextEncoder().encode(sanitizeSvg(new TextDecoder().decode(bytes)));
   }
   const id = nextId(deps.projectDir, "image");
-  const destAbs = join(typeDirPath(deps.projectDir, "image"), `${id}.${ext}`);
+  const destAbs = join(ownTypeDir(deps.projectDir, "image"), `${id}.${ext}`);
   freezeBytes(bytes, destAbs);
   const record: FigmaManifestRecord = {
     id,
@@ -260,7 +261,9 @@ function safeRegenerateIndex(projectDir: string): void {
   try {
     regenerateIndex(projectDir);
   } catch (err) {
-    console.warn(`index.md regeneration failed: ${err instanceof Error ? err.message : err}`);
+    console.warn(
+      terminalText(`index.md regeneration failed: ${err instanceof Error ? err.message : err}`),
+    );
   }
 }
 
@@ -317,8 +320,8 @@ export default defineCommand({
       );
       for (const result of results) {
         const verb = result.reused ? "reused" : "imported";
-        console.log(`${verb} ${result.record.id} → ${result.record.path}`);
-        console.log(result.snippet.html);
+        console.log(terminalText(`${verb} ${result.record.id} → ${result.record.path}`));
+        console.log(terminalText(result.snippet.html));
       }
       if (results.length > 1) {
         const rendered = results.filter((r) => !r.reused).length;

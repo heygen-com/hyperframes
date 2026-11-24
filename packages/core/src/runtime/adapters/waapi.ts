@@ -53,6 +53,15 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
     return animationTimeMs;
   };
 
+  const shouldAnchorAtCompositionOrigin = (animation: Animation, compositionTimeMs: number) =>
+    !didDiscover &&
+    compositionTimeMs === 0 &&
+    (animation.playState === "running" || animation.playState === "finished") &&
+    animation.playbackRate === 1 &&
+    !!document.timeline &&
+    animation.timeline === document.timeline &&
+    !isBrowserCreatedCss(animation);
+
   const ensureBaseline = (animation: Animation, compositionTimeMs: number) => {
     const existing = baselines.get(animation);
     if (existing) {
@@ -61,9 +70,11 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
 
     const baseline = {
       compositionTimeMs,
-      animationTimeMs: didDiscover
-        ? normalizeInitialAnimationTimeMs(readAnimationTimeMs(animation), compositionTimeMs)
-        : readAnimationTimeMs(animation),
+      animationTimeMs: shouldAnchorAtCompositionOrigin(animation, compositionTimeMs)
+        ? 0
+        : didDiscover
+          ? normalizeInitialAnimationTimeMs(readAnimationTimeMs(animation), compositionTimeMs)
+          : readAnimationTimeMs(animation),
     };
     baselines.set(animation, baseline);
     return baseline;
@@ -147,9 +158,9 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
   return {
     name: "waapi",
     discover: () => {
-      didDiscover = true;
       installAnimateHook();
       trackAnimations(snapshotAnimations(), lastSeekTimeMs);
+      didDiscover = true;
     },
     seek: (ctx) => {
       const timeMs = Math.max(0, (Number(ctx.time) || 0) * 1000);

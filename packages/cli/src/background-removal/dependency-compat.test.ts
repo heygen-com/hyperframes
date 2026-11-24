@@ -14,7 +14,7 @@ describe("background-removal native dependency compatibility", () => {
       dependencies?: Record<string, string>;
     };
 
-    expect(packageJson.dependencies).toMatchObject({ "adm-zip": "^0.6.0" });
+    expect(packageJson.dependencies).toMatchObject({ "adm-zip": "^0.6.1" });
   });
 
   it("keeps sharp optional in the CLI and studio-server, so a host may ship without it", () => {
@@ -23,7 +23,7 @@ describe("background-removal native dependency compatibility", () => {
         readFileSync(fileURLToPath(new URL(manifest, import.meta.url)), "utf8"),
       ) as { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string> };
       expect(packageJson.dependencies, manifest).not.toHaveProperty("sharp");
-      expect(packageJson.optionalDependencies?.["sharp"], manifest).toBe("^0.35.0");
+      expect(packageJson.optionalDependencies?.["sharp"], manifest).toBe("^0.35.5");
     }
   });
 
@@ -39,7 +39,7 @@ describe("background-removal native dependency compatibility", () => {
       ) as {
         dependencies?: Record<string, string>;
       };
-      expect(packageJson.dependencies?.["@hono/node-server"], manifest).toBe("^2.0.5");
+      expect(packageJson.dependencies?.["@hono/node-server"], manifest).toBe("^2.1.6");
     }
   });
 

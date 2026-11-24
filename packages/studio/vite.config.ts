@@ -9,15 +9,22 @@ import {
   lstatSync,
   realpathSync,
 } from "node:fs";
+import { isIP } from "node:net";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { bindNodeRequestSignal } from "./vite.request-signal.js";
-import { watch } from "chokidar";
+import { type FSWatcher, watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
 import type { openProjectHistory } from "@hyperframes/studio-server";
 import { previewChangeOwner } from "./vite.preview-watch";
+import { carriesOAuthReturn, refuseOAuthReturn } from "../studio-server/src/helpers/inertRefusal";
+import {
+  hostHeaderAllowed,
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  previewAllowedHostsFromEnv,
+} from "../studio-server/src/helpers/requestIdentity";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -91,11 +98,23 @@ async function bridgeHonoResponse(
   res.end();
 }
 
+// Vite's own rule (IP literals, *.localhost, leading-dot entries), so the API serves every Host Vite serves the page on.
+function viteAllowsHost(host: string, allowedHosts: readonly string[]): boolean {
+  const bracketed = /^\[([^\]]+)\]/.exec(host);
+  if (bracketed) return isIP(bracketed[1]!) === 6;
+  const name = host.split(":")[0]!.toLowerCase();
+  if (isIP(name) === 4 || name === "localhost" || name.endsWith(".localhost")) return true;
+  return allowedHosts.some(
+    (allowed) => allowed.startsWith(".") && (name === allowed.slice(1) || name.endsWith(allowed)),
+  );
+}
+
 // ── Vite plugin ──────────────────────────────────────────────────────────────
 
-function devProjectApi(): Plugin {
+export function devProjectApi(): Plugin {
   const dataDir = resolve(__dirname, "data/projects");
   const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
+  let watching: FSWatcher | undefined;
 
   return {
     name: "studio-dev-api",
@@ -121,12 +140,12 @@ function devProjectApi(): Plugin {
         /* dataDir doesn't exist yet */
       }
 
-      const projectWatcher = watch([...watchedProjects.keys()], {
+      const projectWatcher = (watching = watch([...watchedProjects.keys()], {
         ignoreInitial: true,
         // A project write is a whole-file replace; wait for it to settle so a
         // half-written composition is never announced.
         awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
-      });
+      }));
 
       // This watcher, and not Vite's, is what clears the preview signature.
       // Vite's ignores `data/projects/**`, so subscribing the cache to it left
@@ -143,9 +162,13 @@ function devProjectApi(): Plugin {
 
       let _api: { fetch: (req: Request) => Promise<Response> } | null = null;
       let _studioServerModule: {
-        createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
+        createStudioApi: (
+          adapter: ReturnType<typeof createViteAdapter>,
+          options?: { allowedHosts?: readonly string[] },
+        ) => {
           fetch: (req: Request) => Promise<Response>;
         };
+        previewAllowedHostsFromEnv: () => string[];
         identifyFileWrite: (
           path: string,
           expectedVersion: string,
@@ -170,6 +193,7 @@ function devProjectApi(): Plugin {
             "fileContentVersion",
             "affectsPreview",
             "openProjectHistory",
+            "previewAllowedHostsFromEnv",
           ] as const) {
             if (typeof mod[name] !== "function") {
               throw new Error(`@hyperframes/studio-server dev module is missing ${name}()`);
@@ -183,14 +207,47 @@ function devProjectApi(): Plugin {
             // id and real root before the signature cache starts watching them.
             onResolveProject: (project) => watchedProjects.set(project.dir, project.id),
           });
-          _api = mod.createStudioApi(adapter);
+          // Same env var as the CLI preview server: extra hosts whose
+          // writes the API accepts (Codespaces, tunnels).
+          _api = mod.createStudioApi(adapter, {
+            allowedHosts: mod.previewAllowedHostsFromEnv(),
+            sandboxThumbnailCaptures: true,
+            sandboxDirectOpens: true,
+          });
         }
         return _api;
       };
 
+      // Vite runs its own Host check after the middlewares added here, so the
+      // plugin's routes check Host first: the CLI preview server's rule plus Vite's.
+      const allowedHosts = [...previewAllowedHostsFromEnv()];
+      if (typeof server.config.server.host === "string")
+        allowedHosts.push(server.config.server.host);
+      // Refuse an OAuth return first, before every route and Vite's own SPA fallback.
+      server.middlewares.use((req, res, next) => {
+        if (!carriesOAuthReturn(req.url ?? "/")) return next();
+        void bridgeHonoResponse(refuseOAuthReturn(), res);
+      });
+      server.middlewares.use((req, res, next) => {
+        const url = req.url ?? "";
+        if (url !== "/__hyperframes_config" && !url.startsWith("/api/")) return next();
+        const host = req.headers.host ?? "";
+        if (hostHeaderAllowed(host, allowedHosts) || viteAllowsHost(host, allowedHosts))
+          return next();
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error:
+              `forbidden: host "${host}" is not allowed. ` +
+              `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${host} to allow it ` +
+              `(comma separated for several hosts).`,
+          }),
+        );
+      });
+
       server.middlewares.use((req, res, next) => {
         if (req.url !== "/__hyperframes_config") return next();
-        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version);
+        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version, req);
         if (!payload) return next();
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify(payload));
@@ -300,8 +357,8 @@ function devProjectApi(): Plugin {
           },
         });
       });
-      server.httpServer?.on("close", () => void projectWatcher.close());
     },
+    closeBundle: () => watching?.close(),
   };
 }
 
@@ -320,6 +377,11 @@ export default defineConfig({
       // openComposition and silently loses its SDK session. See the stub.
       canvas: resolve(__dirname, "src/shims/canvasBrowserStub.js"),
       "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),
+      // Studio serves the runtime itself, so the player it bundles carries no second copy.
+      "@hyperframes/core/runtime-script": resolve(
+        __dirname,
+        "src/shims/runtimeScriptFromStudio.ts",
+      ),
       "@hyperframes/studio-server/source-mutation": resolve(
         __dirname,
         "../studio-server/src/helpers/sourceMutation.ts",
@@ -338,6 +400,8 @@ export default defineConfig({
   },
   server: {
     port: 5190,
+    // Vite's defaults (localhost, IP literals) still apply on top of this list.
+    allowedHosts: previewAllowedHostsFromEnv(),
     watch: {
       // A composition lives under this package's root, so Vite's HMR sees a
       // write to one as an html page dependency changing and full-reloads the
@@ -360,5 +424,8 @@ export default defineConfig({
   test: {
     exclude: ["data/**", "node_modules/**"],
     setupFiles: ["src/test-setup.ts"],
+    environmentOptions: {
+      happyDOM: { settings: { enableIframePageLoading: true } },
+    },
   },
 });

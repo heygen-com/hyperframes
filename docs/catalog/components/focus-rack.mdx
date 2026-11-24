@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Focus Rack</h1>
+  <p>Focus shifts once between two cards at different apparent depths through synchronized blur, dimming, scale, and parallax.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/focus-rack.json"
   compositionId="focus-rack"
   compositionSrc="compositions/components/focus-rack.html"
   title="Focus Rack"
-  description="Focus shifts once between two cards at different apparent depths through synchronized blur, dimming, scale, and parallax."
   variables={[{"id":"label_a","type":"string","role":"content","label":"Card A label","description":"Label on the card that begins in focus.","default":"Draft"},{"id":"label_b","type":"string","role":"content","label":"Card B label","description":"Label on the card that receives focus.","default":"Published"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color shared by both cards.","default":"blue","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Camera","badge":"Stable","codeLines":330}}
   attribution={{"path":"registry/components/focus-rack","tags":["motion-primitive","camera","focus","focus-rack","depth","parallax","emphasize"]}}
@@ -365,7 +369,9 @@ That writes one file: `compositions/components/focus-rack.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -406,6 +412,4 @@ Tagged `motion-primitive` `camera` `focus` `focus-rack` `depth` `parallax` `emph
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

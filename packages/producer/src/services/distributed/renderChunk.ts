@@ -21,8 +21,7 @@
  *   - Browser is launched with `browserGpuMode: "software"` and verified
  *     against `chrome://gpu` via `assertSwiftShader` — a non-SwiftShader
  *     backend trips a non-retryable `BROWSER_GPU_NOT_SOFTWARE`.
- *   - The file server serves with the seeded-random shim
- *     (`buildVirtualTimeShim({ seedRandomFromFrame: true })`) so any
+ *   - The file server serves `VIRTUAL_TIME_SHIM`, as every render path does, so any
  *     composition that uses `Math.random` / `crypto.getRandomValues`
  *     produces byte-identical pixels per `(planDir, chunkIndex)`.
  *   - No `lastFrameCache` priming: every frame seeks fresh DOM so the
@@ -30,13 +29,13 @@
  *   - The chunk's encode runs with `lockGopForChunkConcat: true` and
  *     `gopSize === framesInChunk` so concat-copy at assemble time is safe.
  *
- * Every determinism toggle above is opt-in — only this primitive enables them.
+ * Every other determinism toggle above is opt-in — only this primitive enables them.
  * In-process renders (`executeRenderJob`) leave them off.
  */
 
+import { chunkGopFrames } from "../render/deliveryEncoder.js";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { cpus } from "node:os";
 import { join } from "node:path";
 import {
   assertSwiftShader,
@@ -59,6 +58,7 @@ import {
   readWebGlVendorInfoFromCanvas,
   resolveConfig,
   type ShownBox,
+  cpuBudget,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
 import {
@@ -85,7 +85,7 @@ import {
 import { sha256Hex } from "../render/stages/planHash.js";
 import { applyRuntimeEnvSnapshot } from "../render/runtimeEnvSnapshot.js";
 import {
-  buildVirtualTimeShim,
+  VIRTUAL_TIME_SHIM,
   closeFileServerSafely,
   createFileServer,
   resolveRenderFpsConfig,
@@ -116,7 +116,7 @@ import {
   MISSING_RUNTIME_ENV_SNAPSHOT,
   rebuildExtractedFramesFromPlanDir,
   RenderChunkValidationError,
-  shownDeferredFrameIndexes,
+  shownPlanFrameIndexes,
 } from "./chunkFrames.js";
 
 export {
@@ -132,6 +132,7 @@ export {
   rebuildExtractedFramesFromPlanDir,
   RenderChunkValidationError,
 } from "./chunkFrames.js";
+import { noteCaptureActivity } from "../render/shared.js";
 
 const LEGACY_DISTRIBUTED_VP9_CPU_USED = 2;
 
@@ -348,6 +349,9 @@ export function observedChunkCaptureMode(
   return mode;
 }
 
+/** Thrown at the workers' gate when the probe chose screenshot capture; the whole-chunk fallback matches it. */
+const PROBE_SELECTED_SCREENSHOT = "[renderChunk] probe selected screenshot capture";
+
 /**
  * Only BeginFrame-specific failures are safe to retry in screenshot mode.
  * Cancellation, memory exhaustion, and unrelated authoring/IO failures must
@@ -359,6 +363,7 @@ export function shouldRetryChunkCaptureWithScreenshot(error: unknown): boolean {
   return (
     /HeadlessExperimental\.beginFrame/i.test(failure.message) ||
     /beginFrame probe timeout/i.test(failure.message) ||
+    failure.message.includes(PROBE_SELECTED_SCREENSHOT) ||
     /Another frame is pending|Frame still pending/i.test(failure.message)
   );
 }
@@ -369,6 +374,8 @@ export function shouldRetryChunkCaptureWithScreenshot(error: unknown): boolean {
  */
 export async function runCaptureWithScreenshotFallback<T>(input: {
   forceScreenshot: boolean;
+  /** A failure that is not capture's (the probe's own) is never retried. */
+  canRetry?: () => boolean | Promise<boolean>;
   run: (forceScreenshot: boolean) => Promise<T>;
   resetForScreenshotRetry: () => Promise<void> | void;
   onFallback?: (error: unknown) => void;
@@ -376,11 +383,24 @@ export async function runCaptureWithScreenshotFallback<T>(input: {
   try {
     return await input.run(input.forceScreenshot);
   } catch (error) {
-    if (input.forceScreenshot || !shouldRetryChunkCaptureWithScreenshot(error)) throw error;
+    if (input.forceScreenshot || (await input.canRetry?.()) === false)
+      throw imageMissingIn(error) ?? error;
+    if (!shouldRetryChunkCaptureWithScreenshot(error)) throw imageMissingIn(error) ?? error;
     input.onFallback?.(error);
     await input.resetForScreenshotRetry();
-    return await input.run(true);
+    return await input.run(true).catch((retryError: unknown) => {
+      throw imageMissingIn(retryError) ?? retryError;
+    });
   }
+}
+
+function imageMissingIn(error: unknown): unknown {
+  let e = error;
+  for (let depth = 0; depth < 5 && typeof e === "object" && e !== null; depth++) {
+    if ((e as { name?: unknown }).name === "ImageMissingFromFrameError") return e;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return undefined;
 }
 
 /**
@@ -657,6 +677,7 @@ export async function renderChunk(
       bitrate: encoder.bitrate,
       hdrMode: "force-sdr",
       entryFile: "index.html",
+      pageMotionBlur: encoder.pageMotionBlur,
     });
     job.totalFrames = framesInChunk;
     job.duration = (framesInChunk * plan.dimensions.fpsDen) / plan.dimensions.fpsNum;
@@ -689,7 +710,7 @@ export async function renderChunk(
     const chunkFps = { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen };
     const deferredVideos = planVideos?.extracted.filter((video) => video.deferredRange) ?? [];
     const shownFrames = planVideos
-      ? shownDeferredFrameIndexes(planVideos, chunkFrameNumbers, chunkFps)
+      ? shownPlanFrameIndexes(planVideos, chunkFrameNumbers, chunkFps)
       : new Map<string, Set<number>>();
     // The browser cannot load a source read by URL; size its <video> from the plan instead.
     const remoteVideoIds = new Set(
@@ -703,12 +724,12 @@ export async function renderChunk(
 
     // ── File server with the seeded-random shim ──
     // `Math.random` / `crypto.getRandomValues` are seeded from virtual
-    // time so retries are pixel-identical. Only distributed renders flip this.
+    // time so retries are pixel-identical.
     const fileServer: FileServerHandle = await createFileServer({
       projectDir: compiledDir,
       compiledDir,
       port: 0,
-      preHeadScripts: [buildVirtualTimeShim({ seedRandomFromFrame: true })],
+      preHeadScripts: [VIRTUAL_TIME_SHIM],
       // These dimensions are frozen by the controller from the render job, so
       // chunk runtime seek quantization stays on the same fps grid as capture.
       fps: { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
@@ -729,6 +750,7 @@ export async function renderChunk(
         deferredVideos.filter((video) => remoteVideoIds.has(video.videoId)),
       ),
     });
+    captureOptions.onStaticDedupActivity = () => noteCaptureActivity(job);
 
     // Resolve worker count up-front. Sequential capture reuses the initialized
     // session below. Parallel BeginFrame capture pays one bounded preflight
@@ -768,18 +790,26 @@ export async function renderChunk(
     // Frames go to the encoder as they land; it is started again if the capture is retried.
     const overlap: { current: EncodeWhileCapturing | null } = { current: null };
     try {
-      if (chunkWorkerCount === 1 || !forceScreenshotForChunk) {
-        // Sequential capture reuses this session. Parallel BeginFrame capture
-        // uses it only for the composition liveness preflight.
-        // SwiftShader assertion runs BEFORE initializeSession (which
-        // navigates to the composition); on failure we tear down without
-        // ever touching the composition URL. We pass
-        // `readWebGlVendorInfoFromCanvas` rather than letting
-        // `assertSwiftShader` use its default `chrome://gpu` reader —
-        // `chrome-headless-shell` serves chrome:// pages as empty documents,
-        // which would trip a false-negative even when the GL backend is in
-        // fact SwiftShader. The canvas + WEBGL_debug_renderer_info probe
-        // works on any page (we navigate to about:blank inside the helper).
+      // Parallel BeginFrame capture verifies on worker 0's own session; one worker reuses its probe session.
+      const verifyInWorker = chunkWorkerCount > 1 && !forceScreenshotForChunk;
+      let boxesMeasured!: () => void;
+      let boxesFailed!: (error: unknown) => void;
+      const boxesReady = new Promise<void>((resolve, reject) => {
+        boxesMeasured = resolve;
+        boxesFailed = reject;
+      });
+      boxesReady.catch(() => {});
+      const measureBoxes = async (page: CaptureSession["page"]) => {
+        // Measured before extraction so each video is extracted at the size it is drawn.
+        shownBoxes = await measureVideoShownBoxes(
+          page,
+          [...shownFrames.keys()],
+          chunkFrameNumbers.map((frame) => (frame * chunkFps.den) / chunkFps.num),
+        );
+        boxesMeasured();
+      };
+      if (chunkWorkerCount === 1) {
+        // The GL check reads the canvas, since chrome-headless-shell serves chrome://gpu empty.
         const bootStarted = Date.now();
         session = await createVerifiedDistributedCaptureSession(
           fileServer.url,
@@ -788,12 +818,7 @@ export async function renderChunk(
           cfg,
         );
         sessionBootMs = Date.now() - bootStarted;
-        // Measured before extraction so each video is extracted at the size it is drawn.
-        shownBoxes = await measureVideoShownBoxes(
-          session.page,
-          [...shownFrames.keys()],
-          chunkFrameNumbers.map((frame) => (frame * chunkFps.den) / chunkFps.num),
-        );
+        await measureBoxes(session.page);
         // `discardWarmupCapture` is intentionally NOT called: every frame
         // seeks fresh DOM, so `lastFrameCache` is never read; priming it
         // would deadlock Chrome's compositor by issuing a second beginFrame
@@ -807,10 +832,6 @@ export async function renderChunk(
             "[renderChunk] Browser capability probe selected screenshot capture for the entire chunk",
             { chunkIndex },
           );
-          if (chunkWorkerCount > 1) {
-            await closeCaptureSession(session);
-            session = null;
-          }
         } else if (beginFrameStalled) {
           forceScreenshotForChunk = true;
           log.warn(
@@ -819,48 +840,76 @@ export async function renderChunk(
           );
           await closeCaptureSession(session).catch(() => {});
           session = null;
-          if (chunkWorkerCount === 1) {
-            const screenshotBootStarted = Date.now();
-            const screenshotCfg: EngineConfig = {
-              ...cfg,
-              forceScreenshot: true,
-              forceScreenshotExplicitlyOptedOut: false,
-            };
-            session = await createVerifiedDistributedCaptureSession(
-              fileServer.url,
-              framesDir,
-              captureOptions,
-              screenshotCfg,
-            );
-            sessionBootMs += Date.now() - screenshotBootStarted;
-          }
-        } else if (chunkWorkerCount > 1) {
-          await closeCaptureSession(session);
-          session = null;
+          const screenshotBootStarted = Date.now();
+          const screenshotCfg: EngineConfig = {
+            ...cfg,
+            forceScreenshot: true,
+            forceScreenshotExplicitlyOptedOut: false,
+          };
+          session = await createVerifiedDistributedCaptureSession(
+            fileServer.url,
+            framesDir,
+            captureOptions,
+            screenshotCfg,
+          );
+          sessionBootMs += Date.now() - screenshotBootStarted;
         }
+      } else if (!verifyInWorker) {
+        boxesMeasured();
       }
+      let verification: Promise<void> | undefined;
+      const verifyFirstWorker = (first: CaptureSession): Promise<void> =>
+        (verification ??= (async () => {
+          sessionBootMs = Date.now() - verifyStarted;
+          try {
+            await measureBoxes(first.page);
+            const selectedScreenshot = first.launchCaptureMode === "screenshot";
+            if (selectedScreenshot || (await beginFrameSessionNeedsScreenshotFallback(first))) {
+              forceScreenshotForChunk = true;
+              log.warn(
+                selectedScreenshot
+                  ? "[renderChunk] Browser capability probe selected screenshot capture for the entire chunk"
+                  : "[renderChunk] BeginFrame liveness probe failed; using screenshot capture for the entire chunk",
+                { chunkIndex },
+              );
+              throw new Error(PROBE_SELECTED_SCREENSHOT);
+            }
+          } catch (error) {
+            if (!forceScreenshotForChunk) {
+              verifyFailure = error;
+              boxesFailed(error);
+            }
+            throw error;
+          }
+        })());
+      let verifyStarted = 0;
+      let verifyFailure: unknown;
 
       // Build the immutable frame lookup once. Each browser session/worker gets
       // its own injector hook because the hook remembers the last injected frame
       // per video; sharing that state across a fresh retry page can suppress the
       // first injection and produce a blank/stale frame.
-      const extractStarted = Date.now();
       const deferredVideoFrames = planVideos
-        ? extractDeferredVideoFramesForChunk({
-            planDir,
-            planVideos,
-            frames: chunkFrameNumbers,
-            fps: chunkFps,
-            outputRoot: videoFramesDir,
-            cfg,
-            remoteSources,
-            shownBoxes,
-          }).then((frames) => {
-            videoExtractMs = Date.now() - extractStarted;
-            return frames;
+        ? boxesReady.then(() => {
+            const extractStarted = Date.now();
+            return extractDeferredVideoFramesForChunk({
+              planDir,
+              planVideos,
+              frames: chunkFrameNumbers,
+              fps: chunkFps,
+              outputRoot: videoFramesDir,
+              cfg,
+              remoteSources,
+              shownBoxes,
+              onProgress: () => noteCaptureActivity(job),
+            }).then((frames) => {
+              videoExtractMs = Date.now() - extractStarted;
+              return frames;
+            });
           })
-        : Promise.resolve([]);
+        : boxesReady.then(() => []);
       extraction = deferredVideoFrames;
+      deferredVideoFrames.catch(() => {});
       const videoFrameLookup =
         planVideos && planVideos.extracted.length > 0
           ? deferredVideoFrames.then((deferred) =>
@@ -893,7 +942,12 @@ export async function renderChunk(
       const presetFormat: "mp4" | "mov" | "webm" = isPngSequence
         ? "mp4"
         : (plan.dimensions.format as "mp4" | "mov" | "webm");
-      const basePreset = getEncoderPreset(job.config.quality, presetFormat, undefined);
+      const basePreset = getEncoderPreset(
+        job.config.quality,
+        presetFormat,
+        undefined,
+        encoder.proresProfile,
+      );
       const preset = resolvePresetForLockedEncoder(basePreset, encoder.encoder);
       const effectiveQuality = encoder.crf ?? preset.quality;
       const effectiveBitrate = encoder.crf != null ? undefined : encoder.bitrate;
@@ -946,11 +1000,14 @@ export async function renderChunk(
         // first frame is an IDR keyframe and concat-copy at assemble time
         // round-trips losslessly.
         lockGopForChunkConcat: !isPngSequence,
-        gopSize: framesInChunk,
+        gopSize: chunkGopFrames(framesInChunk, encoder.keyframeIntervalFrames),
+        maxBitrate: encoder.maxBitrate,
+        bufferSize: encoder.bufferSize,
       };
       const captureStarted = Date.now();
       captureMode = await runCaptureWithScreenshotFallback({
         forceScreenshot: forceScreenshotForChunk,
+        canRetry: () => verifyFailure === undefined,
         // fallow-ignore-next-line complexity
         run: async (forceScreenshot) => {
           const captureCfg: EngineConfig =
@@ -986,8 +1043,12 @@ export async function renderChunk(
           // including error paths. Clear our defensive handle before await.
           const captureSession = session;
           session = null;
-          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, cpus().length)
-            ? encodeWhileCapturing(encodeInput, framesInChunk)
+          verifyStarted = Date.now();
+          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, cpuBudget())
+            ? encodeWhileCapturing(encodeInput, framesInChunk, {
+                workerCount: chunkWorkerCount,
+                cpuCount: cpuBudget(),
+              })
             : null;
           await observeRenderStage(
             new RenderObservabilityRecorder({ pipelineStartMs: start, log }),
@@ -1016,8 +1077,10 @@ export async function renderChunk(
                 onFrameLanded: (frame) => overlap.current?.onFrameLanded(frame),
                 interleaveFrames: interleavesCapture(overlap.current !== null, options),
                 openAttempt,
+                verifyFirstSession:
+                  forceScreenshot || !verifyInWorker ? undefined : verifyFirstWorker,
               }),
-            { stall: frameStallRule(job) },
+            { stall: frameStallRule(job, framesInChunk, undefined) },
           ).catch(async (captureError: unknown) => {
             await overlap.current?.abort();
             overlap.current = null;
@@ -1031,6 +1094,8 @@ export async function renderChunk(
           // captured BeginFrame files or attempt telemetry to mix with the
           // screenshot result.
           rmSync(workDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+          // Worker 0 may have died before measuring; the screenshot attempt extracts at full size.
+          boxesMeasured();
           mkdirSync(framesDir, { recursive: true });
           capturePerfs.length = 0;
           captureAttempts.length = 0;
@@ -1046,6 +1111,9 @@ export async function renderChunk(
           );
         },
       }).catch(async (captureError: unknown) => {
+        // The verification's own failure, not the workers' echo of it.
+        if (verifyFailure !== undefined) throw verifyFailure;
+        boxesFailed(captureError);
         await deferredVideoFrames;
         throw captureError;
       });

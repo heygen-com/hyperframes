@@ -100,7 +100,7 @@ describe("hyperframes init flag rename", () => {
     const target = join(dir, "proj");
     try {
       const res = runInit([target, "--example", "--non-interactive"]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("Missing value for --example");
       expect(existsSync(target)).toBe(false);
     } finally {
@@ -146,6 +146,30 @@ describe("hyperframes init flag rename", () => {
     }
   });
 
+  it("scaffolds into a folder holding only the hyperframes.json reverse start wrote, and keeps it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      mkdirSync(target);
+      const saved = { registry: "https://r.test", reverseSessionId: "rvs_fixture" };
+      writeFileSync(join(target, "hyperframes.json"), JSON.stringify(saved));
+      const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(res.status).toBe(0);
+      expect(existsSync(join(target, "index.html"))).toBe(true);
+      expect(JSON.parse(readFileSync(join(target, "hyperframes.json"), "utf-8"))).toEqual(saved);
+
+      const other = join(dir, "other");
+      mkdirSync(other);
+      writeFileSync(join(other, "hyperframes.json"), "{}");
+      writeFileSync(join(other, "notes.txt"), "mine");
+      const refused = runInit([other, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(refused.status).not.toBe(0);
+      expect(refused.stderr).toContain("not empty");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("--skip-skills alone leaves skills alone, without the env opt-out", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
@@ -156,6 +180,10 @@ describe("hyperframes init flag rename", () => {
       expect(res.status).toBe(0);
       expect(res.stdout).not.toContain("Checking AI coding skills");
       expect(res.stdout).not.toContain("temporarily ignored");
+      // Installing skills is the person's step, so the hint is addressed to them.
+      expect(res.stdout).toContain(
+        "For the user: use your HyperFrames plugin, or install standalone skills with:",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -355,6 +383,7 @@ describe("hyperframes init flag rename", () => {
     try {
       const res = runInit([target, "--non-interactive", "--skip-transcribe", "--audio", audio]);
       expect(res.status).toBe(0);
+      expect(res.stdout.startsWith("Audio: track.wav\nCreated ")).toBe(true);
       const html = readFileSync(join(target, "index.html"), "utf-8");
       expect(html).toMatch(/<audio\b[^>]*src="track\.wav"/);
       expect(html).not.toMatch(/<video\b/);
@@ -445,7 +474,7 @@ describe("hyperframes init flag rename", () => {
         "--audio",
         "track.mp3",
       ]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("Cannot use --video and --audio together");
       expect(existsSync(target)).toBe(false);
     } finally {
@@ -529,21 +558,211 @@ describe("hyperframes init flag rename", () => {
         "-V",
         "missing.mp4",
       ]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("The -V short flag no longer maps to --video");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("--template prints a rename hint and exits non-zero", () => {
+  // fails without the fix: the next steps printed `cd` with a path that is not the folder's.
+  it.skipIf(process.platform === "win32")(
+    "prints the next steps as bare commands for a folder whose name cannot be typed back",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+      const target = join(dir, "my\nfilm");
+      try {
+        const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+        expect(res.status).toBe(0);
+        expect(existsSync(join(target, "index.html"))).toBe(true);
+        expect(res.stdout).toContain("Get started, from the project folder:\n");
+        for (const step of ["dev", "check", "render"])
+          expect(res.stdout).toContain(`\n     npm run ${step}\n`);
+        expect(res.stdout).not.toMatch(/\bcd |&&/);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("prints next steps a shell runs as written for a name with a space", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "my film");
+    try {
+      const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain(`cd "${target}" && npm run dev`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: the example command carried the values as shown, which is not what was typed.
+  it.each([
+    ["--template", "--example <example>"],
+    ["-V", "--video <file>"],
+  ])(
+    "%s prints an example with placeholders for values that cannot be typed back",
+    (flag, shown) => {
+      const bell = String.fromCharCode(7);
+      const res = runInit([
+        `pro${bell}j`,
+        flag,
+        `bl${bell}ank`,
+        "--non-interactive",
+        "--skip-skills",
+      ]);
+      expect(res.status).toBe(2);
+      expect(res.stderr).toContain(`npx hyperframes init <name> ${shown}`);
+      expect(res.stderr).not.toContain(bell);
+      expect(res.stderr).not.toContain("\\x07");
+    },
+  );
+
+  // One row per init failure line that names something the caller typed.
+  describe("a failure line shows the value as text", () => {
+    type Row = {
+      name: string;
+      args: string[];
+      before?: (dir: string) => void;
+      after?: (dir: string) => void;
+      shown?: string;
+      exit: number;
+      stderr?: string;
+      stdout?: string;
+      // Windows refuses control characters in folder names; root ignores folder permissions.
+      skip?: boolean;
+    };
+    const posixOnly = process.platform === "win32";
+    const rows: Row[] = [
+      {
+        name: "the renamed --template flag",
+        args: ["proj", "--template", "bl\u0007a\nnk  "],
+        shown: "--example <example>",
+        exit: 2,
+        stderr:
+          "The --template flag was renamed to --example. Example:\n  npx hyperframes init proj --example <example>\n",
+      },
+      {
+        name: "the renamed -V flag",
+        args: ["proj", "-V", "cl\u0007i\np.mp4  "],
+        shown: "--video <file>",
+        exit: 2,
+        stderr:
+          "The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init proj --video <file>\n",
+      },
+      {
+        name: "a refused --resolution",
+        args: ["proj", "--resolution", "b\u0007a\nd  "],
+        shown: 'Invalid --resolution: "b\\x07a\nd  "',
+        exit: 2,
+      },
+      {
+        name: "a folder that is not empty",
+        args: ["fu\u0007l\nl  "],
+        before: (dir) => {
+          mkdirSync(join(dir, "fu\u0007l\nl  "));
+          writeFileSync(join(dir, "fu\u0007l\nl  ", "notes.txt"), "");
+        },
+        shown: "fu\\x07l\nl  ",
+        exit: 1,
+        skip: posixOnly,
+      },
+      {
+        name: "a missing --video",
+        args: ["proj", "--video", "cl\u0007i\np.mp4  "],
+        shown: "Video file not found: cl\\x07i\np.mp4  ",
+        exit: 1,
+      },
+      {
+        name: "a missing --audio",
+        args: ["proj", "--audio", "so\u0007n\ng.mp3  "],
+        shown: "Audio file not found: so\\x07n\ng.mp3  ",
+        exit: 1,
+      },
+      {
+        name: "an example that cannot be written",
+        args: ["lo\u0007cked", "--audio", "lo\u0007cked/a.wav", "--skip-transcribe"],
+        before: (dir) => {
+          mkdirSync(join(dir, "lo\u0007cked"));
+          writeFileSync(join(dir, "lo\u0007cked", "a.wav"), "");
+          chmodSync(join(dir, "lo\u0007cked"), 0o555);
+        },
+        after: (dir) => chmodSync(join(dir, "lo\u0007cked"), 0o755),
+        shown: 'Failed to scaffold example "from-file": ',
+        exit: 1,
+        skip: posixOnly || process.getuid?.() === 0,
+      },
+      {
+        name: "a finished project, whose status line still comes first",
+        args: ["done", "--audio", "a.wav", "--skip-transcribe"],
+        before: (dir) => writeFileSync(join(dir, "a.wav"), ""),
+        stdout: "Audio: a.wav\nCreated done/\n",
+        exit: 0,
+      },
+      {
+        name: "the renamed --template flag with values the shell would split",
+        args: ["my film", "--template", "two words"],
+        exit: 2,
+        stderr:
+          'The --template flag was renamed to --example. Example:\n  npx hyperframes init "my film" --example "two words"\n',
+      },
+      {
+        name: "the renamed -V flag with a value in two words",
+        args: ["proj", "-V", "two words.mp4"],
+        exit: 2,
+        stderr:
+          'The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init proj --video "two words.mp4"\n',
+      },
+    ];
+
+    it.each(rows.filter((row) => !row.skip))("$name", (row) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+      row.before?.(dir);
+      try {
+        const res = spawnSync("bun", ["run", cliEntry, "init", ...row.args, "--non-interactive"], {
+          cwd: dir,
+          encoding: "utf-8",
+          timeout: 30_000,
+          env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" },
+        });
+        expect(res.status).toBe(row.exit);
+        if (row.stdout !== undefined) return expect(res.stdout.startsWith(row.stdout)).toBe(true);
+        expect(res.stderr).toContain(row.shown ?? "");
+        expect(res.stderr).not.toContain("\u0007");
+        if (row.stderr !== undefined) expect(res.stderr).toBe(row.stderr);
+      } finally {
+        row.after?.(dir);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // A failure line added with a bare console.error would skip the helper the rows above rely on.
+    it("leaves console.error in init to the lines that name nothing the caller typed", () => {
+      const bare = [...initSource.matchAll(/console\.error\(([\s\S]*?)\);\n/g)].map((m) => m[1]);
+      expect(bare).toEqual([
+        "c.error(tooLong)",
+        'c.error("Cannot use --video and --audio together")',
+        'c.dim("Use --example blank for offline use.")',
+      ]);
+    });
+  });
+
+  it("refuses --json after the command name, before any value is read", () => {
+    const res = runInit(["proj", "--resolution", "bad", "--non-interactive", "--json"]);
+    expect(res.status).toBe(2);
+    const body = JSON.parse(res.stdout.trim()) as { ok: boolean; error: { code: string } };
+    expect(body).toMatchObject({ ok: false, error: { code: "json_unsupported" } });
+  });
+
+  it("--template prints a rename hint and exits 2", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
     try {
       const res = runInit([target, "--template", "blank", "--non-interactive", "--skip-skills"]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("--template flag was renamed to --example");
-      expect(res.stderr).toContain(`--example "blank"`);
+      expect(res.stderr).toContain("--example blank");
       expect(existsSync(target)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -592,6 +811,25 @@ describe("applyResolutionPreset", () => {
       expect(out).toContain("width: 3840px");
       expect(out).toContain("height: 2160px");
       expect(out).toContain('content="width=3840, height=2160"');
+      expect(out).not.toContain("1920");
+      expect(out).not.toContain("1080");
+    });
+  });
+
+  it("rewrites every dimension fingerprint for landscape-1440p", () => {
+    withFixture((dir) => {
+      const file = join(dir, "index.html");
+      writeFileSync(file, sampleHtml, "utf-8");
+
+      applyResolutionPreset(dir, "landscape-1440p");
+      const out = readFileSync(file, "utf-8");
+
+      expect(out).toContain('data-resolution="landscape-1440p"');
+      expect(out).toContain('data-width="2560"');
+      expect(out).toContain('data-height="1440"');
+      expect(out).toContain("width: 2560px");
+      expect(out).toContain("height: 1440px");
+      expect(out).toContain('content="width=2560, height=1440"');
       expect(out).not.toContain("1920");
       expect(out).not.toContain("1080");
     });
@@ -682,7 +920,7 @@ describe("applyResolutionPreset", () => {
         "--non-interactive",
         "--skip-skills",
       ]);
-      expect(res.status).toBe(1);
+      expect(res.status).toBe(2);
       expect(res.stderr).toContain("Invalid --resolution");
       expect(existsSync(target)).toBe(false);
     } finally {
@@ -756,7 +994,8 @@ describe("transcodeToMp4", () => {
       const ffmpeg = join(dir, "ffmpeg");
       const output = join(dir, "out.mp4");
       // Blocking writes, like ffmpeg's own log: 1 MB stalls on a pipe nobody reads.
-      const script = `const fs = require("node:fs");
+      const script = `if (process.argv.includes("-demuxers")) process.exit(0);
+const fs = require("node:fs");
 const line = Buffer.alloc(1024, "x");
 for (let i = 0; i < 1024; i++) fs.writeSync(2, line);
 fs.writeFileSync(process.argv.at(-1), "");`;

@@ -142,6 +142,22 @@ export function findHdrAutoPromotion(
     : null;
 }
 
+/** Grading is SDR-only, so in auto mode a composition with graded media renders SDR, as `--sdr` does. */
+export function gradingKeepsSdr(
+  hdrMode: "auto" | "force-hdr" | "force-sdr" | undefined,
+  media: {
+    videos: readonly { graded?: boolean }[];
+    images: readonly { graded?: boolean }[];
+    gradedCanvas?: boolean;
+  },
+): boolean {
+  return (
+    (hdrMode ?? "auto") === "auto" &&
+    (media.gradedCanvas === true ||
+      [...media.videos, ...media.images].some(({ graded }) => graded === true))
+  );
+}
+
 export function formatHdrAutoPromotionWarning(promotion: HdrAutoPromotion): string {
   return `[Render] HDR auto-promotion triggered by "${promotion.triggeringAsset}", output: ${promotion.output.colorSpace} / ${promotion.output.codec}`;
 }

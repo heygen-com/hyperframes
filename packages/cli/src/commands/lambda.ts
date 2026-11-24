@@ -1,4 +1,4 @@
-import { failCommand } from "../utils/commandResult.js";
+import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
 /**
  * `hyperframes lambda` — top-level dispatcher for AWS Lambda subcommands.
  *
@@ -9,13 +9,15 @@ import { failCommand } from "../utils/commandResult.js";
  * lives in `@hyperframes/aws-lambda/sdk`.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { DistributedFormat } from "@hyperframes/aws-lambda/sdk";
 import { type CanvasResolution, DISTRIBUTED_FPS, isDistributedFps } from "@hyperframes/core";
 import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import type { VideoArch } from "./lambda/videoImage.js";
 import { c } from "../ui/colors.js";
+import { printFailureLine } from "../utils/jsonError.js";
+import { deliveryFlagArgs, parseDeliveryFlags } from "../utils/deliveryFlags.js";
 import { defaultCloudFps } from "../utils/compositionFps.js";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
 
@@ -82,6 +84,22 @@ ${c.bold("REQUIREMENTS:")}
   • bun on PATH (used to build the handler ZIP)
 `;
 
+/** The Lambda SDK for `subcommand`, loaded once its own checks passed, so a usage error never waits on it. It is a
+ * workspace devDependency (the published CLI stays small), so a missing one gets an install hint. */
+async function requireLambdaSdk(subcommand: string): Promise<void> {
+  try {
+    await import("@hyperframes/aws-lambda/sdk");
+  } catch (err) {
+    if (isMissingPackageError(err, "@hyperframes/aws-lambda")) {
+      console.error(
+        missingPackageMessage("@hyperframes/aws-lambda", `hyperframes lambda ${subcommand}`),
+      );
+      failCommand();
+    }
+    throw err;
+  }
+}
+
 export default defineCommand({
   meta: { name: "lambda", description: "Deploy and drive renders on AWS Lambda" },
   args: {
@@ -135,6 +153,12 @@ export default defineCommand({
 
     // sites / render
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files a link brings in from outside the project folder. Otherwise they are left out and named.",
+      default: false,
+    },
     width: {
       type: "string",
       description:
@@ -153,6 +177,7 @@ export default defineCommand({
     format: { type: "string", description: "mp4 | mov | png-sequence | webm (default: mp4)" },
     codec: { type: "string", description: "h264 | h265 (mp4 only)" },
     quality: { type: "string", description: "draft | standard | high" },
+    ...deliveryFlagArgs,
     "chunk-size": {
       type: "string",
       description:
@@ -245,26 +270,6 @@ export default defineCommand({
     const regionFlag = args.region as string | undefined;
     if (regionFlag) process.env.AWS_REGION = regionFlag;
 
-    // The lambda subverbs dynamic-import `@hyperframes/aws-lambda` at call
-    // time. We keep aws-lambda as a workspace devDependency (not a runtime
-    // dep) so the published CLI install stays small for users who don't
-    // deploy to Lambda. These subverbs need it and get a friendly hint when it
-    // is missing; `deploy` reports that itself and `destroy` needs only SAM.
-    const verbsNeedingSDK = new Set(["sites", "render", "render-batch", "progress"]);
-    if (verbsNeedingSDK.has(subcommand)) {
-      try {
-        await import("@hyperframes/aws-lambda/sdk");
-      } catch (err) {
-        if (isMissingPackageError(err, "@hyperframes/aws-lambda")) {
-          console.error(
-            missingPackageMessage("@hyperframes/aws-lambda", `hyperframes lambda ${subcommand}`),
-          );
-          failCommand();
-        }
-        throw err;
-      }
-    }
-
     switch (subcommand) {
       case "deploy": {
         const { runDeploy } = await import("./lambda/deploy.js");
@@ -284,23 +289,26 @@ export default defineCommand({
       }
       case "sites": {
         if (args.target !== "create") {
-          console.error(
-            `[lambda sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
+          printFailureLine(
+            (show) =>
+              `[lambda sites] unknown verb "${show(String(args.target))}". Only "create" is supported.`,
           );
-          failCommand();
+          failUsage();
         }
         const projectDir = args.extra as string | undefined;
         if (!projectDir) {
           console.error(
             "[lambda sites create] usage: hyperframes lambda sites create <projectDir>",
           );
-          failCommand();
+          failUsage();
         }
+        await requireLambdaSdk("sites");
         const { runSitesCreate } = await import("./lambda/sites.js");
         await runSitesCreate({
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           json: Boolean(args.json),
         });
         return;
@@ -311,27 +319,29 @@ export default defineCommand({
           console.error(
             "[lambda render] usage: hyperframes lambda render <projectDir> --width <px> --height <px>",
           );
-          failCommand();
+          failUsage();
         }
         const width = parsePositiveInt(args.width, "--width");
         const height = parsePositiveInt(args.height, "--height");
         if (width === undefined || height === undefined) {
           console.error("[lambda render] --width and --height are required.");
-          failCommand();
+          failUsage();
         }
         const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
         if (!isDistributedFps(fpsRaw)) {
           console.error(
             `[lambda render] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
           );
-          failCommand();
+          failUsage();
         }
+        await requireLambdaSdk("render");
         const { runRender } = await import("./lambda/render.js");
         const renderResolution = parseOutputResolution(args["output-resolution"]);
         await runRender({
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           fps: fpsRaw,
           width,
           height,
@@ -340,6 +350,7 @@ export default defineCommand({
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
+          ...parseDeliveryFlags(args),
           chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
           maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
           targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
@@ -360,28 +371,29 @@ export default defineCommand({
           console.error(
             "[lambda render-batch] usage: hyperframes lambda render-batch <projectDir> --batch <path.jsonl> --width <px> --height <px>",
           );
-          failCommand();
+          failUsage();
         }
         const batch = args.batch as string | undefined;
         if (!batch) {
           console.error(
             "[lambda render-batch] --batch <path.jsonl> is required. Each line is a JSON object with at least { outputKey: '...' }.",
           );
-          failCommand();
+          failUsage();
         }
         const width = parsePositiveInt(args.width, "--width");
         const height = parsePositiveInt(args.height, "--height");
         if (width === undefined || height === undefined) {
           console.error("[lambda render-batch] --width and --height are required.");
-          failCommand();
+          failUsage();
         }
         const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
         if (!isDistributedFps(fpsRaw)) {
           console.error(
             `[lambda render-batch] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
           );
-          failCommand();
+          failUsage();
         }
+        await requireLambdaSdk("render-batch");
         const { runRenderBatch } = await import("./lambda/render-batch.js");
         const batchResolution = parseOutputResolution(args["output-resolution"]);
         await runRenderBatch({
@@ -389,6 +401,7 @@ export default defineCommand({
           stackName,
           batch,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           fps: fpsRaw,
           width,
           height,
@@ -397,6 +410,7 @@ export default defineCommand({
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
+          ...parseDeliveryFlags(args),
           chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
           maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
           targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
@@ -413,8 +427,9 @@ export default defineCommand({
           console.error(
             "[lambda progress] usage: hyperframes lambda progress <renderId | executionArn>",
           );
-          failCommand();
+          failUsage();
         }
+        await requireLambdaSdk("progress");
         const { runProgress } = await import("./lambda/progress.js");
         await runProgress({ target, stackName, json: Boolean(args.json) });
         return;
@@ -430,7 +445,7 @@ export default defineCommand({
           console.error(
             `[lambda policies] usage: hyperframes lambda policies <role|user|validate> [args]`,
           );
-          failCommand();
+          failUsage();
         }
         const { runPolicies } = await import("./lambda/policies.js");
         await runPolicies({
@@ -441,8 +456,10 @@ export default defineCommand({
         return;
       }
       default:
-        console.error(`${c.error("Unknown subcommand:")} ${subcommand}\n${HELP}`);
-        failCommand();
+        printFailureLine(
+          (show) => `${c.error("Unknown subcommand:")} ${show(subcommand)}\n${HELP}`,
+        );
+        failUsage();
     }
   },
 });
@@ -462,7 +479,7 @@ function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
   const n = parseIntFlag(raw);
   if (n === undefined) return undefined;
   if (!Number.isInteger(n) || n < 1) {
-    throw new Error(`[lambda] ${flagName} must be a positive integer; got ${n}`);
+    throw new CliUsageError(`[lambda] ${flagName} must be a positive integer; got ${n}`);
   }
   return n;
 }
@@ -482,7 +499,7 @@ function parseEnum<T extends string>(
   if (raw === undefined || raw === null || raw === "") return defaultValue;
   const s = String(raw);
   if ((allowed as readonly string[]).includes(s)) return s as T;
-  throw new Error(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
+  throw new CliUsageError(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
 }
 
 const FORMATS = [

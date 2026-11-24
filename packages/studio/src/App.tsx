@@ -86,7 +86,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const captionEditMode = useCaptionStore((s) => s.isEditMode);
   const captionHasSelection = useCaptionStore((s) => s.selectedSegmentIds.size > 0);
-  const captionSync = useCaptionSync(projectId);
   const timelineElements = usePlayerStore((s) => s.elements);
   const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
   const setTimelineSelectionSet = usePlayerStore((s) => s.setSelectedElementIds);
@@ -117,6 +116,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     setRefreshKey,
   });
   const fileManager = useStableHandlers(fileManagerResult, projectId);
+  const captionSync = useCaptionSync(fileManager);
   const masterCompPath = useMemo(
     () => resolveMasterCompositionPath(fileManager.compositions),
     [fileManager.compositions],
@@ -517,6 +517,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                   inspectorButtonActive={inspectorButtonActive}
                   inspectorPanelActive={inspectorPanelActive}
                   onExport={handleExport}
+                  beforeShare={previewPersistence.waitForPendingDomEditSaves}
                 />
                 {previewPersistence.domEditSaveQueuePaused && !externalFileChanges.blocked && (
                   <SaveQueuePausedBanner

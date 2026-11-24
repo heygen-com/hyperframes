@@ -1,7 +1,10 @@
 import {
+  appendFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -17,8 +20,10 @@ import {
   CATCH_UP_NOTE,
   filesChangedSince,
   markSeen,
+  noteHandoff,
   readAppTurns,
   readSeen,
+  seenPath,
   unseenTurns,
 } from "./appHistory.js";
 import { readRecord, writeRecord } from "./projectRecords.js";
@@ -51,8 +56,32 @@ function project(lines: string[] = []): string {
 const turn = (at: string, asked: string) =>
   JSON.stringify({ at, engine: "claude", asked, did: "Done.", files: ["index.html"] });
 
+// A seen record written before the history was marked.
 const handedOverAt = (dir: string, at: string) =>
   markSeen(dir, { at: Date.parse(at), checked: Date.parse(at) });
+
+// What the desktop app does after a turn: one more line on the history.
+const appended = (dir: string, at: string, asked: string) =>
+  appendFileSync(history(dir), `${turn(at, asked)}\n`);
+
+// The history written whole to a new file, as the app's trim or a sync from another machine does.
+function rewritten(dir: string, lines: string[]): void {
+  const next = join(dir, "next.jsonl");
+  writeFileSync(next, lines.map((line) => `${line}\n`).join(""));
+  renameSync(next, history(dir));
+}
+
+const historyLines = (dir: string) =>
+  readFileSync(history(dir), "utf8").split("\n").filter(Boolean);
+
+const asked = (dir: string, now?: number) =>
+  unseenTurns(dir, readSeen(dir), now).turns.map((t) => t.asked);
+
+// What catch-up does once it has shown the turns.
+function lookedAt(dir: string): void {
+  const seen = readSeen(dir);
+  markSeen(dir, { ...seen, history: unseenTurns(dir, seen).history ?? seen.history });
+}
 
 // The seen record lives in the person's home: each test gets its own.
 beforeEach(() => {
@@ -63,6 +92,21 @@ beforeEach(() => {
 });
 
 describe("app history", () => {
+  it("keeps the seen record under LOCALAPPDATA on Windows", () => {
+    const localAppData = mkdtempSync(join(tmpdir(), "hf-localappdata-"));
+    vi.stubEnv("LOCALAPPDATA", localAppData);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    try {
+      const dir = mkdtempSync(join(tmpdir(), "hf-project-"));
+      handedOverAt(dir, "2026-10-01T00:00:00Z");
+      expect(seenPath(dir).startsWith(join(localAppData, "hyperframes", "catch-up"))).toBe(true);
+      expect(readSeen(dir).at).toBe(Date.parse("2026-10-01T00:00:00Z"));
+    } finally {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    }
+  });
+
   it("reads the turns, skipping lines that are not one", () => {
     const dir = project([
       turn("2026-01-01T10:00:00Z", "bigger title"),
@@ -81,13 +125,148 @@ describe("app history", () => {
     ]);
   });
 
-  it("shows only the turns after the hand-off or the newest one shown, and none without a hand-off", () => {
-    const dir = project([turn("2026-01-01T10:00:00Z", "old"), turn("2026-01-01T11:00:00Z", "new")]);
-    expect(unseenTurns(dir, readSeen(dir).at)).toEqual([]);
+  it("shows nothing without a hand-off", () => {
+    const dir = project([turn("2026-01-01T10:00:00Z", "old"), ""]);
+    expect(unseenTurns(dir, readSeen(dir)).turns).toEqual([]);
+  });
+
+  it("shows only lines the app adds after the hand-off, never ones the project came with", () => {
+    const dir = project([
+      turn("2026-01-01T08:00:00Z", "before"),
+      turn("2099-01-01T00:00:00Z", "shipped"),
+      "",
+    ]);
+    expect(noteHandoff(dir, Date.parse("2026-01-01T09:00:00Z"))).toBe(true);
+    utimesSync(history(dir), new Date("2099-06-01"), new Date("2099-06-01"));
+    const later = Date.parse("2100-01-01T00:00:00Z");
+    expect(asked(dir, later)).toEqual([]);
+    expect(appHistoryNotice(dir, [])).toBeNull();
+    appended(dir, "2026-01-01T10:00:00Z", "real");
+    expect(asked(dir, later)).toEqual(["real"]);
+    expect(appHistoryNotice(dir, [])).toContain("1 chat turn");
+  });
+
+  it("shows each turn once over repeated looks, and a line still being written once it is whole", () => {
+    const dir = project();
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T10:00:00Z", "a");
+    appendFileSync(history(dir), turn("2026-01-01T11:00:00Z", "b").slice(0, 20));
+    expect(asked(dir)).toEqual(["a"]);
+    lookedAt(dir);
+    expect(asked(dir)).toEqual([]);
+    appendFileSync(history(dir), `${turn("2026-01-01T11:00:00Z", "b").slice(20)}\n`);
+    expect(asked(dir)).toEqual(["b"]);
+    lookedAt(dir);
+    appended(dir, "2026-01-01T12:00:00Z", "c");
+    expect(asked(dir)).toEqual(["c"]);
+  });
+
+  it("keeps showing this person's turns after the app trims the history to a new file", () => {
+    const dir = project([turn("2099-01-01T00:00:00Z", "shipped"), ""]);
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T10:00:00Z", "1");
+    appended(dir, "2026-01-01T11:00:00Z", "2");
+    rewritten(dir, historyLines(dir).slice(1));
+    expect(asked(dir)).toEqual(["1", "2"]);
+    lookedAt(dir);
+    appended(dir, "2026-01-01T12:00:00Z", "3");
+    rewritten(dir, historyLines(dir).slice(1));
+    expect(asked(dir)).toEqual(["3"]);
+  });
+
+  it("shows turns another machine added once a sync rewrites the history, and none it already had", () => {
+    const dir = project([turn("2026-01-01T08:00:00Z", "before"), ""]);
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T10:00:00Z", "here");
+    lookedAt(dir);
+    const synced = [...historyLines(dir), turn("2026-01-01T09:30:00Z", "there")];
+    rewritten(dir, synced);
+    expect(asked(dir)).toEqual(["there"]);
+    lookedAt(dir);
+    appended(dir, "2026-01-01T11:00:00Z", "here again");
+    expect(asked(dir)).toEqual(["here again"]);
+  });
+
+  it("starts at the first line the app writes when the project had no history at the hand-off", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-app-history-"));
+    noteHandoff(dir);
+    mkdirSync(join(dir, ".hyperframes"));
+    appended(dir, "2026-01-01T10:00:00Z", "first");
+    expect(asked(dir)).toEqual(["first"]);
+  });
+
+  it("notes a history too large to read whole as nothing to show until the next hand-off", () => {
+    const dir = project([turn("2099-01-01T00:00:00Z", "shipped"), "x".repeat(1024 * 1024), ""]);
+    noteHandoff(dir);
+    expect(readSeen(dir).history?.held).toBeNull();
+    appended(dir, "2026-01-01T10:00:00Z", "later");
+    expect(asked(dir)).toEqual([]);
+    rewritten(dir, [turn("2026-01-01T10:00:00Z", "later")]);
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T11:00:00Z", "mine");
+    expect(asked(dir)).toEqual(["mine"]);
+  });
+
+  it("never shows a line the history held at the hand-off without its newline", () => {
+    const dir = project([turn("2099-01-01T00:00:00Z", "shipped")]);
+    noteHandoff(dir);
+    appendFileSync(history(dir), "\n");
+    expect(asked(dir, Date.parse("2100-01-01T00:00:00Z"))).toEqual([]);
+  });
+
+  it("from a record written before lines were noted, shows turns only when all are dated after it", () => {
+    const dir = project([turn("2026-01-01T10:00:00Z", "a"), turn("2026-01-01T11:00:00Z", "b"), ""]);
     handedOverAt(dir, "2026-01-01T09:00:00Z");
-    expect(unseenTurns(dir, readSeen(dir).at).map((t) => t.asked)).toEqual(["old", "new"]);
-    handedOverAt(dir, "2026-01-01T10:30:00Z");
-    expect(unseenTurns(dir, readSeen(dir).at).map((t) => t.asked)).toEqual(["new"]);
+    expect(asked(dir)).toEqual(["a", "b"]);
+    lookedAt(dir);
+    appended(dir, "2026-01-01T08:00:00Z", "next");
+    expect(asked(dir)).toEqual(["next"]);
+
+    const older = project([
+      turn("2026-01-01T08:00:00Z", "before"),
+      turn("2026-01-01T10:00:00Z", "after"),
+      "",
+    ]);
+    handedOverAt(older, "2026-01-01T09:00:00Z");
+    expect(asked(older)).toEqual([]);
+  });
+
+  it("a hand-off over a record written before lines were noted holds the lines already there", () => {
+    const dir = project([turn("2026-01-02T00:00:00Z", "planted"), ""]);
+    handedOverAt(dir, "2026-01-01T00:00:00Z");
+    noteHandoff(dir);
+    expect(readSeen(dir).at).toBe(Date.parse("2026-01-01T00:00:00Z"));
+    expect(asked(dir, Date.parse("2027-01-01T00:00:00Z"))).toEqual([]);
+    appended(dir, "2026-01-03T00:00:00Z", "mine");
+    expect(asked(dir)).toEqual(["mine"]);
+  });
+
+  it("another project at the same path shows nothing until its hand-off, then only new turns", () => {
+    const dir = project();
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T10:00:00Z", "mine");
+    expect(asked(dir)).toEqual(["mine"]);
+
+    const other = project([turn("2026-01-01T09:00:00Z", "shipped"), ""]);
+    rmSync(dir, { recursive: true });
+    renameSync(other, dir);
+    appended(dir, "2026-01-01T11:00:00Z", "shipped later");
+    expect(readSeen(dir).at).toBe(0);
+    expect(asked(dir)).toEqual([]);
+    expect(appHistoryNotice(dir, [])).toBeNull();
+
+    noteHandoff(dir);
+    expect(asked(dir)).toEqual([]);
+    appended(dir, "2026-01-01T12:00:00Z", "mine there");
+    expect(asked(dir)).toEqual(["mine there"]);
+  });
+
+  it("a later hand-off keeps the turns the app added since the first for catch-up", () => {
+    const dir = project();
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T10:00:00Z", "a");
+    noteHandoff(dir);
+    expect(asked(dir)).toEqual(["a"]);
   });
 
   it("never reads a record through a link, nor through a linked folder", (context) => {
@@ -109,14 +288,13 @@ describe("app history", () => {
     expect(writeRecord(linked, "agent-handoff.json", "{}")).toBe(false);
   });
 
-  it("never shows a turn dated ahead, nor lets it carry the cursor past real ones", () => {
+  it("never shows a turn dated ahead from a record written before lines were noted", () => {
     const dir = project([
       turn("2026-01-01T10:00:00Z", "real"),
       turn("2099-01-01T00:00:00Z", "planted"),
     ]);
     handedOverAt(dir, "2026-01-01T09:00:00Z");
-    const now = Date.parse("2026-06-01T00:00:00Z");
-    expect(unseenTurns(dir, readSeen(dir).at, now).map((t) => t.asked)).toEqual(["real"]);
+    expect(asked(dir, Date.parse("2026-06-01T00:00:00Z"))).toEqual(["real"]);
   });
 
   it("never takes a seen record a cloned project ships for a hand-off", () => {
@@ -172,7 +350,7 @@ describe("app history", () => {
   });
 
   it("names unseen turns at the end of a command run in the project or on it", () => {
-    const dir = project([turn("2026-01-01T10:00:00Z", "a"), turn("2026-01-01T11:00:00Z", "b")]);
+    const dir = project([turn("2026-01-01T10:00:00Z", "a"), turn("2026-01-01T11:00:00Z", "b"), ""]);
     expect(appHistoryNotice(dir, []), "never handed over from here").toBeNull();
     handedOverAt(dir, "2026-01-01T09:00:00Z");
     expect(appHistoryNotice(dir, [])).toContain("2 chat turns");
@@ -216,5 +394,16 @@ describe("addCatchUpNote", () => {
     expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("# My notes\n");
     expect(readFileSync(outside, "utf8")).toBe(older);
     addCatchUpNote(mkdtempSync(join(tmpdir(), "hf-note-")));
+  });
+});
+
+describe("app history under HYPERFRAMES_CACHE_DIR", () => {
+  it("keeps the seen record in the cache folder when it is set", () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-cache-"));
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    const dir = mkdtempSync(join(tmpdir(), "hf-project-"));
+    handedOverAt(dir, "2026-10-01T00:00:00Z");
+    expect(seenPath(dir).startsWith(join(cache, "catch-up"))).toBe(true);
+    expect(existsSync(seenPath(dir))).toBe(true);
   });
 });

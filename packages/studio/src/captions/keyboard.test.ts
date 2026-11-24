@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setStudioKeys } from "../player/components/studioShortcuts";
 import { shouldHandleCaptionNudgeKey } from "./keyboard";
 
 function mockKeyboardEvent(
@@ -58,5 +59,15 @@ describe("shouldHandleCaptionNudgeKey", () => {
     const player = document.createElement(tag);
     player.setAttribute("controls", "");
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowRight"), player)).toBe(false);
+  });
+});
+
+describe("shouldHandleCaptionNudgeKey: remapped", () => {
+  afterEach(() => setStudioKeys(null));
+
+  it("follows the canvas nudge keys", () => {
+    setStudioKeys({ nudgeUp: "u" });
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"))).toBe(false);
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("u"))).toBe(true);
   });
 });

@@ -1,8 +1,9 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import {
   recordArtifacts,
   type ArtifactCapture,
@@ -12,14 +13,15 @@ import {
 import { formatFindingTimes } from "../utils/checkFindings.js";
 import { withProjectLock } from "../utils/projectLock.js";
 import { readToolContext, reportArtifacts, type ToolContext } from "../utils/toolContext.js";
-import { defineCommand, parseArgs } from "citty";
+import { parseArgs } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
 import { registerBrowserSessionCleanup } from "../browser/launch.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
-import { setCommandExitCode } from "../utils/commandResult.js";
+import { normalizeErrorMessage, splitStepsWrittenByCli } from "../utils/errorMessage.js";
+import { CliUsageError, failUsage, setCommandExitCode } from "../utils/commandResult.js";
 import { swallowedFlagUsageError } from "../utils/reject-unknown-flags.js";
 import { formatLayoutIssue } from "../utils/layoutAudit.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
@@ -27,6 +29,7 @@ import { withMeta } from "../utils/updateCheck.js";
 import {
   DEFAULT_CHECK_OPTIONS,
   checkExitCode,
+  leavesNothingToLoad,
   prelaunchBrowserForNextCheck,
   runCheckPipeline,
   selectFindingCropRequests,
@@ -37,7 +40,22 @@ import {
 } from "../utils/checkPipeline.js";
 import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
 import { resolveLocalBrowserGpuMode } from "../browser/gpuPolicy.js";
+import { SOCIAL_SAFE_AREA_NAMES } from "@hyperframes/core/safe-areas";
+import type { SafeZone } from "../utils/safeZones.js";
 import { preResolveHostileMediaProxies, type PreparedMediaFile } from "../utils/checkBrowser.js";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { recordLastCheck } from "../telemetry/config.js";
+import { failureCodes } from "../utils/checkFailureCodes.js";
+import {
+  browserIdentity,
+  checkCacheKey,
+  checkCacheable,
+  readCachedPass,
+  storePass,
+} from "../utils/checkCache.js";
+import { recordFolder } from "../utils/projectRecords.js";
+import { VERSION } from "../version.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
@@ -55,12 +73,19 @@ export interface CheckCommandDependencies {
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<SavedCheckReport>;
   prepareMedia(project: ProjectDir, options: CheckOptions): Promise<PreparedMediaFile[]>;
   withMeta(value: object): object;
+  browserIdentity?(): Promise<string | undefined>;
 }
 
 const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
   resolveProject,
   async runPipeline(project, options) {
     const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
+    const id = randomUUID();
+    console.error(
+      terminalText(
+        `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+      ),
+    );
     const report = await runCheckPipeline(project, options);
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
     reportArtifacts("check", "frame", images(report.snapshots.files));
@@ -68,7 +93,7 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
     const capture = await capturing;
     if (!capture) return report;
     try {
-      return { ...report, saved: await saveCheckReport(project, options, report, capture) };
+      return { ...report, saved: await saveCheckReport(project, options, report, capture, id) };
     } catch (error) {
       warnNotRecorded(error);
       return report;
@@ -83,8 +108,21 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
 };
 
 function warnNotRecorded(error: unknown): undefined {
-  console.warn(`${c.warn("⚠")}  Check report was not recorded: ${normalizeErrorMessage(error)}`);
+  console.warn(
+    `${c.warn("⚠")}  Check report was not recorded: ${terminalLines(normalizeErrorMessage(error))}`,
+  );
   return undefined;
+}
+
+export function checkReportFile(projectDir: string, id: string): string {
+  return join(projectDir, ".hyperframes", "artifacts", "checks", `${id}.json`);
+}
+
+function makeReportFolder(path: string, projectDir: string): void {
+  if (!recordFolder(projectDir, "artifacts/checks"))
+    throw new Error(
+      `${dirname(path)} is reached through a link or a file; remove it and run again`,
+    );
 }
 
 async function saveCheckReport(
@@ -92,11 +130,10 @@ async function saveCheckReport(
   options: CheckOptions,
   report: CheckReport,
   capture: ArtifactCapture,
+  id: string,
 ): Promise<SavedCheck> {
-  const id = randomUUID();
-  const directory = join(project.dir, ".hyperframes", "artifacts", "checks");
-  mkdirSync(directory, { recursive: true });
-  const path = join(directory, `${id}.json`);
+  const path = checkReportFile(project.dir, id);
+  makeReportFolder(path, project.dir);
   writeFileSync(path, JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
   const reportScope =
     "scope" in report && typeof report.scope === "object" && report.scope !== null
@@ -159,9 +196,14 @@ async function saveCheckReport(
 const CHECK_COMMAND_ARGS = {
   dir: { type: "positional", description: "Project directory", required: false },
   json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+  "lint-verbose": {
+    type: "boolean",
+    description: "Accepted as render's spelling; check always prints every lint finding",
+    default: false,
+  },
   samples: {
     type: "string",
-    description: "Number of midpoint samples across the duration (default: 9)",
+    description: "Number of midpoint samples across the duration",
     default: "9",
   },
   range: {
@@ -191,28 +233,45 @@ const CHECK_COMMAND_ARGS = {
   },
   "max-issues": {
     type: "string",
-    description: "Maximum issues to print or return after static collapse (default: 80)",
+    description: "Maximum issues to print or return after static collapse",
     default: "80",
   },
   "collapse-static": {
     type: "boolean",
-    description: "Collapse repeated static issues across samples (default: true)",
+    description: "Collapse repeated static issues across samples",
     default: true,
   },
   tolerance: {
     type: "string",
-    description: "Allowed pixel overflow before reporting an issue (default: 2)",
+    description: "Allowed pixel overflow before reporting an issue",
     default: "2",
+  },
+  budget: {
+    type: "string",
+    description:
+      "Stop the whole check this long after it starts (ms, or 90s, 8m; at least 30s) and report what it found so far",
+  },
+  cache: {
+    type: "boolean",
+    description:
+      "Return the stored result when the project, options and CLI are unchanged since the last pass (pass --no-cache to always re-run)",
+    default: true,
   },
   timeout: {
     type: "string",
     description:
-      "Initial render-ready timeout in ms; also sets the navigation minimum (10s floor, default: 3000)",
-    default: "3000",
+      "Initial render-ready timeout in ms, or with a unit (45s, 2m); also sets the navigation minimum (10s floor, default: 45000, as snapshot and render)",
+    default: String(DEFAULT_CHECK_OPTIONS.timeout),
   },
   contrast: {
     type: "boolean",
     description: "Run the WCAG AA contrast pass (enabled by default)",
+    default: true,
+  },
+  craft: {
+    type: "boolean",
+    description:
+      "Run the craft pass (dead stretches, unread lines, silent films; enabled by default). --no-craft skips it, e.g. for a render preflight",
     default: true,
   },
   strict: {
@@ -243,10 +302,20 @@ const CHECK_COMMAND_ARGS = {
     description: "Save contrast-pass PNGs under .hyperframes/artifacts/snapshots/",
     default: false,
   },
+  "include-unmounted": {
+    type: "boolean",
+    description: "Also lint compositions/ files that index.html never mounts",
+    default: false,
+  },
   "caption-zone": {
     type: "string",
     description:
       'Caption band "x0=0;y0=.82;x1=1;y1=1[;severity=warning|error][;seek=.5,1]" (fractions 0-1; defaults: warning, seek=1)',
+  },
+  "safe-zone": {
+    type: "string",
+    description:
+      "Warn when text leaves a safe area: tiktok, reels or shorts on 9:16 (default: all three), standard (title-safe margins, any frame), or off",
   },
   "frame-check": {
     type: "string",
@@ -275,40 +344,47 @@ export function createCheckCommand(
 
       const reported = untilReported();
       try {
-        const project = dependencies.resolveProject(args.dir);
         const options = parseCheckOptions(args);
+        const project = dependencies.resolveProject(args.dir);
         if (!asJson) {
-          console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
+          console.log(`${c.accent("◆")}  Checking ${c.accent(terminalText(project.name))}`);
         }
         if (args["prepare-media"] === true) {
           await runPrepareMedia(dependencies, project, options, asJson);
           return;
         }
-        const report = await withProjectLock(project.dir, "check", () =>
-          dependencies.runPipeline(project, options),
-        );
+        recordLastCheck({ at: new Date().toISOString(), codes: {} });
+        const report = await checkOrReplay(dependencies, project, options);
+        recordLastCheck({
+          at: new Date().toISOString(),
+          exitCode: checkExitCode(report),
+          codes: failureCodes(report),
+        });
         if (asJson) {
           console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
+          if (report.saved)
+            console.error(
+              terminalText(`[hyperframes] check: report saved to ${report.saved.report}`),
+            );
         } else {
           printHumanReport(report);
           if (report.saved) {
-            console.log(`Report: ${report.saved.report}`);
+            console.log(terminalText(`Report: ${report.saved.report}`));
             console.log(
-              `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              terminalText(
+                `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              ),
             );
           }
         }
         setCommandExitCode(checkExitCode(report));
       } catch (error) {
-        const message = normalizeErrorMessage(error);
-        if (asJson) {
-          console.log(
-            JSON.stringify(dependencies.withMeta({ ok: false, error: message }), null, 2),
-          );
-        } else {
-          console.error(`${c.error("✗")} Check failed: ${message}`);
-        }
-        setCommandExitCode(1);
+        recordLastCheck({
+          at: new Date().toISOString(),
+          exitCode: 1,
+          codes: { [error instanceof CliUsageError ? error.code : "runtime_error"]: 1 },
+        });
+        reportCheckFailure(error, asJson, (value) => dependencies.withMeta(value));
       } finally {
         reported.done();
       }
@@ -316,7 +392,54 @@ export function createCheckCommand(
   });
 }
 
+async function checkOrReplay(
+  dependencies: CheckCommandDependencies,
+  project: ProjectDir,
+  options: CheckOptions,
+): Promise<SavedCheckReport> {
+  const identify = dependencies.browserIdentity ?? browserIdentity;
+  return withProjectLock(project.dir, "check", async () => {
+    const keyNow = async () =>
+      checkCacheable(options)
+        ? checkCacheKey(project.dir, options, VERSION, await identify())
+        : undefined;
+    const key = await keyNow();
+    const cached = key ? readCachedPass(project.dir, key) : undefined;
+    if (cached) return cached;
+    const report = await dependencies.runPipeline(project, options);
+    const treeUnchangedByTheRun = key !== undefined && (await keyNow()) === key;
+    if (treeUnchangedByTheRun) storePass(project.dir, key, report);
+    return report;
+  });
+}
+
+function reportCheckFailure(
+  error: unknown,
+  asJson: boolean,
+  addMeta: (value: object) => object,
+): void {
+  const message = failureMessage(error);
+  const usage = error instanceof CliUsageError;
+  if (asJson) {
+    const code = usage ? error.code : "runtime_error";
+    console.log(JSON.stringify(addMeta(jsonFailure(code, message)), null, 2));
+  } else {
+    const { summary, stepsWrittenByCli } = splitStepsWrittenByCli(message);
+    console.error(`${c.error("✗")} Check failed: ${terminalText(summary)}`);
+    if (stepsWrittenByCli) console.error(`\n${stepsWrittenByCli}\n`);
+  }
+  if (usage) failUsage();
+  setCommandExitCode(1);
+}
+
 const REPORT_GRACE_MS = 5_000;
+const MIN_BUDGET_MS = 30_000;
+const BUDGET_REPORT_MS = 10_000;
+
+function parseBudget(raw: unknown): CheckOptions["budget"] {
+  const ms = parseTimeoutMs(raw, 0, MIN_BUDGET_MS, console.error, "--budget");
+  return ms > 0 ? { ms, stopAt: Date.now() + ms - BUDGET_REPORT_MS } : undefined;
+}
 
 function untilReported(): { done: () => void } {
   let done = (): void => undefined;
@@ -370,7 +493,8 @@ async function runPrepareMedia(
     console.log(
       `${mark}  Browser-playable copies: ${files.length - failed.length}/${files.length} ready`,
     );
-    for (const file of failed) console.log(`   ${file.file}: ${file.reason}`);
+    for (const file of failed)
+      console.log(`   ${terminalText(file.file)}: ${terminalLines(file.reason ?? "")}`);
   }
   setCommandExitCode(failed.length === 0 ? 0 : 1);
 }
@@ -380,29 +504,34 @@ function checkReview(): ToolContext["checkReview"] {
 }
 
 function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
-  const maxTransitionSamples = positiveInteger(args["max-transition-samples"], 0);
+  const maxTransitionSamples = positiveInteger(args, "max-transition-samples", 0);
   return {
-    samples: positiveInteger(args.samples, DEFAULT_CHECK_OPTIONS.samples),
+    samples: positiveInteger(args, "samples", DEFAULT_CHECK_OPTIONS.samples),
     range: parseCheckRange(args.range),
     components: typeof args.components === "string" ? [args.components] : undefined,
     at: parseAt(args.at),
     atTransitions: args["at-transitions"] === true,
     maxTransitionSamples: maxTransitionSamples > 0 ? maxTransitionSamples : undefined,
-    maxIssues: positiveInteger(args["max-issues"], DEFAULT_CHECK_OPTIONS.maxIssues),
+    maxIssues: positiveInteger(args, "max-issues", DEFAULT_CHECK_OPTIONS.maxIssues),
     collapseStatic: args["collapse-static"] !== false,
-    tolerance: nonNegativeNumber(args.tolerance, DEFAULT_CHECK_OPTIONS.tolerance),
-    timeout: Math.max(500, positiveInteger(args.timeout, DEFAULT_CHECK_OPTIONS.timeout)),
+    tolerance: nonNegativeNumber(args, "tolerance", DEFAULT_CHECK_OPTIONS.tolerance),
+    timeout: parseTimeoutMs(args.timeout, DEFAULT_CHECK_OPTIONS.timeout, 500),
+    budget: parseBudget(args.budget),
+    cache: args.cache !== false,
     contrast: args.contrast !== false,
+    craft: args.craft !== false,
     ...(checkReview()?.skipContrastInMotion ? { skipContrastInMotion: true } : {}),
     strict: args.strict === true,
     snapshots: args.snapshots === true,
     ...(checkReview()?.findingFrames ? { findingFrames: true } : {}),
     ...(checkReview()?.inspect ? { inspect: true } : {}),
     captionZone: parseCaptionZone(args["caption-zone"]),
+    safeZones: parseSafeZone(args["safe-zone"]),
     frameCheck: parseFrameCheck(args["frame-check"]),
     layout: parseLayout(args.layout),
     autoProxy: args.proxy as boolean | undefined,
     browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
+    includeUnmounted: args["include-unmounted"] === true,
   };
 }
 
@@ -424,7 +553,7 @@ export function parseCheckRange(value: unknown): [number, number] | undefined {
     start < 0 ||
     end <= start
   )
-    throw new Error("Invalid --range: use non-negative start,end with end > start");
+    throw new CliUsageError("Invalid --range: use non-negative start,end with end > start");
   return [start, end];
 }
 
@@ -471,7 +600,7 @@ function parseFrameCheckTolerance(raw: string | undefined): number | undefined {
 }
 
 function frameCheckError(): Error {
-  return new Error(
+  return new CliUsageError(
     'Invalid --frame-check: use bare --frame-check or "severity=warning|error;seek=.25,.75;tol=4" (all fields optional)',
   );
 }
@@ -510,7 +639,7 @@ function parseProseCoverageFloor(raw: string | undefined): number | undefined {
 }
 
 function layoutError(): Error {
-  return new Error(
+  return new CliUsageError(
     'Invalid --layout: use "proseCoverageFloor=0.05" with a fraction from 0 to 1 (inclusive)',
   );
 }
@@ -520,6 +649,15 @@ function parseNumberStrict(raw: string): number | null {
   if (raw === "") return null;
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+export function parseSafeZone(value: unknown): SafeZone[] {
+  if (value === undefined) return [...SOCIAL_SAFE_AREA_NAMES];
+  if (value === "off") return [];
+  const zone = [...SOCIAL_SAFE_AREA_NAMES, "standard" as const].find((name) => name === value);
+  if (!zone)
+    throw new CliUsageError("Invalid --safe-zone; use tiktok, reels, shorts, standard or off.");
+  return [zone];
 }
 
 function parseCaptionZone(value: unknown): CaptionZoneOptions | undefined {
@@ -612,40 +750,64 @@ function captionSeeks(
 }
 
 function captionZoneError(): Error {
-  return new Error(
+  return new CliUsageError(
     'Invalid --caption-zone; use "x0=0;y0=.82;x1=1;y1=1[;severity=warning|error][;seek=.5,1]" with fractions from 0 to 1.',
   );
 }
 
-function positiveInteger(value: unknown, fallback: number): number {
-  const parsed = parseInt(String(value ?? ""), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+function positiveInteger(args: Record<string, unknown>, flag: string, fallback: number): number {
+  const value = args[flag];
+  if (value === undefined) return fallback;
+  const parsed = wholeStringNumber(value);
+  if (!Number.isInteger(parsed) || parsed < 1)
+    throw new CliUsageError(`Invalid --${flag}: ${JSON.stringify(value)}; use a positive integer`);
+  return parsed;
 }
 
-function nonNegativeNumber(value: unknown, fallback: number): number {
-  const parsed = parseFloat(String(value ?? ""));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+function nonNegativeNumber(args: Record<string, unknown>, flag: string, fallback: number): number {
+  const value = args[flag];
+  if (value === undefined) return fallback;
+  const parsed = wholeStringNumber(value);
+  if (!Number.isFinite(parsed) || parsed < 0)
+    throw new CliUsageError(
+      `Invalid --${flag}: ${JSON.stringify(value)}; use a non-negative number`,
+    );
+  return parsed;
+}
+
+function wholeStringNumber(value: unknown): number {
+  const text = String(value).trim();
+  return text === "" ? NaN : Number(text);
+}
+
+function browserSkippedLine(report: CheckReport): string {
+  return report.lint.findings.some(leavesNothingToLoad)
+    ? "Browser validation skipped: the lint error above leaves no composition to load. Fix it and run check again. Layout, motion, and contrast were not checked, so this is not a clean pass."
+    : "Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.";
 }
 
 function printHumanReport(report: CheckReport): void {
+  if (report.cached)
+    console.log(
+      `${c.dim("◇")} Nothing changed since the pass at ${terminalText(report.cached.at)}; showing that result. Remote scripts and assets were not fetched again. Run with --no-cache to check again.`,
+    );
   if (report.scope) {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,
     );
-    for (const note of report.scope.notes) console.log(note);
+    for (const note of report.scope.notes) console.log(terminalLines(note));
   }
   printSection("Lint", report.lint);
   if (report.browserSkipped) {
     console.log();
-    console.log(
-      `  ${c.warn("⚠")} Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.`,
-    );
+    console.log(`  ${c.warn("⚠")} ${browserSkippedLine(report)}`);
   }
   printSection("Runtime", report.runtime);
   printLayoutSection("Layout", report.layout);
   printSection("Motion", report.motion);
   printContrastSection(report);
   printCraftSection(report);
+  printSection("Audio", report.audio);
   printSnapshotSection(report);
   console.log();
   const label = report.ok ? c.success("Check passed") : c.error("Check failed");
@@ -704,10 +866,12 @@ function printContrastSection(report: CheckReport): void {
     return;
   }
   for (const finding of section.findings) {
+    const text = finding.text ? ` ${c.dim(`"${terminalText(finding.text)}"`)}` : "";
     console.log(
-      `  ${c.error("✗")} ${finding.selector} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
+      `  ${findingIcon(finding)} ${terminalText(finding.selector)}${text} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
     );
-    console.log(`    ${c.dim(`Try ${finding.suggestedColor}; source ${finding.sourceFile}`)}`);
+    const source = `Try ${terminalText(finding.suggestedColor)}; source ${terminalText(finding.sourceFile)}`;
+    console.log(`    ${c.dim(source)}`);
   }
   printCounts(section);
 }
@@ -730,21 +894,27 @@ function printSnapshotSection(report: CheckReport): void {
     console.log(`  ${c.dim("◇")} disabled`);
   } else {
     console.log(`  ${c.success("◇")} ${report.snapshots.files.length} PNG(s) saved`);
-    for (const file of report.snapshots.files) console.log(`    ${c.dim(file)}`);
+    for (const file of report.snapshots.files) console.log(`    ${c.dim(terminalText(file))}`);
     if (report.snapshots.findingFiles.length > 0) {
       console.log(
         `  ${c.success("◇")} ${report.snapshots.findingFiles.length} finding crop(s) saved`,
       );
-      for (const file of report.snapshots.findingFiles) console.log(`    ${c.dim(file)}`);
+      for (const file of report.snapshots.findingFiles)
+        console.log(`    ${c.dim(terminalText(file))}`);
     }
   }
 }
 
 function printFinding(finding: CheckFinding): void {
-  const where = `${finding.sourceFile} ${finding.selector} ${formatFindingTimes(finding)}`;
-  console.log(`  ${findingIcon(finding)} ${finding.code}: ${finding.message}`);
+  const where = `${terminalText(finding.sourceFile)} ${terminalText(finding.selector)} ${formatFindingTimes(finding)}`;
+  const { summary, stepsWrittenByCli } =
+    finding.code === "check_runtime_failure"
+      ? splitStepsWrittenByCli(finding.message)
+      : { summary: finding.message, stepsWrittenByCli: undefined };
+  console.log(`  ${findingIcon(finding)} ${terminalText(finding.code)}: ${terminalText(summary)}`);
   console.log(`    ${c.dim(where)}`);
-  if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${finding.fixHint}`)}`);
+  if (stepsWrittenByCli) console.log(`\n${stepsWrittenByCli}\n`);
+  if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${terminalText(finding.fixHint)}`)}`);
 }
 
 function findingIcon(finding: CheckFinding): string {

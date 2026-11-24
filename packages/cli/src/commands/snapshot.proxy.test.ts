@@ -43,7 +43,9 @@ const html = '<html><head></head><body><video src="clip.mov"></video></body></ht
 describe("serveCapturePage", () => {
   it("starts no transcode of a hostile clip by default, whatever hyperframes.json says", async () => {
     server = await serveCapturePage(hostileClipProject(), html, undefined);
-    const proxy = await fetch(`${server.url}clip.mov?hf-proxy=h264`);
+    const proxy = await fetch(`${server.url}clip.mov?hf-proxy=h264`, {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
 
     expect(proxy.status).toBe(404);
     expect(mocks.injectMediaCodecMap).not.toHaveBeenCalled();

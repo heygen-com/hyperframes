@@ -3,15 +3,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer, { type Browser, type LaunchOptions, type Page } from "puppeteer-core";
 
-/**
- * Puppeteer browser + page helpers shared across all perf scenarios.
- *
- * Browser launch args mirror packages/producer/src/parity-harness.ts so we get
- * the same SwiftShader-backed WebGL output and font hinting between perf runs
- * and visual parity runs. That parity matters for P0-1c (live-playback parity)
- * and is harmless for the load/scrub/drift scenarios.
- */
-
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLAYER_PKG = resolve(HERE, "../..");
 
@@ -19,6 +10,8 @@ export type LaunchOpts = {
   width?: number;
   height?: number;
   headless?: boolean;
+  /** "gesture": Chrome's own rule, where a frame without a tap may not start sound. */
+  autoplay?: "free" | "gesture";
 };
 
 export type LoadOpts = {
@@ -93,7 +86,7 @@ export async function launchBrowser(options: LaunchOpts = {}): Promise<Browser> 
       "--use-angle=swiftshader",
       "--font-render-hinting=none",
       "--force-color-profile=srgb",
-      "--autoplay-policy=no-user-gesture-required",
+      `--autoplay-policy=${options.autoplay === "gesture" ? "user-gesture-required" : "no-user-gesture-required"}`,
       `--window-size=${width},${height}`,
     ],
   };

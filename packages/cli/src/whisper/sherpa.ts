@@ -1,15 +1,16 @@
 import { execFile, spawn, type ExecFileException } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { terminalText } from "@hyperframes/core";
+import { ensurePrivateCacheDir, hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { downloadToFile } from "../cloud/download.js";
 import { verifies, type ModelFile } from "./modelFile.js";
 import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import {
-  CACHE_DIR,
+  OPTIONAL_CACHE_DIR,
   PINNED_PACKAGES,
   pinnedPackageBesideCli,
   installedPackagePath,
@@ -39,19 +40,13 @@ const RUNTIME = "sherpa-onnx-node";
 const RUNTIME_VERSION = PINNED_PACKAGES[RUNTIME];
 /** Per platform and arch, like the native package inside, so Rosetta never shadows arm64. */
 export const SHERPA_RUNTIME_DIR = join(
-  CACHE_DIR,
+  OPTIONAL_CACHE_DIR,
   `${RUNTIME}@${RUNTIME_VERSION}-${process.platform}-${process.arch}`,
 );
 
 const MODEL_REPO = "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
 const MODEL_REVISION = "2bda32ec70b097a55adaa07d9a7173915b43cc78";
-export const PARAKEET_MODEL_DIR = join(
-  homedir(),
-  ".cache",
-  "hyperframes",
-  "parakeet",
-  "parakeet-tdt-0.6b-v3-int8",
-);
+export const PARAKEET_MODEL_DIR = hyperframesCacheDir("parakeet", "parakeet-tdt-0.6b-v3-int8");
 
 export type { ModelFile };
 
@@ -213,7 +208,7 @@ async function selectRuntime(
     const error = await runtimeLoadError(path, timeoutMs, signal);
     if (error === null) return { status: "ready", path };
     console.error(
-      `Parakeet runtime at ${path.replace(/\s+/g, " ")} did not load: ${error.replace(/\s+/g, " ")}`,
+      `Parakeet runtime at ${terminalText(path.replace(/\s+/g, " "))} did not load: ${terminalText(error.replace(/\s+/g, " "))}`,
     );
   }
   return cachedRuntime(dir, timeoutMs, signal);
@@ -249,10 +244,11 @@ export async function installSherpaRuntime({
 } = {}): Promise<{ installed: boolean; runtimePath: string }> {
   const present = await selectRuntime(dir, cliUrl, 60_000, signal);
   if (present.status === "ready") return { installed: false, runtimePath: present.path };
+  ensurePrivateCacheDir(dirname(dir), dirname(dir));
   // install() keeps any dir holding the runtime manifest, so a broken one goes first.
   rmSync(dir, { recursive: true, force: true });
   const native = sherpaPlatformPackage();
-  await install(dir, RUNTIME, RUNTIME_VERSION, (args) => run([...args, native], signal));
+  await install(dir, RUNTIME, RUNTIME_VERSION, (args, cwd) => run([...args, native], signal, cwd));
   const selected = await cachedRuntime(dir, 60_000, signal);
   if (selected.status === "unavailable") {
     throw new Error(

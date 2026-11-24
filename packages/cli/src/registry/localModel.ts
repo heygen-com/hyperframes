@@ -16,6 +16,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
+import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import { join } from "node:path";
 
 import { downloadFile } from "../utils/download.js";
@@ -34,7 +35,7 @@ export const LOCAL_MODEL_SIZE_MB = 33;
 /** bge retrieval expects short queries to carry this prefix; passages do not. */
 export const QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: ";
 
-const MODELS_DIR = join(homedir(), ".hyperframes", "models");
+const modelsDir = () => namedCacheDir("models") ?? join(homedir(), ".hyperframes", "models");
 
 /**
  * Where the two halves come from.
@@ -97,11 +98,11 @@ export function assumeLocalModelConsent(): LocalModelDecision {
 }
 
 export function localModelPath(): string {
-  return join(MODELS_DIR, `${LOCAL_MODEL_ID}.onnx`);
+  return join(modelsDir(), `${LOCAL_MODEL_ID}.onnx`);
 }
 
 export function localTokenizerPath(): string {
-  return join(MODELS_DIR, `${LOCAL_MODEL_ID}.tokenizer.json`);
+  return join(modelsDir(), `${LOCAL_MODEL_ID}.tokenizer.json`);
 }
 
 function modelFileIsValid(file: ModelFile): boolean {
@@ -152,7 +153,7 @@ export function localModelStatus(): LocalModelStatus {
 export async function ensureLocalModel(): Promise<boolean> {
   if (isLocalModelReady()) return true;
   try {
-    mkdirSync(MODELS_DIR, { recursive: true });
+    mkdirSync(modelsDir(), { recursive: true });
     for (const file of LOCAL_MODEL_ARTIFACTS) {
       if (modelFileIsValid(file)) continue;
       const dest = file.dest();

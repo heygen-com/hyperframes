@@ -3,8 +3,9 @@
  * the `perf-summary.json` debug artifact.
  */
 
-import { arch, cpus, platform, totalmem } from "node:os";
+import { arch, platform, totalmem } from "node:os";
 import { fpsToNumber, type HfVfxCapture } from "@hyperframes/core";
+import { hostCpuCount } from "@hyperframes/engine";
 import type {
   CapturePerfSummary,
   StaticVerificationOutcome,
@@ -19,7 +20,7 @@ import type {
   RenderPerfSummary,
 } from "../renderOrchestrator.js";
 import { type HdrPerfCollector, finalizeHdrPerf } from "./hdrPerf.js";
-import type { RenderObservabilitySummary } from "./observability.js";
+import type { RenderCaptureObservability, RenderObservabilitySummary } from "./observability.js";
 
 /**
  * Worst sub-composition timeline wait outcome across sessions: script_failure
@@ -52,6 +53,24 @@ export function pushWorkerDedupPerfs(
   for (const r of results) {
     if (r.perf) sink.push(r.perf);
   }
+}
+
+/** Beyond-viewport capture as the workers' sessions used it: on if any kept it, `fallback` when none reported. */
+export function capturedBeyondViewport(
+  perfs: ReadonlyArray<CapturePerfSummary>,
+  fallback: boolean | undefined,
+): boolean | undefined {
+  const used = perfs.flatMap((perf) => perf.captureBeyondViewport ?? []);
+  return used.length > 0 ? used.includes(true) : fallback;
+}
+
+/** The capture facts with beyond-viewport capture as the sessions used it, on every capture path. */
+export function withCapturedBeyondViewport(
+  capture: RenderCaptureObservability,
+  perfs: ReadonlyArray<CapturePerfSummary>,
+): RenderCaptureObservability {
+  const used = capturedBeyondViewport(perfs, capture.captureBeyondViewport);
+  return used === undefined ? capture : { ...capture, captureBeyondViewport: used };
 }
 
 /** Adds each worker's page-error console lines to `sink`, once per distinct line. */
@@ -242,6 +261,15 @@ function aggregateChromeMemory(perfs: CapturePerfSummary[]): RenderPerfSummary["
   };
 }
 
+function frameWeightedAvgMs(
+  perfs: CapturePerfSummary[],
+  avgOf: (perf: CapturePerfSummary) => number,
+): number | undefined {
+  const frames = perfs.reduce((sum, p) => sum + p.frames, 0);
+  if (frames === 0) return undefined;
+  return Math.round(perfs.reduce((sum, p) => sum + avgOf(p) * p.frames, 0) / frames);
+}
+
 function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticDedup"] {
   if (perfs.length === 0) return undefined;
   const armed = perfs.some((p) => p.staticDedupArmed);
@@ -249,11 +277,10 @@ function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticD
   // rather than just the first — workers can diverge (e.g. one `ineligible`, one
   // `capture_mode`), and dropping the rest hides why dedup didn't engage. Cardinality
   // stays bounded (a handful of codes, small combinations).
-  const skipReasons = armed
-    ? []
-    : [
-        ...new Set(perfs.map((p) => p.staticDedupSkipReason).filter((r): r is string => !!r)),
-      ].sort();
+  const distinctUnarmed = (values: Array<string | undefined>): string | undefined => {
+    const distinct = armed ? [] : [...new Set(values.filter((v): v is string => !!v))].sort();
+    return distinct.length > 0 ? distinct.join("|") : undefined;
+  };
   const verificationPerfs = perfs.filter((perf) => perf.staticDedupVerificationOutcome);
   const verificationOutcomes = [
     ...new Set(
@@ -267,7 +294,8 @@ function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticD
     armed,
     predictedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupPredicted ?? 0), 0),
     reusedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupReused ?? 0), 0),
-    skipReason: skipReasons.length > 0 ? skipReasons.join("|") : undefined,
+    skipReason: distinctUnarmed(perfs.map((p) => p.staticDedupSkipReason)),
+    ineligibleCause: distinctUnarmed(perfs.map((p) => p.staticDedupIneligibleCause)),
     ...(verificationPerfs.length === 0
       ? {}
       : {
@@ -320,6 +348,21 @@ function aggregateBeginFrameReuse(
   const hasDamageFrames = perfs.reduce((sum, p) => sum + (p.beginFrameHasDamage ?? 0), 0);
   if (noDamageFrames + hasDamageFrames === 0) return undefined;
   return { noDamageFrames, hasDamageFrames };
+}
+
+/** The page's blur outcome across sessions: first reported value wins, failed frames sum. */
+function aggregateMotionBlur(perfs: CapturePerfSummary[]): RenderPerfSummary["motionBlur"] {
+  const ran = perfs.flatMap((p) => p.motionBlur ?? []).filter((m) => m.tier || m.failedFrames > 0);
+  const first = ran[0];
+  if (!first) return undefined;
+  return {
+    tier: first.tier ?? ran.find((m) => m.tier)?.tier ?? null,
+    reasonCode: first.reasonCode,
+    movers: first.movers,
+    failedFrames: ran.reduce((sum, m) => sum + m.failedFrames, 0),
+    readEvents: ran.some((m) => m.readEvents),
+    fingerprint: ran.find((m) => m.fingerprint)?.fingerprint ?? null,
+  };
 }
 
 export function buildRenderPerfSummary(input: {
@@ -407,11 +450,19 @@ export function buildRenderPerfSummary(input: {
       if (withSamples.length === 0) return undefined;
       return withSamples.reduce((a, b) => (b.frames > a.frames ? b : a)).p50TotalMs;
     })(),
+    captureSeekAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgSeekMs),
+    captureBeforeCaptureAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgBeforeCaptureMs),
+    captureScreenshotAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgScreenshotMs),
+    encoderWaitAvgMs:
+      input.perfStages.encoderDrainWaitMs !== undefined && input.totalFrames > 0
+        ? Math.round(input.perfStages.encoderDrainWaitMs / input.totalFrames)
+        : undefined,
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),
     chromeMemory: aggregateChromeMemory(input.dedupPerfs),
     beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
+    motionBlur: aggregateMotionBlur(input.dedupPerfs),
     drawElement: aggregateDrawElement(
       input.dedupPerfs,
       input.drawElement ?? { selfVerifyFallback: false },
@@ -419,7 +470,7 @@ export function buildRenderPerfSummary(input: {
     host: {
       platform: platform(),
       arch: arch(),
-      cpuCount: cpus().length,
+      cpuCount: hostCpuCount(),
       totalMemMb: Math.round(totalmem() / (1024 * 1024)),
       nodeVersion: process.version,
       gpuDisabled: input.gpuDisabled,

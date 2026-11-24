@@ -82,14 +82,15 @@ export function planFilter(frame: MoverFrame, pad: number, frameW: number): Filt
   const xs = offsets.map((o) => o[0]);
   const ys = offsets.map((o) => o[1]);
   const margin = pad + 3 * Math.max(...sigma) + 2;
+  const [ox, oy] = frame.origin ?? [0, 0];
   const x = Math.min(0, ...xs) - margin;
   const y = Math.min(0, ...ys) - margin;
   return {
     offsets,
     sigma,
     region: {
-      x,
-      y,
+      x: ox + x,
+      y: oy + y,
       w: w + Math.max(0, ...xs) + margin - x,
       h: h + Math.max(0, ...ys) + margin - y,
     },

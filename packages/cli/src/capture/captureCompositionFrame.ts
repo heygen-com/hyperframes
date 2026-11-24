@@ -1,10 +1,12 @@
+import { oneProcessOverPipe, resolveRestrictPageNetwork } from "@hyperframes/engine";
+import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "./captureTimeout.js";
 import {
   rethrowAfterBrowserCleanup,
   launchManagedBrowser,
   resolveManagedGpuMode,
 } from "../browser/launch.js";
-import { oneProcessOverPipe } from "../browser/sandboxDenied.js";
 import { spawn } from "node:child_process";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import type { Browser, Page } from "puppeteer-core";
 import type { InProcessRequest, InProcessResponse } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
@@ -15,6 +17,7 @@ import {
   resolveLocalWebGpu,
   type BrowserGpuMode,
 } from "../browser/gpuPolicy.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -68,11 +71,12 @@ export interface SeekCompositionTimelineOptions {
   settleMs?: number;
   waitForImagesMs?: number;
   waitForVideoFrames?: boolean;
+  seekSettleTimeoutMs?: number;
   // Box-only reads: software GL spends about a second per frame on draws nothing here looks at.
   skipWebglDraws?: boolean;
 }
 
-type SeekBarrierOptions = { videoFrames: boolean };
+type SeekBarrierOptions = { videoFrames: boolean; timeoutMs: number };
 type FontWaitOptions = { ms: number; frames: number };
 
 type CompositionPageFunction =
@@ -124,7 +128,8 @@ export interface OpenSettledCompositionPageOptions {
   // Runs after the page exists but before page.goto, so console/pageerror/
   // request listeners can attach without missing load-time events.
   beforeNavigate?: (page: Page) => void | Promise<void>;
-  onLoaded?: () => void;
+  // Runs after navigation and before the render-ready wait.
+  onLoaded?: (page: Page) => void | Promise<void>;
   // Started before the project was bundled; used only if it was launched with the same arguments.
   prelaunched?: PrelaunchedBrowser;
 }
@@ -158,7 +163,10 @@ export function prelaunchCompositionBrowser(
   const abort = new AbortController();
   const options = { browserGpuMode, signal: abort.signal };
   const key = launchKey(html, false, options);
-  const launched = launchCompositionBrowser(html, false, options).catch(() => undefined);
+  const launchNeedsPageUrl = resolveRestrictPageNetwork();
+  const launched = launchNeedsPageUrl
+    ? Promise.resolve(undefined)
+    : launchCompositionBrowser(html, false, options).catch(() => undefined);
   let taken = false;
   const discard = async () => {
     if (taken) return;
@@ -248,7 +256,7 @@ async function waitForCompositionSettle(
 
   if (!runtimeReady) {
     console.warn(
-      `\n   ${c.warn("⚠")} Runtime did not become render-ready within ${options.renderReadyTimeoutMs}ms — ${options.renderReadyWarningSuffix}`,
+      `\n   ${c.warn("⚠")} Runtime did not become render-ready within ${options.renderReadyTimeoutMs}ms — ${terminalText(options.renderReadyWarningSuffix)}`,
     );
   }
 
@@ -264,11 +272,13 @@ async function waitForCompositionSettle(
   const { resolveConfig, waitForImagesReady } = await import("@hyperframes/engine");
   const imageTimeoutMs = resolveConfig().playerReadyTimeout;
   await waitForImagesReady(page, imageTimeoutMs, (sources) =>
-    console.warn(
-      `   ${c.warn("⚠")} Some images did not load within ${imageTimeoutMs}ms: ${sources}. They may show blank.`,
-    ),
+    console.warn(unloadedImagesWarning(imageTimeoutMs, sources)),
   );
   return runtimeReady;
+}
+
+export function unloadedImagesWarning(timeoutMs: number, sources: string): string {
+  return `   ${c.warn("⚠")} Some images did not load within ${timeoutMs}ms: ${terminalText(sources)}. They may show blank.`;
 }
 
 async function waitForLateSubresources(page: Page, timeoutMs: number): Promise<void> {
@@ -329,21 +339,24 @@ export async function openSettledCompositionPage(
   try {
     const launched =
       (await options.prelaunched?.take(launchKey(html, noListen, options))) ??
-      (await launchCompositionBrowser(html, noListen, options));
+      (await launchCompositionBrowser(html, noListen, options, url));
     chromeBrowser = launched.browser;
     const softwareWebGpu = launched.softwareWebGpu;
     options.onBrowser?.(chromeBrowser);
     options.onBrowserReady?.();
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
-    const { installMediaRenderIdBridge } = await import("@hyperframes/engine");
+    const { installMediaRenderIdBridge, forcePreservedDrawingBuffer } =
+      await import("@hyperframes/engine");
     await installMediaRenderIdBridge(page);
+    await page.evaluateOnNewDocument(forcePreservedDrawingBuffer);
+    await page.evaluateOnNewDocument("window.__HF_REPLAY_SKIPPED_FRAMES = true");
     await page.setViewport(viewport);
     if (answer) await answerPageInProcess(page, url, answer);
     await options.beforeNavigate?.(page);
     await gotoWhenSent(page, url, pageNavigationTimeoutMs(options.navigationTimeoutMs));
     await assertWebGpuAdapterAvailable(page, requiresWebGpu, softwareWebGpu);
-    options.onLoaded?.();
+    await options.onLoaded?.(page);
     const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
     return { browser: chromeBrowser, page, renderReadyTimedOut };
   } catch (err) {
@@ -355,6 +368,7 @@ async function launchCompositionBrowser(
   html: string,
   noListen: boolean,
   options: LaunchOptions,
+  pageUrl?: string,
 ): Promise<LaunchedBrowser> {
   const viewport = resolveCompositionViewportFromHtml(html);
   const { ensureBrowser, findSystemBrowser } = await import("../browser/manager.js");
@@ -378,11 +392,15 @@ async function launchCompositionBrowser(
       { ...viewport, captureMode: "screenshot", requiresWebGpu },
       webGpu.gpuConfig,
     );
-    return launchManagedBrowser(puppeteer.default, {
-      headless: true,
-      signal: options.signal,
-      executablePath,
-      ...(noListen ? oneProcessOverPipe({ args }) : { args }),
+    return launchWithPageNetwork(pageUrl, (network) => {
+      const allArgs = [...args, ...network.args];
+      return launchManagedBrowser(puppeteer.default, {
+        headless: true,
+        signal: options.signal,
+        executablePath,
+        userDataDir: network.userDataDir,
+        ...(noListen ? oneProcessOverPipe({ args: allArgs }) : { args: allArgs }),
+      });
     });
   };
 
@@ -401,7 +419,7 @@ async function launchCompositionBrowser(
     }
 
     console.warn(
-      `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${systemBrowser.executablePath}.`,
+      `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${terminalText(systemBrowser.executablePath)}.`,
     );
     try {
       chromeBrowser = await launch(systemBrowser.executablePath);
@@ -558,7 +576,13 @@ export async function settleCompositionSeek(
         await Reflect.apply(waitForCompletion, window, [barrier]);
       }
     },
-    { videoFrames: options.waitForVideoFrames !== false },
+    {
+      videoFrames: options.waitForVideoFrames !== false,
+      timeoutMs: Math.min(
+        options.seekSettleTimeoutMs ?? SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+        SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
+      ),
+    },
   );
 
   const animationFrameSettle = options.animationFrameSettle ?? "race";

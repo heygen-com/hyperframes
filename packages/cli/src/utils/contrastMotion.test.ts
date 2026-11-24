@@ -160,3 +160,80 @@ describe("contrast motion policy with real GSAP", () => {
     root.kill();
   });
 });
+
+describe("a layer under the text", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, "__timelines");
+    Reflect.deleteProperty(window, "__contrastAuditRestores");
+    realGsap.ticker.sleep();
+  });
+
+  function layers() {
+    document.body.innerHTML =
+      '<div id="stage"><div id="bg"></div><h1 id="label">Hello</h1><div id="aside"></div></div>';
+    const byId = (id: string) => document.getElementById(id) as HTMLElement;
+    const place = (el: HTMLElement, left: number, right: number) =>
+      Object.defineProperty(el, "getBoundingClientRect", {
+        value: () => ({ left, right, top: 0, bottom: 100 }),
+      });
+    place(byId("bg"), 0, 1000);
+    place(byId("label"), 100, 400);
+    place(byId("aside"), 700, 900);
+    return { bg: byId("bg"), label: byId("label"), aside: byId("aside") };
+  }
+
+  const inMotionAt = (time: number, animate: (root: RealTimeline) => void) => {
+    const { label } = layers();
+    const root = realGsap.timeline({ paused: true });
+    animate(root);
+    root.totalTime(time, true);
+    Reflect.set(window, "__timelines", { root });
+    prepared(label);
+    try {
+      const sample = readContrastMotion()[0];
+      return sample ? measuredInMotion(sample) : false;
+    } finally {
+      root.kill();
+    }
+  };
+
+  it("counts as motion while it fades in under still text, and not once it has settled", () => {
+    const fade = (root: RealTimeline) =>
+      root.to(document.getElementById("bg")!, { opacity: 1, duration: 1.5 }, 1);
+    expect(inMotionAt(1.1, fade)).toBe(true);
+    expect(inMotionAt(2.9, fade)).toBe(false);
+  });
+
+  it("does not count a layer that moves beside the text, not under it", () => {
+    const aside = (root: RealTimeline) =>
+      root.to(document.getElementById("aside")!, { x: 50, duration: 1.5 }, 1);
+    expect(inMotionAt(1.1, aside)).toBe(false);
+  });
+});
+
+describe("a sub-composition's timeline", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, "__timelines");
+    Reflect.deleteProperty(window, "__contrastAuditRestores");
+    realGsap.ticker.sleep();
+  });
+
+  it("is moving when it is registered paused and seeked with the root, and stopped when its clock is elsewhere", () => {
+    const { card, label } = stage(1);
+    const root = realGsap.timeline({ paused: true });
+    const scene = realGsap.timeline({ paused: true });
+    scene.to(card, { x: 100, duration: 1.5 });
+    root.add(scene, 1).to({}, { duration: 1 }, 3);
+    root.totalTime(1.1, true);
+    scene.totalTime(0.1, true);
+    Reflect.set(window, "__timelines", { root, scene });
+    prepared(label);
+    try {
+      expect(measuredInMotion(readContrastMotion()[0]!)).toBe(true);
+      scene.totalTime(0, true);
+      expect(measuredInMotion(readContrastMotion()[0]!)).toBe(false);
+    } finally {
+      root.kill();
+    }
+  });
+});

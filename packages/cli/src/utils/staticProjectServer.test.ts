@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, type ReadStream } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+  type ReadStream,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fs from "node:fs";
@@ -11,6 +18,7 @@ import {
   type StaticProjectServer,
 } from "./staticProjectServer.js";
 import { injectMediaCodecMapIntoHtml } from "@hyperframes/studio-server/media-proxy-preview";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server";
 
 // `serveStaticProjectHtml` reaches these two studio-server helpers via a
 // absolute module regardless of which file's relative specifier reaches it).
@@ -76,6 +84,9 @@ const mocks = vi.hoisted(() => {
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
 
+/** What the page itself sends for its media; a proxy copy needs a same-site signal. */
+const OWN_PAGE = { headers: { "Sec-Fetch-Site": "same-origin" } };
+
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   resolveProxy: mocks.resolveProxy,
   ProxyTranscodeError: mocks.ProxyTranscodeError,
@@ -133,12 +144,41 @@ afterEach(async () => {
   mocks.decideMediaProxyEligibility.mockReturnValue({ eligible: true });
 });
 
-async function serveWith(bytes: Buffer): Promise<{ url: string }> {
+const TAGGED_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAABGNJQ1ABAQABlXPCVgAAAAxJREFUeJxj0NfXBwABHgCOTp25kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+async function serveWith(bytes: Buffer, name = "tone.wav"): Promise<{ url: string }> {
   dir = mkdtempSync(join(tmpdir(), "hf-static-"));
-  writeFileSync(join(dir, "tone.wav"), bytes);
+  writeFileSync(join(dir, name), bytes);
   server = await serveStaticProjectHtml(dir, "<html></html>");
   return { url: server.url };
 }
+
+describe("serveStaticProjectHtml colour-tagged PNGs", () => {
+  it("serves a BT.709-tagged PNG without the tag, so check and snapshot see the file's values", async () => {
+    const { url } = await serveWith(TAGGED_PNG, "tagged.png");
+
+    const res = await fetch(`${url}tagged.png`);
+    const body = Buffer.from(await res.arrayBuffer());
+
+    expect(body.includes("cICP")).toBe(false);
+    expect(body.includes("IDAT")).toBe(true);
+    expect(res.headers.get("content-length")).toBe(String(body.length));
+  });
+});
+
+describe("serveStaticProjectHtml content types", () => {
+  it("tells the browser not to sniff a type, so an image cannot load as a script or stylesheet", async () => {
+    const { url } = await serveWith(Buffer.from("window.ran = true;"), "scene.png");
+    for (const path of ["", "scene.png", "missing.js"]) {
+      const response = await fetch(`${url}${path}`);
+      expect(response.headers.get("x-content-type-options"), path).toBe("nosniff");
+    }
+    expect((await fetch(`${url}scene.png`)).headers.get("content-type")).toBe("image/png");
+  });
+});
 
 describe("serveStaticProjectHtml range support", () => {
   it("answers a Range request with 206 + the requested byte slice", async () => {
@@ -214,6 +254,38 @@ describe("serveStaticProjectHtml range support", () => {
     expect(res.status).toBe(416);
     expect(res.headers.get("content-range")).toBe(`bytes */${body.length}`);
   });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // A media element reads `bytes=N-` until its buffer is full, then leaves the response open.
+    // Served to EOF, each <video> held one of Chrome's six connections, so seven clips on one
+    // file left every other request queued and `hyperframes check` hung (#6029).
+    const size = 8 * 1024 * 1024;
+    const { url } = await serveWith(Buffer.alloc(size, 0x61), "clip.mp4");
+    const res = await fetch(`${url}clip.mp4`, { headers: { Range: "bytes=1000-" } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(
+      `bytes 1000-${1000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+    );
+    expect(res.headers.get("content-length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
+  });
+
+  it("serves an open-ended media range to EOF when the rest is under one piece", async () => {
+    const { url } = await serveWith(Buffer.from("0123456789", "utf-8"), "clip.mp4");
+    const res = await fetch(`${url}clip.mp4`, { headers: { Range: "bytes=2-" } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe("bytes 2-9/10");
+    expect(await res.text()).toBe("23456789");
+  });
+
+  it("serves an open-ended range of a file that isn't media to EOF", async () => {
+    const size = 8 * 1024 * 1024;
+    const { url } = await serveWith(Buffer.alloc(size, 0x61), "data.bin");
+    const res = await fetch(`${url}data.bin`, { headers: { Range: "bytes=1000-" } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(`bytes 1000-${size - 1}/${size}`);
+    expect((await res.arrayBuffer()).byteLength).toBe(size - 1000);
+  });
 });
 
 describe("serveStaticProjectHtml asset stream lifetime", () => {
@@ -243,7 +315,7 @@ describe("serveStaticProjectHtml asset stream lifetime", () => {
       const status = await new Promise<number | undefined>((resolve, reject) => {
         const req = get(
           `${server?.url}large.mp4${proxy ? "?hf-proxy=h264" : ""}`,
-          { headers: range ? { Range: range } : {} },
+          { headers: { ...(range ? { Range: range } : {}), ...(proxy ? OWN_PAGE.headers : {}) } },
           (response) => {
             response.on("data", () => {
               response.destroy();
@@ -417,7 +489,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
-    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`);
+    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`, OWN_PAGE);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("transcoded-h264-bytes");
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
@@ -457,7 +529,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
-    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264&hf-proxy-box=2048x1448`);
+    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264&hf-proxy-box=2048x1448`, OWN_PAGE);
 
     expect(await res.text()).toBe("boxed-h264-bytes");
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
@@ -492,7 +564,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
       mocks.resolveProxy.mockResolvedValue(proxyPath);
       server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
-      const res = await fetch(`${server.url}clip.${extension}?hf-proxy=h264`);
+      const res = await fetch(`${server.url}clip.${extension}?hf-proxy=h264`, OWN_PAGE);
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("transcoded-h264-bytes");
       expect(mocks.resolveProxy).toHaveBeenCalledWith(projectDir, sourcePath, "h264", undefined, {
@@ -515,7 +587,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
     server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
-    const res = await fetch(`${server.url}clip.mov?hf-proxy=auto`);
+    const res = await fetch(`${server.url}clip.mov?hf-proxy=auto`, OWN_PAGE);
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("video/webm");
@@ -537,7 +609,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     );
     server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
-    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`);
+    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`, OWN_PAGE);
     expect(res.status).toBe(502);
   });
 
@@ -547,7 +619,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     mocks.resolveProxy.mockRejectedValue(new mocks.ProxyCapacityError());
     server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
-    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`);
+    const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`, OWN_PAGE);
     expect(res.status).toBe(503);
     expect(res.headers.get("retry-after")).toBe("1");
   });
@@ -557,9 +629,54 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     writeFileSync(join(projectDir, "image.png"), "not-a-video");
     server = await serveStaticProjectHtml(projectDir, "<html></html>");
 
-    const res = await fetch(`${server.url}image.png?hf-proxy=h264`);
+    const res = await fetch(`${server.url}image.png?hf-proxy=h264`, OWN_PAGE);
     expect(res.status).toBe(404);
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: another site's page could make this machine transcode the asset,
+  // and a request carrying neither fetch metadata nor a Referer counted as this site's.
+  it.each([
+    ["cross-site", { "Sec-Fetch-Site": "cross-site" }],
+    ["same-site", { "Sec-Fetch-Site": "same-site" }],
+    ["no fetch metadata and no Referer", {}],
+  ])(
+    "refuses ?hf-proxy for a request from another site (%s) without starting a transcode",
+    async (_label, headers: Record<string, string>) => {
+      const projectDir = mk();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+      const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`, { headers });
+      expect(res.status).toBe(403);
+      expect(mocks.resolveProxy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still serves ?hf-proxy to its own page and plain assets to another site", async () => {
+    const projectDir = mk();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    const proxyPath = join(projectDir, "proxy.mp4");
+    writeFileSync(proxyPath, "transcoded-h264-bytes");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+    server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+    const own = await fetch(`${server.url}clip.mp4?hf-proxy=h264`, {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
+    expect(own.status).toBe(200);
+    expect(await own.text()).toBe("transcoded-h264-bytes");
+
+    const referred = await fetch(`${server.url}clip.mp4?hf-proxy=h264`, {
+      headers: { Referer: server.url },
+    });
+    expect(referred.status).toBe(200);
+
+    const plain = await fetch(`${server.url}clip.mp4`, {
+      headers: { "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(plain.status).toBe(200);
+    expect(await plain.text()).toBe("original-hevc-bytes");
   });
 
   it("stops the copies it started, pre-warmed or asked for, when it closes", async () => {
@@ -577,7 +694,7 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
         }),
     );
     const closing = await serveStaticProjectHtml(projectDir, "<html><head></head></html>");
-    const held = fetch(`${closing.url}clip.mp4?hf-proxy=h264`);
+    const held = fetch(`${closing.url}clip.mp4?hf-proxy=h264`, OWN_PAGE);
     await vi.waitFor(() => expect(asked).toBeDefined());
     const injected = vi.mocked(injectMediaCodecMapIntoHtml).mock.calls.at(-1) as unknown[];
     const prewarms = injected[5] as AbortSignal | undefined;
@@ -637,5 +754,131 @@ describe("serveStaticProjectHtml when a sandbox refuses listen()", () => {
     await expect(serveStaticProjectHtml(dir, "<html></html>")).rejects.toMatchObject({
       code: "EADDRINUSE",
     });
+  });
+});
+
+describe("serveStaticProjectHtml private project files", () => {
+  it.each([".env", ".env.local", ".git/config", "%2egit/config"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      dir = mkdtempSync(join(tmpdir(), "hf-static-private-"));
+      mkdirSync(join(dir, ".git"));
+      writeFileSync(join(dir, ".env"), "SECRET=1");
+      writeFileSync(join(dir, ".env.local"), "SECRET=1");
+      writeFileSync(join(dir, ".git", "config"), "SECRET=1");
+      writeFileSync(join(dir, "asset.txt"), "ok");
+      server = await serveStaticProjectHtml(dir, "<html></html>");
+
+      const res = await fetch(`${server.url}${requestPath}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
+    },
+  );
+});
+
+describe("serveStaticProjectHtml credential files", () => {
+  it.each([".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials", "id_ed25519", "cert.pem"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      dir = mkdtempSync(join(tmpdir(), "hf-static-credentials-"));
+      for (const folder of [".claude", ".aws"]) mkdirSync(join(dir, folder));
+      for (const file of [".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials"]) {
+        writeFileSync(join(dir, file), "SECRET=1");
+      }
+      writeFileSync(join(dir, "id_ed25519"), "SECRET=1");
+      writeFileSync(join(dir, "cert.pem"), "SECRET=1");
+      writeFileSync(join(dir, "asset.txt"), "ok");
+      server = await serveStaticProjectHtml(dir, "<html></html>");
+
+      const res = await fetch(`${server.url}${requestPath}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
+    },
+  );
+});
+
+describe("serveStaticProjectHtml page another site loads", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const SANDBOX = "sandbox allow-scripts";
+
+  async function serveProject(): Promise<string> {
+    dir = mkdtempSync(join(tmpdir(), "hf-static-site-"));
+    writeFileSync(join(dir, "scene.html"), "<html><head></head><body>scene</body></html>");
+    server = await serveStaticProjectHtml(
+      dir,
+      "<html><head></head><body>composition</body></html>",
+    );
+    return server.url;
+  }
+
+  it.each(["", "scene.html"])(
+    "marks and sandboxes /%s when another site frames it",
+    async (path) => {
+      const url = await serveProject();
+      const res = await fetch(`${url}${path}`, {
+        headers: { "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "iframe" },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain(MARK);
+      expect(res.headers.get("content-security-policy")).toContain(SANDBOX);
+    },
+  );
+
+  it.each(["none", "same-origin"])(
+    "leaves the capture page unmarked for Sec-Fetch-Site %s",
+    async (site) => {
+      const url = await serveProject();
+      for (const path of ["", "scene.html"]) {
+        const res = await fetch(`${url}${path}`, { headers: { "Sec-Fetch-Site": site } });
+        expect(await res.text(), path).not.toContain(MARK);
+        expect(res.headers.get("content-security-policy"), path).not.toContain(SANDBOX);
+      }
+    },
+  );
+
+  // fails without the fix: a loopback load with no fetch metadata counted as the capture's own.
+  it("marks a page loaded with no fetch metadata unless its Referer is this server", async () => {
+    const url = await serveProject();
+    const bare = await fetch(`${url}scene.html`);
+    expect(await bare.text()).toContain(MARK);
+    expect(bare.headers.get("content-security-policy")).toContain(SANDBOX);
+    const own = await fetch(`${url}scene.html`, { headers: { Referer: url } });
+    expect(await own.text()).not.toContain(MARK);
+    for (const res of [bare, own]) expect(res.headers.get("vary")).toBe("Sec-Fetch-Site, Referer");
+  });
+});
+
+function writeToolRecords(projectDir: string): void {
+  mkdirSync(join(projectDir, ".hyperframes", "prepared-assets"), { recursive: true });
+  for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {
+    writeFileSync(join(projectDir, ".hyperframes", name), "PRIVATE_RECORD");
+  }
+  writeFileSync(join(projectDir, ".hyperframes", "prepared-assets", "clip.txt"), "prepared");
+  symlinkSync(
+    join(projectDir, ".hyperframes", "app-history.jsonl"),
+    join(projectDir, "linked-history.json"),
+  );
+}
+
+describe("serveStaticProjectHtml tool records", () => {
+  it.each([
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".hyperframes/comments.jsonl",
+    "%2ehyperframes/agent-handoff.json",
+    ".hyperframes%2fcomments.jsonl",
+    "linked-history.json",
+  ])("answers %s with 404 and still serves prepared assets", async (requestPath) => {
+    dir = mkdtempSync(join(tmpdir(), "hf-static-records-"));
+    writeToolRecords(dir);
+    server = await serveStaticProjectHtml(dir, "<html></html>");
+
+    const res = await fetch(`${server.url}${requestPath}`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("PRIVATE_RECORD");
+    const prepared = await fetch(`${server.url}.hyperframes/prepared-assets/clip.txt`);
+    expect(await prepared.text()).toBe("prepared");
   });
 });

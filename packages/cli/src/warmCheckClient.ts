@@ -1,3 +1,5 @@
+import "./utils/hideChildConsoles.js";
+import "./utils/windowsExeSearch.js";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
@@ -7,13 +9,13 @@ import { fileURLToPath } from "node:url";
 import {
   Frame,
   HANDSHAKE_TIMEOUT_MS,
-  WARM_IDLE_MS,
   encodeFrame,
   envDigest,
   frameReader,
   keyed,
   sameProof,
   warmCheckEndpoint,
+  warmServerArgs,
   type WarmRequest,
 } from "./warmCheckProtocol.js";
 
@@ -134,7 +136,7 @@ export async function runWarmCheck(endpoint = warmCheckEndpoint(launchEnv)): Pro
 
 export function startNextWarmCheck(endpoint = warmCheckEndpoint(launchEnv)): void {
   if (!endpoint) return;
-  const args = [String(WARM_IDLE_MS), ...process.argv.slice(3)];
+  const args = warmServerArgs(process.argv.slice(3), launchEnv);
   spawn(process.execPath, [join(distDir, "warmCheck.js"), ...args], {
     cwd: process.cwd(),
     env: launchEnv,

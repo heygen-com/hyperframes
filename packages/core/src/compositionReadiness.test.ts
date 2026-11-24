@@ -97,7 +97,6 @@ describe("scanPendingCompositionAssets", () => {
       currentTime: 0,
       compositionDuration: Number.POSITIVE_INFINITY,
       canonicalFps: 30,
-      exportRenderSeek: false,
       timelineRegistry: {},
       resolver,
     });

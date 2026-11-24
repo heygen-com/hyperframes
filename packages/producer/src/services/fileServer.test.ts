@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path, { join } from "node:path";
 import { tmpdir } from "node:os";
+import { get as httpGet } from "node:http";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server/media-range";
 import {
   closeFileServerSafely,
   createFileServer,
@@ -13,6 +15,11 @@ import {
   parseRangeHeader,
   VIRTUAL_TIME_SHIM,
 } from "./fileServer.js";
+
+const TAGGED_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAABGNJQ1ABAQABlXPCVgAAAAxJREFUeJxj0NfXBwABHgCOTp25kgAAAABJRU5ErkJggg==",
+  "base64",
+);
 
 function captureLogger() {
   const warnings: { message: string; meta?: Record<string, unknown> }[] = [];
@@ -56,12 +63,14 @@ describe("closeFileServerSafely", () => {
 async function withFileServer(
   projectDir: string,
   run: (server: Awaited<ReturnType<typeof createFileServer>>) => Promise<void>,
+  allowOutsideProjectAssets?: boolean,
 ): Promise<void> {
   const server = await createFileServer({
     projectDir,
     preHeadScripts: [],
     headScripts: [],
     bodyScripts: [],
+    allowOutsideProjectAssets,
   });
   try {
     await run(server);
@@ -262,6 +271,30 @@ describe("parseRangeHeader", () => {
     });
   });
 
+  it("bounds an open-ended audio or video range at one piece", () => {
+    const size = 8 * 1024 * 1024;
+    expect(parseRangeHeader("bytes=0-", size, "video/mp4")).toEqual({
+      kind: "satisfiable",
+      start: 0,
+      end: MAX_OPEN_MEDIA_RANGE_BYTES - 1,
+    });
+    expect(parseRangeHeader("bytes=100-", size, "audio/mpeg")).toEqual({
+      kind: "satisfiable",
+      start: 100,
+      end: 100 + MAX_OPEN_MEDIA_RANGE_BYTES - 1,
+    });
+    expect(parseRangeHeader("bytes=100-", SIZE, "video/mp4")).toEqual({
+      kind: "satisfiable",
+      start: 100,
+      end: SIZE - 1,
+    });
+    expect(parseRangeHeader("bytes=100-", size, "application/octet-stream")).toEqual({
+      kind: "satisfiable",
+      start: 100,
+      end: size - 1,
+    });
+  });
+
   it("parses a suffix range bytes=-N as the last N bytes", () => {
     expect(parseRangeHeader("bytes=-50", SIZE)).toEqual({
       kind: "satisfiable",
@@ -373,6 +406,33 @@ describe("createFileServer", () => {
     }
   });
 
+  it("tells the browser not to sniff a type, so an image cannot load as a script or stylesheet", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-nosniff-"));
+    try {
+      writeEmptyIndex(projectDir);
+      writeFileSync(join(projectDir, "scene.png"), "window.ran = true;");
+      writeFileSync(join(projectDir, "scene.js"), "window.ran = true;");
+      const server = await createFileServer({ projectDir, preHeadScripts: [], headScripts: [] });
+      try {
+        for (const [name, type] of [
+          ["scene.png", "image/png"],
+          ["scene.js", "application/javascript; charset=utf-8"],
+          ["index.html", "text/html; charset=utf-8"],
+        ]) {
+          const response = await fetch(`${server.url}/${name}`);
+          expect(response.headers.get("content-type")).toBe(type);
+          expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+        }
+        const missing = await fetch(`${server.url}/missing.js`);
+        expect(missing.headers.get("x-content-type-options")).toBe("nosniff");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("serves ES modules with a JavaScript MIME type", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-mjs-"));
     try {
@@ -462,7 +522,7 @@ describe("createFileServer", () => {
     );
   });
 
-  it("serves asset files through project-root symlinked directories", async () => {
+  it("serves asset files through project-root symlinked directories for local renders", async () => {
     const workspaceDir = mkdtempSync(join(tmpdir(), "hf-file-server-symlink-assets-"));
     const adsDir = join(workspaceDir, "Ads");
     const projectDir = join(adsDir, "annual-upsell-2");
@@ -478,11 +538,18 @@ describe("createFileServer", () => {
       );
       symlinkSync("../shared", join(projectDir, "shared"));
 
+      await withFileServer(
+        projectDir,
+        async (server) => {
+          await expectTextResponse(`${server.url}/shared/brand.css`, {
+            contentType: "text/css",
+            bodyIncludes: ".aisplus-glass",
+          });
+        },
+        true,
+      );
       await withFileServer(projectDir, async (server) => {
-        await expectTextResponse(`${server.url}/shared/brand.css`, {
-          contentType: "text/css",
-          bodyIncludes: ".aisplus-glass",
-        });
+        expect((await fetch(`${server.url}/shared/brand.css`)).status).toBe(404);
       });
     } finally {
       rmSync(workspaceDir, { recursive: true, force: true });
@@ -627,6 +694,28 @@ describe("createFileServer", () => {
         expect(multi.status).toBe(200);
         expect(multi.headers.get("accept-ranges")).toBe("bytes");
         await multi.body?.cancel();
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // Served to EOF, each <video> holds one of Chrome's six connections to the server (#6029).
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-open-range-"));
+    try {
+      writeEmptyIndex(projectDir);
+      const size = 8 * 1024 * 1024;
+      writeFileSync(join(projectDir, "clip.mp4"), Buffer.alloc(size, 0x61));
+
+      await withFileServer(projectDir, async (server) => {
+        const res = await fetch(`${server.url}/clip.mp4`, { headers: { Range: "bytes=1000-" } });
+        expect(res.status).toBe(206);
+        expect(res.headers.get("content-range")).toBe(
+          `bytes 1000-${1000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+        );
+        expect(res.headers.get("content-length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+        expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
       });
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
@@ -1051,4 +1140,203 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
     expect(child.__hfReal).toBeInstanceOf(FakeTimeline);
     expect(child.__hfReal.parent).toBe(parent.__hfReal);
   });
+});
+
+describe("createFileServer colour-tagged PNGs", () => {
+  it("serves a BT.709-tagged PNG without the tag, so render keeps the file's values", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-png-tags-"));
+    try {
+      writeEmptyIndex(projectDir);
+      writeFileSync(join(projectDir, "tagged.png"), TAGGED_PNG);
+      await withFileServer(projectDir, async (server) => {
+        const response = await fetch(`${server.url}/tagged.png`);
+        const body = Buffer.from(await response.arrayBuffer());
+        expect(response.status).toBe(200);
+        expect(body.includes("cICP")).toBe(false);
+        expect(body.includes("IDAT")).toBe(true);
+        expect(response.headers.get("content-length")).toBe(String(body.length));
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("createFileServer private project files", () => {
+  it.each(["/.env", "/.ENV.local", "/.env.production", "/.git/config", "/%2egit/HEAD", "/.envrc"])(
+    "answers %s with 404 and keeps ordinary assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-private-"));
+      try {
+        writeEmptyIndex(projectDir);
+        mkdirSync(join(projectDir, ".git"));
+        for (const name of [".env", ".ENV.local", ".env.production", ".envrc"]) {
+          writeFileSync(join(projectDir, name), "SECRET=1");
+        }
+        writeFileSync(join(projectDir, ".git", "config"), "SECRET=1");
+        writeFileSync(join(projectDir, ".git", "HEAD"), "SECRET=1");
+        writeFileSync(join(projectDir, "asset.txt"), "ok");
+        symlinkSync(join(projectDir, ".env"), join(projectDir, "linked.txt"));
+        await withFileServer(projectDir, async (server) => {
+          const response = await fetch(`${server.url}${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("SECRET");
+          const linked = await fetch(`${server.url}/linked.txt`);
+          expect(linked.status).toBe(404);
+          expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("createFileServer credential files", () => {
+  const credentials = [
+    ".npmrc",
+    ".mcp.json",
+    ".claude/x.json",
+    ".aws/credentials",
+    "id_ed25519",
+    "cert.pem",
+  ];
+  it.each(credentials.map((file) => `/${file}`))(
+    "answers %s with 404 and keeps ordinary assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-credentials-"));
+      try {
+        writeEmptyIndex(projectDir);
+        for (const folder of [".claude", ".aws"]) mkdirSync(join(projectDir, folder));
+        for (const file of credentials) writeFileSync(join(projectDir, file), "SECRET=1");
+        writeFileSync(join(projectDir, "asset.txt"), "ok");
+        await withFileServer(projectDir, async (server) => {
+          const response = await fetch(`${server.url}${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("SECRET");
+          expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+function getWithHost(url: string, host: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolveGet, rejectGet) => {
+    httpGet(url, { headers: { host } }, (res) => {
+      let body = "";
+      res.setEncoding("utf-8");
+      res.on("data", (chunk: string) => (body += chunk));
+      res.on("end", () => resolveGet({ status: res.statusCode ?? 0, body }));
+    }).on("error", rejectGet);
+  });
+}
+
+describe("createFileServer request Host", () => {
+  it.each(["/", "/index.html", "/asset.txt"])(
+    "refuses %s to a page name that is not loopback",
+    async (path) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-host-"));
+      try {
+        writeFileSync(join(projectDir, "index.html"), "<html><body>composition</body></html>");
+        writeFileSync(join(projectDir, "asset.txt"), "project-file");
+        await withFileServer(projectDir, async (server) => {
+          const res = await getWithHost(`${server.url}${path}`, `rebound.example:${server.port}`);
+          expect(res.status).toBe(403);
+          expect(res.body).not.toContain("composition");
+          expect(res.body).not.toContain("project-file");
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["localhost", "127.0.0.1", "[::1]"])(
+    "answers the capture browser on %s",
+    async (name) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-host-"));
+      try {
+        writeFileSync(join(projectDir, "asset.txt"), "project-file");
+        await withFileServer(projectDir, async (server) => {
+          const res = await getWithHost(`${server.url}/asset.txt`, `${name}:${server.port}`);
+          expect(res.status).toBe(200);
+          expect(res.body).toBe("project-file");
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("createFileServer page editing agent", () => {
+  it.each(["index.html", "scene.html"])(
+    "marks %s so its runtime offers a framing site no editing port",
+    async (name) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-mark-"));
+      try {
+        writeFileSync(join(projectDir, name), "<html><head></head><body></body></html>");
+        await withFileServer(projectDir, async (server) => {
+          const res = await fetch(`${server.url}/${name}`);
+          expect(res.status).toBe(200);
+          expect(await res.text()).toContain('<meta name="hyperframes-preview-for-another-site">');
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("createFileServer tool records", () => {
+  it.each([
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".hyperframes/comments.jsonl",
+    "%2ehyperframes/agent-handoff.json",
+    ".hyperframes%2fcomments.jsonl",
+    "linked-history.json",
+  ])(
+    "answers %s with 404 from either root and still serves prepared assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-records-"));
+      const compiledDir = mkdtempSync(join(tmpdir(), "hf-fs-records-compiled-"));
+      try {
+        writeEmptyIndex(projectDir);
+        for (const root of [projectDir, compiledDir]) {
+          mkdirSync(join(root, ".hyperframes", "prepared-assets"), { recursive: true });
+          for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {
+            writeFileSync(join(root, ".hyperframes", name), "PRIVATE_RECORD");
+          }
+        }
+        writeFileSync(join(projectDir, ".hyperframes", "prepared-assets", "clip.txt"), "prepared");
+        symlinkSync(
+          join(projectDir, ".hyperframes", "app-history.jsonl"),
+          join(projectDir, "linked-history.json"),
+        );
+        const server = await createFileServer({
+          projectDir,
+          compiledDir,
+          preHeadScripts: [],
+          headScripts: [],
+          bodyScripts: [],
+        });
+        try {
+          const response = await fetch(`${server.url}/${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("PRIVATE_RECORD");
+          const prepared = await fetch(`${server.url}/.hyperframes/prepared-assets/clip.txt`);
+          expect(await prepared.text()).toBe("prepared");
+        } finally {
+          server.close();
+        }
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+        rmSync(compiledDir, { recursive: true, force: true });
+      }
+    },
+  );
 });

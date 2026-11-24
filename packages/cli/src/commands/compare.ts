@@ -1,18 +1,9 @@
-import { failCommand } from "../utils/commandResult.js";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { terminalLines, terminalText } from "@hyperframes/core";
+import { existsSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { createContactSheet } from "../capture/contactSheet.js";
 import {
   openSettledCompositionPage,
@@ -22,11 +13,14 @@ import {
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { displayPathFromInput, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
+import { parsePositiveIntegerArg } from "../utils/integerArg.js";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
+import { leftOutNotice, stageReferencedFiles } from "../utils/stageReferencedFiles.js";
 import { withMeta } from "../utils/updateCheck.js";
 import type { Example } from "./_examples.js";
-import { isPathInside } from "@hyperframes/parsers/asset-paths";
+import { failCaught } from "../utils/jsonError.js";
+import { CliUsageError } from "../utils/commandResult.js";
 
 const MAX_COMPARE_VARIANTS = 16;
 const MAX_COLUMNS = 4;
@@ -95,10 +89,12 @@ function parseLabels(value: unknown, pathCount: number): string[] | undefined {
   if (!raw) return undefined;
   const labels = raw.split(",").map((part) => part.trim());
   if (labels.some((label) => label.length === 0)) {
-    throw new Error("--labels entries must be non-empty");
+    throw new CliUsageError("--labels entries must be non-empty");
   }
   if (labels.length !== pathCount) {
-    throw new Error(`--labels count (${labels.length}) must match path count (${pathCount})`);
+    throw new CliUsageError(
+      `--labels count (${labels.length}) must match path count (${pathCount})`,
+    );
   }
   return labels;
 }
@@ -108,7 +104,7 @@ function parseAtSeconds(value: unknown): number {
   if (!raw) return 0;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error("--at must be a non-negative number of seconds");
+    throw new CliUsageError("--at must be a non-negative number of seconds");
   }
   return parsed;
 }
@@ -118,9 +114,16 @@ function parseColumns(value: unknown): number | undefined {
   if (!raw) return undefined;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error("--cols must be a positive integer");
+    throw new CliUsageError("--cols must be a positive integer");
   }
   return parsed;
+}
+
+function parseTimeoutMs(value: unknown): number {
+  return (
+    parsePositiveIntegerArg(readOptionalString(value), "--timeout", { unit: "milliseconds" }) ??
+    DEFAULT_RENDER_READY_TIMEOUT_MS
+  );
 }
 
 function defaultCompareCols(cellCount: number): number {
@@ -141,7 +144,7 @@ export function parseCompareArgs(
 ): ParsedCompareArgs {
   const paths = parsePathArgs(args);
   if (paths.length < 2) {
-    throw new Error("need 2+ paths to compare");
+    throw new CliUsageError("need 2+ paths to compare");
   }
 
   const labels = parseLabels(args.labels, paths.length);
@@ -157,9 +160,7 @@ export function parseCompareArgs(
     atSeconds: parseAtSeconds(args.at),
     cols: parseColumns(args.cols),
     json: args.json === true,
-    timeoutMs:
-      Number.parseInt(readOptionalString(args.timeout) ?? "", 10) ||
-      DEFAULT_RENDER_READY_TIMEOUT_MS,
+    timeoutMs: parseTimeoutMs(args.timeout),
   };
 }
 
@@ -209,40 +210,16 @@ function inputError(variant: CompareVariantSpec): Error {
   );
 }
 
-function copyVariantSiblings(
-  sourceDir: string,
-  destinationDir: string,
-  stagingPaths: readonly string[],
-): void {
-  mkdirSync(destinationDir, { recursive: true });
-  for (const entry of readdirSync(sourceDir)) {
-    if (entry === "node_modules" || entry === ".git") continue;
-    const src = join(sourceDir, entry);
-    const dest = join(destinationDir, entry);
-    if (stagingPaths.includes(src)) continue;
-    if (stagingPaths.some((path) => isPathInside(path, src))) {
-      copyVariantSiblings(src, dest, stagingPaths);
-      continue;
-    }
-    cpSync(src, dest, {
-      recursive: true,
-      filter: (path) => basename(path) !== "node_modules" && basename(path) !== ".git",
-    });
-  }
-}
-
-function stageHtmlVariant(
-  variant: CompareVariantSpec,
-  existingStagedDirs: readonly string[],
-): PreparedCompareVariant {
+function stageHtmlVariant(variant: CompareVariantSpec): PreparedCompareVariant {
   const stagedDir = mkdtempSync(join(tmpdir(), "hf-compare-variant-"));
   try {
-    // Copy the composition's sibling files but skip heavy/irrelevant trees — a
-    // variant sitting next to node_modules or .git shouldn't drag them into tmp.
-    const sourceDir = realpathSync(dirname(variant.inputPath));
-    const stagingPaths = [stagedDir, ...existingStagedDirs].map((path) => realpathSync(path));
-    copyVariantSiblings(sourceDir, realpathSync(stagedDir), stagingPaths);
-    const sourceName = basename(variant.inputPath);
+    const source = realpathSync(variant.inputPath);
+    const notice = leftOutNotice(
+      `compare ${variant.displayPath}`,
+      stageReferencedFiles(dirname(source), [source], stagedDir),
+    );
+    if (notice) console.warn(c.dim(terminalLines(notice)));
+    const sourceName = basename(source);
     if (sourceName !== "index.html") {
       renameSync(join(stagedDir, sourceName), join(stagedDir, "index.html"));
     }
@@ -275,10 +252,7 @@ export function prepareCompareVariantProjects(
         continue;
       }
       if (stat.isFile() && extname(variant.inputPath).toLowerCase() === ".html") {
-        const stagedDirs = prepared.flatMap((project) =>
-          project.stagedDir ? [project.stagedDir] : [],
-        );
-        prepared.push(stageHtmlVariant(variant, stagedDirs));
+        prepared.push(stageHtmlVariant(variant));
         continue;
       }
       throw inputError(variant);
@@ -361,7 +335,7 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
       renderReadyTimedOut = renderReadyTimedOut || rendered.renderReadyTimedOut;
     }
 
-    mkdirSync(dirname(parsed.outPath), { recursive: true });
+    makeOutputFolder(dirname(parsed.outPath));
     await createContactSheet(framePaths, parsed.outPath, {
       cols: parsed.cols ?? defaultCompareCols(framePaths.length),
       maxImages: framePaths.length,
@@ -437,16 +411,12 @@ export default defineCommand({
       if (parsed.json) {
         printJson(payload);
       } else {
-        console.log(`\n${c.success("◇")}  Comparison sheet saved to ${payload.sheet}`);
+        console.log(
+          `\n${c.success("◇")}  Comparison sheet saved to ${terminalText(payload.sheet)}`,
+        );
       }
     } catch (err) {
-      const message = normalizeErrorMessage(err);
-      if (jsonRequested) {
-        printJson({ ok: false, error: message });
-      } else {
-        console.error(`\n${c.error("✗")} Compare failed: ${message}`);
-      }
-      failCommand();
+      failCaught(err, jsonRequested, (m) => `\n${c.error("✗")} Compare failed: ${m}`, printJson);
     }
   },
 });

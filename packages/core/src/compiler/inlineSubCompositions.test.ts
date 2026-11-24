@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { ensureExternalLinkTag, inlineSubCompositions } from "./inlineSubCompositions";
 import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+import { dropAuthoredSvgReferenceAliases } from "./svgSelectorAliases";
 import { JSDOM } from "jsdom";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
@@ -264,12 +265,63 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       flattenInnerRoot,
     });
 
+    expect(host.hasAttribute("data-composition-id")).toBe(false);
     const wrapper = host.querySelector("[data-hf-inner-root]");
     expect(wrapper?.getAttribute("data-composition-id")).toBe("scoped-text");
 
     const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain("display: flex");
   });
+
+  it.each([
+    [
+      "a named host",
+      '<div id="h" data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="3"></div>',
+    ],
+    [
+      "an anonymous host",
+      '<div id="h" data-composition-src="scene.html" data-start="0" data-duration="3"></div>',
+    ],
+  ])(
+    "styles the preserved root written as #root[data-composition-id] for %s",
+    (_name, hostHtml) => {
+      const { document } = parseHTML(
+        `<!DOCTYPE html><html><body><div data-composition-id="main">${hostHtml}</div></body></html>`,
+      );
+      const host = document.querySelector("#h")!;
+      const sceneHtml = `<template id="scene-template">
+  <div id="root" data-composition-id="scene" data-width="640" data-height="360" data-duration="3">
+    <h1 class="title">Hi</h1>
+    <style>#root[data-composition-id="scene"] { background: red; } #root[data-composition-id="scene"] .title { color: blue; } #root[data-composition-id="scene"]::before { content: "x"; }</style>
+  </div>
+</template>`;
+      const flattenInnerRoot = (innerRoot: Element): Element => {
+        const clone = innerRoot.cloneNode(true) as Element;
+        clone.removeAttribute("data-composition-id");
+        clone.removeAttribute("id");
+        clone.setAttribute("data-hf-authored-id", "root");
+        clone.setAttribute("data-hf-inner-root", "true");
+        return clone;
+      };
+
+      const result = inlineSubCompositions(document, [host], {
+        resolveHtml: () => sceneHtml,
+        parseHtml: (html) => parseHTML(html).document,
+        flattenInnerRoot,
+      });
+
+      const page = new JSDOM(document.documentElement.outerHTML).window.document;
+      const selectors = result.styles.flatMap((style) =>
+        [...style.css.matchAll(/([^{}]+)\{/g)].map((match) => match[1]!.trim()),
+      );
+      const [box, title, before] = selectors.map(
+        (selector) => page.querySelectorAll(selector.replaceAll("::before", "")).length,
+      );
+      expect(box).toBe(1);
+      expect(title).toBe(1);
+      expect(before).toBe(1);
+    },
+  );
 
   it("extracts <link> elements from sub-composition <head> with original rel and crossorigin", () => {
     const subCompWithLinks = `<!doctype html>
@@ -411,6 +463,25 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(host.hasAttribute("data-timeline-locked")).toBe(true);
   });
 
+  it("propagates data-no-timeline from inner root to host element", () => {
+    const stillSubComp = `<!doctype html>
+<html><head></head><body>
+  <div id="captions" data-composition-id="captions" data-no-timeline data-width="1920" data-height="1080">
+    <span>Hello</span>
+  </div>
+</body></html>`;
+
+    const document = makeHostDocument("captions");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+
+    inlineSubCompositions(document, [host], {
+      resolveHtml: () => stillSubComp,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(host.hasAttribute("data-no-timeline")).toBe(true);
+  });
+
   it("producer path propagates data-hf-authored-id to host when inner root has id", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;
@@ -505,6 +576,50 @@ describe("inlineSubCompositions – variable defaults on a template sub-comp roo
     });
     expect(result.variablesByComp["card"]).toMatchObject({ headline: "Overridden" });
   });
+
+  it("keys an anonymous host's values by the sub-composition's own id, which its wrapper and scripts use", () => {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <div data-composition-id="main">
+        <div data-composition-src="card.html" data-start="0" data-duration="4" data-track-index="0"></div>
+      </div></body></html>`);
+    const host = document.querySelector('[data-composition-src="card.html"]')!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_WITH_VAR,
+      parseHtml: (h) => parseHTML(h).document,
+      readVariableDefaults: readDeclaredDefaults,
+      parseHostVariables: parseHostVariableValues,
+    });
+    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Hi there" });
+    // The host stays anonymous; the preserved wrapper is what carries the id.
+    expect(host.hasAttribute("data-composition-id")).toBe(false);
+    expect(host.querySelector('[data-composition-id="card"]')).not.toBeNull();
+  });
+
+  it.each([
+    ["named first", ["named", "anonymous"]],
+    ["anonymous first", ["anonymous", "named"]],
+  ] as const)(
+    "keeps a named mount's values when an anonymous mount of the same file shares its scope (%s)",
+    (_order, order) => {
+      // Both mounts resolve through `[data-composition-id="card"]`: the named
+      // host carries it, the anonymous wrapper keeps it. The explicit instance
+      // values on the named host must win whichever mount is inlined first.
+      const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <div data-composition-id="main">
+        <div id="named" data-composition-id="card" data-composition-src="card.html" data-variable-values='{"headline":"Custom"}' data-start="0" data-duration="4" data-track-index="0"></div>
+        <div id="anonymous" data-composition-src="card.html" data-start="0" data-duration="4" data-track-index="1"></div>
+      </div></body></html>`);
+      const hosts = order.map((id) => document.querySelector(`#${id}`)!);
+      const result = inlineSubCompositions(document, hosts, {
+        resolveHtml: () => SUB_COMP_WITH_VAR,
+        parseHtml: (h) => parseHTML(h).document,
+        readVariableDefaults: readDeclaredDefaults,
+        parseHostVariables: parseHostVariableValues,
+      });
+      expect(result.variablesByComp).toEqual({ card: { headline: "Custom" } });
+      expect(document.querySelector("#anonymous")!.hasAttribute("data-composition-id")).toBe(false);
+    },
+  );
 });
 
 describe("inlineSubCompositions – recursive host discovery", () => {
@@ -880,6 +995,58 @@ describe("inlineSubCompositions – #3490 nested SVG id collisions", () => {
   });
 });
 
+describe("inlineSubCompositions – SVG ids in top-level scene clips", () => {
+  const portrait = (color: string) =>
+    `<svg><defs><linearGradient id="skin"><stop stop-color="${color}"/></linearGradient>` +
+    `<symbol id="portrait"><rect fill="${color}"/></symbol></defs>` +
+    `<rect class="face" fill="url(#skin)" clip-path="url(#shared)"/><use class="piece" href="#portrait"/></svg>`;
+  const compile = (clips: string) => {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <svg width="0" height="0"><clipPath id="shared"><circle r="40"/></clipPath></svg>
+      <div data-composition-id="main" data-start="0" data-duration="20">${clips}</div></body></html>`);
+    inlineSubCompositions(document, [], {
+      resolveHtml: () => null,
+      parseHtml: (html) => parseHTML(html).document,
+      hostIdentityMap: assignTestRuntimeCompositionIds([]),
+    });
+    return document;
+  };
+  // The first element with an id is what the browser resolves `url(#id)` and `href="#id"` to.
+  const resolved = (document: Document, value: string | null) =>
+    document.getElementById(value!.replace(/^url\(#|\)$|^#/g, ""));
+
+  // fails without the fix: the second scene's gradient and <use> resolved to the first scene's portrait.
+  it("gives each scene clip its own portrait when two scenes reuse the same SVG ids", () => {
+    const document = compile(
+      `<div class="scene" data-start="0" data-duration="10">${portrait("red")}</div>` +
+        `<div class="scene" data-start="10" data-duration="10">${portrait("blue")}</div>`,
+    );
+    const [first, second] = [...document.querySelectorAll(".scene")];
+    for (const scene of [first!, second!]) {
+      expect(
+        scene.contains(resolved(document, scene.querySelector(".face")!.getAttribute("fill"))),
+      ).toBe(true);
+      expect(
+        scene.contains(resolved(document, scene.querySelector(".piece")!.getAttribute("href"))),
+      ).toBe(true);
+    }
+    expect(first!.querySelector("linearGradient")!.id).toBe("skin");
+    expect(first!.querySelector("symbol")!.id).toBe("portrait");
+  });
+
+  it("leaves a page-level definition the scenes share where it is", () => {
+    const document = compile(
+      `<div class="scene" data-start="0" data-duration="10">${portrait("red")}</div>` +
+        `<div class="scene" data-start="10" data-duration="10">${portrait("blue")}</div>`,
+    );
+    const shared = document.getElementById("shared")!;
+    expect(shared.closest(".scene")).toBeNull();
+    for (const face of document.querySelectorAll(".face")) {
+      expect(face.getAttribute("clip-path")).toBe("url(#shared)");
+    }
+  });
+});
+
 describe("inlineSubCompositions – renamed SVG ids stay reachable from author scripts", () => {
   // These tests execute the compiled, scoped scripts inside a real jsdom
   // window built from the assembled document — the same thing the browser
@@ -1090,4 +1257,220 @@ describe("SVG namespacing compatibility on current compiler", () => {
     expect(dom.window.moduleHit).toBe("b--shape");
     dom.window.close();
   });
+});
+
+it("tells the caller each mount's element count, template content included, before copying it", () => {
+  const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+    <div data-composition-id="a" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`);
+  const charged: Array<[string, number]> = [];
+
+  inlineSubCompositions(document, [...document.querySelectorAll("[data-composition-src]")], {
+    resolveHtml: () =>
+      `<template><div data-composition-id="art"><p><b></b></p><i></i></div></template>`,
+    parseHtml: (html) => parseHTML(html).document,
+    chargeElements: (src, count) => charged.push([src, count]),
+  });
+
+  expect(charged).toEqual([
+    ["art.html", 5],
+    ["art.html", 5],
+  ]);
+});
+
+// fails without the fix: renaming a mount's colliding SVG ids charged nothing to the render's budget.
+it("charges the bytes SVG id renaming adds to the mount that grew", () => {
+  const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+    <div data-composition-id="a" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`);
+  const hosts = [...document.querySelectorAll("[data-composition-src]")];
+  const charged: Array<[string, number]> = [];
+
+  inlineSubCompositions(document, hosts, {
+    resolveHtml: () =>
+      `<template><div data-composition-id="art"><svg><clipPath id="clip"><rect/></clipPath></svg><div clip-path="url(#clip)"></div></div></template>`,
+    parseHtml: (html) => parseHTML(html).document,
+    chargeEmitted: (src, bytes) => charged.push([src, bytes]),
+  });
+
+  expect(document.querySelectorAll('[id="clip"]')).toHaveLength(1);
+  expect(charged.filter(([src, bytes]) => src === "art.html" && bytes > 0).length).toBeGreaterThan(
+    0,
+  );
+});
+
+// fails without the fix: a mount's alias alternatives were all built before any of their bytes were charged.
+it("charges a mount's selector aliases while they are built, and each byte once", () => {
+  const leaves = 300;
+  const leaf = `<template><div data-composition-id="leaf"><svg><g id="a"></g><use href="#a"/></svg></div></template>`;
+  const art = (rules: number) =>
+    `<template><div data-composition-id="art"><style>${Array.from(
+      { length: rules },
+      (_, i) => `[href="#a"] .r${i} { fill: red; }`,
+    ).join(
+      "\n",
+    )}</style>${'<div data-composition-id="leaf" data-composition-src="leaf.html" data-start="0" data-duration="2"></div>'.repeat(leaves)}</div></template>`;
+  const inline = (rules: number, chargeEmitted: (src: string, bytes: number) => void) => {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+      <div data-composition-id="a" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+    </div></body></html>`);
+    return inlineSubCompositions(
+      document,
+      [...document.querySelectorAll("[data-composition-src]")],
+      {
+        resolveHtml: (src) => (src === "art.html" ? art(rules) : leaf),
+        parseHtml: (html) => parseHTML(html).document,
+        chargeEmitted,
+      },
+    );
+  };
+
+  let renaming = 0;
+  inline(0, (_src, bytes) => (renaming += bytes));
+  let charged = 0;
+  const limit = renaming + 16 * 1024;
+  expect(() =>
+    inline(50, (_src, bytes) => {
+      charged += bytes;
+      if (charged > limit) throw new Error("over budget");
+    }),
+  ).toThrow("over budget");
+  expect(charged).toBeLessThan(limit + 200);
+
+  const perSrc = new Map<string, number>();
+  const { styles } = inline(1, (src, bytes) => perSrc.set(src, (perSrc.get(src) ?? 0) + bytes));
+  const authored = art(1).match(/<style>([^<]*)<\/style>/)![1]!;
+  const growth = styles[0]!.css.length - authored.length;
+  expect(growth).toBeGreaterThan(5_000);
+  expect(perSrc.get("art.html")).toBeGreaterThanOrEqual(growth);
+  expect(perSrc.get("art.html")).toBeLessThan(growth + 1000);
+});
+
+// The default scope escapes `<` itself, so it can't end its style element even without postcss.
+it("writes `<` in a host id as a CSS escape itself in the default scope selector", () => {
+  const id = "scene</style><script>window.ran = true</script>";
+  const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+    <div data-composition-src="scene.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`);
+  const host = document.querySelector("[data-composition-src]")!;
+  host.setAttribute("data-composition-id", id);
+  const { styles } = inlineSubCompositions(document, [host], {
+    resolveHtml: () =>
+      `<template><div data-composition-id="scene"><style>.title { color: red; }</style></div></template>`,
+    parseHtml: (html) => parseHTML(html).document,
+  });
+
+  expect(styles.map((style) => style.css)).toEqual([
+    String.raw`[data-composition-id="scene\3c /style>\3c script>window.ran = true\3c /script>"] .title { color: red; }`,
+  ]);
+});
+
+// fails without the fix: nested templates were walked per copy, linkedom copied each, and SVG ones rescanned.
+describe("dropAuthoredSvgReferenceAliases", () => {
+  const planted = `data-hf-svg-reference-aliases="[]"`;
+  const nested = (depth: number): string =>
+    depth === 0
+      ? `<i ${planted}></i>`
+      : `<template><b ${planted}></b>${nested(depth - 1)}</template>`;
+  const owner = (node: object, key: string): object => {
+    let proto: object = node;
+    while (!Object.prototype.hasOwnProperty.call(proto, key)) proto = Object.getPrototypeOf(proto);
+    return proto;
+  };
+  const doms: Array<[string, (html: string) => { document: Document; serialize: () => string }]> = [
+    [
+      "linkedom",
+      (html) => {
+        const { document } = parseHTML(html);
+        return { document: document as unknown as Document, serialize: () => document.toString() };
+      },
+    ],
+    [
+      "a browser DOM",
+      (html) => {
+        const { document } = new JSDOM(html).window;
+        return { document, serialize: () => document.documentElement.outerHTML };
+      },
+    ],
+  ];
+
+  const svgNested = (depth: number): string =>
+    depth === 0
+      ? `<g ${planted}></g>`
+      : `<template><g ${planted}></g>${svgNested(depth - 1)}</template>`;
+  const pages: Array<[string, (depth: number) => string]> = [
+    ["HTML templates", nested],
+    [
+      "SVG elements named template",
+      (depth) => `<svg>${svgNested(depth)}<template></template></svg>`,
+    ],
+  ];
+
+  it.each(
+    doms.flatMap(([dom, parse]) => pages.map(([page, body]) => [dom, page, parse, body] as const)),
+  )("in %s walks nested %s once and leaves no copy of the attribute", (dom, page, parse, body) => {
+    const depth = 12;
+    const { document, serialize } = parse(
+      `<!doctype html><html><body>${body(depth)}</body></html>`,
+    );
+    const probe = document.createElement("template");
+    const nodes = [document, probe, probe.content];
+    const ownersOf = (key: string) => [...new Set(nodes.map((node) => owner(node, key)))];
+    const spies = [
+      ...ownersOf("querySelectorAll").map((proto) =>
+        vi.spyOn(proto as Element, "querySelectorAll"),
+      ),
+      ...ownersOf("children").map((proto) => vi.spyOn(proto as Element, "children", "get")),
+    ];
+    const contentReads = vi.spyOn(owner(probe, "content") as HTMLTemplateElement, "content", "get");
+
+    expect(dropAuthoredSvgReferenceAliases(document)).toBe(true);
+    const processed = spies.reduce(
+      (sum, spy) =>
+        sum + spy.mock.results.reduce((n, result) => n + (result.value?.length ?? 0), 0),
+      0,
+    );
+    const reads = contentReads.mock.calls.length;
+    spies.forEach((spy) => spy.mockRestore());
+    contentReads.mockRestore();
+
+    expect(processed).toBeLessThan(4 * depth);
+    expect(reads).toBeLessThanOrEqual(dom === "linkedom" || page !== "HTML templates" ? 0 : depth);
+    expect(serialize()).not.toContain("data-hf-svg-reference-aliases");
+  });
+});
+
+// fails without the fix: each clip's scope tested every mount, and the page's scope every element, by contains().
+it("scopes a page of 2000 svg clips and 200 mounts without testing each against every other", () => {
+  const clips = Array.from(
+    { length: 2000 },
+    (_, i) => `<div data-start="${i}" data-duration="1"><svg><rect/></svg></div>`,
+  ).join("");
+  const mounts = Array.from(
+    { length: 200 },
+    (_, i) => `<div data-composition-id="m${i}" data-composition-src="s.html"></div>`,
+  ).join("");
+  const { document } = parseHTML(
+    `<!DOCTYPE html><html><body><div data-composition-id="main">${mounts}${clips}</div></body></html>`,
+  );
+  const hosts = [...document.querySelectorAll("[data-composition-src]")];
+  const elements = document.querySelectorAll("*").length;
+  let owner = Object.getPrototypeOf(document.body);
+  while (!Object.hasOwn(owner, "contains")) owner = Object.getPrototypeOf(owner);
+  const contains = vi.spyOn(owner, "contains");
+  let checks: number;
+  try {
+    inlineSubCompositions(document, hosts, {
+      resolveHtml: () =>
+        `<div data-composition-id="s"><svg><clipPath id="c"/><rect clip-path="url(#c)"/></svg></div>`,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+    checks = contains.mock.calls.length;
+  } finally {
+    contains.mockRestore();
+  }
+
+  expect(checks).toBeLessThan(elements);
 });

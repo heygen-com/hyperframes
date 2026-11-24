@@ -12,6 +12,8 @@ attribute picks the shader.
 
 ## Build
 
+Run these build commands from this source directory in a trusted checkout of the HyperFrames repository. Installed projects already contain the bundle.
+
 ```sh
 npm ci
 npm run build

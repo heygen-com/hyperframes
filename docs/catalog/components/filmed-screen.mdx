@@ -7,11 +7,15 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Filmed Screen</h1>
+  <p>Your scene, filmed off a screen: perspective, depth of field that follows an element you name, LED sub-pixels and per-shot colour grades. Shots glide into each other, focus racks between elements, and the focused element stays sharp.</p>
+</div>
+
 <CatalogDetail
   compositionId="filmed-screen"
   compositionSrc="compositions/components/filmed-screen.html"
   title="Filmed Screen"
-  description="Your scene, filmed off a screen: perspective, depth of field that follows an element you name, LED sub-pixels and per-shot colour grades. Shots glide into each other, focus racks between elements, and the focused element stays sharp."
   variables={[]}
   meta={{"category":"HTML-in-Canvas","badge":"Experimental","codeLines":701}}
   attribution={{"path":"registry/components/filmed-screen","tags":["filmed","screen","monitor","led","camera","depth-of-field","html-in-canvas","shader","webgl","effect"]}}
@@ -737,7 +741,9 @@ That writes one file: `compositions/components/filmed-screen.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -763,6 +769,4 @@ Tagged `filmed` `screen` `monitor` `led` `camera` `depth-of-field` `html-in-canv
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

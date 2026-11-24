@@ -11,14 +11,23 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Every installed skill's description is listed on every turn; an entry is read in full when it opens.
 export const DESCRIPTION_MAX = 320;
+// Each budget carries +256 B for the usage note line (`beaconProblems`) and +160 B for the line
+// that has every CLI command run through the launcher (`launcherProblems`).
 export const CORE_SKILLS = {
-  hyperframes: 7168,
-  "hyperframes-cli": 7168,
-  "hyperframes-registry": 5120,
-  "media-use": 5120,
-  figma: 7168,
-  slideshow: 5120,
-  "remotion-to-hyperframes": 5120,
+  // +128 B for the routing rows to the video rebuilds and to a reference's style, which only trigger when the entry hands them on.
+  // +64 B for the lane pointer to format.md.
+  hyperframes: 7776,
+  // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
+  // +256 B for the unattended pointer: a script or CI job with no TTY pins the release.
+  // +64 B for the rating line naming the person's no to usage notes.
+  "hyperframes-cli": 8160,
+  "hyperframes-registry": 5536,
+  "media-use": 5536,
+  figma: 7584,
+  slideshow: 5536,
+  "remotion-to-hyperframes": 5536,
+  "reverse-any-video": 5536,
+  "style-sampling": 5536,
 };
 
 /** @param {string} skill */
@@ -80,6 +89,28 @@ function nameProblems(skill, content, skillDir, commands) {
   ];
 }
 
+/** The skill's own `skill_invoked` beacon, so every run of it is counted by name. */
+export const beaconCommand = (skill) => `npx hyperframes events --skill=${skill}\``;
+
+/** @param {string} skill @param {string} content */
+export function beaconProblems(skill, content) {
+  return content.includes(beaconCommand(skill))
+    ? []
+    : [`${skill}/SKILL.md does not run \`npx hyperframes events --skill=${skill}\` as it starts`];
+}
+
+/** The line that has the skill run every CLI command through the launcher, never a project's npx. */
+export const LAUNCHER_LINE = "means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>`";
+
+/** @param {string} skill @param {string} content */
+export function launcherProblems(skill, content) {
+  const beacon = content.indexOf(beaconCommand(skill));
+  const launcher = content.indexOf(LAUNCHER_LINE);
+  return launcher !== -1 && (beacon === -1 || launcher < beacon)
+    ? []
+    : [`${skill}/SKILL.md does not run the CLI through the launcher before its beacon`];
+}
+
 /** @param {string} root */
 export function checkCoreSkills(root = REPO_ROOT) {
   const commands = registeredCommands(readFileSync(join(root, "packages/cli/src/cli.ts"), "utf8"));
@@ -87,7 +118,12 @@ export function checkCoreSkills(root = REPO_ROOT) {
     const file = skillFile(skill, root);
     const content = readFileSync(file, "utf8");
     const names = maxBytes === null ? [] : nameProblems(skill, content, dirname(file), commands);
-    return [...sizeProblems(skill, content, maxBytes), ...names];
+    return [
+      ...sizeProblems(skill, content, maxBytes),
+      ...names,
+      ...beaconProblems(skill, content),
+      ...launcherProblems(skill, content),
+    ];
   });
 }
 

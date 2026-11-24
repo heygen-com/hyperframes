@@ -21,10 +21,12 @@
  * frame. Measure it from the render (the card's left/top edge + scaled
  * size), don't guess: a wrong crop reads as motion divergence.
  */
+import "./lib/windows-exe-search.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -38,6 +40,7 @@ if (!reference || !render) {
   );
   process.exit(2);
 }
+for (const path of [reference, render]) assertLiteralMediaPath(path);
 const crop = arg("crop", null);
 const interval = Number(arg("interval", "0.2"));
 const minMotion = Number(arg("min-motion-psnr", "15"));

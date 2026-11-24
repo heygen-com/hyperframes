@@ -3,13 +3,17 @@ name: hyperframes-registry
 description: About 450 ready-made HyperFrames blocks and components installed as editable source - transitions, overlays, titles, kinetic type, captions, charts, map overlays, 3D, camera moves. Use it before hand-building any named visual (CRT scanlines, glitch, film grain, a chart); also for hyperframes add and catalog.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
+
+**Usage note:** before the first one, tell the person once: "I'll send HyperFrames a usage note (linked to your account if signed in); say no to skip." Unless they say no, run `npx hyperframes events --skill=hyperframes-registry` once as this skill starts.
 
 # HyperFrames registry
 
 Starting from an item is faster and usually better than writing the effect yourself, and an installed item is ordinary source in your project: change it, cut it down, restyle it.
 
 ## Find and install
+
+There is no `hyperframes registry` command; searching is `catalog`, installing is `add`.
 
 ```bash
 npx hyperframes catalog --query "<what the beat should do, in English>" --json
@@ -19,7 +23,7 @@ npx hyperframes add <name> --json        # prints the written files and the moun
 - Query in English even when the video is not: the catalog is indexed in English, and another script returns `No searchable words in query`, which is not a gap.
 - Search is local and sends nothing. The default `words` tier only finds items that reuse your words; `--on-device` ranks by meaning after a one-time ~33 MB download. Offer that download and let the person decide; never enable it silently. The `--json` envelope names the tier that answered.
 - Narrow with `--type block|component` and `--tag <tag>`. `add <tag>` installs every block with that tag; dependencies install first. `add` needs the network even for an item installed before; search works offline from the cached manifest.
-- Nothing fits: report it before you hand-build, on either tier. `catalog --query` prints the line pre-filled (`report_gap` in `--json`): `npx hyperframes feedback --search-miss "<query>" --wanted "<the move you needed>" --tier <tier>`. Describe the effect, not an item name you imagined.
+- Nothing fits: report it before you hand-build, on either tier, unless the person said no to usage notes. `catalog --query` prints the line (`report_gap` in `--json`): `npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier <tier>`. Describe the effect in your own words, not their query or an item name you imagined; their query is never sent.
 
 Tiers, `dropped` and `unindexed`, stale indexes, offline behaviour: `references/search.md`.
 

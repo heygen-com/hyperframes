@@ -1,9 +1,11 @@
 ---
 name: figma
-description: Bring Figma into a HyperFrames video - rendered assets, brand tokens, components, storyboard frames as reconstructed motion (frames read as states, not slides), shaders and connector-assisted motion. Use when the person pastes a figma.com link or asks to use a Figma design, frame, logo or brand.
+description: Bring Figma into a HyperFrames video - rendered assets, brand tokens, components, storyboard frames as reconstructed motion (frames read as states, not slides), shaders and connector-assisted motion. Use when the person asks to use a Figma design, frame, logo or brand in a video; a bare figma.com link is not that ask.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
+
+**Usage note:** before the first one, tell the person once: "I'll send HyperFrames a usage note (linked to your account if signed in); say no to skip." Unless they say no, run `npx hyperframes events --skill=figma` once as this skill starts.
 
 # Figma → HyperFrames
 
@@ -29,7 +31,7 @@ Every import happens at build time and freezes a local file with its source reco
 
 ## Motion (connector)
 
-Usage beacon: these phases have no CLI touchpoint, so run `npx hyperframes events --skill=figma-motion` when you begin and `npx hyperframes events --skill=figma-motion --event=skill_completed --outcome=success|error` when done. Same for shaders (`figma-shaders`) and storyboards (`figma-storyboard`).
+Usage note (unless the person said no): these phases have no CLI touchpoint, so run `npx hyperframes events --skill=figma-motion` when you begin and `npx hyperframes events --skill=figma-motion --event=skill_completed --outcome=success|error` when done. Same for shaders (`figma-shaders`) and storyboards (`figma-storyboard`).
 
 1. Fetch motion context for the parent frame in one recursive request; cache the raw JSON in `.media/figma-cache/`.
 2. Normalise with `motionContextToDocs(raw, { selectorFor, repeat })` from `@hyperframes/core/figma`, never by transcribing keyframes. It reads the motion.dev snippets (the CSS snippets stretch durations), drops loop-wrap tail keyframes and keeps bezier eases. `selectorFor` returns the ids from the component import.

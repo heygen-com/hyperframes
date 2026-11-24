@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -32,6 +32,7 @@ function makeRunner(
         tags?: Record<string, string>;
         size?: [number, number];
         bitRate?: string;
+        colorTransfer?: string;
       }
   >,
 ): FfprobeRunner {
@@ -49,6 +50,8 @@ function makeRunner(
             width: normalized.size?.[0],
             height: normalized.size?.[1],
             bit_rate: normalized.bitRate,
+            color_transfer: normalized.colorTransfer,
+            color_primaries: normalized.colorTransfer ? "bt2020" : undefined,
           },
         ]
       : [];
@@ -228,9 +231,12 @@ describe("BROWSER_HOSTILE_CODECS representative mimes", () => {
     expect(typeof BROWSER_HOSTILE_CODECS[codecName]?.representativeMime).toBe("string");
   });
 
-  it("has no representative mime for prores, which is never decodable", () => {
-    expect(BROWSER_HOSTILE_CODECS.prores?.representativeMime).toBeNull();
-  });
+  it.each(["prores", "mpeg4", "mjpeg", "mpeg2video", "dnxhd"])(
+    "has no representative mime for %s, which is never decodable",
+    (codecName) => {
+      expect(BROWSER_HOSTILE_CODECS[codecName]?.representativeMime).toBeNull();
+    },
+  );
 });
 
 describe("shouldPrewarmProxy", () => {
@@ -238,7 +244,7 @@ describe("shouldPrewarmProxy", () => {
     return { codecName, browserHostile: true, representativeMime: null, hasAlpha: false };
   }
 
-  it.each(["hevc", "prores", "theora"])(
+  it.each(["hevc", "prores", "theora", "mpeg4", "mjpeg", "mpeg2video", "dnxhd"])(
     "pre-warms %s, which has no cross-platform browser decode",
     (codecName) => {
       expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
@@ -263,24 +269,43 @@ describe("shouldPrewarmProxy", () => {
     ).toBe(false);
   });
 
-  // `shouldPrewarmProxy` alone cannot catch a missing `Object.hasOwn` guard —
-  // `.prewarm === true` is already strict against `Object.prototype.constructor`.
-  // The input that misbehaves goes through `codecFactsFor`, which would report
-  // an ordinary asset as browser-hostile.
-  it("does not treat a codec named after an Object.prototype key as hostile", async () => {
+  it("treats a codec nobody listed as browser-hostile, so its file gets a playable copy", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "wmv3" }));
+
+    expect(facts).toEqual({
+      codecName: "wmv3",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: false,
+    });
+    expect(shouldPrewarmProxy(facts!)).toBe(true);
+    expect(decideMediaProxyEligibility(facts)).toEqual({ eligible: true });
+  });
+
+  it.each(["h264", "vp8", "vp9", "av1"])("does not pre-warm %s", async (codecName) => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: codecName }));
+
+    expect(shouldPrewarmProxy(facts!)).toBe(false);
+  });
+
+  // A codec named after an Object.prototype key must not resolve against it: it is an unlisted codec like any other.
+  it("reads a codec named after an Object.prototype key as an unlisted codec", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mp4");
     writeFileSync(videoPath, "fake video bytes");
 
     const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "constructor" }));
 
-    expect(facts).toEqual({
-      codecName: "constructor",
-      browserHostile: false,
-      representativeMime: null,
-      hasAlpha: false,
-    });
-    expect(shouldPrewarmProxy(facts!)).toBe(false);
+    expect(facts?.browserHostile).toBe(true);
+    expect(facts?.representativeMime).toBeNull();
   });
 });
 
@@ -400,6 +425,28 @@ describe("a lighter copy of a file Chrome can play", () => {
     expect(Object.keys(scan.sourceFacts).sort()).toEqual(["/broll.mov", "/cam.mp4"]);
     expect(scan.sourceFacts["/cam.mp4"]?.codec).toBe("h264");
     expect(scan.sourceFacts["/broll.mov"]?.codec).toBe("hevc");
+  });
+
+  // fails without the fix: a page knew a file was see-through only from the codec map, which lists the files a browser
+  // cannot play, so a playable alpha WebM looked opaque and a capture swapped it for an opaque JPEG.
+  it("says which playable videos carry alpha", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project, "cam.mp4"), "fake video bytes");
+    writeFileSync(join(project, "glass.webm"), "fake video bytes");
+
+    const scan = await scanProjectMedia(project, [{ html: videoHtml("cam.mp4", "glass.webm") }], {
+      runner: makeRunner({
+        [join(project, "cam.mp4")]: { codecName: "h264", size: [3840, 2160] },
+        [join(project, "glass.webm")]: {
+          codecName: "vp9",
+          size: [3840, 2160],
+          tags: { ALPHA_MODE: "1" },
+        },
+      }),
+    });
+
+    expect(scan.sourceFacts["/glass.webm"]?.hasAlpha).toBe(true);
+    expect(scan.sourceFacts["/cam.mp4"]?.hasAlpha).toBeUndefined();
   });
 });
 
@@ -556,5 +603,59 @@ describe("scanProjectMediaCodecMap", () => {
     expect(cache.size).toBe(512);
     expect(paths.slice(0, 8).some((path) => !cache.has(join(project, path)))).toBe(true);
     expect(cache.has(join(project, "clip-512.mp4"))).toBe(true);
+  });
+});
+
+describe("HDR video previews through the SDR tone-mapped copy", () => {
+  const hlgClip = { codecName: "h264", pixFmt: "yuv420p", colorTransfer: "arib-std-b67" };
+
+  async function probe(entry: Parameters<typeof makeRunner>[0][string], hasFilters: boolean) {
+    vi.resetModules();
+    vi.doMock("./hdrFilters.js", () => ({ ffmpegHasHdrFilters: async () => hasFilters }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", () => ({
+      findFfBinary: (name: string) => (name === "ffprobe" ? FAKE_FFPROBE_PATH : "/fake/ffmpeg"),
+    }));
+    process.env.HYPERFRAMES_FFPROBE_PATH = FAKE_FFPROBE_PATH;
+    const fresh = await import("./mediaCodecMap.js");
+    const filePath = join(mkdtempSync(join(tmpdir(), "hf-hdr-clip-")), "clip.mp4");
+    writeFileSync(filePath, "x");
+    return fresh.probeAssetCodec(
+      filePath,
+      makeRunner({ [filePath]: entry }),
+      fresh.createMediaCodecProbeCache(),
+    );
+  }
+
+  afterEach(() => {
+    vi.doUnmock("./hdrFilters.js");
+    vi.doUnmock("@hyperframes/parsers/ff-binaries");
+    vi.restoreAllMocks();
+  });
+
+  it("marks an HLG H.264 clip browser-hostile so it gets the same copy the export uses", async () => {
+    const facts = await probe(hlgClip, true);
+    expect(facts?.browserHostile).toBe(true);
+    expect(decideMediaProxyEligibility(facts)).toEqual({ eligible: true });
+  });
+
+  it("treats an HDR clip as not playable whatever its codec, so a browser that decodes HEVC still swaps it", async () => {
+    const facts = await probe({ ...hlgClip, codecName: "hevc" }, true);
+    expect(facts?.browserHostile).toBe(true);
+    expect(facts?.representativeMime).toBeNull();
+    const vp9 = await probe({ ...hlgClip, codecName: "vp9" }, true);
+    expect(vp9?.representativeMime).toBeNull();
+  });
+
+  it("leaves an SDR H.264 clip native", async () => {
+    const facts = await probe({ codecName: "h264", pixFmt: "yuv420p" }, true);
+    expect(facts?.browserHostile).toBe(false);
+  });
+
+  it("plays the clip natively and says why once when ffmpeg has no zscale/tonemap", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const facts = await probe(hlgClip, false);
+    expect(facts?.browserHostile).toBe(false);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![0]).toContain("libzimg");
   });
 });

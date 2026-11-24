@@ -6,36 +6,19 @@
  * is active and the user is navigating caption segments).
  */
 
-import { ownsPlainKeys } from "../../utils/typingTarget";
+import { shouldIgnorePlaybackShortcutTarget } from "@hyperframes/core/typing-target";
+import type { ComboEvent } from "@hyperframes/core/key-combo";
+import { matchesKey } from "../components/studioShortcuts";
+import { usePlayerStore } from "../store/playerStore";
 
-const PLAYBACK_FRAME_STEP_CODES = new Set(["ArrowLeft", "ArrowRight"]);
+const FRAME_STEP_ACTIONS = [
+  "frameBack",
+  "frameForward",
+  "frameBackTen",
+  "frameForwardTen",
+] as const;
 
-const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
-  "button",
-  "a[href]",
-  "[role='button']",
-  "[role='checkbox']",
-  "[role='menuitem']",
-  // Base UI's menu radio item is a `<div>`, so `button` above no longer catches it.
-  "[role='menuitemradio']",
-  "[role='radio']",
-  "[role='spinbutton']",
-].join(",");
-
-export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): boolean {
-  // Anything the user is typing into owns its keys outright, editable elements
-  // included: a letter claimed here never reaches the text. So does a native player.
-  if (ownsPlainKeys(target)) return true;
-  if (!target || typeof target !== "object") return false;
-  const candidate = target as { closest?: unknown };
-  if (typeof candidate.closest !== "function") return false;
-  return (
-    (candidate.closest as (selector: string) => Element | null).call(
-      target,
-      PLAYBACK_SHORTCUT_IGNORED_SELECTOR,
-    ) !== null
-  );
-}
+export { shouldIgnorePlaybackShortcutTarget };
 
 const MODAL_DIALOG_SELECTOR = "[role=dialog][aria-modal=true]";
 
@@ -59,10 +42,7 @@ interface PlaybackShortcutCaptionState {
   selectedCaptionSegmentCount: number;
 }
 
-type PlaybackShortcutEvent = Pick<
-  KeyboardEvent,
-  "altKey" | "ctrlKey" | "metaKey" | "code" | "target"
->;
+type PlaybackShortcutEvent = ComboEvent & Pick<KeyboardEvent, "target">;
 
 export function shouldIgnorePlaybackShortcutEvent(
   event: PlaybackShortcutEvent,
@@ -71,11 +51,10 @@ export function shouldIgnorePlaybackShortcutEvent(
     selectedCaptionSegmentCount: 0,
   },
 ): boolean {
-  if (event.metaKey || event.ctrlKey || event.altKey) return true;
   if (shouldIgnorePlaybackShortcutTarget(event.target)) return true;
   if (isModalDialogOpen()) return true;
   return (
-    PLAYBACK_FRAME_STEP_CODES.has(event.code) &&
+    FRAME_STEP_ACTIONS.some((action) => matchesKey(event, action)) &&
     captionState.isCaptionEditMode &&
     captionState.selectedCaptionSegmentCount > 0
   );
@@ -83,3 +62,8 @@ export function shouldIgnorePlaybackShortcutEvent(
 
 /** JKL shuttle speeds (×1, ×2, ×4). */
 export const SHUTTLE_SPEEDS = [1, 2, 4] as const;
+
+/** The exit-razor combo while the razor is armed: the razor owns it, playback must leave it alone. */
+export function razorClaimsKey(e: KeyboardEvent): boolean {
+  return matchesKey(e, "exitRazor") && usePlayerStore.getState().activeTool === "razor";
+}

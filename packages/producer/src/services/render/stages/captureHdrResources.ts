@@ -16,12 +16,12 @@
  * exist, leaving the caller with empty maps that the hot loop tolerates.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, statfsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, rmSync, statSync, statfsSync } from "node:fs";
 import {
   type CaptureSession,
   decodePngToRgb48le,
   extractMediaMetadata,
+  ffmpegSeekSeconds,
   getCgroupMemoryLimitMb,
   normalizeObjectFit,
   queryElementStacking,
@@ -31,7 +31,9 @@ import {
   resolveVideoExtractionWindow,
   runFfmpeg,
   type TimelineExtractionWindow,
+  urlInputArgs,
   type VideoMetadata,
+  videoStartOnMediaTimeline,
 } from "@hyperframes/engine";
 import { fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
@@ -42,8 +44,9 @@ import {
 } from "../../hdrCompositor.js";
 import type { HdrDiagnostics, RenderJob } from "../../renderOrchestrator.js";
 import type { CompositionMetadata } from "../shared.js";
-import { createHdrFrameWindows } from "../../hdrFrameWindows.js";
+import { createHdrFrameWindows, type HdrFrameWindows } from "../../hdrFrameWindows.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 function tempDirSafePrefix(id: string): string {
   const safe = id.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 80);
@@ -381,7 +384,15 @@ async function probeFirstTick(
   runFfmpegImpl: typeof runFfmpeg,
   abortSignal: AbortSignal | undefined,
 ): Promise<number> {
-  const args = ["-ss", String(mediaStart), "-i", srcPath, "-frames:v", "1"];
+  const args = [
+    ...urlInputArgs(srcPath),
+    "-ss",
+    String(mediaStart),
+    "-i",
+    srcPath,
+    "-frames:v",
+    "1",
+  ];
   const result = await runFfmpegImpl([...args, ...["-vf", "showinfo", "-f", "null", "-"]], {
     signal: abortSignal,
   });
@@ -425,7 +436,7 @@ export async function extractHdrVideoFrames(args: {
   let scratchBytes = 0;
   const extractionWindows = new Map<
     string,
-    { window: HdrExtractionWindow; videoStreamLeadSeconds?: number }
+    { window: HdrExtractionWindow; metadata: VideoMetadata }
   >();
   for (const [videoId, srcPath] of prep.hdrVideoSrcPaths) {
     const video = composition.videos.find((v) => v.id === videoId);
@@ -441,10 +452,7 @@ export async function extractHdrVideoFrames(args: {
       initialWindow,
       abortSignal,
     );
-    extractionWindows.set(videoId, {
-      window,
-      videoStreamLeadSeconds: metadata.videoStreamLeadSeconds,
-    });
+    extractionWindows.set(videoId, { window, metadata });
     prep.hdrVideoStartTimes.set(videoId, window.compositionStart);
     const frameSize = dims.width * dims.height * 6;
     const frames = window.finalFrameOnly ? 1 : Math.ceil(window.durationSeconds * fps);
@@ -463,17 +471,18 @@ export async function extractHdrVideoFrames(args: {
       const video = composition.videos.find((v) => v.id === videoId);
       const planned = extractionWindows.get(videoId);
       if (!video || !planned) continue;
-      const { window } = planned;
+      const { window, metadata } = planned;
       mkdirSync(framesDir, { recursive: true });
-      const frameDir = mkdtempSync(join(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`));
+      const frameDir = createStagingDir(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`);
       createdFrameDirs.add(frameDir);
       const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
       const frameSize = dims.width * dims.height * 6;
       const extractionMediaStart = window.extractionMediaStart ?? window.mediaStart;
+      const ffmpegSeek = ffmpegSeekSeconds(metadata, extractionMediaStart);
       const scale = `scale=${dims.width}:${dims.height}:force_original_aspect_ratio=increase,crop=${dims.width}:${dims.height}`;
       const firstTick = window.finalFrameOnly
         ? 0
-        : await probeFirstTick(srcPath, extractionMediaStart, fps, runFfmpegImpl, abortSignal);
+        : await probeFirstTick(srcPath, ffmpegSeek, fps, runFfmpegImpl, abortSignal);
       const totalFrames = window.finalFrameOnly
         ? 1
         : Math.max(1, Math.ceil(window.durationSeconds * fps - firstTick - 1e-9)) +
@@ -489,10 +498,20 @@ export async function extractHdrVideoFrames(args: {
           const ffmpegArgs = window.finalFrameOnly
             ? // Decode before seeking for the one-frame path. Input-side seeking can
               // return zero frames for valid unindexed/negative-base transports.
-              ["-i", srcPath, "-ss", String(extractionMediaStart), "-frames:v", "1", "-vf", scale]
+              [
+                ...urlInputArgs(srcPath),
+                "-i",
+                srcPath,
+                "-ss",
+                String(Math.max(0, ffmpegSeek)),
+                "-frames:v",
+                "1",
+                "-vf",
+                scale,
+              ]
             : hdrWindowFfmpegArgs({
                 srcPath,
-                mediaStart: extractionMediaStart,
+                ffmpegSeek,
                 fps,
                 fpsArg: fpsToFfmpegArg(job.config.fps),
                 firstTick,
@@ -531,19 +550,20 @@ export async function extractHdrVideoFrames(args: {
       }
       first.release();
       if (video.loop) (await windows.lease(totalFrames - 1))?.release();
+      const held = holdFirstFrameUntilStreamStarts(windows, firstTick);
       out.set(videoId, {
         dir: frameDir,
-        windows,
+        windows: held,
         width: dims.width,
         height: dims.height,
         frameSize,
         get frameCount() {
-          return windows.totalFrames;
+          return held.totalFrames;
         },
         scratch: Buffer.allocUnsafe(frameSize),
         loop: video.loop,
         mediaStart: extractionMediaStart,
-        videoStreamLeadSeconds: planned.videoStreamLeadSeconds,
+        videoStartSeconds: videoStartOnMediaTimeline(metadata),
       });
     }
     return { sources: out, estimatedBytes, releaseReservation };
@@ -561,12 +581,13 @@ export async function extractHdrVideoFrames(args: {
 }
 
 /**
- * One window as one FFmpeg pass on the clip's own tick grid: seek to a whole second before the
- * window (so timestamp rounding matches the clip's), pin `fps` to the clip's first tick, trim the lead-in.
+ * One window as one FFmpeg pass on the clip's own tick grid: seek to a whole second before the window
+ * (so timestamp rounding matches the clip's), pin `fps` to the clip's first tick, trim the lead-in,
+ * and write only the frames the graph emits (CFR sync would pad from pts 0 with the window's first).
  */
 function hdrWindowFfmpegArgs(a: {
   srcPath: string;
-  mediaStart: number;
+  ffmpegSeek: number;
   fps: number;
   fpsArg: string;
   firstTick: number;
@@ -580,65 +601,114 @@ function hdrWindowFfmpegArgs(a: {
   const filters = [`fps=${a.fpsArg}:start_time=${(a.firstTick / a.fps).toFixed(6)}`, a.scale];
   if (trim > 0) filters.push(`trim=start_frame=${trim}`);
   return [
-    ...["-ss", (a.mediaStart + seekFrame / a.fps).toFixed(6), "-i", a.srcPath],
-    ...["-vf", filters.join(","), "-frames:v", String(a.frames)],
+    ...urlInputArgs(a.srcPath),
+    ...["-ss", (a.ffmpegSeek + seekFrame / a.fps).toFixed(6), "-i", a.srcPath],
+    ...["-vf", filters.join(","), "-frames:v", String(a.frames), "-fps_mode", "passthrough"],
   ];
+}
+
+function holdFirstFrameUntilStreamStarts(
+  windows: HdrFrameWindows,
+  firstTick: number,
+): HdrFrameWindows {
+  return {
+    get totalFrames() {
+      return firstTick + windows.totalFrames;
+    },
+    lease: (frameIndex) => windows.lease(Math.max(0, frameIndex - firstTick)),
+    close: () => windows.close(),
+  };
+}
+
+/** Shrinks the box uniformly so page CSS alone cannot size a buffer larger than the frame. */
+export function fitHdrImageLayoutToFrame(
+  layout: { width: number; height: number },
+  frameWidth: number,
+  frameHeight: number,
+): { width: number; height: number } {
+  const scale = Math.min(1, frameWidth / layout.width, frameHeight / layout.height);
+  if (scale === 1) return layout;
+  return {
+    width: Math.max(1, Math.floor(layout.width * scale)),
+    height: Math.max(1, Math.floor(layout.height * scale)),
+  };
+}
+
+export interface HdrImageDecodeResult {
+  buffers: Map<string, HdrImageBuffer>;
+  releaseReservation: () => void;
 }
 
 /**
  * Decode each HDR image into an rgb48le buffer, resampling to the element's
- * layout box if known. Failures abort the render to avoid shipping missing
- * layers (the hot loop has no fallback for a missing HDR layer that the
- * composition expects to see).
+ * layout box (fitted inside the output frame) if known. Every buffer is counted
+ * against the HDR extraction budget until the caller releases the reservation.
+ * Failures abort the render to avoid shipping missing layers (the hot loop has
+ * no fallback for a missing HDR layer that the composition expects to see).
  */
 export function decodeHdrImageBuffers(args: {
   log: ProducerLogger;
   hdrImageSrcPaths: Map<string, string>;
   prep: HdrResourcePrep;
   hdrDiagnostics: HdrDiagnostics;
-}): Map<string, HdrImageBuffer> {
-  const { log, hdrImageSrcPaths, prep, hdrDiagnostics } = args;
+  width: number;
+  height: number;
+}): HdrImageDecodeResult {
+  const { log, hdrImageSrcPaths, prep, hdrDiagnostics, width, height } = args;
+  const budgetBytes = resolveHdrExtractionBudgetBytes(process.env[HDR_EXTRACTION_MAX_BYTES_ENV]);
+  const releases: Array<() => void> = [];
+  const releaseReservation = () => {
+    for (const release of releases.splice(0)) release();
+  };
   const out = new Map<string, HdrImageBuffer>();
   for (const [imageId, srcPath] of hdrImageSrcPaths) {
     try {
       const decoded = decodePngToRgb48le(readFileSync(srcPath));
+      const releaseDecoded = reserveHdrExtractionBytes(decoded.data.length, budgetBytes);
       const layout = prep.hdrExtractionDims.get(imageId);
-      const fitInfo = prep.hdrImageFitInfo.get(imageId);
-      if (layout && (layout.width !== decoded.width || layout.height !== decoded.height)) {
-        const fit = normalizeObjectFit(fitInfo?.fit);
+      if (!layout || (layout.width === decoded.width && layout.height === decoded.height)) {
+        releases.push(releaseDecoded);
+        out.set(imageId, decoded);
+        continue;
+      }
+      const target = fitHdrImageLayoutToFrame(layout, width, height);
+      if (target !== layout) {
+        log.warn("HDR image layout box is larger than the output frame; drawing it smaller", {
+          imageId,
+          layout: `${layout.width}x${layout.height}`,
+          drawn: `${target.width}x${target.height}`,
+        });
+      }
+      try {
+        releases.push(reserveHdrExtractionBytes(target.width * target.height * 6, budgetBytes));
+        const fitInfo = prep.hdrImageFitInfo.get(imageId);
         const resampled = resampleRgb48leObjectFit(
           decoded.data,
           decoded.width,
           decoded.height,
-          layout.width,
-          layout.height,
-          fit,
+          target.width,
+          target.height,
+          normalizeObjectFit(fitInfo?.fit),
           fitInfo?.position,
         );
-        out.set(imageId, {
-          data: resampled,
-          width: layout.width,
-          height: layout.height,
-        });
-      } else {
-        out.set(imageId, {
-          data: Buffer.from(decoded.data),
-          width: decoded.width,
-          height: decoded.height,
-        });
+        out.set(imageId, { data: resampled, width: target.width, height: target.height });
+      } finally {
+        releaseDecoded();
       }
     } catch (err) {
+      releaseReservation();
       hdrDiagnostics.imageDecodeFailures += 1;
+      const message = err instanceof Error ? err.message : String(err);
       log.error("HDR image decode failed; aborting render", {
         imageId,
         srcPath,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
       });
       throw new Error(
-        `HDR image decode failed for image "${imageId}". ` +
+        `HDR image decode failed for image "${imageId}": ${message}. ` +
           `Aborting render to avoid shipping missing HDR image layers.`,
       );
     }
   }
-  return out;
+  return { buffers: out, releaseReservation };
 }

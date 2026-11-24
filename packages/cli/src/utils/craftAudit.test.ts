@@ -24,6 +24,10 @@ interface Shown {
   captions?: boolean;
   /** Block key; defaults to the element's own key. */
   block?: number;
+  /** The block's rendered text; defaults to `text`. */
+  blockText?: string;
+  /** Top edge in px; defaults to a row per key. */
+  top?: number;
 }
 
 function part(shown: Shown): CraftTextPart {
@@ -35,9 +39,10 @@ function part(shown: Shown): CraftTextPart {
     blockSelector: `#t${shown.block ?? shown.key}`,
     sourceFile: "compositions/scene.html",
     text: shown.text,
+    blockText: shown.blockText ?? shown.text,
     opacity: 1,
     fontPx,
-    rect: { left: 100, top: 100 + shown.key * 10, width: 800, height: fontPx * 1.2 },
+    rect: { left: 100, top: shown.top ?? 100 + shown.key * 10, width: 800, height: fontPx * 1.2 },
     captions: shown.captions ?? false,
   };
 }
@@ -82,10 +87,39 @@ describe("readingWords", () => {
     expect(readingWords("今天天气很好")).toBeGreaterThan(1);
   });
 
+  it("counts Korean by its spaces and a number with its counter as one unit", () => {
+    expect(readingWords("실패 12회")).toBe(2);
+    expect(readingWords("오류 3건 발생")).toBe(3);
+    expect(readingWords("테스트 실패 12/40")).toBe(4);
+    expect(readingWords("커피12잔")).toBe(1);
+  });
+
+  it("still segments scripts written without spaces", () => {
+    expect(readingWords("ฉันรักภาษาไทยมาก")).toBeGreaterThan(1);
+    expect(readingWords("ខ្ញុំស្រលាញ់ភាសាខ្មែរ")).toBeGreaterThan(1);
+    expect(readingWords("ຂ້ອຍຮັກພາສາລາວຫຼາຍ")).toBeGreaterThan(1);
+    expect(readingWords("ကျွန်တော်မြန်မာစကားကိုချစ်တယ်")).toBeGreaterThan(1);
+  });
+
+  it("keeps counting a Japanese number and its counter as two", () => {
+    expect(readingWords("12回")).toBe(2);
+    expect(readingWords("実行12回失敗")).toBe(4);
+  });
+
   it("counts a contraction as one word", () => {
     expect(readingWords("a tooth can't get in")).toBe(5);
     expect(readingWords("a tooth can’t get in")).toBe(5);
     expect(readingWords("it's 'quoted'")).toBe(2);
+  });
+
+  it("counts a number with a thousands separator or a decimal point as one word", () => {
+    expect(readingWords("1,080")).toBe(1);
+    expect(readingWords("3.5%")).toBe(1);
+    expect(readingWords("$1,200.50 saved")).toBe(2);
+    expect(readingWords("1,080억 달러")).toBe(2);
+    expect(readingWords("one, two. 3 left")).toBe(4);
+    expect(readingWords("12/40")).toBe(2);
+    expect(readingWords("売上1,080億")).toBe(3);
   });
 });
 
@@ -116,6 +150,34 @@ describe("line_unread", () => {
     expect(finding?.message).toContain("references/motion.md");
   });
 
+  // fails without the fix: a finding carried no measured frames, so a report of a line read late could not show why.
+  it("carries the frames it measured at both ends of the line, with none painted before or after it", async () => {
+    const shown: Shown[] = [
+      { key: 1, text: "Every team gets one shared calendar now", from: 6.2, to: 6.9 },
+      { key: 2, text: "Try it today", from: 13, to: 20 },
+    ];
+    const [finding] = await detectLineUnread(film(20, shown), 20, CANVAS, probeFor(shown));
+    const measured = finding?.measured ?? [];
+    expect(measured.map((frame) => frame.opacity)).toEqual([
+      null,
+      null,
+      null,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      null,
+      null,
+      null,
+    ]);
+    expect(measured[3]).toMatchObject({ time: 6.25, heightPx: 115 });
+    expect(measured.map((frame) => frame.time)).toEqual([
+      5.875, 6, 6.125, 6.25, 6.375, 6.5, 6.625, 6.75, 6.875, 7, 7.125, 7.25,
+    ]);
+  });
+
   it("does not warn on a landed title held 1.5 s, a 0.4 s chapter word, captions or a 2.5 s end card", async () => {
     const shown: Shown[] = [
       { key: 1, text: "Ship it faster", from: 0.5, to: 2 },
@@ -144,6 +206,7 @@ describe("line_unread", () => {
       key: 10 + index,
       block: 1,
       text,
+      blockText: words.join(" "),
       from: 2,
       to: 2.6,
     }));
@@ -151,6 +214,39 @@ describe("line_unread", () => {
     const findings = await detectLineUnread(film(8, shown), 8, CANVAS, probeFor(shown));
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ selector: "#t1", words: 7 });
+  });
+
+  it("counts a line split into one span per glyph by its words, not its letters", async () => {
+    const line = "That camera move at 0:12 though";
+    const shown: Shown[] = Array.from(line.replaceAll(" ", ""), (text, index) => ({
+      key: 10 + index,
+      block: 1,
+      text,
+      blockText: line,
+      from: 0,
+      to: 5.5,
+    }));
+    shown.push({ key: 2, text: "End card here", from: 6, to: 12 });
+    expect(await detectLineUnread(film(12, shown), 12, CANVAS, probeFor(shown))).toEqual([]);
+  });
+
+  // fails without the fix: each instance of a split clip was timed alone, so its 0.5 s first half warned.
+  it("times a line held across a split clip's two instances as one hold", async () => {
+    const line = "Your reminder card holds here";
+    const shown: Shown[] = [
+      { key: 1, text: line, from: 3, to: 3.5, top: 800 },
+      { key: 2, text: line, from: 3.5, to: 8, top: 800 },
+    ];
+    expect(await detectLineUnread(film(8, shown), 8, CANVAS, probeFor(shown))).toEqual([]);
+  });
+
+  it("still times a different line that takes over the same place on its own", async () => {
+    const shown: Shown[] = [
+      { key: 1, text: "Every team gets one shared calendar now", from: 3, to: 3.5, top: 800 },
+      { key: 2, text: "Start your free trial today", from: 3.5, to: 8, top: 800 },
+    ];
+    const findings = await detectLineUnread(film(8, shown), 8, CANVAS, probeFor(shown));
+    expect(findings.map((finding) => finding.selector)).toEqual(["#t1"]);
   });
 
   it("skips text too small to be a reading line", async () => {
@@ -252,6 +348,12 @@ describe("first_frame_empty", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]?.message).toContain("thumbnail");
     expect(findings[0]?.message).toContain("references/review.md");
+  });
+
+  it("names the element covering frame 0, even when content is painted beneath it", () => {
+    const findings = detectFirstFrameEmpty([frameAt(0, [], { coveredBy: "#bg-rect" })]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain("covered by #bg-rect");
   });
 
   it("does not warn when the title is already on screen at 0 s", () => {

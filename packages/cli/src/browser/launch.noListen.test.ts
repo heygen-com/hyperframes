@@ -15,7 +15,7 @@ vi.mock("./gpuPolicy.js", async (actual) => ({
     const puppeteer = {
       launch: async (options: LaunchOptions) => {
         probe.options.push(options);
-        return { process: () => new EventEmitter() };
+        return { process: () => new EventEmitter(), close: async () => {} };
       },
     } as unknown as PuppeteerNode;
     await hooks.launch(puppeteer, { headless: true, args: ["--headless"] });

@@ -1,3 +1,4 @@
+import { sourceLengthOf } from "./sourceLength";
 import type { RuntimeTimelineLike } from "./types";
 import { readTimelineDurationSeconds } from "./timelineDuration";
 import { resolveAuthoredTimingWindow } from "./authoredTiming";
@@ -100,7 +101,7 @@ export function createRuntimeStartTimeResolver(params: {
       resolveAuthoredDuration(element) ??
       positive(
         isMediaElement(element)
-          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+          ? resolveNaturalMediaTimelineDuration(element, sourceLengthOf(element))
           : null,
       ) ??
       positive(resolveTimedImageDurationSeconds(element)) ??
@@ -109,18 +110,17 @@ export function createRuntimeStartTimeResolver(params: {
     return resolved;
   };
 
+  const COMPOSITION_HOST_SELECTOR =
+    "[data-composition-src], [data-composition-id], [data-composition-file]";
   const isCompositionHost = (element: Element): boolean =>
-    element.hasAttribute("data-composition-src") ||
-    element.hasAttribute("data-composition-id") ||
-    element.hasAttribute("data-composition-file");
+    element.matches(COMPOSITION_HOST_SELECTOR);
 
-  // A mounted composition root without its own `data-start` takes its timing from the host it was
-  // loaded into: the host may use a different id than the file, or none (an anonymous host).
+  // A mounted composition root without its own `data-start` takes its timing from the nearest host
+  // or timed wrapper above it, the clip that shows it; the host may use another id than the file.
   const inheritedTimingHost = (element: Element): Element | null => {
-    const parent = element.parentElement;
-    if (!parent || !element.hasAttribute("data-composition-id")) return null;
+    if (!element.hasAttribute("data-composition-id")) return null;
     if (parseStartExpression(element.getAttribute("data-start"))) return null;
-    return isCompositionHost(parent) ? parent : null;
+    return element.parentElement?.closest(`[data-start], ${COMPOSITION_HOST_SELECTOR}`) ?? null;
   };
 
   const resolveCompositionOrigin = (compositionRoot: Element, fallback: number): number =>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Radial Surround</h1>
+  <p>Labeled hairline chips assemble around a centered subject on an elliptical ring, then optionally converge inward with a subtle edge dim. The center never moves: surrounded, not zoomed.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/radial-surround.json"
   compositionId="radial-surround"
   compositionSrc="compositions/components/radial-surround.html"
   title="Radial Surround"
-  description="Labeled hairline chips assemble around a centered subject on an elliptical ring, then optionally converge inward with a subtle edge dim. The center never moves: surrounded, not zoomed."
   variables={[{"id":"center_label","type":"string","role":"content","label":"Center label","description":"Label on the default center token card.","default":"Your team"},{"id":"chips","type":"string","role":"content","label":"Chips","description":"Comma-separated chip labels that surround the center (up to 12).","default":"Docs,Tickets,Dashboards,Inbox,Chat,Sheets"},{"id":"close_in","type":"boolean","role":"timing","label":"Close in","description":"Converge the ring inward with a subtle edge dim after assembly. The center never moves.","default":true},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated per-chip entrance times in seconds. Blank entries use the default cascade.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used by the center card tint.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"How the surrounded stage leaves the frame. Default none: the crowded hold ends the film.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":432}}
   attribution={{"path":"registry/components/radial-surround","tags":["motion-primitive","problem-setup","radial","ring","surround","converge"]}}
@@ -467,7 +471,9 @@ That writes one file: `compositions/components/radial-surround.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -511,6 +517,4 @@ Tagged `motion-primitive` `problem-setup` `radial` `ring` `surround` `converge`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

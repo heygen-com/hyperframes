@@ -13,6 +13,7 @@ describe("readMotionBlurSettings", () => {
     expect(read({})).toEqual({
       enabled: false,
       shutterDeg: 240,
+      phaseDeg: null,
       samples: null,
       events: false,
       tier: "auto",
@@ -24,11 +25,35 @@ describe("readMotionBlurSettings", () => {
       read({
         "data-motion-blur": "on",
         "data-motion-blur-shutter": "360",
+        "data-motion-blur-phase": "-90",
         "data-motion-blur-samples": "48",
         "data-motion-blur-events": "on",
         "data-motion-blur-tier": "capture",
       }),
-    ).toEqual({ enabled: true, shutterDeg: 360, samples: 48, events: true, tier: "capture" });
+    ).toEqual({
+      enabled: true,
+      shutterDeg: 360,
+      phaseDeg: -90,
+      samples: 48,
+      events: true,
+      tier: "capture",
+    });
+  });
+
+  it("clamps the phase to a full turn either way", () => {
+    expect(read({ "data-motion-blur-phase": "720" }).phaseDeg).toBe(360);
+    expect(read({ "data-motion-blur-phase": "-720" }).phaseDeg).toBe(-360);
+    expect(read({ "data-motion-blur-phase": "360" }).phaseDeg).toBe(360);
+  });
+
+  it("keeps a phase of 0: it opens the shutter on the frame, which is not centred", () => {
+    expect(read({ "data-motion-blur-phase": "0" }).phaseDeg).toBe(0);
+  });
+
+  it("treats a missing, empty or unreadable phase as centred", () => {
+    expect(read({}).phaseDeg).toBeNull();
+    expect(read({ "data-motion-blur-phase": "" }).phaseDeg).toBeNull();
+    expect(read({ "data-motion-blur-phase": "late" }).phaseDeg).toBeNull();
   });
 
   it("clamps the shutter and the samples, and rounds the samples", () => {
@@ -58,6 +83,7 @@ describe("motionBlurAttributeEdits", () => {
   const custom: MotionBlurSettings = {
     enabled: true,
     shutterDeg: 360,
+    phaseDeg: 0,
     samples: 48,
     events: true,
     tier: "filter",
@@ -67,6 +93,7 @@ describe("motionBlurAttributeEdits", () => {
     expect(motionBlurAttributeEdits(custom)).toEqual({
       "data-motion-blur": "on",
       "data-motion-blur-shutter": "360",
+      "data-motion-blur-phase": "0",
       "data-motion-blur-samples": "48",
       "data-motion-blur-events": "on",
       "data-motion-blur-tier": "filter",
@@ -75,6 +102,7 @@ describe("motionBlurAttributeEdits", () => {
       motionBlurAttributeEdits({
         enabled: false,
         shutterDeg: 240,
+        phaseDeg: null,
         samples: null,
         events: false,
         tier: "auto",
@@ -82,6 +110,7 @@ describe("motionBlurAttributeEdits", () => {
     ).toEqual({
       "data-motion-blur": null,
       "data-motion-blur-shutter": null,
+      "data-motion-blur-phase": null,
       "data-motion-blur-samples": null,
       "data-motion-blur-events": null,
       "data-motion-blur-tier": null,
@@ -97,7 +126,7 @@ describe("motionBlurAttributeEdits", () => {
   it("round-trips: what it writes reads back as the same settings", () => {
     for (const s of [
       custom,
-      { ...custom, shutterDeg: 240, samples: null, tier: "auto" as const },
+      { ...custom, shutterDeg: 240, phaseDeg: null, samples: null, tier: "auto" as const },
     ]) {
       const written = motionBlurAttributeEdits(s);
       const back = readMotionBlurSettings((n) => written[n] ?? null);

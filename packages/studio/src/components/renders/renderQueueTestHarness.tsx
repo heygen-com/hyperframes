@@ -46,6 +46,7 @@ export function renderPosts(fetchMock: ReturnType<typeof vi.fn>): unknown[] {
 export interface MountedQueue {
   /** The hook's current value. Throws if the harness never mounted. */
   api: () => RenderQueueApi;
+  switchProject: (projectId: string) => void;
   unmount: () => void;
 }
 
@@ -94,6 +95,10 @@ export function mountRenderQueue(
     api: () => {
       if (!current) throw new Error("useRenderQueue harness did not mount");
       return current;
+    },
+    switchProject: (nextProjectId) => {
+      projectId = nextProjectId;
+      act(() => root.render(<Harness />));
     },
     unmount: () => act(() => root.unmount()),
   };

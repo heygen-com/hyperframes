@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Logo Sting</h1>
+  <p>A wordmark slams into its final scale, fires one accent ring and one white impact frame, then holds completely still.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/logo-sting.json"
   compositionId="logo-sting"
   compositionSrc="compositions/components/logo-sting.html"
   title="Logo Sting"
-  description="A wordmark slams into its final scale, fires one accent ring and one white impact frame, then holds completely still."
   variables={[{"id":"wordmark","type":"string","role":"content","label":"Wordmark","description":"Brand name displayed in the final lockup.","default":"HYPERFRAMES"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color of the single impact ring.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":180}}
   attribution={{"path":"registry/components/logo-sting","tags":["motion-primitive","brand","logo","sting","impact","reveal"]}}
@@ -215,7 +219,9 @@ That writes one file: `compositions/components/logo-sting.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -255,6 +261,4 @@ Tagged `motion-primitive` `brand` `logo` `sting` `impact` `reveal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -5,9 +5,10 @@
  * (index.html, meta.json, AGENTS.md, CLAUDE.md).
  */
 
+import { captureSiteName } from "./localPage.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { applyDotEnv, CAPTURE_ENV_KEYS } from "../utils/dotEnv.js";
+import { applyDotEnv, PROJECT_ENV_KEYS } from "../utils/dotEnv.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { CaptureResult, DesignTokens } from "./types.js";
@@ -23,7 +24,7 @@ export function loadEnvFile(startDir: string): void {
     for (let i = 0; i < 5; i++) {
       const envPath = resolve(dir, ".env");
       try {
-        applyDotEnv(readFileSync(envPath, "utf-8"), process.env, CAPTURE_ENV_KEYS);
+        applyDotEnv(readFileSync(envPath, "utf-8"), process.env, PROJECT_ENV_KEYS, dir);
         break;
       } catch {
         dir = resolve(dir, "..");
@@ -38,7 +39,7 @@ export function loadEnvFile(startDir: string): void {
  * Generate the project scaffold files: index.html, meta.json, AGENTS.md, CLAUDE.md.
  *
  * Only creates files that don't already exist (index.html, meta.json).
- * Always (re)generates AGENTS.md + CLAUDE.md via agentPromptGenerator.
+ * (Re)generates AGENTS.md + CLAUDE.md via agentPromptGenerator, keeping ones capture did not write.
  */
 export async function generateProjectScaffold(
   outputDir: string,
@@ -61,7 +62,7 @@ export async function generateProjectScaffold(
   // valid compositions, playing two audio tracks offset in time.
   const metaPath = join(outputDir, "meta.json");
   if (!existsSync(metaPath)) {
-    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    const hostname = captureSiteName(url);
     writeNewFileSync(
       metaPath,
       JSON.stringify({ id: hostname + "-video", name: tokens.title || hostname }, null, 2),
@@ -71,7 +72,7 @@ export async function generateProjectScaffold(
   // Generate AGENTS.md + CLAUDE.md (AI agent instructions — always, regardless of API keys)
   try {
     const { generateAgentPrompt } = await import("./agentPromptGenerator.js");
-    generateAgentPrompt(
+    const kept = generateAgentPrompt(
       outputDir,
       url,
       tokens,
@@ -82,6 +83,7 @@ export async function generateProjectScaffold(
       catalogedAssets,
       detectedLibraries,
     );
+    for (const name of kept) warnings.push(`Kept the existing ${name}; capture did not write it.`);
     progress("agent", "AGENTS.md + CLAUDE.md generated");
   } catch (err) {
     warnings.push(`AGENTS.md/CLAUDE.md generation failed: ${err}`);

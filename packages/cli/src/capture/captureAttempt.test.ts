@@ -63,3 +63,26 @@ describe("captureWebsiteAttempt URL admission", () => {
     expect(ensureBrowserMock).not.toHaveBeenCalled();
   });
 });
+
+describe("captureWebsiteAttempt local origin admission", () => {
+  it.each(["http://127.0.0.1:9124/index.html", "file:///etc/passwd", "https://example.com/"])(
+    "rejects %s when it is not on the local page server",
+    async (url) => {
+      const root = mkdtempSync(join(tmpdir(), "hf-capture-local-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const opts = { url, outputDir: root };
+      await expect(
+        captureWebsiteAttempt(
+          opts,
+          undefined,
+          false,
+          watchdog,
+          createPartialCaptureState(opts),
+          "http://127.0.0.1:9123",
+        ),
+      ).rejects.toThrow("Local capture URL must use its server");
+      expect(readdirSync(root)).toEqual([]);
+      expect(ensureBrowserMock).not.toHaveBeenCalled();
+    },
+  );
+});

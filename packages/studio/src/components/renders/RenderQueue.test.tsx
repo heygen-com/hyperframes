@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { RenderQueue, type StartRenderHandler } from "./RenderQueue";
 import { getPersistedRenderSettings } from "./renderSettings";
 import { buttonBase, buttonSizes, buttonVariants, cn } from "../ui";
-import { isTypingTarget } from "../../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 import type { FfmpegStatus } from "./useFfmpegStatus";
 

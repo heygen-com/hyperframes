@@ -256,6 +256,27 @@ function subHtml(spec) {
 `;
 }
 
+const TIMINGS = require("./timings.json");
+
+/** A case's usual seconds on a healthy runner (timings.json); an untimed case counts as the slowest. */
+export const expectedSeconds = (c, timings = TIMINGS) =>
+  timings[c.id] ?? Math.max(0, ...Object.values(timings));
+
+/**
+ * Shard `shard` of `shards`, packed longest first by each case's measured seconds (timings.json, from timings.mjs) so
+ * the shards finish together; a case with no timing counts as the slowest. Returned longest first.
+ */
+export function shardCases(cases, shard, shards, timings = TIMINGS) {
+  const cost = (c) => expectedSeconds(c, timings);
+  const bins = Array.from({ length: shards }, () => ({ cases: [], seconds: 0 }));
+  for (const c of [...cases].sort((a, b) => cost(b) - cost(a) || a.id.localeCompare(b.id))) {
+    const lightest = bins.reduce((min, bin) => (bin.seconds < min.seconds ? bin : min));
+    lightest.cases.push(c);
+    lightest.seconds += cost(c);
+  }
+  return bins[shard - 1].cases;
+}
+
 /** Writes the case's project into `dir` and returns the files a gesture may rewrite. */
 export function writeFixture(spec, dir) {
   mkdirSync(dir, { recursive: true });

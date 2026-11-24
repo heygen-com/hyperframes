@@ -7,7 +7,7 @@ import { failCommand } from "../../utils/commandResult.js";
  * mirrors the API default (10).
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import { createCloudClient } from "../../cloud/index.js";
 import { padEndVisible } from "../../cloud/ansi.js";
 import { reportApiError } from "../../cloud/errors.js";
@@ -16,6 +16,7 @@ import { colorStatus } from "../../cloud/statusColor.js";
 import { withMeta } from "../../utils/updateCheck.js";
 import type { HyperframesRenderDetail } from "../../cloud/index.js";
 import { c } from "../../ui/colors.js";
+import { terminalText, terminalTextDeep } from "@hyperframes/core";
 import { errorBox } from "../../ui/format.js";
 
 // Safety cap on --all to defend against a buggy backend serving the
@@ -124,9 +125,10 @@ function emit(
     console.log(c.dim("No renders found."));
     return;
   }
-  const idWidth = Math.max(8, ...renders.map((r) => r.render_id.length));
-  const statusWidth = Math.max(6, ...renders.map((r) => r.status.length));
-  for (const r of renders) {
+  const shown = terminalTextDeep(renders);
+  const idWidth = Math.max(8, ...shown.map((r) => r.render_id.length));
+  const statusWidth = Math.max(6, ...shown.map((r) => r.status.length));
+  for (const r of shown) {
     const id = c.accent(r.render_id);
     const status = colorStatus(r.status);
     const created =
@@ -140,6 +142,6 @@ function emit(
   }
   if (nextToken) {
     console.log("");
-    console.log(c.dim(`More results — pass --token ${nextToken} to continue.`));
+    console.log(c.dim(`More results — pass --token ${terminalText(nextToken)} to continue.`));
   }
 }

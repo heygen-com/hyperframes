@@ -10,9 +10,8 @@ import { ClipMenuAudioItems } from "./clipMenuAudioItems";
 import { ClipMenuLinkItems } from "./clipMenuLinkItems";
 import { menuClasses } from "../../components/ui/menuStyle";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import { SPLIT_SHORTCUT_HINT } from "./studioShortcuts";
-
-const MENU_MARGIN = 8;
+import { keyHint, useStudioKeys } from "./studioShortcuts";
+import { placeMenu, type MenuAnchor } from "../../components/ui/menuPosition";
 
 function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: string): number {
   const [height, setHeight] = useState(0);
@@ -29,8 +28,7 @@ function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: str
 }
 
 interface ClipContextMenuProps {
-  x: number;
-  y: number;
+  anchor: MenuAnchor;
   element: TimelineElement;
   currentTime: number;
   onClose: () => void;
@@ -85,8 +83,7 @@ function HostItems({
 // A menu with many independently gated items (Split/Delete/Copy/Paste/Duplicate).
 // fallow-ignore-next-line complexity
 export const ClipContextMenu = memo(function ClipContextMenu({
-  x,
-  y,
+  anchor,
   element,
   currentTime,
   onClose,
@@ -97,8 +94,9 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onDuplicate,
   canPaste,
   hostItems = [],
-  splitShortcut = SPLIT_SHORTCUT_HINT,
+  splitShortcut,
 }: ClipContextMenuProps) {
+  const keys = useStudioKeys();
   const menuRef = useContextMenuDismiss(onClose);
   useMenuKeyboardNav(menuRef);
   const tools = useTimelineEditContextOptional().clipMenuTools !== false;
@@ -122,11 +120,11 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       ? `Split at ${currentTime.toFixed(2)}s`
       : "Split (move playhead inside clip)";
 
-  const menuWidth = 200;
-  const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
-  const menuHeight = useMeasuredHeight(menuRef, `${x},${y},${element.key ?? element.id}`);
-  const overflowY = y + menuHeight - window.innerHeight;
-  const adjustedY = overflowY > 0 ? Math.max(MENU_MARGIN, y - overflowY - MENU_MARGIN) : y;
+  const height = useMeasuredHeight(
+    menuRef,
+    `${anchor.left},${anchor.top},${anchor.bottom},${element.key ?? element.id}`,
+  );
+  const { left, top } = placeMenu(anchor, { width: 200, height });
 
   return createPortal(
     <div
@@ -134,7 +132,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       role="menu"
       aria-label="Clip actions"
       className={`${menuClasses.panel} fixed z-200 min-w-[180px]`}
-      style={{ left: adjustedX, top: adjustedY }}
+      style={{ left, top }}
     >
       {hostItems.length > 0 && (
         <div role="group" aria-label="Host" className={menuClasses.group}>
@@ -160,7 +158,9 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{splitLabel}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">{splitShortcut}</span>
+            <span className="text-neutral-500 text-[10px] ml-3">
+              {splitShortcut ?? keyHint("split", keys)}
+            </span>
           </button>
         )}
         {tools && splitLabel && (
@@ -212,7 +212,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{selectionSize > 1 ? `Copy ${selectionSize} clips` : "Copy"}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘C</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("copy", keys)}</span>
           </button>
         )}
         {onPaste && (
@@ -228,7 +228,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>Paste</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘V</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("paste", keys)}</span>
           </button>
         )}
         {onDuplicate && (
@@ -242,7 +242,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             }}
           >
             <span>{selectionSize > 1 ? `Duplicate ${selectionSize} clips` : "Duplicate"}</span>
-            <span className="text-neutral-500 text-[10px] ml-3">⌘D</span>
+            <span className="text-neutral-500 text-[10px] ml-3">{keyHint("duplicate", keys)}</span>
           </button>
         )}
       </div>

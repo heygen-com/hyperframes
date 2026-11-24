@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Push Transitions</h1>
+  <p>Showcase of push and slide transitions</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/transitions-push.json"
   compositionId="transitions-push"
   compositionSrc="compositions/transitions-push.html"
   title="Push Transitions"
-  description="Showcase of push and slide transitions"
   variables={[]}
   meta={{"duration":24,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":383}}
   attribution={{"path":"registry/blocks/transitions-push","tags":["transition","showcase"]}}
@@ -418,7 +422,9 @@ That writes one file: `compositions/transitions-push.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -449,6 +455,4 @@ Tagged `transition` `showcase`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

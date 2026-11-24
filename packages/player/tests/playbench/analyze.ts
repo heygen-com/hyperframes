@@ -46,6 +46,9 @@ export type Metrics = {
   /** Problem 4 */
   secondFrameGapMedianMs: number | null;
   secondFrameGapMaxMs: number | null;
+  /** How far the incoming picture sits behind the playhead over its take's first 0.5 s, median per cut. */
+  cutPictureLagMedianMs: number | null;
+  cutPictureLagMaxMs: number | null;
   playheadHoldMedianMs: number | null;
   playheadHoldP90Ms: number | null;
   holdsOver100: number;
@@ -222,7 +225,13 @@ export function analyze(run: Run): Metrics {
   // ---- Problem 4: what a cut costs
   const gaps: number[] = [];
   const holds: number[] = [];
+  const lags: number[] = [];
   for (const t of takes.slice(1)) {
+    const opening = byId(samples, `v${t.index}`).filter(
+      (s) => s[3] === 0 && s[7] !== null && s[7] >= t.start && s[7] <= t.start + 0.5,
+    );
+    const lag = median(opening.map((s) => (t.inPoint + s[7]! - t.start - s[2]) * 1000));
+    if (lag !== null) lags.push(lag);
     const fr = comp.frames
       .filter((f) => f[1] === `v${t.index}` && f[4] === 1)
       .sort((a, b) => a[0] - b[0]);
@@ -234,6 +243,8 @@ export function analyze(run: Run): Metrics {
   m.cuts = takes.length - 1;
   m.secondFrameGapMedianMs = round(median(gaps));
   m.secondFrameGapMaxMs = round(gaps.length ? Math.max(...gaps) : null);
+  m.cutPictureLagMedianMs = round(median(lags));
+  m.cutPictureLagMaxMs = round(lags.length ? Math.max(...lags) : null);
   m.playheadHoldMedianMs = round(median(holds));
   m.playheadHoldP90Ms = round(pct(holds, 0.9));
   m.holdsOver100 = holds.filter((h) => h > 100).length;

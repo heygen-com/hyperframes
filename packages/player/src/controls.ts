@@ -4,6 +4,8 @@ import {
   VOLUME_HIGH_ICON,
   VOLUME_LOW_ICON,
   VOLUME_MUTED_ICON,
+  FULLSCREEN_ENTER_ICON,
+  FULLSCREEN_EXIT_ICON,
 } from "./styles.js";
 
 export interface ControlsCallbacks {
@@ -50,6 +52,38 @@ export function formatTime(seconds: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+function iconSlot(name: string, fallbackSvg: string): HTMLSlotElement {
+  const slot = document.createElement("slot");
+  slot.name = name;
+  slot.innerHTML = fallbackSvg;
+  return slot;
+}
+
+function createFullscreenButton(
+  host: HTMLElement,
+): { button: HTMLButtonElement; destroy: () => void } | null {
+  if (!document.fullscreenEnabled) return null;
+  const button = document.createElement("button");
+  button.className = "hfp-fullscreen-btn";
+  button.type = "button";
+  const render = () => {
+    const active = host.matches(":fullscreen");
+    button.innerHTML = active ? FULLSCREEN_EXIT_ICON : FULLSCREEN_ENTER_ICON;
+    button.setAttribute("aria-label", active ? "Exit full screen" : "Full screen");
+  };
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const change = host.matches(":fullscreen")
+      ? document.exitFullscreen()
+      : host.requestFullscreen();
+    // A refusal also fires fullscreenerror at the player, where the page can observe it.
+    change.catch(() => {});
+  });
+  document.addEventListener("fullscreenchange", render);
+  render();
+  return { button, destroy: () => document.removeEventListener("fullscreenchange", render) };
+}
+
 export function createControls(
   parent: ShadowRoot | HTMLElement,
   callbacks: ControlsCallbacks,
@@ -80,7 +114,7 @@ export function createControls(
   // Both glyphs stay in the DOM, stacked; toggling `hfp-playing` crossfade-morphs
   // between them (see styles.ts) instead of swapping innerHTML, which would kill
   // the transition.
-  playBtn.innerHTML = `<span class="hfp-ico hfp-ico-play">${PLAY_ICON}</span><span class="hfp-ico hfp-ico-pause">${PAUSE_ICON}</span>`;
+  playBtn.innerHTML = `<span class="hfp-ico hfp-ico-play"><slot name="play-icon">${PLAY_ICON}</slot></span><span class="hfp-ico hfp-ico-pause"><slot name="pause-icon">${PAUSE_ICON}</slot></span>`;
   playBtn.setAttribute("aria-label", "Play");
 
   const scrubber = document.createElement("div");
@@ -126,8 +160,17 @@ export function createControls(
   const muteBtn = document.createElement("button");
   muteBtn.className = "hfp-mute-btn";
   muteBtn.type = "button";
-  muteBtn.innerHTML = VOLUME_HIGH_ICON;
   muteBtn.setAttribute("aria-label", "Mute");
+  const volumeIcons = {
+    high: iconSlot("volume-high-icon", VOLUME_HIGH_ICON),
+    low: iconSlot("volume-low-icon", VOLUME_LOW_ICON),
+    muted: iconSlot("volume-muted-icon", VOLUME_MUTED_ICON),
+  };
+  const showVolumeIcon = (muted: boolean, volume: number) => {
+    const icon = muted ? volumeIcons.muted : volume < 0.5 ? volumeIcons.low : volumeIcons.high;
+    if (muteBtn.firstChild !== icon) muteBtn.replaceChildren(icon);
+  };
+  showVolumeIcon(false, 1);
 
   const volumeSliderWrap = document.createElement("div");
   volumeSliderWrap.className = "hfp-volume-slider-wrap";
@@ -168,13 +211,6 @@ export function createControls(
   let speedIndex = presets.indexOf(1); // start at 1x
   if (speedIndex === -1) speedIndex = 0;
 
-  const getVolumeIcon = (muted: boolean, volume: number): string => {
-    if (muted) return VOLUME_MUTED_ICON;
-    if (volume === 0) return VOLUME_LOW_ICON;
-    if (volume < 0.5) return VOLUME_LOW_ICON;
-    return VOLUME_HIGH_ICON;
-  };
-
   playBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (isPlaying) callbacks.onPause();
@@ -195,7 +231,7 @@ export function createControls(
     volumeFill.style.width = `${fraction * 100}%`;
     volumeSlider.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
     if (isMuted && fraction > 0) callbacks.onMuteToggle();
-    muteBtn.innerHTML = getVolumeIcon(isMuted, fraction);
+    showVolumeIcon(isMuted, fraction);
     callbacks.onVolumeChange(fraction);
   };
 
@@ -250,7 +286,7 @@ export function createControls(
     volumeFill.style.width = `${newVol * 100}%`;
     volumeSlider.setAttribute("aria-valuenow", String(Math.round(newVol * 100)));
     if (isMuted && newVol > 0) callbacks.onMuteToggle();
-    muteBtn.innerHTML = getVolumeIcon(isMuted, newVol);
+    showVolumeIcon(isMuted, newVol);
     callbacks.onVolumeChange(newVol);
   });
 
@@ -294,21 +330,30 @@ export function createControls(
   };
 
   let scrubbing = false;
+  let playAfterScrub = false;
+
+  const startScrub = () => {
+    scrubbing = true;
+    playAfterScrub = isPlaying;
+    if (playAfterScrub) callbacks.onPause();
+    callbacks.onScrubStart?.();
+  };
+  const endScrub = () => {
+    scrubbing = false;
+    callbacks.onScrubEnd?.();
+    if (playAfterScrub) callbacks.onPlay();
+  };
 
   scrubber.addEventListener("mousedown", (e) => {
     e.stopPropagation();
-    scrubbing = true;
-    callbacks.onScrubStart?.();
+    startScrub();
     handleScrubAt(e.clientX);
   });
   const onMouseMove = (e: MouseEvent) => {
     if (scrubbing) handleScrubAt(e.clientX);
   };
   const onMouseUp = () => {
-    if (scrubbing) {
-      scrubbing = false;
-      callbacks.onScrubEnd?.();
-    }
+    if (scrubbing) endScrub();
   };
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);
@@ -316,8 +361,7 @@ export function createControls(
   scrubber.addEventListener(
     "touchstart",
     (e) => {
-      scrubbing = true;
-      callbacks.onScrubStart?.();
+      startScrub();
       const touch = e.touches[0];
       if (touch) handleScrubAt(touch.clientX);
     },
@@ -329,31 +373,35 @@ export function createControls(
       if (touch) handleScrubAt(touch.clientX);
     }
   };
-  const onTouchEnd = () => {
-    if (scrubbing) {
-      scrubbing = false;
-      callbacks.onScrubEnd?.();
-    }
+  const onTouchEnd = (e: TouchEvent) => {
+    if (!scrubbing) return;
+    if (e.cancelable) e.preventDefault();
+    endScrub();
   };
   document.addEventListener("touchmove", onTouchMove, { passive: true });
   document.addEventListener("touchend", onTouchEnd);
 
-  const startHideTimer = () => {
+  const canHide = () =>
+    isPlaying && !scrubbing && !volumeScrubbing && !controls.querySelector(":focus-visible");
+
+  const reveal = () => {
+    controls.classList.remove("hfp-hidden");
     if (hideTimeout) clearTimeout(hideTimeout);
     hideTimeout = setTimeout(() => {
-      if (isPlaying) controls.classList.add("hfp-hidden");
+      if (canHide()) controls.classList.add("hfp-hidden");
     }, 3000);
   };
 
   const host = parent instanceof ShadowRoot ? (parent.host as HTMLElement) : parent;
-  const onHostMouseMove = () => {
-    controls.classList.remove("hfp-hidden");
-    startHideTimer();
-  };
+  const fullscreen = createFullscreenButton(host);
+  if (fullscreen) controls.appendChild(fullscreen.button);
+  const onHostActivity = () => reveal();
   const onHostMouseLeave = () => {
-    if (isPlaying) controls.classList.add("hfp-hidden");
+    if (canHide()) controls.classList.add("hfp-hidden");
   };
-  host.addEventListener("mousemove", onHostMouseMove);
+  host.addEventListener("mousemove", onHostActivity);
+  host.addEventListener("keydown", onHostActivity);
+  host.addEventListener("focusin", onHostActivity);
   host.addEventListener("mouseleave", onHostMouseLeave);
 
   return {
@@ -365,11 +413,15 @@ export function createControls(
       time.textContent = `${formatTime(clampedCurrent)} / ${formatTime(duration)}`;
     },
     updatePlaying(playing: boolean) {
+      if (scrubbing && playAfterScrub) return;
+      const changed = playing !== isPlaying;
       isPlaying = playing;
       playBtn.classList.toggle("hfp-playing", playing);
       playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
-      if (playing) startHideTimer();
-      else controls.classList.remove("hfp-hidden");
+      if (!playing) {
+        if (hideTimeout) clearTimeout(hideTimeout);
+        controls.classList.remove("hfp-hidden");
+      } else if (changed) reveal();
     },
     updateSpeed(speed: number) {
       const idx = presets.indexOf(speed);
@@ -380,14 +432,14 @@ export function createControls(
     },
     updateMuted(muted: boolean) {
       isMuted = muted;
-      muteBtn.innerHTML = getVolumeIcon(muted, currentVolume);
+      showVolumeIcon(muted, currentVolume);
       muteBtn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
     },
     updateVolume(volume: number) {
       currentVolume = volume;
       volumeFill.style.width = `${volume * 100}%`;
       volumeSlider.setAttribute("aria-valuenow", String(Math.round(volume * 100)));
-      muteBtn.innerHTML = getVolumeIcon(isMuted, volume);
+      showVolumeIcon(isMuted, volume);
     },
     setVolumeControlsHidden(hidden: boolean) {
       volumeWrap.style.display = hidden ? "none" : "";
@@ -408,9 +460,12 @@ export function createControls(
       document.removeEventListener("touchmove", onVolumeTouchMove);
       document.removeEventListener("touchend", onVolumeTouchEnd);
       document.removeEventListener("click", onDocClick);
-      host.removeEventListener("mousemove", onHostMouseMove);
+      host.removeEventListener("mousemove", onHostActivity);
+      host.removeEventListener("keydown", onHostActivity);
+      host.removeEventListener("focusin", onHostActivity);
       host.removeEventListener("mouseleave", onHostMouseLeave);
       if (hideTimeout) clearTimeout(hideTimeout);
+      fullscreen?.destroy();
       controls.remove();
     },
   };

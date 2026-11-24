@@ -1,9 +1,13 @@
 // Media downloads use public HTTP(S) URLs. Validate every redirect target;
 // a provider result must meet the same host policy as a direct ingest URL.
 // Public HTTPS-to-HTTP redirects are allowed, matching direct HTTP support.
-// This is a literal-host policy, not DNS pinning: DNS resolution remains trusted.
+// A host name is resolved once and the connection dials that checked address.
 
+import dns from "node:dns";
+import http from "node:http";
+import https from "node:https";
 import { BlockList, isIP } from "node:net";
+import { Readable } from "node:stream";
 
 const blocked = new BlockList();
 for (const [network, prefix] of [
@@ -48,14 +52,73 @@ export function isPublicMediaUrl(value) {
     )
       return false;
     const address = host.replace(/^\[|\]$/g, "");
-    const family = isIP(address);
-    return family === 0 || !blocked.check(address, family === 4 ? "ipv4" : "ipv6");
+    return isIP(address) === 0 || !isBlockedAddress(address);
   } catch {
     return false;
   }
 }
 
-export async function fetchMedia(url, { method = "GET", signal, fetchImpl = fetch } = {}) {
+function isBlockedAddress(address) {
+  const bare = address.split("%")[0];
+  const family = isIP(bare);
+  return family === 0 || blocked.check(bare, family === 4 ? "ipv4" : "ipv6");
+}
+
+function publicOnlyLookup(hostname, options, callback) {
+  dns.lookup(hostname, { ...options, all: true }, (error, answers) => {
+    if (error) return callback(error);
+    if (answers.length === 0 || answers.some((a) => isBlockedAddress(a.address)))
+      return callback(new Error("Media download blocked: host resolves to a non-public address"));
+    if (options.all) return callback(null, answers);
+    callback(null, answers[0].address, answers[0].family);
+  });
+}
+
+function publicFetch(url, { method = "GET", signal } = {}) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const client = target.protocol === "https:" ? https : http;
+    const request = client.request(
+      target,
+      {
+        method,
+        signal,
+        agent: false,
+        lookup: publicOnlyLookup,
+        headers: { accept: "*/*", "user-agent": "node" },
+      },
+      (res) => {
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(res.headers))
+          for (const one of [value].flat()) if (one !== undefined) headers.append(name, one);
+        const empty = method === "HEAD" || [204, 205, 304].includes(res.statusCode);
+        try {
+          resolve(
+            new Response(empty ? null : Readable.toWeb(res), {
+              status: res.statusCode,
+              statusText: res.statusMessage,
+              headers,
+            }),
+          );
+          if (empty) res.resume();
+        } catch (error) {
+          res.destroy();
+          reject(error);
+        }
+      },
+    );
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+// Tests replace `fetch` here; every default download goes through it.
+export const mediaTransport = { fetch: publicFetch };
+
+export async function fetchMedia(
+  url,
+  { method = "GET", signal, fetchImpl = mediaTransport.fetch } = {},
+) {
   let current = String(url);
   for (let hop = 0; hop <= 5; hop++) {
     if (!isPublicMediaUrl(current))

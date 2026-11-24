@@ -83,6 +83,7 @@ it("an edit Studio saved is undone and redone by the project's history, with the
     undoes: expect.any(String),
     paths: ["index.html"],
     files: { "index.html": { previous: "B", restored: "A" } },
+    revision: expect.any(Number),
   });
   expect(file()).toBe("A");
 
@@ -317,8 +318,12 @@ it("refuses a second press whose edit is undone once an edit was made after the 
     return run;
   };
   const press = () => hook().undo({ readFile, claimedAfter: atKey, serialize });
-  const presses = Promise.all([press(), press()]);
-  await vi.waitFor(() => expect(file()).toBe("B"));
+  const firstPress = press();
+  const secondPress = press();
+  // The first press must be over, not only its file written: the undo's closing sweep would take card.html
+  // into the undo, and the claim below would then hold nothing.
+  const first = await act(() => firstPress);
+  expect(file()).toBe("B");
   writeFileSync(join(dir, "card.html"), "Y");
   await act(() =>
     hook().recordEdit({
@@ -328,7 +333,7 @@ it("refuses a second press whose edit is undone once an edit was made after the 
   );
 
   open();
-  const [first, second] = await act(() => presses);
+  const second = await act(() => secondPress);
 
   expect(first).toMatchObject({ ok: true, label: "Undid: Moved Card" });
   expect(second).toMatchObject({ ok: false, reason: "content-mismatch" });
@@ -719,4 +724,88 @@ it("stores DOM targets in existing history and retains them through undo and red
   await vi.waitFor(() => expect(hook().canRedo).toBe(true));
   await act(() => hook().redo({ readFile }));
   expect(history.list().at(-1)?.targets).toEqual(targets);
+});
+
+it("three quick drags are three entries in the list as soon as each drag's saves are in", async () => {
+  const { hook, save, history } = await studio();
+  const moves = [
+    ["A", "B"],
+    ["B", "C"],
+    ["C", "D"],
+  ] as const;
+  for (const [i, [before, after]] of moves.entries()) {
+    // A drag claims under its own key with no idle limit, as a plain move does, and settles after its save.
+    const drag = beginStudioPendingEdit(() => () => {});
+    save(after);
+    const saved = hook().recordEdit({
+      label: "Move layer",
+      coalesceKey: `move:${i}`,
+      coalesceMs: Number.POSITIVE_INFINITY,
+      files: { "index.html": { before, after } },
+    });
+    drag.settle(saved);
+    await act(() => saved);
+  }
+  await vi.waitFor(() =>
+    expect(history.list().filter((entry) => entry.label === "Move layer")).toHaveLength(3),
+  );
+});
+
+it("the next drag's claim reaches the server after the settled drag's empty claim, however slow that one is", async () => {
+  const { hook, save } = await studio();
+  const forward = globalThis.fetch;
+  const arrived: string[] = [];
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    const claim = url.endsWith("/claim")
+      ? (JSON.parse(String(init?.body)) as { paths: string[] })
+      : null;
+    if (claim && !claim.paths.length) await held;
+    if (claim) arrived.push(claim.paths.length ? "claim" : "empty");
+    return forward(url, init);
+  });
+  const drag = (i: number, before: string, after: string) => {
+    const pending = beginStudioPendingEdit(() => () => {});
+    save(after);
+    const saved = hook().recordEdit({
+      label: "Move layer",
+      coalesceKey: `move:${i}`,
+      coalesceMs: Number.POSITIVE_INFINITY,
+      files: { "index.html": { before, after } },
+    });
+    pending.settle(saved);
+    return saved;
+  };
+  await act(() => drag(0, "A", "B"));
+  const next = drag(1, "B", "C");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  release();
+  await act(() => next);
+  expect(arrived.slice(0, 3)).toEqual(["claim", "empty", "claim"]);
+});
+
+it("a gesture that writes twice under one key stays one entry once it settles", async () => {
+  const { hook, save, history } = await studio();
+  const resize = beginStudioPendingEdit(() => () => {});
+  const writes = (async () => {
+    for (const [before, after] of [
+      ["A", "B"],
+      ["B", "C"],
+    ] as const) {
+      save(after);
+      await hook().recordEdit({
+        label: "Resize layer",
+        coalesceKey: "tx:resize",
+        coalesceMs: Number.POSITIVE_INFINITY,
+        files: { "index.html": { before, after } },
+      });
+    }
+  })();
+  resize.settle(writes);
+  await act(() => writes);
+  await vi.waitFor(() =>
+    expect(history.list().filter((entry) => entry.label === "Resize layer")).toHaveLength(1),
+  );
+  expect(history.list().find((entry) => entry.label === "Resize layer")?.files.length).toBe(1);
 });

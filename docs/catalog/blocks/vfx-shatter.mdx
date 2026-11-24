@@ -7,11 +7,15 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Shatter</h1>
+  <p>VFX composition block</p>
+</div>
+
 <CatalogDetail
   compositionId="vfx-shatter"
   compositionSrc="compositions/vfx-shatter.html"
   title="Shatter"
-  description="VFX composition block"
   variables={[]}
   meta={{"duration":12,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":1156}}
   attribution={{"path":"registry/blocks/vfx-shatter","tags":["html-in-canvas","webgl"]}}
@@ -1192,7 +1196,9 @@ That writes one file: `compositions/vfx-shatter.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -1229,6 +1235,4 @@ Tagged `html-in-canvas` `webgl`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

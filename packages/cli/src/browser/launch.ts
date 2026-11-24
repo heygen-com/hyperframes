@@ -1,32 +1,41 @@
-import type { Browser, LaunchOptions, PuppeteerNode } from "puppeteer-core";
+import { ChildProcess } from "node:child_process";
+import {
+  inAgentSandbox,
+  isOneProcessOverPipe,
+  launchWithChromeSandboxFallback,
+  machServiceDenied,
+  oneProcessOverPipe,
+  pipeLaunchClosedOnMac,
+  sandboxDeniedRemediation,
+} from "@hyperframes/engine";
+import { explainChromeLaunchFailure } from "@hyperframes/engine/chrome-startup";
+import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
+import { terminalLines } from "@hyperframes/core/terminal-text";
 import {
   resolveCaptureBrowserGpuMode,
   type BrowserGpuMode,
   type ResolvedBrowserGpuMode,
 } from "./gpuPolicy.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, notePageCrash, stackOrMessage } from "../utils/errorMessage.js";
 import { requestCliExit } from "../utils/commandResult.js";
-import { processIsAlive } from "../utils/processTree.js";
+import { processIsAlive, terminateWindowsProcessTree } from "../utils/processTree.js";
+import { chromeDescendants, reapChromeTree } from "./chromeTree.js";
 import { watchChromeTree, type ChromeWatchdog } from "./windowsChromeWatchdog.js";
-import {
-  inAgentSandbox,
-  isOneProcessOverPipe,
-  pipeLaunchClosedOnMac,
-  machServiceDenied,
-  oneProcessOverPipe,
-  sandboxDeniedRemediation,
-} from "./sandboxDenied.js";
 
 export class BrowserCleanupError extends AggregateError {}
 
 const browsers = new Set<Browser>();
 const closing = new WeakMap<Browser, Promise<void>>();
 const watchdogs = new WeakMap<Browser, ChromeWatchdog>();
+const gracefulClose = new WeakMap<Browser, () => Promise<void>>();
 const pending = new Map<Promise<Browser>, AbortController>();
+const diagnosing = new Set<AbortController>();
 const sessionCleanups = new Set<() => Promise<void>>();
 const CLOSE_GRACE_MS = 1_000;
 const LAUNCH_TIMEOUT_MS = 30_000;
+const SLOW_START_NOTICE_MS = 5_000;
 const EXIT_POLL_MS = 50;
 let listening = false;
 let shutdown: Promise<void> | undefined;
@@ -47,7 +56,7 @@ function stopForSignal(signal: "SIGINT" | "SIGTERM"): void {
   void shutdown.then(
     () => requestCliExit(signal === "SIGINT" ? 130 : 143),
     (error: unknown) => {
-      console.error("Browser shutdown failed:", error);
+      console.error("Browser shutdown failed:", terminalLines(stackOrMessage(error)));
       requestCliExit(1);
     },
   );
@@ -75,11 +84,15 @@ export async function resolveManagedGpuMode(
   return resolveCaptureBrowserGpuMode(requestedMode, chromePath, {
     launch: async (puppeteer, options) => {
       context.signal?.throwIfAborted();
-      const browser = await launchManagedBrowser(puppeteer, {
-        ...options,
-        ...(context.noListen ? oneProcessOverPipe(options) : {}),
-        signal: context.signal,
-      });
+      const browser = await launchManagedBrowser(
+        puppeteer,
+        {
+          ...options,
+          ...(context.noListen ? oneProcessOverPipe(options) : {}),
+          signal: context.signal,
+        },
+        { diagnose: false },
+      );
       try {
         context.onBrowser?.(browser);
       } catch (error) {
@@ -95,26 +108,63 @@ export async function resolveManagedGpuMode(
 export async function launchManagedBrowser(
   puppeteer: PuppeteerNode,
   options: LaunchOptions,
+  { diagnose = true }: { diagnose?: boolean } = {},
 ): Promise<Browser> {
   const sandboxed = isOneProcessOverPipe(options) || inAgentSandbox();
+  const prepared = sandboxed ? oneProcessOverPipe(options) : options;
+  let attempted = prepared;
   try {
-    return await launchOwnedBrowser(puppeteer, sandboxed ? oneProcessOverPipe(options) : options);
+    return await launchWithChromeSandboxFallback(prepared.args ?? [], (args) => {
+      attempted = { ...prepared, args };
+      return launchOwnedBrowser(puppeteer, attempted);
+    });
   } catch (error) {
     const unnamedSeatbelt =
       !sandboxed &&
       (machServiceDenied(normalizeErrorMessage(error)) || pipeLaunchClosedOnMac(error));
-    if (!unnamedSeatbelt) throw withRemediation(error);
-    return launchOwnedBrowser(puppeteer, oneProcessOverPipe(options)).catch(
-      (retryError: unknown) => {
-        throw withRemediation(retryError);
-      },
-    );
+    if (!unnamedSeatbelt)
+      throw await withStartupDiagnosis(withRemediation(error), puppeteer, attempted, diagnose);
+    const retry = oneProcessOverPipe(options);
+    return launchOwnedBrowser(puppeteer, retry).catch(async (retryError: unknown) => {
+      throw await withStartupDiagnosis(withRemediation(retryError), puppeteer, retry, diagnose);
+    });
+  }
+}
+
+async function withStartupDiagnosis(
+  error: unknown,
+  puppeteer: PuppeteerNode,
+  options: LaunchOptions,
+  diagnose: boolean,
+): Promise<unknown> {
+  if (!diagnose || !options.executablePath || options.signal?.aborted || shutdown) return error;
+  if (!(error instanceof Error)) return error;
+  if (sandboxDeniedRemediation(normalizeErrorMessage(error))) return error;
+  const args = await (async () =>
+    puppeteer.defaultArgs({
+      headless: options.headless ?? true,
+      args: withHyperframesBrowserMarker(options.args),
+    }))().catch(() => undefined);
+  if (!args) return error;
+  const abort = new AbortController();
+  diagnosing.add(abort);
+  try {
+    return await explainChromeLaunchFailure(error, options.executablePath, args, {
+      signal: abort.signal,
+      env: options.env,
+    });
+  } finally {
+    diagnosing.delete(abort);
   }
 }
 
 function withRemediation(error: unknown): unknown {
   const remediation = sandboxDeniedRemediation(normalizeErrorMessage(error));
   return remediation ? new Error(remediation, { cause: error }) : error;
+}
+
+function destroyBrowserPipes(child: ChildProcess): void {
+  for (const pipe of child.stdio ?? []) pipe?.destroy();
 }
 
 async function launchOwnedBrowser(
@@ -125,11 +175,11 @@ async function launchOwnedBrowser(
   ownSignals();
   const abort = new AbortController();
   const signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal;
-  const launchedAt = Date.now();
   const launch = untilLaunchOrAbort(
     puppeteer.launch({
       ...options,
       args: withHyperframesBrowserMarker(options.args),
+      env: buildChromeLaunchEnv(options.env),
       pipe: true,
       signal,
       handleSIGINT: false,
@@ -145,20 +195,38 @@ async function launchOwnedBrowser(
           limit,
         )
       : undefined;
+  const slow = setTimeout(() => console.error("Chrome is still starting..."), SLOW_START_NOTICE_MS);
   pending.set(launch, abort);
   try {
     const browser = await launch;
     const child = browser.process();
     if (!child) throw new Error("A launched browser has no owned process.");
     browsers.add(browser);
-    const watchdog = watchChromeTree(child, launchedAt);
+    const watchdog = watchChromeTree(child);
     if (watchdog) watchdogs.set(browser, watchdog);
-    child.once("exit", () => browsers.delete(browser));
+    gracefulClose.set(browser, browser.close.bind(browser));
+    browser.close = () => closeManagedBrowser(browser);
+    const newPage = browser.newPage;
+    browser.newPage = async (...args) => closeOnRendererCrash(await newPage.apply(browser, args));
+    child.once("exit", () => {
+      void watchdog?.release(true);
+      browsers.delete(browser);
+      destroyBrowserPipes(child);
+    });
     return browser;
   } finally {
     clearTimeout(timer);
+    clearTimeout(slow);
     pending.delete(launch);
   }
+}
+
+function closeOnRendererCrash(page: Page): Page {
+  page.once("error", () => {
+    notePageCrash();
+    page.close().catch(() => undefined);
+  });
+  return page;
 }
 
 function untilLaunchOrAbort(launch: Promise<Browser>, signal: AbortSignal): Promise<Browser> {
@@ -174,7 +242,7 @@ function untilLaunchOrAbort(launch: Promise<Browser>, signal: AbortSignal): Prom
 
 /** Resolved launches keep their signal live; only pending launches are aborted during shutdown. */
 async function closeManagedBrowsers(): Promise<void> {
-  for (const abort of pending.values()) abort.abort();
+  for (const abort of [...pending.values(), ...diagnosing]) abort.abort();
   await Promise.allSettled(pending.keys());
   const results = await Promise.allSettled([...browsers].map(closeManagedBrowser));
   results.push(...(await Promise.allSettled([...sessionCleanups].map((cleanup) => cleanup()))));
@@ -220,14 +288,30 @@ async function closeBrowser(browser: Browser): Promise<void> {
   try {
     clean = await closedWithoutKill(browser);
   } finally {
-    watchdogs.get(browser)?.release(clean);
+    void watchdogs.get(browser)?.release(clean);
   }
+}
+
+async function descendantsToReap(pid: number | undefined) {
+  if (pid === undefined || process.platform === "win32") return [];
+  return chromeDescendants(pid).catch(() => []);
+}
+
+function closeGracefully(browser: Browser): Promise<void> {
+  return (gracefulClose.get(browser) ?? (() => browser.close()))();
+}
+
+async function killWithChildren(child: ChildProcess): Promise<void> {
+  const ours = child instanceof ChildProcess && child.pid !== undefined;
+  if (process.platform !== "win32" || !ours) return void child.kill("SIGKILL");
+  await terminateWindowsProcessTree(child.pid).catch(() => child.kill("SIGKILL"));
 }
 
 async function closedWithoutKill(browser: Browser): Promise<boolean> {
   const child = browser.process();
   if (!child) throw new Error("A managed browser lost its owned process.");
   if (child.exitCode !== null || child.signalCode !== null) return false;
+  const tree = await descendantsToReap(child.pid);
   const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
   let timer: NodeJS.Timeout | undefined;
   let poll: NodeJS.Timeout | undefined;
@@ -236,11 +320,13 @@ async function closedWithoutKill(browser: Browser): Promise<boolean> {
   });
   try {
     await Promise.race([
-      browser.close().catch((error: unknown) => console.warn("Browser close failed:", error)),
+      closeGracefully(browser).catch((error: unknown) =>
+        console.warn("Browser close failed:", terminalLines(stackOrMessage(error))),
+      ),
       grace,
     ]);
     const clean = child.exitCode !== null || child.signalCode !== null;
-    if (!clean) child.kill("SIGKILL");
+    if (!clean) await killWithChildren(child);
     clearTimeout(timer);
     const exitLimit = new Promise<never>((_, reject) => {
       timer = setTimeout(
@@ -254,6 +340,7 @@ async function closedWithoutKill(browser: Browser): Promise<boolean> {
       }, EXIT_POLL_MS);
     });
     await Promise.race([exited, goneBeforeExitEvent, exitLimit]);
+    await reapChromeTree(tree).catch(() => undefined);
     return clean;
   } finally {
     clearTimeout(timer);

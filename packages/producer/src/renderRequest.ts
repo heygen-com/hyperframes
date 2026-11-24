@@ -1,8 +1,14 @@
 import {
+  isExpectedOutputDimensions,
+  type ExpectedOutputDimensions,
+} from "./services/render/outputDimensions.js";
+import {
+  PRORES_PROFILE_NAMES,
   isVideoFrameFormat,
   resolveConfig,
   validateEngineConfigSnapshot,
   type EngineConfig,
+  type ProresProfile,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
 import {
@@ -30,6 +36,7 @@ export interface DistributedRenderOptions {
   chunkSize?: number;
   maxParallelChunks?: number;
   targetChunkFrames?: number;
+  minParallelChunks?: number;
   runtimeCap?: DistributedRenderConfig["runtimeCap"];
   rejectOnSystemFonts?: boolean;
   failClosedFontFetch?: boolean;
@@ -56,10 +63,17 @@ export interface RenderRequestOptions {
   entryFile?: string;
   crf?: number;
   videoBitrate?: string;
+  keyframeIntervalSeconds?: number;
+  proresProfile?: ProresProfile;
+  maxBitrate?: string;
+  bufferSize?: string;
   videoFrameFormat?: VideoFrameFormat;
   hdrMode?: RenderConfig["hdrMode"];
+  chromaSubsampling?: RenderConfig["chromaSubsampling"];
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
   variables?: Record<string, unknown>;
+  strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
   engineConfig: EngineConfig;
@@ -118,6 +132,13 @@ function assertOptionalInteger(options: Record<string, unknown>, field: string, 
   }
 }
 
+function assertOptionalPositiveNumber(options: Record<string, unknown>, field: string): void {
+  const value = options[field];
+  if (value !== undefined && !(typeof value === "number" && value > 0)) {
+    throw new Error(`Render request ${field} must be a positive number`);
+  }
+}
+
 function assertOptionalString(options: Record<string, unknown>, field: string): void {
   if (options[field] !== undefined && typeof options[field] !== "string") {
     throw new Error(`Render request ${field} must be a string`);
@@ -153,6 +174,7 @@ function assertDistributedOptions(value: unknown): void {
     "chunkSize",
     "maxParallelChunks",
     "targetChunkFrames",
+    "minParallelChunks",
     "planDirSizeLimitBytes",
   ] as const) {
     assertOptionalInteger(value, field, 1);
@@ -175,14 +197,17 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   assertOptionalInteger(options, "workers", 1);
   assertOptionalInteger(options, "maxRenderMs");
   assertOptionalInteger(options, "crf");
+  assertOptionalPositiveNumber(options, "keyframeIntervalSeconds");
   for (const field of ["useGpu", "debug", "outputResolutionAspectAgnostic"] as const) {
     assertOptionalBoolean(options, field);
   }
-  for (const field of ["entryFile", "videoBitrate"] as const) {
+  for (const field of ["entryFile", "videoBitrate", "maxBitrate", "bufferSize"] as const) {
     assertOptionalString(options, field);
   }
+  assertOptionalEnum(options, "proresProfile", PRORES_PROFILE_NAMES);
   assertOptionalEnum(options, "strictness", ["strict", "best-effort"]);
   assertOptionalEnum(options, "hdrMode", ["auto", "force-hdr", "force-sdr"]);
+  assertOptionalEnum(options, "chromaSubsampling", ["420", "444"]);
   assertOptionalEnum(options, "pageMotionBlur", ["off"]);
   if (options.videoFrameFormat !== undefined && !isVideoFrameFormat(options.videoFrameFormat)) {
     throw new Error("Render request videoFrameFormat is invalid");
@@ -194,8 +219,19 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
 
 function assertRequestOptionObjects(options: Record<string, unknown>): void {
   validateEngineConfigSnapshot(options.engineConfig);
+  if (
+    options.expectedOutputDimensions !== undefined &&
+    !isExpectedOutputDimensions(options.expectedOutputDimensions)
+  ) {
+    throw new Error(
+      "Render request expectedOutputDimensions must contain positive integer width and height",
+    );
+  }
   if (options.variables !== undefined && !isPlainObject(options.variables)) {
     throw new Error("Render request variables must be a JSON object");
+  }
+  if (options.strictVariables !== undefined && typeof options.strictVariables !== "boolean") {
+    throw new Error("Render request strictVariables must be a boolean");
   }
   if (options.distributed !== undefined) assertDistributedOptions(options.distributed);
 }
@@ -262,13 +298,19 @@ export function createRenderRequest(input: CreateRenderRequestInput): RenderRequ
 
 export function renderConfigFromRequest(
   request: RenderRequest,
-  runtime: { logger?: ProducerLogger } = {},
+  runtime: {
+    logger?: ProducerLogger;
+    allowOutsideProjectAssets?: boolean;
+    includeOutsideScripts?: boolean;
+  } = {},
 ): RenderConfig {
   const { engineConfig, distributed: _distributed, ...options } = request.options;
   return {
     ...options,
     producerConfig: engineConfig,
     logger: runtime.logger,
+    allowOutsideProjectAssets: runtime.allowOutsideProjectAssets === true,
+    includeOutsideScripts: runtime.includeOutsideScripts === true,
   };
 }
 
@@ -293,6 +335,11 @@ export function distributedConfigFromRequest(
   if (options.hdrMode === "force-hdr") {
     throw new Error("Distributed render does not support force-hdr");
   }
+  if (options.chromaSubsampling === "444") {
+    throw new Error(
+      "Distributed render does not support chromaSubsampling 444: chunk workers and the assemble encode 4:2:0",
+    );
+  }
   return {
     fps: distributedFps(options.fps),
     width: distributed.width,
@@ -303,12 +350,17 @@ export function distributedConfigFromRequest(
     crf: options.crf,
     pageMotionBlur: options.pageMotionBlur,
     bitrate: options.videoBitrate,
+    keyframeIntervalSeconds: options.keyframeIntervalSeconds,
+    proresProfile: options.proresProfile,
+    maxBitrate: options.maxBitrate,
+    bufferSize: options.bufferSize,
     videoFrameFormat: options.videoFrameFormat,
     outputResolution: options.outputResolution,
     outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
     chunkSize: distributed.chunkSize,
     maxParallelChunks: distributed.maxParallelChunks,
     targetChunkFrames: distributed.targetChunkFrames,
+    minParallelChunks: distributed.minParallelChunks,
     runtimeCap: distributed.runtimeCap,
     rejectOnSystemFonts: distributed.rejectOnSystemFonts,
     failClosedFontFetch: distributed.failClosedFontFetch,
@@ -321,6 +373,8 @@ export function distributedConfigFromRequest(
     abortSignal: runtime.abortSignal,
     planDirSizeLimitBytes: distributed.planDirSizeLimitBytes,
     variables: options.variables,
+    strictVariables: options.strictVariables,
+    expectedOutputDimensions: options.expectedOutputDimensions,
   };
 }
 
@@ -345,6 +399,7 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("chunkSize", config.chunkSize),
     ...optionalProperty("maxParallelChunks", config.maxParallelChunks),
     ...optionalProperty("targetChunkFrames", config.targetChunkFrames),
+    ...optionalProperty("minParallelChunks", config.minParallelChunks),
     ...optionalProperty("runtimeCap", config.runtimeCap),
     ...optionalProperty("rejectOnSystemFonts", config.rejectOnSystemFonts),
     ...optionalProperty("failClosedFontFetch", config.failClosedFontFetch),
@@ -359,6 +414,10 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("crf", config.crf),
     ...optionalProperty("pageMotionBlur", config.pageMotionBlur),
     ...optionalProperty("videoBitrate", config.bitrate),
+    ...optionalProperty("keyframeIntervalSeconds", config.keyframeIntervalSeconds),
+    ...optionalProperty("proresProfile", config.proresProfile),
+    ...optionalProperty("maxBitrate", config.maxBitrate),
+    ...optionalProperty("bufferSize", config.bufferSize),
     ...optionalProperty("videoFrameFormat", config.videoFrameFormat),
     ...optionalProperty("outputResolution", config.outputResolution),
     ...optionalProperty("outputResolutionAspectAgnostic", config.outputResolutionAspectAgnostic),
@@ -366,6 +425,8 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("strictness", config.strictness),
     ...optionalProperty("entryFile", config.entryFile),
     ...optionalProperty("variables", config.variables),
+    ...optionalProperty("strictVariables", config.strictVariables),
+    ...optionalProperty("expectedOutputDimensions", config.expectedOutputDimensions),
   } satisfies CreateRenderRequestInput["options"];
   return createRenderRequest({
     projectDir: input.projectDir,

@@ -28,6 +28,7 @@ async function scanTruePeak(
   trim: string,
   timeoutMs: number,
   signal?: AbortSignal,
+  seekSeconds = 0,
 ): Promise<TruePeakScan> {
   let firstBlock: number | undefined;
   let laterBlocks = Number.NEGATIVE_INFINITY;
@@ -45,7 +46,21 @@ async function scanTruePeak(
     }
   };
   const result = await runFfmpeg(
-    ["-i", audioPath, "-map", "0:a:0", "-vn", "-af", `${trim}ebur128=peak=true`, "-f", "null", "-"],
+    [
+      ...(seekSeconds > 0 ? ["-ss", String(seekSeconds)] : []),
+      ...[
+        "-i",
+        audioPath,
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-af",
+        `${trim}ebur128=peak=true`,
+        "-f",
+        "null",
+        "-",
+      ],
+    ],
     { signal, timeout: timeoutMs, onStderr: readLines },
   );
   if (!result.success) {
@@ -87,12 +102,17 @@ export async function measureTruePeakDbfs(
       // A later segment starts one block early and drops that block: its oversampler starts
       // from mirrored history there, and the previous segment stops 16 samples short.
       const start = k === 0 ? 0 : cut(k) - block;
-      const end = k === count - 1 ? "" : `:end_sample=${cut(k + 1)}`;
+      // Decoding from the top costs a segment everything before it: seek to a whole second (an exact
+      // sample) one second early, so the AAC decoder has settled before the segment's first sample.
+      const seekSeconds = Math.max(0, Math.floor(start / sampleRate) - 1);
+      const skipped = seekSeconds * sampleRate;
+      const end = k === count - 1 ? "" : `:end_sample=${cut(k + 1) - skipped}`;
       return scanTruePeak(
         audioPath,
-        `atrim=start_sample=${start}${end},`,
+        `atrim=start_sample=${start - skipped}${end},`,
         timeoutMs,
         segmentSignal,
+        seekSeconds,
       );
     }),
   ).catch((error: unknown) => {

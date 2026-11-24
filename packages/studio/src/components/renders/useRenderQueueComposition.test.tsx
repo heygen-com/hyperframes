@@ -180,6 +180,68 @@ describe("settings at each export entry", () => {
 });
 
 describe("render submission concurrency", () => {
+  it("keeps pending submissions separate when switching projects", async () => {
+    const fetchMock = stubRenderFetch();
+    let finishA = () => {};
+    let finishB = () => {};
+    const pendingA = new Promise<void>((resolve) => {
+      finishA = resolve;
+    });
+    const pendingB = new Promise<void>((resolve) => {
+      finishB = resolve;
+    });
+    fetchMock.mockImplementation(async (...args: unknown[]) => {
+      const [url, init] = args;
+      if (
+        typeof init !== "object" ||
+        init === null ||
+        !("method" in init) ||
+        init.method !== "POST"
+      )
+        return new Response(JSON.stringify({ renders: [] }));
+      const projectA = String(url).includes("/project-a/");
+      await (projectA ? pendingA : pendingB);
+      return new Response(JSON.stringify({ jobId: projectA ? "job-a" : "job-b" }));
+    });
+    const mounted = mountRenderQueue(useRenderQueue, "project-a");
+    queue = mounted;
+    const requests: Promise<void>[] = [];
+    try {
+      act(() => {
+        requests.push(mounted.api().startRender({}));
+      });
+      mounted.switchProject("project-b");
+      act(() => {
+        requests.push(mounted.api().startRender({}));
+      });
+      expect(renderPosts(fetchMock)).toHaveLength(2);
+      mounted.switchProject("project-a");
+      await act(async () => {
+        await mounted.api().startRender({});
+      });
+      expect(renderPosts(fetchMock)).toHaveLength(2);
+      mounted.switchProject("project-b");
+      await act(async () => {
+        finishA();
+        await requests[0];
+        await mounted.api().startRender({});
+      });
+      expect(renderPosts(fetchMock)).toHaveLength(2);
+      await act(async () => {
+        finishB();
+        await requests[1];
+        await mounted.api().startRender({});
+      });
+      expect(renderPosts(fetchMock)).toHaveLength(3);
+    } finally {
+      await act(async () => {
+        finishA();
+        finishB();
+        await Promise.all(requests);
+      });
+    }
+  });
+
   it("coalesces clicks while the POST is pending without blocking a later explicit render", async () => {
     const fetchMock = stubRenderFetch();
     let finish = () => {};

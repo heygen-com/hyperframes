@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication complexity
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { MAX_AUDIO_GAIN } from "../audioGain.js";
+import { mediaElementTime } from "./mediaClock";
 import { WebAudioTransport } from "./webAudioTransport";
 
 function createMockAudioContext(currentTime = 100) {
@@ -70,6 +71,7 @@ const mockEl = {
   volume: 0.4,
   paused: true,
   addEventListener: () => {},
+  removeEventListener: () => {},
   getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
 } as unknown as HTMLMediaElement;
 
@@ -193,6 +195,33 @@ describe("WebAudioTransport", () => {
       expect([transport.routesElement(gone), transport.routesElement(kept)]).toEqual([false, true]);
     });
 
+    it("keeps a routed element silent once a decoded buffer plays in its place", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      node.connect.mockClear();
+      node.disconnect.mockClear();
+
+      transport.releaseRouted(mockEl);
+
+      expect(node.disconnect).toHaveBeenCalled();
+      expect(node.connect).not.toHaveBeenCalled();
+    });
+
+    it("sounds a handed-over element through the output again once playback stops", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.releaseRouted(mockEl);
+      node.connect.mockClear();
+
+      transport.stopAll();
+
+      expect(node.connect).toHaveBeenCalledWith(mock.ctx.destination);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 
@@ -205,17 +234,12 @@ describe("WebAudioTransport", () => {
       expect(mock.ctx.createMediaElementSource).toHaveBeenCalledTimes(1);
     });
 
-    it("re-aims FX automation on a global-rate change without resampling the native source", async () => {
+    it("does not resample the native source on a global-rate change", async () => {
       const { transport, mock, gen } = setupTransport(100);
       await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
-      const active = (transport as unknown as { _activeSources: { fx?: unknown }[] })
-        ._activeSources;
-      const setRate = vi.fn();
-      active[0]!.fx = { dispose: vi.fn(), setRate };
 
       transport.setRate(2);
 
-      expect(setRate).toHaveBeenCalledWith(2);
       expect(mock.ctx.createBufferSource).not.toHaveBeenCalled();
     });
 
@@ -516,6 +540,31 @@ describe("WebAudioTransport", () => {
       await transport.schedulePlayback(mockEl, mockBuffer, 10, 1.5, () => 2, 1, gen);
 
       expect(mock.startFn).toHaveBeenCalledWith(108, 1.5);
+    });
+
+    // fails without the fix: the buffer played a looped clip's source once, from past its end.
+    it("loops a looping element's buffer over [mediaStart, end], from the pass the playhead is in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true, duration: 10 } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // 20 s into a clip whose source loops 2..10 s: two passes and 4 s in, so 6 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 10 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 6, 10);
+    });
+
+    it("loops at the element's length, which media sync wraps at, when the decoded buffer runs longer", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true, duration: 9.5 } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // Passes of 7.5 s (2..9.5): 20 s in is two passes and 5 s, so 7 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 9.5 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 7, 10);
     });
 
     it("starts clips at exact composition start time immediately", async () => {
@@ -992,6 +1041,7 @@ describe("WebAudioTransport", () => {
       const settle = () => new Promise((r) => setTimeout(r, 0));
 
       // An unbounded media-element clip: the runtime does not stopAll and reschedule it on a rate change.
+      // Its gains in creation order: element gain, seek dip, lane, clip gain (then fades, when it has them).
       async function playBed(automation?: string, volume?: string) {
         const setup = setupGroupTransport();
         const el = groupedAudioEl("bed");
@@ -999,7 +1049,7 @@ describe("WebAudioTransport", () => {
         if (volume) el.setAttribute("data-volume", volume);
         await setup.transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, setup.gen);
         expect(setup.transport.hasBoundedActiveSources()).toBe(false);
-        return { ...setup, el, laneGain: setup.mock.gainNodes[1]! };
+        return { ...setup, el, laneGain: setup.mock.gainNodes[2]! };
       }
 
       // Gain 2 times a 0 -> 3 ramp crosses the ceiling at 6.635 s; the product holds there after.
@@ -1014,7 +1064,7 @@ describe("WebAudioTransport", () => {
         transport.setElementVolume(el, 1, 2);
         const booked = (laneGain.gain as unknown as { setValueAtTime: ReturnType<typeof vi.fn> })
           .setValueAtTime.mock.calls;
-        expect(mock.gainNodes[2]!.gain.value * booked[0]![0]).toBeCloseTo(MAX_AUDIO_GAIN, 9);
+        expect(mock.gainNodes[3]!.gain.value * booked[0]![0]).toBeCloseTo(MAX_AUDIO_GAIN, 9);
       });
 
       it("holds a clip's gain times its lane under the ceiling, with data-volume played ahead", async () => {
@@ -1049,7 +1099,7 @@ describe("WebAudioTransport", () => {
         const booked = (laneGain.gain as unknown as { setValueAtTime: ReturnType<typeof vi.fn> })
           .setValueAtTime.mock.calls;
         expect(booked.at(-1)).toEqual([1, 100]);
-        expect(mock.gainNodes[2]!.gain.value * booked.at(-1)![0]).toBe(2);
+        expect(mock.gainNodes[3]!.gain.value * booked.at(-1)![0]).toBe(2);
       });
 
       it("restores the static group gain after its playing volume lane is removed", async () => {
@@ -1080,12 +1130,18 @@ describe("WebAudioTransport", () => {
         ]);
       });
 
-      it("re-aims a clip's lane at a new rate", async () => {
-        const { transport, laneGain } = await playBed(FADE);
+      it("re-aims a clip's lane at a new rate when its element takes it, not before", async () => {
+        const { transport, el, laneGain } = await playBed(FADE);
         expect(rampsAfter(laneGain, 0)).toContainEqual([1, 103]);
         const before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
 
         transport.setRate(2);
+        expect(rampsAfter(laneGain, before)).toEqual([]);
+        Object.defineProperties(el, {
+          paused: { value: false, configurable: true },
+          playbackRate: { value: 2, configurable: true },
+        });
+        el.dispatchEvent(new Event("ratechange"));
 
         expect(rampsAfter(laneGain, before)).toContainEqual([1, 101.5]);
       });
@@ -1150,6 +1206,149 @@ describe("WebAudioTransport", () => {
         );
         await settle();
         expect(rampsAfter(fader, before)).toContainEqual([0.25, 102]);
+      });
+
+      describe("a routed clip's lane and fades follow its element", () => {
+        // Routed at context 100, 0.1 s before its window opens at timeline 4 and source 8.
+        async function routeTake(extra: Record<string, string> = {}) {
+          const setup = setupGroupTransport();
+          const el = groupedAudioEl("take");
+          el.setAttribute("data-automation", FADE);
+          for (const [name, value] of Object.entries(extra)) el.setAttribute(name, value);
+          await setup.transport.scheduleMediaElementPlayback(el, 4, 8, 3.9, 1, setup.gen, 1, 2);
+          const [laneGain, fadeGain] = [setup.mock.gainNodes[2]!, setup.mock.gainNodes[4]];
+          const at = (ctxTime: number, currentTime: number, playbackRate = 1, paused = false) => {
+            setup.mock.ctx.currentTime = ctxTime;
+            Object.defineProperties(el, {
+              currentTime: { value: currentTime, configurable: true },
+              playbackRate: { value: playbackRate, configurable: true },
+              paused: { value: paused, configurable: true },
+            });
+          };
+          return { ...setup, el, laneGain, fadeGain, at };
+        }
+        const peakAfter = (node: { gain: unknown }, from: number) =>
+          rampsAfter(node, from).find(([value]) => value === 1)?.[1];
+
+        it("books the lane where the element starts sounding, not where the clock put it", async () => {
+          const { el, laneGain, at } = await routeTake();
+          expect(peakAfter(laneGain, 0)).toBeCloseTo(103.1, 9);
+
+          const before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+          at(100.155, 8);
+          el.dispatchEvent(new Event("playing"));
+
+          expect(peakAfter(laneGain, before)).toBeCloseTo(103.155, 9);
+        });
+
+        it("re-books the fades from the element too", async () => {
+          const { el, fadeGain, at } = await routeTake({ "data-fade-out": "0.03" });
+          expect(rampsAfter(fadeGain!, 0).at(-1)).toEqual([0, expect.closeTo(102.1, 9)]);
+
+          const before = param(fadeGain!).linearRampToValueAtTime.mock.calls.length;
+          at(100.155, 8);
+          el.dispatchEvent(new Event("playing"));
+
+          expect(rampsAfter(fadeGain!, before).at(-1)).toEqual([0, expect.closeTo(102.155, 9)]);
+        });
+
+        it("re-books the lane after the element is seeked and when its rate is steered", async () => {
+          const { el, laneGain, at } = await routeTake();
+          let before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+          at(100.2, 8.2);
+          el.dispatchEvent(new Event("seeked"));
+          expect(peakAfter(laneGain, before)).toBeCloseTo(103, 9);
+
+          before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+          at(100.3, 8.3, 1.03);
+          el.dispatchEvent(new Event("ratechange"));
+          expect(peakAfter(laneGain, before)).toBeCloseTo(100.3 + 2.7 / 1.03, 9);
+        });
+
+        it("books a looping element's lane on the pass the transport is in", async () => {
+          const { el, laneGain, at } = await routeTake();
+          Object.defineProperties(el, {
+            loop: { value: true, configurable: true },
+            duration: { value: 10, configurable: true },
+          });
+          const before = param(laneGain).linearRampToValueAtTime.mock.calls.length;
+          at(102.2, 8.1);
+          el.dispatchEvent(new Event("playing"));
+
+          expect(peakAfter(laneGain, before)).toBeCloseTo(103.1, 9);
+        });
+
+        it("leaves the lane alone while the element is paused and once the clip is stopped", async () => {
+          const { transport, el, laneGain, fadeGain, at } = await routeTake({
+            "data-fade-out": "0.03",
+          });
+          const booked = () =>
+            [laneGain, fadeGain!].map(
+              (node) => param(node).linearRampToValueAtTime.mock.calls.length,
+            );
+          const before = booked();
+          at(100.2, 8, 1, true);
+          el.dispatchEvent(new Event("seeked"));
+          transport.stopAll();
+          at(100.3, 8.1);
+          el.dispatchEvent(new Event("playing"));
+
+          expect(booked()).toEqual(before);
+        });
+
+        describe("a seek while it sounds", () => {
+          beforeEach(() => vi.useFakeTimers());
+          afterEach(() => vi.useRealTimers());
+          type Dip = Record<"linearRampToValueAtTime", ReturnType<typeof vi.fn>>;
+          const dipRamps = (node: { gain: unknown }) =>
+            (node.gain as Dip).linearRampToValueAtTime.mock.calls;
+
+          it("dips, seeks once the dip is down, and comes back up when the element lands", async () => {
+            const { transport, el, mock, at } = await routeTake();
+            const dip = mock.gainNodes[1]!;
+            at(100.5, 8.35);
+            const seek = vi.fn();
+            Object.defineProperty(el, "currentTime", {
+              get: () => 8.35,
+              set: seek,
+              configurable: true,
+            });
+
+            expect(transport.seekUnderDip(el, 8.5)).toBe(true);
+            expect(dipRamps(dip)).toEqual([[0, expect.closeTo(100.515, 9)]]);
+            expect(transport.seekUnderDip(el, 8.51)).toBe(true);
+            vi.advanceTimersByTime(14);
+            expect(seek).not.toHaveBeenCalled();
+            vi.advanceTimersByTime(1);
+            expect(seek).toHaveBeenCalledExactlyOnceWith(mediaElementTime(8.5 + 0.015));
+
+            mock.ctx.currentTime = 100.54;
+            el.dispatchEvent(new Event("seeked"));
+            expect(dipRamps(dip).at(-1)).toEqual([1, expect.closeTo(100.555, 9)]);
+            el.dispatchEvent(new Event("seeked"));
+            expect(dipRamps(dip)).toHaveLength(2);
+          });
+
+          it("leaves the element alone when the clip is stopped during the dip", async () => {
+            const { transport, el, at } = await routeTake();
+            at(100.5, 8.35);
+            const seek = vi.fn();
+            Object.defineProperty(el, "currentTime", {
+              get: () => 8.35,
+              set: seek,
+              configurable: true,
+            });
+            transport.seekUnderDip(el, 8.5);
+            transport.stopAll();
+            vi.advanceTimersByTime(15);
+            expect(seek).not.toHaveBeenCalled();
+          });
+
+          it("has no dip for an element it does not route", () => {
+            const { transport } = setupGroupTransport();
+            expect(transport.seekUnderDip(groupedAudioEl("loose"), 1)).toBe(false);
+          });
+        });
       });
     });
 
@@ -1219,7 +1418,7 @@ describe("WebAudioTransport", () => {
 
       transport.setElementVolume(el, 0.8, 0.5);
 
-      const [gain, , clipGain] = mock.gainNodes;
+      const [gain, , , clipGain] = mock.gainNodes;
       expect(clipGain!.gain.value).toBe(0.5);
       expect(gain!.gain.value).toBe(0.8);
     });
@@ -1230,10 +1429,14 @@ describe("WebAudioTransport", () => {
 
       await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
 
-      expect(mock.gainNodes).toHaveLength(3);
-      expect(mock.gainNodes[0]!.connect).toHaveBeenCalledWith(mock.masterGain);
-      expect(mock.gainNodes[1]!.connect).toHaveBeenCalledWith(mock.gainNodes[0]);
-      expect(mock.gainNodes[2]!.connect).toHaveBeenCalledWith(mock.gainNodes[1]);
+      // Element gain to master, seek dip, lane into the element gain, clip gain into the lane.
+      const [gain, dip, lane, clipGain] = mock.gainNodes;
+      expect(mock.gainNodes).toHaveLength(4);
+      expect(gain!.connect).toHaveBeenCalledWith(mock.masterGain);
+      expect(lane!.connect).toHaveBeenCalledWith(gain);
+      expect(clipGain!.connect).toHaveBeenCalledWith(lane);
+      expect(mock.mediaElementSource.connect).toHaveBeenCalledWith(dip);
+      expect(dip!.connect).toHaveBeenCalledWith(clipGain);
     });
 
     it("two members of the same group land on ONE shared group gain, not master directly", async () => {
@@ -1616,6 +1819,44 @@ describe("WebAudioTransport", () => {
     });
   });
 
+  describe("decode budget", () => {
+    const audio = (src: string, duration: number) =>
+      ({
+        tagName: "AUDIO",
+        getAttribute: (name: string) => (name === "src" ? src : null),
+        currentSrc: "",
+        duration,
+      }) as unknown as HTMLMediaElement;
+    const transport = () => {
+      const t = new WebAudioTransport();
+      (t as unknown as { _ctx: unknown })._ctx = { sampleRate: 48000, decodeAudioData: vi.fn() };
+      return t;
+    };
+
+    it("takes a ten minute source and refuses a one hour one", () => {
+      const t = transport();
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 3600))).toBe(false);
+    });
+
+    it("counts a source that is decoding against the next one", async () => {
+      const t = transport();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise(() => {})),
+      );
+      void t.decodeAudioElement(audio("a.mp4", 600));
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 100))).toBe(false);
+      expect(t.fitsDecodeBudget(audio("c.mp4", 10))).toBe(true);
+      vi.unstubAllGlobals();
+    });
+
+    it("leaves a clip that has not loaded to its source", () => {
+      expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
+    });
+  });
+
   describe("decodeAudioElement retry policy (late-asset self-heal)", () => {
     function transportWithDecode(decodeImpl: () => Promise<AudioBuffer>) {
       const transport = new WebAudioTransport();
@@ -1625,6 +1866,7 @@ describe("WebAudioTransport", () => {
     }
     const el = (src: string) =>
       ({
+        tagName: "AUDIO",
         getAttribute: (name: string) => (name === "src" ? src : null),
         currentSrc: "",
       }) as unknown as HTMLMediaElement;
@@ -1651,6 +1893,22 @@ describe("WebAudioTransport", () => {
       vi.unstubAllGlobals();
     });
 
+    it("decodes a file once for clips that open at different in-points of it", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      await Promise.all([
+        transport.decodeAudioElement(el("take.wav#t=10")),
+        transport.decodeAudioElement(el("take.wav#t=90")),
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]![0]).toBe(key("take.wav"));
+      vi.unstubAllGlobals();
+    });
+
     it("DOES blacklist genuinely undecodable bytes — not retried", async () => {
       const transport = transportWithDecode(async () => {
         throw new Error("unsupported codec");
@@ -1667,6 +1925,25 @@ describe("WebAudioTransport", () => {
       const second = await transport.decodeAudioElement(el("corrupt.wav"));
       expect(second).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1); // short-circuited, no re-fetch
+      vi.unstubAllGlobals();
+    });
+
+    it("hands a clip that decodes short to its element, and keeps one short only by its priming", async () => {
+      // Measured in Chromium 156 and WebKit 27.2: a 4 s AAC file whose mdhd timescale says 44.1 kHz over a
+      // 48 kHz stream decodes to 3.669 s; Apple's HE-AAC of the same tone decodes to 4.0 s under a 4.133 s element.
+      const withDuration = (src: string, duration: number) =>
+        Object.assign(el(src), { duration }) as HTMLMediaElement;
+      const transport = transportWithDecode(async () => ({ duration: 3.669 }) as AudioBuffer);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+      vi.stubGlobal("fetch", fetchMock);
+      expect(await transport.decodeAudioElement(withDuration("vo.m4a", 4))).toBeNull();
+      expect(failedSrcs(transport).has(key("vo.m4a"))).toBe(true);
+
+      const primed = transportWithDecode(async () => ({ duration: 4 }) as AudioBuffer);
+      expect(await primed.decodeAudioElement(withDuration("he.m4a", 4.133))).not.toBeNull();
+      expect(await primed.decodeAudioElement(withDuration("rec.webm", Infinity))).not.toBeNull();
       vi.unstubAllGlobals();
     });
 
@@ -1810,9 +2087,9 @@ describe("WebAudioTransport clip fades on the audio clock", () => {
     expect(gains[0]!.gain.value).toBeCloseTo(0.4, 9);
   });
 
-  it("a rate change rebooks the fades on the new rate from where the clip is", async () => {
+  it("a rate change rebooks a decoded clip's fades on the new rate from where the clip is", async () => {
     const { transport, mock, gen, booked } = setup(100);
-    await transport.scheduleMediaElementPlayback(faded("0.02", "1"), 5, 0, 5, 1, gen, 2, 10);
+    await transport.schedulePlayback(faded("0.02", "1"), mockBuffer, 5, 0, () => 5, 1, gen, 2, 10);
     const gain = booked()!;
     mock.ctx.currentTime = 101;
     transport.setRate(1);

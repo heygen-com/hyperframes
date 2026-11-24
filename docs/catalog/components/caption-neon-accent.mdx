@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Neon Accent</h1>
+  <p>Multi-color neon glow accents with wiggle drift animation</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-neon-accent.json"
   compositionId="caption-neon-accent"
   compositionSrc="compositions/components/caption-neon-accent.html"
   title="Neon Accent"
-  description="Multi-color neon glow accents with wiggle drift animation"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":514}}
   attribution={{"path":"registry/components/caption-neon-accent","tags":["captions","caption-style","neon","glow","accent"]}}
@@ -549,7 +553,9 @@ That writes one file: `compositions/components/caption-neon-accent.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -568,6 +574,4 @@ Tagged `captions` `caption-style` `neon` `glow` `accent`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

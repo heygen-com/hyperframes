@@ -20,6 +20,7 @@ const { runFfmpegMock, capturedFilterScripts, extractAudioMetadataMock } = vi.ho
       sampleRate: 48_000,
       channels: 2,
       audioCodec: "aac",
+      audioStream: 0,
     })),
     runFfmpegMock: vi.fn(async (args: string[]) => {
       const legacyIdx = args.indexOf("-filter_complex_script");
@@ -82,7 +83,11 @@ vi.mock("../utils/ffprobe.js", async (importOriginal) => {
 });
 
 import { RATE_RANGE } from "@hyperframes/core/audio-automation";
+import { _setDownloadFetchForTests } from "../utils/urlDownloader.js";
 import { AudioFxRenderError } from "./audioFxRender.js";
+
+const stubFetch = (replacement: unknown): void =>
+  _setDownloadFetchForTests(replacement as Parameters<typeof _setDownloadFetchForTests>[0]);
 import { MAX_MIX_INPUTS, parseAudioElements, processCompositionAudio } from "./audioMixer.js";
 import { encodeAac } from "./aacEncode.js";
 
@@ -155,6 +160,7 @@ describe("processCompositionAudio", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    _setDownloadFetchForTests();
     runFfmpegMock.mockReset();
     extractAudioMetadataMock.mockReset();
     extractAudioMetadataMock.mockResolvedValue({
@@ -162,6 +168,7 @@ describe("processCompositionAudio", () => {
       sampleRate: 48_000,
       channels: 2,
       audioCodec: "aac",
+      audioStream: 0,
     });
     applyAudioFxChainMock.mockClear();
     capturedFilterScripts.length = 0;
@@ -228,7 +235,7 @@ describe("processCompositionAudio", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response("<!doctype html><html><body>denied</body></html>"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const result = await processCompositionAudio(
       [
@@ -301,6 +308,37 @@ describe("processCompositionAudio", () => {
       }),
     ]);
   });
+
+  it.each([".git/music.mp3", ".hyperframes/music.mp3", ".claude/music.mp3", "keys/id_rsa"])(
+    "never opens the private project file %s as an audio source",
+    async (src) => {
+      const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-private-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+      tempDirs.push(baseDir, workDir);
+      mkdirSync(join(baseDir, src, ".."), { recursive: true });
+      writeFileSync(join(baseDir, src), "not for the render");
+
+      const result = await processCompositionAudio(
+        [{ id: "bed", src, start: 0, end: 2, mediaStart: 0, layer: 0, volume: 1, type: "audio" }],
+        baseDir,
+        workDir,
+        join(workDir, "out.m4a"),
+        2,
+        undefined,
+        { assetRoots: [baseDir] },
+      );
+
+      expect(result.failures).toEqual([
+        expect.objectContaining({
+          reason: "source_not_found",
+          elementId: "bed",
+          detail: "Audio element bed source is a private project file",
+        }),
+      ]);
+      expect(extractAudioMetadataMock).not.toHaveBeenCalled();
+      expect(runFfmpegMock.mock.calls.flat(2)).not.toContain(join(baseDir, src));
+    },
+  );
 
   it.each([
     {
@@ -1912,7 +1950,7 @@ describe("processCompositionAudio", () => {
     const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
     tempDirs.push(baseDir, workDir);
     const fetchMock = vi.fn().mockRejectedValue(new Error("downloaded"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const url = "https://bucket.s3.amazonaws.com/cas/take.mov?X-Amz-Signature=s";
 
     const result = await processCompositionAudio(

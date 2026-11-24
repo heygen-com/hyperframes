@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Caret Swap</h1>
+  <p>A gradient caret expands over one phrase, collapses to the left, then types its replacement with a blinking caret.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caret-swap.json"
   compositionId="caret-swap"
   compositionSrc="compositions/components/caret-swap/caret-swap.html"
   title="Caret Swap"
-  description="A gradient caret expands over one phrase, collapses to the left, then types its replacement with a blinking caret."
   variables={[{"id":"from_text","type":"string","role":"content","label":"From text","description":"The phrase covered by the expanding caret.","default":"Executing it?"},{"id":"to_text","type":"string","role":"content","label":"To text","description":"The replacement phrase, typed one character at a time.","default":"That's where everyone quits"},{"id":"font_size","type":"number","role":"style","label":"Font size","description":"Maximum size in pixels. Both phrases shrink together to fit the host.","default":72,"min":36,"max":160,"step":2,"unit":"px"},{"id":"font_weight","type":"enum","role":"style","label":"Font weight","description":"Weight used by both phrases. Every option is included in the bundled Geist font.","default":"400","options":[{"value":"400","label":"Regular"},{"value":"500","label":"Medium"},{"value":"600","label":"Semibold"},{"value":"700","label":"Bold"}]},{"id":"color","type":"color","role":"style","label":"Text color","description":"Color of both phrases.","default":"#171717"},{"id":"caret_color","type":"color","role":"style","label":"Caret top","description":"Top color of the caret gradient.","default":"#FF4DAA"},{"id":"caret_color_end","type":"color","role":"style","label":"Caret bottom","description":"Bottom color of the caret gradient.","default":"#8A5CF6"}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":355}}
   attribution={{"author":"Remocn","authorUrl":"https://github.com/Remocn/remocn","path":"registry/components/caret-swap","tags":["motion-primitive","text-effects","typography","swap","typewriter","remocn-port"]}}
@@ -390,7 +394,9 @@ That writes `compositions/components/caret-swap/caret-swap.html`, plus 2 support
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -437,6 +443,4 @@ Created by [Remocn](https://github.com/Remocn/remocn).
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Icon Morph Beat</h1>
+  <p>An icon morphs between authored state silhouettes, shifts to an accent color, and marks completion with one restrained pulse.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/icon-morph-beat.json"
   compositionId="icon-morph-beat"
   compositionSrc="compositions/components/icon-morph-beat.html"
   title="Icon Morph Beat"
-  description="An icon morphs between authored state silhouettes, shifts to an accent color, and marks completion with one restrained pulse."
   variables={[{"id":"pair","type":"enum","role":"content","label":"Icon pair","description":"Before and after icon states used by the morph.","default":"mic-check","options":[{"value":"mic-check","label":"Mic to check"},{"value":"play-check","label":"Play to check"},{"value":"lock-unlock","label":"Lock to unlock"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color applied as the morph completes.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":258}}
   attribution={{"path":"registry/components/icon-morph-beat","tags":["motion-primitive","product-demo","icon","morph","state-change","completion"]}}
@@ -293,7 +297,9 @@ That writes one file: `compositions/components/icon-morph-beat.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -333,6 +339,4 @@ Tagged `motion-primitive` `product-demo` `icon` `morph` `state-change` `completi
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

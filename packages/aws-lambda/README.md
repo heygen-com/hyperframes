@@ -37,7 +37,7 @@ smoke flow; the SDK + CDK are the supported public surface for adopters.
                               │ pure functions over local paths
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ S3 bucket — v1 plan tar or v2 manifest/blobs + chunks + output  │
+│ S3 bucket — Plan v2 manifest/blobs + chunks + output            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,11 +45,11 @@ The handler downloads inputs from S3 into `/tmp`, calls the OSS primitive,
 uploads outputs back to S3, and returns a small JSON result that fits
 inside Step Functions' history budget (under 200 bytes per chunk).
 
-### Plan transport selection
+### Plan transport
 
-Plan v2 is the default for new renders. When `planProtocol` is omitted,
-`renderToLambda` sends an explicit `PlanProtocol: "v2"` so the SDK and the
-deployed state machine agree:
+Plan v2 is the only supported distributed plan transport.
+`renderToLambda` sends `PlanProtocol: "v2"` without requiring a protocol
+option:
 
 ```ts
 await renderToLambda({
@@ -63,8 +63,7 @@ only manifest-selected chunk artifacts, while the assembler fetches its
 own metadata and audio subset. Blobs are immutable SHA-256-addressed
 objects, verified on upload and download, and the manifest is published
 last. Unknown protocols and digest mismatches are terminal Step Functions
-errors. The monolithic v1 transport remains available as deprecated
-compatibility by passing `planProtocol: "v1"` explicitly.
+errors.
 
 #### Upgrade order
 
@@ -78,7 +77,7 @@ infrastructure upgrade. Before upgrading an application that calls
 3. Resume renders, then upgrade the application/SDK dependency.
 
 A site is a `sites/<id>/files.json` file list that an older stack cannot
-read, under either plan protocol. Before it uploads anything,
+read. Before it uploads anything,
 `renderToLambda` reads the state machine definition
 (`states:DescribeStateMachine`) and fails with `STACK_TOO_OLD` when the
 stack predates that format. If infrastructure cannot be redeployed first,
@@ -91,10 +90,10 @@ when `sites/<id>/files.json` is missing, the render uses that site's
 
 The package supports two Chromium sources:
 
-| Source                          | Default | Size               | When to pick it                                                                                                       |
-| ------------------------------- | ------- | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `@sparticuz/chromium`           | yes     | ~70 MiB compressed | Lambda. Decompresses into `/tmp` at runtime; the rest of the ecosystem already uses it for headless-Chrome-in-Lambda. |
-| Bundled `chrome-headless-shell` | no      | ~140 MiB           | Fallback. Used if `@sparticuz/chromium` ever drops `HeadlessExperimental.beginFrame` support.                         |
+| Source                          | Default | Size               | When to pick it                                                                                                           |
+| ------------------------------- | ------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `@sparticuz/chromium`           | yes     | ~70 MiB compressed | Lambda. Decompresses into `/tmp` at runtime; the rest of the ecosystem already uses it for headless-Chrome-in-Lambda.     |
+| Bundled `chrome-headless-shell` | no      | ~296 MB            | Does not fit a ZIP function today. Kept for the case where `@sparticuz/chromium` drops `HeadlessExperimental.beginFrame`. |
 
 Pick the source at build time:
 
@@ -103,9 +102,22 @@ bun run --cwd packages/aws-lambda build:zip
 bun run --cwd packages/aws-lambda build:zip -- --source=chrome-headless-shell
 ```
 
-The handler reads `HYPERFRAMES_LAMBDA_CHROME_SOURCE` at boot. The build
-script sets that env var via Lambda function configuration in
-`examples/aws-lambda/template.yaml`.
+The handler reads `HYPERFRAMES_LAMBDA_CHROME_SOURCE` at boot, and for
+`chrome-headless-shell` the executable from `HYPERFRAMES_LAMBDA_CHROME_PATH`.
+The build stages the repo's pinned shell build, and only when its folder
+matches that build's pinned digest. It stages the whole folder (the
+executable needs its ICU data and `.pak` files beside it), which is over
+Lambda's 250 MiB unzipped limit for a ZIP function, so the build fails its
+size gate and the x86 ZIP ships `@sparticuz/chromium`. For the same reason
+`hyperframes lambda deploy`, `examples/aws-lambda/template.yaml` and the CDK
+construct refuse `chrome-headless-shell` as the ZIP's Chrome source.
+
+The arm64 video image (`image/Dockerfile`, `video` target) does not use
+`@sparticuz/chromium`: it installs Chrome for Testing's linux-arm64
+`chrome-headless-shell` folder, pinned by version and sha256, with the shared
+libraries it needs, and sets both env vars itself. It keeps `@sparticuz/chromium`'s
+fonts and `fonts.conf` from the handler ZIP, so text resolves to the same fonts as
+on the x86 function; CI compares the two on a mixed-script page.
 
 ## BeginFrame regression guard
 
@@ -123,7 +135,9 @@ bun run --cwd packages/aws-lambda probe:beginframe:docker
 The probe boots `@sparticuz/chromium` inside
 `public.ecr.aws/lambda/nodejs:22` and asserts CDP `beginFrame` with
 `screenshot: true` returns a PNG buffer. Exit code 0 = green; non-zero =
-fall back to bundling chrome-headless-shell directly via `--source=chrome-headless-shell`.
+`@sparticuz/chromium` lost BeginFrame. `--source=chrome-headless-shell` does
+not fit a ZIP function, so that function would move to a container image like
+the arm64 video function.
 
 ## Building the ZIP
 
@@ -135,7 +149,8 @@ bun run --cwd packages/aws-lambda verify:zip-size    # CI gate
 
 The build script bundles `src/handler.ts` via esbuild, stages
 `@sparticuz/chromium` and `puppeteer-core` under `node_modules/`, copies
-ffmpeg-static into `bin/`, and zips the result. The unzipped layout is
+ffmpeg-static into `bin/` once its sha256 matches the one pinned for that
+ffmpeg-static version in `scripts/_ffmpeg.ts`, and zips the result. The unzipped layout is
 designed to extract cleanly into Lambda's `/var/task/`.
 
 `verify:zip-size` enforces:
@@ -143,7 +158,9 @@ designed to extract cleanly into Lambda's `/var/task/`.
 - Unzipped ≤ 248 MiB (in-house budget; Lambda hard ceiling is 250 MiB unzipped — AWS docs label this "250 MB" but use binary mebibytes)
 - Zipped ≤ 150 MiB (in-house budget; Lambda has no hard zipped cap for S3-deployed functions)
 
-CI fails the PR if either is exceeded.
+The sparticuz ZIP is about 1.5 MiB under the unzipped budget, and the handler
+bundles the producer, engine and core. So the `Lambda handler ZIP` workflow
+builds it on every PR that touches them, and fails the PR if either is exceeded.
 
 ## Running tests
 

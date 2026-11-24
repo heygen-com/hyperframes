@@ -11,6 +11,7 @@ import { optedOut } from "./telemetry.mjs";
 const ENV_KEYS = [
   "HOME",
   "USERPROFILE",
+  "HYPERFRAMES_CONFIG_DIR",
   "HYPERFRAMES_NO_TELEMETRY",
   "DO_NOT_TRACK",
   "CI",
@@ -69,5 +70,29 @@ test("optedOut still honors the env opt-outs", () => {
     assert.equal(optedOut(), true);
   } finally {
     delete process.env.DO_NOT_TRACK;
+  }
+});
+
+test("optedOut reads the shared config from HYPERFRAMES_CONFIG_DIR when it is set", () => {
+  writeConfig(null);
+  const configDir = join(home, "elsewhere");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, "config.json"), JSON.stringify({ telemetryEnabled: false }));
+  process.env.HYPERFRAMES_CONFIG_DIR = configDir;
+  try {
+    assert.equal(optedOut(), true);
+  } finally {
+    delete process.env.HYPERFRAMES_CONFIG_DIR;
+  }
+});
+
+test("an opt-out in ~/.hyperframes holds until HYPERFRAMES_CONFIG_DIR has its own config", () => {
+  writeConfig(JSON.stringify({ telemetryEnabled: false }));
+  process.env.HYPERFRAMES_CONFIG_DIR = join(home, "moved");
+  try {
+    assert.equal(optedOut(), true);
+  } finally {
+    delete process.env.HYPERFRAMES_CONFIG_DIR;
+    writeConfig(null);
   }
 });

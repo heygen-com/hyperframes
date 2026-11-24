@@ -1,4 +1,6 @@
-import { defineCommand, type ArgDef } from "citty";
+import { terminalLines } from "@hyperframes/core";
+import { type ArgDef } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { describeProject } from "../timeline/describeProject.js";
 import { formatTimeline } from "../timeline/formatTimeline.js";
@@ -171,7 +173,7 @@ export default defineCommand({
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Timeline query failed");
-      console.log(args.json ? JSON.stringify(result) : result.text);
+      console.log(args.json ? JSON.stringify(result) : terminalLines(String(result.text)));
       return;
     }
     ensureDOMParser();

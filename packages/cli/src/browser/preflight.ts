@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
 import { describeBrowserInstall, type BrowserInstallFacts } from "./installFacts.js";
@@ -18,6 +19,7 @@ import {
 import { getFreeDiskMb } from "../telemetry/system.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { processReadArgs } from "../utils/windowsProcesses.js";
 
 export type EnvironmentCheckLevel = "ok" | "warn" | "error";
 
@@ -27,6 +29,7 @@ export interface EnvironmentCheckOutcome {
   detail: string;
   level: EnvironmentCheckLevel;
   title?: string;
+  code?: string;
   hint?: string;
   path?: string;
   /** Major version parsed from the tool's own `-version`/`--version` output, when available. */
@@ -95,9 +98,21 @@ async function readToolVersion(
     };
   } catch (error) {
     if (signal?.aborted) signal.throwIfAborted();
-    const status =
-      typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
-    const exitDetail = typeof status === "number" ? ` (exit code ${status})` : "";
+    const field = (name: string) =>
+      typeof error === "object" && error !== null && name in error
+        ? (error as Record<string, unknown>)[name]
+        : undefined;
+    const status = field("status");
+    const code = field("code");
+    const killedBy = field("signal");
+    const exitDetail =
+      typeof status === "number"
+        ? ` (exit code ${status})`
+        : typeof code === "string"
+          ? ` (${code})`
+          : typeof killedBy === "string"
+            ? ` (signal ${killedBy})`
+            : "";
     return {
       ok: false,
       detail: `Failed to run "${binaryPath}" -version${exitDetail}.`,
@@ -113,6 +128,7 @@ async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcom
       ok: false,
       level: "error",
       title: "FFmpeg not found",
+      code: "ffmpeg_not_found",
       detail: missingConfigured,
       hint: getFFmpegInstallHint(),
     };
@@ -150,6 +166,7 @@ async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcom
     ok: false,
     level: "error",
     title: "FFmpeg not found",
+    code: "ffmpeg_not_found",
     // Second sentence dropped: "the render cannot proceed" is already said by
     // the error this accompanies, and in Studio by the disabled Export button.
     detail: "FFmpeg is required to encode video.",
@@ -165,6 +182,7 @@ async function checkFFprobe(signal?: AbortSignal): Promise<EnvironmentCheckOutco
       ok: false,
       level: "error",
       title: "FFprobe not found",
+      code: "ffprobe_not_found",
       detail: missingConfigured,
       hint: getFFmpegInstallHint(),
     };
@@ -181,6 +199,7 @@ async function checkFFprobe(signal?: AbortSignal): Promise<EnvironmentCheckOutco
     ok: false,
     level: "error",
     title: "FFprobe not found",
+    code: "ffprobe_not_found",
     detail:
       "FFprobe is required to probe media assets. It ships with FFmpeg but was not found on PATH.",
     hint: getFFmpegInstallHint(),
@@ -255,6 +274,24 @@ function chromeLaunchFailureDetails(error: unknown): string {
     .join(", ");
 }
 
+// Windows chrome.exe prints nothing for --version and can exit 21 while rendering fine: read the file's version.
+async function windowsChromeVersionMajor(
+  executablePath: string,
+  signal?: AbortSignal,
+): Promise<number | undefined> {
+  try {
+    const { stdout } = await runCancellableProcess(
+      "powershell.exe",
+      processReadArgs("version", executablePath),
+      { signal, timeoutMs: 10_000, maxBufferBytes: 4 * 1024 },
+    );
+    return extractMajorVersion(stdout);
+  } catch {
+    if (signal?.aborted) signal.throwIfAborted();
+    return undefined;
+  }
+}
+
 async function chromeLaunchOutcome(
   executablePath: string,
   found: EnvironmentCheckOutcome,
@@ -262,8 +299,12 @@ async function chromeLaunchOutcome(
 ): Promise<EnvironmentCheckOutcome> {
   const libraries = await chromeSharedLibOutcome(executablePath, found, signal);
   if (!libraries.ok) return libraries;
+  if (process.platform === "win32") {
+    return { ...found, versionMajor: await windowsChromeVersionMajor(executablePath, signal) };
+  }
   try {
     const { stdout } = await runCancellableProcess(executablePath, ["--version"], {
+      env: buildChromeLaunchEnv(),
       signal,
       timeoutMs: FIRST_LAUNCH_TIMEOUT_MS,
       maxBufferBytes: 64 * 1024,
@@ -309,6 +350,7 @@ async function checkChrome(
       ok: false,
       level: "error",
       title: "Chrome not found",
+      code: "chrome_not_found",
       detail: `Chrome binary not found at "${browserPath}".`,
       hint: "Run: npx hyperframes browser ensure",
     };
@@ -349,6 +391,7 @@ async function checkChrome(
     ok: false,
     level: "error",
     title: "Chrome not found",
+    code: "chrome_not_found",
     detail: failure ?? "Chrome Headless Shell is required for local rendering.",
     hint: "Run: npx hyperframes browser ensure",
   };

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Rounded Media Grid</h1>
+  <p>N-up rounded-corner media grid (2-up, 3-up, 4-up, 3x2, hero plus two): per-cell inside-scale framing, staggered box-in entrance, slow settle</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/mk-placeholder-grid.json"
   compositionId="mk-placeholder-grid"
   compositionSrc="compositions/mk-placeholder-grid.html"
   title="Rounded Media Grid"
-  description="N-up rounded-corner media grid (2-up, 3-up, 4-up, 3x2, hero plus two): per-cell inside-scale framing, staggered box-in entrance, slow settle"
   variables={[]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":233}}
   attribution={{"path":"registry/blocks/mk-placeholder-grid","tags":["placeholder","media","grid","minimal"]}}
@@ -268,7 +272,9 @@ That writes one file: `compositions/mk-placeholder-grid.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -299,6 +305,4 @@ Tagged `placeholder` `media` `grid` `minimal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

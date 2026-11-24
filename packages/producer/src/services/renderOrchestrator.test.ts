@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, win32 } from "node:path";
 import { tmpdir } from "node:os";
-import type { CaptureOptions, EngineConfig, ExtractedFrames } from "@hyperframes/engine";
+import type {
+  CaptureOptions,
+  CaptureSession,
+  EngineConfig,
+  ExtractedFrames,
+} from "@hyperframes/engine";
 import {
   DEFAULT_CONFIG,
   DrawElementCaptureError,
@@ -32,6 +37,7 @@ import {
   getNextRetryWorkerCount,
   isRecoverableParallelCaptureError,
   MAX_TRANSIENT_CAPTURE_RETRIES,
+  pageInstallsShaderCompositor,
   resolveCaptureForceScreenshotForPageSideCompositing,
   resolveRenderWorkDirPrefix,
   shouldDiscardProbeSessionForPageSideCompositing,
@@ -55,13 +61,17 @@ import {
   resolveAdaptersUsed,
   resolveDeShortBand,
   shouldClampDefaultDrawElement,
+  calibrationCaptureConfig,
   shouldPreferParallelDrawElement,
   shouldPreferSingleWorkerDrawElement,
+  initialDeClampReason,
+  resolveDeSingleMinFrames,
   isCaptureParallelStreamRouterEnabled,
   shouldSegmentCapture,
   SEGMENTED_MIN_SECONDS_AFTER_SOAK,
   resolveParallelCaptureMode,
   shouldStreamParallelCapture,
+  isAppleGpuDiskCapture,
   shouldUseStreamingEncode,
   resolveObservedCaptureMode,
   createCaptureObservabilityUpdater,
@@ -69,6 +79,7 @@ import {
   createRenderJob,
   RenderQualityError,
 } from "./renderOrchestrator.js";
+import { shouldWindowVideoFrames } from "./render/videoFrameWindow.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -424,6 +435,46 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
     }
   });
 
+  it("halves the workers when every page times out loading, instead of reopening as many", async () => {
+    const workDir = mkdtempSync(join(tmpdir(), "hf-navtimeout-work-"));
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-navtimeout-frames-"));
+    const log = makeLog();
+    let call = 0;
+    vi.mocked(executeParallelCapture).mockImplementation(async () => {
+      call++;
+      if (call === 1) {
+        throw new Error(
+          "[Parallel] Capture failed: Worker 0: Navigation timeout of 60000 ms exceeded",
+        );
+      }
+      writeAllFrames(framesDir, 16);
+      return [];
+    });
+    vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+
+    try {
+      const attempts = await executeDiskCaptureWithAdaptiveRetry({
+        serverUrl: "http://localhost:0",
+        workDir,
+        framesDir,
+        totalFrames: 16,
+        initialWorkerCount: 8,
+        allowRetry: true,
+        frameExt: "jpg",
+        captureOptions: { width: 64, height: 64, fps: { num: 30, den: 1 } },
+        createBeforeCaptureHook: () => null,
+        cfg: DEFAULT_CONFIG,
+        log,
+        dedupPerfs: [],
+      });
+
+      expect(attempts.map((a) => a.workers)).toEqual([8, 4]);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+
   it.each(["Target closed", "Network.enable timed out"])(
     "does NOT retry %s after cancellation",
     async (message) => {
@@ -471,7 +522,7 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
     },
   );
 
-  it.each(["Session closed", "Network.enable timed out"])(
+  it.each(["Session closed", "Network.enable timed out", "Navigation timeout of 9 ms exceeded"])(
     "bounds repeated %s failures",
     async (message) => {
       const workDir = mkdtempSync(join(tmpdir(), "hf-transient2-work-"));
@@ -1052,6 +1103,44 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(copies).toEqual([{ src: outputDir, dest: linkPath }]);
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
   });
+
+  it("gives ids that differ only by case their own frames on a case-insensitive disk", () => {
+    // macOS and Windows disks fold case: `s12-vB1` and `s12-vb1` named as-is are one folder.
+    const entries = new Map<string, string>();
+    const fold = (path: string) => path.toLowerCase();
+    const clip = (videoId: string, cacheDir: string, frameCount: number) => ({
+      videoId,
+      outputDir: cacheDir,
+      framePaths: new Map(
+        Array.from({ length: frameCount }, (_, i): [number, string] => [
+          i,
+          join(cacheDir, `frame_${String(i + 1).padStart(5, "0")}.jpg`),
+        ]),
+      ),
+    });
+    const short = clip("s12-vB1", "/cache/hook", 64);
+    const long = clip("s12-vb1", "/cache/sparks", 66);
+
+    materializeExtractedFramesForCompiledDir([short, long], "/job/compiled", {
+      fileSystem: {
+        existsSync: (path) => entries.has(fold(String(path))),
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path) => {
+          if (entries.has(fold(String(path)))) {
+            throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+          }
+          entries.set(fold(String(path)), String(target));
+        },
+        cpSync: () => {
+          throw new Error("a symlink is expected");
+        },
+      },
+    });
+
+    const targetOf = (framePath: string) => entries.get(fold(join(framePath, "..")));
+    expect(targetOf(long.framePaths.get(64)!)).toBe("/cache/sparks");
+    expect(targetOf(short.framePaths.get(63)!)).toBe("/cache/hook");
+  });
 });
 
 describe("writeCompiledArtifacts — external assets on Windows drive-letter paths (GH #321)", () => {
@@ -1143,6 +1232,37 @@ describe("writeCompiledArtifacts — external assets on Windows drive-letter pat
 
     const escapeTarget = join(workDir, "etc", "passwd");
     expect(existsSync(escapeTarget)).toBe(false);
+  });
+
+  it("writes sub-compositions only inside compileDir", () => {
+    const sandboxRoot = mkdtempSync(join(tmpdir(), "hf-orch-root-"));
+    tempDirs.push(sandboxRoot);
+    const workDir = join(sandboxRoot, "work");
+    mkdirSync(workDir, { recursive: true });
+
+    const compiled = {
+      html: "<!doctype html>",
+      subCompositions: new Map<string, string>([
+        ["scenes/intro.html", "intro"],
+        ["outro.html?v=2", "outro"],
+        ["outro.html?/../../../escaped.html", "escaped"],
+      ]),
+      videos: [],
+      audios: [],
+      unresolvedCompositions: [],
+      externalAssets: new Map<string, string>(),
+      width: 1920,
+      height: 1080,
+      staticDuration: 10,
+      renderModeHints: { recommendScreenshot: false, reasons: [] },
+      hasShaderTransitions: false,
+    };
+
+    writeCompiledArtifacts(compiled, workDir, false);
+
+    expect(readFileSync(join(workDir, "compiled", "scenes", "intro.html"), "utf-8")).toBe("intro");
+    expect(readFileSync(join(workDir, "compiled", "outro.html?v=2"), "utf-8")).toBe("outro");
+    expect(existsSync(join(sandboxRoot, "escaped.html"))).toBe(false);
   });
 });
 
@@ -1281,6 +1401,19 @@ describe("collectVideoMetadataHints", () => {
     ).toEqual([
       { id: "video1", width: 1920, height: 1080 },
       { id: "video2", width: 1080, height: 1920 },
+    ]);
+  });
+
+  it("sizes a phone's portrait clip as it plays, not as it is stored", () => {
+    const stored = { width: 1920, height: 1080, durationSeconds: 3 };
+    expect(
+      collectVideoMetadataHints([
+        { videoId: "portrait", metadata: { ...stored, rotation: -90 } },
+        { videoId: "upside-down", metadata: { ...stored, rotation: 180 } },
+      ]),
+    ).toEqual([
+      { id: "portrait", width: 1080, height: 1920 },
+      { id: "upside-down", width: 1920, height: 1080 },
     ]);
   });
 });
@@ -1527,6 +1660,50 @@ describe("resolveCaptureForceScreenshotForPageSideCompositing", () => {
   });
 });
 
+describe("pageInstallsShaderCompositor", () => {
+  // A page whose shader-transitions build added (or did not add) its compositor canvas.
+  const pageWith = (ids: string[]) =>
+    ({
+      page: {
+        evaluate: async (fn: (id: string) => boolean, id: string) => {
+          vi.stubGlobal("document", {
+            getElementById: (x: string) => (ids.includes(x) ? {} : null),
+          });
+          try {
+            return fn(id);
+          } finally {
+            vi.unstubAllGlobals();
+          }
+        },
+      },
+    }) as unknown as CaptureSession;
+  const lifecycle = () => ({
+    initializeSession: vi.fn(async () => {}),
+    closeCaptureSession: vi.fn(async () => {}),
+  });
+
+  it("answers from the canvas every published shader-transitions build adds once it composites", async () => {
+    const hooks = lifecycle();
+    expect(
+      await pageInstallsShaderCompositor(
+        async () => pageWith(["__hf-page-side-compositor"]),
+        hooks,
+      ),
+    ).toBe(true);
+    expect(await pageInstallsShaderCompositor(async () => pageWith([]), hooks)).toBe(false);
+    expect(hooks.closeCaptureSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the page when it fails to load", async () => {
+    const hooks = lifecycle();
+    hooks.initializeSession.mockRejectedValueOnce(new Error("page never ready"));
+    await expect(pageInstallsShaderCompositor(async () => pageWith([]), hooks)).rejects.toThrow(
+      "page never ready",
+    );
+    expect(hooks.closeCaptureSession).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("shouldDiscardProbeSessionForPageSideCompositing", () => {
   it("discards a previously-loaded probe page when page-side compositing is selected", () => {
     expect(
@@ -1621,6 +1798,18 @@ describe("estimateMeasuredCaptureCostMultiplier", () => {
 
     expect(estimate.multiplier).toBe(4);
     expect(estimate.reasons).toEqual(["calibration-p95=2400ms"]);
+  });
+
+  it("records the typical calibration frame next to the slowest", () => {
+    const estimate = estimateMeasuredCaptureCostMultiplier(
+      [92, 1243, 1183, 983, 717].map((captureTimeMs, i) => ({
+        frameIndex: i * 100,
+        captureTimeMs,
+      })),
+    );
+
+    expect(estimate.p95Ms).toBe(1243);
+    expect(estimate.medianMs).toBe(983);
   });
 
   it("keeps fast calibration samples at baseline cost", () => {
@@ -1970,6 +2159,36 @@ describe("resolveDeviceScaleFactor", () => {
   });
 });
 
+describe("initialDeClampReason", () => {
+  const config = {
+    platform: "win32" as const,
+    browserGpuMode: "hardware" as const,
+    workerEncode: true,
+  };
+
+  it("labels a content gate from the compile stage as compile_gate, not disabled", () => {
+    expect(initialDeClampReason({ useDrawElement: false, deCompileGate: "3d", config })).toBe(
+      "compile_gate",
+    );
+  });
+
+  it("keeps config refusals and leaves an engaged render unlabeled", () => {
+    expect(initialDeClampReason({ useDrawElement: false, deCompileGate: undefined, config })).toBe(
+      "disabled",
+    );
+    expect(
+      initialDeClampReason({
+        useDrawElement: false,
+        deCompileGate: undefined,
+        config: { ...config, browserGpuMode: "software" },
+      }),
+    ).toBe("software_gpu");
+    expect(
+      initialDeClampReason({ useDrawElement: true, deCompileGate: undefined, config }),
+    ).toBeUndefined();
+  });
+});
+
 describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
   const eligible = {
     workerCount: 5,
@@ -2248,6 +2467,34 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
   });
 
   describe("scanElementTags", () => {
+    it("takes linear time on 1 MB of tags that never close or nest re-formed scripts", () => {
+      const root = '<div data-composition-id="r" data-width="100" data-height="100">';
+      const megabyte = (piece: string) => piece.repeat(Math.ceil(1_000_000 / piece.length));
+      const nested = (depth: number) =>
+        `${"<scr".repeat(depth)}<script></script>${"ipt></script>".repeat(depth)}`;
+      const inputs = [
+        megabyte("<a "),
+        megabyte("<script "),
+        megabyte("<style>"),
+        megabyte('<video data-aroll="true" '),
+        megabyte('<a data-composition-src="'),
+        megabyte('<a data-composition-id="x" '),
+        megabyte('<a data-color-grading="'),
+        root + megabyte("html,body{width:"),
+        `<video${" ".repeat(1_000_000)}x>`,
+        nested(70_000),
+      ];
+      for (const html of inputs) {
+        const start = performance.now();
+        scanElementTags(html);
+        expect(performance.now() - start).toBeLessThan(1000);
+      }
+    });
+
+    it("strips script blocks re-formed by an earlier pass", () => {
+      expect(scanElementTags("<scr<script></script>ipt><b></b></script><i></i>").total).toBe(1);
+    });
+
     it("counts closing tags", () => {
       expect(scanElementTags("<div><span>a</span></div>").total).toBe(2);
     });
@@ -2911,6 +3158,15 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, totalFrames: 900 })).toBe(true);
   });
 
+  it("is off unless HF_DE_SINGLE_MIN_FRAMES sets a floor", () => {
+    expect(resolveDeSingleMinFrames({})).toBe(0);
+    expect(resolveDeSingleMinFrames({ HF_DE_SINGLE_MIN_FRAMES: "" })).toBe(0);
+    expect(resolveDeSingleMinFrames({ HF_DE_SINGLE_MIN_FRAMES: "900" })).toBe(900);
+    expect(
+      shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: resolveDeSingleMinFrames({}) }),
+    ).toBe(false);
+  });
+
   it("is disabled by minFrames <= 0 (HF_DE_SINGLE_MIN_FRAMES=0 kill switch)", () => {
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: 0 })).toBe(false);
     expect(shouldPreferSingleWorkerDrawElement({ ...eligible, minFrames: -1 })).toBe(false);
@@ -3504,6 +3760,33 @@ describe("resolveParallelCaptureMode", () => {
   });
 });
 
+describe("shouldWindowVideoFrames", () => {
+  const segmentsAt = (env: Record<string, string | undefined>, outputFormat: string) =>
+    shouldSegmentCapture({
+      env: { HF_SEGMENTED_CAPTURE: "true", ...env },
+      durationSeconds: 900,
+      outputFormat,
+      layeredOrEffectRoute: false,
+      streamingOk: true,
+    });
+  const windows = (env: Record<string, string | undefined>, outputFormat = "mp4") =>
+    shouldWindowVideoFrames({ env, segmented: segmentsAt(env, outputFormat) });
+
+  it("windows only when the flag is true and the render segments", () => {
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" })).toBe(true);
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: " TRUE " }, "mov")).toBe(true);
+    for (const off of ["false", "0", "off", "no", "", "1", "yes", undefined]) {
+      expect(windows({ HF_VIDEO_FRAME_WINDOW: off })).toBe(false);
+    }
+    // Excluded outputs never segment, so the flag has nothing to window.
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" }, "webm")).toBe(false);
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" }, "png-sequence")).toBe(false);
+    expect(
+      shouldWindowVideoFrames({ env: { HF_VIDEO_FRAME_WINDOW: "true" }, segmented: false }),
+    ).toBe(false);
+  });
+});
+
 describe("shouldSegmentCapture", () => {
   const base = {
     env: {} as Record<string, string | undefined>,
@@ -3635,6 +3918,39 @@ describe("shouldStreamParallelCapture (non-DE parallel streaming router)", () =>
 
   it("skips HDR-layered and shader-transition routes", () => {
     expect(shouldStreamParallelCapture({ ...eligible, layeredOrEffectRoute: true })).toBe(false);
+  });
+});
+
+describe("calibrationCaptureConfig", () => {
+  const drawElementCfg = () => ({ ...createConfig(), useDrawElement: true });
+
+  it("measures screenshot capture, the mode parallel workers use", () => {
+    const cfg = drawElementCfg();
+    expect(calibrationCaptureConfig(cfg, {}).useDrawElement).toBe(false);
+    expect(cfg.useDrawElement).toBe(true);
+  });
+
+  it("keeps drawElement when parallel drawElement was opted into", () => {
+    const cfg = drawElementCfg();
+    expect(calibrationCaptureConfig(cfg, { PRODUCER_EXPERIMENTAL_FAST_CAPTURE: "true" })).toBe(cfg);
+    expect(calibrationCaptureConfig(cfg, { HF_DE_PARALLEL_STREAM: "true" })).toBe(cfg);
+  });
+});
+
+describe("isAppleGpuDiskCapture", () => {
+  const disk = {
+    platform: "darwin",
+    browserGpuMode: "hardware",
+    layered: false,
+    parallelStream: false,
+  } as const;
+
+  it("holds only for hardware-GPU Mac renders that write frames to disk", () => {
+    expect(isAppleGpuDiskCapture(disk)).toBe(true);
+    expect(isAppleGpuDiskCapture({ ...disk, layered: true })).toBe(false);
+    expect(isAppleGpuDiskCapture({ ...disk, parallelStream: true })).toBe(false);
+    expect(isAppleGpuDiskCapture({ ...disk, browserGpuMode: "software" })).toBe(false);
+    expect(isAppleGpuDiskCapture({ ...disk, platform: "win32" })).toBe(false);
   });
 });
 

@@ -114,6 +114,7 @@ describe("filmTargets", () => {
       (t) => t.ref === "#fast",
     );
     expect(fast!.window).toEqual({ from: 3, seconds: 2 });
+    expect(fast!.clip).toEqual({ from: 1, seconds: 4 });
   });
 
   it("resolves a source against the file that declares the clip, and keeps its local data-start", () => {

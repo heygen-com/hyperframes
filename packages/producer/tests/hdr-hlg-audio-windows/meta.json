@@ -1,0 +1,14 @@
+{
+  "name": "hdr-hlg-audio-windows",
+  "description": "HDR HLG clips that carry an audio track, long enough at 1080p to span several raw extraction windows. Window A: every frame after the first window must be its own source frame, not a repeat (#6556). Window B: the video stream starts 0.5 s after its audio, so the first frame holds until the picture starts, as in Chrome. Neither older HDR fixture has audio, which is why they missed #6556.",
+  "tags": ["regression", "hdr"],
+  "minPsnr": 28,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1,
+    "hdr": true
+  }
+}

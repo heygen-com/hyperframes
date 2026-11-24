@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Scribble Transition</h1>
+  <p>Overlay transition: scribble bands accumulate to cover the frame with a solid backstop, the host cuts beneath, and the scribble clears</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/hw-scribble-transition.json"
   compositionId="hw-scribble-transition"
   compositionSrc="compositions/hw-scribble-transition.html"
   title="Scribble Transition"
-  description="Overlay transition: scribble bands accumulate to cover the frame with a solid backstop, the host cuts beneath, and the scribble clears"
   variables={[]}
   meta={{"duration":2.2,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":152}}
   attribution={{"path":"registry/blocks/hw-scribble-transition","tags":["handwritten","transition","wipe"]}}
@@ -187,7 +191,9 @@ That writes one file: `compositions/hw-scribble-transition.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -218,6 +224,4 @@ Tagged `handwritten` `transition` `wipe`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

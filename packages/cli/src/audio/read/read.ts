@@ -1,22 +1,44 @@
 import { createHash } from "node:crypto";
-import {
-  createReadStream,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, extname, join } from "node:path";
-import type { AnalysisQuality } from "@hyperframes/core/audio-analysis";
+import { createReadStream, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { basename, dirname, extname, join, relative } from "node:path";
+import { assertLiteralMediaInput, findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { loudness, type AnalysisQuality, type Span } from "@hyperframes/core/audio-analysis";
 import { loadTranscript } from "../../whisper/normalize.js";
-import { findEffects } from "./effects.js";
+import { readPlainFile } from "../../utils/projectRecords.js";
+import { runFile } from "../analysis/providers/shared.js";
+import { isPlainFile, makeRealFolder } from "../cacheFolder.js";
+import { describeAccess, describeStems } from "./describe.js";
+import { findEffects, type EffectSource } from "./effects.js";
 import { formatRead } from "./format.js";
-import { readMusic } from "./music.js";
+import { activeSpans, readMusic } from "./music.js";
 import { pitchTrack } from "./pitch.js";
-import { PITCH_RATE, READ_RATE, decodeMono, mixed, round } from "./signal.js";
-import { DRUM_STEM, VOICE_STEM, cachedStems, fetchStems, stemsAccess } from "./stems.js";
-import { READ_VERSION, type ReadAudio } from "./types.js";
+import {
+  PITCH_RATE,
+  READ_RATE,
+  asSignal,
+  decodeMono,
+  levelWhileHeardDb,
+  mixed,
+  round,
+  spanDb,
+} from "./signal.js";
+import {
+  DRUM_STEM,
+  SELF_CONTAINED_STEM_INPUT,
+  VOICE_STEM,
+  cachedStems,
+  fetchStems,
+  stemsAccess,
+} from "./stems.js";
+import {
+  READ_VERSION,
+  type AudibleStem,
+  type Layer,
+  type Music,
+  type ReadAudio,
+  type Voice,
+} from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
 
 export interface ReadOptions {
@@ -25,6 +47,7 @@ export interface ReadOptions {
   /** A transcript of the recording; `<file>.transcript.json` next to it is used when absent. */
   transcript?: string;
   quality?: AnalysisQuality;
+  layer?: Layer;
 }
 
 export interface ReadResult {
@@ -54,15 +77,22 @@ function wordsOf(transcript: string): TimedWord[] {
 const fingerprint = (path: string | null) =>
   path ? createHash("sha256").update(readFileSync(path)).digest("hex").slice(0, 16) : "none";
 
-function writeAtomic(path: string, content: string) {
-  const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, content);
-  renameSync(temporary, path);
-}
+const CACHE_REVISION = 1;
+const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 
 interface CacheEntry {
+  revision: number;
   analysis: ReadAudio;
   transcriptKey: string;
+}
+
+function cachedEntry(jsonPath: string, textPath: string): CacheEntry | null {
+  if (!isPlainFile(jsonPath) || !isPlainFile(textPath)) return null;
+  try {
+    return JSON.parse(readPlainFile(jsonPath, MAX_ENTRY_BYTES)) as CacheEntry;
+  } catch {
+    return null;
+  }
 }
 
 async function stemsFor(
@@ -92,28 +122,252 @@ async function stemsFor(
   }
 }
 
-/** Effects from the drums and the music from the other non-voice stems, measured against the whole recording. */
-async function fromStems(path: string, stemPaths: Record<string, string>) {
+function heardStems(tracks: Record<string, Float32Array>): AudibleStem[] {
+  return Object.entries(tracks)
+    .flatMap(([name, samples]) => {
+      const db = levelWhileHeardDb(samples, READ_RATE);
+      return db === null
+        ? []
+        : [{ name, db, spans: activeSpans(samples, READ_RATE), description: null }];
+    })
+    .sort((a, b) => b.db - a.db || a.name.localeCompare(b.name));
+}
+
+const VOICE_FREE = "no-vocals.wav";
+
+/** Stems summed at full quality into one file next to them, made once. */
+async function mixedFile(paths: string[], out: string, warnings: string[]) {
+  if (isPlainFile(out)) return out;
+  const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
+  if (!ffmpeg) {
+    warnings.push(`no ${basename(out)}: ffmpeg is required; run: npx hyperframes doctor`);
+    return null;
+  }
+  let stage: string | undefined;
+  try {
+    stage = createStagingDir(dirname(out), ".hf-mix-");
+    const temporary = join(stage, VOICE_FREE);
+    await runFile(
+      ffmpeg,
+      [
+        ...["-v", "error", "-y"],
+        ...paths.flatMap((path) => {
+          assertLiteralMediaInput(path);
+          return [...SELF_CONTAINED_STEM_INPUT, "-i", path];
+        }),
+        ...["-filter_complex", `amix=inputs=${paths.length}:normalize=0`],
+        ...["-c:a", "pcm_f32le", temporary],
+      ],
+      { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+    );
+    renameSync(temporary, out);
+    return out;
+  } catch (error) {
+    warnings.push(`no ${basename(out)}: ${error instanceof Error ? error.message : error}`);
+    return null;
+  } finally {
+    if (stage) rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+const voiceFreeMix = (stemPaths: Record<string, string>, warnings: string[]) =>
+  mixedFile(
+    Object.entries(stemPaths)
+      .filter(([name]) => name !== VOICE_STEM)
+      .map(([, path]) => path),
+    join(dirname(stemPaths[VOICE_STEM]!), VOICE_FREE),
+    warnings,
+  );
+
+function tempoOf(music: Music | null): number | null {
+  const longest = [...(music?.segments ?? [])]
+    .filter((m) => m.bpm !== null)
+    .sort((a, b) => b.end - b.start - (a.end - a.start))[0];
+  return longest?.bpm ?? null;
+}
+
+async function decodedStems(stemPaths: Record<string, string>) {
   const pitched: Record<string, Float32Array> = {};
   for (const [name, stemPath] of Object.entries(stemPaths))
-    if (name !== VOICE_STEM && name !== DRUM_STEM) pitched[name] = await decodeMono(stemPath);
-  const drums = stemPaths[DRUM_STEM] ? await decodeMono(stemPaths[DRUM_STEM]) : null;
-  const bed = Object.keys(pitched).length ? mixed(Object.values(pitched)) : null;
-  const { music, beats } = bed
+    if (name !== VOICE_STEM && name !== DRUM_STEM)
+      pitched[name] = await decodeMono(stemPath, READ_RATE, SELF_CONTAINED_STEM_INPUT);
+  const drums = stemPaths[DRUM_STEM]
+    ? await decodeMono(stemPaths[DRUM_STEM], READ_RATE, SELF_CONTAINED_STEM_INPUT)
+    : null;
+  return { pitched, drums };
+}
+
+const present = (tracks: (Float32Array | null)[]) =>
+  tracks.filter((t): t is Float32Array => t !== null);
+
+function musicOf(
+  pitched: Record<string, Float32Array>,
+  drums: Float32Array | null,
+  bed: Float32Array | null,
+) {
+  return bed
     ? readMusic({ stems: pitched, drums, sampleRate: READ_RATE })
-    : { music: null, beats: [] };
+    : { music: null, ambience: null, beats: [] };
+}
+
+function separatedStems(
+  stemPaths: Record<string, string>,
+  pitched: Record<string, Float32Array>,
+  drums: Float32Array | null,
+  vocals: Float32Array,
+): AudibleStem[] {
+  return heardStems({
+    ...pitched,
+    ...(drums ? { [DRUM_STEM]: drums } : {}),
+    ...(stemPaths[VOICE_STEM] ? { [VOICE_STEM]: vocals } : {}),
+  });
+}
+
+const recording = (path: string, separated: boolean, voiceSamples: Float32Array) =>
+  separated ? decodeMono(path) : Promise.resolve(voiceSamples);
+
+function excerpt(samples: Float32Array, spans: readonly Span[]): Float32Array {
+  const parts = spans.map((span) =>
+    samples.subarray(Math.round(span.start * READ_RATE), Math.round(span.end * READ_RATE)),
+  );
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+}
+
+function againstMusic(
+  voice: Voice,
+  vocals: Float32Array,
+  music: Float32Array,
+  segments: readonly Span[],
+): Voice {
+  const sentences = voice.sentences.map((sentence) => {
+    const under = segments
+      .map((m) => ({
+        start: Math.max(m.start, sentence.start),
+        end: Math.min(m.end, sentence.end),
+      }))
+      .filter((span) => span.end > span.start);
+    if (!under.length) return sentence;
+    const voiceLufs = loudness(asSignal(excerpt(vocals, under))).lufsIntegrated;
+    const musicLufs = loudness(asSignal(excerpt(music, under))).lufsIntegrated;
+    return voiceLufs === null || musicLufs === null
+      ? sentence
+      : { ...sentence, againstMusic: { voiceLufs, musicLufs } };
+  });
+  return { ...voice, sentences };
+}
+
+function effectSources(
+  pitched: Record<string, Float32Array>,
+  drums: Float32Array | null,
+  bed: Float32Array | null,
+  music: Music | null,
+  ambience: Span[] | null,
+): EffectSource[] {
+  const segments = music?.segments ?? [];
+  const playing = [...segments, ...(music?.breaks ?? [])];
+  return [
+    ...(drums ? [{ samples: drums, stem: DRUM_STEM, playsIn: playing }] : []),
+    ...(bed ? [{ samples: bed, heldBy: [...segments, ...(ambience ?? [])], parts: pitched }] : []),
+  ];
+}
+
+/** Effects from the drums and from the bed where it plays neither music nor ambience, each level from the whole recording. */
+async function fromStems(
+  stemPaths: Record<string, string>,
+  voice: Voice,
+  vocals: Float32Array,
+  mix: Float32Array,
+) {
+  const { pitched, drums } = await decodedStems(stemPaths);
+  const bed = Object.keys(pitched).length ? mixed(Object.values(pitched)) : null;
+  const { music, ambience, beats } = musicOf(pitched, drums, bed);
+  const segments = music?.segments ?? [];
+  const everythingElse = mixed(present([bed, drums]));
   const effects = findEffects({
-    source: drums ?? bed ?? new Float32Array(0),
+    sources: effectSources(pitched, drums, bed, music, ambience),
     sampleRate: READ_RATE,
-    music: bed,
-    heard: await decodeMono(path),
+    mix,
+    music: bed && everythingElse,
+    musicSegments: segments,
     beats,
     speech: [],
   });
-  return { effects, music };
+  const stems = separatedStems(stemPaths, pitched, drums, vocals).filter((stem) =>
+    heardLongEnough(stem, vocals.length / READ_RATE),
+  );
+  const read = music ? againstMusic(voice, vocals, everythingElse, music.segments) : voice;
+  return { voice: read, stems, effects, music: music && onlyThe(stems, music), ambience };
+}
+
+const SHORTEST_STEM = 2;
+const SMALLEST_STEM_SHARE = 0.05;
+
+/** A stem heard for under two seconds, or under 5% of the recording, is left out of the reading. */
+function heardLongEnough(stem: AudibleStem, duration: number): boolean {
+  const heard = stem.spans.reduce((n, span) => n + span.end - span.start, 0);
+  return heard >= SHORTEST_STEM && heard >= SMALLEST_STEM_SHARE * duration;
+}
+
+function onlyThe(stems: readonly AudibleStem[], music: Music): Music {
+  const kept = new Set(stems.map((stem) => stem.name));
+  return {
+    ...music,
+    pieces: music.pieces.map((p) => ({
+      ...p,
+      instruments: p.instruments.filter((n) => kept.has(n)),
+    })),
+    segments: music.segments.map((m) => ({ ...m, stems: m.stems.filter((s) => kept.has(s.name)) })),
+  };
 }
 
 const transcribeHint = (file: string) => `run hyperframes transcribe ${file} and pass --transcript`;
+
+async function described(
+  stemPaths: Record<string, string>,
+  read: ReadAudio,
+  cacheDir: string,
+  quality: AnalysisQuality,
+): Promise<ReadAudio> {
+  const warnings = [...read.warnings];
+  const project = dirname(dirname(cacheDir));
+  const mix = await voiceFreeMix(stemPaths, warnings);
+  const located = {
+    ...read,
+    stemsDir: `${relative(project, dirname(stemPaths[VOICE_STEM]!))}/`,
+    voiceFreeMix: mix && relative(project, mix),
+    warnings,
+  };
+  if (quality !== "best") {
+    if (quality === "local")
+      warnings.push(
+        "stems not described: quality local keeps audio on this machine; --quality best describes them through HeyGen",
+      );
+    return located;
+  }
+  const { stems, description } = await describeStems(
+    stemPaths,
+    {
+      duration: read.duration,
+      bpm: read.bpm,
+      stems: read.stems,
+      breaks: read.music?.breaks ?? [],
+    },
+    cacheDir,
+    warnings,
+  );
+  return { ...located, stems, description };
+}
+
+const voiceSource = (path: string, stemPaths: Record<string, string> | null) =>
+  stemPaths
+    ? { path: stemPaths[VOICE_STEM] ?? path, input: SELF_CONTAINED_STEM_INPUT }
+    : { path, input: [] as readonly string[] };
 
 async function analyze(
   path: string,
@@ -122,36 +376,83 @@ async function analyze(
   transcript: string | null,
   stemDir: string,
   quality: AnalysisQuality,
+  cacheDir: string,
 ): Promise<ReadAudio> {
   const warnings: string[] = [];
   const stemPaths = await stemsFor(path, stemDir, quality, warnings);
   const words = transcript ? wordsOf(transcript) : [];
-  const voicePath = stemPaths?.[VOICE_STEM] ?? path;
-  const voiceSamples = await decodeMono(voicePath);
+  const voiceFile = voiceSource(path, stemPaths);
+  const voiceSamples = await decodeMono(voiceFile.path, READ_RATE, voiceFile.input);
   const about = base(file, sha, round(voiceSamples.length / READ_RATE, 3), stemPaths, transcript);
   if (!stemPaths && !words.length) {
     warnings.push(
       `no transcript and no stems: voice and effects are not read, because the mix alone does not tell speech from music; ${transcribeHint(file)}`,
     );
-    return { ...about, voice: null, effects: null, music: null, warnings };
+    return { ...about, voice: null, effects: null, music: null, ambience: null, warnings };
   }
   if (!words.length)
     warnings.push(`no transcript: voice lines carry no words; ${transcribeHint(file)}`);
-  const pitch = pitchTrack(await decodeMono(voicePath, PITCH_RATE));
+  const pitch = pitchTrack(await decodeMono(voiceFile.path, PITCH_RATE, voiceFile.input));
+  const mix = await recording(path, stemPaths !== null, voiceSamples);
+  const levelOf = (span: Span) => spanDb(mix, READ_RATE, span.start, span.end);
   const voice = words.length
-    ? voiceFromWords(words, pitch)
-    : voiceFromActivity(voiceSamples, READ_RATE, pitch);
-  if (stemPaths) return { ...about, voice, ...(await fromStems(path, stemPaths)), warnings };
+    ? voiceFromWords(words, pitch, levelOf)
+    : voiceFromActivity(voiceSamples, READ_RATE, pitch, levelOf);
+  if (stemPaths) {
+    const read = await fromStems(stemPaths, voice, voiceSamples, mix);
+    const analysis = { ...about, ...read, bpm: tempoOf(read.music), warnings };
+    return described(stemPaths, analysis, cacheDir, quality);
+  }
   warnings.push("without stems, effects under speech are not found and music is not read");
   const effects = findEffects({
-    source: voiceSamples,
+    sources: [{ samples: voiceSamples }],
     sampleRate: READ_RATE,
+    mix,
     music: null,
-    heard: null,
     beats: [],
     speech: voice.sentences,
   });
-  return { ...about, voice, effects, music: null, warnings };
+  return { ...about, voice, effects, music: null, ambience: null, warnings };
+}
+
+async function analyzeLayer(
+  path: string,
+  file: string,
+  sha: string,
+  transcript: string | null,
+  layer: Layer,
+): Promise<ReadAudio> {
+  const samples = await decodeMono(path);
+  const about = {
+    ...base(file, sha, round(samples.length / READ_RATE, 3), null, transcript),
+    layer,
+  };
+  const none = { voice: null, effects: null, music: null, ambience: null, warnings: [] };
+  if (layer === "music") {
+    const { music, ambience } = musicOf({ music: samples }, null, samples);
+    return { ...about, ...none, music, ambience, bpm: tempoOf(music) };
+  }
+  if (layer === "sfx") {
+    const effects = findEffects({
+      sources: [{ samples }],
+      sampleRate: READ_RATE,
+      mix: samples,
+      music: null,
+      beats: [],
+      speech: [],
+    });
+    return { ...about, ...none, effects };
+  }
+  const words = transcript ? wordsOf(transcript) : [];
+  const pitch = pitchTrack(await decodeMono(path, PITCH_RATE));
+  const levelOf = (span: Span) => spanDb(samples, READ_RATE, span.start, span.end);
+  const voice = words.length
+    ? voiceFromWords(words, pitch, levelOf)
+    : voiceFromActivity(samples, READ_RATE, pitch, levelOf);
+  const warnings = words.length
+    ? []
+    : [`no transcript: voice lines carry no words; ${transcribeHint(file)}`];
+  return { ...about, ...none, voice, warnings };
 }
 
 function base(
@@ -160,14 +461,18 @@ function base(
   duration: number,
   stemPaths: Record<string, string> | null,
   transcript: string | null,
-): Omit<ReadAudio, "voice" | "effects" | "music" | "warnings"> {
+): Omit<ReadAudio, "voice" | "effects" | "music" | "ambience" | "warnings"> {
   return {
     version: READ_VERSION,
     file,
     sha256: sha,
     duration,
     separation: stemPaths ? "stems" : "mix",
-    stems: stemPaths ? Object.keys(stemPaths).sort() : [],
+    stems: [],
+    stemsDir: null,
+    voiceFreeMix: null,
+    bpm: null,
+    description: null,
     transcript: transcript ? basename(transcript) : null,
   };
 }
@@ -179,30 +484,45 @@ export async function readAudio(
   options: ReadOptions,
 ): Promise<ReadResult> {
   const quality = options.quality ?? "local";
+  const { layer } = options;
   const sha = await sha256(path);
   const transcript = transcriptFor(path, options.transcript);
   const transcriptKey = fingerprint(transcript);
   const stem = `${basename(file, extname(file)).replace(/[^\w.-]/g, "_")}-${sha.slice(0, 12)}`;
-  mkdirSync(options.cacheDir, { recursive: true });
-  const jsonPath = join(options.cacheDir, `${stem}.json`);
-  const textPath = join(options.cacheDir, `${stem}.txt`);
-  const stemDir = join(options.cacheDir, "stems", sha.slice(0, 12));
-  if (existsSync(jsonPath) && existsSync(textPath)) {
-    const entry = JSON.parse(readFileSync(jsonPath, "utf8")) as CacheEntry;
+  const cacheDir = makeRealFolder(options.cacheDir, 2);
+  const jsonPath = join(cacheDir, `${stem}.json`);
+  const textPath = join(cacheDir, `${stem}.txt`);
+  const stemDir = join(cacheDir, "stems", sha.slice(0, 12));
+  const entry = cachedEntry(jsonPath, textPath);
+  if (entry) {
     const stemsNowPossible =
+      !layer &&
       entry.analysis.separation === "mix" &&
       quality === "best" &&
       (cachedStems(stemDir) !== null || typeof (await stemsAccess()) !== "string");
     if (
       (entry.analysis.separation !== "stems" || cachedStems(stemDir) !== null) &&
       entry.analysis.version === READ_VERSION &&
+      entry.analysis.layer === layer &&
+      entry.revision === CACHE_REVISION &&
       entry.transcriptKey === transcriptKey &&
-      !stemsNowPossible
+      !stemsNowPossible &&
+      !(
+        entry.analysis.separation === "stems" &&
+        !entry.analysis.description &&
+        quality !== "fast" &&
+        typeof (await describeAccess()) !== "string"
+      )
     )
       return { analysis: entry.analysis, textPath, jsonPath, cached: true };
   }
-  const analysis = await analyze(path, file, sha, transcript, stemDir, quality);
-  writeAtomic(jsonPath, JSON.stringify({ analysis, transcriptKey } satisfies CacheEntry));
-  writeAtomic(textPath, formatRead(analysis));
+  const analysis = layer
+    ? await analyzeLayer(path, file, sha, transcript, layer)
+    : await analyze(path, file, sha, transcript, stemDir, quality, cacheDir);
+  replaceFileAtomically(
+    jsonPath,
+    JSON.stringify({ revision: CACHE_REVISION, analysis, transcriptKey } satisfies CacheEntry),
+  );
+  replaceFileAtomically(textPath, formatRead(analysis));
   return { analysis, textPath, jsonPath, cached: false };
 }

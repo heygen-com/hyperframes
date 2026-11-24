@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Dynamic Grid</h1>
+  <p>A responsive animated grid background driven by CSS variables for SaaS, code, and data scenes</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/dynamic-grid.json"
   compositionId="dynamic-grid"
   compositionSrc="compositions/components/dynamic-grid.html"
   title="Dynamic Grid"
-  description="A responsive animated grid background driven by CSS variables for SaaS, code, and data scenes"
   variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Cell size of the grid: fine reads as graph paper, coarse as a few large panels.","default":"standard","options":[{"value":"fine","label":"Fine"},{"value":"standard","label":"Standard"},{"value":"coarse","label":"Coarse"}]},{"id":"weight","type":"enum","role":"style","label":"Weight","description":"Thickness of the grid lines, from a hairline rule to a bold structural grid.","default":"hairline","options":[{"value":"hairline","label":"Hairline"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Line colour: neutral is the translucent white the original ships with, and the accents ride --brand, --accent and --accent-2.","default":"neutral","options":[{"value":"neutral","label":"Neutral"},{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":104}}
   attribution={{"path":"registry/components/dynamic-grid","tags":["video-primitive","motion-primitive","background","grid","ui"]}}
@@ -139,7 +143,9 @@ That writes one file: `compositions/components/dynamic-grid.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -181,6 +187,4 @@ Tagged `video-primitive` `motion-primitive` `background` `grid` `ui`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

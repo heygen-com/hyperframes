@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Text State Swap</h1>
+  <p>A text state swap primitive with outgoing blur and incoming lift</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/text-state-swap.json"
   compositionId="text-state-swap"
   compositionSrc="compositions/components/text-state-swap.html"
   title="Text State Swap"
-  description="A text state swap primitive with outgoing blur and incoming lift"
   variables={[{"id":"from-text","type":"string","role":"content","label":"From text","description":"The outgoing label, on screen before the swap.","default":"Saving draft"},{"id":"to-text","type":"string","role":"content","label":"To text","description":"The incoming label, on screen after the swap. It rests hidden until the timeline reveals it.","default":"Saved"},{"id":"distance","type":"enum","role":"motion","label":"Distance","description":"Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Label colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":113}}
   attribution={{"path":"registry/components/text-state-swap","tags":["video-primitive","transition-primitive","transitions-dev-port","text","swap"]}}
@@ -148,7 +152,9 @@ That writes one file: `compositions/components/text-state-swap.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -191,6 +197,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `text` `s
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -16,6 +16,7 @@ import { setupAnimationCapture, startCdpAnimationCapture } from "./animationCata
 import type { DiscoveredLottie } from "./mediaCapture.js";
 import { detectLibraries } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
+import { yieldReceivedProviderKeys } from "../utils/dotEnv.js";
 import { captureProtocolTimeoutMs } from "./captureTimeout.js";
 import { CAPTURE_PHASE_SCHEMA, DEFAULT_MAX_SCREENSHOTS } from "./types.js";
 import type {
@@ -30,6 +31,7 @@ import type { CaptureWatchdog } from "./captureWatchdog.js";
 
 import type { PartialCaptureState } from "./partialCapture.js";
 import { runNavigationChecks } from "./navigationPhase.js";
+import { watchWebglStall } from "./webglStallWatch.js";
 import { runCoreExtraction } from "./coreExtractionPhase.js";
 import { runPostExtraction } from "./postExtractionPhase.js";
 
@@ -41,6 +43,7 @@ export async function captureWebsiteAttempt(
   disableWebgl: boolean,
   watchdog: CaptureWatchdog,
   state: PartialCaptureState,
+  localOrigin?: string,
 ): Promise<CaptureResult> {
   const {
     url,
@@ -57,7 +60,9 @@ export async function captureWebsiteAttempt(
   } = opts;
 
   const initialUrl = new URL(url);
-  if (
+  if (localOrigin !== undefined) {
+    if (initialUrl.origin !== localOrigin) throw new Error("Local capture URL must use its server");
+  } else if (
     !["http:", "https:"].includes(initialUrl.protocol) ||
     initialUrl.username ||
     initialUrl.password
@@ -109,6 +114,7 @@ export async function captureWebsiteAttempt(
 
   // Load .env file from repo root if it exists (for GEMINI_API_KEY, etc.)
   loadEnvFile(outputDir);
+  await yieldReceivedProviderKeys((line) => console.error(line));
 
   // Create output directories
   ensureCaptureDirSync(outputDir, join(outputDir, "extracted"));
@@ -125,6 +131,7 @@ export async function captureWebsiteAttempt(
     disableWebgl,
     width: viewportWidth,
     height: viewportHeight,
+    localOrigin,
   });
   const chromeBrowser = captureBrowser.browser;
   watchdog.registerBrowser(captureBrowser);
@@ -149,6 +156,7 @@ export async function captureWebsiteAttempt(
     bodyChildCount: Number.POSITIVE_INFINITY,
   };
   let contentCheckTimedOut = false;
+  let stallWatch: { stop(): void } | undefined;
 
   try {
     // ═══════════════════════════════════════════════════════════════
@@ -167,6 +175,11 @@ export async function captureWebsiteAttempt(
     // Set up hooks BEFORE navigation
     await setupAnimationCapture(page1);
     const { cdp, animations: cdpAnims } = await startCdpAnimationCapture(page1);
+    if (!disableWebgl)
+      stallWatch = watchWebglStall(cdp, () => {
+        state.webglStalled = true;
+        void captureBrowser.close();
+      });
 
     // Hook WebGL to capture shader source code (GLSL)
     // Captured shaders inform Claude Code about the site's visual effects
@@ -348,6 +361,7 @@ export async function captureWebsiteAttempt(
       lastPhase,
     };
   } finally {
+    stallWatch?.stop();
     watchdog.unregisterBrowser(captureBrowser);
     await captureBrowser.close();
   }

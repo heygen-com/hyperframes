@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Hairline Arc Gauge</h1>
+  <p>Thin circular gauge that draws on while its percentage counts up; one helper call drives both</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/mk-usage-arc.json"
   compositionId="mk-usage-arc"
   compositionSrc="compositions/components/mk-usage-arc.html"
   title="Hairline Arc Gauge"
-  description="Thin circular gauge that draws on while its percentage counts up; one helper call drives both"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":159}}
   attribution={{"path":"registry/components/mk-usage-arc","tags":["data-viz","gauge","minimal"]}}
@@ -194,7 +198,9 @@ That writes one file: `compositions/components/mk-usage-arc.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -213,6 +219,4 @@ Tagged `data-viz` `gauge` `minimal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Glass Hero</h1>
+  <p>A solid glass object rises in front of a giant headline and keeps turning, so the type bends and splits into colour through it.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/glass-hero.json"
   compositionId="glass-hero"
   compositionSrc="compositions/glass-hero.html"
   title="Glass Hero"
-  description="A solid glass object rises in front of a giant headline and keeps turning, so the type bends and splits into colour through it."
   variables={[{"id":"headline","type":"string","role":"content","label":"Headline behind the glass","default":"CLARITY","maxLength":12},{"id":"subline","type":"string","role":"content","label":"Subline","default":"See every detail, nothing in the way.","maxLength":48},{"id":"shape","type":"enum","role":"style","label":"Glass shape","default":"lens","options":[{"value":"lens","label":"Lens"},{"value":"ring","label":"Ring"}]},{"id":"glass_tint","type":"color","role":"style","label":"Glass tint","default":"#cfe9ff"},{"id":"type_color","type":"color","role":"style","label":"Headline color","default":"#f4efe4"},{"id":"background","type":"color","role":"style","label":"Backdrop","default":"#0b0b0c"}]}
   meta={{"duration":5,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":281}}
   attribution={{"path":"registry/blocks/glass-hero","tags":["3d-object","three-js","webgl","glass","refraction","hero","title-card"]}}
@@ -316,7 +320,9 @@ That writes one file: `compositions/glass-hero.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -347,6 +353,4 @@ Tagged `3d-object` `three-js` `webgl` `glass` `refraction` `hero` `title-card`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

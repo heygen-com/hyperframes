@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Split Tilt Cards</h1>
+  <p>Two equal-weight cards arrive from opposite wings with mirrored rotateY book-open tilts under one shared perspective, pill badges spring-pop at each inner edge, and the pair holds with a barely-there phase-opposed idle float. Card bodies are content slots with token skeleton defaults.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/split-tilt-cards.json"
   compositionId="split-tilt-cards"
   compositionSrc="compositions/components/split-tilt-cards.html"
   title="Split Tilt Cards"
-  description="Two equal-weight cards arrive from opposite wings with mirrored rotateY book-open tilts under one shared perspective, pill badges spring-pop at each inner edge, and the pair holds with a barely-there phase-opposed idle float. Card bodies are content slots with token skeleton defaults."
   variables={[{"id":"label_a","type":"string","role":"content","label":"Left label","description":"Mono header on the left card. Blank hides it.","default":"Before"},{"id":"label_b","type":"string","role":"content","label":"Right label","description":"Mono header on the right card. Blank hides it.","default":"After"},{"id":"badge_a","type":"string","role":"content","label":"Left badge","description":"Pill badge that spring-pops at the left card inner edge. Blank disables it.","default":"v1"},{"id":"badge_b","type":"string","role":"content","label":"Right badge","description":"Pill badge that spring-pops at the right card inner edge. Blank disables it.","default":"v2"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Right-card tint, right badge, and right ambient glow color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Outgoing transition. None holds the final spread.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":571}}
   attribution={{"path":"registry/components/split-tilt-cards","tags":["motion-primitive","layout","compare","holdable","book-open","tilt","slots"]}}
@@ -606,7 +610,9 @@ That writes one file: `compositions/components/split-tilt-cards.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -650,6 +656,4 @@ Tagged `motion-primitive` `layout` `compare` `holdable` `book-open` `tilt` `slot
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

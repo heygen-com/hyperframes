@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Avatar Group Hover</h1>
+  <p>A distance-falloff avatar group lift with bouncy hover return</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/avatar-group-hover.json"
   compositionId="avatar-group-hover"
   compositionSrc="compositions/components/avatar-group-hover.html"
   title="Avatar Group Hover"
-  description="A distance-falloff avatar group lift with bouncy hover return"
   variables={[{"id":"size","type":"enum","role":"style","label":"Size","description":"Avatar diameter, with the initials scaling alongside it.","default":"standard","options":[{"value":"small","label":"Small"},{"value":"standard","label":"Standard"},{"value":"large","label":"Large"}]},{"id":"overlap","type":"enum","role":"style","label":"Overlap","description":"How far each avatar tucks under the one before it, as a share of its own diameter.","default":"standard","options":[{"value":"tight","label":"Tight"},{"value":"standard","label":"Standard"},{"value":"loose","label":"Loose"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour the avatar gradient resolves into.","default":"blue","options":[{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"},{"value":"green","label":"Green"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":99}}
   attribution={{"path":"registry/components/avatar-group-hover","tags":["video-primitive","transition-primitive","transitions-dev-port","avatar","hover"]}}
@@ -134,7 +138,9 @@ That writes one file: `compositions/components/avatar-group-hover.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -176,6 +182,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `avatar` 
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

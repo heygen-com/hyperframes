@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Liquid Glass Widgets</h1>
+  <p>Frosted glass stat cards, showcase panel and pill chips over an aurora shader background</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/liquid-glass-widgets.json"
   compositionId="liquid-glass-widgets"
   compositionSrc="compositions/liquid-glass-widgets.html"
   title="Liquid Glass Widgets"
-  description="Frosted glass stat cards, showcase panel and pill chips over an aurora shader background"
   variables={[]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":763}}
   attribution={{"path":"registry/blocks/liquid-glass-widgets","tags":["html-in-canvas","liquid-glass-html-in-canvas","webgpu"]}}
@@ -801,7 +805,9 @@ That writes `compositions/liquid-glass-widgets.html`, plus 2 supporting files un
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -838,6 +844,4 @@ Tagged `html-in-canvas` `liquid-glass-html-in-canvas` `webgpu`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

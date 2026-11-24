@@ -1,5 +1,5 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
-import { onPreviewContentReplaced } from "../../player/sceneSwap";
+import { onPreviewContentReplaced, onPreviewRestoredInPlace } from "../../player/sceneSwap";
 import { memo, useState, useCallback, useEffect, useRef } from "react";
 import {
   collectDomEditLayerItems,
@@ -40,6 +40,14 @@ import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
 import { useLayerReorderTimelineMirror } from "../nle/useCanvasZOrderTimelineMirror";
 import { runZLaneGesture } from "../nle/zLaneGesture";
 import { useLayerRevealOverride } from "./useLayerRevealOverride";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { describePreviewElements, editPreviewElement } from "../../player/lib/previewElements";
+import {
+  collectPreviewLayerItems,
+  layerDataAttribute,
+  previewStackingFamily,
+} from "./previewLayers";
+import { resolvePreviewSelection, selectionDataAttribute } from "./previewSelection";
 
 // Rows this panel renders before it stops. A display budget, not a document limit.
 const LAYERS_PANEL_MAX_ROWS = 80;
@@ -146,9 +154,26 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
   const livePreviewIframe = useLivePreviewIframe();
+  // The opaque read in flight; `again` holds a refresh that arrived meanwhile, run once it settles.
+  const opaqueRead = useRef<{ again: boolean } | null>(null);
   const collectLayers = useCallback(() => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
+    if (previewFrameOpaque(iframe)) {
+      if (opaqueRead.current) return void (opaqueRead.current.again = true);
+      const read = { again: false };
+      opaqueRead.current = read;
+      const scope = { activeCompositionPath: activeCompPath, activeGroupElement };
+      void collectPreviewLayerItems(iframe, scope, LAYERS_PANEL_MAX_ROWS).then((reply) => {
+        if (opaqueRead.current !== read) return;
+        opaqueRead.current = null;
+        // A reload took the drilled-into group; leave it as same-origin does below.
+        if (reply?.missingGroup) return setActiveGroupElement(null);
+        if (reply) setLayers(sortLayersByZIndex(reply.items));
+        if (read.again) collectLayers();
+      });
+      return;
+    }
     let doc: Document | null = null;
     try {
       doc = iframe.contentDocument;
@@ -175,6 +200,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   }, [previewIframeRef, activeCompPath, isMasterView, activeGroupElement, setActiveGroupElement]);
 
   useEffect(() => {
+    opaqueRead.current = null;
     collectLayers();
   }, [collectLayers, refreshKey, zEditVersion, livePreviewIframe]);
 
@@ -185,7 +211,11 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       prevDocVersionRef.current += 1;
       collectLayers();
     };
-    return onPreviewContentReplaced(iframe, handleLoad);
+    const stops = [
+      onPreviewContentReplaced(iframe, handleLoad),
+      onPreviewRestoredInPlace(iframe, collectLayers),
+    ];
+    return () => stops.forEach((stop) => stop());
   }, [previewIframeRef, livePreviewIframe, collectLayers]);
 
   useEffect(() => {
@@ -195,11 +225,8 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
     }
   }, [compositionLoading, collectLayers]);
 
-  // Subscribe to liveTime so the panel refreshes during scrubbing.
-  // liveTime bypasses React state (no re-renders per frame), so a plain
-  // usePlayerStore(s => s.currentTime) subscription never fires while the
-  // RAF loop is running.  Throttle with a trailing rAF + 100 ms cooldown to
-  // avoid a collectLayers call on every animation frame.
+  // Refresh while scrubbing: liveTime bypasses React state, so a currentTime store subscription never
+  // fires during the RAF loop. A trailing rAF + 100 ms cooldown keeps it off every frame.
   useEffect(() => {
     const throttle = createRafThrottle(collectLayers, 100);
     const unsubscribe = liveTime.subscribe(throttle.invoke);
@@ -210,15 +237,20 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   }, [collectLayers]);
 
   const resolveSelection = useCallback(
-    (layer: DomEditLayerItem) => {
-      const doc = previewIframeRef.current?.contentDocument;
-      const el = liveLayerElement(layer, doc, activeCompPath);
-      return resolveDomEditSelection(el, {
+    async (layer: DomEditLayerItem) => {
+      const iframe = previewIframeRef.current;
+      const options = {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: false,
         activeGroupElement,
-      });
+      };
+      if (layer.preview && iframe) {
+        const [described] = (await describePreviewElements(iframe, [layer.preview.handle])) ?? [];
+        return described ? resolvePreviewSelection(iframe, described, options) : null;
+      }
+      const el = liveLayerElement(layer, iframe?.contentDocument, activeCompPath);
+      return resolveDomEditSelection(el, options);
     },
     [activeCompPath, isMasterView, previewIframeRef, activeGroupElement],
   );
@@ -228,7 +260,8 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       const selection = await resolveSelection(layer);
       if (!selection) return;
 
-      let matchedId = findMatchingTimelineElementId(selection, timelineElements);
+      const scope = activeCompPath || "index.html";
+      let matchedId = findMatchingTimelineElementId(selection, timelineElements, scope);
 
       if (!matchedId) {
         const sourceFile = selection.sourceFile ?? "index.html";
@@ -253,7 +286,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
         }
       }
     },
-    [currentTime, resolveSelection, timelineElements],
+    [activeCompPath, currentTime, resolveSelection, timelineElements],
   );
 
   const handleSelectLayer = useCallback(
@@ -275,7 +308,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   const handleLayerDoubleClick = useCallback(
     async (layer: DomEditLayerItem) => {
       const selection = await resolveSelection(layer);
-      if (selection?.element.hasAttribute("data-hf-group")) {
+      if (selection && selectionDataAttribute(selection, "data-hf-group") !== null) {
         setActiveGroupElement(selection.element);
       } else {
         await handleSelectLayer(layer);
@@ -302,22 +335,17 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   }, []);
 
   // fallow-ignore-next-line complexity
-  const handleReorder = useCallback(
-    (event: LayerReorderEvent) => {
-      const { siblingLayers, fromIndex, toIndex } = event;
-      const reordered = [...siblingLayers];
-      const [moved] = reordered.splice(fromIndex, 1);
-      reordered.splice(toIndex, 0, moved);
-
-      // Panel order is top-first (sortLayersByZIndex: z desc, later-DOM-first),
-      // so the desired RENDER order (bottom→top) is the reverse. The minimal
-      // resolver (shared with the canvas z-menu) then writes one between-z
-      // value when a strict gap exists, band-safe renumber otherwise — instead
-      // of the old computeReorderZValues stamp of every sibling.
-      const desiredBottomToTop = [...reordered].reverse();
+  const commitReorder = useCallback(
+    (
+      siblingLayers: DomEditLayerItem[],
+      moved: DomEditLayerItem,
+      desiredBottomToTop: DomEditLayerItem[],
+      family?: NonNullable<Awaited<ReturnType<typeof previewStackingFamily>>>,
+    ) => {
       const patches = resolveZOrderReposition(
         moved.element,
         desiredBottomToTop.map((l) => l.element),
+        family?.entries,
       );
       if (!patches || patches.length === 0) return; // paint order unchanged
 
@@ -337,26 +365,28 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
         // node, exactly like the canvas menu's siblingZIndexEntry. Un-targetable
         // nodes get a live-only style write (reverts on reload).
         const layer = layerByElement.get(patch.element);
-        const id = layer?.id ?? (patch.element.id || undefined);
-        const selector = layer?.selector ?? buildStableSelector(patch.element);
+        const sealed = family?.identities.get(patch.element);
+        const id = layer?.id ?? (sealed ? sealed.id : patch.element.id || undefined);
+        const selector =
+          layer?.selector ?? (sealed ? sealed.selector : buildStableSelector(patch.element));
         if (!id && !selector) {
-          patch.element.style.zIndex = String(patch.zIndex);
+          const zIndex = String(patch.zIndex);
+          const iframe = previewIframeRef.current;
+          if (!sealed) patch.element.style.zIndex = zIndex;
+          else if (iframe)
+            editPreviewElement(iframe, sealed.handle, { styles: [["z-index", zIndex]] });
           continue;
         }
-        const sourceFile = layer?.sourceFile ?? moved.sourceFile;
+        const sourceFile = layer?.sourceFile ?? sealed?.sourceFile ?? moved.sourceFile;
+        const selectorIndex = layer?.selectorIndex ?? sealed?.selectorIndex;
         entries.push({
           element: patch.element,
           zIndex: patch.zIndex,
           id,
           selector,
-          selectorIndex: layer?.selectorIndex,
+          selectorIndex,
           sourceFile,
-          key: deriveTimelineStoreKey({
-            domId: id,
-            selector,
-            selectorIndex: layer?.selectorIndex,
-            sourceFile,
-          }),
+          key: deriveTimelineStoreKey({ domId: id, selector, selectorIndex, sourceFile }),
         });
       }
       if (entries.length === 0) return;
@@ -390,7 +420,25 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
           mirrorLayerReorderToTimeline({ selectionKey: movedKey, desiredOrderKeys, coalesceKey }),
       }).catch(() => undefined);
     },
-    [handleDomZIndexReorderCommit, mirrorLayerReorderToTimeline],
+    [handleDomZIndexReorderCommit, mirrorLayerReorderToTimeline, previewIframeRef],
+  );
+
+  const handleReorder = useCallback(
+    (event: LayerReorderEvent) => {
+      const { siblingLayers, fromIndex, toIndex } = event;
+      const reordered = [...siblingLayers];
+      const [moved] = reordered.splice(fromIndex, 1);
+      reordered.splice(toIndex, 0, moved);
+      // Panel order is top-first (z desc, later-DOM-first): render order is its reverse.
+      const desiredBottomToTop = [...reordered].reverse();
+      const iframe = previewIframeRef.current;
+      if (!moved.preview || !iframe) return commitReorder(siblingLayers, moved, desiredBottomToTop);
+      void previewStackingFamily(iframe, moved.preview.handle, activeCompPath).then((family) => {
+        if (family?.locked) return showToast("This layer can't be reordered", "info");
+        if (family) commitReorder(siblingLayers, moved, desiredBottomToTop, family);
+      });
+    },
+    [commitReorder, previewIframeRef, activeCompPath, showToast],
   );
 
   const selectedKey = domEditSelection ? getDomEditLayerKey(domEditSelection) : null;
@@ -456,12 +504,15 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
           const draggable = isLayerDraggable(layer);
           const isCollapsed = collapsed[layer.key] ?? false;
           const hasChildren = layer.childCount > 0;
-          const isCompHost = isCompositionHost(layer.element);
-          const kind = layerKindOf(layer.element, hasChildren);
+          const isCompHost = layer.preview
+            ? layerDataAttribute(layer, "data-composition-src") !== null ||
+              layerDataAttribute(layer, "data-composition-file") !== null
+            : isCompositionHost(layer.element);
+          const kind = layer.preview?.kind ?? layerKindOf(layer.element, hasChildren);
           const KindIcon = KIND_ICON[kind];
           const kindName = kind[0].toUpperCase() + kind.slice(1);
           const hint = draggable
-            ? layer.element.hasAttribute("data-hf-group")
+            ? layerDataAttribute(layer, "data-hf-group") !== null
               ? "Double-click to enter group"
               : undefined
             : "This layer can't be reordered";

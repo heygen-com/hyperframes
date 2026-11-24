@@ -1,10 +1,11 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("parseVariablesArg", () => {
   let parseVariablesArg: typeof import("./variables.js").parseVariablesArg;
+  let variablesErrorMessage: typeof import("./variables.js").variablesErrorMessage;
 
   beforeAll(async () => {
-    ({ parseVariablesArg } = await import("./variables.js"));
+    ({ parseVariablesArg, variablesErrorMessage } = await import("./variables.js"));
   });
 
   function expectErr<T extends { kind: string }>(
@@ -58,6 +59,19 @@ describe("parseVariablesArg", () => {
     }
   });
 
+  it("reads --variables from a file path or stdin", () => {
+    const readFile = () => '{"a":1}';
+    const readStdin = () => '{"b":2}';
+    expect(parseVariablesArg("v.json", undefined, readFile, readStdin)).toEqual({
+      ok: true,
+      value: { a: 1 },
+    });
+    expect(parseVariablesArg(undefined, "-", readFile, readStdin)).toEqual({
+      ok: true,
+      value: { b: 2 },
+    });
+  });
+
   it("surfaces filesystem errors from --variables-file", () => {
     const err = expectErr<{
       kind: "read-error";
@@ -71,6 +85,15 @@ describe("parseVariablesArg", () => {
     expect(err.kind).toBe("read-error");
     expect(err.path).toBe("missing.json");
     expect(err.cause).toMatch(/ENOENT/);
+  });
+
+  it("points a brace-stripped --variables value at the file and stdin forms", () => {
+    const err = expectErr<import("./variables.js").VariablesParseError>(
+      parseVariablesArg("title:Hello", undefined, () => {
+        throw new Error("ENOENT: no such file");
+      }),
+    );
+    expect(variablesErrorMessage(err).message).toMatch(/ENOENT.*PowerShell.*--variables -/);
   });
 });
 
@@ -138,5 +161,35 @@ describe("validateVariablesAgainstProject", () => {
     expect(
       validateVariablesAgainstProject(join(tmpDir, "missing.html"), { title: "Hello" }),
     ).toEqual([]);
+  });
+});
+
+describe("reportVariableIssues", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("prints declared ids and options with control characters as visible escapes", async () => {
+    const { reportVariableIssues } = await import("./variables.js");
+    const esc = String.fromCharCode(27);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    reportVariableIssues(
+      [
+        { kind: "undeclared", variableId: `title${esc}]0;x\x07` },
+        {
+          kind: "enum-out-of-range",
+          variableId: "tone",
+          allowed: [`calm\nVariable "x" is fine.`],
+          actual: "loud",
+        },
+      ],
+      { strict: false },
+    );
+    const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain('Variable "title\\x1b]0;x\\x07" is not declared');
+    expect(printed).toContain('must be one of "calm\\x0aVariable "x" is fine."');
   });
 });

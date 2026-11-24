@@ -16,6 +16,8 @@ export interface TimelineViewportBudgets {
   concurrentServerPages: number;
   thumbnailLoadTimeoutMs: number;
   thumbnailCacheBytes: number;
+  sharedFrameCacheBytes: number;
+  thumbnailSourceIdleMs: number;
   thumbnailCacheEntries: number;
   thumbnailCacheEntriesPerProject: number;
   metadataRegistryEntries: number;
@@ -76,6 +78,8 @@ export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Obje
   concurrentServerPages: 1,
   thumbnailLoadTimeoutMs: 30_000,
   thumbnailCacheBytes: 64 * MEBIBYTE,
+  sharedFrameCacheBytes: 32 * MEBIBYTE,
+  thumbnailSourceIdleMs: 10_000,
   thumbnailCacheEntries: 256,
   thumbnailCacheEntriesPerProject: 96,
   metadataRegistryEntries: 512,

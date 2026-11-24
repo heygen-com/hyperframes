@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Store Badge Lockup</h1>
+  <p>Settles a short headline above equal-size App Store and Google Play badges as a token-driven mobile end-card call to action.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/store-badge-lockup.json"
   compositionId="store-badge-lockup"
   compositionSrc="compositions/components/store-badge-lockup.html"
   title="Store Badge Lockup"
-  description="Settles a short headline above equal-size App Store and Google Play badges as a token-driven mobile end-card call to action."
   variables={[{"id":"headline","type":"string","role":"content","label":"Headline","description":"Short action line shown above the store badges.","default":"Get the app"},{"id":"showApple","type":"enum","role":"content","label":"Show App Store","description":"Show or hide the App Store badge.","default":"yes","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]},{"id":"showGoogle","type":"enum","role":"content","label":"Show Google Play","description":"Show or hide the Google Play badge.","default":"yes","options":[{"value":"yes","label":"Yes"},{"value":"no","label":"No"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":305}}
   attribution={{"path":"registry/components/store-badge-lockup","tags":["prop","ui-props","mobile","store-badges","cta","ask"]}}
@@ -340,7 +344,9 @@ That writes one file: `compositions/components/store-badge-lockup.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -381,6 +387,4 @@ Tagged `prop` `ui-props` `mobile` `store-badges` `cta` `ask`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

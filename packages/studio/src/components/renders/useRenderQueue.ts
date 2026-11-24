@@ -193,7 +193,7 @@ export function useRenderQueue(
     setJobs,
     projectId,
   );
-  const startRequestPendingRef = useRef(false);
+  const startRequestPendingRef = useRef(new Set<string>());
 
   // Load completed renders from the server
   const loadRenders = useCallback(async () => {
@@ -246,7 +246,7 @@ export function useRenderQueue(
   const startRender = useCallback(
     // fallow-ignore-next-line complexity
     async (opts: StartRenderOptions = {}) => {
-      if (!projectId || startRequestPendingRef.current) return;
+      if (!projectId || startRequestPendingRef.current.has(projectId)) return;
       // The server would answer this with a 503 anyway. Refusing here keeps
       // the reason and the fix in the message, and keeps a control that
       // forgot to disable itself from producing a mystery failure.
@@ -351,7 +351,7 @@ export function useRenderQueue(
       if (opts.variables && Object.keys(opts.variables).length > 0) {
         body.variables = opts.variables;
       }
-      startRequestPendingRef.current = true;
+      startRequestPendingRef.current.add(projectId);
       let res: Response;
       try {
         res = await studioApiFetch(buildProjectApiPath(projectId, `/render`), {
@@ -360,7 +360,7 @@ export function useRenderQueue(
           body: JSON.stringify(body),
         });
       } catch (err) {
-        startRequestPendingRef.current = false;
+        startRequestPendingRef.current.delete(projectId);
         // The cause used to be discarded. Every failure — a dead server, an
         // aborted request, a DNS error, a mid-render crash — surfaced as the
         // same sentence, and this string is what travels into the feedback
@@ -389,14 +389,14 @@ export function useRenderQueue(
           createdAt: startTime,
         };
         addSessionJob(failedJob, settings);
-        startRequestPendingRef.current = false;
+        startRequestPendingRef.current.delete(projectId);
         return;
       }
       let jobId: string;
       try {
         ({ jobId } = await res.json());
       } finally {
-        startRequestPendingRef.current = false;
+        startRequestPendingRef.current.delete(projectId);
       }
 
       const FORMAT_EXT: Record<string, string> = {

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Parallax Unzoom</h1>
+  <p>Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/parallax-unzoom.json"
   compositionId="parallax-unzoom"
   compositionSrc="compositions/components/parallax-unzoom.html"
   title="Parallax Unzoom"
-  description="Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":103}}
   attribution={{"path":"registry/components/parallax-unzoom","tags":["transition","reveal","unzoom","parallax","grid","hero"]}}
@@ -138,7 +142,9 @@ That writes one file: `compositions/components/parallax-unzoom.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -158,6 +164,4 @@ Tagged `transition` `reveal` `unzoom` `parallax` `grid` `hero`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

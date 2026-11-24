@@ -3,33 +3,11 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { classifyPropertyGroup, type PropertyGroupName } from "@hyperframes/core/gsap-parser";
-import {
-  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
-  HF_COLOR_GRADING_CANVAS_ID_PREFIX,
-} from "@hyperframes/core/color-grading";
-import { getIframeGsap, queryIframeElement, type IframeGsap } from "./gsapShared";
+import { getIframeGsap, queryIframeElement } from "./gsapShared";
+import { settleGsapSnapshot } from "./gsapFrameSnapshot";
+import { previewComputedStyles, previewFrameOpaque } from "../player/lib/previewChannel";
 import { gsapWritesChannels } from "./gsapRuntimeKeyframes";
 import { roundTo3 } from "../utils/rounding";
-
-/**
- * The element's live value for `prop` as GSAP drives it. Opacity on a
- * color-grading-hidden source needs a detour: the runtime hides the source
- * with inline `opacity: 0 !important`, so computed opacity is the hide, not
- * the animated value. The grading canvas mirrors the source's effective
- * opacity every frame, so it is the truth for that one property — reading the
- * raw 0 here is what bakes `opacity: 0` into committed keyframes.
- */
-function readLiveGsapValue(gsap: IframeGsap, el: Element, prop: string): number {
-  if (prop === "opacity" && el.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR) != null && el.id) {
-    const canvas = el.ownerDocument.getElementById(HF_COLOR_GRADING_CANVAS_ID_PREFIX + el.id);
-    const win = el.ownerDocument.defaultView;
-    if (canvas && win) {
-      const val = Number(win.getComputedStyle(canvas).opacity);
-      if (Number.isFinite(val)) return val;
-    }
-  }
-  return Number(gsap.getProperty(el, prop));
-}
 
 export function readGsapProperty(
   iframe: HTMLIFrameElement | null,
@@ -42,7 +20,7 @@ export function readGsapProperty(
   const el = queryIframeElement(iframe, selector);
   if (!el) return null;
   try {
-    const val = readLiveGsapValue(gsap, el, prop);
+    const val = Number(gsap.getProperty(el, prop));
     if (!Number.isFinite(val)) return null;
     return POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
   } catch {
@@ -51,24 +29,19 @@ export function readGsapProperty(
 }
 
 export const POSITION_PROPS = new Set(["x", "y", "xPercent", "yPercent"]);
-export function readAllAnimatedProperties(
+export async function readAllAnimatedProperties(
   iframe: HTMLIFrameElement | null,
   selector: string,
   anim: GsapAnimation,
   group?: PropertyGroupName,
-): Record<string, number> {
+): Promise<Record<string, number>> {
   const result: Record<string, number> = {};
   if (!iframe) return result;
+  await settleGsapSnapshot(iframe);
   const gsap = getIframeGsap(iframe);
   if (!gsap) return result;
   const el = queryIframeElement(iframe, selector);
   if (!el) return result;
-  let doc: Document | null = null;
-  try {
-    doc = iframe?.contentDocument ?? null;
-  } catch {
-    /* cross-origin guard — doc stays null */
-  }
 
   const propKeys = new Set<string>();
   if (anim.keyframes) {
@@ -89,7 +62,7 @@ export function readAllAnimatedProperties(
   const groupedPropKeys = new Set([...propKeys].filter(inGroup));
 
   for (const prop of groupedPropKeys) {
-    const val = readLiveGsapValue(gsap, el, prop);
+    const val = Number(gsap.getProperty(el, prop));
     if (Number.isFinite(val)) {
       result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
     }
@@ -115,27 +88,39 @@ export function readAllAnimatedProperties(
     "backgroundPositionX",
     "backgroundPositionY",
   ];
-  let computedStyle: CSSStyleDeclaration | null = null;
-  try {
-    computedStyle = doc?.defaultView?.getComputedStyle(el) ?? null;
-  } catch {}
+  const css = await computedCss(iframe, el, selector, COMPUTED_BASELINE.map(kebabCase));
   for (const prop of COMPUTED_BASELINE) {
     if (prop in result) continue;
     if (!inGroup(prop)) continue;
     if (gsapWritesChannels(el, [prop])) continue;
     const gsapVal = Number(gsap.getProperty(el, prop));
     if (!Number.isFinite(gsapVal)) continue;
-    let cssVal = NaN;
-    if (computedStyle) {
-      const raw = computedStyle.getPropertyValue(
-        prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`),
-      );
-      cssVal = parseFloat(raw);
-    }
+    const cssVal = parseFloat(css[kebabCase(prop)] ?? "");
     if (Number.isFinite(cssVal) && Math.round(gsapVal * 1000) === Math.round(cssVal * 1000))
       continue;
     result[prop] = roundTo3(gsapVal);
   }
 
   return result;
+}
+
+const kebabCase = (prop: string) => prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+
+/** The element's computed CSS for `names`: over the port for a sealed frame, as the live element answers. */
+async function computedCss(
+  iframe: HTMLIFrameElement,
+  el: Element,
+  selector: string,
+  names: string[],
+): Promise<Record<string, string>> {
+  if (previewFrameOpaque(iframe))
+    return (await previewComputedStyles(iframe, selector, names)) ?? {};
+  try {
+    const style = iframe.contentDocument?.defaultView?.getComputedStyle(el);
+    return style
+      ? Object.fromEntries(names.map((name) => [name, style.getPropertyValue(name)]))
+      : {};
+  } catch {
+    return {};
+  }
 }

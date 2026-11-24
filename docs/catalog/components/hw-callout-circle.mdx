@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Scribble Callout Circle</h1>
+  <p>Wobbled ellipse draws around a target with optional scribble fill and curved connector; the handwritten label pops in WITH momentum and the drawn shapes absorb the arrival with a volume-preserving contact squash; outline and connector take the family stroke matrix (plain/soft/sharp/spray); boils</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/hw-callout-circle.json"
   compositionId="hw-callout-circle"
   compositionSrc="compositions/components/hw-callout-circle.html"
   title="Scribble Callout Circle"
-  description="Wobbled ellipse draws around a target with optional scribble fill and curved connector; the handwritten label pops in WITH momentum and the drawn shapes absorb the arrival with a volume-preserving contact squash; outline and connector take the family stroke matrix (plain/soft/sharp/spray); boils"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":623}}
   attribution={{"path":"registry/components/hw-callout-circle","tags":["handwritten","annotation","callout","overlay"]}}
@@ -658,7 +662,9 @@ That writes `compositions/components/hw-callout-circle.html`, plus 1 supporting 
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -677,6 +683,4 @@ Tagged `handwritten` `annotation` `callout` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

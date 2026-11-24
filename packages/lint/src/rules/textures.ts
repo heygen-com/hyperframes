@@ -1,4 +1,5 @@
 import postcss from "postcss";
+import { styleRoot } from "../styleRoots";
 import type { LintContext, HyperframeLintFinding, OpenTag } from "../context";
 import { readAttr, truncateSnippet } from "../utils";
 
@@ -70,7 +71,7 @@ function collectTextureCss(styles: LintContext["styles"]): {
   for (const style of styles) {
     let root: postcss.Root;
     try {
-      root = postcss.parse(style.content);
+      root = styleRoot(style);
     } catch {
       continue;
     }

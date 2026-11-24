@@ -60,7 +60,7 @@ test("the Remotion translation docs do not claim volume ramps are unsupported", 
 });
 
 test("the entry skill's safe boxes equal the preview's", async () => {
-  const src = await read("packages/studio/src/utils/previewSafeMargins.ts");
+  const src = await read("packages/core/src/safeAreas.ts");
   const action = src.match(/ACTION_SAFE_PERCENT = (\d+)/)?.[1];
   const title = src.match(/TITLE_SAFE_PERCENT = (\d+)/)?.[1];
   const skill = await read(ENTRY_SKILL);
@@ -76,11 +76,13 @@ async function studioDefaultSeconds(kind) {
   return value ? value[1] : undefined;
 }
 
-async function addMediaSection() {
+async function formatSection(heading) {
   const doc = await read(FORMAT);
-  const afterHeading = doc.split("## Adding media")[1] ?? "";
+  const afterHeading = doc.split(`\n## ${heading}\n`)[1] ?? "";
   return afterHeading.split("\n## ")[0];
 }
+
+const addMediaSection = () => formatSection("Adding media");
 
 test("an image without a duration lasts Studio's default image duration", async () => {
   const imageSecs = await studioDefaultSeconds("image");
@@ -118,4 +120,25 @@ test("the add-media recipe names every attribute Studio's drop writes, and no me
     assert.ok(attributes.includes(attr), `the add-media attributes lack ${attr}`);
   }
   assert.doesNotMatch(attributes, /data-duration/, "media must not author a duration");
+});
+
+test("agents keep clips that never overlap on one lane, and no doc teaches a lane per clip", async () => {
+  const lanes = await formatSection("Lanes");
+  assert.match(lanes, /Clips that never overlap in time share a lane/);
+  assert.match(lanes, /Scenes and full-frame sections, back to back: one lane/);
+  assert.match(lanes, /Every sound effect: one lane; a second only where two of them overlap/);
+  assert.match(lanes, /never on a new lane of its own/);
+  assert.match(
+    await read(ENTRY_SKILL),
+    /clips that never overlap share one: `references\/format\.md`/,
+  );
+  assert.match(await read("skills/hyperframes/references/sound.md"), /every effect on one lane/);
+  assert.doesNotMatch(
+    await read("skills/hyperframes/references/overlays.md"),
+    /timed elements on one track/,
+  );
+  assert.doesNotMatch(
+    await read("skills/hyperframes-registry/references/wiring-blocks.md"),
+    /higher numbers render in front/,
+  );
 });

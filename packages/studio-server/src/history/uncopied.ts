@@ -20,9 +20,12 @@ const MEDIA_EXTENSIONS = new Set([
 ]);
 const COPY_NOTHING_ABOVE_BYTES = 64 * 1024 ** 2;
 
+export const isUncopiedMedia = (path: string): boolean =>
+  MEDIA_EXTENSIONS.has(extname(path).toLowerCase());
+
 /** Video, audio and any file over 64 MiB are hashed in place, never copied into history. */
 export const isUncopied = (path: string, size: number): boolean =>
-  size > COPY_NOTHING_ABOVE_BYTES || MEDIA_EXTENSIONS.has(extname(path).toLowerCase());
+  size > COPY_NOTHING_ABOVE_BYTES || isUncopiedMedia(path);
 
 /** Hashes whose every reference in the log is a file that is no longer copied: their old blobs can go. */
 export function uncopiedOnlyHashes(log: HistoryLog, sizeOf: (hash: string) => number): string[] {

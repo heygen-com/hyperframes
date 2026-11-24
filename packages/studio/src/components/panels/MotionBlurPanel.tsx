@@ -136,7 +136,7 @@ export const MotionBlurPanel = memo(function MotionBlurPanel({
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto p-3 text-[11px] text-neutral-300">
-      <span className="text-[12px] font-medium text-neutral-100">Motion blur</span>
+      <span className="text-[12px] font-medium text-neutral-100">Motion blur (Beta)</span>
       <div role="radiogroup" aria-label="Motion blur" className="flex gap-1.5">
         {BLUR_LEVELS.map(({ level, label }) => (
           <Button

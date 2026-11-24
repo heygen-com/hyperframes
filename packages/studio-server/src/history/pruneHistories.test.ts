@@ -3,10 +3,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  lstatSync,
   readFileSync,
   rmSync,
+  symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -17,6 +21,7 @@ import {
   KEEP_GONE_PROJECT_HISTORY_MS,
   listProjectHistories,
   pruneGoneProjectHistories,
+  pruneGoneProjectHistoriesDaily,
 } from "./pruneHistories.js";
 
 vi.mock("./ownerLock.js", async (importOriginal) => {
@@ -110,6 +115,22 @@ describe("pruneGoneProjectHistories", () => {
     expect(await prunedIds(historyRoot, { ...elsewhere, now: pastKeepWindow() })).toEqual([
       gone.id,
     ]);
+  });
+
+  it("keeps a moved project's history when it was reopened inside the 14 days, even if it was last edited long ago", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const gone = await projectWithHistory(historyRoot);
+    await gone.history.close();
+    const old = new Date(Date.now() - 30 * DAY_MS);
+    for (const name of ["project.json", "log.jsonl"]) {
+      const file = join(historyRoot, gone.id, name);
+      if (existsSync(file)) utimesSync(file, old, old);
+    }
+    const reopened = await projectWithHistory(historyRoot, { projectDir: gone.projectDir });
+    await reopened.history.close();
+    rmSync(gone.projectDir, { recursive: true, force: true });
+
+    expect(await prunedIds(historyRoot, { tempDir: historyRoot })).toEqual([]);
   });
 
   it("prunes when a history opens a day after the last full prune", async () => {
@@ -308,5 +329,39 @@ describe("listProjectHistories", () => {
 
   it("lists nothing for a history root that does not exist", () => {
     expect(listProjectHistories(join(tmpdir(), "hf-no-such-history-root"))).toEqual([]);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("pruneGoneProjectHistoriesDaily", () => {
+  it("replaces a symlink at the last-prune stamp instead of writing through it", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const sentinel = join(tempDir("hf-prune-outside-"), "sentinel");
+    writeFileSync(sentinel, "unchanged");
+    const stamp = join(historyRoot, ".last-prune");
+    symlinkSync(sentinel, stamp);
+    pruneGoneProjectHistoriesDaily(historyRoot, Date.now());
+    await vi.waitFor(() => expect(lstatSync(stamp).isFile()).toBe(true));
+    expect(readFileSync(sentinel, "utf-8")).toBe("unchanged");
+  });
+});
+
+describe.skipIf(process.platform === "win32")("pruneGoneProjectHistoriesDaily with a FIFO", () => {
+  it("reads a FIFO at the last-prune stamp as no stamp instead of waiting for a writer", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const stamp = join(historyRoot, ".last-prune");
+    execFileSync("mkfifo", [stamp]);
+    const writer = spawn("sh", ["-c", 'sleep 3; while :; do printf x > "$0"; done', stamp], {
+      stdio: "ignore",
+    });
+    let elapsed: number;
+    try {
+      const began = Date.now();
+      pruneGoneProjectHistoriesDaily(historyRoot, Date.now());
+      elapsed = Date.now() - began;
+    } finally {
+      writer.kill("SIGKILL");
+    }
+    expect(elapsed).toBeLessThan(2_000);
+    await vi.waitFor(() => expect(lstatSync(stamp).isFile()).toBe(true));
   });
 });

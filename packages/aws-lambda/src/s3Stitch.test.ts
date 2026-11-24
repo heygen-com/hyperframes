@@ -6,7 +6,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { assemble, muxChunkWithAudio } from "@hyperframes/producer/distributed";
-import { type Part, planParts, stitchMp4InS3, uploadParts } from "./s3Stitch.js";
+import {
+  helperBatches,
+  type Part,
+  planParts,
+  type RangePart,
+  sendRangeParts,
+  stitchMp4InS3,
+  uploadParts,
+} from "./s3Stitch.js";
 
 const MiB = 1024 * 1024;
 const range = (uri: string, start: number, end: number) => ({ uri, start, end });
@@ -42,6 +50,27 @@ describe("planParts", () => {
       { upload: [small, range("s3://b/2", 0, 3 * MiB)] },
       { copy: range("s3://b/2", 3 * MiB, 9 * MiB) },
     ]);
+  });
+});
+
+describe("helperBatches", () => {
+  it("hands helpers only the parts made of S3 ranges, about 32 MiB each", () => {
+    const parts: Part[] = [
+      { upload: [{ bytes: Buffer.alloc(10) }, range("s3://b/0", 0, MiB)] },
+      { copy: range("s3://b/1", 0, 6 * MiB) },
+      ...Array.from({ length: 10 }, (_, i) => ({
+        upload: [range(`s3://b/${i + 2}`, 0, 4 * MiB), range(`s3://b/${i + 3}`, 0, 2 * MiB)],
+      })),
+    ];
+    const numbers = (max?: number) =>
+      helperBatches(parts, max).map((batch) => batch.map((p) => p.partNumber));
+    expect(numbers()).toEqual([
+      [3, 4, 5, 6, 7, 8],
+      [9, 10, 11, 12],
+    ]);
+    // A reservation of one helper at a time gets one batch, never a throttled second.
+    expect(numbers(1)).toEqual([[3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]);
+    expect(numbers(3)).toHaveLength(2);
   });
 });
 
@@ -116,6 +145,23 @@ describe("uploadParts", () => {
       input: { Bucket: "bucket", Key: "r/out.mp4", UploadId: "up-1" },
     });
     expect(s3.sent.some((c) => c.name === "CompleteMultipartUploadCommand")).toBe(false);
+  });
+
+  it("aborts the upload when a helper fails, after the local parts settle", async () => {
+    const s3 = new FakeS3(0);
+    s3.objects.set("s3://bucket/r/chunks/0001.mp4", Buffer.from("abcd"));
+    const helped: Part[] = [...parts, { upload: [range("s3://bucket/r/chunks/0001.mp4", 0, 4)] }];
+    await expect(
+      uploadParts(s3.asClient(), helped, "s3://bucket/r/out.mp4", "video/mp4", {
+        send: async () => {
+          throw new Error("helper failed");
+        },
+        maxInvocations: Infinity,
+      }),
+    ).rejects.toThrow("helper failed");
+    const names = s3.sent.map((c) => c.name);
+    expect(names.filter((n) => n.startsWith("UploadPart"))).toHaveLength(2);
+    expect(names.at(-1)).toBe("AbortMultipartUploadCommand");
   });
 });
 
@@ -259,6 +305,34 @@ describe.skipIf(!hasFfmpeg)("stitchMp4InS3 on real chunks", () => {
       const localPath = join(dir, "local.mp4");
       await assemble(planDir, chunkPaths, null, localPath);
       expect(readFileSync(localPath).equals(output)).toBe(true);
+
+      // The parts S3 cannot copy, built by helper invocations: the same bytes.
+      const batches: RangePart[][] = [];
+      await stitchMp4InS3(s3.asClient(), uris, "s3://bucket/helped.mp4", {
+        minPartBytes: 16 * 1024,
+        helper: {
+          send: (target, batch) => {
+            batches.push(batch);
+            return sendRangeParts(s3.asClient(), target, batch);
+          },
+          maxInvocations: Infinity,
+        },
+      });
+      expect(batches.length).toBeGreaterThan(0);
+      expect(s3.objects.get("s3://bucket/helped.mp4")!.equals(output)).toBe(true);
+
+      // Every helper throttled (another render holds the reservation): built here, same bytes.
+      const throttled = await stitchMp4InS3(s3.asClient(), uris, "s3://bucket/throttled.mp4", {
+        minPartBytes: 16 * 1024,
+        helper: {
+          send: async () => {
+            throw Object.assign(new Error("Rate exceeded"), { name: "TooManyRequestsException" });
+          },
+          maxInvocations: Infinity,
+        },
+      });
+      expect(throttled.helperFallbacks).toBe(batches.length);
+      expect(s3.objects.get("s3://bucket/throttled.mp4")!.equals(output)).toBe(true);
 
       // Today's join: the video-only chunks plus the plan audio.
       writeFileSync(join(planDir, "meta", "encoder.json"), "{}");

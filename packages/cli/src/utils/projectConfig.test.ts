@@ -11,6 +11,7 @@ import {
   readProjectConfigWithStatus,
   resolveAutoProxy,
   recordProjectRegistryItems,
+  recordProjectReverseSession,
   seedProjectAuthoringSkill,
   writeProjectConfig,
   PROJECT_CONFIG_FILENAME,
@@ -530,6 +531,63 @@ describe("projectConfig", () => {
       expect(
         normalizeConfig({ registryItems: [{ name: "x" }] as never }).registryItems,
       ).toBeUndefined();
+    });
+  });
+
+  describe("recordProjectReverseSession", () => {
+    const SESSION = "rvs_0f8fad5b-d9cb-469f-a165-70867728950e";
+
+    it("creates the folder and a default config when neither exists", () => {
+      const root = tmp();
+      const dir = join(root, "rebuild");
+      try {
+        expect(recordProjectReverseSession(dir, SESSION, "reverse-any-video")).toBe(
+          projectConfigPath(dir),
+        );
+        expect(readProjectConfig(dir)).toMatchObject({
+          registry: DEFAULT_PROJECT_CONFIG.registry,
+          authoringSkill: "reverse-any-video",
+          reverseSessionId: SESSION,
+        });
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("replaces the session but keeps an existing owner skill and unknown keys", () => {
+      const dir = tmp();
+      try {
+        writeFileSync(
+          projectConfigPath(dir),
+          JSON.stringify({ authoringSkill: "hyperframes", reverseSessionId: "rvs_old", x: 1 }),
+        );
+        recordProjectReverseSession(dir, SESSION, "reverse-any-video");
+        expect(JSON.parse(readFileSync(projectConfigPath(dir), "utf-8"))).toEqual({
+          authoringSkill: "hyperframes",
+          reverseSessionId: SESSION,
+          x: 1,
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("writes nothing for an id that is not an id, or over a corrupt config", () => {
+      const dir = tmp();
+      try {
+        expect(recordProjectReverseSession(dir, "../x", "reverse-any-video")).toBeUndefined();
+        writeFileSync(projectConfigPath(dir), "{ not valid json");
+        expect(recordProjectReverseSession(dir, SESSION, "reverse-any-video")).toBeUndefined();
+        expect(readFileSync(projectConfigPath(dir), "utf-8")).toBe("{ not valid json");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("survives a normalizeConfig round-trip, dropping a malformed id", () => {
+      expect(normalizeConfig({ reverseSessionId: SESSION }).reverseSessionId).toBe(SESSION);
+      expect(normalizeConfig({ reverseSessionId: "a b" }).reverseSessionId).toBeUndefined();
+      expect(normalizeConfig({ reverseSessionId: "rvs_legacy" }).reverseSessionId).toBeUndefined();
     });
   });
 });

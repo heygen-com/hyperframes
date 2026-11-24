@@ -4,7 +4,10 @@ export const PREVIEW_PROXY_BOX_PARAM = "hf-proxy-box";
 export const PREVIEW_PROXY_LIGHT_PARAM = "hf-proxy-light";
 
 export const PREVIEW_PROXY_RETRY_PARAM = "hf-proxy-retry";
+
+export const PREVIEW_PROXY_STILL_PARAM = "hf-proxy-still";
 export const PREVIEW_PROXY_PROGRESS_HEADER = "X-HF-Proxy-Progress";
+export const PREVIEW_PROXY_PRIORITY_HEADER = "X-HF-Proxy-Priority";
 
 export type PreviewProxyBox = { width: number; height: number };
 
@@ -52,6 +55,11 @@ export type PreviewSourceFacts = {
   bitDepth: number;
   bitrate: number;
   codec?: string;
+  frameRate?: number;
+  variableFrameRate?: boolean;
+  sampleAspectRatio?: number;
+  rotation?: number;
+  hasAlpha?: boolean;
 };
 
 export const HEAVY_PIXEL_SHARE = 0.5;
@@ -61,10 +69,20 @@ export function scalePreviewProxyBox(box: PreviewProxyBox, level: PreviewQuality
   return quantizePreviewProxyBox(box.width * level, box.height * level) ?? box;
 }
 
+export function isOversizedForPreview(facts: PreviewSourceFacts, box: PreviewProxyBox): boolean {
+  return box.width * box.height <= HEAVY_PIXEL_SHARE * facts.width * facts.height;
+}
+
 export function isHeavyForPreview(facts: PreviewSourceFacts, copyBox: PreviewProxyBox): boolean {
   return (
-    copyBox.width * copyBox.height <= HEAVY_PIXEL_SHARE * facts.width * facts.height ||
-    facts.bitDepth > 8 ||
-    facts.bitrate >= HEAVY_BITRATE
+    isOversizedForPreview(facts, copyBox) || facts.bitDepth > 8 || facts.bitrate >= HEAVY_BITRATE
   );
+}
+
+export function wantsLighterCopy(
+  facts: PreviewSourceFacts,
+  box: PreviewProxyBox,
+  level: PreviewQuality,
+): boolean {
+  return level < 1 ? isHeavyForPreview(facts, box) : isOversizedForPreview(facts, box);
 }

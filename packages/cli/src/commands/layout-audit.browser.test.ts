@@ -731,6 +731,36 @@ it("excludes text marked data-layout-allow-caption-zone from geometry candidates
   expect(candidates.map((candidate) => candidate.selector)).toEqual(["#copy"]);
 });
 
+it("groups text into reading blocks, caption layers included, for the safe-zone check", () => {
+  document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1080" data-height="1920">
+        <h1 id="title">Big <span id="word">title</span></h1>
+        <p id="sticker" data-layout-allow-safe-zone>Follow</p>
+        <div id="captions" class="caption-layer"><span id="w1">Hello</span><span id="w2">world</span></div>
+      </div>
+    `;
+  installGeometry(
+    {
+      root: rect({ left: 0, top: 0, width: 1080, height: 1920 }),
+      text: rect({ left: 100, top: 1500, width: 300, height: 80 }),
+    },
+    { word: { display: "inline" } },
+  );
+  installAuditScript();
+
+  const candidates = runGeometryCandidates({
+    text: false,
+    media: false,
+    blocks: true,
+    tolerance: 2,
+  });
+
+  expect(candidates.map(({ kind, selector, text }) => ({ kind, selector, text }))).toEqual([
+    { kind: "block", selector: "#title", text: "Big title" },
+    { kind: "block", selector: "#captions", text: "Hello world" },
+  ]);
+});
+
 it("scans body-level composition siblings and includes a media boundary root", () => {
   document.body.innerHTML = `
     <canvas id="boundary" data-composition-id="background" data-width="640" data-height="360"></canvas>
@@ -1426,7 +1456,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       ["flags", "", true],
       ["clears", "data-layout-allow-overflow", false],
     ])(
-      "%s a graded video's canvas overflowing a clipping wrapper, per the video's own flag",
+      "%s a graded video's canvas overflowing a clipping wrapper by the video's selector and flag",
       (_, flag, flagged) => {
         document.body.innerHTML = `
           <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
@@ -1446,7 +1476,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         installAuditScript();
 
         const overflow = runAudit().filter((issue) => issue.code === "container_overflow");
-        expect(overflow.map((issue) => issue.selector)).toEqual(flagged ? ["#art"] : []);
+        expect(overflow.map((issue) => issue.selector)).toEqual(flagged ? ["#clip"] : []);
       },
     );
 
@@ -2419,6 +2449,7 @@ describe("layout-audit.browser content overlap", () => {
     }).find((issue) => issue.code === "content_overlap");
     expect(overlap).toMatchObject({ selector: "#a", containerSelector: "#b" });
     expect(overlap?.fixHint).toContain("container inside the scene");
+    expect(overlap?.fixHint).toContain("data-layout-ignore");
   });
 
   it("ignores blocks that overlap by less than a fifth of the smaller box", () => {
@@ -3251,6 +3282,66 @@ describe("layout-audit.browser occlusion", () => {
     expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
   });
 
+  it("does not count an element marked data-layout-ignore as covering the text", () => {
+    const style = { backgroundColor: "rgb(10, 10, 10)" };
+    const issues = (overlayAttrs?: string) =>
+      auditOcclusionScene({ overlayAttrs, overlayStyle: style, topmostId: "overlay" });
+
+    expect(issues().some((issue) => issue.code === "text_occluded")).toBe(true);
+    expect(issues("data-layout-ignore").some((issue) => issue.code === "text_occluded")).toBe(
+      false,
+    );
+  });
+
+  it("lets data-layout-allow-occlusion on the covering element silence text_occluded", () => {
+    const issues = (overlayAttrs?: string) =>
+      auditOcclusionScene({
+        overlayAttrs,
+        overlayStyle: { backgroundColor: "rgb(10, 10, 10)" },
+        topmostId: "overlay",
+      });
+
+    expect(issues().some((issue) => issue.code === "text_occluded")).toBe(true);
+    expect(
+      issues("data-layout-allow-occlusion").some((issue) => issue.code === "text_occluded"),
+    ).toBe(false);
+  });
+
+  it("honours the flag on a graded video whose topmost element is its canvas stand-in", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="headline">Headline copy</div>
+        <video id="cutout" data-layout-allow-occlusion></video>
+        <canvas id="overlay" data-hf-color-grading-canvas></canvas>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: { overlay: { backgroundColor: "rgb(10, 10, 10)" } },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
+  it("still flags a cover inside a flagged wrapper that also holds the text", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="card" data-layout-allow-occlusion>
+          <div id="headline">Headline copy</div>
+          <div id="overlay"></div>
+        </div>
+      </div>
+    `;
+    installOcclusionGeometry({
+      styleOverrides: { overlay: { backgroundColor: "rgb(10, 10, 10)" } },
+      headlineTextRect: rect({ left: 200, top: 500, width: 600, height: 80 }),
+      topmostId: "overlay",
+    });
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_occluded")).toBe(true);
+  });
+
   it("respects the data-layout-allow-occlusion opt-out", () => {
     const issues = auditOcclusionScene({
       headlineAttrs: "data-layout-allow-occlusion",
@@ -3448,6 +3539,34 @@ describe("layout-audit.browser occlusion", () => {
     expect(headlineIssue?.text).toBe("Visible copy");
   });
 
+  // fails without the fix: an opaque colour ending in ", 0)" read as transparent, so the cover was skipped.
+  it.each(["rgb(0, 0, 0)", "rgb(200, 30, 0)"])(
+    "counts an opaque %s overlay as text occlusion",
+    (backgroundColor) => {
+      const occluded = auditOcclusionScene({
+        overlayStyle: { backgroundColor },
+        topmostId: "overlay",
+      }).find((issue) => issue.code === "text_occluded");
+      expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+    },
+  );
+
+  // fails without the fix: a gradient holding oklch()/lab() could not be scored, so it counted as opaque.
+  it.each([
+    {
+      name: "scrim",
+      backgroundImage: "repeating-linear-gradient(0deg, oklch(1 0 0 / 0.04) 0px, transparent 1px)",
+    },
+    {
+      name: "dot grid",
+      backgroundImage: "radial-gradient(lab(100 0 0 / 0.9) 1px, transparent 1px)",
+      backgroundSize: "38px 38px",
+    },
+  ])("does not count a modern-colour $name as an opaque occluder", (overlayStyle) => {
+    const issues = auditOcclusionScene({ overlayStyle, topmostId: "overlay" });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
   it("does not count a low-alpha gradient overlay (grid/scrim) as an opaque occluder", () => {
     const issues = auditOcclusionScene({
       overlayStyle: {
@@ -3634,15 +3753,110 @@ function auditCoverageScene(options: {
   );
 }
 
+describe("layout-audit.browser canvas_covered", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+    delete (document as unknown as { elementsFromPoint?: unknown }).elementsFromPoint;
+    delete (window as unknown as { __hyperframesLayoutAudit?: unknown }).__hyperframesLayoutAudit;
+  });
+
+  it("names a full-frame rect painted above every other clip", () => {
+    expect(auditCoverScene("above").filter((issue) => issue.code === "canvas_covered")).toEqual([
+      expect.objectContaining({ selector: "#bg-rect", severity: "error" }),
+    ]);
+  });
+
+  it("leaves a full-frame background below the content alone", () => {
+    expect(auditCoverScene("below").some((issue) => issue.code === "canvas_covered")).toBe(false);
+  });
+
+  it("leaves full-frame b-roll over a backdrop alone", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+        <div id="bg"></div>
+        <img id="broll" src="broll.jpg" alt="" />
+      </div>
+    `;
+    const full = rect({ left: 0, top: 0, width: 1920, height: 1080 });
+    installGeometry(
+      { root: full, bg: full, broll: full },
+      { bg: { backgroundColor: "rgb(16, 24, 48)" } },
+    );
+    (document as unknown as { elementsFromPoint: () => Element[] }).elementsFromPoint = () =>
+      ["broll", "bg", "root"].map((id) => document.getElementById(id) as Element);
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "canvas_covered")).toBe(false);
+  });
+
+  it("leaves a full-frame background over an empty layout box alone", () => {
+    expect(
+      auditCoverScene("above", "", "empty").some((issue) => issue.code === "canvas_covered"),
+    ).toBe(false);
+  });
+
+  it("names the cover for text under it too", () => {
+    expect(
+      auditCoverScene("above", "", "text").filter((issue) => issue.code === "canvas_covered"),
+    ).toEqual([expect.objectContaining({ selector: "#bg-rect" })]);
+  });
+
+  it("leaves a deliberate full-frame card marked data-layout-allow-occlusion alone", () => {
+    const issues = auditCoverScene("above", "data-layout-allow-occlusion");
+    expect(issues.some((issue) => issue.code === "canvas_covered")).toBe(false);
+  });
+});
+
+/** A 1920x1080 stage: a shape, a line of text or an unpainted box, with a full-frame rect above or below. */
+function auditCoverScene(
+  order: "above" | "below",
+  coverAttrs = "",
+  content: "shape" | "text" | "empty" = "shape",
+): ReturnType<typeof runAudit> {
+  document.body.innerHTML = `
+    <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+      <div id="shape">${content === "text" ? "Headline copy" : ""}</div>
+      <div id="bg-rect" ${coverAttrs}></div>
+    </div>
+  `;
+  const shapeRect = rect({ left: 200, top: 700, width: 200, height: 200 });
+  installGeometry(
+    {
+      root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+      shape: shapeRect,
+      shapeText: shapeRect,
+      "bg-rect": rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+    },
+    {
+      ...(content === "shape" ? { shape: { backgroundColor: "rgb(249, 115, 22)" } } : {}),
+      "bg-rect": { backgroundColor: "rgb(15, 27, 61)" },
+    },
+  );
+  const byId = (id: string) => document.getElementById(id) as Element;
+  (
+    document as unknown as { elementsFromPoint: (x: number, y: number) => Element[] }
+  ).elementsFromPoint = (x, y) => {
+    const onShape =
+      x >= shapeRect.left && x <= shapeRect.right && y >= shapeRect.top && y <= shapeRect.bottom;
+    if (!onShape) return [byId("bg-rect"), byId("root")];
+    return (order === "above" ? ["bg-rect", "shape", "root"] : ["shape", "bg-rect", "root"]).map(
+      byId,
+    );
+  };
+  installAuditScript();
+  return runAudit();
+}
+
 function auditOcclusionScene(options: {
   headlineAttrs?: string;
+  overlayAttrs?: string;
   overlayStyle: Partial<Record<string, string>>;
   topmostId: string;
 }): ReturnType<typeof runAudit> {
   document.body.innerHTML = `
     <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
       <div id="headline" ${options.headlineAttrs ?? ""}>Headline copy</div>
-      <div id="overlay"></div>
+      <div id="overlay" ${options.overlayAttrs ?? ""}></div>
     </div>
   `;
   installOcclusionGeometry({
@@ -4004,6 +4218,7 @@ declare global {
     __hyperframesGeometryCandidates?: (options: {
       text: boolean;
       media: boolean;
+      blocks?: boolean;
       tolerance: number;
     }) => GeometryCandidateResult[];
   }
@@ -4012,6 +4227,7 @@ declare global {
 function runGeometryCandidates(options: {
   text: boolean;
   media: boolean;
+  blocks?: boolean;
   tolerance: number;
 }): GeometryCandidateResult[] {
   const collector = window.__hyperframesGeometryCandidates;

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>TikTok Follow</h1>
+  <p>Animated TikTok follow overlay with profile card and follow button</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/tiktok-follow.json"
   compositionId="tiktok-follow"
   compositionSrc="compositions/tiktok-follow.html"
   title="TikTok Follow"
-  description="Animated TikTok follow overlay with profile card and follow button"
   variables={[]}
   meta={{"duration":4.5,"width":1080,"height":1920,"category":"Social Overlays","badge":"Stable","codeLines":263}}
   attribution={{"path":"registry/blocks/tiktok-follow","tags":["social","overlay","tiktok"]}}
@@ -298,7 +302,9 @@ That writes `compositions/tiktok-follow.html`, plus 1 supporting file under `ass
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -329,6 +335,4 @@ Tagged `social` `overlay` `tiktok`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

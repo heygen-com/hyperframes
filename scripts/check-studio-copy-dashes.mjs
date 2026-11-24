@@ -2,7 +2,7 @@
 // Covers Studio and every package whose messages it shows; the CLI's terminal-only output is out.
 // Reads the TypeScript AST, so strings, template text and JSX text count and comments never do.
 import { readFileSync, readdirSync } from "node:fs";
-import { extname, join, relative } from "node:path";
+import { extname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
@@ -73,7 +73,8 @@ export function checkStudioCopyDashes(root = ROOT) {
       .flatMap((path) =>
         listDashedText(
           readFileSync(join(sourceRoot, path), "utf8"),
-          relative(root, join(sourceRoot, path)),
+          // Forward slashes on every OS, so EXEMPT's file paths match on Windows too.
+          relative(root, join(sourceRoot, path)).split(sep).join("/"),
         ),
       );
   });

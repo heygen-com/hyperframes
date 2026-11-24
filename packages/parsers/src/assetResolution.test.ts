@@ -1,14 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   collectSubCompositionSrcs,
   isUnresolvedAssetPlaceholder,
   isWithinProjectRoot,
   maskNonScannableRanges,
   readProjectFile,
+  readTextFile,
+  resolveCompositionSrc,
+  resolveExistingLocalAsset,
   resolveProjectRelativeSrc,
 } from "./assetResolution.js";
 
@@ -157,6 +161,35 @@ describe("resolveProjectRelativeSrc — the one src resolver for lint and render
     );
   });
 
+  // pathToFileURL gives the host's own form: file:///C:/... on Windows, file:///... elsewhere.
+  it("resolves a file: URL to the file it names, spaces and accents included", () => {
+    const projectDir = join(tmp, "project");
+    const file = join(tmp, "Usu\u00e1rio Teste", "voz \u00f1.wav");
+    mkdirSync(join(tmp, "Usu\u00e1rio Teste"));
+    writeFileSync(file, "");
+    const url = pathToFileURL(file).href;
+    expect(url).toMatch(process.platform === "win32" ? /^file:\/\/\/[A-Z]:\// : /^file:\/\/\/[^/]/);
+
+    expect(resolveProjectRelativeSrc(url, projectDir)).toBe(file);
+  });
+
+  it.runIf(process.platform === "win32")("resolves a Git Bash path to the drive path", () => {
+    const projectDir = join(tmp, "project");
+    const file = join(projectDir, "assets", "foo.mp4");
+    const gitBash = `/${file[0]!.toLowerCase()}${file.slice(2).replaceAll("\\", "/")}`;
+
+    expect(resolveProjectRelativeSrc(gitBash, projectDir).toLowerCase()).toBe(file.toLowerCase());
+  });
+
+  it("treats a file: URL naming no local file as missing, without throwing", () => {
+    const projectDir = join(tmp, "project");
+    const gone = pathToFileURL(join(tmp, "gone.wav")).href;
+
+    for (const url of [gone, "file://not-a-local-host/a.wav", "file:///a%2Fb.wav"]) {
+      expect(existsSync(resolveProjectRelativeSrc(url, projectDir))).toBe(false);
+    }
+  });
+
   it("resolves a browser root-absolute URL from the project root", () => {
     const projectDir = join(tmp, "project");
     expect(resolveProjectRelativeSrc("/assets/foo.mp4", projectDir)).toBe(
@@ -239,6 +272,48 @@ describe("resolveProjectRelativeSrc — the one src resolver for lint and render
   });
 });
 
+describe("resolveExistingLocalAsset stays inside the project", () => {
+  let dir: string;
+  let project: string;
+  let outside: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-asset-confine-"));
+    project = join(dir, "project");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", "a.css"), "a{}");
+    outside = join(dir, "secret.env");
+    writeFileSync(outside, "TOKEN=1");
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it.each([
+    (path: string) => `/%2F${path.slice(1)}`,
+    (path: string) => `%2F${path}`,
+    (path: string) => `/${encodeURIComponent(path)}`,
+  ])("finds no file outside the project for an encoded absolute path (%#)", (encode) => {
+    expect(resolveExistingLocalAsset(project, encode(outside))).toBeNull();
+  });
+
+  it("still finds a project file by its root-absolute URL or a clamped ../", () => {
+    expect(resolveExistingLocalAsset(project, "/assets/a.css")?.rootRelativePath).toBe(
+      join("assets", "a.css"),
+    );
+    expect(resolveExistingLocalAsset(project, "../assets/a.css")?.rootRelativePath).toBe(
+      join("assets", "a.css"),
+    );
+  });
+
+  it("resolves a sub-composition src like the render, and refuses one that leaves", () => {
+    expect(resolveCompositionSrc(project, "/assets/a.css")).toBe(join(project, "assets", "a.css"));
+    expect(resolveCompositionSrc(project, "../secret.env")).toBeNull();
+    expect(resolveCompositionSrc(project, "%2E%2E/secret.env")).toBeNull();
+    const driveLetterPathLeavesProject = process.platform === "win32";
+    expect(resolveCompositionSrc(project, outside)).toBe(
+      driveLetterPathLeavesProject ? null : join(project, outside),
+    );
+  });
+});
+
 // A CI runner is one OS. Injecting path.win32/path.posix exercises both
 // platforms' separator and drive-letter rules from here, so a regression in
 // either fails this suite regardless of which OS actually runs it.
@@ -315,5 +390,23 @@ describe("readProjectFile", () => {
   it.skipIf(process.platform === "win32")("reports a named pipe without blocking on it", () => {
     execFileSync("mkfifo", [join(dir, "pipe.html")]);
     expect(readProjectFile(join(dir, "pipe.html"))).toEqual({ kind: "folder" });
+  });
+});
+
+describe("readTextFile and readProjectFile read a byte order mark as browsers do", () => {
+  const text = "<h1>Café</h1>";
+  const saved: Array<[string, Buffer]> = [
+    ["UTF-16LE", Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")])],
+    ["UTF-16BE", Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(text, "utf16le").swap16()])],
+    ["UTF-8 with a mark", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text)])],
+    ["UTF-8", Buffer.from(text)],
+  ];
+  it.each(saved)("%s", (_name, bytes) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-text-"));
+    const path = join(dir, "page.html");
+    writeFileSync(path, bytes);
+    expect(readTextFile(path)).toBe(text);
+    expect(readProjectFile(path)).toEqual({ kind: "file", text });
+    rmSync(dir, { recursive: true, force: true });
   });
 });

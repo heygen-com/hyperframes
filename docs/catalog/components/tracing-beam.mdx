@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Tracing Beam</h1>
+  <p>A glowing dash follows one SVG path through three UI elements, lifting and brightening each element in sequence.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/tracing-beam.json"
   compositionId="tracing-beam"
   compositionSrc="compositions/components/tracing-beam.html"
   title="Tracing Beam"
-  description="A glowing dash follows one SVG path through three UI elements, lifting and brightening each element in sequence."
   variables={[{"id":"labels","type":"string","role":"content","label":"Labels","description":"Three comma-separated labels shown in path order.","default":"Search,Preview,Export"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Beam and active-element color.","default":"cyan","options":[{"value":"cyan","label":"Cyan"},{"value":"violet","label":"Violet"},{"value":"amber","label":"Amber"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":399}}
   attribution={{"path":"registry/components/tracing-beam","tags":["motion-primitive","product-demo","attention","beam","path","spotlight"]}}
@@ -434,7 +438,9 @@ That writes one file: `compositions/components/tracing-beam.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -474,6 +480,4 @@ Tagged `motion-primitive` `product-demo` `attention` `beam` `path` `spotlight`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

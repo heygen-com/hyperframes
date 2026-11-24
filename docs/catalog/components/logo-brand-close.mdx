@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Logo Brand Close</h1>
+  <p>A display-scale wordmark cascades letter by letter into a centered lockup, the accent brand period lands last, an optional tagline and wide-tracked mono URL settle beneath, and the finished identity holds dead still to the end of the film.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/logo-brand-close.json"
   compositionId="logo-brand-close"
   compositionSrc="compositions/components/logo-brand-close.html"
   title="Logo Brand Close"
-  description="A display-scale wordmark cascades letter by letter into a centered lockup, the accent brand period lands last, an optional tagline and wide-tracked mono URL settle beneath, and the finished identity holds dead still to the end of the film."
   variables={[{"id":"wordmark","type":"string","role":"content","label":"Wordmark","description":"Brand name whose letters cascade into the centered lockup.","default":"HYPERFRAMES"},{"id":"tagline","type":"string","role":"content","label":"Tagline","description":"Optional tagline that settles beneath the wordmark. Empty hides it.","default":"Write HTML. Render video."},{"id":"url","type":"string","role":"content","label":"URL","description":"Optional mono URL line beneath the tagline. Empty hides it.","default":"hyperframes.heygen.com"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Contract color used by the brand period at the end of the wordmark.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"style","label":"Exit","description":"Optional departure. Films end on the still hold, so the default is none.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":367}}
   attribution={{"path":"registry/components/logo-brand-close","tags":["motion-primitive","typography","brand","logo","end-card","close"]}}
@@ -402,7 +406,9 @@ That writes one file: `compositions/components/logo-brand-close.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -445,6 +451,4 @@ Tagged `motion-primitive` `typography` `brand` `logo` `end-card` `close`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

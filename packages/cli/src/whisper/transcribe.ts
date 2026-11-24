@@ -3,7 +3,17 @@ import { execFile, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
-import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
+import { terminalLines } from "@hyperframes/core";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { basename, join, extname } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -22,8 +32,11 @@ import { sha256File } from "./modelFile.js";
 import { initialModelForLanguage } from "./modelForLanguage.js";
 import { TRANSCRIPT_FILE } from "./transcriptFile.js";
 import { findWavChunk } from "./wav.js";
-import type { Word } from "./normalize.js";
+import { parseWhisperJson, type Word } from "./normalize.js";
 import { emitWords } from "./progress.js";
+import { probeAudio } from "../audio/analysis/decode.js";
+import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 
 export { initialModelForLanguage };
 
@@ -147,24 +160,35 @@ export function resolveAudioPreparationTimeoutMs(durationSeconds: number | null)
   );
 }
 
+function probeText(ffprobePath: string, args: string[]): string {
+  try {
+    return execFileSync(ffprobePath, args, {
+      encoding: "utf-8",
+      timeout: 10_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (err) {
+    const said = String((err as { stderr?: unknown }).stderr ?? "").trim();
+    if (said) console.error(terminalLines(said));
+    throw err;
+  }
+}
+
 export function getMediaDurationSeconds(filePath: string): number | null {
   try {
     const ffprobePath = findFFprobe();
     if (!ffprobePath) return null;
-    const raw = execFileSync(
-      ffprobePath,
-      [
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        "--",
-        filePath,
-      ],
-      { encoding: "utf-8", timeout: 10_000 },
-    );
+    const raw = probeText(ffprobePath, [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      ...mediaInputFormatArgs(ffprobePath, filePath),
+      "--",
+      filePath,
+    ]);
     const durationSeconds = Number.parseFloat(raw.trim());
     return Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : null;
   } catch {
@@ -351,10 +375,25 @@ async function extractAudio(videoPath: string, signal?: AbortSignal): Promise<st
       `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
     );
   }
+  const audio = await probeAudio(videoPath);
+  if (!audio) throw new Error("the file has no audio track ffmpeg can decode");
   const wavPath = tempWavPath();
   await runFfmpeg(
     ffmpegPath,
-    ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav"],
+    [
+      ...mediaInputFormatArgs(ffmpegPath, videoPath),
+      "-i",
+      videoPath,
+      "-map",
+      `0:a:${audio.audioStream}`,
+      "-vn",
+      "-ar",
+      "16000",
+      "-ac",
+      "1",
+      "-f",
+      "wav",
+    ],
     wavPath,
     resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
     signal,
@@ -383,13 +422,20 @@ function isWav16kMono(filePath: string): boolean {
   try {
     const ffprobePath = findFFprobe();
     if (!ffprobePath) return false;
-    const raw = execFileSync(
-      ffprobePath,
-      ["-v", "quiet", "-print_format", "json", "-show_streams", "--", filePath],
-      { encoding: "utf-8", timeout: 10_000 },
-    );
+    const raw = probeText(ffprobePath, [
+      "-v",
+      "quiet",
+      "-print_format",
+      "json",
+      "-show_streams",
+      ...mediaInputFormatArgs(ffprobePath, filePath),
+      "--",
+      filePath,
+    ]);
     const parsed: { streams?: AudioStream[] } = JSON.parse(raw);
-    return isPcm16kMono(parsed.streams?.find((s) => s.codec_type === "audio"));
+    const audio = (parsed.streams ?? []).filter((s) => s.codec_type === "audio");
+    const index = decodableAudioStream(audio);
+    return isPcm16kMono(index === null ? undefined : audio[index]);
   } catch {
     return false;
   }
@@ -411,7 +457,17 @@ async function prepareAudio(audioPath: string, signal?: AbortSignal): Promise<st
   const wavPath = tempWavPath();
   await runFfmpeg(
     ffmpegPath,
-    ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav"],
+    [
+      ...mediaInputFormatArgs(ffmpegPath, audioPath),
+      "-i",
+      audioPath,
+      "-ar",
+      "16000",
+      "-ac",
+      "1",
+      "-f",
+      "wav",
+    ],
     wavPath,
     resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
     signal,
@@ -496,8 +552,10 @@ export async function transcribe(
     status: "started",
     durationSeconds: wavSeconds,
   });
-  const outputBase = join(outputDir, basename(TRANSCRIPT_FILE, ".json"));
   mkdirSync(outputDir, { recursive: true });
+  // whisper-cli opens its output by name and follows a link there, so it writes in a private folder.
+  const workDir = mkdtempSync(join(tmpdir(), "hyperframes-whisper-"));
+  const outputBase = join(workDir, basename(TRANSCRIPT_FILE, ".json"));
 
   const whisperArgs = [
     "--model",
@@ -522,8 +580,9 @@ export async function transcribe(
     through = Math.max(through, at);
     emitWords(onEvent, model, words, through);
   };
+  let produced: string;
   try {
-    await runWhisper(whisper.executablePath, whisperArgs, {
+    produced = await runWhisperInto(`${outputBase}.json`, whisper.executablePath, whisperArgs, {
       timeoutMs: whisperTimeoutMs,
       signal: options?.startCancellation?.(),
       onStdout:
@@ -541,6 +600,7 @@ export async function transcribe(
           : undefined,
     });
   } catch (err) {
+    if (err instanceof NoWhisperOutput) throw err;
     // Surface the timeout knob when the child was killed by our own timeout —
     // otherwise the reporter sees a bare ETIMEDOUT / SIGTERM with no hint that
     // `--timeout` even exists. Any other failure names the build, model and stderr.
@@ -552,15 +612,14 @@ export async function transcribe(
       });
     }
     throw await diagnoseWhisperFailure(err, whisper, modelPath, model);
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
   }
 
-  // 6. Read and validate output
-  const transcriptPath = `${outputBase}.json`;
-  if (!existsSync(transcriptPath)) {
-    throw new Error("Whisper did not produce output. Check the input file.");
-  }
-
-  const transcript = JSON.parse(readFileSync(transcriptPath, "utf-8"));
+  // 6. Validate the output, then put it in place by rename so a link at transcript.json is replaced
+  const transcript = parseWhisperJson(produced);
+  const transcriptPath = join(outputDir, TRANSCRIPT_FILE);
+  replaceFileAtomically(transcriptPath, produced);
   const reportedLanguage: unknown = transcript.result?.language;
   const detectedLanguage =
     automaticLanguage && typeof reportedLanguage === "string" && reportedLanguage.length > 0
@@ -624,6 +683,22 @@ function segmentWords(line: string): { words: Word[]; end: number } | null {
     return { text, start: toMs(from), end: toMs(at) };
   });
   return { words, end };
+}
+
+/** Runs whisper and returns the JSON it wrote to `output`; a run that wrote none fails as it is, not as a crash. */
+async function runWhisperInto(
+  output: string,
+  ...[executable, args, options]: Parameters<typeof runWhisper>
+): Promise<string> {
+  await runWhisper(executable, args, options);
+  if (!existsSync(output)) throw new NoWhisperOutput();
+  return readFileSync(output, "utf-8");
+}
+
+class NoWhisperOutput extends Error {
+  constructor() {
+    super("Whisper did not produce output. Check the input file.");
+  }
 }
 
 /** Resolves once whisper exits and both its streams are read, so no printed line is lost. */

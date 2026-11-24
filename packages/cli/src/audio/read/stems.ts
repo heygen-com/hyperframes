@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { dirname, join } from "node:path";
+import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { setTimeout as sleep } from "node:timers/promises";
 import { downloadToFile } from "../../cloud/download.js";
 import { HyperframesCloudClient } from "../../cloud/_gen/client.js";
@@ -14,6 +15,10 @@ import {
   serviceFailure,
   type ServiceAccess,
 } from "../analysis/providers/shared.js";
+import { probeAudio } from "../analysis/decode.js";
+import { hyperframesConfigDir } from "../../utils/configDir.js";
+import { readPlainFile } from "../../utils/projectRecords.js";
+import { isPlainFile, isPlainName, isRealFolder, makeRealFolder } from "../cacheFolder.js";
 
 /**
  * Upload 192 kb/s stereo MP3 through the service origin's direct-upload routes, then POST
@@ -35,10 +40,56 @@ const TIMEOUT_ENV = "HYPERFRAMES_AUDIO_STEMS_TIMEOUT_MS";
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const RETRY_MS = 5000;
 const DONE = "stems.json";
+const MAX_DONE_BYTES = 64 * 1024;
 const STEM_NAMES = ["vocals", "drums", "bass", "guitar", "piano", "other"] as const;
 
 export const VOICE_STEM = "vocals";
 export const DRUM_STEM = "drums";
+
+export const SELF_CONTAINED_STEM_INPUT = [
+  "-protocol_whitelist",
+  "file",
+  "-format_whitelist",
+  "wav,w64,mp3,flac,ogg,aiff,caf,aac,mov,matroska",
+] as const;
+
+const recordOutsideProject = (dir: string) =>
+  hyperframesConfigDir(
+    "read-audio-stems",
+    `${createHash("sha256").update(realpathSync(dir)).digest("hex").slice(0, 32)}.json`,
+  );
+
+function identity(path: string): string | null {
+  const found = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+  return found?.isFile() ? `${found.dev}:${found.ino}:${found.size}:${found.mtimeNs}` : null;
+}
+
+export function recordStems(dir: string, files: readonly string[]): void {
+  try {
+    const record = recordOutsideProject(dir);
+    mkdirSync(dirname(record), { recursive: true, mode: 0o700 });
+    const ids = Object.fromEntries(files.map((file) => [file, identity(join(dir, file))]));
+    writeFileSync(record, JSON.stringify(ids), { mode: 0o600 });
+  } catch {
+    // expected: a read-only config folder only means the stems are separated again next time
+  }
+}
+
+function writtenHere(dir: string, files: readonly string[]): boolean {
+  let recorded: Record<string, unknown>;
+  try {
+    recorded = JSON.parse(readFileSync(recordOutsideProject(dir), "utf8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return false;
+  }
+  return files.every((file) => {
+    const id = identity(join(dir, file));
+    return id !== null && recorded[file] === id;
+  });
+}
 
 /** How to reach the stems service, or why it cannot be reached. */
 export const stemsAccess = () =>
@@ -48,14 +99,27 @@ export const stemsAccess = () =>
     DEFAULT_TIMEOUT_MS,
   );
 
-/** Stems already fetched into `dir`, by name; null when there are none yet. */
+function namedStems(text: string): Record<string, string> | null {
+  let names: unknown;
+  try {
+    names = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof names !== "object" || names === null) return null;
+  const files = names as Record<string, unknown>;
+  return STEM_NAMES.every((name) => isPlainName(files[name]))
+    ? Object.fromEntries(STEM_NAMES.map((name) => [name, files[name] as string]))
+    : null;
+}
+
+/** Stems this install fetched into `dir`, by name; null when none, or when no record outside the project shows this install wrote them (a project can ship its own). */
 export function cachedStems(dir: string): Record<string, string> | null {
   const done = join(dir, DONE);
-  if (!existsSync(done)) return null;
-  const names = JSON.parse(readFileSync(done, "utf8")) as Record<string, string>;
-  if (!STEM_NAMES.every((name) => typeof names[name] === "string")) return null;
-  const paths = Object.fromEntries(STEM_NAMES.map((name) => [name, join(dir, names[name]!)]));
-  return Object.values(paths).every((p) => existsSync(p)) ? paths : null;
+  if (!isRealFolder(dir, 2) || !isPlainFile(done) || !writtenHere(dir, [DONE])) return null;
+  const names = namedStems(readPlainFile(done, MAX_DONE_BYTES));
+  if (!names || !writtenHere(dir, Object.values(names))) return null;
+  return Object.fromEntries(STEM_NAMES.map((name) => [name, join(dir, names[name]!)]));
 }
 
 class StillRunning extends Error {}
@@ -87,10 +151,16 @@ async function job(response: Response): Promise<StemsJob> {
 async function encoded(path: string, dir: string, signal: AbortSignal): Promise<string> {
   const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpeg) throw new Error("ffmpeg is required to separate stems; run: npx hyperframes doctor");
+  const audio = await probeAudio(path);
+  if (!audio) throw new Error("the recording has no audio track ffmpeg can decode");
   const out = join(dir, "upload.mp3");
   await runFile(
     ffmpeg,
-    ["-v", "error", "-y", "-i", path, "-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", out],
+    [
+      ...["-v", "error", "-y", ...mediaInputFormatArgs(ffmpeg, path), "-i", path],
+      ...["-map", `0:a:${audio.audioStream}`],
+      ...["-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", out],
+    ],
     { windowsHide: true, maxBuffer: 8 * 1024 * 1024, signal },
   );
   return out;
@@ -159,17 +229,18 @@ export async function fetchStems(
       throw new Error(
         `the stems service returned an incomplete separation: missing ${missing.join(", ")}`,
       );
-    mkdirSync(dir, { recursive: true });
+    makeRealFolder(dir, 2);
     const names: Record<string, string> = {};
     for (const name of STEM_NAMES) {
       const stem = stems.find((candidate) => candidate.name === name);
       if (!stem) continue;
       const file = `${name}.audio`;
-      await downloadToFile(stem.url, join(dir, file), { signal });
+      await downloadToFile(stem.url, join(dir, file), { signal, replaceLink: true });
       names[name] = file;
     }
-    writeFileSync(join(dir, DONE), JSON.stringify(names));
-    return cachedStems(dir)!;
+    replaceFileAtomically(join(dir, DONE), JSON.stringify(names));
+    recordStems(dir, [DONE, ...Object.values(names)]);
+    return Object.fromEntries(STEM_NAMES.map((name) => [name, join(dir, names[name]!)]));
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }

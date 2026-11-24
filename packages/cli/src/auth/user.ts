@@ -1,6 +1,6 @@
 /**
  * Persistence + display helpers for the friendly-display `user` block in
- * the shared `~/.heygen/credentials` file.
+ * the HyperFrames `~/.hyperframes/credentials` file.
  *
  * The `user` block is additive METADATA captured at login time from
  * `GET /v3/users/me` — NOT a credential. It lets `auth status` (and the

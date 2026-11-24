@@ -2,6 +2,8 @@ import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "@hyperframes/parse
 import { statSync } from "node:fs";
 import { realpath } from "./safePath.js";
 import { sep } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
   cleanAssetUrl,
@@ -53,8 +55,8 @@ export interface BrowserHostileCodec {
 }
 
 /**
- * Browser-hostile codec table v1. One exported constant so extending it is a
- * one-line change. `ffprobe` cannot emit exact RFC 6381 codec strings, so
+ * Browser-hostile codec table v1: the codecs with a known answer; one not here and not in
+ * `BROWSER_PLAYABLE_CODECS` is hostile too. `ffprobe` cannot emit exact RFC 6381 codec strings, so
  * these `representativeMime` values are deliberately coarse (a false
  * positive costs one proxy transcode, never correctness; a false negative is
  * rescued by the runtime's reactive zero-videoWidth swap).
@@ -66,18 +68,25 @@ export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
   hevc: { representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"', prewarm: true },
   prores: { representativeMime: null, prewarm: true },
   theora: { representativeMime: 'video/ogg; codecs="theora"', prewarm: true },
+  mpeg4: { representativeMime: null, prewarm: true },
+  mjpeg: { representativeMime: null, prewarm: true },
+  mpeg2video: { representativeMime: null, prewarm: true },
+  dnxhd: { representativeMime: null, prewarm: true },
   // Every mainstream engine decodes AV1 and VP9, so canPlayType keeps the
   // original and only the rare browser that cannot pays for a transcode.
   av1: { representativeMime: 'video/mp4; codecs="av01.0.08M.08"', prewarm: false },
   vp9: { representativeMime: 'video/webm; codecs="vp09.00.10.08"', prewarm: false },
 };
 
+const BROWSER_PLAYABLE_CODECS: ReadonlySet<string> = new Set(["h264", "vp8"]);
+
+const UNLISTED_HOSTILE: BrowserHostileCodec = { representativeMime: null, prewarm: true };
+
 /** `Object.hasOwn` rather than a bare index: a codec named `constructor` or
  * `toString` would otherwise resolve against `Object.prototype`. */
 function hostileCodecEntry(codecName: string): BrowserHostileCodec | undefined {
-  return Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName)
-    ? BROWSER_HOSTILE_CODECS[codecName]
-    : undefined;
+  if (Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName)) return BROWSER_HOSTILE_CODECS[codecName];
+  return BROWSER_PLAYABLE_CODECS.has(codecName) ? undefined : UNLISTED_HOSTILE;
 }
 
 /** The pre-warm gate: true only for codecs with no cross-platform browser
@@ -157,6 +166,8 @@ export const PROXY_VARIANT_CONFIG: Record<
   vp8: { extension: ".webm", contentType: "video/webm" },
 };
 
+export const PROXY_STILL_EXTENSION = ".jpg";
+
 export function isProxyVariant(value: string): value is ProxyVariant {
   return Object.hasOwn(PROXY_VARIANT_CONFIG, value);
 }
@@ -203,12 +214,14 @@ function codecFactsFor(
   codecName: string,
   hasAlpha: boolean,
   source?: PreviewSourceFacts,
+  toneMapsToSdr = false,
 ): AssetCodecFacts {
   const hostile = hostileCodecEntry(codecName);
   return {
     codecName,
-    browserHostile: hostile !== undefined,
-    representativeMime: hostile?.representativeMime ?? null,
+    browserHostile: hostile !== undefined || toneMapsToSdr,
+    // An HDR clip is never 'playable' for preview, whatever its codec: it takes the SDR copy the export uses.
+    representativeMime: toneMapsToSdr ? null : (hostile?.representativeMime ?? null),
     hasAlpha,
     ...(source && { source }),
   };
@@ -226,7 +239,25 @@ async function probeCodecFacts(
   if (metadata.kind !== "video") return null;
   const codecName = metadata.color.codecName;
   if (!codecName) return null;
-  return codecFactsFor(codecName, metadata.hasAlpha === true, metadata.source);
+  const hasAlpha = metadata.hasAlpha === true;
+  const toneMaps = !hasAlpha && (await toneMapsHdr(metadata.color.hdrTransfer));
+  return codecFactsFor(codecName, hasAlpha, metadata.source, toneMaps);
+}
+
+let warnedNoHdrFilters = false;
+
+/** An HDR video previews through the same tone-mapped copy the SDR export uses, so the two match. */
+async function toneMapsHdr(hdrTransfer: string | null): Promise<boolean> {
+  if (hdrTransfer !== "pq" && hdrTransfer !== "hlg") return false;
+  const ffmpegPath = findFfBinary("ffmpeg");
+  if (ffmpegPath && (await ffmpegHasHdrFilters(ffmpegPath))) return true;
+  if (!warnedNoHdrFilters) {
+    warnedNoHdrFilters = true;
+    console.warn(
+      `[hyperframes] A video in this project is HDR, but this ffmpeg has no zscale/tonemap (libzimg), so the preview plays it as the browser shows it and will not match an SDR export. Install an ffmpeg with libzimg.`,
+    );
+  }
+  return false;
 }
 
 interface CachedAssetProbe {
@@ -408,7 +439,12 @@ export async function scanProjectMedia(
   const scan: ProjectMediaScan = { codecMap: {}, sourceFacts: {} };
   for (const [pathname, facts] of await probeProjectAssets(projectDir, htmlSources, options)) {
     if (facts?.browserHostile) scan.codecMap[pathname] = facts;
-    if (facts?.source) scan.sourceFacts[pathname] = { ...facts.source, codec: facts.codecName };
+    if (facts?.source)
+      scan.sourceFacts[pathname] = {
+        ...facts.source,
+        codec: facts.codecName,
+        ...(facts.hasAlpha ? { hasAlpha: true } : {}),
+      };
   }
   return scan;
 }

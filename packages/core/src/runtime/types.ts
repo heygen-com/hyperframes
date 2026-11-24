@@ -1,5 +1,11 @@
 import type { HfColorGradingTarget } from "../colorGrading";
+import type { PreviewTarget } from "../studioPreviewMark";
 import type { RuntimeAnalyticsEvent } from "./analytics";
+import type { TextLayerRead } from "./editingElement";
+import type { AudioFades } from "../audioFade";
+import type { ParentCopy } from "../audibleVideo";
+import type { RateSpec } from "../speedRamp";
+import type { VolumeKeyframe } from "./mediaVolumeEnvelope";
 
 export type RuntimeJson =
   | string
@@ -23,12 +29,14 @@ type RuntimeBridgeControlActionBase =
   | "set-idle-heartbeat"
   | "set-display-scale"
   | "set-preview-quality"
+  | "set-copies-ahead"
   | "retry-preview-copies"
   | "request-preview-facts"
   | "set-root-duration"
   | "set-play-range"
   | "stop-media"
-  | "flash-elements";
+  | "flash-elements"
+  | "scrub-audio";
 
 type RuntimeBridgeControlMessageBase = {
   source: "hf-parent";
@@ -45,8 +53,10 @@ type RuntimeBridgeControlMessageBase = {
   slow?: boolean;
   scale?: number;
   level?: number;
+  on?: boolean;
   playbackRate?: number;
-  target?: HfColorGradingTarget | string | null;
+  target?: HfColorGradingTarget | PreviewTarget | string | null;
+  time?: number | null;
   grading?: RuntimeJson;
   compare?: RuntimeJson;
   seekMode?: "drag" | "commit";
@@ -59,6 +69,7 @@ export type RuntimeStateMessage = {
   currentTime: number;
   ended: boolean;
   isPlaying: boolean;
+  buffering: boolean;
   muted: boolean;
   playbackRate: number;
 };
@@ -88,6 +99,8 @@ export type RuntimeTimelineClip = RuntimeTimelineClipIdentity & {
   timelineLabel: string | null;
   timelineGroup: string | null;
   timelinePriority: number | null;
+  text: TextLayerRead | null;
+  transitionLabel: string | null;
 };
 
 export type RuntimeTimelineScene = {
@@ -113,6 +126,7 @@ export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
    * the composition's assets have settled yet. Absent on older runtimes, whose
    * parents must not wait for a message that never comes. */
   assetsReady?: boolean;
+  sceneSwap?: boolean;
 };
 
 export type RuntimeDiagnosticMessage = {
@@ -155,12 +169,18 @@ export type RuntimePickerCancelledMessage = {
   type: "pick-mode-cancelled";
 };
 
-export type RuntimeStageSizeMessage = {
+/** The document's own length and size, posted before the runtime boots (`compositionLength.readStaticComposition`). */
+export type RuntimeStaticCompositionMessage = {
   source: "hf-preview";
-  type: "stage-size";
-  width: number;
-  height: number;
+  type: "static-composition";
+  durationSeconds: number;
+  width: number | null;
+  height: number | null;
 };
+
+export type RuntimeStageSizeMessage =
+  | { source: "hf-preview"; type: "stage-size"; width: number; height: number }
+  | { source: "hf-preview"; type: "stage-size"; measuredSize: { width: number; height: number } };
 
 /**
  * Fired once per session when the runtime's attempt to play a timed media
@@ -172,6 +192,7 @@ export type RuntimeStageSizeMessage = {
 export type RuntimeMediaAutoplayBlockedMessage = {
   source: "hf-preview";
   type: "media-autoplay-blocked";
+  media: ParentCopy[];
 };
 
 /**
@@ -263,6 +284,15 @@ export type RuntimePreviewCopiesMessage = {
   } | null;
 };
 
+export type FetchNotSeenToStart = null;
+
+export type PlaybackHeldBy = {
+  kind: "audio" | "video";
+  readyState: number;
+  networkState: number;
+  fetchMs: number | FetchNotSeenToStart;
+};
+
 export type RuntimePreviewHealthMessage = {
   source: "hf-preview";
   type: "preview-health";
@@ -273,6 +303,13 @@ export type RuntimePreviewHealthMessage = {
     choppy: boolean;
     fps: number;
     worstFrameMs: number;
+    skippedShare: number;
+    waitingShare: number;
+    frozenShare: number;
+    gapP50Ms: number;
+    gapP95Ms: number;
+    clockSource: "audio" | "webaudio" | "monotonic";
+    heldBy: PlaybackHeldBy | null;
     mode: "play";
   } | null;
 };
@@ -310,6 +347,7 @@ export type RuntimeOutboundMessage =
   | RuntimePickerPickedManyMessage
   | RuntimePickerCancelledMessage
   | RuntimeStageSizeMessage
+  | RuntimeStaticCompositionMessage
   | RuntimeMediaAutoplayBlockedMessage
   | RuntimeReadyMessage
   | RuntimeAssetsReadyMessage
@@ -325,7 +363,7 @@ export type RuntimePlayer = {
   _timeline: RuntimeTimelineLike | null;
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => HeldSeek;
+  seek: (timeSeconds: number, options?: { keepPlaying?: boolean; settled?: boolean }) => HeldSeek;
   renderSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
   getTime: () => number;
   getDuration: () => number;
@@ -456,3 +494,22 @@ type RuntimeBridgeControlAction =
 
 export type RuntimeBridgeControlMessage = RuntimeBridgeControlMessageBase &
   RuntimeDataControlFields;
+
+export type RuntimeMediaClip = {
+  el: HTMLVideoElement | HTMLAudioElement;
+  start: number;
+  /** The clip's own t=0 when a host's in-point cut its head; source time, lanes and fades run from it. */
+  origin?: number;
+  mediaStart: number;
+  duration: number;
+  end: number;
+  volume: number | null;
+  playbackRate: number;
+  /** The rate lane when the clip has one; otherwise `playbackRate`. */
+  rate?: RateSpec;
+  loop: boolean;
+  sourceDuration: number | null;
+  /** Probed from the GSAP timeline as the renderer does; when set they drive volume, not `data-volume`. */
+  volumeKeyframes?: VolumeKeyframe[];
+  fades?: AudioFades;
+};

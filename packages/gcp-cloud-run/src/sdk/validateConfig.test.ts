@@ -52,6 +52,20 @@ describe("validateDistributedRenderConfig", () => {
     );
   });
 
+  it("accepts the delivery encoder options on mp4 and rejects them elsewhere or malformed", () => {
+    const delivery = { keyframeIntervalSeconds: 2, maxBitrate: "8M", bufferSize: "12M" };
+    expect(validateDistributedRenderConfig({ ...base(), ...delivery })).toMatchObject(delivery);
+    expect(() =>
+      validateDistributedRenderConfig({ ...base(), format: "webm", maxBitrate: "8M" } as never),
+    ).toThrow(/apply to mp4/);
+    expect(() => validateDistributedRenderConfig({ ...base(), maxBitrate: "fast" })).toThrow(
+      /invalid bitrate/,
+    );
+    expect(() =>
+      validateDistributedRenderConfig({ ...base(), keyframeIntervalSeconds: 0 }),
+    ).toThrow(/positive/);
+  });
+
   it("rejects codec with a non-mp4 format", () => {
     expect(() =>
       validateDistributedRenderConfig({ ...base(), format: "webm", codec: "h264" } as never),
@@ -68,6 +82,12 @@ describe("validateDistributedRenderConfig", () => {
     expect(() =>
       validateDistributedRenderConfig({ ...base(), hdrMode: "force-hdr" as never }),
     ).toThrow(/force-sdr/);
+  });
+
+  it("rejects chromaSubsampling 444", () => {
+    expect(() =>
+      validateDistributedRenderConfig({ ...base(), chromaSubsampling: "444" } as never),
+    ).toThrow(/4:2:0 only/);
   });
 
   it("rejects an over-cap chunkSize", () => {

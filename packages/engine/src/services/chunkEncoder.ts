@@ -6,6 +6,7 @@
  * Supports CPU (libx264) and GPU encoding.
  */
 
+import { randomUUID } from "node:crypto";
 import { frameSequencePath } from "./extractedFrameIndex.js";
 import {
   closeSync,
@@ -13,7 +14,6 @@ import {
   existsSync,
   ftruncateSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -26,6 +26,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
   type GpuEncoder,
   getCachedGpuEncoder,
+  getCachedNvencPresets,
   getGpuEncoderName,
   buildVideoToolboxRateControlArgs,
   mapPresetForGpuEncoder,
@@ -49,14 +50,22 @@ import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.typ
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
+import {
+  concatListInputArgs,
+  concatListText,
+  localContainerInputArgs,
+} from "@hyperframes/parsers/ff-binaries";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
 export const ENCODER_PRESETS = {
   draft: { preset: "ultrafast", quality: 28, codec: "h264" as const },
   standard: { preset: "medium", quality: 18, codec: "h264" as const },
-  high: { preset: "slow", quality: 15, codec: "h264" as const },
+  high: { preset: "fast", quality: 15, codec: "h264" as const },
 };
+
+export type ChromaSubsampling = "420" | "444";
 
 export interface EncoderPreset {
   preset: string;
@@ -98,6 +107,7 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * depend on the file extension alone.
    */
   audioCodec?: "aac";
+  audioContainer?: "mov";
   /** Replaces `-i <videoPath>` (which is then unused), e.g. with a concat-demuxer input. */
   videoInputArgs?: readonly string[];
   /**
@@ -120,7 +130,9 @@ async function shouldCopyAacSidecar(
   if (KNOWN_NON_AAC_AUDIO_EXTENSIONS.has(audioExtension)) return false;
 
   try {
-    const metadata = await extractAudioMetadata(audioPath);
+    const metadata = options?.audioContainer
+      ? await extractAudioMetadata(audioPath, { inputContainer: options.audioContainer })
+      : await extractAudioMetadata(audioPath);
     return metadata.audioCodec === "aac";
   } catch {
     // Preserve the pre-existing fallback for invalid or unprobeable sidecars:
@@ -129,15 +141,37 @@ async function shouldCopyAacSidecar(
   }
 }
 
+/** ProRes profile names in the order users are told about them. */
+export const PRORES_PROFILE_NAMES = ["4444", "hq", "422", "lt", "proxy"] as const;
+export type ProresProfile = (typeof PRORES_PROFILE_NAMES)[number];
+
+/** The one table for `-profile:v` and pixel format; all but 4444 are 4:2:2 without alpha. */
+export const PRORES_PROFILES: Record<
+  ProresProfile,
+  { profile: string; pixelFormat: string; alpha: boolean }
+> = {
+  "4444": { profile: "4444", pixelFormat: "yuva444p10le", alpha: true },
+  hq: { profile: "3", pixelFormat: "yuv422p10le", alpha: false },
+  "422": { profile: "2", pixelFormat: "yuv422p10le", alpha: false },
+  lt: { profile: "1", pixelFormat: "yuv422p10le", alpha: false },
+  proxy: { profile: "0", pixelFormat: "yuv422p10le", alpha: false },
+};
+
+export function isProresProfile(value: unknown): value is ProresProfile {
+  return typeof value === "string" && (PRORES_PROFILE_NAMES as readonly string[]).includes(value);
+}
+
 /**
  * Get encoder preset for a given quality and output format.
  * WebM uses VP9 with alpha-capable pixel format; MP4 uses h264 (or h265 for HDR);
- * MOV uses ProRes 4444 with alpha for editor-compatible transparency.
+ * MOV uses ProRes 4444 with alpha for editor-compatible transparency, or a 422 profile without alpha.
  */
 export function getEncoderPreset(
   quality: "draft" | "standard" | "high",
   format: "mp4" | "webm" | "mov" = "mp4",
   hdr?: { transfer: HdrTransfer },
+  proresProfile: ProresProfile = "4444",
+  chromaSubsampling: ChromaSubsampling = "420",
 ): EncoderPreset {
   const base = ENCODER_PRESETS[quality];
   if (format === "webm") {
@@ -149,12 +183,8 @@ export function getEncoderPreset(
     };
   }
   if (format === "mov") {
-    return {
-      preset: "4444",
-      quality: base.quality,
-      codec: "prores",
-      pixelFormat: "yuva444p10le",
-    };
+    const { profile, pixelFormat } = PRORES_PROFILES[proresProfile];
+    return { preset: profile, quality: base.quality, codec: "prores", pixelFormat };
   }
   if (hdr) {
     return {
@@ -165,11 +195,11 @@ export function getEncoderPreset(
       hdr,
     };
   }
-  return { ...base, pixelFormat: "yuv420p" };
+  return { ...base, pixelFormat: chromaSubsampling === "444" ? "yuv444p" : "yuv420p" };
 }
 
 // Re-export GPU utilities so existing consumers that import from chunkEncoder still work.
-export { detectGpuEncoder, type GpuEncoder } from "../utils/gpuEncoder.js";
+export { detectGpuEncoder, getCachedGpuEncoder, type GpuEncoder } from "../utils/gpuEncoder.js";
 
 /** The `lockGopForChunkConcat` / `gopSize` pair, shared by every encoder entry point. */
 export interface LockedGopOptions {
@@ -225,11 +255,49 @@ export function lockedGopCodecParams(codec: "h264" | "h265", gopSize: number): s
   return codec === "h264" ? shared : `keyint=${gopSize}:min-keyint=${gopSize}:${shared}`;
 }
 
+/** Frames per keyframe interval: the nearest whole frame, never below one. */
+export function keyframeIntervalToGopSize(fps: Fps, seconds: number): number {
+  return Math.max(1, Math.round(fpsToNumber(fps) * seconds));
+}
+
+const BITRATE_PATTERN = /^(\d+(?:\.\d+)?)([kKmMgG]?)$/;
+
+function bitrateToBitsPerSecond(value: string): number {
+  const match = BITRATE_PATTERN.exec(value);
+  if (!match) throw new Error(`[chunkEncoder] invalid bitrate ${JSON.stringify(value)}`);
+  const unit = match[2]!.toLowerCase();
+  const scale = { g: 1_000_000_000, m: 1_000_000, k: 1_000 }[unit] ?? 1;
+  return Number(match[1]) * scale;
+}
+
+/** `-maxrate` / `-bufsize` for the VBV cap, written once for both arg builders. Buffer defaults to 2x. */
+export function appendRateCapArgs(
+  args: string[],
+  options: { codec?: string; maxBitrate?: string; bufferSize?: string },
+): void {
+  const { maxBitrate, bufferSize } = options;
+  if (maxBitrate === undefined) {
+    if (bufferSize !== undefined) throw new Error("[chunkEncoder] bufferSize requires maxBitrate");
+    return;
+  }
+  const codec = options.codec ?? "h264";
+  if (codec !== "h264" && codec !== "h265") {
+    throw new Error(`[chunkEncoder] maxBitrate is not supported for codec ${codec}`);
+  }
+  const cap = bitrateToBitsPerSecond(maxBitrate);
+  const buffer = bufferSize !== undefined ? bitrateToBitsPerSecond(bufferSize) : cap * 2;
+  if (cap <= 0 || buffer <= 0) {
+    throw new Error("[chunkEncoder] maxBitrate and bufferSize must be positive");
+  }
+  args.push("-maxrate", String(Math.round(cap)), "-bufsize", String(Math.round(buffer)));
+}
+
 export function buildEncoderArgs(
   options: EncoderOptions,
   inputArgs: string[],
   outputPath: string,
   gpuEncoder: GpuEncoder = null,
+  nvencPresets?: ReadonlySet<string>,
 ): string[] {
   const {
     fps,
@@ -257,6 +325,7 @@ export function buildEncoderArgs(
   // Without -xerror, ffmpeg ends the video at the first frame file it cannot read and still exits 0.
   const args: string[] = ["-xerror", ...inputArgs, "-r", fpsToFfmpegArg(fps)];
   const shouldUseGpu = useGpu && gpuEncoder !== null;
+  appendRateCapArgs(args, options);
 
   if (codec === "h264" || codec === "h265") {
     if (shouldUseGpu) {
@@ -265,7 +334,7 @@ export function buildEncoderArgs(
 
       switch (gpuEncoder) {
         case "nvenc":
-          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset));
+          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset, nvencPresets));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-cq", String(quality));
           break;
@@ -565,7 +634,8 @@ export async function encodeFramesFromDir(
 
   const inputPath = frameSequencePath(framesDir, framePattern);
   const inputArgs = ["-framerate", fpsToFfmpegArg(options.fps), "-i", inputPath];
-  const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder);
+  const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+  const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder, nvencPresets);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   let framesRead = 0;
   const result = await runFfmpeg(args, {
@@ -613,7 +683,7 @@ export async function encodeFramesFromDir(
 }
 
 export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
-  const args = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  const args = [...concatListInputArgs(concatListPath), "-c", "copy"];
   // The concat demuxer does not carry per-input container metadata into the
   // output, so provenance is re-asserted on the concatenated file.
   appendRenderProvenanceArgs(args, outputPath);
@@ -621,18 +691,13 @@ export function buildConcatArgs(concatListPath: string, outputPath: string): str
   return args;
 }
 
-/**
- * Sequence rather than a timestamp: two lists written in the same millisecond
- * into one directory would otherwise collide, and a concat that reads another
- * render's list produces a silently wrong video rather than an error.
- */
-let concatListSeq = 0;
-
-function writeConcatList(dir: string, inputPaths: readonly string[]): string {
-  concatListSeq += 1;
-  const listPath = join(dir, `concat-list-${process.pid}-${concatListSeq}.txt`);
-  const body = inputPaths.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join("\n");
-  writeFileSync(listPath, body, "utf-8");
+export function writeVideoConcatList(dir: string, inputPaths: readonly string[]): string {
+  const listPath = join(dir, `concat-list-${randomUUID()}.txt`);
+  const body = concatListText(
+    inputPaths.map((path) => resolve(path)),
+    { videoContainersOnly: true },
+  );
+  writeFileSync(listPath, body, { flag: "wx", mode: 0o600 });
   return listPath;
 }
 
@@ -659,7 +724,12 @@ export async function concatVideoFiles(
   // get their own chunk directory but can share an output directory.
   // The list is left on disk deliberately: it is removed with the work dir,
   // and `--debug` keeps both so a bad concat can be reproduced from its list.
-  const listPath = writeConcatList(dirname(firstInput), inputPaths);
+  let listPath: string;
+  try {
+    listPath = writeVideoConcatList(dirname(firstInput), inputPaths);
+  } catch (error) {
+    return { success: false, error: (error as Error).message, externalInterruption: false };
+  }
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   const result = await runFfmpeg(buildConcatArgs(listPath, outputPath), {
     signal,
@@ -706,7 +776,7 @@ export async function encodeFramesChunkedConcat(
   mkdirSync(dirname(outputPath), { recursive: true });
   // Keep intermediates under the caller-owned output directory for its existing
   // cleanup/debug policy, but never reuse another invocation's chunk files.
-  const chunkDir = mkdtempSync(join(dirname(outputPath), "chunk-encode-"));
+  const chunkDir = createStagingDir(dirname(outputPath), "chunk-encode-");
   const chunkPaths: string[] = [];
 
   for (let i = 0; i < chunkCount; i++) {
@@ -741,7 +811,8 @@ export async function encodeFramesChunkedConcat(
     ];
     let gpuEncoder: GpuEncoder = null;
     if (options.useGpu) gpuEncoder = await getCachedGpuEncoder();
-    const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
+    const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+    const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder, nvencPresets);
     const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
     let framesRead = 0;
     const processResult = await runFfmpeg(args, {
@@ -819,10 +890,18 @@ export async function muxVideoWithAudio(
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
-  const isWebm = outputPath.endsWith(".webm");
-  const isMov = outputPath.endsWith(".mov");
+  const outputExtension = extname(outputPath).toLowerCase();
+  const isWebm = outputExtension === ".webm";
+  const isMov = outputExtension === ".mov";
   const shouldCopyAudio = isWebm ? false : await shouldCopyAacSidecar(audioPath, config);
-  const args = [...(config?.videoInputArgs ?? ["-i", videoPath]), "-i", audioPath, "-c:v", "copy"];
+  const args = [
+    ...(config?.videoInputArgs ?? ["-i", videoPath]),
+    ...localContainerInputArgs(config?.audioContainer),
+    "-i",
+    audioPath,
+    "-c:v",
+    "copy",
+  ];
 
   if (isWebm) {
     args.push("-c:a", "libopus", "-b:a", "128k");

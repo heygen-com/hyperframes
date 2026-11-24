@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>VPN YouTube Spot</h1>
+  <p>Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/vpn-youtube-spot.json"
   compositionId="vpn-youtube-spot"
   compositionSrc="compositions/vpn-youtube-spot.html"
   title="VPN YouTube Spot"
-  description="Snappy Apple-style YouTube insert showing a phone finding and installing a friendly VPN app with sound effects."
   variables={[]}
   meta={{"duration":7,"width":1920,"height":1080,"category":"Showcases","badge":"Stable","codeLines":987}}
   attribution={{"author":"Stronkter","authorUrl":"https://x.com/Stronkter","path":"registry/blocks/vpn-youtube-spot","tags":["app","showcase","youtube","sfx"]}}
@@ -1022,7 +1026,9 @@ That writes `compositions/vpn-youtube-spot.html`, plus 1 supporting file under `
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -1063,6 +1069,4 @@ HyperFrames by HeyGen make me a 7s video with Apple-style bold font and styling:
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

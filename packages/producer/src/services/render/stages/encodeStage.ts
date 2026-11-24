@@ -111,6 +111,8 @@ export interface EncodeStageInput {
   preset: ReturnType<typeof getEncoderPreset>;
   effectiveQuality: number;
   effectiveBitrate: string | undefined;
+  maxBitrate?: string;
+  bufferSize?: string;
   /** Producer config — enables the chunked-concat encoder when on. */
   enableChunkedEncode: boolean;
   chunkedEncodeSize: number;
@@ -138,6 +140,8 @@ export interface EncodeStageInput {
    */
   gopSize?: number;
 }
+
+export type VideoEncodeInput = Omit<EncodeStageInput, "hasAudio" | "audioOutputPath">;
 
 export interface EncodeStageResult {
   /** Wall-clock ms for the encode (or png-copy) phase. */
@@ -262,11 +266,19 @@ function startEncodeProgress(
   return (frames = total) => reportEncodeProgress(job, frames, total, onProgress, 75);
 }
 
-function resolveEngineConfig(input: EncodeStageInput) {
+function resolveEngineConfig(input: VideoEncodeInput) {
   return input.engineConfig ?? input.job.config.producerConfig ?? resolveConfig();
 }
 
-function videoEncoderOptions(input: EncodeStageInput, engineCfg: Pick<EngineConfig, "vp9CpuUsed">) {
+export function overlapEncoderThreads(workerCount: number, cpuCount: number): number {
+  return Math.max(1, Math.floor(cpuCount) - Math.floor(workerCount));
+}
+
+export function videoEncoderOptions(
+  input: VideoEncodeInput,
+  engineCfg: Pick<EngineConfig, "vp9CpuUsed">,
+  softwareEncoderThreads?: number,
+) {
   const { job, preset } = input;
   return {
     fps: job.config.fps,
@@ -276,6 +288,8 @@ function videoEncoderOptions(input: EncodeStageInput, engineCfg: Pick<EngineConf
     preset: preset.preset,
     quality: input.effectiveQuality,
     bitrate: input.effectiveBitrate,
+    maxBitrate: input.maxBitrate,
+    bufferSize: input.bufferSize,
     pixelFormat: preset.pixelFormat,
     vp9CpuUsed: engineCfg.vp9CpuUsed,
     useGpu: job.config.useGpu,
@@ -285,15 +299,16 @@ function videoEncoderOptions(input: EncodeStageInput, engineCfg: Pick<EngineConf
     // renders leave both undefined → preserves the existing open-GOP output.
     lockGopForChunkConcat: input.lockGopForChunkConcat === true,
     gopSize: input.gopSize,
+    softwareEncoderThreads,
   };
 }
 
 /**
- * Software libx264 from JPEG only: the streaming encoder then runs the disk encoder's
- * arguments (same bytes). Needs a core the capture workers leave free.
+ * h264 from JPEG only, software or GPU: the streaming encoder then runs the disk encoder's
+ * arguments. Needs a core the capture workers leave free.
  */
 export function canEncodeWhileCapturing(
-  input: EncodeStageInput,
+  input: VideoEncodeInput,
   workerCount: number,
   cpuCount: number,
 ): boolean {
@@ -305,7 +320,6 @@ export function canEncodeWhileCapturing(
     !input.enableChunkedEncode &&
     input.preset.codec === "h264" &&
     !input.preset.hdr &&
-    input.job.config.useGpu !== true &&
     input.captureImageFormat === "jpeg"
   );
 }
@@ -338,10 +352,14 @@ async function readLandedFrame(workerPath: string | undefined, mergedPath: strin
  * On failure `finish` re-runs `runEncodeStage` on the same frames.
  */
 export function encodeWhileCapturing(
-  input: EncodeStageInput,
+  input: VideoEncodeInput,
   totalFrames: number,
+  captureBudget?: { workerCount: number; cpuCount: number },
 ): EncodeWhileCapturing {
   const engineCfg = resolveEngineConfig(input);
+  const softwareEncoderThreads = captureBudget
+    ? overlapEncoderThreads(captureBudget.workerCount, captureBudget.cpuCount)
+    : undefined;
   const stop = new AbortController();
   const signal = input.abortSignal
     ? AbortSignal.any([input.abortSignal, stop.signal])
@@ -359,7 +377,10 @@ export function encodeWhileCapturing(
 
   const encoder = spawnStreamingEncoder(
     input.videoOnlyPath,
-    { ...videoEncoderOptions(input, engineCfg), imageFormat: "jpeg" },
+    {
+      ...videoEncoderOptions(input, engineCfg, softwareEncoderThreads),
+      imageFormat: "jpeg",
+    },
     signal,
     engineCfg,
   );
@@ -413,7 +434,7 @@ export function encodeWhileCapturing(
           error: String(failure ?? result?.error),
         },
       );
-      return runEncodeStage(input);
+      return runEncodeStage({ ...input, hasAudio: false });
     },
     abort: async () => {
       stop.abort();

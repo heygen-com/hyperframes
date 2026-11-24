@@ -1,4 +1,6 @@
-import { failCommand } from "../../utils/commandResult.js";
+import { terminalText } from "@hyperframes/core";
+import { isUnattended } from "../../utils/attendedTerminal.js";
+import { CliUsageError, failCommand } from "../../utils/commandResult.js";
 /**
  * `hyperframes auth logout` — remove the credential file. With
  * `--keep-api-key`, only the OAuth block is cleared (no-op for
@@ -8,7 +10,7 @@ import { failCommand } from "../../utils/commandResult.js";
  * `HEYGEN_ACCESS_TOKEN`) can't be cleared by this command — we tell the user to unset them.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   ENV_CREDENTIAL_VAR,
   clearOAuth,
@@ -53,7 +55,7 @@ export default defineCommand({
       return;
     }
     await deleteStore();
-    console.log(c.success(`✓ Signed out. Removed ${credentialPath()}.`));
+    console.log(c.success(`✓ Signed out. Removed ${terminalText(credentialPath())}.`));
   },
 });
 
@@ -68,9 +70,13 @@ function warnIfEnvCredentialActive(): void {
 
 async function ensureConfirmed(yes: boolean, keepApiKey: boolean): Promise<boolean> {
   if (yes) return true;
+  if (isUnattended())
+    throw new CliUsageError(
+      "Signing out requires confirmation. Run hyperframes auth logout --yes to sign out without a prompt.",
+    );
   const prompt = keepApiKey
-    ? `This will sign out of any active OAuth session on this machine (~/.heygen lives at ${configDir()}). Continue? [y/N] `
-    : `This will sign out of HeyGen on this machine (~/.heygen lives at ${configDir()}). Continue? [y/N] `;
+    ? `This will sign out of any active OAuth session on this machine (~/.hyperframes lives at ${configDir()}). Continue? [y/N] `
+    : `This will sign out of HeyGen on this machine (~/.hyperframes lives at ${configDir()}). Continue? [y/N] `;
   return confirmInteractive(prompt);
 }
 

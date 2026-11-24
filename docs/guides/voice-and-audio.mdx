@@ -56,6 +56,32 @@ npx hyperframes transcribe interview.mp4 --language es
 Pass `--language` when the speech isn't English. It also imports an existing `.srt` or `.vtt`. For a talking-head clip that needs
 captions or a tighter cut, see [Captions and recuts](/guides/captions-and-recuts).
 
+## Read a reference soundtrack
+
+To understand an existing recording before making a new soundtrack, run:
+
+```bash
+npx hyperframes audio reference.mp4 --read --quality best
+```
+
+With a HeyGen credential, the recording is separated into six stems: vocals,
+drums, bass, guitar, piano and other. The reading describes each audible stem,
+then gives an overall description. `voice-free mix:` points to a mix without the
+vocal stem. `bgm prompt:` describes the music for a music generator, or says
+there is no music. These descriptions use HeyGen; a separate Google or Gemini
+API key is not used. Without a HeyGen credential, or if the description service
+fails, a warning explains why descriptions are unavailable instead of guessing.
+
+Timed effects are named `effect` and grouped as `S1`, `S2` and so on, without
+assigning sound kinds. Each keeps its source stem, time, frequency band, attack,
+tail, peak level and level above the surrounding music. Model descriptions can
+explain what a sound resembles; their timing is approximate. The timed lines
+carry the measurements.
+
+Sign in with `npx hyperframes auth login`, or set `HEYGEN_API_KEY`, before using
+the HeyGen services. See [audio analysis](/packages/cli#audio) for transcript,
+range and local-analysis options.
+
 ## Get captions right
 
 Read the transcript before it goes on screen: names, product terms and numbers are where recognition slips. Keep
@@ -85,11 +111,26 @@ Watch once with sound and once muted, then listen once without watching.
 - Nothing cuts off a word or a breath at a scene change.
 - The music ends on purpose, not at the end of the file.
 
+The audio analysis gives each sound a first guess of `voice`, `music` or `sfx`.
+Voice needs both a speech-like level pattern and voice-range pitch, so a hit
+with a speech-like tail is less likely to be mistaken for narration. These are
+guesses, not transcript labels. When you inspect a time range, kind uses the
+whole source span played by the clip; loudness, hits and the other measurements
+still describe the selected range. A short slice of a music bed therefore keeps
+the bed’s kind. Repeated range queries reuse that guess until the source or clip
+changes. If the whole clip cannot be analyzed, the result warns that kind uses
+only the selected range; the range’s other measurements are still returned.
+See [audio analysis](/packages/cli#audio) for the command and output.
+
 To dip the music only where the voice sits instead of turning it all down, use a
 [voiceover carve](/studio/audio-effects#make-music-sit-under-narration).
 
 Music can start after narration begins: the dip then starts at the right level for that moment, and speech that has
 already ended doesn't make a new dip.
+
+<Card title="Practice it: Sound" icon="graduation-cap" href="https://hyperframes.heygen.com/lessons/sound">
+  Free 20-minute lesson with a short video, a quiz and a brief to try. Say the sound in your brief: the music's mood, the voice, and where the music starts and stops.
+</Card>
 
 ## Related topics
 

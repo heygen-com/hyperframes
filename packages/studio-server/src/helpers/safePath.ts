@@ -1,9 +1,27 @@
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { readdirSync, type Dirent } from "node:fs";
-import { realpath, resolveWithinProject as resolveInProject } from "@hyperframes/core/safe-path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  type Dirent,
+  type Stats,
+} from "node:fs";
+import {
+  isStudioPrivatePath,
+  mkdirWithinProject,
+  nodeMayRun,
+  projectPathSegments,
+  realFilePath,
+  resolveWithinProject as resolveInProject,
+  toolTrustedFileKind,
+  type EntryKind,
+} from "@hyperframes/core/safe-path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
-import { STUDIO_MANUAL_EDITS_PATH } from "./manualEditsRenderScript.js";
-import { STUDIO_MOTION_PATH } from "./studioMotionRenderScript.js";
 
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
@@ -13,8 +31,10 @@ export {
   isProjectRootMissing,
   isSafePath,
   mkdirWithinProject,
+  realFilePath,
   realpath,
   realProjectRoot,
+  type EntryKind,
 } from "@hyperframes/core/safe-path";
 
 /** Core's `resolveWithinProject`, closed to the desktop app's private files for every route a request path reaches. */
@@ -23,36 +43,120 @@ export function resolveWithinProject(base: string, relativePath: string): string
   return resolved && !isPrivateProjectFile(base, resolved) ? resolved : null;
 }
 
-/** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
-export function realFilePath(filePath: string): string {
+/** A path inside the project spelled one way: relative to `base`, `/`-separated, no `.` or `..` segments. */
+export function projectRelativePath(base: string, file: string): string {
+  return relative(resolve(base), resolve(file)).split(sep).join("/");
+}
+
+/** For a project-relative path with `/` separators; the bundler applies the same rule to preview builds. */
+export const isPrivateProjectPath = isStudioPrivatePath;
+
+const projectRelatives = (projectDir: string, filePath: string): string[] => {
+  const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
+  return [rel(projectDir, filePath), rel(realFilePath(projectDir), realFilePath(filePath))];
+};
+
+export function isPrivateProjectFile(projectDir: string, filePath: string): boolean {
+  return projectRelatives(projectDir, filePath).some(isPrivateProjectPath);
+}
+
+const WRITABLE_HIDDEN_FOLDERS = new Set([".hyperframes", ".media"]);
+
+/** Writes refuse the project folder, node_modules, hidden paths but Studio's records, and `toolTrustedFileKind` files. */
+export function isWritableProjectPath(relPath: string): boolean {
+  if (!relPath || isPrivateProjectPath(relPath) || toolTrustedFileKind(relPath)) return false;
+  const segments = projectPathSegments(relPath);
+  return segments.every(
+    (segment, at) =>
+      segment !== "" &&
+      segment !== "node_modules" &&
+      (!segment.startsWith(".") || (at === 0 && WRITABLE_HIDDEN_FOLDERS.has(segment))),
+  );
+}
+
+const entryKindAt = (path: string): EntryKind =>
+  statSync(path, { throwIfNoEntry: false })?.isDirectory() ? "folder" : "file";
+
+export function isWritableProjectFile(
+  projectDir: string,
+  filePath: string,
+  kind: EntryKind = entryKindAt(filePath),
+): boolean {
+  return projectRelatives(projectDir, filePath).every((path) =>
+    isWritableInProject(projectDir, path, kind),
+  );
+}
+
+/** `isWritableProjectPath`, and not a script the project's Node tooling may run. */
+export function isWritableInProject(
+  projectDir: string,
+  relPath: string,
+  kind: EntryKind = entryKindAt(resolve(projectDir, relPath)),
+): boolean {
+  return isWritableProjectPath(relPath) && !nodeMayRun(projectDir, relPath, kind);
+}
+
+/**
+ * The first entry below `dir` a folder delete or move must not take along: one a direct delete or rename refuses, a
+ * `toolTrustedFileKind` file or a script Node tooling may run, or `node_modules` or `.git`. Given `to`, a move's
+ * destination, also one arriving where a direct write refuses. Links are not followed; an unreadable folder is refused.
+ */
+export function protectedEntryWithin(projectDir: string, dir: string, to?: string): string | null {
+  const from = projectRelativePath(projectDir, dir);
+  const places = [dir, ...(to === undefined ? [] : [to])].flatMap((at) =>
+    projectRelatives(projectDir, at),
+  );
+  const refused = (sub: string, kind: EntryKind) =>
+    places.some((place) => {
+      const at = place ? `${place}/${sub}` : sub;
+      return toolTrustedFileKind(at) !== null || nodeMayRun(projectDir, at, kind);
+    });
+  const found = refusedEntryBelow(dir, "", refused);
+  return found === null ? null : [from, found].filter(Boolean).join("/") || ".";
+}
+
+const PROTECTED_FOLDERS = new Set(["node_modules", ".git"]);
+
+const kindOf = (entry: Dirent): EntryKind => (entry.isDirectory() ? "folder" : "file");
+
+function refusedEntryBelow(
+  dir: string,
+  sub: string,
+  refused: (sub: string, kind: EntryKind) => boolean,
+): string | null {
+  const entries = folderEntries(dir);
+  if (!entries) return sub;
+  for (const entry of entries) {
+    const at = sub ? `${sub}/${entry.name}` : entry.name;
+    if (refused(at, kindOf(entry))) return at;
+    if (!entry.isDirectory()) continue;
+    if (PROTECTED_FOLDERS.has(projectPathSegments(entry.name)[0] ?? "")) return at;
+    const inside = refusedEntryBelow(join(dir, entry.name), at, refused);
+    if (inside !== null) return inside;
+  }
+  return null;
+}
+
+function folderEntries(dir: string): Dirent[] | null {
   try {
-    return realpath(filePath);
-  } catch {
-    const dir = dirname(filePath);
-    return dir === filePath ? filePath : join(realFilePath(dir), basename(filePath));
+    return readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (UNREADABLE_DIR_CODES.has((err as NodeJS.ErrnoException).code ?? "")) return null;
+    throw err;
   }
 }
 
-// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no route
-// reaches any of it, the folder itself included, but Studio's own files and the app's request pictures.
-const STUDIO_FILES = new Set([STUDIO_MOTION_PATH, STUDIO_MANUAL_EDITS_PATH]);
-const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
-
-/** For a project-relative path with `/` separators. */
-export function isPrivateProjectPath(relPath: string): boolean {
-  const path = relPath.toLowerCase();
-  return (
-    (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
-    !STUDIO_FILES.has(path) &&
-    !STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
-  );
+export function resolveWritableWithinProject(
+  base: string,
+  relativePath: string,
+  kind?: EntryKind,
+): string | null {
+  const resolved = resolveWithinProject(base, relativePath);
+  return resolved && isWritableProjectFile(base, resolved, kind) ? resolved : null;
 }
 
-export function isPrivateProjectFile(projectDir: string, filePath: string): boolean {
-  const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
-  return [rel(projectDir, filePath), rel(realFilePath(projectDir), realFilePath(filePath))].some(
-    isPrivateProjectPath,
-  );
+export function pinWritableWithinProject(base: string, relativePath: string): string | null {
+  return pinResolved(base, resolveWritableWithinProject(base, relativePath));
 }
 
 /**
@@ -75,6 +179,67 @@ function pinResolved(base: string, checked: string | null): string | null {
   return escapes ? null : join(base, inside);
 }
 
+/** True when no entry from `root` down to `dir` is a link. A file in the way is left for mkdir or readdir to report. */
+export function isLinkFreeWithinProject(root: string, dir: string): boolean {
+  const inside = relative(resolve(root), resolve(dir));
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return false;
+  let path = resolve(root);
+  for (const part of inside.split(sep).filter(Boolean)) {
+    path = join(path, part);
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink()) return false;
+    if (!stat?.isDirectory()) return true;
+  }
+  return true;
+}
+
+/** A file Studio keeps under the project, such as a cache entry: a plain file, reached with no link from `root` down. */
+export function isProjectCacheFile(root: string, file: string): boolean {
+  if (!isLinkFreeWithinProject(root, dirname(file))) return false;
+  const stat = lstatSync(file, { throwIfNoEntry: false });
+  return stat !== undefined && isPlainFileWithOneName(stat);
+}
+
+const isPlainFileWithOneName = (stat: Stats) => stat.isFile() && stat.nlink === 1;
+
+const NO_FOLLOW_READ =
+  constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+const sameFile = (a: Stats | undefined, b: Stats) =>
+  a !== undefined && !a.isSymbolicLink() && a.dev === b.dev && a.ino === b.ino;
+
+/** `isProjectCacheFile`'s bytes, opened without following a link, or null; a hard link or one over `maxBytes` is a miss too. */
+export function readProjectCacheFile(root: string, file: string, maxBytes: number): Buffer | null {
+  if (!isLinkFreeWithinProject(root, dirname(file))) return null;
+  let fd: number;
+  try {
+    fd = openSync(file, NO_FOLLOW_READ);
+  } catch {
+    return null;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!isPlainFileWithOneName(stat) || stat.size > maxBytes) return null;
+    // Without O_NOFOLLOW (Windows) the open followed a link, so the name must still be this plain file.
+    if (
+      constants.O_NOFOLLOW === undefined &&
+      !sameFile(lstatSync(file, { throwIfNoEntry: false }), stat)
+    )
+      return null;
+    return readFileSync(fd);
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** `mkdirWithinProject` for the tool's own caches and records: a link on the way would put their files outside the project. */
+export function mkdirOwnedWithinProject(root: string, dir: string): void {
+  if (!isLinkFreeWithinProject(root, dir)) throw new Error(`A link stands in for a folder: ${dir}`);
+  mkdirWithinProject(root, dir);
+}
+
 const IGNORE_DIRS = new Set([
   ".thumbnails",
   ".transcode-cache",
@@ -84,7 +249,8 @@ const IGNORE_DIRS = new Set([
 ]);
 
 function shouldIgnoreDir(rel: string): boolean {
-  return rel === ".hyperframes/backup";
+  const segments = projectPathSegments(rel);
+  return segments.at(-1) === "backup" && segments.at(-2) === ".hyperframes";
 }
 
 /**

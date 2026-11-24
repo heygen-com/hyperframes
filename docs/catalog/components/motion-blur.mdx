@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Motion Blur</h1>
+  <p>After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/motion-blur.json"
   compositionId="motion-blur"
   compositionSrc="compositions/components/motion-blur.html"
   title="Motion Blur"
-  description="After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":767}}
   attribution={{"path":"registry/components/motion-blur","tags":["effect","motion-blur","shutter","after-effects","velocity","animation"]}}
@@ -802,7 +806,9 @@ That writes one file: `compositions/components/motion-blur.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Usage
 
@@ -865,6 +871,4 @@ Tagged `effect` `motion-blur` `shutter` `after-effects` `velocity` `animation`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

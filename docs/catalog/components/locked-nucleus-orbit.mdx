@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Locked Nucleus Orbit</h1>
+  <p>A fixed center nucleus anchors deterministic satellite orbits that settle into a composed lockup.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/locked-nucleus-orbit.json"
   compositionId="locked-nucleus-orbit"
   compositionSrc="compositions/components/locked-nucleus-orbit.html"
   title="Locked Nucleus Orbit"
-  description="A fixed center nucleus anchors deterministic satellite orbits that settle into a composed lockup."
   variables={[{"id":"label","type":"string","role":"content","label":"Nucleus label","description":"Text displayed inside the fixed center nucleus.","default":"core"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the nucleus, rings, and satellite markers.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"satellites","type":"number","role":"layout","label":"Satellites","description":"Number of orbiting copy chips.","default":4,"min":3,"max":6,"step":1}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":353}}
   attribution={{"path":"registry/components/locked-nucleus-orbit","tags":["motion-primitive","intro","reveal","orbit","lockup","deterministic"]}}
@@ -388,7 +392,9 @@ That writes one file: `compositions/components/locked-nucleus-orbit.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -429,6 +435,4 @@ Tagged `motion-primitive` `intro` `reveal` `orbit` `lockup` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

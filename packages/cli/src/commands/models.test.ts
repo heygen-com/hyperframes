@@ -103,7 +103,7 @@ describe("models install parakeet --json", () => {
     expect(await install()).toEqual({
       exitCode: 1,
       threw: true,
-      out: { ok: false, error: "tokens.txt did not match" },
+      out: { ok: false, error: expect.objectContaining({ message: "tokens.txt did not match" }) },
     });
   });
 
@@ -112,7 +112,10 @@ describe("models install parakeet --json", () => {
     expect(await install()).toEqual({
       exitCode: 1,
       threw: true,
-      out: { ok: false, error: "Parakeet needs glibc 2.32 or newer" },
+      out: {
+        ok: false,
+        error: expect.objectContaining({ message: "Parakeet needs glibc 2.32 or newer" }),
+      },
     });
     expect(sherpa.installSherpaRuntime).not.toHaveBeenCalled();
     expect(sherpa.ensureParakeetModel).not.toHaveBeenCalled();
@@ -123,7 +126,10 @@ describe("models install parakeet --json", () => {
     const { exitCode, threw, out } = await install();
     expect(exitCode).toBe(130);
     expect(threw).toBe(false);
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/) });
+    expect(out).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({ message: expect.stringMatching(/cancelled/) }),
+    });
   });
 
   it("stops with exit 130 when cancelled mid-download", async () => {
@@ -134,7 +140,10 @@ describe("models install parakeet --json", () => {
     const { exitCode, threw, out } = await install();
     expect(exitCode).toBe(130);
     expect(threw).toBe(false);
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/) });
+    expect(out).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({ message: expect.stringMatching(/cancelled/) }),
+    });
     expect(sherpa.installSherpaRuntime).toHaveBeenCalledWith({ signal: cancel.signal });
   });
 });
@@ -197,5 +206,39 @@ describe("models list", () => {
       installed: true,
       runner: "parakeet-mlx",
     });
+  });
+});
+
+describe("models list for people", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    consumeCommandResult();
+    sherpa.sherpaUnsupportedReason.mockReturnValue(null);
+    sherpa.sherpaParakeetInstalled.mockReturnValue(true);
+    findParakeet.mockReturnValue(undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  // fails without the fix: a model file's name is printed as it is on disk.
+  it("shows control characters in a model name as text", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    manager.listWhisperModels.mockReturnValue([
+      { model: "sm\u001b[2J\u0007all", path: "/cache/whisper/models/ggml-odd.bin" },
+    ]);
+    await runCommand(modelsCmd, { rawArgs: ["list"] });
+    const printed = log.mock.calls.flat().join("\n");
+    expect(printed).toContain("sm\\x1b[2J\\x07all");
+    expect(printed).not.toContain("\u001b[2J");
+  });
+
+  // fails without the fix: the words after `models` are printed as they were typed.
+  it("shows control characters in an unknown action as text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      modelsCmd.run!({ args: { action: "li\u001b[2J\u0007st", json: false } } as never),
+    ).rejects.toThrow();
+    const printed = error.mock.calls.flat().join("\n");
+    expect(printed).toContain("li\\x1b[2J\\x07st");
+    expect(printed).not.toContain("\u001b[2J");
   });
 });

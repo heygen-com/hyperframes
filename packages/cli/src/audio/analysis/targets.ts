@@ -1,5 +1,8 @@
 import { dirname, join, resolve } from "node:path";
-import { resolveAuthoredAssetFile } from "@hyperframes/parsers/asset-resolution";
+import {
+  namesAnotherNetworkRoot,
+  resolveAuthoredAssetFile,
+} from "@hyperframes/parsers/asset-resolution";
 import type { ProjectTimeline, TimelineRow } from "../../timeline/describeProject.js";
 
 /** Where a file sits in the film: film time = start + (file time − mediaStart) / playbackRate. */
@@ -20,9 +23,12 @@ export interface AudioTarget {
   file: string;
   ref: string | null;
   kind: "audio" | "video" | "file";
+  onAnotherNetworkRoot?: true;
+  refused?: true;
   placement: Placement | null;
   /** The part of the file to analyze, in file seconds; the whole file when absent. */
   window?: { from: number; seconds: number };
+  clip?: { from: number; seconds: number };
 }
 
 export type FilmQuery =
@@ -75,17 +81,25 @@ function targetOf(projectDir: string, row: TimelineRow, query: FilmQuery): Audio
   const placement = placementOf(row);
   const from = query.by === "range" ? Math.max(placement.start, query.start) : placement.start;
   const to = query.by === "range" ? Math.min(placement.end, query.end) : placement.end;
+  const src = row.src!;
+  const asWritten = resolve(dirname(join(projectDir, row.file)), src);
+  const onAnotherNetworkRoot = namesAnotherNetworkRoot(projectDir, asWritten);
   return {
-    path:
-      resolveAuthoredAssetFile(projectDir, row.file, row.src!) ??
-      resolve(dirname(join(projectDir, row.file)), row.src!),
-    file: row.src!,
+    path: onAnotherNetworkRoot
+      ? asWritten
+      : (resolveAuthoredAssetFile(projectDir, row.file, src) ?? asWritten),
+    file: src,
     ref: row.ref || null,
     kind: row.kind as "audio" | "video",
+    ...(onAnotherNetworkRoot ? { onAnotherNetworkRoot } : {}),
     placement,
     window: {
       from: fileTime(placement, from),
       seconds: round((to - from) * placement.playbackRate),
+    },
+    clip: {
+      from: placement.mediaStart,
+      seconds: round((placement.end - placement.start) * placement.playbackRate),
     },
   };
 }

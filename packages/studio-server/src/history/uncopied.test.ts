@@ -108,7 +108,17 @@ describe("project history and media files", () => {
     write("clip.mp4", Buffer.alloc(2 * MiB, 2));
     const entry = (await edit.close())!;
     expect(blobBytes(historyRoot, history)).toBeLessThan(2048);
-    await expect(history.undo(entry.id, { who: you })).rejects.toThrow(/clip\.mp4 is not kept/);
+    const notKept = (text: string) => ({
+      name: "HistoryRefusedError",
+      reason: "not_kept",
+      message: expect.stringContaining(text),
+    });
+    await expect(history.undo(entry.id, { who: you })).rejects.toMatchObject(
+      notKept("An earlier version of clip.mp4 is not kept"),
+    );
+    await expect(
+      history.checkout(entry.id, "before", tempDir("hf-uncopied-out-")),
+    ).rejects.toMatchObject(notKept("The version of clip.mp4 from then is not kept"));
   });
 
   it("reclaims media copies an older version left, and keeps every text copy", async () => {
@@ -135,7 +145,7 @@ describe("project history and media files", () => {
     );
   });
 
-  it("keeps TypeScript source edits undoable, and reclaim leaves their copies", async () => {
+  it("copies TypeScript sources rather than taking them for video, and undo leaves them alone", async () => {
     const { history, historyRoot, projectDir, write } = await project({
       "index.html": "A",
       "setup.ts": "export const a = 1;",
@@ -143,6 +153,7 @@ describe("project history and media files", () => {
     });
     await history.flush();
     const edit = await history.beginWindow(you, "Edit");
+    write("index.html", "B");
     write("setup.ts", "export const a = 2;");
     write("intro.mts", "export const b = 2;");
     const entry = (await edit.close())!;
@@ -151,6 +162,7 @@ describe("project history and media files", () => {
     const reopened = await open(projectDir, historyRoot);
     expect(blobBytes(historyRoot, reopened)).toBeGreaterThan(40);
     expect((await reopened.undo(entry.id, { who: you })).ok).toBe(true);
-    expect(readFileSync(join(projectDir, "setup.ts"), "utf-8")).toBe("export const a = 1;");
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("A");
+    expect(readFileSync(join(projectDir, "setup.ts"), "utf-8")).toBe("export const a = 2;");
   });
 });

@@ -105,6 +105,35 @@ describe("useRenderClipContent", () => {
     return unwrapPeakMarks(content);
   }
 
+  it("keeps one renderer while the timeline's elements change, so no clip redraws for it", () => {
+    const projectIdRef = { current: "my-project" };
+    const compIdToSrc = new Map<string, string>();
+    const renderers: unknown[] = [];
+    function Harness() {
+      renderers.push(
+        useRenderClipContent({
+          projectIdRef,
+          compIdToSrc,
+          activePreviewUrl: null,
+          effectiveTimelineDuration: 12,
+        }),
+      );
+      return null;
+    }
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => root.render(React.createElement(Harness)));
+    act(() =>
+      usePlayerStore.setState({
+        elements: [{ id: "a", tag: "audio", start: 0, duration: 1, track: 1 }],
+      }),
+    );
+    act(() => root.unmount());
+
+    expect(new Set(renderers).size).toBe(1);
+  });
+
   function renderRaw(el: TimelineElement): ReactNode {
     const host = document.createElement("div");
     document.body.append(host);
@@ -159,6 +188,27 @@ describe("useRenderClipContent", () => {
 
     expect(isValidElement(content)).toBe(true);
     if (isValidElement(content)) expect(content.type).toBe(AudioWaveform);
+  });
+
+  it("decodes a file from outside the project only when it is short and its length is known", () => {
+    const remote = (sourceDuration?: number) =>
+      renderClipContent({
+        id: "talk",
+        tag: "audio",
+        start: 0,
+        duration: 4,
+        track: 1,
+        src: "https://cdn.example.com/talk.mp3",
+        sourceDuration,
+      });
+    const audioUrlOf = (content: ReactNode) =>
+      isValidElement<{ audioUrl: string; waveformUrl?: string }>(content)
+        ? [content.props.audioUrl, content.props.waveformUrl]
+        : null;
+
+    expect(audioUrlOf(remote(180))).toEqual(["https://cdn.example.com/talk.mp3", undefined]);
+    expect(audioUrlOf(remote(62 * 60))).toEqual(["", undefined]);
+    expect(audioUrlOf(remote())).toEqual(["", undefined]);
   });
 
   it("routes root-relative iframe media back through the active project", () => {

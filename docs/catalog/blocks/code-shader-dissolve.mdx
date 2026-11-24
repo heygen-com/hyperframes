@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Code Shader Dissolve</h1>
+  <p>The code compiles into existence: a GPU fragment shader resolves it out of seeded noise with a chromatic dissolve front and edge glow, then holds crisp.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/code-shader-dissolve.json"
   compositionId="code-shader-dissolve"
   compositionSrc="compositions/code-shader-dissolve.html"
   title="Code Shader Dissolve"
-  description="The code compiles into existence: a GPU fragment shader resolves it out of seeded noise with a chromatic dissolve front and edge glow, then holds crisp."
   variables={[]}
   meta={{"duration":7,"width":1920,"height":1080,"category":"Code Animations","badge":"Stable","codeLines":538}}
   attribution={{"path":"registry/blocks/code-shader-dissolve","tags":["code","code-animation","shader","webgl","developer"]}}
@@ -573,7 +577,9 @@ That writes one file: `compositions/code-shader-dissolve.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -604,6 +610,4 @@ Tagged `code` `code-animation` `shader` `webgl` `developer`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

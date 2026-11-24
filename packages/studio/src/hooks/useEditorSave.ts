@@ -3,6 +3,8 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import {
   StudioFileConflictError,
   buildStudioSaveFailureProperties,
+  getStudioSaveErrorMessage,
+  heldFileWords,
   trackStudioSaveFailure,
   type StudioSaveDrainResult,
 } from "../utils/studioSaveDiagnostics";
@@ -75,7 +77,7 @@ export function useEditorSave({
       const fingerprint = JSON.stringify([
         path,
         errorName,
-        properties.error_message,
+        getStudioSaveErrorMessage(error),
         properties.status_code,
       ]);
       const previous = lastFailureReportRef.current;
@@ -93,7 +95,8 @@ export function useEditorSave({
       ) {
         lastFailureToastAtRef.current = now;
         showToast(
-          `Couldn't save ${path}. Your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
+          heldFileWords(error) ??
+            `Couldn't save ${path}. Your latest edits are NOT persisted. Check the preview server; editing again retries the save.`,
           "error",
         );
       }

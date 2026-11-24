@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Code Terminal Run</h1>
+  <p>A token-chrome terminal panel runs one command: the prompt line types deterministically behind an integer-cycle caret, executes after a beat, and output lines print one per cue before a fresh prompt appears.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/code-terminal-run.json"
   compositionId="code-terminal-run"
   compositionSrc="compositions/components/code-terminal-run.html"
   title="Code Terminal Run"
-  description="A token-chrome terminal panel runs one command: the prompt line types deterministically behind an integer-cycle caret, executes after a beat, and output lines print one per cue before a fresh prompt appears."
   variables={[{"id":"prompt_glyph","type":"string","role":"style","label":"Prompt glyph","description":"Leading glyph before the command and the trailing prompt. Empty string hides it.","default":"$"},{"id":"cadence","type":"enum","role":"timing","label":"Cadence","description":"Keystroke rhythm: uniform fixed steps or seeded human chunks.","default":"human","options":[{"value":"uniform","label":"Uniform"},{"value":"human","label":"Human"}]},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated seconds relative to mount start; cue N sets when output line N prints. Empty uses the authored rhythm.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color of the prompt glyph and caret.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Outgoing transition. Frame roots own transitions; none holds the end frame.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":560}}
   attribution={{"path":"registry/components/code-terminal-run","tags":["motion-primitive","product-demo","terminal","typing","deterministic"]}}
@@ -595,7 +599,9 @@ That writes one file: `compositions/components/code-terminal-run.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -638,6 +644,4 @@ Tagged `motion-primitive` `product-demo` `terminal` `typing` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

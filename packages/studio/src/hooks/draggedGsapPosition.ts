@@ -9,33 +9,7 @@ import { STUDIO_EDIT_MOMENT_ATTR, type EditMoment } from "../components/editor/m
  * it without pulling the GSAP commit graph into its module scope.
  */
 
-const cssValue = (style: CSSStyleDeclaration, prop: string) => {
-  const value = style.getPropertyValue(prop).trim();
-  return value === "none" ? "" : value;
-};
-
-// Without GSAP, the rotation GSAP will parse from the CSS `rotate`, `scale` and `transform`; with
-// `withRotate` false, only the part `scale` and `transform` draw. GSAP folds them into one transform,
-// and a list the browser rejects (e.g. `rotate: x 30deg`) leaves it only the plain transform.
-export function readCssRotation(element: HTMLElement, withRotate = true): number {
-  const view = element.ownerDocument.defaultView;
-  if (!view) return 0;
-  const style = view.getComputedStyle(element);
-  const rotate = withRotate ? cssValue(style, "rotate") : "";
-  const scale = cssValue(style, "scale");
-  const transform = cssValue(style, "transform");
-  const angle = (list: string) => {
-    if (!list) return 0;
-    const m = new view.DOMMatrix(list);
-    return (Math.atan2(m.b, m.a) * 180) / Math.PI;
-  };
-  const folded = [rotate && `rotate(${rotate})`, scale && `scale(${scale.split(/\s+/).join(",")})`];
-  try {
-    return angle([...folded, transform].join(" ").trim());
-  } catch {
-    return angle(transform);
-  }
-}
+export const DRAG_MOVING_ATTR = "data-hf-drag-gsap-moving";
 
 export interface DragStamp {
   origX: number;
@@ -44,6 +18,23 @@ export interface DragStamp {
   baseY: number;
   at?: EditMoment;
   frozen?: boolean;
+  moving?: true;
+}
+
+/** Writes the gesture-start stamp `readDragStamp` reads. The member's JS values are re-stamped before the commit
+ *  because a mid-gesture re-render can wipe these attributes, and without the base the drop re-adds the drag. */
+export function stampGestureBase(
+  el: HTMLElement,
+  initialOffset: { x: number; y: number },
+  baseGsap: { x: number; y: number },
+  moving = false,
+): void {
+  if (moving) el.setAttribute(DRAG_MOVING_ATTR, "");
+  else el.removeAttribute(DRAG_MOVING_ATTR);
+  el.setAttribute("data-hf-drag-gsap-base-x", String(baseGsap.x));
+  el.setAttribute("data-hf-drag-gsap-base-y", String(baseGsap.y));
+  el.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));
+  el.setAttribute("data-hf-drag-initial-offset-y", String(initialOffset.y));
 }
 
 /** The drag-start attributes as they are now; NaN for an absent base. */
@@ -55,6 +46,7 @@ export function readDragStamp(element: HTMLElement): DragStamp {
     baseX: read("data-hf-drag-gsap-base-x"),
     baseY: read("data-hf-drag-gsap-base-y"),
     at: readEditMoment(element),
+    ...(element.getAttribute(DRAG_MOVING_ATTR) !== null && { moving: true }),
   };
 }
 

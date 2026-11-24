@@ -15,7 +15,7 @@ import {
   mediaTreatmentCommand,
   resolveMediaTreatmentSource,
 } from "./media-treatment.js";
-import { CliRuntimeError } from "../utils/commandResult.js";
+import { CliRuntimeError, CliUsageError } from "../utils/commandResult.js";
 import {
   COLOR_GRADING_TOP_LEVEL_KEYS,
   validateColorGradingContract,
@@ -165,10 +165,27 @@ describe("applyMediaTreatmentToHtml", () => {
     );
   });
 
+  it("resolves every name the overview prints for an area to that area", () => {
+    const correction = getMediaTreatmentCapabilityDetail("correction");
+    expect(correction).toMatchObject({ id: "correction" });
+    expect(getMediaTreatmentCapabilityDetail("Adjust")).toEqual(correction);
+    expect(getMediaTreatmentCapabilityDetail("adjust")).toEqual(correction);
+    expect(getMediaTreatmentCapabilityDetail("Color Grading")).toMatchObject({ id: "grading" });
+    expect(() => getMediaTreatmentCapabilityDetail("adjustments")).toThrow(
+      /Unknown media-treatment capability/,
+    );
+  });
+
+  it("takes the payload key an agent copies from --grading as the area name", () => {
+    expect(getMediaTreatmentCapabilityDetail("preset")).toEqual(
+      getMediaTreatmentCapabilityDetail("presets"),
+    );
+  });
+
   it("lists the area ids the lookup accepts when a capability is unknown", () => {
     let message = "";
     try {
-      getMediaTreatmentCapabilityDetail("adjust");
+      getMediaTreatmentCapabilityDetail("adjustments");
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
@@ -203,6 +220,24 @@ describe("applyMediaTreatmentToHtml", () => {
     expect(result.value).toContain('"preset":"warm-daylight"');
     expect(result.value).toContain('"intensity":0.8');
     expect(result.html).toContain("data-color-grading=");
+  });
+
+  it("says what media the file has when the selector matches none", () => {
+    expect(() => applyMediaTreatmentToHtml(VIDEO, { selector: "#prepared", grading: {} })).toThrow(
+      "Selector did not match: #prepared. Media in the file: video#hero.",
+    );
+    expect(() =>
+      applyMediaTreatmentToHtml(SEGMENTS, { selector: "#prepared", grading: {} }),
+    ).toThrow('video[src="a.mp4"], video[src="b.mp4"].');
+  });
+
+  it("says the file has no media yet when preparation added none", () => {
+    expect(() =>
+      applyMediaTreatmentToHtml("<!doctype html><html><body></body></html>", {
+        selector: "#prepared",
+        grading: {},
+      }),
+    ).toThrow("Selector did not match: #prepared. The file has no <video>, <img> or <canvas> yet.");
   });
 
   it("treats every video a selector matches alike", () => {
@@ -662,6 +697,93 @@ describe("applyMediaTreatmentToHtml", () => {
     }
   });
 
+  // fails without the fix: the selector is repeated as it was typed.
+  it("shows control characters in the selector of a preview as text", async () => {
+    const esc = String.fromCharCode(27);
+    const project = mkdtempSync(join(tmpdir(), "hf-media-odd-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    writeFileSync(join(project, "index.html"), VIDEO);
+    const selector = `#hero:not([title="od${esc}[2Jd\x07"])`;
+    const grading = '{"preset":"warm-daylight","intensity":0.8}';
+    try {
+      await runCommand(mediaTreatmentCommand, {
+        rawArgs: ["--project", project, "--selector", selector, "--grading", grading, "--dry-run"],
+      });
+      const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain('#hero:not([title="od\\x1b[2Jd\\x07"])');
+      expect(printed).not.toContain(`${esc}[2J`);
+      expect(printed).not.toContain("\x07");
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("takes --grading from a file, and tells a quote-stripped value to use one", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-grading-file-"));
+    writeFileSync(join(project, "index.html"), VIDEO);
+    writeFileSync(join(project, "g.json"), '{"preset":"warm-daylight","intensity":0.8}');
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const run = (grading: string) =>
+      runCommand(mediaTreatmentCommand, {
+        rawArgs: [
+          "--project",
+          project,
+          "--selector",
+          "#hero",
+          "--grading",
+          grading,
+          "--dry-run",
+          "--json",
+        ],
+      });
+    try {
+      await run(join(project, "g.json"));
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        changed: true,
+      });
+      await expect(run("{preset:warm-daylight,intensity:0.8}")).rejects.toThrow(CliRuntimeError);
+      expect(JSON.stringify([...error.mock.calls, ...log.mock.calls])).toContain(
+        "--grading payload.json",
+      );
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a relative --grading file from the project, not from where the command runs", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-grading-rel-"));
+    mkdirSync(join(project, "assets"));
+    writeFileSync(join(project, "index.html"), VIDEO);
+    writeFileSync(join(project, "assets", "g.json"), '{"preset":"warm-daylight"}');
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await runCommand(mediaTreatmentCommand, {
+        rawArgs: [
+          "--project",
+          project,
+          "--selector",
+          "#hero",
+          "--grading",
+          "assets/g.json",
+          "--dry-run",
+          "--json",
+        ],
+      });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        changed: true,
+      });
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("finds a clip inside a mounted scene and edits it in its own file", async () => {
     const project = mkdtempSync(join(tmpdir(), "hf-media-scene-"));
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -689,6 +811,101 @@ describe("applyMediaTreatmentToHtml", () => {
       expect(
         gradingsOf(readFileSync(join(project, "compositions", "intro.html"), "utf8")),
       ).not.toEqual([null]);
+      expect(readFileSync(join(project, "index.html"), "utf8")).toBe(root);
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("previews and grades a clip in a nested template scene without changing its parents", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-nested-scene-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const root = '<div data-composition-src="compositions/outer.html"></div>';
+    const outer = '<template><div data-composition-src="compositions/inner.html"></div></template>';
+    const inner = '<template><video id="hero" src="hero.mp4"></video></template>';
+    mkdirSync(join(project, "compositions"));
+    writeFileSync(join(project, "index.html"), root);
+    writeFileSync(join(project, "compositions/outer.html"), outer);
+    writeFileSync(join(project, "compositions/inner.html"), inner);
+    const args = [
+      "--project",
+      project,
+      "--selector",
+      "#hero",
+      "--grading",
+      '{"preset":"warm-daylight"}',
+      "--json",
+    ];
+    try {
+      await runCommand(mediaTreatmentCommand, { rawArgs: [...args, "--dry-run"] });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        file: "compositions/inner.html",
+        dryRun: true,
+        changed: true,
+      });
+      expect(readFileSync(join(project, "compositions/inner.html"), "utf8")).toBe(inner);
+
+      await runCommand(mediaTreatmentCommand, { rawArgs: [...args, "--apply"] });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        file: "compositions/inner.html",
+        changed: true,
+      });
+      expect(readFileSync(join(project, "compositions/inner.html"), "utf8")).toContain(
+        "data-color-grading=",
+      );
+      expect(readFileSync(join(project, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(project, "compositions/outer.html"), "utf8")).toBe(outer);
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("requires --file for a selector shared by the root and a nested template scene", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-nested-ambiguous-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const root =
+      '<video id="hero" src="root.mp4"></video><div data-composition-src="outer.html"></div>';
+    const outer = '<template><div data-composition-src="inner.html"></div></template>';
+    const inner = '<template><video id="hero" src="inner.mp4"></video></template>';
+    for (const [file, html] of Object.entries({
+      "index.html": root,
+      "outer.html": outer,
+      "inner.html": inner,
+    })) {
+      writeFileSync(join(project, file), html);
+    }
+    const args = [
+      "--project",
+      project,
+      "--selector",
+      "#hero",
+      "--grading",
+      '{"preset":"warm-daylight"}',
+      "--apply",
+      "--json",
+    ];
+    try {
+      await expect(runCommand(mediaTreatmentCommand, { rawArgs: args })).rejects.toThrow(
+        CliRuntimeError,
+      );
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: false,
+        error: { message: expect.stringContaining("index.html, inner.html; pass --file") },
+      });
+      expect(readFileSync(join(project, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(project, "outer.html"), "utf8")).toBe(outer);
+      expect(readFileSync(join(project, "inner.html"), "utf8")).toBe(inner);
+
+      await runCommand(mediaTreatmentCommand, { rawArgs: [...args, "--file", "inner.html"] });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        file: "inner.html",
+      });
+      expect(readFileSync(join(project, "inner.html"), "utf8")).toContain("data-color-grading=");
       expect(readFileSync(join(project, "index.html"), "utf8")).toBe(root);
     } finally {
       log.mockRestore();
@@ -776,7 +993,7 @@ describe("applyMediaTreatmentToHtml", () => {
         runCommand(mediaTreatmentCommand, {
           rawArgs: ["--project", project, "--selector", "#hero", "--grading", grading],
         }),
-      ).rejects.toThrow(CliRuntimeError);
+      ).rejects.toThrow(CliUsageError);
       expect(error).toHaveBeenLastCalledWith(expect.stringContaining("--grading requires --apply"));
       expect(readFileSync(file, "utf8")).toBe(VIDEO);
 

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Speech Bubble</h1>
+  <p>Hand-drawn speech bubble with a positionable tail: outline draws on, paper fill fades in, handwritten text types per character; boils</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/hw-text-cloud.json"
   compositionId="hw-text-cloud"
   compositionSrc="compositions/hw-text-cloud.html"
   title="Speech Bubble"
-  description="Hand-drawn speech bubble with a positionable tail: outline draws on, paper fill fades in, handwritten text types per character; boils"
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":286}}
   attribution={{"path":"registry/blocks/hw-text-cloud","tags":["handwritten","speech-bubble","overlay"]}}
@@ -321,7 +325,9 @@ That writes `compositions/hw-text-cloud.html`, plus 1 supporting file under `ass
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -352,6 +358,4 @@ Tagged `handwritten` `speech-bubble` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

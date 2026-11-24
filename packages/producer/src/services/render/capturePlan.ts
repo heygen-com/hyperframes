@@ -232,7 +232,7 @@ function replanSegmentedAfterFailure(
     failure.kind === "draw_element_verification" || failure.kind === "draw_element_capture";
   return createCapturePlan({
     ...plan,
-    forceScreenshot: keepSegmenting || failure.kind === "capture_failure",
+    forceScreenshot: plan.forceScreenshot || keepSegmenting || failure.kind === "capture_failure",
     useStreamingEncode: true,
     useLayeredComposite: false,
     useSegmentedCapture: keepSegmenting,

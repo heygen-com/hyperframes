@@ -49,6 +49,29 @@ describe("isPathInside", () => {
     expect(isPathInside(resolve("/foo/bar/../../etc/passwd"), resolve("/foo/bar"))).toBe(false);
   });
 
+  it("returns true for a child whose name starts with two dots", () => {
+    // `..assets` is an ordinary directory name, not a parent-dir segment.
+    expect(isPathInside(resolve("/foo/bar/..assets/logo.png"), resolve("/foo/bar"))).toBe(true);
+    expect(isPathInside(resolve("/foo/bar/..intro.mp4"), resolve("/foo/bar"))).toBe(true);
+    expect(
+      isPathInside(
+        win32.resolve("C:\\project\\..fonts\\Inter.woff2"),
+        win32.resolve("C:\\project"),
+        {
+          pathModule: win32,
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("still rejects a Windows child above the parent", () => {
+    expect(
+      isPathInside(win32.resolve("C:\\project\\..\\secret.txt"), win32.resolve("C:\\project"), {
+        pathModule: win32,
+      }),
+    ).toBe(false);
+  });
+
   it("normalises trailing slashes on parent", () => {
     expect(isPathInside(resolve("/foo/bar/baz"), resolve("/foo/bar/"))).toBe(true);
   });

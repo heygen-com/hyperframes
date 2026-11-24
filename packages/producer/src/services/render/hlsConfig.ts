@@ -12,7 +12,8 @@
  * `lockGopForChunkConcat: true, gopSize`.
  */
 
-import { fpsToNumber, type Fps } from "@hyperframes/core";
+import { keyframeIntervalToGopSize } from "@hyperframes/engine";
+import type { Fps } from "@hyperframes/core";
 
 /** ffmpeg's own `-hls_time` default is 2 s; 4 s is the VOD consumer's ask. */
 export const DEFAULT_HLS_SEGMENT_SECONDS = 4;
@@ -79,7 +80,7 @@ export function resolveHlsSegmentSeconds(config: HlsRenderConfig): number {
  * pathologically low fps must not turn that into a render-time crash.
  */
 export function resolveHlsGopSize(fps: Fps, segmentSeconds: number): number {
-  return Math.max(1, Math.round(fpsToNumber(fps) * segmentSeconds));
+  return keyframeIntervalToGopSize(fps, segmentSeconds);
 }
 
 /**

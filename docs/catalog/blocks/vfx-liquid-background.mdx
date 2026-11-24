@@ -7,11 +7,15 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Liquid Background</h1>
+  <p>Organic liquid simulation with vertex displacement on a subdivided plane. HTML content floats above rippling fluid surface with real-time wave dynamics.</p>
+</div>
+
 <CatalogDetail
   compositionId="vfx-liquid-background"
   compositionSrc="compositions/vfx-liquid-background.html"
   title="Liquid Background"
-  description="Organic liquid simulation with vertex displacement on a subdivided plane. HTML content floats above rippling fluid surface with real-time wave dynamics."
   variables={[]}
   meta={{"duration":12,"width":1920,"height":1080,"category":"HTML-in-Canvas","badge":"Experimental","codeLines":1244}}
   attribution={{"path":"registry/blocks/vfx-liquid-background","tags":["html-in-canvas","liquid","webgl","displacement","background"]}}
@@ -1280,7 +1284,9 @@ That writes one file: `compositions/vfx-liquid-background.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 <Danger>
   Live preview needs the `chrome://flags/#canvas-draw-element` flag switched on.
@@ -1324,6 +1330,4 @@ Tagged `html-in-canvas` `liquid` `webgl` `displacement` `background`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

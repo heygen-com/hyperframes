@@ -29,6 +29,16 @@ export {
   type RemoveBackgroundResult,
 } from "./api/removeBackground.js";
 
+export {
+  offloadHeavyMedia,
+  type GifPrep,
+  type OffloadOptions,
+  type OffloadedMedia,
+  type Reencoder,
+  type UploadableFile,
+} from "./cloud/offload.js";
+export type { DiskFile, StagedFile } from "./utils/publishProject.js";
+
 /** Transcribe media to `dir`/transcript.json, or import or export a transcript file. */
 export function transcribe(options: TranscribeOptions): Promise<TranscribeResult> {
   return runTranscribe(options);

@@ -1,11 +1,12 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
+  createStagingDir,
   atomicTempPath,
   createFileAtomically,
   isAtomicTempPath,
@@ -164,6 +165,26 @@ describe("replaceFileAtomically", () => {
   });
 });
 
+describe("replaceFileAtomically on a read-only file", () => {
+  // Root writes through read-only files, so the refusal is the owner's, as every system answers it.
+  it.skipIf(process.getuid?.() === 0)("refuses it and leaves it as it was", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atomic-file-readonly-test-"));
+    const file = join(dir, "index.html");
+    writeFileSync(file, "kept");
+    fs.chmodSync(file, 0o444);
+    try {
+      expect(() => replaceFileAtomically(file, "replaced", 0o444)).toThrow(
+        expect.objectContaining({ code: expect.stringMatching(/^(EACCES|EPERM)$/) }),
+      );
+      expect(readFileSync(file, "utf-8")).toBe("kept");
+      expect(fs.readdirSync(dir)).toEqual(["index.html"]);
+    } finally {
+      fs.chmodSync(file, 0o644);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("createFileAtomically", () => {
   const dirs: string[] = [];
 
@@ -241,7 +262,7 @@ describe("createFileAtomically", () => {
     };
   }
 
-  it.each(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR"])(
+  it.each(["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EISDIR", "EACCES"])(
     "writes directly on a volume without hard links (%s)",
     (code) => {
       const dir = tempDir();
@@ -381,9 +402,15 @@ describe("createFileAtomically", () => {
   });
 });
 
+// Only Windows holds a file a moment after its reader is done, so only there is a refused rename tried again.
 describe("replaceFileAtomically on a busy target", () => {
   const dirs: string[] = [];
+  const platform = process.platform;
+  beforeEach(() =>
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true }),
+  );
   afterEach(() => {
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
@@ -414,11 +441,11 @@ describe("replaceFileAtomically on a busy target", () => {
     expect(attempts()).toBe(3);
   });
 
-  it("gives up after five attempts and keeps the old file", () => {
+  it("gives up after eight attempts and keeps the old file", () => {
     const { dir, file, operations, attempts } = renamingAfter(Infinity, "EBUSY");
 
     expect(() => replaceFileAtomically(file, "new", 0o644, operations)).toThrow("EBUSY");
-    expect(attempts()).toBe(5);
+    expect(attempts()).toBe(8);
     expect(readFileSync(file, "utf-8")).toBe("old");
     expect(fs.readdirSync(dir)).toEqual(["index.html"]);
   });
@@ -508,5 +535,70 @@ describe.skipIf(process.platform === "win32")("resolveWritePath", () => {
     expect(() => resolveWritePath(join(base, "root/a.html"))).toThrow(
       expect.objectContaining({ code: "ELOOP" }),
     );
+  });
+});
+
+describe("HF_WRITE_TRACE", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("records one line per replaced .html when it names a file, and nothing when unset", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-write-trace-"));
+    const trace = join(dir, "trace.log");
+    try {
+      replaceFileAtomically(join(dir, "a.html"), "<p>one</p>");
+      expect(fs.existsSync(trace)).toBe(false);
+
+      vi.stubEnv("HF_WRITE_TRACE", trace);
+      replaceFileAtomically(join(dir, "a.html"), "<p>two</p>");
+      replaceFileAtomically(join(dir, "data.json"), "{}");
+
+      const lines = readFileSync(trace, "utf8").trim().split("\n");
+      expect(lines).toHaveLength(1);
+      const line = JSON.parse(lines[0]!);
+      expect(line).toMatchObject({ kind: "write", file: "a.html", size: 10 });
+      expect(line.hash).toBe(
+        crypto.createHash("sha256").update("<p>two</p>").digest("hex").slice(0, 8),
+      );
+      expect(line.stack[0]).toContain("replaceFileAtomically");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("createStagingDir", () => {
+  const dirs: string[] = [];
+  const root = () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-staging-"));
+    dirs.push(dir);
+    return dir;
+  };
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("makes a fresh private directory named like mkdtemp's: the prefix and 6 letters or digits", () => {
+    const parent = root();
+    const first = createStagingDir(parent, ".stage-");
+    const second = createStagingDir(parent, ".stage-");
+    expect(first).not.toBe(second);
+    expect(first).toBe(join(parent, basename(first)));
+    expect(basename(first)).toMatch(/^\.stage-[A-Za-z0-9]{6}$/);
+    expect(fs.statSync(first).isDirectory()).toBe(true);
+    if (process.platform !== "win32") expect(fs.statSync(first).mode & 0o777).toBe(0o700);
+  });
+
+  it("does not create the parent", () => {
+    expect(() => createStagingDir(join(root(), "missing"), ".s-")).toThrow(/ENOENT/);
+  });
+
+  it.runIf(process.platform === "win32")("works when the full path passes 260 characters", () => {
+    let parent = root();
+    while (parent.length < 280) parent = join(parent, "d".repeat(40));
+    fs.mkdirSync(parent, { recursive: true });
+    const dir = createStagingDir(parent, ".stage-");
+    expect(dir.length).toBeGreaterThan(260);
+    expect(dir.startsWith("\\\\?\\")).toBe(false);
+    expect(fs.statSync(dir).isDirectory()).toBe(true);
   });
 });
