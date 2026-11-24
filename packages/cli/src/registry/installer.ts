@@ -31,6 +31,7 @@ export interface InstallOptions {
   destDir: string;
   /** Base URL of the registry. Defaults to the official public registry. */
   baseUrl?: string;
+  publicOnly?: boolean;
   /** Overwrite files the project has changed since they were installed. */
   force?: boolean;
   /**
@@ -376,7 +377,7 @@ async function prepareOneFile(
     return { destPath, target: file.target, preserved: true, hash: null, vars: null, bytes: null };
   }
 
-  let bytes = await fetchItemFile(item, file, baseUrl, budget);
+  let bytes = await fetchItemFile(item, file, baseUrl, budget, options.publicOnly);
   if (isInstalledRegistryBlockComposition(item, file)) {
     bytes = Buffer.from(addRegistryItemMarker(bytes.toString("utf8"), item));
   }
