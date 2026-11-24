@@ -620,6 +620,25 @@ describe("compositeAndEncode when a process dies", () => {
     expect(error.message).toContain("Cannot allocate memory (killed by SIGSEGV)");
   });
 
+  it("does not repeat a composite failure the error already names", async () => {
+    const base = request();
+    const log: string[] = [];
+    const deps = dying(log, { ok: false, error: "FFmpeg exited with code 255" });
+    deps.spawnComposite = () => ({
+      overlays: new PassThrough().resume(),
+      frames: chunked(3 * 4 * 2 * 6, 7),
+      wait: async () => ({ ok: false, error: "FFmpeg exited with code 255" }),
+      drop: () => undefined,
+    });
+    const error = await compositeAndEncode(
+      { ...base, plan: plan(base), overlayFrames: framesOf(threePngs()), outputPath: outputPath() },
+      deps,
+    ).catch((e) => e);
+    expect(error.message).toBe(
+      "hdrPassthrough: ffmpeg composite failed: FFmpeg exited with code 255",
+    );
+  });
+
   it("leaves a decline's own error as it is", async () => {
     const base = request();
     const log: string[] = [];

@@ -397,7 +397,7 @@ async function* wholeFrames(chunks: AsyncIterable<Buffer>, frameBytes: number) {
 function processExits(
   composite: { ok: boolean; error: string } | undefined,
   encoder: Pick<StreamingEncoder, "getExitStatus" | "getExitError" | "getExitSignal">,
-): string {
+): string[] {
   const exits: string[] = [];
   if (composite && !composite.ok) exits.push(`ffmpeg composite failed: ${composite.error}`);
   if (encoder.getExitStatus() !== "running") {
@@ -405,18 +405,18 @@ function processExits(
     const error = encoder.getExitError() ?? "exited";
     exits.push(`encoder: ${error}${signal ? ` (killed by ${signal})` : ""}`);
   }
-  return exits.join("; ");
+  return exits;
 }
 
 /**
- * `error` with `exits` appended to its message, when it is a plain error (a
- * failed write or read); an error of its own kind (a decline) is left as it
- * is, its detail unchanged.
+ * `error` with each of `exits` its message does not already say appended,
+ * when it is a plain error (a failed write or read); an error of its own
+ * kind (a decline) is left as it is, its detail unchanged.
  */
-function withExits(error: unknown, exits: string): unknown {
-  if (exits && error instanceof Error && error.constructor === Error) {
-    error.message = `${error.message}; ${exits}`;
-  }
+function withExits(error: unknown, exits: readonly string[]): unknown {
+  if (!(error instanceof Error) || error.constructor !== Error) return error;
+  const unsaid = exits.filter((exit) => !error.message.includes(exit.split("\n")[0] ?? exit));
+  if (unsaid.length > 0) error.message = `${error.message}; ${unsaid.join("; ")}`;
   return error;
 }
 
