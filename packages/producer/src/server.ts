@@ -417,8 +417,11 @@ function resolvePreparedRenderOutput(
     if (!isSafePath(rendersDir, absoluteOutputPath)) {
       throw new Error("outputPath must be inside the renders directory");
     }
-    if (anotherAccountCanChange(outputDir, rendersDir)) {
-      throw new Error("outputPath must be in a folder only this server's account can change");
+    const foreign = folderAnotherAccountCanChange(outputDir, rendersDir);
+    if (foreign) {
+      throw new Error(
+        `outputPath must be in a folder only this server's account can change; another account can change ${foreign}`,
+      );
     }
   }
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true, mode: SERVER_FOLDER_MODE });
@@ -430,11 +433,11 @@ const STICKY_BIT = 0o1000;
 const SERVER_FOLDER_MODE = 0o755;
 
 /** A shared sticky root such as /tmp is allowed; any folder below it must be this account's alone. */
-function anotherAccountCanChange(dir: string, rendersDir: string): boolean {
+function folderAnotherAccountCanChange(dir: string, rendersDir: string): string | undefined {
   const foreign = foreignWritablePath(dir, rendersDir);
-  if (!foreign) return false;
-  const root = resolve(rendersDir);
-  return foreign !== root || (lstatSync(root).mode & STICKY_BIT) === 0;
+  const stickyRoot =
+    foreign === resolve(rendersDir) && (lstatSync(foreign).mode & STICKY_BIT) !== 0;
+  return stickyRoot ? undefined : foreign;
 }
 
 type PreparedRenderJob =
@@ -679,7 +682,7 @@ function resolveOutputPath(
 interface OutputArtifact {
   path: string;
   identity: string | undefined;
-  /** Held open until the token is forgotten, so the file's inode number cannot pass to a new file. */
+  /** A server-named file is held open until its token is forgotten, so its inode number cannot pass on. */
   pin: number | undefined;
   /** The server chose the name: the file goes once downloaded or expired. A caller's outputPath stays. */
   serverNamed: boolean;
@@ -715,9 +718,13 @@ function createArtifactStore(ttlMs: number, log: ProducerLogger) {
 
   return {
     register(path: string, serverNamed: boolean): string {
-      const pin = openNoFollow(path);
-      const identity =
-        pin === undefined ? undefined : fileIdentity(fstatSync(pin, { bigint: true }));
+      // A caller's file is its to delete after reading it from disk, so only a server-named file is held open.
+      const pin = serverNamed ? openNoFollow(path) : undefined;
+      const stat =
+        pin === undefined
+          ? lstatSync(path, { bigint: true, throwIfNoEntry: false })
+          : fstatSync(pin, { bigint: true });
+      const identity = stat && fileIdentity(stat);
       const token = crypto.randomUUID();
       artifacts.set(token, { path, identity, pin, serverNamed, expiresAtMs: Date.now() + ttlMs });
       return token;
@@ -1183,7 +1190,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     }
     const { size } = fstatSync(fd);
     const body = createReadStream("", { fd });
-    // Only a download read to the end removes it; an interrupted one may retry until the token expires.
+    // Removed once read to the end; a read that stops early leaves it until the token expires.
     if (artifact.serverNamed) body.once("end", () => store.forget(token));
     return new Response(body as unknown as ReadableStream, {
       headers: {

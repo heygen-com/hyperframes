@@ -4,6 +4,8 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
+  readlinkSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -111,14 +113,30 @@ describe("producer outputs: download tokens", () => {
     expect(await res.text()).not.toContain("not a render");
   });
 
-  it("never serves another file put at the output's name", async () => {
-    const { app, rendersDir } = setup();
-    const { outputPath, outputUrl } = await render(app, { outputPath: join(rendersDir, "b.mp4") });
+  it("never serves another file put at the name of a render the server named", async () => {
+    const { app } = setup();
+    const { outputPath, outputUrl } = await render(app, {});
     rmSync(outputPath);
     writeFileSync(outputPath, "someone else's file");
     const res = await download(app, outputUrl);
     expect(res.status).toBe(404);
     expect(await res.text()).not.toContain("someone else's file");
+  });
+});
+
+describe.skipIf(!existsSync("/proc/self/fd"))("producer outputs: open files", () => {
+  it("holds nothing open on an output the caller named, so deleting it frees the space", async () => {
+    const { app, rendersDir } = setup();
+    const { outputPath } = await render(app, { outputPath: join(rendersDir, "theirs.mp4") });
+    rmSync(outputPath);
+    const open = readdirSync("/proc/self/fd").map((fd) => {
+      try {
+        return readlinkSync(join("/proc/self/fd", fd));
+      } catch {
+        return "";
+      }
+    });
+    expect(open.filter((target) => target.startsWith(outputPath))).toEqual([]);
   });
 });
 
@@ -136,7 +154,7 @@ describe.skipIf(noUid)("producer outputs: renders folder", () => {
     chmodSync(shared, 0o777);
     const { status, error } = await render(app, { outputPath: join(shared, "sub", "x.mp4") });
     expect(status).toBe(400);
-    expect(error).toContain("only this server's account");
+    expect(error).toContain(`another account can change ${shared}`);
     expect(existsSync(join(shared, "sub"))).toBe(false);
   });
 
