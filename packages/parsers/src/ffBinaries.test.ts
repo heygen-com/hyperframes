@@ -538,6 +538,62 @@ describe("mediaInputFormatArgs", () => {
     expect(existsSync(frame)).toBe(false);
   });
 
+  it.each([
+    ["a playlist", "list.m3u8", "absolute"],
+    ["a playlist", "list.m3u8", "climbing"],
+    ["a concat list under a media name", "clip.mp4", "absolute"],
+    ["a concat list under a media name", "clip.mp4", "climbing"],
+  ])("keeps the installed ffmpeg from reading what %s (%s) names, %s", async (_, name, entry) => {
+    vi.resetModules();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+    const { findFfBinary, mediaInputFormatArgs } = await importFresh();
+    const ffmpeg = findFfBinary("ffmpeg");
+    if (!ffmpeg) return;
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "hf-playlist-input-")));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    mkdirSync(join(dir, "outside"));
+    mkdirSync(join(dir, "project"));
+    const elsewhere = join(dir, "outside", "elsewhere.ts");
+    spawnSync(ffmpeg, [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=duration=1",
+      "-f",
+      "mpegts",
+      elsewhere,
+    ]);
+    expect(existsSync(elsewhere)).toBe(true);
+    const target = entry === "absolute" ? elsewhere : "../outside/elsewhere.ts";
+    const hls = `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${target}\n#EXT-X-ENDLIST\n`;
+    const input = join(dir, "project", name);
+    if (name.endsWith(".m3u8")) writeFileSync(input, hls);
+    else {
+      writeFileSync(join(dir, "project", "inner.m3u8"), hls);
+      writeFileSync(input, "ffconcat version 1.0\nfile inner.m3u8\n");
+    }
+    const out = join(dir, "out.wav");
+    spawnSync(ffmpeg, ["-v", "error", ...mediaInputFormatArgs(ffmpeg, input), "-i", input, out]);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it.each([
+    ["/project/clip.mp4", true],
+    ["C:\\project\\clip.mp4", true],
+    ["concat:/project/a.mp4|/project/b.mp4", true],
+    ["https://cdn.example/clip.mp4", false],
+  ])("reads %s as a local file only: %s", async (input, local) => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(" D  mov,mp4,m4a     QuickTime / MOV");
+    const args = mediaInputFormatArgs("/ffmpeg", input);
+    expect(args.slice(0, 2)).toEqual(
+      local ? ["-protocol_whitelist", "file"] : ["-format_whitelist", "mov,mp4,m4a"],
+    );
+  });
+
   it.skipIf(process.platform === "win32")("asks a binary that failed once again", async () => {
     const { mediaInputFormatArgs, SELF_CONTAINED_FORMATS } = await importFresh();
     const dir = mkdtempSync(join(tmpdir(), "hf-demuxers-"));
@@ -548,11 +604,13 @@ describe("mediaInputFormatArgs", () => {
       `#!/bin/sh\nif [ -e "${dir}/ran" ]; then echo ' D  wav  WAV'; else touch "${dir}/ran"; exit 1; fi\n`,
     );
     chmodSync(binary, 0o755);
+    const local = ["-protocol_whitelist", "file"];
     expect(mediaInputFormatArgs(binary, "a.wav")).toEqual([
+      ...local,
       "-format_whitelist",
       SELF_CONTAINED_FORMATS,
     ]);
-    expect(mediaInputFormatArgs(binary, "a.wav")).toEqual(["-format_whitelist", "wav"]);
+    expect(mediaInputFormatArgs(binary, "a.wav")).toEqual([...local, "-format_whitelist", "wav"]);
   });
 });
 

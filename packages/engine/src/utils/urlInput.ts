@@ -68,7 +68,10 @@ export function urlInputArgs(
 ): string[] {
   assertLiteralMediaInput(input);
   const mediaFormats = () =>
-    mediaInputFormatArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary(), input);
+    // Render preflight runs the playlist folder walk on every local source before it is read.
+    mediaInputFormatArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary(), input, {
+      playlists: true,
+    });
   const restricted = resolveRestrictPageNetwork();
   const route = restricted ? restrictedRoute(input) : undefined;
   if (route === "proxy" && !/^https:\/\//i.test(input))
@@ -78,8 +81,7 @@ export function urlInputArgs(
       ...proxiedLimits(),
       ...PROXY_THAT_REACHES_NOTHING,
     ];
-  if ((route ?? schemeRoute(input)) === "local")
-    return ["-protocol_whitelist", "file", ...mediaFormats()];
+  if ((route ?? schemeRoute(input)) === "local") return mediaFormats();
   if (!/^https:\/\//i.test(input)) return mediaFormats();
   const caFile = caBundles.find((path) => existsSync(path));
   if (!caFile) {

@@ -67,8 +67,9 @@ export function runFfmpeg(args: string[], input?: Buffer, cwd?: string, timeout?
   });
 }
 
-export function ffmpegInput(path: string): string[] {
-  return [...mediaInputFormatArgs(ffmpegBin(), path), "-i", path];
+/** `playlists` only for a file the playlist folder walk passed (a `guarded` probe). */
+export function ffmpegInput(path: string, { playlists = false } = {}): string[] {
+  return [...mediaInputFormatArgs(ffmpegBin(), path, { playlists }), "-i", path];
 }
 
 export function ffmpegToFile(args: string[], out: string, input?: Buffer): string {
@@ -219,7 +220,7 @@ function startsWithMp4Header(path: string): boolean {
 export function probeVideo(path: string, { guarded = false } = {}): VideoInfo {
   if (!existsSync(path)) throw new Fix(`no file at ${path}`, missingFileFix(path));
   const bin = ffprobeBin();
-  const formats = mediaInputFormatArgs(bin, path);
+  const formats = mediaInputFormatArgs(bin, path, { playlists: guarded });
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
     json = JSON.parse(

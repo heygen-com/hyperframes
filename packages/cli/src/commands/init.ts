@@ -5,6 +5,7 @@
 // fallow-ignore-file complexity
 import { failCommand, finishCommand, failUsage } from "../utils/commandResult.js";
 import { printFailureLine } from "../utils/jsonError.js";
+import { PLAYLIST_LEAVES_FOLDER, playlistLeavingItsFolder } from "../utils/playlistInput.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { runCommand } from "citty";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -494,6 +495,13 @@ async function patchTranscript(dir: string, transcriptPath: string): Promise<voi
   patchCaptionHtml(dir, words);
 }
 
+async function refuseInteractive(path: string): Promise<void> {
+  if (!(await playlistLeavingItsFolder([path]))) return;
+  clack.log.error(`${terminalText(path)} ${PLAYLIST_LEAVES_FOLDER}`);
+  clack.cancel("Setup cancelled.");
+  failCommand();
+}
+
 // ---------------------------------------------------------------------------
 // handleVideoFile — probe, check codec, optionally transcode, copy to destDir
 // ---------------------------------------------------------------------------
@@ -965,6 +973,11 @@ export default defineCommand({
         printFailureLine((show) => c.error(`Audio file not found: ${show(String(audioFlag))}`));
         failCommand();
       }
+      const leaving = await playlistLeavingItsFolder([videoPath, audioPath]);
+      if (leaving) {
+        printFailureLine((show) => c.error(`${show(leaving)} ${PLAYLIST_LEAVES_FOLDER}`));
+        failCommand();
+      }
 
       mkdirSync(destDir, { recursive: true });
 
@@ -1158,6 +1171,7 @@ export default defineCommand({
         clack.cancel("Setup cancelled.");
         failCommand();
       }
+      await refuseInteractive(videoPath);
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = videoPath;
       const result = await handleVideoFile(videoPath, destDir, true, keepOriginal);
@@ -1172,6 +1186,7 @@ export default defineCommand({
         clack.cancel("Setup cancelled.");
         failCommand();
       }
+      await refuseInteractive(audioPath);
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = audioPath;
       copyIntoProjectUnlessAlreadyThere(audioPath, resolve(destDir, basename(audioPath)));

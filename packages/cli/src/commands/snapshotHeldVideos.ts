@@ -108,7 +108,7 @@ export function probeHeldVideo(
         [
           "-v",
           "error",
-          ...mediaInputFormatArgs(ffprobe, path),
+          ...mediaInputFormatArgs(ffprobe, path, { playlists: true }),
           "-select_streams",
           "v:0",
           "-show_entries",
