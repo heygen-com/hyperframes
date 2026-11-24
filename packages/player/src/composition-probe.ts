@@ -107,6 +107,9 @@ export class CompositionProbe {
   private _limitMs = loadLimitMs();
   private _navigationPending = false;
   private _timedFromNavigation = false;
+  private _preparationTimer: ReturnType<typeof setTimeout> | null = null;
+  private _limitReportedBeforeLoad = false;
+  private _preparing = false;
 
   get failed(): boolean {
     if (this._failure === null || this._failure.deadline) return false;
@@ -124,10 +127,41 @@ export class CompositionProbe {
     this._limitMs = loadLimitMs();
     this._navigationPending = true;
     this._timedFromNavigation = true;
+    this._endPreparation();
+  }
+
+  /** The host prepares the next document before navigating: the limit runs from now and, if the frame has
+   *  not loaded by then, is reported once, here; that load does not report it again. */
+  markPreparation(): void {
+    this.markNavigation();
+    this._preparing = true;
+    this._preparationTimer = setTimeout(() => this._reportLimitBeforeLoad(), this._limitMs);
+  }
+
+  /** The host wrote the frame: its next load is the document the clock has been timing. */
+  frameWritten(): void {
+    this._preparing = false;
   }
 
   endNavigation(): void {
     this._navigationPending = false;
+    this._endPreparation();
+  }
+
+  private _endPreparation(): void {
+    if (this._preparationTimer !== null) clearTimeout(this._preparationTimer);
+    this._preparationTimer = null;
+    this._limitReportedBeforeLoad = false;
+    this._preparing = false;
+  }
+
+  private _reportLimitBeforeLoad(): void {
+    this._preparationTimer = null;
+    if (!this._navigationPending || this._callbacks.hostOwnsDeadline?.()) return;
+    this._limitReportedBeforeLoad = true;
+    this._callbacks.onError(
+      timelineNotFound(this._limitMs, this._callbacks.fromAnotherSite?.() === true),
+    );
   }
 
   get limitMs(): number {
@@ -149,6 +183,8 @@ export class CompositionProbe {
     this.stop();
     this._failure = null;
     this._runtimeInjected = false;
+    // A load while the next document is still being prepared is the frame's previous one.
+    if (this._preparing) return;
     if (!this._navigationPending) {
       this._startedAt = performance.now();
       this._limitMs = loadLimitMs();
@@ -156,7 +192,8 @@ export class CompositionProbe {
     }
     this._navigationPending = false;
     let attempts = 0;
-    let limitReached = false;
+    let limitReached = this._limitReportedBeforeLoad;
+    this._endPreparation();
 
     const tick = () => {
       attempts++;

@@ -59,6 +59,15 @@ const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
 const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
+
+type FrameTarget = { src: string } | { srcdoc: string | null };
+type SealedPage = { bySrc: true } | { bySrc: false; html: string; url: string };
+
+// A srcdoc copy runs under the embedding page's policy, so a page that sets its own, or whose headers this
+// player can't all read (a redirect to another site), loads by src.
+const OWN_POLICY_HEADERS = ["content-security-policy", "x-frame-options"];
+const mayCarryOwnPolicy = (response: Response) =>
+  response.type !== "basic" || OWN_POLICY_HEADERS.some((name) => response.headers.has(name));
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // Bounds how long the player waits on a same-origin composition's readiness
 // inputs (media, compute, paint-and-idle) before playing anyway — a stuck
@@ -293,6 +302,7 @@ class HyperframesPlayer extends HTMLElement {
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
+    this.probe.endNavigation();
     this.probe.stop();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -1120,16 +1130,23 @@ class HyperframesPlayer extends HTMLElement {
       this._showSealedSrc(src, url.href);
       return;
     }
-    this._navigateFrameToSrc(src);
-  }
-
-  private _navigateFrameToSrc(src: string): void {
-    this.iframe.removeAttribute("srcdoc");
-    this._navigateFrame({ src: prepareSrcForElement(this, src) });
-  }
-
-  private _navigateFrame(to: { src: string } | { srcdoc: string | null }): void {
     this.probe.markNavigation();
+    this._writeSrcOverSrcdoc(src);
+  }
+
+  /** Loads src in place of a sealed srcdoc this player may be showing. */
+  private _writeSrcOverSrcdoc(src: string): void {
+    this.iframe.removeAttribute("srcdoc");
+    this._writeFrame({ src: prepareSrcForElement(this, src) });
+  }
+
+  private _navigateFrame(to: FrameTarget): void {
+    this.probe.markNavigation();
+    this._writeFrame(to);
+  }
+
+  private _writeFrame(to: FrameTarget): void {
+    this.probe.frameWritten();
     if (!("srcdoc" in to)) this.iframe.src = to.src;
     else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
     else this.iframe.srcdoc = to.srcdoc;
@@ -1143,6 +1160,7 @@ class HyperframesPlayer extends HTMLElement {
       this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, html) });
       return;
     }
+    this.probe.markPreparation();
     this._showSealedDocument(html, undefined, load);
   }
 
@@ -1151,10 +1169,11 @@ class HyperframesPlayer extends HTMLElement {
       (doc) => {
         if (load !== this._documentLoad) return;
         this._srcdocUrl = base ?? null;
-        this._navigateFrame({ srcdoc: doc });
+        this._writeFrame({ srcdoc: doc });
       },
       () => {
         if (load !== this._documentLoad) return;
+        this.probe.endNavigation();
         this._emitError({ message: SEALED_RUNTIME_LOAD_FAILED });
       },
     );
@@ -1167,20 +1186,24 @@ class HyperframesPlayer extends HTMLElement {
    */
   private _showSealedSrc(src: string, href: string): void {
     const load = ++this._documentLoad;
+    this.probe.markPreparation();
     fetch(href, { credentials: "same-origin" })
-      .then(async (response) => {
+      .then(async (response): Promise<SealedPage> => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (mayCarryOwnPolicy(response)) return { bySrc: true };
         const html = decodePage(await response.arrayBuffer(), response.headers.get("content-type"));
-        return { html, url: response.url || href };
+        return carriesRuntime(html)
+          ? { bySrc: true }
+          : { bySrc: false, html, url: response.url || href };
       })
       .then(
-        ({ html, url }) => {
+        (page) => {
           if (load !== this._documentLoad) return;
-          if (carriesRuntime(html)) this._navigateFrameToSrc(src);
-          else this._showSealedDocument(html, url, load);
+          if (page.bySrc) this._writeSrcOverSrcdoc(src);
+          else this._showSealedDocument(page.html, page.url, load);
         },
         () => {
-          if (load === this._documentLoad) this._navigateFrameToSrc(src);
+          if (load === this._documentLoad) this._writeSrcOverSrcdoc(src);
         },
       );
   }
@@ -1213,6 +1236,7 @@ class HyperframesPlayer extends HTMLElement {
       // Unloads a composition this player was showing before it switched to video.
       this.iframe.src = "about:blank";
     }
+    this.probe.endNavigation();
     this.probe.stop();
     const { video, adapter } = this._videoSource;
     this._directTimelineAdapter = adapter;
