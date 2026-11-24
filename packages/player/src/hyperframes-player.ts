@@ -258,8 +258,9 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
-      // A sealed player that read the page added the runtime itself, wherever the film is from.
-      fromAnotherSite: () => this._filmFromAnotherSite() && !this._pageRead,
+      // A sealed player adds the runtime to any page it read, from any site, and to none it couldn't read.
+      runtimeOutOfReach: () =>
+        this.hasAttribute(SANDBOX_ORIGIN_ATTR) ? !this._pageRead : this._filmFromAnotherSite(),
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this._emitError({ message }),
     });
