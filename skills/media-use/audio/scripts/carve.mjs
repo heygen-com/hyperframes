@@ -29,6 +29,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import * as carveApi from "./lib/audio-carve.mjs";
 import { isMainModule } from "./lib/main-module.mjs";
+import { assertLiteralMediaPath } from "../../scripts/lib/literal-media-input.mjs";
 
 /** Sample rate the analysis runs at. Matches Studio's own decode rate, so the
  *  bands and envelopes come out the same either way. */
@@ -173,6 +174,7 @@ export function groupSourceRefusal(voices, bed, members) {
 function decode(path) {
   let raw;
   try {
+    assertLiteralMediaPath(path);
     raw = execFileSync(
       "ffmpeg",
       [

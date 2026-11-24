@@ -32,6 +32,7 @@ import { PreviewZoomOverlay, usePreviewZoomOverlay } from "./PreviewZoomOverlay"
 import { PREVIEW_STAGE_INSET_PX, resolvePreviewStageSize, shadowIframeStyle } from "./previewStage";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
+import { usePlayerStore } from "../../player/store/playerStore";
 interface NLEPreviewProps extends Pick<
   NLEContextValue,
   | "projectId"
@@ -186,10 +187,17 @@ export const NLEPreview = memo(function NLEPreview({
   const onLiveReadyToShowChange = useCallback(
     (ready: boolean) => {
       showLive(ready);
-      if (ready) updateCompositionSizeFromPreview();
+      if (!ready) return;
+      usePlayerStore.getState().setPreviewFailed(false);
+      updateCompositionSizeFromPreview();
     },
     [showLive, updateCompositionSizeFromPreview],
   );
+  const posterError = poster.onPreviewError;
+  const onLivePreviewError = useCallback(() => {
+    posterError();
+    usePlayerStore.getState().setPreviewFailed(true);
+  }, [posterError]);
 
   const setPreviewIframeRef = useCallback(
     (node: HTMLIFrameElement | null) => {
@@ -515,7 +523,7 @@ export const NLEPreview = memo(function NLEPreview({
                   }}
                   onCompositionLoadingChange={onCompositionLoadingChange}
                   onReadyToShowChange={onLiveReadyToShowChange}
-                  onPreviewError={poster.onPreviewError}
+                  onPreviewError={onLivePreviewError}
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}

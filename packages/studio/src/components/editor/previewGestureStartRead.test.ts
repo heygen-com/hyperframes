@@ -16,10 +16,14 @@ import {
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
 import {
+  askShownGestureStarts,
   gestureStartLayout,
   measurePreviewGestureStart,
+  UNANSWERED,
+  unansweredMoveReason,
   type PreviewGestureStart,
 } from "./previewGestureStartRead";
+import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import { standInFor } from "./previewSelection";
 import { collectSnapContext } from "./snapTargetCollection";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
@@ -130,6 +134,62 @@ function gsapHoldsCard(tweens: unknown[] = []) {
   });
 }
 
+/** An opaque frame whose runtime hasn't posted a size yet; `post` sends one. */
+function unsizedOpaqueFrame() {
+  const { iframe: sealed, frame } = sealedPreviewFrame();
+  const iframe = sized(sealed, [100, 50, 960, 540]) as HTMLIFrameElement;
+  watchPreviewFrame(iframe);
+  const post = (data: Record<string, unknown>) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: frame as unknown as Window,
+        origin: window.location.origin,
+        data: { source: "hf-preview", type: "stage-size", ...data },
+      }),
+    );
+  return { iframe, post };
+}
+
+// fails without the fix: a sealed frame whose root declares no size never had a stage size, so the overlay had no
+// scale, and a press or nudge read gave up at once and was dropped.
+describe("an opaque frame whose root declares no size", () => {
+  it("scales the overlay by the root's measured box, as the unsealed overlay measures the root", () => {
+    const { iframe, post } = unsizedOpaqueFrame();
+    post({ measuredSize: { width: 1280, height: 720 } });
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML = `<div data-composition-id="main"></div>`;
+    sized(doc.querySelector("[data-composition-id]")!, [0, 0, 1280, 720]);
+    const scale = (frame: HTMLIFrameElement, read: Document | null) => {
+      const basis = computeOverlayRootScale(overlayEl(), frame, read);
+      return basis && [basis.rootScaleX, basis.rootScaleY];
+    };
+    expect(scale(iframe, null)).toEqual([0.75, 0.75]);
+    expect(scale(iframe, null)).toEqual(scale(liveFrame(), doc));
+  });
+
+  it("tells a frame that answered without a size from one that never answered", () => {
+    const silent = unsizedOpaqueFrame();
+    expect(unansweredMoveReason(silent.iframe)).toBe(
+      "The preview didn't answer, so Studio can't move this layer. Try again.",
+    );
+    const sizeless = unsizedOpaqueFrame();
+    sizeless.post({ type: "timeline", durationSeconds: 4 });
+    expect(unansweredMoveReason(sizeless.iframe)).toBe(
+      "This composition has no size, so Studio can't move its layers. Give its root a width and height.",
+    );
+  });
+
+  it("waits for the frame's size before reading a press, instead of giving up", async () => {
+    const { iframe, post } = unsizedOpaqueFrame();
+    const card = makeSelection("Card", document.getElementById("card")!);
+    const read = askShownGestureStarts(iframe, overlayEl(), "index.html", [card]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    post({ measuredSize: { width: 1920, height: 1080 } });
+    const answer = await read;
+    expect(answer !== UNANSWERED && answer?.shown.length).toBe(1);
+  });
+});
+
 describe("a gesture's start on an opaque frame", () => {
   it("reads the snap targets a scriptable frame collects, without the pressed element", async () => {
     const overlay = overlayEl();
@@ -156,7 +216,7 @@ describe("a gesture's start on an opaque frame", () => {
     expect(start).toEqual({
       layout: { width: 200, height: 100 },
       screenToOffset: { a: -2, b: 0, c: 0, d: 2 },
-      gsap: { x: 200, y: 5, moving: false },
+      gsap: { x: 200, y: 5, moving: false, drawsTranslate: true },
       gsapRotation: 0,
       grow: { a: -0.25, b: 0, c: 0, d: 0.25 },
       cssRotation: null,

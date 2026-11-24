@@ -90,6 +90,8 @@ type PendingRuntimeDataDelivery = {
   timeoutId: number;
 };
 
+const roundOrNull = (ms: number | null) => (ms === null ? null : Math.round(ms));
+
 function clampPlaybackRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
   return Math.max(MIN_PLAYBACK_RATE, Math.min(MAX_PLAYBACK_RATE, rate));
@@ -249,7 +251,7 @@ class HyperframesPlayer extends HTMLElement {
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
     if (this.hasAttribute("audio-src")) this._media.setupFromUrl(this.getAttribute("audio-src")!);
     if (this.hasAttribute("srcdoc"))
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc")!);
+      this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, this.getAttribute("srcdoc")!) });
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src")!);
 
     // Host-environment audio lock: when the embedding host (e.g. Claude
@@ -304,9 +306,9 @@ class HyperframesPlayer extends HTMLElement {
         if (val !== null) {
           this._pauseForVideoSwitch();
           this._teardownVideo();
-          this.iframe.srcdoc = prepareSrcdocForElement(this, val);
+          this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, val) });
         } else {
-          this.iframe.removeAttribute("srcdoc");
+          this._navigateFrame({ srcdoc: null });
           const src = this.getAttribute("src");
           if (src !== null && this._wantsVideo()) this._navigateSrc(src);
         }
@@ -397,11 +399,11 @@ class HyperframesPlayer extends HTMLElement {
     this._abandonComposition("Sandbox policy changed before runtime data was applied");
     const srcdoc = this.getAttribute("srcdoc");
     if (srcdoc !== null) {
-      this.iframe.srcdoc = prepareSrcdocForElement(this, srcdoc);
+      this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, srcdoc) });
       return;
     }
     const src = this.getAttribute("src");
-    if (src === null) this.iframe.src = "about:blank";
+    if (src === null) this._navigateFrame({ src: "about:blank" });
     else this._loadSrc(src);
   }
 
@@ -1047,7 +1049,9 @@ class HyperframesPlayer extends HTMLElement {
     // explanatory rejection the caller gets from every other navigating path.
     this._abandonComposition("Shader options changed before runtime data was applied");
     if (this.hasAttribute("srcdoc")) {
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
+      this._navigateFrame({
+        srcdoc: prepareSrcdocForElement(this, this.getAttribute("srcdoc") || ""),
+      });
       return;
     }
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src") || "");
@@ -1080,7 +1084,14 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     this._teardownVideo();
-    this.iframe.src = prepareSrcForElement(this, src);
+    this._navigateFrame({ src: prepareSrcForElement(this, src) });
+  }
+
+  private _navigateFrame(to: { src: string } | { srcdoc: string | null }): void {
+    this.probe.markNavigation();
+    if (!("srcdoc" in to)) this.iframe.src = to.src;
+    else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
+    else this.iframe.srcdoc = to.srcdoc;
   }
 
   private _loadVideo(src: string): void {
@@ -1552,10 +1563,13 @@ class HyperframesPlayer extends HTMLElement {
 
   private _dispatchReady(): void {
     this._readyDocument = this._getSameOriginIframeDocument();
+    this.probe.endNavigation();
     const detail = {
       duration: this._duration,
       compositionWidth: this._compositionWidth,
       compositionHeight: this._compositionHeight,
+      readyMs: this._videoSource ? null : roundOrNull(this.probe.elapsedMs()),
+      loadLimitMs: this._videoSource ? null : this.probe.limitMs,
     };
     this._emit(new CustomEvent("ready", { detail }));
     // Once ready: covers a size message that never came, and lets a zero-size player warn.

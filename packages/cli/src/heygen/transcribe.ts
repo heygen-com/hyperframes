@@ -5,7 +5,7 @@ import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { TranscriptionCreateRequest } from "../cloud/_gen/types.js";
-import { projectOf, runFfmpeg } from "../measure/media.js";
+import { ffmpegInput, projectOf, runFfmpeg } from "../measure/media.js";
 import { idempotencyKey, runJob, type JobRoute } from "./v3.js";
 
 const ROUTE: JobRoute = {
@@ -62,8 +62,7 @@ export async function transcribeWithHeygen(
     const mp3 = join(work, "audio.mp3");
     runFfmpeg([
       "-y",
-      "-i",
-      inputPath,
+      ...ffmpegInput(inputPath),
       "-vn",
       "-ac",
       "1",

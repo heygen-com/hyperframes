@@ -70,7 +70,7 @@ leaves a paused film paused.
 | `low-power-idle` | boolean | false | While paused, check in once a second, not every 80 ms (many-player pages) |
 | `disable-click-to-play` | boolean | false | A click on the player no longer plays or pauses, so the page can handle it |
 | `disable-fullscreen` | boolean | false | Hide the fullscreen button in the controls (`disableFullscreen`) |
-| `no-load-timeout` | boolean | false | A slow load never fails at 8 s, so the page owns the deadline; script and runtime errors still fail at once |
+| `no-load-timeout` | boolean | false | A slow load never fails at the load limit, so the page owns the deadline; script and runtime errors still fail at once |
 | `range-start` | number | — | Film second where playback starts, loops back to and parks when paused (`rangeStart`) |
 | `range-end` | number | — | Film second the range ends before: it stops or loops on the frame before it (`rangeEnd`) |
 
@@ -134,7 +134,7 @@ player.addEventListener("timeupdate", (event) => {
 
 | Event          | Detail            | Description                                                  |
 | -------------- | ----------------- | ------------------------------------------------------------ |
-| `ready`        | `{ duration, compositionWidth, compositionHeight }` | Composition loaded and timeline discovered |
+| `ready`        | `{ duration, compositionWidth, compositionHeight, readyMs, loadLimitMs }` | Composition loaded and timeline discovered. `readyMs`: milliseconds from the frame's load to its timeline; `loadLimitMs`: the load limit it had. Both `null` for a video |
 | `durationchange` | `{ duration }`  | The duration changed after `ready`                           |
 | `resize`       | `{ compositionWidth, compositionHeight }` | The composition's size changed           |
 | `timeupdate`   | `{ currentTime }` | Playback position changed, approximately 10 times per second |
@@ -145,7 +145,7 @@ player.addEventListener("timeupdate", (event) => {
 | `ratechange`   | —                 | Playback rate changed                                        |
 | `volumechange` | —                 | Volume or muted state changed                                |
 | `scenes`       | `{ scenes }`      | The runtime reported its scene list                          |
-| `error`        | `{ message }`     | Load or runtime error; a video adds its `MediaError` `code`  |
+| `error`        | `{ message }`     | Load or runtime error, or no timeline within the load limit (Windows 90 s, Linux 30 s, other systems 120 s). The player keeps listening, so a timeline that comes later still fires `ready`. A video adds its `MediaError` `code` |
 | `playbackerror` | `{ source, error }` | The browser blocked playback, for example unmuted autoplay |
 
 ## Custom icons and loading mark
