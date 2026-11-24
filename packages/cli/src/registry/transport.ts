@@ -52,7 +52,7 @@ export async function fetchRegistryHttps(
 
 async function publicRegistryRequest(url: URL, signal: AbortSignal): Promise<Response> {
   try {
-    return await publicRequest(url, { signal });
+    return await publicRequest(url, { signal }, null);
   } catch (error) {
     if (!(error instanceof NonPublicHostError)) throw error;
     throw new Error(
