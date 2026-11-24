@@ -403,6 +403,23 @@ describe("a press held across a preview change on an opaque frame", () => {
   ) {
     press.changing = true;
     press.start.mockClear();
+    const { opts, overlay, down, starts } = pressOn(selection, { iframe, overlayRect, box });
+    starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(press.start).not.toHaveBeenCalled();
+    whileWaiting(opts);
+    press.changing = false;
+    return { opts, overlay, down, ...starts };
+  }
+
+  function pressOn(
+    selection: DomEditSelection,
+    {
+      iframe,
+      overlayRect,
+      box,
+    }: { iframe: HTMLIFrameElement; overlayRect: OverlayRect | null; box: HTMLDivElement | null },
+  ) {
     const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]) as HTMLDivElement;
     const opts = {
       waitingPressRef: { current: null },
@@ -414,6 +431,7 @@ describe("a press held across a preview change on an opaque frame", () => {
       selectionRef: { current: selection },
       overlayRectRef: { current: overlayRect },
       setOverlayRect: vi.fn((rect: OverlayRect | null) => (opts.overlayRectRef.current = rect)),
+      onBlockedMoveRef: { current: vi.fn() },
     } as unknown as UseDomEditOverlayGesturesOptions;
     const starts = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
     const down = {
@@ -424,13 +442,26 @@ describe("a press held across a preview change on an opaque frame", () => {
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
     };
-    starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(press.start).not.toHaveBeenCalled();
-    whileWaiting(opts);
-    press.changing = false;
-    return { opts, overlay, down, ...starts };
+    return { opts, overlay, down, starts };
   }
+
+  // fails without the fix: the box said only that a press waited, so the edit bench could not tell a press waiting on
+  // the frame's answer, its outline resting on the layer, from one waiting on a save, its layer still where it was.
+  it.each([
+    [false, "frame"],
+    [true, "save"],
+  ])(
+    "says why a press on an opaque frame waits, the preview changing: %s",
+    async (changing, reason) => {
+      const turned = document.getElementById("turned")!;
+      const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+      const box = document.createElement("div");
+      press.changing = changing;
+      const { starts, down } = pressOn(stale, { iframe: opaqueFrame(), overlayRect: null, box });
+      starts.startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+      expect(box.getAttribute(PRESS_WAITING_ATTR)).toBe(reason);
+    },
+  );
 
   // fails without the fix: the outline went at once while the frame still showed the layer where the last save put
   // it, so for one frame the layer showed at the drag's start (312 px on the edit bench's seqheldtwice case).
@@ -612,6 +643,20 @@ describe("a press held across a preview change on an opaque frame", () => {
     expect(standInHandle(started.selection.element)).toBe(started.selection.handle);
   });
 
+  // fails without the fix: a press the frame never answered, with no box drawn to start from, ended with nothing.
+  it("says the preview didn't answer when it never does and no box was drawn", async () => {
+    const turned = makeSelection("turned", document.getElementById("turned")!);
+    const { opts } = await pressDuringChange(turned, { iframe: silentFrame() });
+    await vi.waitFor(() => expect(opts.onBlockedMoveRef.current).toHaveBeenCalledOnce(), {
+      timeout: 3000,
+    });
+    expect(press.start).not.toHaveBeenCalled();
+    expect(opts.onBlockedMoveRef.current).toHaveBeenCalledWith(
+      turned,
+      "The preview didn't answer, so Studio can't move this layer. Try again.",
+    );
+  });
+
   it("starts from the box Studio drew when the frame shown never answers", async () => {
     const turned = makeSelection("turned", document.getElementById("turned")!);
     const drawn = { left: 1, top: 2, width: 3, height: 4 } as OverlayRect;
@@ -709,6 +754,20 @@ describe("a press on a settled preview", () => {
     expect(press.start).toHaveBeenCalledOnce();
     // Synchronously, with nothing read over a channel.
     expect(press.start.mock.calls[0]![3]).toEqual({ at: expect.any(Object) });
+  });
+
+  // fails without the fix: the press asked the frame only on the next animation frame, and started on the one after.
+  it("on an opaque frame asks at the press and starts once the frame answers, with no animation frame", async () => {
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 0);
+    try {
+      const iframe = opaqueFrame();
+      const handle = (await queryPreviewElements(iframe, "#turned"))!.matches[0]!.handle;
+      const turned = document.getElementById("turned")!;
+      pressOn(iframe, { ...makeSelection("turned", turned), handle });
+      await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce());
+    } finally {
+      raf.mockRestore();
+    }
   });
 
   it("on an opaque frame waits for what the gesture starts from, read in one request", async () => {

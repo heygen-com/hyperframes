@@ -21,7 +21,12 @@ import {
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
 import { endResizeWithoutMember, resolveResizeDraftRect } from "./resizeDraft";
-import { armPreviewDraftEnd, drawPreviewDraft, takePreviewDraftEnds } from "./previewDrafts";
+import {
+  armPreviewDraftEnd,
+  drawPreviewDraft,
+  frameDraftTranslate,
+  takePreviewDraftEnds,
+} from "./previewDrafts";
 import { applySoftReloadFinalization } from "../../utils/gsapSoftReload";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState } from "./domEditOverlayGestures";
@@ -78,6 +83,21 @@ const shown = (element: HTMLElement) =>
     .map((axis) =>
       [...axis.matchAll(/-?[\d.]+px/g)].reduce((sum, [px]) => sum + parseFloat(px), 0),
     );
+
+// fails without the fix: the frame got the raw offset, where an open preview's drag writes it rounded to 3 decimals.
+describe("the translate a drag sends the frame", () => {
+  it("is the open preview's rounded offset less where the layer started", () => {
+    const member = {
+      element: document.createElement("div"),
+      initialOffset: { x: 10.5555, y: -3.25 },
+      baseGsap: { x: 0, y: 0 },
+    };
+    expect(frameDraftTranslate(member, { x: 30.55624, y: 4.0004 })).toEqual({
+      x: 30.556 - 10.5555,
+      y: 4 + 3.25,
+    });
+  });
+});
 
 describe("gesture drafts on an opaque frame", () => {
   it("moves the frame's element with a drag, and puts it back when the drag is cancelled", async () => {
@@ -214,6 +234,27 @@ describe("gesture drafts on an opaque frame", () => {
     const sent = draftRequests().map(([, , params]) => (params as { drafts: object[] }).drafts);
     expect(sent).toEqual([
       [expect.objectContaining({ translate: { x: 7, y: 3 }, size: { width: 260, height: 90 } })],
+    ]);
+  });
+
+  // fails without the fix: a later sample replaced one still waiting, so a depth the recording saves never showed.
+  it("sends every recording sample that waited, in order, so none the recording saves goes unshown", async () => {
+    const element = await standIn(sealedPreviewFrame().iframe, "#card");
+    vi.mocked(previewRequest).mockClear();
+    drawPreviewDraft(element, { translate: null, props: { seconds: 1, values: { x: 1 } } });
+    await Promise.resolve();
+    drawPreviewDraft(element, { props: { seconds: 1.1, values: { z: 5 } } });
+    drawPreviewDraft(element, { props: { seconds: 1.2, values: { x: 3, y: 2 } } });
+    await vi.waitFor(() => expect(draftRequests()).toHaveLength(2));
+    const sent = draftRequests().map(([, , params]) =>
+      (params as { drafts: Array<{ props?: unknown }> }).drafts.map((draft) => draft.props),
+    );
+    expect(sent).toEqual([
+      [{ seconds: 1, values: { x: 1 } }],
+      [
+        { seconds: 1.1, values: { z: 5 } },
+        { seconds: 1.2, values: { x: 3, y: 2 } },
+      ],
     ]);
   });
 

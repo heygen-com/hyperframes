@@ -1165,7 +1165,7 @@ jobs:
           node packages/studio/tests/e2e/perf-ratchet.mjs check \
             packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
             /tmp/base-perf-ceilings.json
-      - name: Check fade handles, render selects, thumbnail connection release, trim snapping and a script-hidden backdrop
+      - name: Check fade handles, render selects, thumbnail connection release, trim snapping, a script-hidden backdrop and a failed preview's retry
         if: success() || failure()
         run: |
           set -euo pipefail
@@ -1198,6 +1198,11 @@ jobs:
             node packages/studio/tests/e2e/timeline-snap-release.mjs || failed "snap release"
           STUDIO_URL="http://localhost:5316/#project/aroll-backdrop" \
             node packages/studio/tests/e2e/aroll-backdrop.mjs || failed "script-hidden backdrop"
+          STUDIO_URL="http://localhost:5316/" \
+            node packages/studio/tests/e2e/preview-failure-retry.mjs || failed "preview failure retry"
+          rm -rf packages/studio/data/projects/inline-text-caret
+          cp -R packages/studio/tests/e2e/fixtures/inline-text-caret \
+            packages/studio/data/projects/inline-text-caret
           rm -rf packages/studio/data/projects/graded-video-transitions
           cp -R packages/studio/tests/e2e/fixtures/graded-video-transitions \
             packages/studio/data/projects/graded-video-transitions

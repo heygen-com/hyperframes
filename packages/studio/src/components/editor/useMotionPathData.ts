@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
+import { useGsapSnapshotVersion } from "../../hooks/gsapFrameSnapshot";
 import { elementHome, transformWDivisor } from "@hyperframes/core/runtime/editing-port";
 import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
 import {
@@ -25,6 +26,9 @@ function rectsClose(a: Rect, b: Rect): boolean {
 }
 
 const sealedPlugins = new WeakMap<HTMLIFrameElement, boolean>();
+
+const sealedReadPending = (iframe: HTMLIFrameElement | null) =>
+  !!iframe && previewFrameOpaque(iframe);
 
 export function hasMotionPathPlugin(iframe: HTMLIFrameElement | null): boolean {
   if (iframe && previewFrameOpaque(iframe)) return sealedPlugins.get(iframe) ?? false;
@@ -84,6 +88,7 @@ export function useMotionPathData(
 } {
   const [rect, setRect] = useState<Rect | null>(null);
   const [geometry, setGeometry] = useState<MotionPathGeometry | null>(null);
+  const snapshotVersion = useGsapSnapshotVersion();
   const resolvedForRef = useRef<string | null>(null);
   const geometryResolved = resolvedForRef.current === selector;
   const [visibleInPreview, setVisibleInPreview] = useState(true);
@@ -180,6 +185,10 @@ export function useMotionPathData(
       // Position-only: never let a co-located size/scale tween shadow the path.
       const read = readRuntimeKeyframes(iframeRef.current, selector, undefined, ["x", "y"]);
       const base = read ? readGsapPositionFromIframe(iframeRef.current, selector) : null;
+      if (read && !base && sealedReadPending(iframeRef.current)) {
+        if (resolvedForRef.current !== selector) setGeometry(null);
+        return;
+      }
       const next = buildMotionPathGeometry(read, base ?? undefined);
       setGeometry((prev) =>
         prev?.kind === next?.kind &&
@@ -192,7 +201,7 @@ export function useMotionPathData(
     recompute();
     const id = window.setInterval(recompute, 250);
     return () => window.clearInterval(id);
-  }, [selector, iframeRef]);
+  }, [selector, iframeRef, snapshotVersion]);
 
   return { rect, geometry, geometryResolved, visibleInPreview, home, pScale };
 }

@@ -224,6 +224,7 @@ async function resolveProjectPath(
   }
 
   const filePath = requestSubPath(c.req.url, `projects/:id/${route}`);
+  if (filePath === null) return { error: c.json({ error: "not found" }, 404) } as const;
   if (filePath.includes("\0")) {
     return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }
@@ -3449,13 +3450,17 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "newPath required" }, 400);
     }
 
-    const newAbs = resolveWritableWithinProject(res.project.dir, newPath);
+    const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
+    const newAbs = resolveWritableWithinProject(
+      res.project.dir,
+      newPath,
+      isDirectory ? "folder" : "file",
+    );
     if (!newAbs) return forbiddenWriteTarget(c, res.project.dir, newPath);
     if (existsSync(newAbs)) {
       return c.json({ error: "already exists" }, 409);
     }
 
-    const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
     if (isDirectory && protectedEntryWithin(res.project.dir, res.absPath, newAbs)) {
       return c.json({ error: "forbidden", why: "protected_path" }, 403);
     }
@@ -3516,7 +3521,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
       // Optional subdirectory within the project (e.g. "assets/audio")
       const subDir = c.req.query("dir") ?? "";
-      const targetDir = subDir ? resolveWritableWithinProject(project.dir, subDir) : project.dir;
+      const targetDir = subDir
+        ? resolveWritableWithinProject(project.dir, subDir, "folder")
+        : project.dir;
       if (!targetDir) return c.json({ error: "forbidden" }, 403);
 
       const formData = await c.req.formData();

@@ -30,7 +30,7 @@ export interface EditingGestureStart extends EditingElementGeometry {
   /** Frame px its centre moves per px of drawn width, `a, b`, and height, `c, d`; null when it has no box. */
   grow: { a: number; b: number; c: number; d: number } | null;
   /** Set when GSAP owns its position: its x/y now, and whether a tween with a duration moves it. */
-  gsap: { x: number; y: number; moving: boolean } | null;
+  gsap: { x: number; y: number; moving: boolean; drawsTranslate: true } | null;
   /** GSAP's rotation now when it owns the element's turn; null when it turns by its own CSS `rotate`. */
   gsapRotation: number | null;
   cssRotation: CssRotationStart | null;
@@ -165,7 +165,13 @@ function tweensOn(element: Element): GsapTween[] {
 const rendersTransform = (element: Element) =>
   !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
 
-export type EditingGestureBase = { x: number; y: number; opacity: number; scale: number };
+export type EditingGestureBase = {
+  x: number;
+  y: number;
+  opacity: number;
+  scale: number;
+  drawsProps?: true;
+};
 
 export function gestureBase(handle: EditingElementHandle): EditingGestureBase | null {
   const element = elementForHandle(handle);
@@ -174,7 +180,7 @@ export function gestureBase(handle: EditingElementHandle): EditingGestureBase | 
   if (!gsap?.getProperty) return { x: 0, y: 0, opacity: 1, scale: 1 };
   const read = (property: string) => Number(gsap.getProperty?.(element, property));
   const base = { x: read("x"), y: read("y"), opacity: read("opacity"), scale: read("scaleX") };
-  return Object.values(base).every(Number.isFinite) ? base : null;
+  return Object.values(base).every(Number.isFinite) ? { ...base, drawsProps: true } : null;
 }
 
 // Read only once GSAP owns it: asking GSAP for x makes it fold a CSS translate into its transform.
@@ -186,7 +192,7 @@ function gsapPosition(element: Element): EditingGestureStart["gsap"] {
   const tweens = tweensOn(element).filter((tween) => tween.vars && carries(tween.vars, MOVES));
   if (!rendersTransform(element) && !tweens.length) return null;
   const moving = tweens.some((tween) => (tween.duration?.() ?? 0) > 0);
-  return { x: readGsap(element, "x"), y: readGsap(element, "y"), moving };
+  return { x: readGsap(element, "x"), y: readGsap(element, "y"), moving, drawsTranslate: true };
 }
 
 function gsapRotation(element: Element): number | null {

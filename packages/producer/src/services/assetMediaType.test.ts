@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -199,6 +200,17 @@ describe("preflightCompositionAssetMediaTypes", () => {
     writeFileSync(join(projectDir, "corrupt-media"), "not a media container");
     await expect(run({ videoSrc: "missing-media" })).resolves.toBeUndefined();
     await expect(run({ imageSrc: "corrupt-media" })).resolves.toBeUndefined();
+  });
+
+  // fails without the fix: the probe error was ignored, so the <video> went on to frame extraction.
+  it("refuses a PNG cut short under a video element, and leaves it to the image element otherwise", async () => {
+    const png = readFileSync(stillPath);
+    writeFileSync(join(projectDir, "cut-short.png"), png.subarray(0, png.length - 12));
+    await expect(run({ videoSrc: "cut-short.png" })).rejects.toMatchObject({
+      code: ASSET_MEDIA_TYPE_MISMATCH,
+      mismatches: [expect.objectContaining({ expected: "video", detected: "image" })],
+    });
+    await expect(run({ imageSrc: "cut-short.png" })).resolves.toBeUndefined();
   });
 
   // STUDIO-5433. This preflight sees every local media src regardless of its

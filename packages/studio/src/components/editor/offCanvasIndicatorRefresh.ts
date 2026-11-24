@@ -6,7 +6,9 @@ import {
   createDomEditLayerWalkCache,
   drainPendingLayerMutations,
 } from "./domEditLayerWalkCache";
-import { recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { publishOffCanvasRects, recomputeOffCanvasIndicators } from "./offCanvasIndicatorGeometry";
+import { measurePreviewOffCanvas } from "./previewOffCanvas";
 import { requestOverlayFrames, subscribeOverlayFrame } from "./overlayFrameLoop";
 
 interface OffCanvasIndicatorRefreshOptions {
@@ -101,7 +103,31 @@ export function startOffCanvasIndicatorRefresh(
     options.observedDocRef.current = doc;
     options.sigRef.current = "";
   };
-  const update = () => {
+  let stopped = false;
+  let reading = false;
+  // A sealed frame reports no mutations, so each due frame reads the frame again, one read at a time.
+  const updateOverChannel = (iframe: HTMLIFrameElement, overlayEl: HTMLDivElement) => {
+    const now = performance.now();
+    if (reading || !rebuildDue(true, lastRecomputeAt, now)) return;
+    lastRecomputeAt = now;
+    reading = true;
+    const comp = options.compRectRef.current;
+    void measurePreviewOffCanvas(iframe, overlayEl, comp, options.activeCompositionPathRef.current)
+      .then((read) => {
+        if (!read || stopped || options.iframeRef.current !== iframe) return;
+        publishOffCanvasRects(
+          read.rects,
+          read.elements,
+          options.sigRef,
+          options.elementsRef,
+          options.setRects,
+        );
+      })
+      .finally(() => {
+        reading = false;
+      });
+  };
+  const updateFromDocument = () => {
     const iframe = options.iframeRef.current;
     const overlayEl = options.overlayRef.current;
     const doc = iframe?.contentDocument ?? null;
@@ -137,8 +163,15 @@ export function startOffCanvasIndicatorRefresh(
       walkCache,
     );
   };
+  const update = () => {
+    const iframe = options.iframeRef.current;
+    const overlayEl = options.overlayRef.current;
+    if (iframe && overlayEl && previewFrameOpaque(iframe)) updateOverChannel(iframe, overlayEl);
+    else updateFromDocument();
+  };
   const unsubscribe = subscribeOverlayFrame(update);
   return () => {
+    stopped = true;
     unsubscribe();
     options.observerRef.current?.disconnect();
     options.observerRef.current = null;

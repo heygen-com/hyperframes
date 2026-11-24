@@ -11,7 +11,10 @@ npm install @hyperframes/player
 Or load directly via CDN:
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+<script
+  type="module"
+  src="https://cdn.jsdelivr.net/npm/@hyperframes/player/dist/hyperframes-player.js"
+></script>
 ```
 
 If you need a classic `<script>` tag instead of ESM, use the explicit global build:
@@ -71,29 +74,29 @@ Show a static image before playback starts:
 
 ## Attributes
 
-| Attribute               | Type                            | Default       | Description                                                                 |
-| ----------------------- | ------------------------------- | ------------- | --------------------------------------------------------------------------- |
-| `src`                   | string                          | —             | URL to the composition HTML file, or to a video file with `type`            |
-| `type`                  | string                          | —             | A `video/...` type (e.g. `video/mp4`) plays `src` as a video file           |
-| `audio-src`             | string                          | —             | Audio URL for parent-frame playback (mobile)                                |
-| `width`                 | number                          | 1920          | Composition width in pixels (aspect ratio)                                  |
-| `height`                | number                          | 1080          | Composition height in pixels (aspect ratio)                                 |
-| `controls`              | boolean                         | false         | Show play/pause, scrubber, time, volume, speed, and fullscreen controls     |
-| `muted`                 | boolean                         | false         | Mute audio playback                                                         |
-| `audio-locked`          | boolean                         | false         | Force-mute and hide the volume controls so the viewer cannot turn sound on  |
-| `poster`                | string                          | —             | Image URL shown before playback starts                                      |
-| `playback-rate`         | number                          | 1             | Speed multiplier (0.5 = half, 2 = double)                                   |
-| `autoplay`              | boolean                         | false         | Start playing when ready                                                    |
-| `loop`                  | boolean                         | false         | Restart when the composition ends                                           |
-| `shader-capture-scale`  | number                          | —             | Shader transition snapshot scale forwarded to browser previews (`0.25`-`1`) |
-| `shader-loading`        | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                        |
-| `assets-loading-ui`     | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire         |
-| `low-power-idle`        | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)   |
-| `disable-click-to-play` | boolean                         | false         | A click on the player no longer plays or pauses (host overlays own clicks)  |
-| `disable-fullscreen`    | boolean                         | false         | Hide the fullscreen button; `requestFullscreen()` still works               |
-| `no-load-timeout`       | boolean                         | false         | Slow loads never fail at 8 s; the page owns the deadline. Errors still fail |
-| `range-start`           | number                          | —             | Film second where playback starts, loops back to and parks when paused      |
-| `range-end`             | number                          | —             | Film second the range ends before: it stops or loops on the frame before it |
+| Attribute               | Type                            | Default       | Description                                                                            |
+| ----------------------- | ------------------------------- | ------------- | -------------------------------------------------------------------------------------- |
+| `src`                   | string                          | —             | URL to the composition HTML file, or to a video file with `type`                       |
+| `type`                  | string                          | —             | A `video/...` type (e.g. `video/mp4`) plays `src` as a video file                      |
+| `audio-src`             | string                          | —             | Audio URL for parent-frame playback (mobile)                                           |
+| `width`                 | number                          | 1920          | Composition width in pixels (aspect ratio)                                             |
+| `height`                | number                          | 1080          | Composition height in pixels (aspect ratio)                                            |
+| `controls`              | boolean                         | false         | Show play/pause, scrubber, time, volume, speed, and fullscreen controls                |
+| `muted`                 | boolean                         | false         | Mute audio playback                                                                    |
+| `audio-locked`          | boolean                         | false         | Force-mute and hide the volume controls so the viewer cannot turn sound on             |
+| `poster`                | string                          | —             | Image URL shown before playback starts                                                 |
+| `playback-rate`         | number                          | 1             | Speed multiplier (0.5 = half, 2 = double)                                              |
+| `autoplay`              | boolean                         | false         | Start playing when ready                                                               |
+| `loop`                  | boolean                         | false         | Restart when the composition ends                                                      |
+| `shader-capture-scale`  | number                          | —             | Shader transition snapshot scale forwarded to browser previews (`0.25`-`1`)            |
+| `shader-loading`        | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                                   |
+| `assets-loading-ui`     | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire                    |
+| `low-power-idle`        | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)              |
+| `disable-click-to-play` | boolean                         | false         | A click on the player no longer plays or pauses (host overlays own clicks)             |
+| `disable-fullscreen`    | boolean                         | false         | Hide the fullscreen button; `requestFullscreen()` still works                          |
+| `no-load-timeout`       | boolean                         | false         | Slow loads never fail at the load limit; the page owns the deadline. Errors still fail |
+| `range-start`           | number                          | —             | Film second where playback starts, loops back to and parks when paused                 |
+| `range-end`             | number                          | —             | Film second the range ends before: it stops or loops on the frame before it            |
 
 `range-start` and `range-end` play the moment [start, end) of the film. The player parks on `range-start` at `ready`, and again when a paused playhead falls outside a new range; `play()` from outside the range starts there. At the end it holds the last frame before `range-end` and fires `ended`, or wraps to `range-start` with `loop`. A current runtime stops on that frame itself; video and `__timelines` players stop on their next clock tick and step back to it; an older runtime stops when the player sees its time pass the end. `currentTime` and `duration` stay in film time. A range past the film is cut to its end and an empty or negative one is ignored; both fire `rangeclamped`.
 
@@ -207,6 +210,11 @@ composition because browser sandbox changes take effect only on navigation. Opaq
 parent DOM. Direct `contentDocument`, `__player`, and `__timelines` access is intentionally
 unavailable in that mode.
 
+An opaque player adds the HyperFrames runtime itself, the version it was built with, so the embedder adds nothing. A composition from the embedding page's own site that brings the runtime loads by `src` as before. One without it is fetched and shown with the runtime inlined, so the frame loads nothing from another origin; inside it, `location` reads `about:srcdoc` while relative paths resolve against the composition's URL, and the embedding page's `script-src` policy applies to its scripts. A composition from another site loads as before and must include the runtime script.
+Hosting the player's script yourself, serve the runtime file from the package's `dist` folder beside it: an opaque player loads it from next to its own `<script>`. A bundler should use the ES module build, which carries the runtime as a chunk the bundler emits; under the CommonJS build the player cannot tell where it was loaded from, and a sealed player that needs the runtime reports that it failed to load.
+
+An opaque composition loads the videos and audio served from its own host with CORS, so colour grading, canvas reads and audio effects can use them. Serve them with `Access-Control-Allow-Origin` (for example `*`). From a host that sends no CORS headers, each one plays anyway: it is loaded again once without CORS, those effects are off for it, and the console names it.
+
 If you are building a trusted editor integration that needs direct access, use the `iframeElement` getter:
 
 ```js
@@ -259,19 +267,19 @@ function StudioPreview({ src }: { src: string }) {
 
 ## Events
 
-| Event                   | Detail                                              | Fired when                                 |
-| ----------------------- | --------------------------------------------------- | ------------------------------------------ |
-| `ready`                 | `{ duration, compositionWidth, compositionHeight }` | Composition loaded and duration determined |
-| `durationchange`        | `{ duration }`                                      | The duration changed after `ready`         |
-| `resize`                | `{ compositionWidth, compositionHeight }`           | The composition's size changed             |
-| `play`                  | —                                                   | Playback started                           |
-| `pause`                 | —                                                   | Playback paused                            |
-| `timeupdate`            | `{ currentTime }`                                   | Playback position changed (~10 fps)        |
-| `ended`                 | —                                                   | Reached the end (when not looping)         |
-| `rangeclamped`          | `{ rangeStart, rangeEnd, duration }`                | The range was cut to the film, or ignored  |
-| `error`                 | `{ message }` (video mode: `{ message, code }`)     | Composition or video failed to load        |
-| `playbackerror`         | `{ source, error }`                                 | The browser blocked playback               |
-| `shadertransitionstate` | `{ compositionId, state }`                          | Shader transition cache/capture progress   |
+| Event                   | Detail                                                                    | Fired when                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ready`                 | `{ duration, compositionWidth, compositionHeight, readyMs, loadLimitMs }` | Composition loaded and duration determined; `readyMs` is the time from the frame's load to its timeline and `loadLimitMs` the load limit it had, both `null` for a video |
+| `durationchange`        | `{ duration }`                                                            | The duration changed after `ready`                                                                                                                                       |
+| `resize`                | `{ compositionWidth, compositionHeight }`                                 | The composition's size changed                                                                                                                                           |
+| `play`                  | —                                                                         | Playback started                                                                                                                                                         |
+| `pause`                 | —                                                                         | Playback paused                                                                                                                                                          |
+| `timeupdate`            | `{ currentTime }`                                                         | Playback position changed (~10 fps)                                                                                                                                      |
+| `ended`                 | —                                                                         | Reached the end (when not looping)                                                                                                                                       |
+| `rangeclamped`          | `{ rangeStart, rangeEnd, duration }`                                      | The range was cut to the film, or ignored                                                                                                                                |
+| `error`                 | `{ message }` (video mode: `{ message, code }`)                           | Composition or video failed to load, or no timeline came within the load limit (Windows 90 s, Linux 30 s, other systems 120 s); a later timeline still fires `ready`     |
+| `playbackerror`         | `{ source, error }`                                                       | The browser blocked playback                                                                                                                                             |
+| `shadertransitionstate` | `{ compositionId, state }`                                                | Shader transition cache/capture progress                                                                                                                                 |
 
 ```js
 player.addEventListener("ready", (e) => {
@@ -348,7 +356,7 @@ The `width` and `height` attributes define the composition's native resolution f
 
 ## How it works
 
-The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN.
+The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN. An opaque player adds the runtime only to a composition from its own site that sets no security policy of its own; any other composition must load the runtime script itself, or the player fires `error` at the load limit with a message naming both fixes.
 
 ## Distribution
 

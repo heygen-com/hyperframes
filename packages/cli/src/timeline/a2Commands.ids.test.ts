@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -73,11 +73,12 @@ describe("timeline undo", () => {
       dirs.push(dir);
       const file = "sc\u0007ene.html";
       writeFileSync(join(dir, file), "<div>after</div>");
-      writeFileSync(join(dir, "backup.html"), "<div>before</div>");
+      mkdirSync(join(dir, ".hyperframes", "backup"), { recursive: true });
+      writeFileSync(join(dir, ".hyperframes", "backup", "scene"), "<div>before</div>");
       const receipt = {
         file,
         version: fileContentVersion("<div>after</div>"),
-        backupPath: "backup.html",
+        backupPath: ".hyperframes/backup/scene",
       };
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
@@ -88,4 +89,91 @@ describe("timeline undo", () => {
       consumeCommandResult();
     },
   );
+
+  // fails without the fix: the receipt's paths were joined onto the project folder and followed wherever they led
+  describe("refuses a receipt that reaches outside what the timeline edits", () => {
+    const AFTER = "<div>after</div>";
+    const OUTSIDE = "outside the project";
+    function setup() {
+      const root = mkdtempSync(join(tmpdir(), "hf-timeline-undo-paths-"));
+      dirs.push(root);
+      const dir = join(root, "project");
+      mkdirSync(join(dir, ".hyperframes", "backup"), { recursive: true });
+      mkdirSync(join(dir, ".git"));
+      writeFileSync(join(dir, "index.html"), AFTER);
+      writeFileSync(join(dir, ".git", "config"), AFTER);
+      writeFileSync(join(dir, ".hyperframes", "backup", "index"), "<div>before</div>");
+      writeFileSync(join(root, "outside.html"), AFTER);
+      writeFileSync(join(root, "secret.txt"), OUTSIDE);
+      const links = process.platform !== "win32";
+      if (links) {
+        symlinkSync(join(root, "outside.html"), join(dir, "linked.html"));
+        symlinkSync(join(root, "secret.txt"), join(dir, ".hyperframes", "backup", "linked"));
+      }
+      const snapshot = () =>
+        [
+          join(dir, "index.html"),
+          join(dir, ".git", "config"),
+          join(root, "outside.html"),
+          join(root, "secret.txt"),
+        ].map((path) => readFileSync(path, "utf-8"));
+      return { root, dir, links, snapshot };
+    }
+
+    const cases: Array<[string, (root: string) => { file: string; backupPath: string }, boolean?]> =
+      [
+        [
+          "a target above the project",
+          () => ({ file: "../outside.html", backupPath: ".hyperframes/backup/index" }),
+        ],
+        [
+          "an absolute target",
+          (root) => ({ file: join(root, "outside.html"), backupPath: ".hyperframes/backup/index" }),
+        ],
+        [
+          "a protected target in the project",
+          () => ({ file: ".git/config", backupPath: ".hyperframes/backup/index" }),
+        ],
+        [
+          "a target that links outside",
+          () => ({ file: "linked.html", backupPath: ".hyperframes/backup/index" }),
+          true,
+        ],
+        ["a backup above the project", () => ({ file: "index.html", backupPath: "../secret.txt" })],
+        [
+          "a backup climbing out of the backup folder",
+          () => ({ file: "index.html", backupPath: ".hyperframes/backup/../../../secret.txt" }),
+        ],
+        [
+          "an absolute backup",
+          (root) => ({ file: "index.html", backupPath: join(root, "secret.txt") }),
+        ],
+        [
+          "a backup outside the backup folder",
+          () => ({ file: "index.html", backupPath: "index.html" }),
+        ],
+        [
+          "a backup that links outside",
+          () => ({ file: "index.html", backupPath: ".hyperframes/backup/linked" }),
+          true,
+        ],
+      ];
+
+    it.each(cases)("%s", async (_name, receiptFor, needsLinks) => {
+      const { root, dir, links, snapshot } = setup();
+      if (needsLinks && !links) return;
+      const before = snapshot();
+      const receipt = { ...receiptFor(root), version: fileContentVersion(AFTER) };
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      await runUndo({ dir, json: true, receipt: JSON.stringify(receipt) });
+
+      expect(consumeCommandResult().exitCode).toBe(2);
+      const printed = JSON.parse(String(log.mock.calls[0]?.[0]));
+      expect(printed.ok).toBe(false);
+      expect(printed.reason).toMatch(/^timeline undo: /);
+      expect(JSON.stringify(printed)).not.toContain(OUTSIDE);
+      expect(snapshot()).toEqual(before);
+    });
+  });
 });

@@ -29,6 +29,7 @@ import {
   type VideoInfo,
 } from "../../measure/media.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 
 export const examples: Example[] = [
   ["An overview sheet, one frame a second", "hyperframes measure frames ref.mp4 --every 1"],
@@ -216,6 +217,7 @@ export default defineCommand({
         );
       const { info, roi } = videoAndRoi(args.video, args.roi);
       const dir = outDir(args.out, "measure/frames");
+      assertLiteralMediaOutput(dir);
       const width = num(args.width, "--width", TILE_W);
       const max = num(args.max, "--max", STRIP_MAX);
       const last = info.frames - 1;

@@ -1759,6 +1759,8 @@ describe("preResolveHostileMediaProxies", () => {
     const html =
       '<html><body><video src="clip.mov" data-start="0" data-duration="12" data-media-start="3"></video></body></html>';
 
+    writeFileSync(join(projectDir, "clip.mov"), "");
+
     const { limits } = await preResolveHostileMediaProxies(projectDir, html);
 
     expect(mocks.proxyWindowSeconds).toHaveBeenCalledWith(join(projectDir, "clip.mov"), 15);
@@ -2503,12 +2505,77 @@ describe("finding frame capture", () => {
       '<html><body><video src="clip.mov" data-duration="5"></video></body></html>',
     );
     mocks.proxyWindowSeconds.mockResolvedValue(30);
+    writeFileSync(join(dir, "clip.mov"), "");
     try {
       await captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, [
         { time: 1, filename: "a.png" },
       ]);
       expect(vi.mocked(serveStaticProjectHtml).mock.calls.at(-1)?.[5]).toEqual(
         new Map([[join(dir, "clip.mov"), 30]]),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: each authored src was resolved against the project and probed wherever it led
+  it("probes only the project's own videos for copy windows", async () => {
+    const root = mkdtempSync(join(tmpdir(), "finding-windows-outside-"));
+    const dir = join(root, "project");
+    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(dir, "clip.mov"), "");
+    writeFileSync(join(dir, ".hyperframes", "private.mov"), "");
+    writeFileSync(join(root, "outside.mov"), "");
+    installSessionMock(fakePage());
+    const videos = [
+      "clip.mov",
+      "\\\\host\\share\\unc.mov",
+      "%5C%5Chost%5Cshare%5Cencoded.mov",
+      "../outside.mov",
+      ".hyperframes/private.mov",
+    ];
+    mocks.bundleWithLocalizedFonts.mockResolvedValueOnce(
+      `<html><body>${videos.map((src) => `<video src="${src}" data-duration="5"></video>`).join("")}</body></html>`,
+    );
+    mocks.proxyWindowSeconds.mockClear();
+    mocks.proxyWindowSeconds.mockResolvedValue(30);
+    try {
+      await captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, [
+        { time: 1, filename: "a.png" },
+      ]);
+      expect(mocks.proxyWindowSeconds.mock.calls.map(([path]) => path)).toEqual([
+        join(dir, "clip.mov"),
+      ]);
+      expect(vi.mocked(serveStaticProjectHtml).mock.calls.at(-1)?.[5]).toEqual(
+        new Map([[join(dir, "clip.mov"), 30]]),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: the name was decoded twice, so these files got no copy window
+  it("keeps the copy window of a video whose name has #, ? or %", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "finding-windows-names-"));
+    // Windows refuses ? in a file name.
+    const names = [
+      "clip #1.mov",
+      "50% off.mov",
+      ...(process.platform === "win32" ? [] : ["a?b.mov"]),
+    ];
+    for (const name of names) writeFileSync(join(dir, name), "");
+    installSessionMock(fakePage());
+    mocks.bundleWithLocalizedFonts.mockResolvedValueOnce(
+      `<html><body>${names.map((name) => `<video src="${encodeURIComponent(name)}" data-duration="5"></video>`).join("")}</body></html>`,
+    );
+    mocks.proxyWindowSeconds.mockClear();
+    mocks.proxyWindowSeconds.mockResolvedValue(30);
+    try {
+      await captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, [
+        { time: 1, filename: "a.png" },
+      ]);
+      expect(vi.mocked(serveStaticProjectHtml).mock.calls.at(-1)?.[5]).toEqual(
+        new Map(names.map((name) => [join(dir, name), 30])),
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });

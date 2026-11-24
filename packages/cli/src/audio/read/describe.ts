@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Span } from "@hyperframes/core/audio-analysis";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { assertLiteralMediaInput, findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { readPlainFile } from "../../utils/projectRecords.js";
 import { isPlainFile, makeRealFolder } from "../cacheFolder.js";
@@ -14,6 +14,7 @@ import {
   serviceFailure,
   type ServiceAccess,
 } from "../analysis/providers/shared.js";
+import { SELF_CONTAINED_STEM_INPUT } from "./stems.js";
 import type { AudibleStem, Description } from "./types.js";
 
 const MODEL = "gemini-4-argon";
@@ -91,6 +92,11 @@ const isMp3 = (bytes: Buffer) =>
   (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) ||
   (bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0);
 
+function stemInput(path: string): readonly string[] {
+  assertLiteralMediaInput(path);
+  return SELF_CONTAINED_STEM_INPUT;
+}
+
 async function mp3Of(path: string, scratch: string): Promise<Buffer> {
   const bytes = readFileSync(path);
   if (isMp3(bytes)) return bytes;
@@ -99,7 +105,10 @@ async function mp3Of(path: string, scratch: string): Promise<Buffer> {
   const out = join(scratch, `${createHash("sha256").update(path).digest("hex").slice(0, 12)}.mp3`);
   await runFile(
     ffmpeg,
-    ["-v", "error", "-y", "-i", path, "-vn", "-ac", "2", "-ar", "44100", "-b:a", "160k", out],
+    [
+      ...["-v", "error", "-y", ...stemInput(path), "-i", path],
+      ...["-vn", "-ac", "2", "-ar", "44100", "-b:a", "160k", out],
+    ],
     { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
   );
   return readFileSync(out);

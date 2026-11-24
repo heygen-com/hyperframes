@@ -2255,7 +2255,8 @@ async function inlineExternalFontStylesheets(
     const css = await fetchExternalStylesheetCss(href, fetchSignal);
     const fontFaceBlocks = css ? extractFontFaceBlocks(css) : [];
     if (fontFaceBlocks.length === 0) return;
-    const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontFaceBlocks.join("\n")}\n</style>`;
+    const fontCssWithLtAsCssEscape = fontFaceBlocks.join("\n").replace(/</g, "\\3c ");
+    const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontCssWithLtAsCssEscape}\n</style>`;
     try {
       budget.chargeGenerated(REMOTE_STYLESHEETS, inlineStyle.length);
     } catch (error) {
@@ -2369,7 +2370,15 @@ function localizeFontFaceUrls(
     "Remote font download failed",
     "Localized remote font face(s)",
     assets,
-    (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
+    (h, url, relPath) =>
+      replaceMatches(h, styleBlockMatches(h), (style, css) =>
+        replaceInner(
+          style,
+          css,
+          "</style>".length,
+          css.replaceAll(`url(${url})`, `url("${relPath}")`),
+        ),
+      ),
   );
 }
 
@@ -2658,7 +2667,7 @@ function rebaseDirectEntryAssetPaths(
 
 export const MAX_VARIABLE_MEDIA_SRC_BYTES = 8 * 1024;
 // oxlint-disable-next-line no-control-regex
-const MEDIA_SRC_CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+const MEDIA_SRC_NON_URL_CHARS = /[\u0000-\u001f\u007f<>]/;
 
 /**
  * Point each `data-var-src` video/audio at the clip its variable names, so the length and sound read below
@@ -2683,7 +2692,7 @@ function bindVariableMediaSources(
     const bound = boundMediaSrc(el, values);
     if (bound === null) continue;
     const src = bound.trim();
-    if (src.length > MAX_VARIABLE_MEDIA_SRC_BYTES || MEDIA_SRC_CONTROL_CHARS.test(src)) {
+    if (src.length > MAX_VARIABLE_MEDIA_SRC_BYTES || MEDIA_SRC_NON_URL_CHARS.test(src)) {
       log?.warn("[Compiler] Refused a variable media source that cannot be a URL", {
         length: src.length,
       });
@@ -2908,6 +2917,7 @@ async function compileWithAssets(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: remoteImageAssets,
     timeoutMs: options.ffmpegProcessTimeout,
+    signal: options.abortSignal,
     allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedHeifImages.length > 0) {
@@ -2925,6 +2935,7 @@ async function compileWithAssets(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: gifSourceAssets,
     timeoutMs: options.ffmpegProcessTimeout,
+    signal: options.abortSignal,
     allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedGifs.length > 0) {

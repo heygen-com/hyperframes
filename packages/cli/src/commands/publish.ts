@@ -86,7 +86,7 @@ export function parseUpdateTarget(value: string): string {
 export default defineCommand({
   meta: {
     name: "publish",
-    description: "Legacy source publishing; use share for new video reviews",
+    description: "Deprecated for new projects. Use share for new video reviews.",
   },
   args: {
     dir: { type: "positional", description: "Project directory", required: false },

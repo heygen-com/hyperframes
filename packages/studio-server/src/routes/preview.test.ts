@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
+  CAPTURE_STILLS,
   STUDIO_PREVIEW_ERROR_KINDS,
   STUDIO_PREVIEW_ERRORS,
   STUDIO_PREVIEW_CAPTURE_MODE,
@@ -512,6 +513,28 @@ describe("registerPreviewRoutes", () => {
       expect(preview, path).not.toContain(STUDIO_PREVIEW_CAPTURE_MODE);
       expect(capture, path).toContain("<script data-hf-gsap-fallback>");
     }
+  });
+
+  // fails without the fix: no page could say it was a one-shot capture, so every capture decoded its 4K originals.
+  it("marks a capture page that asked for stills, and no other page", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      "<!DOCTYPE html><html><head></head><body></body></html>",
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const page = async (query: string) =>
+      (await app.request(`http://localhost/projects/demo/preview${query}`)).text();
+    const mark = `<meta name="${CAPTURE_STILLS}">`;
+
+    const stills = await page(`?${PREVIEW_CAPTURE_PARAM}=1&${CAPTURE_STILLS}=1`);
+    const again = await page(`?${PREVIEW_CAPTURE_PARAM}=1&${CAPTURE_STILLS}=1`);
+    const capture = await page(`?${PREVIEW_CAPTURE_PARAM}=1`);
+    const preview = await page(`?${CAPTURE_STILLS}=1`);
+
+    expect([stills, again].map((html) => html.includes(mark))).toEqual([true, true]);
+    expect([capture, preview].map((html) => html.includes(CAPTURE_STILLS))).toEqual([false, false]);
   });
 
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
@@ -1602,6 +1625,34 @@ describe("preview ?variables= injection", () => {
     const injected = /<script data-hf-preview-variables>([\s\S]*?)<\/script>/.exec(html);
     expect(injected?.[1]).toContain("\\u003c/script>");
     expect(injected?.[1]).not.toContain("</script>");
+  });
+
+  it("serves every head script inside <head> when an attribute of <html> holds <head> text", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const label = '[{"label":"Page <head> and <header> text"}]';
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html lang="en" data-composition-variables='${label}'><head><title>t</title></head><body><div data-composition-id="main" data-width="320" data-height="180"></div></body></html>`,
+    );
+
+    const values = { title: '" b="1', other: "' c='1" };
+    const res = await app.request(
+      `http://localhost/projects/demo/preview?variables=${encodeURIComponent(JSON.stringify(values))}`,
+    );
+    const { document } = parseHTML(await res.text());
+    const root = document.documentElement;
+    expect(root.getAttributeNames().filter((name) => name !== "style")).toEqual([
+      "lang",
+      "data-composition-variables",
+    ]);
+    expect(root.getAttribute("data-composition-variables")).toBe(label);
+    for (const attr of ["data-hf-preview-variables", "data-hf-gsap-fallback"]) {
+      const scripts = document.querySelectorAll(`script[${attr}]`);
+      expect(scripts, attr).toHaveLength(1);
+      expect(scripts[0]?.parentElement, attr).toBe(document.head);
+    }
   });
 
   it("returns 400 for invalid JSON and non-object payloads", async () => {
