@@ -198,6 +198,78 @@ describe("a received folder with its own record, in a project with none", () => 
   });
 });
 
+describe("a file request whose route segments are percent-encoded", () => {
+  const ENCODED = "/api/pr%6Fjects/film/files/";
+  const TAILS = [
+    ["the folder named plainly", "sub"],
+    ["the folder reached through encoded dot segments", "..%2F..%2Fsub"],
+  ] as const;
+
+  function withReceivedFolder(projectDir: string): void {
+    write(join(projectDir, "index.html"), `<div data-composition-src="sub/scene.html"></div>`);
+    write(join(projectDir, "sub", "scene.html"), `<img src="../../outside/pic.png">`);
+    write(
+      join(projectDir, "sub", ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["scene.html"] }),
+    );
+  }
+  /** The folder is either still there, or gone with its received page listed in the project's own record. */
+  function expectStillReceived(projectDir: string, at: string): void {
+    if (existsSync(join(projectDir, "sub", "scene.html"))) return;
+    expect(receivedFiles(projectDir)(at)).toBe(true);
+    expect(allowed(projectDir)).toBe(false);
+  }
+
+  it.each(TAILS)("keeps a folder delete received for %s", async (_, tail) => {
+    const { projectDir, app } = studio();
+    withReceivedFolder(projectDir);
+    const deleted = await app.request(`${ENCODED}${tail}`, { method: "DELETE" });
+    expect([200, 403, 404]).toContain(deleted.status);
+    expectStillReceived(projectDir, "sub/scene.html");
+  });
+
+  it.each(TAILS)("keeps a folder move received for %s", async (_, tail) => {
+    const { projectDir, app } = studio();
+    withReceivedFolder(projectDir);
+    const moved = await app.request(`${ENCODED}${tail}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "dist" }),
+    });
+    expect([200, 403, 404]).toContain(moved.status);
+    expectStillReceived(projectDir, "dist/scene.html");
+  });
+
+  it("deletes the folder named plainly, listing its received page first", async () => {
+    const { projectDir, app } = studio();
+    withReceivedFolder(projectDir);
+    expect((await app.request(`${ENCODED}sub`, { method: "DELETE" })).status).toBe(200);
+    expect(existsSync(join(projectDir, "sub"))).toBe(false);
+    expect(receivedFiles(projectDir)("sub/scene.html")).toBe(true);
+  });
+
+  it("lists a page holding received content again before an encoded save changes it", async () => {
+    const { projectDir, app } = studio();
+    withReceivedFolder(projectDir);
+    const scene = join(projectDir, "sub", "scene.html");
+    const before = readFileSync(scene);
+    expect((await app.request(`${ENCODED}sub%2Fscene.html`, { method: "DELETE" })).status).toBe(
+      200,
+    );
+    rmSync(join(projectDir, "sub", ".hyperframes"), { recursive: true });
+    write(join(projectDir, ".hyperframes", "received-files.json"), JSON.stringify({ files: [] }));
+    writeFileSync(scene, before);
+    const saved = await app.request(`${ENCODED}sub%2Fscene.html`, {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(before) },
+      body: `<img src="../../outside/pic.png"><p>2</p>`,
+    });
+    expect(saved.status).toBe(200);
+    const record = join(projectDir, ".hyperframes", "received-files.json");
+    expect(JSON.parse(readFileSync(record, "utf-8")).files).toContain("sub/scene.html");
+  });
+});
+
 describe("a Studio rename, move or delete in a project with a received-files record", () => {
   const record = (folder: string) => join(folder, ".hyperframes", "received-files.json");
   const listed = (folder: string) => JSON.parse(readFileSync(record(folder), "utf-8")).files;

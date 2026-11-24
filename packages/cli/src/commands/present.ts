@@ -327,6 +327,7 @@ export async function registerPresentCompositionRoute(
   sandboxForAnotherSite(app, "/composition/*");
   app.get("/composition/*", (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
+    if (reqPath === null) return ctx.text("Not found", 404);
     const filePath = resolve(project.dir, reqPath);
     // Security: canonicalizes symlinks + guards the trailing separator so neither
     // an in-project symlink nor a sibling dir sharing the prefix can escape.
