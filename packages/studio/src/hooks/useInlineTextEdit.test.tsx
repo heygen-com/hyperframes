@@ -383,8 +383,11 @@ describe("useInlineTextEdit", () => {
 
         expect(onCommit).not.toHaveBeenCalled();
         expect(controls().session).not.toBeNull();
+        element.textContent = "Renamed";
         press(element, "Enter");
-        expect(onCommit).toHaveBeenCalledTimes(1);
+        expect(onCommit.mock.calls).toEqual([
+          [{ element, html: "Renamed", previousHtml: "Motion Playground" }],
+        ]);
         act(() => root.unmount());
       },
     );
