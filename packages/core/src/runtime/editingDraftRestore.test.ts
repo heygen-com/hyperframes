@@ -166,6 +166,8 @@ it("keeps another layer's live recording when a drag is restored", () => {
 // fails without the fix: ending #a's recording redrew the timeline and put #b's live recording back to its x 10.
 it("keeps another layer's live recording when a recording ends", () => {
   const { handle } = dragged();
+  // Ending a recording redraws the film's root timeline; give it a hold on #b so that redraw would move it.
+  (window.__timelines!.main as unknown as gsap.core.Timeline).set("#b", { x: 10 }, 0);
   drawDrafts([{ handle, props: { seconds: 1, values: { x: 55 } } }]);
   recordOnB(81);
   drawDrafts([{ handle, end: "clear" }]);
