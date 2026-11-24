@@ -13,6 +13,24 @@ import { requestSubPath } from "../helpers/requestSubPath.js";
 
 const RATES = new Set([48_000, 24_000]);
 
+/** The file at `sub` inside the project, or null for one outside it or missing. */
+async function projectFile(dir: string, sub: string): Promise<string | null> {
+  const path = resolve(dir, sub);
+  if (!isWithinProjectRoot(dir, path)) return null;
+  return (await stat(path).catch(() => null)) ? path : null;
+}
+
+/** ffmpeg's output, ending only once ffmpeg has: a decode that fails partway errors the body, never a 200 cut short. */
+function endsWithFfmpeg(proc: ChildProcess, stdout: Readable): PassThrough {
+  const body = new PassThrough();
+  stdout.pipe(body, { end: false });
+  proc.once("close", (code) =>
+    code === 0 ? body.end() : body.destroy(new Error(`ffmpeg exited ${code}`)),
+  );
+  proc.once("error", (error) => body.destroy(error));
+  return body;
+}
+
 /** A project file's audio for analysis as float32 PCM, streamed, so no page decodes it whole: its first channel (what
  * the fx read), or with `channels=all` every channel interleaved (beat detection, which sums each one's power). */
 export function registerPcmRoutes(api: Hono, adapter: StudioApiAdapter): void {
@@ -22,13 +40,8 @@ export function registerPcmRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (!RATES.has(rate)) return c.json({ error: "rate must be 48000 or 24000" }, 400);
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
-    const audioPath = resolve(project.dir, requestSubPath(c.req.url, "projects/:id/pcm"));
-    if (
-      !isWithinProjectRoot(project.dir, audioPath) ||
-      !(await stat(audioPath).catch(() => null))
-    ) {
-      return c.json({ error: "file not found" }, 404);
-    }
+    const audioPath = await projectFile(project.dir, requestSubPath(c.req.url, "projects/:id/pcm"));
+    if (!audioPath) return c.json({ error: "file not found" }, 404);
     const track = await probeAudioTrack(audioPath);
     if (!track) return c.json({ error: "no audio stream" }, 422);
     const args = [...mediaInputArgs(audioPath), "-i", audioPath, "-map", `0:a:${track.stream}`];
@@ -45,19 +58,15 @@ export function registerPcmRoutes(api: Hono, adapter: StudioApiAdapter): void {
       }, c.req.raw.signal).catch(gone);
     }).catch(() => null);
     if (!proc?.stdout) return new Response(null, { status: 499 });
-    // Ends only once ffmpeg has: a decode that fails partway errors the body, never a 200 cut short.
-    const body = new PassThrough();
-    proc.stdout.pipe(body, { end: false });
-    proc.once("close", (code) =>
-      code === 0 ? body.end() : body.destroy(new Error(`ffmpeg exited ${code}`)),
-    );
-    proc.once("error", (error) => body.destroy(error));
-    return new Response(Readable.toWeb(body) as unknown as ReadableStream, {
-      headers: {
-        "content-type": "application/octet-stream",
-        "x-sample-rate": String(rate),
-        "x-channels": String(all ? track.channels : 1),
+    return new Response(
+      Readable.toWeb(endsWithFfmpeg(proc, proc.stdout)) as unknown as ReadableStream,
+      {
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-sample-rate": String(rate),
+          "x-channels": String(all ? track.channels : 1),
+        },
       },
-    });
+    );
   });
 }

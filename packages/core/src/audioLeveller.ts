@@ -30,7 +30,7 @@ import {
   type HfAutomation,
   type HfAutomationPoint,
 } from "./audioAutomation.js";
-import { windowSizeFor } from "./audioAnalysis";
+import { windowDb, windowSizeFor } from "./audioAnalysis";
 import {
   HF_AUDIO_FX_CHAIN_VERSION,
   mintAudioFxNodeId,
@@ -74,21 +74,6 @@ export interface HfLevellerProfile {
 export function levellerProfile(strength: number): HfLevellerProfile {
   const s = Number.isFinite(strength) ? Math.min(1, Math.max(0, strength)) : 0.5;
   return { correction: Number((0.25 + s * 0.6).toFixed(3)) };
-}
-
-/** Level in dB of one window, or -Infinity for silence. */
-function windowDb(samples: Float32Array, from: number, count: number): number {
-  let sum = 0;
-  let n = 0;
-  for (let i = from; i < from + count; i += 1) {
-    const s = samples[i];
-    if (s === undefined) break;
-    sum += s * s;
-    n += 1;
-  }
-  if (n === 0) return Number.NEGATIVE_INFINITY;
-  const rms = Math.sqrt(sum / n);
-  return rms > 0 ? 20 * Math.log10(rms) : Number.NEGATIVE_INFINITY;
 }
 
 /**
