@@ -2554,6 +2554,34 @@ describe("finding frame capture", () => {
     }
   });
 
+  // fails without the fix: the name was decoded twice, so these files got no copy window
+  it("keeps the copy window of a video whose name has #, ? or %", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "finding-windows-names-"));
+    // Windows refuses ? in a file name.
+    const names = [
+      "clip #1.mov",
+      "50% off.mov",
+      ...(process.platform === "win32" ? [] : ["a?b.mov"]),
+    ];
+    for (const name of names) writeFileSync(join(dir, name), "");
+    installSessionMock(fakePage());
+    mocks.bundleWithLocalizedFonts.mockResolvedValueOnce(
+      `<html><body>${names.map((name) => `<video src="${encodeURIComponent(name)}" data-duration="5"></video>`).join("")}</body></html>`,
+    );
+    mocks.proxyWindowSeconds.mockClear();
+    mocks.proxyWindowSeconds.mockResolvedValue(30);
+    try {
+      await captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, [
+        { time: 1, filename: "a.png" },
+      ]);
+      expect(vi.mocked(serveStaticProjectHtml).mock.calls.at(-1)?.[5]).toEqual(
+        new Map(names.map((name) => [join(dir, name), 30])),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("closes the session when a later screenshot fails", async () => {
     const dir = mkdtempSync(join(tmpdir(), "finding-frames-failure-"));
     const page = fakePage();
