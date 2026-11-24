@@ -376,6 +376,11 @@ export default defineConfig({
       // openComposition and silently loses its SDK session. See the stub.
       canvas: resolve(__dirname, "src/shims/canvasBrowserStub.js"),
       "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),
+      // Studio serves the runtime itself, so the player it bundles carries no second copy.
+      "@hyperframes/core/runtime-script": resolve(
+        __dirname,
+        "src/shims/runtimeScriptFromStudio.ts",
+      ),
       "@hyperframes/studio-server/source-mutation": resolve(
         __dirname,
         "../studio-server/src/helpers/sourceMutation.ts",

@@ -14,10 +14,17 @@ import { fileURLToPath } from "node:url";
  * URL routes:
  *   /                                  → host.html (default fixture: gsap-heavy)
  *   /host.html?fixture=<name>          → embed page hosting <hyperframes-player>
+ *   /host.html?...&sealed=1            → the same with sandbox-origin="opaque"
+ *   /host.html?...&cors=0              → the film from /fixtures-no-cors/, a host that sends no CORS headers
  *   /player/hyperframes-player.global.js
+ *   /player/hyperframe.runtime.iife.js   → the runtime file shipped beside it
  *   /vendor/gsap.min.js
  *   /vendor/hyperframe.runtime.iife.js
  *   /fixtures/<name>/<file>            → fixture HTML + assets
+ *   /fixtures-flaky/<name>/<file>      → as /fixtures/, but a 503 the first time each URL is asked (?fail=N: N times)
+ *   /fixtures-lapse/<name>/<file>?id=… → a 503 until recover(id), then the file (CORS headers only with ?cors)
+ *   ...?delay=ms                        → the first answer for that URL comes that much later
+ *   ...?no-store                       → never cached, so every load reaches the server
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -33,6 +40,7 @@ function firstExisting(candidates: string[]): string {
 
 const PATHS = {
   player: join(PLAYER_PKG, "dist/hyperframes-player.global.js"),
+  playerRuntime: join(PLAYER_PKG, "dist/hyperframe.runtime.iife.js"),
   runtime: join(REPO_ROOT, "packages/core/dist/hyperframe.runtime.iife.js"),
   // bun installs gsap into the package's node_modules in workspace mode, but
   // hoists it to the repo root if multiple packages share the same version.
@@ -53,6 +61,9 @@ export type ServeOptions = {
 export type RunningServer = {
   port: number;
   origin: string;
+  /** Every URL asked for, in order. */
+  requested: string[];
+  recover(id: string): void;
   stop(): Promise<void>;
 };
 
@@ -79,9 +90,15 @@ function mimeFor(path: string): string {
   return MIME_TYPES[path.slice(dot).toLowerCase()] ?? "application/octet-stream";
 }
 
-function buildHostHtml(fixtureName: string, width: number, height: number): string {
+function buildHostHtml(
+  fixtureName: string,
+  width: number,
+  height: number,
+  sealed: boolean,
+  cors = true,
+): string {
   const playerSrc = "/player/hyperframes-player.global.js";
-  const fixtureSrc = `/fixtures/${fixtureName}/index.html`;
+  const fixtureSrc = `/${cors ? "fixtures" : "fixtures-no-cors"}/${fixtureName}/index.html`;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -94,7 +111,7 @@ function buildHostHtml(fixtureName: string, width: number, height: number): stri
   </head>
   <body>
     <hyperframes-player
-      id="player"
+      id="player"${sealed ? '\n      sandbox-origin="opaque"' : ""}
       src="${fixtureSrc}"
       width="${width}"
       height="${height}"
@@ -159,17 +176,29 @@ function applyCacheHeaders(res: Response, noCache: boolean): Response {
 export function startServer(options: ServeOptions = {}): RunningServer {
   const noCache = options.noCache ?? false;
 
+  const failures = new Map<string, number>();
+  const requested: string[] = [];
+  const recovered = new Set<string>();
+  const delayed = new Set<string>();
   const server = Bun.serve({
     port: options.port ?? 0,
     async fetch(req) {
       const url = new URL(req.url);
+      requested.push(url.href);
       const path = url.pathname;
 
       if (path === "/" || path === "/host.html") {
         const fixture = url.searchParams.get("fixture") || "gsap-heavy";
         const width = Number(url.searchParams.get("width") || "1920");
         const height = Number(url.searchParams.get("height") || "1080");
-        const html = buildHostHtml(fixture, width, height);
+        const params = url.searchParams;
+        const html = buildHostHtml(
+          fixture,
+          width,
+          height,
+          params.get("sealed") === "1",
+          params.get("cors") !== "0",
+        );
         return applyCacheHeaders(
           new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }),
           noCache,
@@ -180,6 +209,11 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         return applyCacheHeaders(await readBunFile(PATHS.player), noCache);
       }
 
+      // Beside the bundle, as an embedder hosting the player's dist serves it: a sealed player loads it.
+      if (path === "/player/hyperframe.runtime.iife.js") {
+        return applyCacheHeaders(await readBunFile(PATHS.playerRuntime), noCache);
+      }
+
       if (path === "/vendor/hyperframe.runtime.iife.js") {
         return applyCacheHeaders(await readBunFile(PATHS.runtime), noCache);
       }
@@ -188,15 +222,38 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         return applyCacheHeaders(await readBunFile(PATHS.gsap), noCache);
       }
 
-      if (path.startsWith("/fixtures/")) {
-        const rel = path.replace(/^\/fixtures\//, "");
-        const filePath = join(PATHS.fixturesDir, rel);
+      const served = /^\/(fixtures|fixtures-no-cors|fixtures-flaky|fixtures-lapse)\//.exec(path);
+      const failed = failures.get(url.href) ?? 0;
+      const delay = Number(url.searchParams.get("delay") ?? 0);
+      if (served && delay > 0 && !delayed.has(url.href)) {
+        delayed.add(url.href);
+        await new Promise((wake) => setTimeout(wake, delay));
+      }
+      const lapsed =
+        served?.[1] === "fixtures-lapse" && !recovered.has(url.searchParams.get("id") ?? "");
+      if (
+        lapsed ||
+        (served?.[1] === "fixtures-flaky" && failed < Number(url.searchParams.get("fail") ?? 1))
+      ) {
+        failures.set(url.href, failed + 1);
+        return new Response("Busy", {
+          status: 503,
+          headers: { "Access-Control-Allow-Origin": "*" },
+        });
+      }
+      if (served) {
+        const filePath = join(PATHS.fixturesDir, path.slice(served[0].length));
         if (!filePath.startsWith(PATHS.fixturesDir)) {
           return new Response("Forbidden", { status: 403 });
         }
+        // A sealed player's film has an opaque origin and loads its own media with CORS, as from a CORS-capable host.
         const res = applyCacheHeaders(await readBunFile(filePath), noCache);
-        // A sealed film has an opaque origin, so it reads its own media as from a CORS host.
-        res.headers.set("Access-Control-Allow-Origin", "*");
+        const cors =
+          served[1] === "fixtures-lapse"
+            ? url.searchParams.has("cors")
+            : served[1] !== "fixtures-no-cors";
+        if (cors) res.headers.set("Access-Control-Allow-Origin", "*");
+        if (url.searchParams.has("no-store")) res.headers.set("Cache-Control", "no-store");
         return res;
       }
 
@@ -214,6 +271,8 @@ export function startServer(options: ServeOptions = {}): RunningServer {
   return {
     port,
     origin: `http://127.0.0.1:${port}`,
+    requested,
+    recover: (id: string) => void recovered.add(id),
     async stop() {
       server.stop(true);
     },

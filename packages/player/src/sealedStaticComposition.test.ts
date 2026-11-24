@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadLimitMs } from "./composition-probe.js";
+import { loadLimitMs, timelineNotFound } from "./composition-probe.js";
 
 const LIMIT = loadLimitMs();
 
@@ -77,7 +77,7 @@ describe("a sealed film whose runtime boots late", () => {
     const { player, events, postStatic } = framedPlayer();
     postStatic(over);
     vi.advanceTimersByTime(LIMIT);
-    expect(events).toEqual([`error Composition timeline not found after ${LIMIT / 1000}s`]);
+    expect(events).toEqual([`error ${timelineNotFound(LIMIT, true)}`]);
     expect(player.ready).toBe(false);
   });
 
@@ -85,7 +85,7 @@ describe("a sealed film whose runtime boots late", () => {
     const { player, events, postStatic } = framedPlayer();
     postStatic({}, window);
     vi.advanceTimersByTime(LIMIT);
-    expect(events).toEqual([`error Composition timeline not found after ${LIMIT / 1000}s`]);
+    expect(events).toEqual([`error ${timelineNotFound(LIMIT, true)}`]);
     expect(player.ready).toBe(false);
   });
 

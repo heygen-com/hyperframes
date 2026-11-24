@@ -19,7 +19,7 @@ Use Player when an application needs to play and seek an HTML composition. Use
 ### Via CDN
 
 ```html title="index.html"
-<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player/dist/hyperframes-player.js"></script>
 
 <hyperframes-player
   src="./my-composition/index.html"
@@ -223,7 +223,11 @@ iframeRef.current = resolveIframe(player);
 
 The composition runs in a sandboxed iframe inside the player's Shadow DOM. This
 isolates its styles, scales it to the player container, and lets the player
-communicate with the HyperFrames runtime through `postMessage`.
+communicate with the HyperFrames runtime through `postMessage`. Set
+`sandbox-origin="opaque"` to seal the frame, so the composition cannot read
+your page or its cookies. The player adds the runtime itself to a composition
+from your own site; a composition from another site must include the runtime
+script.
 
 ## Related topics
 

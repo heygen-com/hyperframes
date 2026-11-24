@@ -21,8 +21,21 @@ function media(tagName = "VIDEO", networkState = 2, readyState = 0, id = "", ren
     networkState,
     readyState,
     preload: "metadata",
+    error: null,
+    querySelectorAll: () => [],
     load: vi.fn(),
   };
+}
+
+function videoReading(state: { networkState: number; readyState?: number; code?: number }) {
+  const video = document.createElement("video");
+  video.load = vi.fn();
+  Object.defineProperties(video, {
+    networkState: { get: () => state.networkState },
+    readyState: { get: () => state.readyState ?? 0 },
+    error: { get: () => (state.code ? { code: state.code } : null) },
+  });
+  return video;
 }
 
 describe("a video the render replaces with extracted frames", () => {
@@ -106,6 +119,105 @@ describe("initial media preload", () => {
     preloadMedia(element);
     expect(element.preload).toBe("auto");
     expect(element.load).not.toHaveBeenCalled();
+  });
+});
+
+describe("a preload load per source list", () => {
+  it("loads a video on <source> children once while its selection reads idle with no data", () => {
+    const video = videoReading({ networkState: 1 });
+    video.innerHTML = '<source src="down.mp4"><source src="a.mp4">';
+    preloadMedia(video);
+    preloadMedia(video);
+    expect(video.load).toHaveBeenCalledOnce();
+  });
+
+  it("loads a suspended preload none video once, and gives it eager preload", () => {
+    const video = videoReading({ networkState: 1 });
+    video.setAttribute("src", "a.mp4");
+    video.preload = "none";
+    preloadMedia(video);
+    preloadMedia(video);
+    expect(video.load).toHaveBeenCalledOnce();
+    expect(video.preload).toBe("auto");
+  });
+
+  it.each([
+    ["an error", { networkState: 3, code: 4 }],
+    ["no source left", { networkState: 3 }],
+  ])("loads a single src video again once its load ended with %s", (_, ended) => {
+    const state = { networkState: 1 };
+    const video = videoReading(state);
+    video.setAttribute("src", "down.mp4");
+    preloadMedia(video);
+    Object.assign(state, ended);
+    preloadMedia(video);
+    expect(video.load).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads again when the source list changes", () => {
+    const video = videoReading({ networkState: 1 });
+    video.setAttribute("src", "a.mp4");
+    preloadMedia(video);
+    video.setAttribute("src", "b.mp4");
+    preloadMedia(video);
+    expect(video.load).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["", false, 2],
+    [" in Studio's preview, where the release loads once itself", true, 3],
+  ])("loads again after its download was released%s", (_, studio, loads) => {
+    const mark = studio
+      ? document.head.appendChild(
+          Object.assign(document.createElement("meta"), { name: STUDIO_PREVIEW_MARK_META }),
+        )
+      : null;
+    const video = videoReading({ networkState: 1 });
+    video.setAttribute("src", "a.mp4");
+    preloadMedia(video);
+    releaseMedia(video);
+    preloadMedia(video);
+    mark?.remove();
+    expect(video.load).toHaveBeenCalledTimes(loads);
+  });
+
+  describe("shared with the prefetch, on Chromium", () => {
+    beforeEach(() =>
+      vi
+        .spyOn(navigator, "userAgent", "get")
+        .mockReturnValue(
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
+        ),
+    );
+    afterEach(() => vi.restoreAllMocks());
+
+    it("prefetches a clip once while its selection reads idle with no data", () => {
+      const video = videoReading({ networkState: 1 });
+      video.setAttribute("src", "a.mp4");
+      prefetchMedia(video);
+      prefetchMedia(video);
+      expect(video.load).toHaveBeenCalledOnce();
+      expect(video.preload).toBe("metadata");
+    });
+
+    it("does not prefetch a clip its preload already loaded", () => {
+      const video = videoReading({ networkState: 1 });
+      video.setAttribute("src", "a.mp4");
+      preloadMedia(video);
+      prefetchMedia(video);
+      expect(video.load).toHaveBeenCalledOnce();
+    });
+
+    it("loads a prefetched clip again when it is shown short of future data, as raising preload alone does not", () => {
+      const state = { networkState: 1, readyState: 0 };
+      const video = videoReading(state);
+      video.setAttribute("src", "a.mp4");
+      prefetchMedia(video);
+      state.readyState = 1;
+      preloadMedia(video);
+      expect(video.load).toHaveBeenCalledTimes(2);
+      expect(video.preload).toBe("auto");
+    });
   });
 });
 
