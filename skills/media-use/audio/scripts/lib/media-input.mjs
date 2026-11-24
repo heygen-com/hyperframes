@@ -1,4 +1,5 @@
 // media-input.mjs — ffmpeg input that reads one local media file and opens nothing that file names.
+import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
 
 // Formats whose file is a list, playlist or script naming other media or programs, which ffmpeg would then
