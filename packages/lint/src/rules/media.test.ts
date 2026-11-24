@@ -960,11 +960,23 @@ describe("audio_volume_tween_overrides_gain", () => {
     expect(finding?.fixHint).toContain("`volume: 1.949845`");
   });
 
-  it("warns about an attenuation the tween overrides, not just a boost", async () => {
+  it.each([
+    ["0.3", "0.3"],
+    ["0", "0"],
+    ["0.030000", "0.03"],
+    ["3e-2", "0.03"],
+  ])("preserves the authored gain %s in its advice", async (authored, gain) => {
     const res = await lintHyperframeHtml(
-      withScript(`data-volume="0.3"`, `tl.to("#bgm", { volume: 1 });`),
+      withScript(`data-volume="${authored}"`, `tl.to("#bgm", { volume: 1 });`),
     );
-    expect(res.findings.some((f) => f.code === "audio_volume_tween_overrides_gain")).toBe(true);
+    const finding = res.findings.find((f) => f.code === "audio_volume_tween_overrides_gain");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("bgm");
+    expect(finding?.fixHint).toContain(`\`volume: ${gain}\``);
+    expect(finding?.fixHint).toContain(
+      "measure the render with `hyperframes audio` before changing it",
+    );
+    expect(finding?.fixHint).not.toMatch(/reset data-volume|volume: 1\b/);
   });
 
   it("stays quiet on the fade the docs recommend, which carries no data-volume", async () => {
