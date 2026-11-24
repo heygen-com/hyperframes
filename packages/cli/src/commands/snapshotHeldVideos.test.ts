@@ -188,6 +188,7 @@ describe("projectVideoFile", () => {
   writeFileSync(join(dir, "escape.m3u8"), list("../outside/secret.mp4"));
   writeFileSync(join(dir, "escape.mp4"), list(join(root, "outside", "secret.mp4")));
   writeFileSync(join(dir, "stream.m3u8"), list("seg0.ts"));
+  writeFileSync(join(dir, "seg0.ts"), "segment");
   afterAll(() => rmSync(root, { recursive: true, force: true }));
   beforeEach(() => {
     run.mockReset();
