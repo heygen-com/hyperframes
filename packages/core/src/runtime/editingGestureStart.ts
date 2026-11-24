@@ -29,8 +29,9 @@ export interface EditingGestureStart extends EditingElementGeometry {
   move: { a: number; b: number; c: number; d: number } | null;
   /** Frame px its centre moves per px of drawn width, `a, b`, and height, `c, d`; null when it has no box. */
   grow: { a: number; b: number; c: number; d: number } | null;
-  /** Set when GSAP owns its position: its x/y now, and whether a tween with a duration moves it. */
+  /** Set when GSAP owns its position: its x/y now, and whether a tween moves it. `gsapAt`: x/y as GSAP reads them. */
   gsap: { x: number; y: number; moving: boolean; drawsTranslate: true } | null;
+  gsapAt: { x: number; y: number };
   /** GSAP's rotation now when it owns the element's turn; null when it turns by its own CSS `rotate`. */
   gsapRotation: number | null;
   cssRotation: CssRotationStart | null;
@@ -261,6 +262,10 @@ export function gestureStart(handles: readonly EditingElementHandle[]): {
       move: measureMoveResponse(element),
       grow: measureGrowResponse(element, geometry.layout),
       gsap: gsapPosition(element),
+      gsapAt: withoutGsapTakeover(element, () => ({
+        x: readGsap(element, "x"),
+        y: readGsap(element, "y"),
+      })),
       gsapRotation: rotation,
       cssRotation: rotation === null ? readCssRotationStart(element as HTMLElement) : null,
       planar: planarOf(element),

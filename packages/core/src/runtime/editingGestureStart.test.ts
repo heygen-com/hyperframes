@@ -159,13 +159,15 @@ describe("gesture start", () => {
     expect(card.getAttribute("style")).toBe("translate: 10px 20px;");
   });
 
-  it("leaves GSAP out of an element it does not move, without asking it for x", () => {
+  // fails without the fix: a sealed resize handed to GSAP started a layer GSAP does not move at x/y 0, 0.
+  it("reads GSAP's x/y for an element it does not move, without GSAP taking it over", () => {
     const card = turnedCard("");
-    const getProperty = gsapWith([tween(document.body, { x: 10 }, 1)]);
+    gsapWith([tween(document.body, { x: 10 }, 1)], { x: 40, y: 30 });
     const [start] = gestureStart([handleFor(card)]).elements;
     expect(start!.gsap).toBeNull();
-    expect(getProperty).not.toHaveBeenCalled();
+    expect(start!.gsapAt).toEqual({ x: 40, y: 30 });
     expect(card.getAttribute("style")).toBe("");
+    expect("_gsap" in card).toBe(false);
   });
 
   it.each<[string, (card: HTMLElement) => Tween, boolean]>([

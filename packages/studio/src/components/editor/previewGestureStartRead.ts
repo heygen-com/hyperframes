@@ -18,6 +18,7 @@ export interface PreviewGestureStart {
   screenToOffset: ManualOffsetDragMatrix | null;
   /** GSAP's x/y when it owns the element's position, and whether a tween with a duration moves it. */
   gsap: { x: number; y: number; moving: boolean; drawsTranslate?: true } | null;
+  gsapAt?: { x: number; y: number };
   gsapRotation?: number | null;
   grow?: { a: number; b: number; c: number; d: number };
   cssRotation?: EditingGestureStart["cssRotation"];
@@ -73,6 +74,7 @@ export async function measurePreviewGestureStart(
             layout: start.layout,
             screenToOffset: screenToOffset(start.move),
             gsap: start.gsap,
+            gsapAt: start.gsapAt,
             gsapRotation: start.gsapRotation,
             grow: start.grow
               ? {
