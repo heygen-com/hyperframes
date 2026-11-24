@@ -7,8 +7,12 @@ export { PITCH_RATE };
 const SILENT_DB = -120;
 export const ABSENT_DB = -55;
 
-export async function decodeMono(path: string, sampleRate = READ_RATE): Promise<Float32Array> {
-  const decoded = await decodeAudio(path, {}, undefined, { sampleRate, mono: true });
+export async function decodeMono(
+  path: string,
+  sampleRate = READ_RATE,
+  inputArgs: readonly string[] = [],
+): Promise<Float32Array> {
+  const decoded = await decodeAudio(path, {}, undefined, { sampleRate, mono: true, inputArgs });
   if (!decoded) throw new Error(`${path} has no audio stream`);
   const samples = decoded.signal.channels[0]!;
   if (samples.some((sample) => !Number.isFinite(sample)))

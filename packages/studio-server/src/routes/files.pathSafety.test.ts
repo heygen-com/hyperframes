@@ -528,6 +528,105 @@ describe("files other programs run or trust", () => {
       expect(saved.status).toBe(200);
     });
 
+    const create = (app: Hono, path: string) =>
+      app.request(fileUrl(path), { method: "POST", body: "planted" });
+
+    // Node loads an exact extensionless name before its `.js`, `.ts` or `.json` sibling.
+    const SHADOWS = [
+      {
+        name: "server/start beside server/start.js, the manifest's main",
+        pkg: { main: "server/start", scripts: { start: "node ." } },
+        sibling: "server/start.js",
+        target: "server/start",
+      },
+      {
+        name: "lib/util beside lib/util.js",
+        pkg: { scripts: { build: "node lib/build.js" } },
+        sibling: "lib/util.js",
+        target: "lib/util",
+      },
+      {
+        name: "lib/util beside lib/util.ts",
+        pkg: { devDependencies: { tsx: "^4.0.0" } },
+        sibling: "lib/util.ts",
+        target: "lib/util",
+      },
+      {
+        name: "config beside config.json",
+        pkg: { scripts: { start: "node server.mjs" } },
+        sibling: "config.json",
+        target: "config",
+      },
+    ];
+
+    it.each(SHADOWS)("never plants $name", async ({ pkg, sibling, target }) => {
+      const { app, project } = fixture();
+      manifest(project, "", pkg);
+      plant(project, sibling);
+      await expectRefused(await create(app, target), "create");
+      await expectRefused(await move(app, "inside.txt", target), "rename onto");
+      plant(project, "incoming/payload", "planted");
+      const parent = target.includes("/") ? target.slice(0, target.lastIndexOf("/")) : "";
+      await expectRefused(
+        await move(app, "incoming", parent ? `${parent}/incoming` : "incoming-moved"),
+        "folder move in",
+      );
+      const uploaded = await upload(app, parent, target.split("/").at(-1)!);
+      expect((await uploaded.json()).skipped, "upload").toContain(target.split("/").at(-1));
+      expect(existsSync(join(project, target))).toBe(false);
+      expect(readFileSync(join(project, "inside.txt"), "utf8")).toBe("inside");
+    });
+
+    it.each([
+      "server/Start",
+      "server/START",
+      "server/start.",
+      "server/start ",
+      "server/\uff53tart",
+    ])("refuses %s, a spelling of server/start", async (path) => {
+      const { app, project } = fixture();
+      manifest(project, "", { main: "server/start" });
+      plant(project, "server/start.js");
+      await expectRefused(await create(app, path), path);
+      expect(readdirSync(join(project, "server"))).toEqual(["start.js"]);
+    });
+
+    it("never overwrites, deletes or moves bin/www, an extensionless script package.json runs", async () => {
+      const { app, project } = fixture();
+      manifest(project, "", { scripts: { start: "node ./bin/www" } });
+      plant(project, "bin/www");
+      const overwrite = await app.request(fileUrl("bin/www"), {
+        method: "PUT",
+        headers: { "If-Match": fileContentVersion("mine") },
+        body: "planted",
+      });
+      await expectRefused(overwrite, "overwrite");
+      await expectRefused(await app.request(fileUrl("bin/www"), { method: "DELETE" }), "delete");
+      await expectRefused(await app.request(fileUrl("bin"), { method: "DELETE" }), "folder delete");
+      await expectRefused(await move(app, "bin", "bin-aside"), "folder move away");
+      expect(readFileSync(join(project, "bin", "www"), "utf8")).toBe("mine");
+    });
+
+    it("still renames, moves and uploads into folders in a project with Node tooling", async () => {
+      const { app, project } = fixture();
+      manifest(project, "", { main: "server/start", scripts: { start: "node ." } });
+      plant(project, "scenes/intro.html", "<div></div>");
+      plant(project, "media/logo.png", "png");
+      expect((await move(app, "scenes", "compositions")).status).toBe(200);
+      expect((await move(app, "media", "assets/media")).status).toBe(200);
+      expect((await upload(app, "assets/notes", "credits.txt")).status).toBe(201);
+      expect(existsSync(join(project, "assets", "notes", "credits.txt"))).toBe(true);
+      expect((await create(app, "compositions/outro.html")).status).toBe(201);
+    });
+
+    it("still writes extensionless files in a default hyperframes init project", async () => {
+      const { app, project } = fixture();
+      manifest(project, "", SCAFFOLD);
+      plant(project, "server/start.js");
+      expect((await create(app, "server/start")).status).toBe(201);
+      expect((await create(app, "notes")).status).toBe(201);
+    });
+
     it("refuses a folder move that would put config.toml under mise", async () => {
       const { app, project } = fixture();
       plant(project, "cfg/config.toml", "[tasks]");

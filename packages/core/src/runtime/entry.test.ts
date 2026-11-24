@@ -533,6 +533,36 @@ describe("runtime entry", () => {
       expect(loadsOf(now!)).toEqual([1]);
     });
 
+    // fails without the fix: the far clip's length probe set preload without recording it, so a grade undo on that
+    // clip read preload as an attribute it would drop and was refused while the length loaded.
+    it("a grade undo on a far clip whose length is still loading applies in place", async () => {
+      spyLoad();
+      servePreview();
+      const clips = videos(mountRoot(), "0", "1.5", "6");
+      for (const clip of clips) clip.removeAttribute("data-duration");
+      const later = clips[2] as HTMLVideoElement;
+      later.setAttribute("data-hf-id", "later");
+      const authored = later
+        .getAttributeNames()
+        .map((name): [string, string] => [name, later.getAttribute(name)!]);
+
+      await evaluateRuntime();
+      expect(later.preload).toBe("metadata");
+      const { isRuntimeAttribute } = await import("./runtimeAttributes");
+      const { restoreInPlace } = await import("./editing/restoreAttributes");
+      expect(isRuntimeAttribute(later, "preload")).toBe(true);
+      const grade: [string, string] = [
+        HF_COLOR_GRADING_ATTR,
+        serializeHfColorGrading({ adjust: { exposure: 0.5 } }),
+      ];
+      const undo = {
+        scopes: [{ file: null, elements: [{ key: "hf:later", attributes: [...authored, grade] }] }],
+        scripted: false,
+        time: 0,
+      };
+      expect(restoreInPlace(undo)).toBe("applied");
+    });
+
     // fails without the fix: a preview loaded every clip with no authored length in full, so a film of hundreds ran
     // the page out of memory.
     it("in a preview a far clip with no authored length loads only its length, then gives its decoder back and keeps the length", async () => {

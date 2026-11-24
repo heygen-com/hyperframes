@@ -223,6 +223,7 @@ function resolveGestureProperties(
 interface RecordingRefs {
   /** A sealed frame's stand-in, whose draft shows the recording live. */
   drawsOn: HTMLElement | null;
+  drawsProps: boolean;
   pointer: { x: number; y: number };
   startPointer: { x: number; y: number };
   hasMoved: boolean;
@@ -262,11 +263,19 @@ function createRecordingRefs(): RecordingRefs {
     playhead: null,
     lastTime: Infinity,
     drawsOn: null,
+    drawsProps: false,
   };
 }
 
+function drawSealedSample(r: RecordingRefs, seconds: number, values: Record<string, number>) {
+  if (!r.drawsOn || !r.drawsProps) return usePlayerStore.getState().requestSeek(seconds);
+  drawPreviewDraft(r.drawsOn, { translate: null, props: { seconds, values } });
+  liveTime.notify(seconds);
+  usePlayerStore.getState().setCurrentTime(seconds);
+}
+
 function releaseRuntimePreview(r: RecordingRefs): void {
-  if (r.drawsOn) endPreviewDraft(r.drawsOn, "restore");
+  if (r.drawsOn) endPreviewDraft(r.drawsOn, r.drawsProps ? "clear" : "restore");
   r.drawsOn = null;
   const runtime = r.runtime;
   if (!runtime) return;
@@ -356,6 +365,7 @@ export function useGestureRecording() {
       const recordingEnd = Math.min(elementEndTime ?? Infinity, duration);
       r.runtime = connectGsapRuntime(element, iframeEl, recordingEnd);
       r.drawsOn = sealed ? element : null;
+      r.drawsProps = !!sealedBase?.drawsProps;
       r.playhead = sealed ? { start: currentTime, end: recordingEnd } : null;
       const seekable = r.runtime
         ? { start: r.runtime.startTime, end: r.runtime.maxSeekTime }
@@ -449,9 +459,9 @@ export function useGestureRecording() {
             releaseRuntimePreview(r);
           }
         } else if (r.playhead) {
-          usePlayerStore.getState().requestSeek(Math.min(r.playhead.start + time, r.playhead.end));
+          drawSealedSample(r, Math.min(r.playhead.start + time, r.playhead.end), properties);
         }
-        if (r.drawsOn && ("x" in properties || "y" in properties)) {
+        if (r.drawsOn && !r.drawsProps && ("x" in properties || "y" in properties)) {
           const { x = r.basePosition.x, y = r.basePosition.y } = properties;
           drawPreviewDraft(r.drawsOn, {
             translate: { x: x - r.basePosition.x, y: y - r.basePosition.y },

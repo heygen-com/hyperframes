@@ -323,7 +323,7 @@ export function useElementPicker(
       if (!picked?.selector || !activeIframe) return;
       const saved = (source: PickedSource | null) => {
         if (!source) return;
-        setPickedElement((prev) => (prev ? shown(prev) : null));
+        setPickedElement((prev) => (prev && samePick(prev, picked) ? shown(prev) : prev));
         syncToSource(picked, source, op);
       };
       const source = writePicked(activeIframe, picked.selector, write);
@@ -385,6 +385,8 @@ export function useElementPicker(
     activeIframeRef,
   };
 }
+
+const samePick = (a: PickedElement, b: PickedElement) => a.selector === b.selector && a.id === b.id;
 
 function elementOwnsEscape(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
