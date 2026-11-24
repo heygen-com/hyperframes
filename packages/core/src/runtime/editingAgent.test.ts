@@ -430,6 +430,8 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: "1", y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: { x: Infinity, y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: 1, y: 0, route: "css" }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: 1e6, y: 0, route: "gsap" }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
@@ -677,6 +679,27 @@ describe("installEditingAgent", () => {
       ok: true,
     });
     expect(spun.style.transform).toBe(value);
+  });
+
+  // fails without the fix: the frame refused a move routed through its GSAP, so a sealed drag drew a CSS translate.
+  it("moves a GSAP-held element's x/y through the port", async () => {
+    const port = connectedPort();
+    document.body.insertAdjacentHTML("beforeend", '<div id="held"></div>');
+    const held = document.getElementById("held")!;
+    const position = { x: 40, y: 30 };
+    Object.assign(window, {
+      gsap: {
+        getProperty: (_: Element, axis: "x" | "y") => position[axis],
+        set: (_: Element, props: Partial<typeof position>) => Object.assign(position, props),
+      },
+    });
+    const translate = { x: 35, y: 33, route: "gsap" };
+    const drafts = [{ handle: handleFor(held), translate, size: null }];
+    expect(await ask(port, { v: 1, id: 1, kind: "draft", params: { drafts } })).toMatchObject({
+      ok: true,
+    });
+    expect(position).toEqual({ x: 35, y: 33 });
+    Reflect.deleteProperty(window, "gsap");
   });
 
   it("answers computed styles for the element a selector names", async () => {

@@ -145,7 +145,7 @@ describe("project history and media files", () => {
     );
   });
 
-  it("keeps TypeScript source edits undoable, and reclaim leaves their copies", async () => {
+  it("copies TypeScript sources rather than taking them for video, and undo leaves them alone", async () => {
     const { history, historyRoot, projectDir, write } = await project({
       "index.html": "A",
       "setup.ts": "export const a = 1;",
@@ -153,6 +153,7 @@ describe("project history and media files", () => {
     });
     await history.flush();
     const edit = await history.beginWindow(you, "Edit");
+    write("index.html", "B");
     write("setup.ts", "export const a = 2;");
     write("intro.mts", "export const b = 2;");
     const entry = (await edit.close())!;
@@ -161,6 +162,7 @@ describe("project history and media files", () => {
     const reopened = await open(projectDir, historyRoot);
     expect(blobBytes(historyRoot, reopened)).toBeGreaterThan(40);
     expect((await reopened.undo(entry.id, { who: you })).ok).toBe(true);
-    expect(readFileSync(join(projectDir, "setup.ts"), "utf-8")).toBe("export const a = 1;");
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("A");
+    expect(readFileSync(join(projectDir, "setup.ts"), "utf-8")).toBe("export const a = 2;");
   });
 });

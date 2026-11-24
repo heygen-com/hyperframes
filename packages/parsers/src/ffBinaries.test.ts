@@ -660,6 +660,7 @@ describe("assertLiteralMediaInput against the installed ffprobe", () => {
           "stream=width",
           "-of",
           "csv=p=0",
+          "--",
           path,
         ],
         { encoding: "utf8" },
