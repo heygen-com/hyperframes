@@ -8,14 +8,51 @@ const MAX_BODY_BYTES = 32 * 1024 * 1024;
 
 type Handler = (req: Connect.IncomingMessage, res: ServerResponse) => Promise<void>;
 
-// Vite checks Host only after plugin middlewares, so mirror its default rule here: localhost, *.localhost, IP literals.
-function hostAllowed(host: string | undefined, extraHosts: readonly string[]): boolean {
-  if (!host) return false;
+// The parts of Vite's resolved server options that decide which Hosts it serves the page on.
+interface ServerHostOptions {
+  allowedHosts?: readonly string[] | true;
+  https?: unknown;
+  host?: string | boolean;
+  origin?: string;
+  hmr?: boolean | { host?: string };
+}
+
+function hostnameOf(origin: string): string {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function configuredHosts(server: ServerHostOptions): string[] {
+  const names = [...(server.allowedHosts === true ? [] : (server.allowedHosts ?? []))];
+  if (typeof server.host === "string") names.push(server.host);
+  if (typeof server.hmr === "object" && server.hmr.host) names.push(server.hmr.host);
+  if (server.origin) names.push(hostnameOf(server.origin));
+  return names.filter((name) => name !== "").map((name) => name.toLowerCase());
+}
+
+function matchesConfiguredHost(name: string, server: ServerHostOptions): boolean {
+  return configuredHosts(server).some(
+    (allowed) =>
+      allowed === name ||
+      (allowed.startsWith(".") && (name === allowed.slice(1) || name.endsWith(allowed))),
+  );
+}
+
+function nameAllowed(host: string, server: ServerHostOptions): boolean {
   const bracketed = /^\[([^\]]+)\]/.exec(host);
   if (bracketed) return isIP(bracketed[1] ?? "") === 6;
   const name = (host.split(":")[0] ?? "").toLowerCase();
   if (isIP(name) === 4 || name === "localhost" || name.endsWith(".localhost")) return true;
-  return extraHosts.some((extra) => extra.toLowerCase() === name);
+  return matchesConfiguredHost(name, server);
+}
+
+// Vite checks Host only after plugin middlewares, so these routes apply its rule themselves.
+function hostAllowed(host: string | undefined, server: ServerHostOptions): boolean {
+  if (server.allowedHosts === true || server.https) return true;
+  return host !== undefined && host !== "" && nameAllowed(host, server);
 }
 
 function writeFromAnotherSite(req: Connect.IncomingMessage): boolean {
@@ -36,27 +73,39 @@ function refuse(res: ServerResponse, status: number, message: string) {
   res.end(message);
 }
 
-function sendHtml(res: ServerResponse, html: string | undefined) {
+// The composition is data for the playground's fetch, never a page a browser should render or frame.
+function sendComposition(res: ServerResponse, html: string | undefined) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'; frame-ancestors 'none'");
+  res.setHeader("X-Frame-Options", "DENY");
   if (html === undefined) {
     res.statusCode = 404;
     res.end("");
     return;
   }
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.end(html);
 }
 
 function readBodyWithinLimit(req: Connect.IncomingMessage): Promise<string | null> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    let ended = false;
     req.on("data", (c: Buffer) => {
       size += c.length;
       if (size <= MAX_BODY_BYTES) return void chunks.push(c);
       chunks.length = 0;
       resolve(null);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("end", () => {
+      ended = true;
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", reject);
+    req.on("close", () => {
+      if (!ended) reject(new Error("request closed before its body ended"));
+    });
   });
 }
 
@@ -78,7 +127,7 @@ async function handleCompositionGet(
   const html = versionKey
     ? await adapter.loadFrom(COMP_PATH, versionKey)
     : await adapter.read(COMP_PATH);
-  sendHtml(res, html);
+  sendComposition(res, html);
 }
 
 async function handleCompositionPut(
@@ -87,7 +136,8 @@ async function handleCompositionPut(
   res: ServerResponse,
 ) {
   if (writeFromAnotherSite(req)) return refuse(res, 403, "forbidden: cross-site write");
-  const body = await readBodyWithinLimit(req);
+  const body = await readBodyWithinLimit(req).catch(() => undefined);
+  if (body === undefined) return refuse(res, 400, "incomplete request body");
   if (body === null) {
     res.setHeader("Connection", "close");
     return refuse(res, 413, "composition too large");
@@ -120,12 +170,12 @@ async function handleComposition(
 
 export function createCompositionApi(
   adapter: PersistAdapter,
-  extraHosts: readonly string[] = [],
+  server: ServerHostOptions = {},
 ): { versions: Handler; composition: Handler } {
   const guarded =
     (handle: typeof handleComposition): Handler =>
     async (req, res) => {
-      if (!hostAllowed(req.headers.host, extraHosts)) {
+      if (!hostAllowed(req.headers.host, server)) {
         return refuse(res, 403, `forbidden: host "${req.headers.host ?? ""}" is not allowed`);
       }
       await handle(adapter, req, res);

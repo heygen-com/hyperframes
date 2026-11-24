@@ -12,8 +12,7 @@ function compositionPlugin(): Plugin {
   return {
     name: "hf-composition",
     configureServer(server) {
-      const { host } = server.config.server;
-      const api = createCompositionApi(adapter, typeof host === "string" ? [host] : []);
+      const api = createCompositionApi(adapter, server.config.server);
       server.middlewares.use("/api/composition/versions", api.versions);
       server.middlewares.use("/api/composition", api.composition);
     },

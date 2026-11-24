@@ -54,7 +54,7 @@ describe("composition API", () => {
 
   it("refuses another host name before reading or writing anything", async () => {
     const adapter = fakeAdapter();
-    const api = createCompositionApi(adapter, ["playground.test"]);
+    const api = createCompositionApi(adapter, { host: "playground.test" });
     for (const handler of [api.composition, api.versions]) {
       const get = request("GET", { host: "rebound.example:5173" });
       await handler(get.req, get.res);
@@ -74,6 +74,64 @@ describe("composition API", () => {
     await api.composition(configured.req, configured.res);
     expect(configured.sent()).toBe("<main>saved</main>");
   });
+
+  it("serves the hosts Vite's server options allow, and any host when Vite checks none", async () => {
+    const adapter = fakeAdapter();
+    const configured = createCompositionApi(adapter, {
+      allowedHosts: ["tunnel.example", ".team.example"],
+      origin: "https://origin.example:8443",
+      hmr: { host: "hmr.example" },
+    });
+    for (const host of [
+      "tunnel.example",
+      "team.example:443",
+      "me.team.example",
+      "origin.example",
+      "hmr.example:24678",
+    ]) {
+      const get = request("GET", { host });
+      await configured.composition(get.req, get.res);
+      expect(get.sent()).toBe("<main>saved</main>");
+    }
+    for (const host of ["other.example", "tunnel.example.evil", "notteam.example"]) {
+      const get = request("GET", { host });
+      await configured.composition(get.req, get.res);
+      expect(get.res.statusCode).toBe(403);
+    }
+    for (const server of [{ allowedHosts: true as const }, { https: {} }]) {
+      const get = request("GET", { host: "anything.example" });
+      await createCompositionApi(adapter, server).composition(get.req, get.res);
+      expect(get.sent()).toBe("<main>saved</main>");
+    }
+  });
+
+  it("serves the composition as inert text that no page can render or frame", async () => {
+    const api = createCompositionApi(fakeAdapter());
+    const get = request("GET", LOCAL);
+    await api.composition(get.req, get.res);
+    expect(get.res.getHeader("content-type")).toBe("text/plain; charset=utf-8");
+    expect(get.res.getHeader("x-content-type-options")).toBe("nosniff");
+    expect(get.res.getHeader("x-frame-options")).toBe("DENY");
+    expect(get.res.getHeader("content-security-policy")).toBe(
+      "sandbox; default-src 'none'; frame-ancestors 'none'",
+    );
+  });
+
+  it("answers a save whose client disconnects before the body ends", async () => {
+    const adapter = fakeAdapter();
+    const api = createCompositionApi(adapter);
+    const req = new IncomingMessage(new Socket());
+    req.method = "PUT";
+    req.url = "/";
+    req.headers = LOCAL;
+    req.push(Buffer.from("<main>"));
+    const res = new ServerResponse(req);
+    const handled = api.composition(req, res);
+    req.destroy();
+    await handled;
+    expect(res.statusCode).toBe(400);
+    expect(adapter.write).not.toHaveBeenCalled();
+  }, 1000);
 
   it("refuses a save that another site started", async () => {
     const adapter = fakeAdapter();
