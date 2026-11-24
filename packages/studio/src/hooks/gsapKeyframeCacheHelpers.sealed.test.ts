@@ -2,10 +2,13 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 
-const { previewDocumentCopy } = vi.hoisted(() => ({ previewDocumentCopy: vi.fn() }));
+const { previewDocumentCopy, previewFrameOpaque } = vi.hoisted(() => ({
+  previewDocumentCopy: vi.fn(),
+  previewFrameOpaque: vi.fn(),
+}));
 vi.mock("../player/lib/previewChannel", async (importOriginal) => {
   const original = await importOriginal<typeof import("../player/lib/previewChannel")>();
-  return { ...original, previewFrameOpaque: () => true, previewDocumentCopy };
+  return { ...original, previewFrameOpaque, previewDocumentCopy };
 });
 
 import { usePlayerStore } from "../player/store/playerStore";
@@ -30,6 +33,7 @@ const shown = {
 
 beforeEach(() => {
   previewDocumentCopy.mockReset();
+  previewFrameOpaque.mockReset().mockReturnValue(true);
   usePlayerStore.setState({
     keyframeCache: new Map([["index.html#d1", shown]]),
     gsapAnimations: new Map(),
@@ -48,6 +52,15 @@ it("files a class tween under the sealed frame's matching elements", async () =>
 
 it("keeps the shown markers when the sealed frame does not answer", async () => {
   previewDocumentCopy.mockResolvedValue(null);
+  await cacheCommittedKeyframes(iframe, [dots], "index.html", "d1", {});
+  expect(usePlayerStore.getState().keyframeCache.get("index.html#d1")).toBe(shown);
+});
+
+it("keeps the shown markers when the sealed frame is removed while it is read", async () => {
+  previewDocumentCopy.mockImplementation(async () => {
+    previewFrameOpaque.mockReturnValue(false);
+    return null;
+  });
   await cacheCommittedKeyframes(iframe, [dots], "index.html", "d1", {});
   expect(usePlayerStore.getState().keyframeCache.get("index.html#d1")).toBe(shown);
 });

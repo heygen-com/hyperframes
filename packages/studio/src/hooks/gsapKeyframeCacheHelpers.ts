@@ -78,10 +78,12 @@ export async function cacheCommittedKeyframes(
   selectionId: string | undefined,
   mutation: Record<string, unknown>,
 ): Promise<void> {
+  // Read before the await: a frame removed meanwhile no longer reads as sealed.
+  const sealed = iframe !== null && previewFrameOpaque(iframe);
   const doc = await tweenTargetDocument(iframe);
   // A sealed frame that did not answer (replaced, or gone) would attribute nothing and clear the
   // selection's markers; the cache reload after the write fills them from the new frame instead.
-  if (!doc && iframe && previewFrameOpaque(iframe)) return;
+  if (!doc && sealed) return;
   updateKeyframeCacheFromParsed(animations, targetPath, selectionId, mutation, doc);
 }
 
