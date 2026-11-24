@@ -87,14 +87,14 @@ export function cleanAssetUrl(url: string): string {
   return url.trim().split(/[?#]/, 1)[0] ?? "";
 }
 
+const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
+
 /**
  * `pathModule` defaults to the host's native `node:path`, so every existing
  * caller gets its actual OS's separator and drive-letter rules unchanged.
  * Tests inject `path.win32` / `path.posix` to exercise both platforms' rules
  * from a single OS (same pattern as producer/fileServer.ts's `isPathInside`).
  */
-const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
-
 export function isWithinProjectRoot(
   projectDir: string,
   candidate: string,
@@ -151,18 +151,13 @@ export function srcOnAnotherNetworkRoot(projectDir: string, src: string): boolea
   return isAbsolute(path) && namesAnotherNetworkRoot(projectDir, path);
 }
 
-function staysInsideProject(projectDir: string, path: string): boolean {
-  const relativePath = relative(resolve(projectDir), path);
-  return !LEADING_PARENT_SEGMENT.test(relativePath) && !isAbsolute(relativePath);
-}
-
 /** The project file a data-composition-src names, as the preview reads it; null when it leaves the project. */
 export function resolveCompositionSrc(projectDir: string, src: string): string | null {
   const rooted = (value: string) => resolve(projectDir, value.replace(/^(?:\.?[\\/])+/, ""));
   const decoded = rooted(decodedUrlPath(src));
-  if (!staysInsideProject(projectDir, decoded)) return null;
+  if (!isWithinProjectRoot(projectDir, decoded)) return null;
   const raw = rooted(src);
-  return !existsSync(decoded) && staysInsideProject(projectDir, raw) && existsSync(raw)
+  return !existsSync(decoded) && isWithinProjectRoot(projectDir, raw) && existsSync(raw)
     ? raw
     : decoded;
 }
