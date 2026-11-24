@@ -45,6 +45,16 @@ export function spanFrameRange(
   return { startFrame, endFrame };
 }
 
+/** A span plans and captures in this process, so the container font guards and Lambda plan cap do not apply. */
+export function spanPlanConfig(config: DistributedRenderConfig): DistributedRenderConfig {
+  return {
+    ...config,
+    rejectOnSystemFonts: false,
+    failClosedFontFetch: false,
+    planDirSizeLimitBytes: Number.MAX_SAFE_INTEGER,
+  };
+}
+
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new RenderCancelledError("render_cancelled", "user_cancelled");
 }
@@ -70,17 +80,11 @@ export async function renderSpan(
     const planDir = join(workDir, "plan");
     const partsDir = join(workDir, "parts");
     mkdirSync(partsDir, { recursive: true });
-    // The span captures here in the browser a full render uses, so the container-only font guards do not apply.
-    const planned = await plan(
-      projectDir,
-      { ...config, rejectOnSystemFonts: false, failClosedFontFetch: false },
-      planDir,
-      {
-        chunksCarryAudio: true,
-        allowOutsideProjectAssets: options.allowOutsideProjectAssets,
-        includeOutsideScripts: options.includeOutsideScripts,
-      },
-    );
+    const planned = await plan(projectDir, spanPlanConfig(config), planDir, {
+      chunksCarryAudio: true,
+      allowOutsideProjectAssets: options.allowOutsideProjectAssets,
+      includeOutsideScripts: options.includeOutsideScripts,
+    });
     const { startFrame, endFrame } = spanFrameRange(
       span.startSeconds,
       span.endSeconds,
