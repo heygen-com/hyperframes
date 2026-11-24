@@ -1236,7 +1236,8 @@ sign-in that returns to their port leaves nothing the project's own script can r
 
 ### `publish`
 
-For new video reviews, use [`share`](#share). Legacy source publishing stays
+**`hyperframes publish` is deprecated for new projects.** For a new video review,
+run [`hyperframes share`](#share) and choose who can open the link. Legacy source publishing stays
 available with a notice for 60 days from an announced notice release. That
 release date has not been scheduled. After the window, new `publish` runs guide
 you to `share`, where you choose a new audience; old flags are never silently
@@ -2012,9 +2013,16 @@ entry's files over the newer edits, or `--back-to-before` to go back to before
 it, undoing the newer entries too.
 
 `undo` and `restore` put back only files that Studio itself may write. Package
-and lock files, tool and agent configuration, scripts that `package.json` runs,
+and lock files, tool and agent configuration, scripts that Node tooling may run,
 and hidden or private files keep their current content. Change those in your
 editor.
+
+Studio never writes TypeScript, JSX or CommonJS files (`.ts`, `.tsx`, `.mts`,
+`.cts`, `.jsx`, `.cjs`). It writes `.js` and `.mjs` files only when no
+`package.json` in their folder or any folder above it does more than run the
+`hyperframes` CLI. A project from `hyperframes init` keeps its composition
+scripts editable. Once a `package.json` adds its own scripts, an entry point or
+dependencies, edit that project's scripts in your editor.
 
 ## Render to a file
 

@@ -23,7 +23,7 @@ import {
   initTransparentBackground,
   initializeSession,
 } from "@hyperframes/engine";
-import { noteStaticDedupActivity, reportFrameProgress } from "../render/shared.js";
+import { noteCaptureActivity, reportFrameProgress } from "../render/shared.js";
 import { planHdrResources, probeHdrExtractionDims } from "../render/stages/captureHdrResources.js";
 import { readLayeredScenes } from "../render/stages/captureHdrStage.js";
 import { checkPassthroughEligibility } from "./eligibility.js";
@@ -363,7 +363,7 @@ async function runHdrPassthrough(
       job.framesRendered = done;
       // Capture reports its own band until it is done; the encode keeps the stall watch alive.
       if (!captureDone) {
-        noteStaticDedupActivity(job);
+        noteCaptureActivity(job);
         return;
       }
       reportFrameProgress(
@@ -394,10 +394,10 @@ async function runHdrPassthrough(
       video: eligible.video,
       analysisVideoLayer: eligible.videoLayer,
       outDir: join(input.framesDir, OVERLAY_DIR_NAME),
-      onVerifyProbe: () => noteStaticDedupActivity(job),
+      onVerifyProbe: () => noteCaptureActivity(job),
       onFrame: (_frame, pngPath) => overlayFrames.push(pngPath),
       onStateCaptured: (_framesCovered, statesDone, statesTotal) => {
-        noteStaticDedupActivity(job);
+        noteCaptureActivity(job);
         reportFrameProgress(
           job,
           `HDR passthrough overlay ${statesDone}/${statesTotal}`,
@@ -503,7 +503,7 @@ export async function attemptHdrPassthrough(
     const eligibility = await deps.checkEligibility({ input, session: analysis });
     // The analysis can run for a while on a long composition before the first
     // overlay state ticks the stall watcher.
-    noteStaticDedupActivity(input.job);
+    noteCaptureActivity(input.job);
     if (!eligibility.eligible) {
       log.info(
         `[Render] HDR passthrough off: ${eligibility.reason}` +

@@ -1212,7 +1212,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const api = createStudioApi(adapter, { allowedHosts, sandboxThumbnailCaptures: true });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
-    url.pathname = url.pathname.slice(4); // Strip "/api" prefix
+    url.pathname = url.pathname.replace(/^\/[^/]*/, ""); // Strip the "/api" segment however it is spelled
     const forwardReq = new Request(url.toString(), {
       method: c.req.method,
       headers: c.req.raw.headers,

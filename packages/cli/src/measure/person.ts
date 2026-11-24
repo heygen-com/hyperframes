@@ -7,7 +7,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { contrast } from "./drawn.js";
 import { faceBoxes } from "./face.js";
-import { pearson, probeVideo, round, runFfmpeg, sumOf, type Roi, type VideoInfo } from "./media.js";
+import {
+  ffmpegInput,
+  pearson,
+  probeVideo,
+  round,
+  runFfmpeg,
+  sumOf,
+  type Roi,
+  type VideoInfo,
+} from "./media.js";
 import { avSync, type SyncResult } from "./sync.js";
 
 /** A shot's framing is clearly wrong when, by the shot's medians, the face centre sits over FRAMING_SHIFT face heights
@@ -121,7 +130,10 @@ export function generatedClips(ledger: string): GeneratedClip[] {
 
 /** Loudness every 10 ms of a file's sound. */
 function envelope(path: string): number[] {
-  const raw = runFfmpeg([...["-i", path, "-vn", "-ac", "1", "-ar", "8000", "-f", "f32le", "-"]]);
+  const raw = runFfmpeg([
+    ...ffmpegInput(path),
+    ...["-vn", "-ac", "1", "-ar", "8000", "-f", "f32le", "-"],
+  ]);
   const s = new Float32Array(
     raw.buffer.slice(raw.byteOffset, raw.byteOffset + (raw.byteLength & ~3)),
   );
@@ -262,7 +274,7 @@ function boxAt(
     ].join(",");
     runFfmpeg(
       [
-        ...["-i", info.path, "-an", "-vf", filters, "-fps_mode", "passthrough"],
+        ...[...ffmpegInput(info.path), "-an", "-vf", filters, "-fps_mode", "passthrough"],
         ...["-f", "rawvideo", "out.rgb"],
       ],
       undefined,
@@ -330,7 +342,7 @@ export function carriedFrame(
 function stillBox(path: string, box: Roi, w: number, h: number): Uint8Array | undefined {
   try {
     const raw = runFfmpeg([
-      ...["-i", path, "-frames:v", "1", "-vf"],
+      ...[...ffmpegInput(path), "-frames:v", "1", "-vf"],
       `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=bicubic,format=rgb24,crop=${w}:${h},crop=${box[2]}:${box[3]}:${box[0]}:${box[1]}`,
       ...["-f", "rawvideo", "-"],
     ]);

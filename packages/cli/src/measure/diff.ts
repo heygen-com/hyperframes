@@ -30,6 +30,7 @@ import { hiddenCopy, layerVerdict, scoreLayerFrame, type LayerVerdict } from "./
 import { compareLook, look, sameLook, type LookComparison } from "./look.js";
 import {
   decode,
+  ffmpegInput,
   ffmpegToFile,
   Fix,
   frameAt,
@@ -1174,7 +1175,7 @@ function onsetCurve(path: string): number[] {
   // On the sound's own timestamps (first_pts=0 pads up to its first decoded sample), not the probe's start_time:
   // ffmpeg 5.1 drops an HE-AAC edit list's skip twice, keeps the rest timestamped right, and still probes 0.
   const raw = runFfmpeg([
-    ...["-i", path, "-vn", "-af", "aresample=async=1:first_pts=0"],
+    ...[...ffmpegInput(path), "-vn", "-af", "aresample=async=1:first_pts=0"],
     ...["-t", "20", "-ac", "1", "-ar", "8000", "-f", "f32le", "-"],
   ]);
   const samples = new Float32Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 4));
@@ -1222,7 +1223,14 @@ function sideBySide(
   const skip = (seconds: number) => (seconds > 0 ? ["-ss", String(seconds)] : []);
   return ffmpegToFile(
     [
-      ...["-y", ...skip(-offset), "-i", reference, ...skip(offset), "-i", yours, "-filter_complex"],
+      ...[
+        "-y",
+        ...skip(-offset),
+        ...ffmpegInput(reference),
+        ...skip(offset),
+        ...ffmpegInput(yours),
+      ],
+      "-filter_complex",
       `[0:v]setsar=1[a];[1:v]scale=${ref.width}:${ref.height},setsar=1[b];[a][b]hstack=inputs=2,pad=ceil(iw/2)*2:ceil(ih/2)*2[v]`,
       ...["-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p"],
       ...["-c:a", "aac", "-shortest"],

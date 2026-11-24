@@ -83,7 +83,7 @@ import { servedPath } from "../../servedPath.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
-  noteStaticDedupActivity,
+  noteCaptureActivity,
   projectBrowserEndToCompositionTimeline,
   resolveBrowserMediaEnd,
   writeCompiledArtifacts,
@@ -664,7 +664,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         staticDedupMemo,
         compositionHash: computeCompositionObservabilityHash(compiled.html),
         deferStaticDedup: true,
-        onStaticDedupActivity: () => noteStaticDedupActivity(job),
+        onStaticDedupActivity: () => noteCaptureActivity(job),
       };
 
       const PROBE_MAX_ATTEMPTS = 2;

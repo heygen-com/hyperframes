@@ -59,6 +59,7 @@ export type PreviewSourceFacts = {
   variableFrameRate?: boolean;
   sampleAspectRatio?: number;
   rotation?: number;
+  hasAlpha?: boolean;
 };
 
 export const HEAVY_PIXEL_SHARE = 0.5;

@@ -1563,6 +1563,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private _dispatchReady(): void {
     this._readyDocument = this._getSameOriginIframeDocument();
+    this.probe.endNavigation();
     const detail = {
       duration: this._duration,
       compositionWidth: this._compositionWidth,

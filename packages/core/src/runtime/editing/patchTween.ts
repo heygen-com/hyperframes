@@ -3,7 +3,7 @@
 // a sealed frame on itself through the editing port.
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { recordLiveSet, swapWaiting } from "./softReload";
-import { drawDrafts } from "../editingDraft";
+import { drawDrafts, rebaseDrawnPosition } from "../editingDraft";
 import { markRestingScenesForRedraw } from "../sceneRest";
 import { redrawGsapTimelineAt } from "../adapters/gsap";
 import type { RuntimeTimelineLike } from "../types";
@@ -202,6 +202,7 @@ export function applyGlobalSet(
   const numeric = finiteNumericProps(props);
   if (typeof target.gsap?.set !== "function" || !el || !numeric) return null;
   target.gsap.set(el, numeric);
+  rebaseDrawnPosition(el, numeric);
   recordLiveSet(el, numeric);
   return el;
 }

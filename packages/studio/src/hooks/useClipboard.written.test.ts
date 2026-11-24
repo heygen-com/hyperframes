@@ -214,6 +214,23 @@ describe("a paste is checked as the preview server serves the file", () => {
     expect(runningCode(file)).toEqual([]);
   });
 
+  // fails without the fix: a copy's comments, svg <title> ones included, were written into the file.
+  it.each([
+    svgClip,
+    '<div id="note" class="clip" data-start="0" data-duration="1" data-track-index="1">Note<!-- draft --></div>',
+    '<div id="tpl" class="clip" data-start="0" data-duration="1" data-track-index="1"><template><!-- x --></template></div>',
+  ])("writes no comment from the copy %s", (html) => {
+    for (const readFrom of [null, "compositions/recv.html"]) {
+      const pasted = pasteElementHtml(FILE, { html, readFrom }, false, "index.html");
+      const clip = { html, readFrom, start: 0, duration: 1, track: 1 };
+      const placed = pasteTimelineClips(FILE, [clip], 0, [], false, "index.html").content;
+      for (const file of [pasted, placed]) {
+        expect(file).not.toContain("<!--");
+        expect(file).toMatch(/id="(icon|note|tpl)"/);
+      }
+    }
+  });
+
   it("still pastes an svg whose title is plain text", () => {
     const icon =
       '<svg viewBox="0 0 4 4"><title>Icon &lt;/title&gt;</title><circle r="2"></circle></svg>';
