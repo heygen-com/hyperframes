@@ -21,6 +21,8 @@ beforeAll(async () => {
     configFile: resolve(__dirname, "vite.config.ts"),
     logLevel: "silent",
     server: { host: "127.0.0.1", port: 0, strictPort: false, hmr: false },
+    // Dependency discovery would hold the first module request on a cold server; file serving does not need it.
+    optimizeDeps: { noDiscovery: true, include: [] },
   });
   await server.listen();
   const address = server.httpServer?.address();
