@@ -1,9 +1,16 @@
 import type { ChildProcess } from "node:child_process";
 
 const tracked = new Set<ChildProcess>();
+const listeners = new Set<(proc: ChildProcess) => void>();
+
+export function onTrackedChildProcess(listener: (proc: ChildProcess) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
 export function trackChildProcess(proc: ChildProcess): void {
   tracked.add(proc);
+  for (const listener of listeners) listener(proc);
   const remove = () => tracked.delete(proc);
   proc.once("exit", remove);
   proc.once("close", remove);

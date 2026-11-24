@@ -127,6 +127,8 @@ import {
   handleMetadataForProxy,
   isRenderMode,
   maybeProxyProactively,
+  standInCaptureStill,
+  decideFileTurn,
   describeVideoSources,
   levelsWithLighterCopies,
   retryPreviewCopies,
@@ -546,7 +548,6 @@ function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolea
   return (
     isWebKit() &&
     isAudioElement(el) &&
-    !el.loop &&
     !isLongSource(el) &&
     webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
@@ -3365,6 +3366,7 @@ export function initSandboxRuntimeModular(): void {
       resolveAbsoluteMediaStartSeconds(el) + (resolveDurationForElement(el) ?? Number.NaN) <= time;
     const spent = passed && (decided !== true || (el.networkState === 2 && el.readyState < 4));
     const near = visible || armed || (upcoming && !unslotted && !spent);
+    decideFileTurn(el, visible);
     if (near) giveBackWhenDue(el);
     if ((visible || !near) && endPrefetch(el)) queueMicrotask(fillPrefetchSlots);
     const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
@@ -3611,6 +3613,7 @@ export function initSandboxRuntimeModular(): void {
           currentTime,
           loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );
+      if (isMediaElement(rawNode)) standInCaptureStill(rawNode, isVisibleNow);
       if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);

@@ -141,6 +141,26 @@ describe("prepareHeifImageInputs", () => {
     expectUprightPhoto(prepared!.outputPath);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "forwards the abort signal to the transcode",
+    async () => {
+      const d = project({ "photo.heic": readFileSync(FIXTURE) });
+      const controller = new AbortController();
+      const calls: HeifTranscodeRequest[] = [];
+
+      await prepareHeifImageInputs('<img src="photo.heic">', {
+        ...d,
+        signal: controller.signal,
+        transcode: async (request) => {
+          calls.push(request);
+          writeFileSync(request.outputPath, "jpg");
+        },
+      });
+
+      expect(calls[0]?.signal).toBe(controller.signal);
+    },
+  );
+
   it("converts an inline data URL", async () => {
     const d = project({});
     const uri = `data:image/heic;base64,${readFileSync(FIXTURE).toString("base64")}`;

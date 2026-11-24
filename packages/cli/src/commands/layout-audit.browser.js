@@ -446,14 +446,15 @@
   }
 
   const MASK_PAINT_ALPHA = 0.35;
+  // Every colour function a computed style or gradient can hold; colorAlpha reads its alpha.
+  const COLOR_FN = "(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\\([^()]*\\)";
   let colorProbe;
 
   function colorAlphaOf(color) {
     colorProbe = colorProbe || document.createElement("canvas").getContext("2d");
     colorProbe.fillStyle = "#000";
     colorProbe.fillStyle = color;
-    const match = /rgba?\([^)]*,\s*([\d.]+)\)$/.exec(colorProbe.fillStyle);
-    return match ? Number.parseFloat(match[1]) : 1;
+    return colorAlpha(colorProbe.fillStyle);
   }
 
   // Gradient stops as [offset 0-1, alpha]; missing offsets are spread evenly, as the browser does.
@@ -610,11 +611,7 @@
 
   function hasPaint(style) {
     const backgroundColor = style.backgroundColor || "";
-    const hasBackground =
-      backgroundColor !== "" &&
-      backgroundColor !== "transparent" &&
-      !backgroundColor.endsWith(", 0)") &&
-      backgroundColor !== "rgba(0, 0, 0, 0)";
+    const hasBackground = !isTransparentColor(backgroundColor);
     const hasImage = style.backgroundImage && style.backgroundImage !== "none";
     const hasBorder =
       parsePx(style.borderTopWidth) +
@@ -935,27 +932,30 @@
     return false;
   }
 
+  // Read the alpha, never the text: an opaque colour whose last channel is 0 also ends in ", 0)".
   function isTransparentColor(color) {
-    return (
-      !color || color === "transparent" || color === "rgba(0, 0, 0, 0)" || color.endsWith(", 0)")
-    );
+    return !color || colorAlpha(color) === 0;
   }
 
-  function alphaFromParts(parts, index) {
-    if (parts.length <= index) return 1;
-    const raw = parts[index].trim();
-    return raw.endsWith("%") ? parsePx(raw) / 100 : parsePx(raw);
+  function alphaValue(raw) {
+    const value = raw.trim();
+    if (/^none$/i.test(value)) return 0;
+    const alpha = Number.parseFloat(value) / (value.endsWith("%") ? 100 : 1);
+    return Number.isFinite(alpha) ? alpha : 1;
   }
 
-  // Alpha of a CSS colour; 1 when no alpha component is present. Handles both
-  // legacy `rgba(r, g, b, a)` and modern `rgb(r g b / a)` syntaxes.
+  // Chromium retains these colour spaces in computed styles instead of converting them to RGB.
+  // Their alpha follows a slash; legacy rgba still puts it in the fourth comma-separated slot.
   function colorAlpha(color) {
-    const match = (color || "").match(/rgba?\(([^)]+)\)/);
-    if (!match) return 1;
-    const body = match[1];
-    return body.includes(",")
-      ? alphaFromParts(body.split(","), 3)
-      : alphaFromParts(body.split("/"), 1);
+    const value = (color || "").trim();
+    if (/^transparent$/i.test(value)) return 0;
+    const fn = new RegExp(COLOR_FN, "i").exec(value)?.[0];
+    if (!fn) return 1;
+    const open = fn.indexOf("(");
+    const [name, body] = [fn.slice(0, open), fn.slice(open + 1, -1)];
+    if (body.includes("/")) return alphaValue(body.slice(body.lastIndexOf("/") + 1));
+    const parts = body.split(",");
+    return parts.length === 4 && /^(rgb|hsl)a?$/i.test(name) ? alphaValue(parts[3]) : 1;
   }
 
   // A text block competes for space only when it is solid: watermark-style text
@@ -1161,7 +1161,9 @@
   function gradientStopCoverage(layer, backgroundSize) {
     if (!/radial-gradient/i.test(layer) || namesAColor(withoutScoredColors(layer))) return 1;
     const stops = [
-      ...layer.matchAll(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|transparent)\s+([\d.]+)(px|%)/gi),
+      ...layer.matchAll(
+        new RegExp(`(#[0-9a-fA-F]{3,8}|${COLOR_FN}|transparent)\\s+([\\d.]+)(px|%)`, "gi"),
+      ),
     ];
     const tile = pxTile(backgroundSize);
     const reach = tile ? leadingOpaqueRadius(stops, tile) : null;
@@ -1227,13 +1229,15 @@
   }
 
   function gradientMaxAlpha(backgroundImage) {
-    // Any colour we cannot score (oklch/lab/named-colour fns/...) counts as opaque so real panels keep flagging.
+    // Any colour we cannot score (a named colour, an unknown function) counts as opaque so real panels keep flagging.
     const known = backgroundImage
       .replace(/(?:repeating-)?(?:linear|radial|conic)-gradient\(/gi, "(")
-      .replace(/rgba?\([^)]*\)/gi, "");
+      .replace(new RegExp(COLOR_FN, "gi"), "");
     if (/[a-z][a-z-]+\(/i.test(known)) return 1;
     if (namesAColor(known)) return 1;
-    const colors = backgroundImage.match(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}\b|\btransparent\b/g);
+    const colors = backgroundImage.match(
+      new RegExp(`${COLOR_FN}|#[0-9a-fA-F]{3,8}\\b|\\btransparent\\b`, "gi"),
+    );
     if (!colors) return 1;
     let max = 0;
     for (const color of colors) {
@@ -1256,7 +1260,7 @@
   }
 
   function withoutScoredColors(layer) {
-    return layer.replace(/rgba?\([^)]*\)|#[0-9a-fA-F]{3,8}\b/g, " ");
+    return layer.replace(new RegExp(`${COLOR_FN}|#[0-9a-fA-F]{3,8}\\b`, "gi"), " ");
   }
 
   function namesAColor(known) {
@@ -2419,7 +2423,8 @@
 
   // A gradient reads as content when any stop is solid; all-translucent stops are glows/vignettes.
   function gradientHasOpaqueStop(image) {
-    const colors = image.match(/rgba?\([^)]+\)|#[0-9a-f]{3,8}|\btransparent\b/gi) || [];
+    const colors =
+      image.match(new RegExp(`${COLOR_FN}|#[0-9a-f]{3,8}|\\btransparent\\b`, "gi")) || [];
     return colors.some((color) => !/^transparent$/i.test(color) && colorAlpha(color) >= 0.6);
   }
 
