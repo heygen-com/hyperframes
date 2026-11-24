@@ -42,7 +42,11 @@ import {
   normalizeGsapBaseUrl,
   normalizeGsapLocalRoot,
 } from "@hyperframes/core/gsap-cdn";
-import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import {
+  findStartTags,
+  headContentStart,
+  injectTagsAtHeadStart,
+} from "@hyperframes/core/compiler/html-document";
 import { hasAuthoredCode } from "../helpers/authoredCode.js";
 import { THUMBNAIL_NO_AUTHORED_CODE_META } from "../helpers/screenshotClip.js";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
@@ -445,9 +449,9 @@ function gsapCdnFallbackScript(baseUrl: string): string {
 
 function injectGsapCdnFallback(html: string, baseUrl: string): string {
   if (html.includes(GSAP_FALLBACK_ATTR)) return html;
-  if (html.includes("<head>"))
-    return html.replace("<head>", "<head>" + gsapCdnFallbackScript(baseUrl));
-  return gsapCdnFallbackScript(baseUrl) + html;
+  // Not the first "<head>" text: that can sit inside an attribute value or a comment.
+  const at = headContentStart(html);
+  return html.slice(0, at) + gsapCdnFallbackScript(baseUrl) + html.slice(at);
 }
 
 /**
