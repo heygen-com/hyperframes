@@ -13,10 +13,19 @@ import {
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { HEYGEN_NOT_AUTHENTICATED_MESSAGE } from "./heygen-cli.mjs";
 import { AVATAR_VIDEO_SIGNIN_MESSAGE } from "./heygen-video-provider.mjs";
 import { discardPrivateOutput } from "./private-output.mjs";
+import { mediaTransport } from "./media-fetch.mjs";
+// These tests stub globalThis.fetch; media downloads reach the same stub.
+const transportFetch = mediaTransport.fetch;
+beforeEach(() => {
+  mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);
+});
+afterEach(() => {
+  mediaTransport.fetch = transportFetch;
+});
 
 function cleanupDownload(localPath) {
   if (

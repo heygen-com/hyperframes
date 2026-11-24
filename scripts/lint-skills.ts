@@ -197,10 +197,28 @@ function validateMetadata(data: Record<string, unknown>): LineViolation | null {
   );
 }
 
+// A link with no task picks the skill whose description claims it (#8530): name the task a link comes with instead.
+// Any tense, active or passive, verb before or after the link; a dot inside "figma.com" does not end the clause.
+const SHARING = String.raw`\b(?:past(?:e|es|ed|ing)|shar(?:e|es|ed|ing)|drop(?:s|ped|ping)?|sen(?:d|ds|ding|t)|g(?:ive|ives|iven|iving|ave)|provid(?:e|es|ed|ing))\b`;
+const LINK = String.raw`\b(?:links?|urls?)\b`;
+const CLAUSE = String.raw`(?:[^.;]|\.(?=\S)){0,40}?`;
+const LINK_ALONE_TRIGGER = new RegExp(`${SHARING}${CLAUSE}${LINK}|${LINK}${CLAUSE}${SHARING}`, "i");
+
+function validateTrigger(data: Record<string, unknown>): LineViolation | null {
+  const said = data.description;
+  if (typeof said !== "string" || !LINK_ALONE_TRIGGER.test(said)) return null;
+  return violation(
+    1,
+    `The description makes a pasted link alone pick this skill; say which task the link comes with instead.`,
+    said.match(LINK_ALONE_TRIGGER)?.[0] ?? said,
+  );
+}
+
 function validateShape(data: Record<string, unknown>): LineViolation[] {
   const fieldChecks = [
     validateStringField(data, "name", false),
     validateStringField(data, "description", false),
+    validateTrigger(data),
     validateStringField(data, "license", true),
     validateAllowedTools(data),
     validateMetadata(data),

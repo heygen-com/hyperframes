@@ -8,6 +8,13 @@ import { installReactActEnvironment, mountReactHarness } from "./domSelectionTes
 import { useTrackPendingTimelineEdit } from "./useTrackPendingTimelineEdit";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { enqueueTimelineEdit, type TimelineEditQueue } from "./timelineEditQueue";
+import type { TimelineGroupCommitOptions } from "./useTimelineGroupEditing";
+import { useTimelineTrimRipple } from "./useTimelineTrimRipple";
+import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
+import { persistMoveEdits, type DragCommitDeps } from "../player/components/timelineClipDragCommit";
+import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
+import { keyHint } from "../player/components/studioShortcuts";
 
 installReactActEnvironment();
 
@@ -66,14 +73,17 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     recordEdit?: DeleteOpsOptions["recordEdit"];
     editQueueRef?: DeleteOpsOptions["editQueueRef"];
     writeProjectFile?: DeleteOpsOptions["writeProjectFile"];
+    alsoMount?: () => void;
   }) {
     const elements = [el("hf-a", 0, 2), el("hf-b", 2, 2), el("hf-c", 4, 2)];
-    const editQueueRef = overrides.editQueueRef ?? { current: Promise.resolve() };
+    const editQueueRef = overrides.editQueueRef ?? {
+      current: Promise.resolve(),
+      projectId: "test-project",
+    };
     usePlayerStore.getState().setElements(elements);
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
     function Harness() {
       hook = useTimelineDeleteOps({
-        projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
         showToast: overrides.showToast ?? vi.fn(),
         writeProjectFile: overrides.writeProjectFile ?? vi.fn().mockResolvedValue(undefined),
@@ -83,6 +93,7 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
         editQueueRef,
         handleTimelineGroupMove: overrides.handleTimelineGroupMove,
       });
+      overrides.alsoMount?.();
       return null;
     }
     mountReactHarness(<Harness />);
@@ -107,6 +118,22 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       finishRipple();
       await deleting;
     });
+  });
+
+  it("a delete that lands names the clip and the undo key, as the ripple toast does", async () => {
+    const showToast = vi.fn();
+    const { b, getHook } = mountDeleteHarness({
+      handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
+      showToast,
+    });
+
+    await act(async () => {
+      await getHook().handleTimelineElementDelete(b);
+    });
+
+    const undo = keyHint("undo");
+    expect(showToast.mock.calls[0]).toEqual([`Deleted hf-b. Undo (${undo}) restores it.`, "info"]);
+    expect(showToast.mock.calls[1]?.[0]).toContain(`Undo (${undo}) restores it`);
   });
 
   // editHistory.ts's coalescing keeps the LAST recordEdit call's label, so the
@@ -143,58 +170,82 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     );
   });
 
-  // Deletes hf-a, then hf-b once hf-a's ripple slid it to 0, both saving through one edit queue.
-  async function deleteTwoInARow(refuseOnce?: string) {
+  // Deletes, trims and moves sharing one edit queue; `writes` is the save order, with each move's starts.
+  function mountQueuedEdits(refuseOnce?: string) {
     const writes: string[] = [];
     let refused = refuseOnce;
+    const refuses = (write: string) => {
+      writes.push(write);
+      if (write !== refused) return false;
+      refused = undefined;
+      return true;
+    };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         if (String(input).includes("/file-mutations/remove-elements/")) {
           const { targets } = JSON.parse(String(init?.body)) as { targets: Array<{ id: string }> };
-          const write = `delete ${targets.map((t) => t.id).join(",")}`;
-          writes.push(write);
-          if (write === refused) {
-            refused = undefined;
+          if (refuses(`delete ${targets.map((t) => t.id).join(",")}`)) {
             return new Response("{}", { status: 500 });
           }
         }
         return new Response(JSON.stringify({ content: html }), { status: 200 });
       }),
     );
-    // Stands in for the editor's group move: it joins the edit queue, then writes the file.
-    const editQueueRef = { current: Promise.resolve() };
+    // Stands in for the editor's group commits: each joins the edit queue, then writes the file.
+    const editQueueRef: TimelineEditQueue = {
+      current: Promise.resolve(),
+      projectId: "test-project",
+    };
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const save = (write: string, options?: TimelineGroupCommitOptions) =>
+      enqueueTimelineEdit(
+        editQueueRef,
+        async () => {
+          await options?.beforeTiming;
+          await serializeStudioFileMutations(writeProjectFile, ["index.html"], async () => {
+            if (refuses(write)) throw new Error("refused");
+          });
+        },
+        { ifEarlierRefused: options?.ifEarlierRefused, projectId: "test-project" },
+      );
     const handleTimelineGroupMove: DeleteOpsOptions["handleTimelineGroupMove"] = (
       changes,
       options,
-    ) => {
-      const run = editQueueRef.current.then(async () => {
-        await options?.beforeTiming;
-        await serializeStudioFileMutations(writeProjectFile, ["index.html"], async () => {
-          const write = `move ${changes.map((c) => `${c.element.id}@${c.start}`).join(",")}`;
-          writes.push(write);
-          if (write === refused) {
-            refused = undefined;
-            throw new Error("refused");
-          }
-        });
-      });
-      editQueueRef.current = run.catch(() => undefined);
-      return run;
-    };
+    ) => save(`move ${changes.map((c) => `${c.element.id}@${c.start}`).join(",")}`, options);
+    let trimRipple: ReturnType<typeof useTimelineTrimRipple> | null = null;
     const { elements, getHook } = mountDeleteHarness({
       handleTimelineGroupMove,
       editQueueRef,
       writeProjectFile,
+      alsoMount: () => {
+        trimRipple = useTimelineTrimRipple({
+          handleTimelineElementResize: vi.fn(),
+          handleTimelineGroupResize: (changes, options) =>
+            save(
+              `resize ${changes.map((c) => `${c.element.id}+${c.duration}`).join(",")}`,
+              options,
+            ),
+          handleTimelineGroupMove,
+          showToast: vi.fn(),
+          reloadPreview: vi.fn(),
+          editQueueRef,
+        });
+      },
     });
+    return { writes, elements, getHook, getTrim: () => trimRipple!, handleTimelineGroupMove };
+  }
 
+  // Deletes hf-a, then hf-b once hf-a's ripple slid it to 0.
+  async function deleteTwoInARow(refuseOnce?: string) {
+    const queued = mountQueuedEdits(refuseOnce);
+    const { elements, getHook } = queued;
     await act(async () => {
       const first = getHook().handleTimelineElementDelete(elements[0]);
       const shiftedB = usePlayerStore.getState().elements.find((e) => e.id === "hf-b")!;
       await Promise.all([first, getHook().handleTimelineElementDelete(shiftedB)]);
     });
-    return { writes, getHook };
+    return queued;
   }
 
   // fails without the fix: the second delete saved between the first delete and its ripple.
@@ -229,6 +280,88 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
 
     expect(writes.slice(2)).toEqual(["delete hf-a", "move hf-c@2"]);
     expect(usePlayerStore.getState().elements).toEqual([el("hf-c", 2, 2)]);
+  });
+
+  // fails without the fix: the trim's shift saved hf-c at 1, placed as if hf-b's refused delete had happened.
+  it("a trim ripple queued behind a refused delete is refused before it writes, and only its shift rolls back", async () => {
+    const { writes, elements, getHook, getTrim } = mountQueuedEdits("delete hf-b");
+    const [a, b] = elements;
+
+    await act(async () => {
+      const deleting = getHook().handleTimelineElementDelete(b);
+      const trim = getTrim().handleTrimElement(a, {
+        start: 0,
+        duration: 1,
+        playbackStart: undefined,
+      });
+      await Promise.all([deleting, trim]);
+    });
+
+    expect(writes).toEqual(["delete hf-b", "resize hf-a+1"]);
+    expect(usePlayerStore.getState().elements).toEqual([
+      el("hf-a", 0, 2),
+      el("hf-c", 4, 2),
+      el("hf-b", 2, 2),
+    ]);
+  });
+
+  // Deletes hf-b with Ripple off, then drags hf-a to `to` while the delete is still saving.
+  async function dragBehindRefusedDelete(to: number) {
+    usePlayerStore.setState({ rippleEditEnabled: false });
+    const queued = mountQueuedEdits("delete hf-b");
+    const [a, b] = queued.elements;
+    let refusal: Promise<unknown> = Promise.resolve();
+    const onMoveElements: DragCommitDeps["onMoveElements"] = (edits, coalesceKey) => {
+      const moved = persistTimelineMoveEditsAtomically(edits, coalesceKey, "timing", {
+        handleTimelineGroupMove: queued.handleTimelineGroupMove,
+      });
+      refusal = moved.then(
+        () => null,
+        (error: Error) => error.message,
+      );
+      return moved;
+    };
+    try {
+      await act(async () => {
+        const deleting = queued.getHook().handleTimelineElementDelete(b);
+        const { elements, updateElement } = usePlayerStore.getState();
+        const drag = persistMoveEdits([{ element: a, updates: { start: to, track: 0 } }], {
+          elements,
+          trackOrder: [0],
+          updateElement,
+          onMoveElements,
+        });
+        await Promise.all([deleting, drag]);
+      });
+    } finally {
+      usePlayerStore.setState({ rippleEditEnabled: true });
+    }
+    return { writes: queued.writes, refused: await refusal };
+  }
+
+  it("a drag queued behind a refused delete that stays clear of the restored clip still saves", async () => {
+    const { writes, refused } = await dragBehindRefusedDelete(6.5);
+
+    expect(refused).toBeNull();
+    expect(writes).toEqual(["delete hf-b", "move hf-a@6.5"]);
+    expect(usePlayerStore.getState().elements).toEqual([
+      el("hf-a", 6.5, 2),
+      el("hf-c", 4, 2),
+      el("hf-b", 2, 2),
+    ]);
+  });
+
+  // fails without the fix: the drag saved hf-a at 2.5, on top of hf-b, which the refused delete put back.
+  it("a drag queued behind a refused delete that would land on the restored clip is refused and rolls back", async () => {
+    const { writes, refused } = await dragBehindRefusedDelete(2.5);
+
+    expect(refused).toBe(LANE_OVERLAP_NOTICE);
+    expect(writes).toEqual(["delete hf-b"]);
+    expect(usePlayerStore.getState().elements).toEqual([
+      el("hf-a", 0, 2),
+      el("hf-c", 4, 2),
+      el("hf-b", 2, 2),
+    ]);
   });
 
   it("removes a multi-clip selection with one request, however many clips it holds", async () => {
@@ -373,14 +506,13 @@ describe("useTimelineDeleteOps: undo race", () => {
     function Harness() {
       const track = useTrackPendingTimelineEdit();
       const hook = useTimelineDeleteOps({
-        projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
         showToast: vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
         recordEdit,
         reloadPreview: vi.fn(),
         previewIframeRef: { current: null },
-        editQueueRef: { current: Promise.resolve() },
+        editQueueRef: { current: Promise.resolve(), projectId: "test-project" },
         handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
       });
       tracked = track(hook.handleTimelineElementsDelete);
@@ -475,14 +607,13 @@ describe("useTimelineDeleteOps: live preview", () => {
     let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
     function Harness() {
       hook = useTimelineDeleteOps({
-        projectIdRef: { current: "test-project" },
         activeCompPath: "index.html",
         showToast: vi.fn(),
         writeProjectFile: vi.fn().mockResolvedValue(undefined),
         recordEdit: vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         previewIframeRef: { current: iframe },
-        editQueueRef: { current: Promise.resolve() },
+        editQueueRef: { current: Promise.resolve(), projectId: "test-project" },
         handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
       });
       return null;

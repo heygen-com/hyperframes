@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core/terminal-text";
 import {
   duplicateElementInHtml,
   patchElementInHtml,
@@ -55,7 +56,7 @@ export function refusal(reason: string, fix: string, json: boolean): void {
   setCommandExitCode(2);
   if (json)
     console.log(JSON.stringify({ ...jsonFailure("refused", reason, fix), reason, fix }, null, 2));
-  else console.error(`${reason}; ${fix}.`);
+  else console.error(`${terminalLines(reason)}; ${terminalLines(fix)}.`);
 }
 
 export const isFileChanged = (error: unknown): error is Error =>

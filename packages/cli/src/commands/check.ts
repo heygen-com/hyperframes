@@ -371,7 +371,9 @@ export function createCheckCommand(
           if (report.saved) {
             console.log(terminalText(`Report: ${report.saved.report}`));
             console.log(
-              `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              terminalText(
+                `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              ),
             );
           }
         }
@@ -793,7 +795,7 @@ function printHumanReport(report: CheckReport): void {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,
     );
-    for (const note of report.scope.notes) console.log(note);
+    for (const note of report.scope.notes) console.log(terminalLines(note));
   }
   printSection("Lint", report.lint);
   if (report.browserSkipped) {

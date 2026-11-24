@@ -42,6 +42,7 @@ import { pointerMayHitElement } from "./previewSelection";
 import { logSelect } from "../../utils/selectDebug";
 import { useOffCanvasIndicators } from "./useOffCanvasIndicators";
 import { DomEditGestureReadout } from "./DomEditGestureReadout";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -160,6 +161,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 }: DomEditOverlayProps) {
   const readOnly = usePreviewReadOnly();
   const hostInput = canvasInput === "host";
+  const previewFailed = usePlayerStore((state) => state.previewFailed);
   const bodyDrag = allowBodyDrag || !hostInput;
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -466,6 +468,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       className={`absolute inset-0 z-10 outline-hidden ${
         inlineText.editing || hostInput ? "pointer-events-none" : "pointer-events-auto"
       }`}
+      inert={previewFailed}
       data-editing-text={inlineText.editing ? "true" : undefined}
       tabIndex={-1}
       aria-label="Composition canvas"
@@ -553,6 +556,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         groupSelections={groupSelections}
         activeCompositionPathRef={activeCompositionPathRef}
         onSelectionChangeRef={onSelectionChangeRef}
+        iframeRef={iframeRef}
       />
       <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
       {contextMenu && (

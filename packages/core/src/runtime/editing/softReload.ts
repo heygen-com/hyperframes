@@ -1,7 +1,15 @@
 // A GSAP script edit re-runs the edited composition's script in the live preview, without a reload.
 // Studio runs it on a frame it can reach; a sealed frame runs it on itself through the editing port,
 // with the script Studio saved and the authored styles Studio read from that file.
-import { GSAP_BASE_URL_META, motionPathPluginUrl } from "../../gsapCdn";
+import {
+  GSAP_BASE_URL_META,
+  GSAP_PLUGIN_LOAD_ATTR,
+  NO_PATH_TWEEN_META,
+  isGsapCoreUrl,
+  previewMotionPathSrc,
+  namesMotionPath,
+} from "../../gsapCdn";
+import { INLINED_FILE_ATTR } from "../../compiler/scriptRuns";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
 import { applyAuthoredTiming } from "../../studioPreviewMark";
@@ -331,11 +339,29 @@ export function finalizeSoftReload(win: SoftReloadWindow, currentTime: number): 
   if (wasPlaying) win.__player?.play?.();
 }
 
-export function previewMotionPathUrl(doc: Document, version?: string): string {
-  const baseUrl = doc.head.querySelector<HTMLMetaElement>(
-    `meta[name="${GSAP_BASE_URL_META}"]`,
-  )?.content;
-  return motionPathPluginUrl(version, baseUrl);
+const scriptFile = (script: Element) =>
+  script.getAttribute("src") ?? script.getAttribute(INLINED_FILE_ATTR);
+
+function pageGsapFile(doc: Document): string | null {
+  for (const script of doc.querySelectorAll(`script[src], script[${INLINED_FILE_ATTR}]`)) {
+    const file = scriptFile(script);
+    if (file && isGsapCoreUrl(file)) return file;
+  }
+  return null;
+}
+
+const gsapMirror = (doc: Document) =>
+  doc.head.querySelector<HTMLMetaElement>(`meta[name="${GSAP_BASE_URL_META}"]`)?.content;
+
+function previewMotionPathUrl(doc: Document, version?: string, pageOwned = true): string | null {
+  return previewMotionPathSrc({
+    gsapFile: pageGsapFile(doc),
+    mirror: gsapMirror(doc),
+    version,
+    documentUrl: doc.URL,
+    baseUrl: doc.baseURI,
+    pageOwned,
+  });
 }
 
 function runSuppressed(win: SoftReloadWindow, reload: () => void): boolean {
@@ -405,8 +431,11 @@ function whenMotionPathLoaded(
     win.__hfMotionPathWaiters = undefined;
     for (const [onReady, onFailed] of waiters) (loaded ? onReady : onFailed)();
   };
+  const src = previewMotionPathUrl(doc, win.gsap?.version);
+  if (!src) return settle(false);
   const pluginScript = doc.createElement("script");
-  pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
+  pluginScript.src = src;
+  pluginScript.setAttribute(GSAP_PLUGIN_LOAD_ATTR, "");
   pluginScript.onload = () => settle(Boolean(win.MotionPathPlugin));
   // Running the script without the plugin would leave a motionPath tween that cannot play.
   pluginScript.onerror = () => settle(false);
@@ -455,12 +484,15 @@ export function swapWaiting(win: SoftReloadWindow = window as SoftReloadWindow):
   return (win.__hfSwapsWaiting ?? 0) > 0;
 }
 
-/** Loads and registers MotionPathPlugin ahead of the first re-run that needs it, as Studio does same-origin. */
+/** Loads and registers MotionPathPlugin ahead of a re-run that needs it, unless the page is marked path-free. */
 export function preloadMotionPath(
   win: SoftReloadWindow = window as SoftReloadWindow,
   doc: Document = document,
 ): void {
   if (win.MotionPathPlugin || win.__hfMotionPathWaiters || !win.gsap) return;
+  if (doc.querySelector(`meta[name="${NO_PATH_TWEEN_META}"]`)) return;
+  // Ahead of any path tween, only a request that stays local: the document's origin or the host's mirror.
+  if (!previewMotionPathUrl(doc, win.gsap.version, false)) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }
@@ -523,7 +555,7 @@ export function softReloadFrame(
     return ran && !builtDom;
   };
 
-  const needsMotionPath = /motionPath\s*[:{]/.test(script);
+  const needsMotionPath = namesMotionPath(script);
   if (!needsMotionPath || win.MotionPathPlugin || !win.gsap) {
     if (!swap(currentTime)) return "cannot-soft-reload";
     return verifyTimelinesPopulated(win, targetKeys) ? "applied" : "verify-failed";

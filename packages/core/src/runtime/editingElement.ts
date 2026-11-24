@@ -1,4 +1,5 @@
 // How an element is addressed in source: one rule for Studio and the runtime's editing agent.
+import { COMPOSITION_ROOT_ATTRS, SOURCE_HOST_ATTRS } from "../compositionSource";
 import { isHtmlElement } from "./domRealm";
 
 /** Names an element's source file. The parent resolves it: `file`, else its composition map. */
@@ -52,6 +53,7 @@ export interface EditingElementDescription extends EditingElementHit {
   text: string;
   children: Array<{ handle: EditingElementHandle } | { text: string }>;
   truncated: boolean;
+  textMarkup?: boolean;
 }
 
 export interface EditingElementMatch {
@@ -62,6 +64,7 @@ export interface EditingElementMatch {
 export const MAX_ELEMENT_ENTRIES = 256;
 export const MAX_ELEMENT_TEXT = 10_000;
 export const MAX_ELEMENT_VALUE = 2_000;
+export const MAX_DRAFT_PX = 100_000;
 export const MAX_SOURCE_GROUPS = 64;
 export const MAX_DESCRIBE_HANDLES = 256;
 export const MAX_POINT_STACK = 64;
@@ -191,14 +194,13 @@ function closestWithAny(el: Element, names: readonly string[]): Element | null {
 }
 
 export function readElementSource(el: Element): EditingElementSource {
-  const host = closestWithAny(el, ["data-composition-file", "data-composition-src"]);
-  const root = closestWithAny(el, ["data-composition-id"]);
+  const [fileAttr, srcAttr] = SOURCE_HOST_ATTRS;
+  const [idAttr, originalIdAttr] = COMPOSITION_ROOT_ATTRS;
+  const host = closestWithAny(el, SOURCE_HOST_ATTRS);
+  const root = closestWithAny(el, [idAttr]);
   return {
-    file:
-      host?.getAttribute("data-composition-file") ??
-      host?.getAttribute("data-composition-src") ??
-      null,
-    compositionId: root?.getAttribute("data-composition-id") ?? null,
-    originalCompositionId: root?.getAttribute("data-hf-original-composition-id") ?? null,
+    file: host?.getAttribute(fileAttr) ?? host?.getAttribute(srcAttr) ?? null,
+    compositionId: root?.getAttribute(idAttr) ?? null,
+    originalCompositionId: root?.getAttribute(originalIdAttr) ?? null,
   };
 }

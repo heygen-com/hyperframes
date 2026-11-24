@@ -45,7 +45,12 @@ import {
 } from "./domEditNudge";
 import { selectionElementLive } from "./previewSelection";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
-import { readShownGestureStarts, type PreviewGestureStart } from "./previewGestureStartRead";
+import {
+  askShownGestureStarts,
+  UNANSWERED,
+  unansweredMoveReason,
+  type PreviewGestureStart,
+} from "./previewGestureStartRead";
 
 interface NudgeSession {
   members: ManualOffsetDragMember[];
@@ -281,22 +286,27 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (!iframe || !found) return null;
     const selections = found.targets.map((target) => target.selection);
     const read: SealedStartRead = { accum: { x: 0, y: 0 }, dropped: false };
-    void readShownGestureStarts(
+    void askShownGestureStarts(
       iframe,
       p.overlayRef.current,
       p.activeCompositionPathRef.current,
       selections,
     )
       .catch(() => null)
-      .then((shown) => {
+      .then((answer) => {
         if (readingRef.current === read) readingRef.current = null;
-        if (read.dropped || !shown) return;
-        const targets = found.targets.map((target, i) => ({ ...target, ...shown.shown[i] }));
-        const session = beginSession({ targets, isGroup: found.isGroup }, false);
-        if (!session || session === "refused") return;
-        session.accum = read.accum;
-        startBurst(session);
+        if (!read.dropped) startFrom(answer);
       });
+    const startFrom = (answer: Awaited<ReturnType<typeof askShownGestureStarts>> | null) => {
+      if (answer === UNANSWERED && selections[0])
+        p.onBlockedMoveRef.current(selections[0], unansweredMoveReason(iframe));
+      if (!answer || answer === UNANSWERED) return;
+      const targets = found.targets.map((target, i) => ({ ...target, ...answer.shown[i] }));
+      const session = beginSession({ targets, isGroup: found.isGroup }, false);
+      if (!session || session === "refused") return;
+      session.accum = read.accum;
+      startBurst(session);
+    };
     return read;
   };
 

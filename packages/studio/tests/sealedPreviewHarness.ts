@@ -20,10 +20,11 @@ export type Studio = typeof import("../src/utils/gsapSoftReload") & {
   markStudioWriteToken: typeof import("../src/utils/studioFileVersion").markStudioWriteToken;
   studioFileRevision: typeof import("../src/utils/studioFileVersion").studioFileRevision;
   previewLoadShows: typeof import("../src/utils/sealedPreviewLedger").previewLoadShows;
+  watchPreviewFrame: typeof import("../src/player/lib/bridgePlayback").watchPreviewFrame;
 };
 
-/** Studio's preview code, bundled for the page as `window.hfStudio`. */
-export async function buildStudioBundle(): Promise<string> {
+/** Studio's preview code, bundled for the page as `window.hfStudio`; `extra` adds export lines. */
+export async function buildStudioBundle(extra: string[] = []): Promise<string> {
   const out = await build({
     stdin: {
       contents: [
@@ -36,6 +37,8 @@ export async function buildStudioBundle(): Promise<string> {
         `export { usePlayerStore } from "./player/store/playerStore";`,
         `export { markStudioWriteToken, studioFileRevision } from "./utils/studioFileVersion";`,
         `export { previewLoadShows } from "./utils/sealedPreviewLedger";`,
+        `export { watchPreviewFrame } from "./player/lib/bridgePlayback";`,
+        ...extra,
       ].join(" "),
       resolveDir: fileURLToPath(new URL("../src", import.meta.url)),
     },
@@ -127,12 +130,13 @@ function holdReplies() {
   });
 }
 
-/** Opens the preview in Studio's page; the plugin request waits until `release` is called. */
+/** Opens the preview in Studio's page; the plugin request waits until `release`; a `scripts` URL gets its script. */
 export async function openPreview(
   browser: Browser,
   studioBundle: string,
   html: string,
   mode: string,
+  scripts: Record<string, string> = {},
 ) {
   const page: Page = await browser.newPage();
   const plugin = readFileSync(require.resolve("gsap/dist/MotionPathPlugin.min.js"), "utf8");
@@ -140,6 +144,9 @@ export async function openPreview(
   let holding = true;
   await page.setRequestInterception(true);
   page.on("request", (request) => {
+    const script = scripts[request.url()];
+    if (script !== undefined)
+      return void request.respond({ status: 200, contentType: "text/javascript", body: script });
     if (!/MotionPathPlugin/.test(request.url())) return void request.continue();
     const serve = () =>
       request.respond({ status: 200, contentType: "text/javascript", body: plugin });
@@ -165,6 +172,8 @@ export async function openPreview(
       iframe.style.cssText = "width: 1920px; height: 1080px; border: 0";
       iframe.srcdoc = srcdoc;
       document.body.append(iframe);
+      // As Studio's player does, before the frame loads: the frame's posted size reaches the mirror.
+      (window as unknown as { hfStudio: Studio }).hfStudio.watchPreviewFrame(iframe);
     },
     html,
     mode === "sealed",

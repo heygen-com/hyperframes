@@ -35,6 +35,8 @@ const busy = (c: Context) =>
     409,
   );
 
+const notFound = (c: Context) => c.json({ error: "not found" }, 404);
+
 const jsonBody = (c: Context): Promise<unknown> =>
   c.req.raw
     .clone()
@@ -53,11 +55,13 @@ async function requestedChange(
   c: Context,
   projectDir: string,
 ): Promise<{ from: string; to?: string } | null> {
-  const from = writablePath(projectDir, requestSubPath(c.req.url, "projects/:id/files"));
+  const named = requestSubPath(c.req.url, "projects/:id/files");
+  const from = named === null ? null : writablePath(projectDir, named);
   if (from === null) return null;
   if (c.req.method !== "PATCH") return { from };
   const newPath = textAt(await jsonBody(c), "newPath")[0];
-  const to = newPath ? resolveWritableWithinProject(projectDir, newPath) : null;
+  const kind = statSync(from, { throwIfNoEntry: false })?.isDirectory() ? "folder" : "file";
+  const to = newPath ? resolveWritableWithinProject(projectDir, newPath, kind) : null;
   return to === null ? null : { from, to: onDiskPath(to) };
 }
 
@@ -79,6 +83,7 @@ async function startedChange(
  */
 function followMovesAndDeletes(app: Hono, projectDir: string): void {
   app.on(["PATCH", "DELETE"], "/api/projects/:id/files/*", async (c, next) => {
+    if (requestSubPath(c.req.url, "projects/:id/files") === null) return notFound(c);
     const requested = await requestedChange(c, projectDir);
     if (requested === null) return next();
     const change = await startedChange(projectDir, requested);
@@ -114,11 +119,12 @@ const SAVES_NAMING_THE_FILE = [
   "gsap-mutation-rollback",
 ];
 
-async function savedPaths(c: Context): Promise<string[]> {
+async function savedPaths(c: Context): Promise<string[] | null> {
   const route = SAVES_NAMING_THE_FILE.find((prefix) =>
     c.req.routePath.startsWith(`/api/projects/:id/${prefix}/`),
   );
   const named = route === undefined ? "" : requestSubPath(c.req.url, `projects/:id/${route}`);
+  if (named === null) return null;
   if (named) return [named];
   const body = await jsonBody(c);
   return [
@@ -134,7 +140,9 @@ async function savedPaths(c: Context): Promise<string[]> {
  */
 function followSaves(app: Hono, projectDir: string): void {
   const relistBeforeSave = async (c: Context, next: () => Promise<void>) => {
-    const paths = (await savedPaths(c)).flatMap((path) => writablePath(projectDir, path) ?? []);
+    const saved = await savedPaths(c);
+    if (saved === null) return notFound(c);
+    const paths = saved.flatMap((path) => writablePath(projectDir, path) ?? []);
     try {
       await relistReceivedContent(projectDir, paths.filter(isFile));
     } catch {

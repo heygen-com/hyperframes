@@ -294,7 +294,7 @@ describe.skipIf(process.platform === "win32")("prepareWav", () => {
     const ffmpeg = join(dir, "ffmpeg");
     writeFileSync(
       ffmpeg,
-      `#!${process.execPath}\nrequire("fs").writeFileSync(process.argv.at(-1), "partial");\nprocess.exit(255);\n`,
+      `#!${process.execPath}\nif (process.argv.includes("-demuxers")) process.exit(0);\nrequire("fs").writeFileSync(process.argv.at(-1), "partial");\nprocess.exit(255);\n`,
     );
     chmodSync(ffmpeg, 0o755);
     const leftovers = () =>

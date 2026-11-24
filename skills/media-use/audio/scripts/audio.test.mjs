@@ -15,6 +15,17 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { recordInManifest } from "./lib/media-record.mjs";
 import { resolveSfx } from "./lib/sfx.mjs";
+import { afterEach, beforeEach } from "node:test";
+import { mediaTransport } from "../../scripts/lib/media-fetch.mjs";
+
+// These tests stub globalThis.fetch; media downloads reach the same stub.
+const transportFetch = mediaTransport.fetch;
+beforeEach(() => {
+  mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);
+});
+afterEach(() => {
+  mediaTransport.fetch = transportFetch;
+});
 
 // Proves the relocated engine (skills/media-use/audio/) still resolves its
 // bundled SFX library from the moved location — the path most likely to break

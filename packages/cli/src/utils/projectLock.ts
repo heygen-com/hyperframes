@@ -1,4 +1,5 @@
 import { readFileSync, unlinkSync } from "node:fs";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { createFileAtomically } from "@hyperframes/core/atomic-file";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -79,7 +80,9 @@ function sayWaiting(current: Holder | null, waitMs: number): void {
   if (!current) return;
   const running = Math.round((Date.now() - current.startedAt) / 1000);
   console.error(
-    `[hyperframes] waiting for ${current.command} (pid ${current.pid}, running ${running}s) to finish with this project; waiting up to ${Math.round(waitMs / 1000)}s`,
+    terminalText(
+      `[hyperframes] waiting for ${current.command} (pid ${current.pid}, running ${running}s) to finish with this project; waiting up to ${Math.round(waitMs / 1000)}s`,
+    ),
   );
 }
 

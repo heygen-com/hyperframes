@@ -27,7 +27,7 @@ const GROUPS: Group[] = [
       ["preview", "Start the studio for previewing compositions"],
       ["present", "Open a slideshow deck in presenter mode (with audience sync)"],
       ["share", "Share a rendered video for review"],
-      ["publish", "Upload a project to a stable URL (private by default)"],
+      ["publish", "Deprecated for new projects. Use share for new video reviews."],
       ["render", "Render a composition to MP4 or WebM"],
       ["open", "Open a project in the HyperFrames desktop app"],
       ["catch-up", "See what was done in the desktop app since you last looked"],
@@ -129,7 +129,7 @@ import type { Example } from "./commands/_examples.js";
 const ROOT_EXAMPLES: Example[] = [
   ["Create a new project", "hyperframes init my-video"],
   ["Start the live preview studio", "hyperframes preview"],
-  ["Publish to hyperframes.studio", "hyperframes publish"],
+  ["Share a video for review", "hyperframes share"],
   ["Render to MP4", "hyperframes render -o out.mp4"],
   ["Transparent WebM overlay", "hyperframes render --format webm -o out.webm"],
   ["Validate your composition", "hyperframes lint"],

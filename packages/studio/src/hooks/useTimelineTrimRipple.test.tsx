@@ -41,6 +41,7 @@ function mountTrimRipple(rippleOn: boolean, elements: TimelineElement[]) {
     (changes: Array<{ element: TimelineElement }>, options?: { beforeTiming?: Promise<void> }) =>
       enqueue(`move ${ids(changes)}`, options?.beforeTiming),
   );
+  const reloadPreview = vi.fn();
   let hook: ReturnType<typeof useTimelineTrimRipple> | null = null;
   function Harness() {
     hook = useTimelineTrimRipple({
@@ -48,6 +49,8 @@ function mountTrimRipple(rippleOn: boolean, elements: TimelineElement[]) {
       handleTimelineGroupResize,
       handleTimelineGroupMove,
       showToast: vi.fn(),
+      reloadPreview,
+      editQueueRef: { current: Promise.resolve(), projectId: "project" },
     });
     return null;
   }
@@ -60,6 +63,7 @@ function mountTrimRipple(rippleOn: boolean, elements: TimelineElement[]) {
     handleTimelineElementResize,
     handleTimelineGroupResize,
     handleTimelineGroupMove,
+    reloadPreview,
   };
 }
 
@@ -92,6 +96,18 @@ describe("useTimelineTrimRipple", () => {
     });
 
     expect(h.writes).toEqual(["resize a", "move b", "resize b"]);
+  });
+
+  // fails without the fix: the timeline put b back at 4 while the preview kept it at 3.
+  it("a refused shift puts the clips back and reloads the preview to match", async () => {
+    const a = el("a", 0, 4);
+    const h = mountTrimRipple(true, [a, el("b", 4, 2)]);
+    h.handleTimelineGroupMove.mockImplementationOnce(() => Promise.reject(new Error("refused")));
+
+    await act(() => h.trim(a, 0, 3));
+
+    expect(startOf("b")).toBe(4);
+    expect(h.reloadPreview).toHaveBeenCalledOnce();
   });
 
   it("leaves the gap and moves nothing with Ripple off", async () => {

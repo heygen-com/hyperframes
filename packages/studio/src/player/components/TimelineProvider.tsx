@@ -30,6 +30,8 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineProviderState } from "./useTimelineProviderState";
 import { TimelineReadOnlyContext } from "./timelineReadOnly";
+import type { MenuAnchor } from "../../components/ui/menuPosition";
+import { LANE_OVERLAP_NOTICE, LANE_OVERLAP_TONE } from "./timelineCollision";
 import {
   TimelineEditProvider,
   useTimelineEditContextOptional,
@@ -75,8 +77,7 @@ export type TimelineCanvasState = Omit<
 };
 
 export interface ClipContextMenuState {
-  x: number;
-  y: number;
+  anchor: MenuAnchor;
   element: TimelineElement;
   sessionEpoch: number;
 }
@@ -217,7 +218,7 @@ function TimelineProviderState({ children, ...props }: TimelineProps & { childre
   const shell = useStudioShellContextOptional();
   const { onNotice } = useTimelineEditContextOptional();
   const notice = shell?.showToast ?? onNotice;
-  const onDropRefused = notice && (() => notice("Clips on the same track can't overlap.", "info"));
+  const onDropRefused = notice && (() => notice(LANE_OVERLAP_NOTICE, LANE_OVERLAP_TONE));
   const value = useTimelineProviderState({ ...props, onDropRefused });
   return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;
 }

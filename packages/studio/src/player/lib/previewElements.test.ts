@@ -7,11 +7,14 @@ import {
   MAX_ELEMENT_VALUE,
   type EditingElementDescription,
 } from "@hyperframes/core/runtime/editing-port";
+import { gestureStart } from "../../../../core/src/runtime/editingGestureStart";
+import { handleFor } from "../../../../core/src/runtime/editingHandles";
 import {
   describePreviewElements,
   previewElementSelectorIndex,
   previewElementSourceFile,
   previewElementsAtPoint,
+  previewGestureStart,
   previewStackingSiblings,
   readPreviewElement,
   type PreviewElement,
@@ -90,6 +93,7 @@ describe("readPreviewElement", () => {
       described(1, { label: 1 as never }),
       described(1, { source: { file: 1 } as never }),
       described(1, { locked: "yes" as never }),
+      described(1, { textMarkup: "yes" as never }),
       described(1, { attributes: [["a"]] as never }),
       described(1, { inlineStyles: { left: 4 } as never }),
       described(1, { children: [{ node: {} }] as never }),
@@ -155,6 +159,33 @@ describe("element requests over an opaque frame's port", () => {
     expect(await describePreviewElements(iframe, [])).toBeNull();
     expect(await describePreviewElements(iframe, Array(257).fill(h(1)))).toBeNull();
     expect(handed).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: the frame's reading of a CSS turn never reached Studio, and its text goes into the source.
+  it("takes a frame's CSS turn only with plain transform text", async () => {
+    document.body.innerHTML = `<div data-composition-id="main"><div id="card" style="rotate: 30deg"></div></div>`;
+    const [start] = gestureStart([handleFor(document.getElementById("card")!)]).elements;
+    let after = "scale(2)";
+    const { iframe } = opaqueFrame(() => ({
+      elements: [
+        {
+          ...start,
+          cssRotation: { ...start!.cssRotation!, target: { ...start!.cssRotation!.target, after } },
+        },
+      ],
+      snap: [],
+    }));
+    const read = async () => (await previewGestureStart(iframe, [h(1)]))!.elements[0]!.cssRotation;
+    expect(await read()).toMatchObject({ target: { after: "scale(2)" } });
+    for (after of [
+      "url(https://example.com/x)",
+      "translate(1px",
+      "scale(2) /* x",
+      "scale(2));color:red",
+    ])
+      expect(await read()).toBeUndefined();
+    after = "translateX(calc(10px + var(--a))) rotate(1deg)";
+    expect(await read()).toMatchObject({ target: { after } });
   });
 
   it("reads an element's stacking family, and refuses one that is not a family of it", async () => {

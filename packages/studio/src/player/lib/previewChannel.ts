@@ -177,12 +177,22 @@ export async function previewAssetsUnloaded(iframe: HTMLIFrameElement): Promise<
   return typeof reply?.unloaded === "boolean" ? reply.unloaded : null;
 }
 
-export async function previewDocumentCopy(iframe: HTMLIFrameElement): Promise<Document | null> {
+async function documentMarkup(iframe: HTMLIFrameElement) {
   const reply = await previewRequest(iframe, "document-markup", {});
   if (typeof reply?.html !== "string" || typeof reply.baseURI !== "string") return null;
-  const doc = new DOMParser().parseFromString(reply.html, "text/html");
+  return { html: reply.html, baseURI: reply.baseURI };
+}
+
+export async function previewDocumentMarkup(iframe: HTMLIFrameElement): Promise<string | null> {
+  return (await documentMarkup(iframe))?.html ?? null;
+}
+
+export async function previewDocumentCopy(iframe: HTMLIFrameElement): Promise<Document | null> {
+  const markup = await documentMarkup(iframe);
+  if (!markup) return null;
+  const doc = new DOMParser().parseFromString(markup.html, "text/html");
   const base = doc.createElement("base");
-  base.setAttribute("href", reply.baseURI);
+  base.setAttribute("href", markup.baseURI);
   doc.head.prepend(base);
   return doc;
 }

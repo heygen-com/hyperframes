@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
@@ -22,12 +23,14 @@ import {
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
+import { insideProject, recordPathInProject } from "../media-use/lib/record-path.mjs";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -428,6 +431,19 @@ function frameFileNameForPath(framePath: string): string {
   return "frame.png";
 }
 
+function lutSourcePath(projectDir: string, lutSrc: string, label: string, typed = false): string {
+  const outside = () =>
+    new Error(`LUT for "${label}" must be a file inside the project: ${lutSrc}`);
+  const path = typed
+    ? resolveFromBase(projectDir, lutSrc)
+    : recordPathInProject(projectDir, lutSrc);
+  if (path === null) throw outside();
+  if (!existsSync(path)) throw new Error(`LUT file not found for "${label}": ${path}`);
+  if (!typed && (insideProject(projectDir, path) === null || !statSync(path).isFile()))
+    throw outside();
+  return path;
+}
+
 export async function prepareGradeCompareTempProject(opts: {
   projectDir: string;
   framePath: string;
@@ -436,6 +452,7 @@ export async function prepareGradeCompareTempProject(opts: {
   frameWidth: number;
   frameHeight: number;
   frameFileName?: string;
+  lutPathsTypedWithLutsFlag?: boolean;
 }): Promise<PreparedGradeCompareProject> {
   const tempDir = mkdtempSync(join(tmpdir(), "hf-grade-compare-"));
   try {
@@ -447,10 +464,12 @@ export async function prepareGradeCompareTempProject(opts: {
       const lutSrc = lutSrcFromGrading(cell.grading);
       if (!lutSrc) return cell;
 
-      const sourcePath = resolveFromBase(opts.projectDir, lutSrc);
-      if (!existsSync(sourcePath)) {
-        throw new Error(`LUT file not found for "${cell.label}": ${sourcePath}`);
-      }
+      const sourcePath = lutSourcePath(
+        opts.projectDir,
+        lutSrc,
+        cell.label,
+        opts.lutPathsTypedWithLutsFlag,
+      );
       const lutText = readFileSync(sourcePath, "utf-8");
       try {
         parseCubeLut(lutText);
@@ -500,6 +519,7 @@ async function extractVideoFrameToBuffer(videoPath: string): Promise<Buffer | nu
       "error",
       "-ss",
       "0",
+      ...mediaInputFormatArgs(ffmpegPath, videoPath),
       "-i",
       videoPath,
       "-frames:v",
@@ -670,6 +690,7 @@ export default defineCommand({
         frameHeight: frame.height,
         frameFileName: frame.stagedName,
         cells,
+        lutPathsTypedWithLutsFlag: parsed.source.kind === "luts",
       });
       preparedDir = prepared.tempDir;
 

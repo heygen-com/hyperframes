@@ -1,4 +1,5 @@
 import { CompositionProbe, type ProbeResult, readPositiveDimension } from "./composition-probe.js";
+import type { StaticComposition } from "@hyperframes/core/runtime/composition-length";
 import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js";
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
@@ -20,8 +21,10 @@ import {
   getShaderModeFromElement,
   prepareSrcForElement,
   prepareSrcdocForElement,
+  prepareSealedSrcdocForElement,
   runtimeSrcFromElement,
 } from "./shader-options.js";
+import { carriesRuntime, decodePage } from "./runtime-in-srcdoc.js";
 import { createShaderLoader } from "./shader-loader-element.js";
 import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
@@ -41,9 +44,27 @@ import {
 // timeline itself respects. Clamping here also shields the native
 // HTMLMediaElement.playbackRate setter, which throws for extreme values in
 // production browsers.
+function parseUrl(src: string): URL | null {
+  try {
+    return new URL(src, document.baseURI);
+  } catch {
+    return null;
+  }
+}
+
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
+const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
+
+type FrameTarget = { src: string; read?: boolean } | { srcdoc: string | null };
+type SealedPage = { bySrc: true; read: boolean } | { bySrc: false; html: string; url: string };
+
+// A srcdoc copy runs under the embedding page's policy, so a page that sets its own, or whose headers this
+// player can't all read (a redirect to another site), loads by src.
+const OWN_POLICY_HEADERS = ["content-security-policy", "x-frame-options"];
+const mayCarryOwnPolicy = (response: Response) =>
+  response.type !== "basic" || OWN_POLICY_HEADERS.some((name) => response.headers.has(name));
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // Bounds how long the player waits on a same-origin composition's readiness
 // inputs (media, compute, paint-and-idle) before playing anyway — a stuck
@@ -89,6 +110,8 @@ type PendingRuntimeDataDelivery = {
   timeoutId: number;
 };
 
+const roundOrNull = (ms: number | null) => (ms === null ? null : Math.round(ms));
+
 function clampPlaybackRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
   return Math.max(MIN_PLAYBACK_RATE, Math.min(MAX_PLAYBACK_RATE, rate));
@@ -131,7 +154,19 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  /** Bumped by every navigation, so a sealed load that resolves late shows nothing stale. */
+  private _documentLoad = 0;
+  /** The URL a sealed srcdoc was fetched from, so its media resolve as they would by `src`. */
+  private _srcdocUrl: string | null = null;
+  private _pageRead = false;
+  private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
+  private _awaitingLoad = false;
+  private _documentId: string | null = null;
+  private _leftDocumentId: string | null = null;
+  private _leftDocumentUnknown = false;
+  private _runtimeAnnounces = false;
+  private _timelineHeldForLoad = false;
   private _connected = false;
   private _assetsReady = false;
   private _painted = false;
@@ -188,6 +223,7 @@ class HyperframesPlayer extends HTMLElement {
       getPlaybackRate: () => this.playbackRate,
       getCurrentTime: () => this._currentTime,
       isPaused: () => this._paused,
+      setFrameMuted: (muted) => this._sendControl("set-media-output-muted", { muted }),
     });
 
     this._directTimelineClock = new DirectTimelineClock({
@@ -213,6 +249,7 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
+      unreadSealedLoad: () => this.hasAttribute(SANDBOX_ORIGIN_ATTR) && !this._pageRead,
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
     });
@@ -239,8 +276,7 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
     if (this.hasAttribute("audio-src")) this._media.setupFromUrl(this.getAttribute("audio-src")!);
-    if (this.hasAttribute("srcdoc"))
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc")!);
+    if (this.hasAttribute("srcdoc")) this._showDocument(this.getAttribute("srcdoc")!);
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src")!);
 
     // Host-environment audio lock: when the embedding host (e.g. Claude
@@ -258,6 +294,7 @@ class HyperframesPlayer extends HTMLElement {
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
+    this.probe.endNavigation();
     this.probe.stop();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -295,11 +332,13 @@ class HyperframesPlayer extends HTMLElement {
         if (val !== null) {
           this._pauseForVideoSwitch();
           this._teardownVideo();
-          this.iframe.srcdoc = prepareSrcdocForElement(this, val);
+          this._showDocument(val);
         } else {
-          this.iframe.removeAttribute("srcdoc");
+          this._documentLoad++;
+          this._navigateFrame({ srcdoc: null });
           const src = this.getAttribute("src");
-          if (src !== null && this._wantsVideo()) this._navigateSrc(src);
+          if (src !== null && (this._wantsVideo() || this.hasAttribute(SANDBOX_ORIGIN_ATTR)))
+            this._navigateSrc(src);
         }
         break;
       case SANDBOX_ORIGIN_ATTR:
@@ -388,11 +427,11 @@ class HyperframesPlayer extends HTMLElement {
     this._abandonComposition("Sandbox policy changed before runtime data was applied");
     const srcdoc = this.getAttribute("srcdoc");
     if (srcdoc !== null) {
-      this.iframe.srcdoc = prepareSrcdocForElement(this, srcdoc);
+      this._showDocument(srcdoc);
       return;
     }
     const src = this.getAttribute("src");
-    if (src === null) this.iframe.src = "about:blank";
+    if (src === null) this._navigateFrame({ src: "about:blank" });
     else this._loadSrc(src);
   }
 
@@ -1038,7 +1077,7 @@ class HyperframesPlayer extends HTMLElement {
     // explanatory rejection the caller gets from every other navigating path.
     this._abandonComposition("Shader options changed before runtime data was applied");
     if (this.hasAttribute("srcdoc")) {
-      this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
+      this._showDocument(this.getAttribute("srcdoc") || "");
       return;
     }
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src") || "");
@@ -1066,12 +1105,102 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _loadSrc(src: string): void {
+    this._documentLoad++;
     if (this._wantsVideo()) {
+      // A sealed composition shown as srcdoc would outlive the frame's about:blank.
+      this.iframe.removeAttribute("srcdoc");
       this._loadVideo(src);
       return;
     }
     this._teardownVideo();
-    this.iframe.src = prepareSrcForElement(this, src);
+    if (this.hasAttribute("srcdoc")) {
+      this._navigateFrame({ src: prepareSrcForElement(this, src) });
+      return;
+    }
+    const url = parseUrl(src);
+    if (url && this.hasAttribute(SANDBOX_ORIGIN_ATTR) && url.origin === location.origin) {
+      this._showSealedSrc(src, url.href);
+      return;
+    }
+    this.probe.markNavigation();
+    this._writeSrcOverSrcdoc(src);
+  }
+
+  /** Loads src in place of a sealed srcdoc this player may be showing. */
+  private _writeSrcOverSrcdoc(src: string, read = false): void {
+    this.iframe.removeAttribute("srcdoc");
+    this._writeFrame({ src: prepareSrcForElement(this, src), read });
+  }
+
+  private _navigateFrame(to: FrameTarget): void {
+    this.probe.markNavigation();
+    this._writeFrame(to);
+  }
+
+  private _writeFrame(to: FrameTarget): void {
+    this.probe.frameWritten();
+    this._pageRead = !("src" in to) || to.read === true;
+    if (!("srcdoc" in to)) this.iframe.src = to.src;
+    else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
+    else this.iframe.srcdoc = to.srcdoc;
+  }
+
+  /** The frame shows `html`. A sealed frame gets the runtime as text, so it is shown once that loads. */
+  private _showDocument(html: string): void {
+    const load = ++this._documentLoad;
+    if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
+      this._srcdocUrl = null;
+      this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, html) });
+      return;
+    }
+    this._pageRead = true;
+    this.probe.markPreparation();
+    this._showSealedDocument(html, undefined, load);
+  }
+
+  private _showSealedDocument(html: string, base: string | undefined, load: number): void {
+    prepareSealedSrcdocForElement(this, html, base).then(
+      (doc) => {
+        if (load !== this._documentLoad) return;
+        this._srcdocUrl = base ?? null;
+        this._writeFrame({ srcdoc: doc });
+      },
+      () => {
+        if (load !== this._documentLoad) return;
+        this.probe.endNavigation();
+        this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
+      },
+    );
+  }
+
+  /**
+   * A sealed frame cannot be reached once it loads, so a same-site composition without the runtime is
+   * fetched and shown as srcdoc carrying it. One that brings its own, or that can't be read (no-cors: a
+   * redirect off the site answers opaque, without a CORS error), loads by `src` as before, under its own headers.
+   */
+  private _showSealedSrc(src: string, href: string): void {
+    const load = ++this._documentLoad;
+    this._pageRead = false;
+    this.probe.markPreparation();
+    fetch(href, { mode: "no-cors", credentials: "same-origin" })
+      .then(async (response): Promise<SealedPage> => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (mayCarryOwnPolicy(response)) return { bySrc: true, read: false };
+        const html = decodePage(await response.arrayBuffer(), response.headers.get("content-type"));
+        return carriesRuntime(html)
+          ? { bySrc: true, read: true }
+          : { bySrc: false, html, url: response.url || href };
+      })
+      .then(
+        (page) => {
+          if (load !== this._documentLoad) return;
+          if (page.bySrc) this._writeSrcOverSrcdoc(src, page.read);
+          else this._showSealedDocument(page.html, page.url, load);
+        },
+        () => {
+          if (load === this._documentLoad) this._writeSrcOverSrcdoc(src);
+        },
+      );
   }
 
   private _loadVideo(src: string): void {
@@ -1102,6 +1231,7 @@ class HyperframesPlayer extends HTMLElement {
       // Unloads a composition this player was showing before it switched to video.
       this.iframe.src = "about:blank";
     }
+    this.probe.endNavigation();
     this.probe.stop();
     const { video, adapter } = this._videoSource;
     this._directTimelineAdapter = adapter;
@@ -1246,8 +1376,18 @@ class HyperframesPlayer extends HTMLElement {
 
   private _onMessage(e: MessageEvent) {
     // The iframe window outlives its documents: a late composition message must not reach a video.
-    if (this._videoSource || this.probe.failed) return;
+    if (this._videoSource || this.probe.failed || this._fromLeftDocument(e)) return;
     this._applyThenEmit(() => this._handleRuntimeMessage(e));
+  }
+
+  /** True for a message the document a host navigation left stamped; another stamp becomes the current document's. */
+  private _fromLeftDocument(e: MessageEvent): boolean {
+    const id =
+      e.source === this.iframe.contentWindow && (e.data as { documentId?: unknown })?.documentId;
+    if (typeof id !== "string") return false;
+    if (id === this._leftDocumentId) return true;
+    this._documentId = id;
+    return false;
   }
 
   private _handleRuntimeMessage(e: MessageEvent) {
@@ -1271,6 +1411,8 @@ class HyperframesPlayer extends HTMLElement {
       setCompositionSize: (w, h) => this._setCompositionSize(w, h),
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
+      getCompositionUrl: () =>
+        this.iframe.hasAttribute("srcdoc") ? this._srcdocUrl : this.iframe.src || null,
       onRuntimeReady: () => {
         this._runtimeBridgeReady = true;
         this._replayBridgeState();
@@ -1288,12 +1430,17 @@ class HyperframesPlayer extends HTMLElement {
         this._rejectRuntimeDataDelivery(channel, requestId, message),
       onRuntimeTimelineReady: (duration, assetsReady) =>
         this._onRuntimeTimelineReady(duration, assetsReady),
+      onStaticComposition: (read) => this._onStaticComposition(read),
+      onFrameError: (message) => this.probe.reportFrameError(message),
       setBuffering: (buffering) => this._setBuffering(buffering),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
       },
       setRuntimeOwnsPlayRange: (owns) => {
         this._runtimeOwnsPlayRange = owns;
+      },
+      setRuntimeAnnounces: (announces) => {
+        this._runtimeAnnounces = announces;
       },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
@@ -1312,13 +1459,20 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
-    if (this._ready) return;
+    const mayBeLeft = this._awaitingLoad && this._leftDocumentUnknown;
+    if (mayBeLeft && this._runtimeAnnounces && !this._getSameOriginIframeDocument()) {
+      this._timelineHeldForLoad = true;
+      return;
+    }
+    if (this._ready && !this._readyBeforeRuntime) return;
+    const alreadyReady = this._readyBeforeRuntime;
+    this._readyBeforeRuntime = false;
     this.probe.stop();
     this._setDuration(duration);
     this._directTimelineAdapter = null;
     this._ready = true;
     this.controlsApi?.updateTime(this._currentTime, duration);
-    this._dispatchReady();
+    if (!alreadyReady) this._dispatchReady();
 
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
@@ -1327,6 +1481,19 @@ class HyperframesPlayer extends HTMLElement {
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc, assetsReady);
     this._playWhenWanted();
+  }
+
+  /** A sealed frame's length and size from its document, as the probe reads them; play waits for the runtime. */
+  private _onStaticComposition({ durationSeconds, compositionSize }: StaticComposition) {
+    // An open frame's own poll reads the same thing.
+    if (this._ready || this._getSameOriginIframeDocument()) return;
+    this.probe.stop();
+    this._setDuration(durationSeconds);
+    if (compositionSize) this._setCompositionSize(compositionSize.width, compositionSize.height);
+    this._ready = true;
+    this._readyBeforeRuntime = true;
+    this.controlsApi?.updateTime(0, durationSeconds);
+    this._dispatchReady();
   }
 
   private _onProbeReady(result: ProbeResult) {
@@ -1464,6 +1631,12 @@ class HyperframesPlayer extends HTMLElement {
     this.probe.latchUntilNextLoad();
     this.probe.stop();
     this._ready = false;
+    this._readyBeforeRuntime = false;
+    this._awaitingLoad = true;
+    this._timelineHeldForLoad = false;
+    this._leftDocumentUnknown = this._documentId === null;
+    this._leftDocumentId = this._documentId ?? this._leftDocumentId;
+    this._documentId = null;
     this._readyDocument = null;
     this._invalidateAssetsWait();
     this._releaseDocument();
@@ -1501,10 +1674,13 @@ class HyperframesPlayer extends HTMLElement {
 
   private _dispatchReady(): void {
     this._readyDocument = this._getSameOriginIframeDocument();
+    this.probe.endNavigation();
     const detail = {
       duration: this._duration,
       compositionWidth: this._compositionWidth,
       compositionHeight: this._compositionHeight,
+      readyMs: this._videoSource ? null : roundOrNull(this.probe.elapsedMs()),
+      loadLimitMs: this._videoSource ? null : this.probe.limitMs,
     };
     this._emit(new CustomEvent("ready", { detail }));
     // Once ready: covers a size message that never came, and lets a zero-size player warn.
@@ -1605,17 +1781,22 @@ class HyperframesPlayer extends HTMLElement {
   private _onIframeLoad() {
     // In video mode the iframe only ever loads about:blank; its load must not reset the video.
     if (!this._connected || this._videoSource) return;
-    // The runtime posts its timeline once its scripts ran, before or after `load`, and every
-    // host-initiated navigation clears `_ready` first. So a ready player already holds this
-    // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
+    // A runtime posts its timeline before or after `load`. One seen since a host navigation from a document that never
+    // stamped a message may be that document's: an unreadable frame's runtime that can be asked again held it, and is
+    // asked below; else it stands, as a paused runtime never posts again (an opaque origin reads null on both sides).
+    const askAgain = this._timelineHeldForLoad;
+    this._awaitingLoad = false;
+    this._timelineHeldForLoad = false;
     const doc = this._getSameOriginIframeDocument();
     if (this._ready && doc === this._readyDocument) {
       // Its asset wait scanned at DOMContentLoaded; a script may have added first-frame media since.
       if (doc && this._hasPendingFirstFrameAssets(doc)) this._waitForAssetsReady(doc);
+      if (askAgain) this._sendControl("announce-timeline");
       return;
     }
 
     this._ready = false;
+    this._readyBeforeRuntime = false;
     // The runtime installs its bridge once its scripts ran and posts `ready`, which can come before
     // the iframe's load event. Do not erase that authoritative handshake here: doing so strands
     // retained data set after load until a second `ready` that never comes. Source setters and
@@ -1623,6 +1804,7 @@ class HyperframesPlayer extends HTMLElement {
     this._invalidateAssetsWait();
     this._releaseDocument();
     this.probe.start();
+    if (askAgain) this._sendControl("announce-timeline");
   }
 
   private _setupControls() {
@@ -1667,14 +1849,7 @@ class HyperframesPlayer extends HTMLElement {
     this._media.mirrorTime(t, opts);
   }
   _promoteToParentProxy() {
-    let d: Document | null = null;
-    try {
-      d = this.iframe.contentDocument;
-    } catch {
-      /* x-origin */
-    }
-    this._media.promoteToParentProxy(d, (t, o) => this._mirrorParentMediaTime(t, o));
-    this._sendControl("set-media-output-muted", { muted: true });
+    this._media.promoteToParentProxy((t, o) => this._mirrorParentMediaTime(t, o));
   }
   _observeDynamicMedia(doc: Document) {
     this._media.setupFromIframe(doc);

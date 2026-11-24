@@ -6,6 +6,7 @@ import {
   resolveManagedGpuMode,
 } from "../browser/launch.js";
 import { spawn } from "node:child_process";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import type { Browser, Page } from "puppeteer-core";
 import type { InProcessRequest, InProcessResponse } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
@@ -255,7 +256,7 @@ async function waitForCompositionSettle(
 
   if (!runtimeReady) {
     console.warn(
-      `\n   ${c.warn("⚠")} Runtime did not become render-ready within ${options.renderReadyTimeoutMs}ms — ${options.renderReadyWarningSuffix}`,
+      `\n   ${c.warn("⚠")} Runtime did not become render-ready within ${options.renderReadyTimeoutMs}ms — ${terminalText(options.renderReadyWarningSuffix)}`,
     );
   }
 
@@ -271,11 +272,13 @@ async function waitForCompositionSettle(
   const { resolveConfig, waitForImagesReady } = await import("@hyperframes/engine");
   const imageTimeoutMs = resolveConfig().playerReadyTimeout;
   await waitForImagesReady(page, imageTimeoutMs, (sources) =>
-    console.warn(
-      `   ${c.warn("⚠")} Some images did not load within ${imageTimeoutMs}ms: ${sources}. They may show blank.`,
-    ),
+    console.warn(unloadedImagesWarning(imageTimeoutMs, sources)),
   );
   return runtimeReady;
+}
+
+export function unloadedImagesWarning(timeoutMs: number, sources: string): string {
+  return `   ${c.warn("⚠")} Some images did not load within ${timeoutMs}ms: ${terminalText(sources)}. They may show blank.`;
 }
 
 async function waitForLateSubresources(page: Page, timeoutMs: number): Promise<void> {
@@ -416,7 +419,7 @@ async function launchCompositionBrowser(
     }
 
     console.warn(
-      `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${systemBrowser.executablePath}.`,
+      `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${terminalText(systemBrowser.executablePath)}.`,
     );
     try {
       chromeBrowser = await launch(systemBrowser.executablePath);

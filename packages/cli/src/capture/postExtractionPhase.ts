@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core/terminal-text";
 import { existsSync } from "node:fs";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { CaptureDirRefusedError } from "./captureErrors.js";
@@ -135,7 +136,9 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
       );
       if (fontsManifest.families.length > 0) {
         const summary = fontsManifest.families
-          .map((f) => `${f.family}${f.variable ? " (variable)" : ""} × ${f.fileCount}`)
+          .map(
+            (f) => `${terminalText(f.family)}${f.variable ? " (variable)" : ""} × ${f.fileCount}`,
+          )
           .join(", ");
         // stderr (via diag): `capture --json` writes its envelope to stdout, so
         // these progress/advisory lines must not land there.
@@ -147,7 +150,10 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
         }
       }
     } catch (err) {
-      diag.warn("Font metadata extraction failed (non-fatal):", normalizeErrorMessage(err));
+      diag.warn(
+        "Font metadata extraction failed (non-fatal):",
+        terminalLines(normalizeErrorMessage(err)),
+      );
     }
   };
   await runFontExtraction();

@@ -17,6 +17,7 @@ import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSour
 import { fileDocs, standaloneSets } from "./softReloadTargets";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { PREVIEW_REJECTED, PREVIEW_STALE, previewFrameOpaque } from "../player/lib/previewChannel";
+import { rereadGsapSnapshot } from "../hooks/gsapFrameSnapshot";
 import {
   SAVED_STATE_DEADLINE_MS,
   sendPreviewWrite,
@@ -34,9 +35,9 @@ export {
 type IframeWindow = SoftReloadWindow & { __playerReady?: boolean };
 
 /**
- * Pre-load and register MotionPathPlugin once per preview load (NLELayout's onIframeLoad), so
- * adding the first motion path does not wait for the CDN mid-reload and flash. Idempotent; without
- * gsap it waits for the runtime's ready, and a CDN failure is left to the soft reload's own load.
+ * Pre-load and register MotionPathPlugin once per preview load (NLELayout's onIframeLoad) unless the page is marked
+ * path-free; a first path added by an edit waits for it on its re-run. Idempotent; without gsap it waits for the
+ * runtime's ready, and a CDN failure is left to the soft reload's own load.
  */
 // At most one preview waits for its runtime; a newer load replaces it, so a frame that never boots is not kept alive.
 let pendingReadyRetry: ((event: MessageEvent) => void) | null = null;
@@ -202,6 +203,10 @@ export function sealedRerun(
 }
 
 // Everything sent comes from the files Studio saved, never from the frame; the reply only says whether it applied.
+function rereadOnceRerun(iframe: HTMLIFrameElement, result: SoftReloadResult): void {
+  if (result !== "cannot-soft-reload" && result !== "superseded") rereadGsapSnapshot(iframe);
+}
+
 function softReloadSealed(
   iframe: HTMLIFrameElement,
   scriptText: string,
@@ -236,6 +241,7 @@ function softReloadSealed(
       answer === PREVIEW_REJECTED || answer === PREVIEW_STALE
         ? "cannot-soft-reload"
         : sealedSoftReloadResult(answer);
+    rereadOnceRerun(iframe, result);
     if (!ticketNeedsRecovery(ticket)) return;
     if (result === "cannot-soft-reload") onAsyncFailure?.();
     else if (result !== "superseded") onShownInPlace?.();

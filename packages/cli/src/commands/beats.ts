@@ -12,7 +12,8 @@ import {
 } from "@hyperframes/core/beats";
 import { parseHTMLContent } from "@hyperframes/core/compiler";
 import { walkCompositionDescendants } from "@hyperframes/parsers";
-import { isSafePath, resolveWithinProject, terminalLines, terminalText } from "@hyperframes/core";
+import { isSafePath, resolveWithinProject, terminalText } from "@hyperframes/core";
+import { printFailureLine } from "../utils/jsonError.js";
 import type { Example } from "./_examples.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
 import type { AudioSignal } from "@hyperframes/core/audio-analysis";
@@ -26,7 +27,7 @@ export const examples: Example[] = [
 ];
 
 function fail(message: string): never {
-  console.error(c.error(terminalLines(message)));
+  printFailureLine((show) => c.error(show(message)));
   failCommand();
 }
 

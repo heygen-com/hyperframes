@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
+import { handleFor } from "./editingHandles";
 import { PREVIEW_FOR_ANOTHER_SITE_META, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
@@ -61,6 +62,25 @@ describe("installEditingAgent", () => {
     expect(message).toEqual({ source: "hf-preview", type: "editing-port", v: 1 });
     expect(targetOrigin).toBe("*");
     expect(transfer).toHaveLength(1);
+  });
+
+  // fails without the fix: the plugin preload ran before the handoff, so a page it threw on never got a port.
+  it("hands the port over before the optional plugin preload", () => {
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      get: () => {
+        throw new Error("page gsap getter");
+      },
+    });
+    const reported = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", reported);
+    try {
+      post(parent, CONNECT);
+      expect(handoff).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("error", reported);
+      Reflect.deleteProperty(window, "gsap");
+    }
   });
 
   it("hands a fresh port to each later connect from the parent and keeps the earlier one working", async () => {
@@ -182,6 +202,7 @@ describe("installEditingAgent", () => {
           "layers",
           "draft",
           "gesture-start",
+          "gesture-base",
           "console-errors",
           "watch-keys",
           "restore-attributes",
@@ -210,6 +231,7 @@ describe("installEditingAgent", () => {
           "live-retime",
           "assets-unloaded",
           "text-edit",
+          "serve-paused-frames",
         ],
       },
     });
@@ -408,7 +430,26 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: "1", y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: { x: Infinity, y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: 1, y: 0, route: "css" }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: 1e6, y: 0, route: "gsap" }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
+      ...[
+        { seconds: 1, values: {} },
+        { seconds: -1, values: { opacity: 1 } },
+        { seconds: 1, values: { color: 1 } },
+        { seconds: 1, values: { opacity: "1" } },
+        { seconds: 1, values: { opacity: 1 }, extra: 1 },
+      ].map((props) => ({ drafts: [{ handle: H, translate: null, size: null, props }] })),
+      {
+        drafts: [
+          {
+            handle: H,
+            translate: { x: 1, y: 0, route: "gsap" },
+            size: null,
+            props: { seconds: 1, values: { x: 2 } },
+          },
+        ],
+      },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1, route: "x" } }] },
@@ -421,9 +462,30 @@ describe("installEditingAgent", () => {
       {
         drafts: [{ handle: H, translate: null, size: null, rotate: { angle: NaN, route: "gsap" } }],
       },
+      {
+        drafts: [
+          { handle: H, translate: null, size: null, rotate: { angle: 1, route: "transform" } },
+        ],
+      },
+      ...[
+        "url(x.png)",
+        "rotate(1deg);color:red",
+        "translate(1px",
+        "scale(2) /* x",
+        "x".repeat(513),
+      ].map((value) => ({
+        drafts: [
+          {
+            handle: H,
+            translate: null,
+            size: null,
+            rotate: { angle: 1, route: "transform", value },
+          },
+        ],
+      })),
     ].map((params, index) => [
-      { v: 1, id: 150 + index, kind: "draft", params },
-      150 + index,
+      { v: 1, id: 600 + index, kind: "draft", params },
+      600 + index,
       "invalid-params",
     ]),
     ...[{}, { handles: [] }, { handles: ["1"] }, { handles: Array(257).fill(H) }].map(
@@ -619,6 +681,83 @@ describe("installEditingAgent", () => {
     });
   });
 
+  // fails without the fix: the frame refused a turn drawn inside a translating transform, so it never turned.
+  it("draws a turn inside a translating transform through the port", async () => {
+    const port = connectedPort();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<div id="spun" style="transform: translate(-50%, -50%)"></div>',
+    );
+    const spun = document.getElementById("spun")!;
+    const value = "translate(-50%, -50%) rotate(20deg)";
+    const rotate = { angle: 20, route: "transform", value };
+    const drafts = [{ handle: handleFor(spun), translate: null, size: null, rotate }];
+    expect(await ask(port, { v: 1, id: 1, kind: "draft", params: { drafts } })).toMatchObject({
+      ok: true,
+    });
+    expect(spun.style.transform).toBe(value);
+  });
+
+  it("ends a drawn size and sets GSAP values in one request, the size ended first", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const box = document.getElementById("box")!;
+    const handle = handleFor(box);
+    const widthAtSet: string[] = [];
+    Object.assign(window, { gsap: { set: () => widthAtSet.push(box.style.width) } });
+    const port = connectedPort();
+    const size = { width: 307, height: 204 };
+    const drawn = await ask(port, {
+      v: 1,
+      id: 1,
+      kind: "draft",
+      params: { drafts: [{ handle, translate: null, size }] },
+    });
+    expect(drawn).toMatchObject({ ok: true, result: { gsapSetTakesDrafts: true } });
+    expect(box.style.width).toBe("307px");
+
+    const ending = [{ handle, translate: null, size: null }];
+    const props = { scaleX: 1.9, scaleY: 1.9 };
+    const set = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "gsap-set",
+      params: { handle, props, drafts: ending },
+    });
+    const malformed = [{ handle, translate: null, size: "none" }];
+    const refused = await ask(port, {
+      v: 1,
+      id: 3,
+      kind: "gsap-set",
+      params: { handle, props, drafts: malformed },
+    });
+
+    expect(set).toMatchObject({ id: 2, ok: true, result: { applied: true } });
+    expect(widthAtSet).toEqual([""]);
+    expect(refused).toMatchObject({ id: 3, ok: false, error: { code: "invalid-params" } });
+    Reflect.deleteProperty(window, "gsap");
+  });
+
+  // fails without the fix: the frame refused a move routed through its GSAP, so a sealed drag drew a CSS translate.
+  it("moves a GSAP-held element's x/y through the port", async () => {
+    const port = connectedPort();
+    document.body.insertAdjacentHTML("beforeend", '<div id="held"></div>');
+    const held = document.getElementById("held")!;
+    const position = { x: 40, y: 30 };
+    Object.assign(window, {
+      gsap: {
+        getProperty: (_: Element, axis: "x" | "y") => position[axis],
+        set: (_: Element, props: Partial<typeof position>) => Object.assign(position, props),
+      },
+    });
+    const translate = { x: 35, y: 33, route: "gsap" };
+    const drafts = [{ handle: handleFor(held), translate, size: null }];
+    expect(await ask(port, { v: 1, id: 1, kind: "draft", params: { drafts } })).toMatchObject({
+      ok: true,
+    });
+    expect(position).toEqual({ x: 35, y: 33 });
+    Reflect.deleteProperty(window, "gsap");
+  });
+
   it("answers computed styles for the element a selector names", async () => {
     document.body.innerHTML = `<p id="title" style="color: rgb(1, 2, 3); opacity: 0.5">Hi</p>
       <canvas data-hf-preview-video-canvas style="opacity: 0.25"></canvas>
@@ -758,6 +897,31 @@ describe("installEditingAgent", () => {
         forwarded("keydown", " ", "Space", true),
         forwarded("keyup", " ", "Space"),
       ]);
+    });
+
+    it("leaves a key typed into a field inside a shadow root to the field", async () => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const field = host
+        .attachShadow({ mode: "open" })
+        .appendChild(document.createElement("input"));
+      field.focus();
+      const port = connectedPort();
+      await watch(port, ["b"]);
+      const seen = collect(port);
+
+      const event = new KeyboardEvent("keydown", {
+        key: "b",
+        code: "KeyB",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      field.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(await received(port, seen)).toEqual([]);
+      host.remove();
     });
 
     it("leaves a key the film cancelled before it", async () => {

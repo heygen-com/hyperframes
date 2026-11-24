@@ -19,18 +19,20 @@ import {
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
+  MAX_DRAFT_PX,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
   type EditingElementMatch,
 } from "./editingElement";
 import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
-import type { EditingGestureStart } from "./editingGestureStart";
+import type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
-import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
+import { parsePatchTweensRequest, type PatchTweensParams } from "./editing/patchTween";
+import { parseDraftEnd, type EditingDraftEnd, type EditingDraftReply } from "./editingDraftEnd";
 import {
   parseRestoreAttributesRerun,
   parseSoftReload,
@@ -134,7 +136,7 @@ export {
   type EditingElementGeometry,
   type ElementTransformSnapshot,
 } from "./editingGeometry";
-export type { EditingGestureStart } from "./editingGestureStart";
+export type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export {
   MAX_SNAPSHOT_CHANNELS,
@@ -166,11 +168,6 @@ export {
   type EditingStackingSibling,
   type LayerKind,
 } from "./editingLayers";
-export {
-  composeElementTransform,
-  individualRotateDegrees,
-  type PlanarTransformOps,
-} from "./elementTransform";
 
 export const EDITING_PROTOCOL_VERSION = 1 as const;
 /** Parent to frame, on the window: asks the runtime for the port. */
@@ -193,6 +190,7 @@ export const EDITING_REQUEST_KINDS = [
   "layers",
   "draft",
   "gesture-start",
+  "gesture-base",
   "console-errors",
   "watch-keys",
   "restore-attributes",
@@ -221,6 +219,7 @@ export const EDITING_REQUEST_KINDS = [
   "live-retime",
   "assets-unloaded",
   "text-edit",
+  "serve-paused-frames",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -235,7 +234,8 @@ export interface EditingRuntimeSnapshot {
   clipParents: Array<[string, string]>;
 }
 
-export const MAX_DRAFT_PX = 100_000;
+export { MAX_DRAFT_PX };
+export const EDITING_REQUEST_TIMEOUT_MS = 5_000;
 export const MAX_DRAFT_DEG = 36_000;
 export const MAX_WATCHED_KEYS = 32;
 
@@ -257,16 +257,31 @@ export type EditingKeyMessage = {
 };
 
 /** The `rotate` property's whole value in degrees, or GSAP's rotation; null takes the drawn turn back. */
-export type EditingDraftRotate = { angle: number; route: "css" | "gsap" };
-/** A gesture's draft on one element: null puts that part back; `end` keeps what is drawn or restores. */
+export type EditingDraftRotate =
+  | { angle: number; route: "css" | "gsap" }
+  | { angle: number; route: "transform"; value: string };
+export type { EditingDraftEnd };
+export const DRAFT_GSAP_PROPS = [
+  "x",
+  "y",
+  "opacity",
+  "scale",
+  "rotation",
+  "rotationX",
+  "rotationY",
+  "z",
+];
+export type EditingDraftProps = { seconds: number; values: Record<string, number> };
+/** A gesture's draft on one element: null puts that part back; an end keeps what is drawn or restores. */
 export type EditingDraft =
   | {
       handle: EditingElementHandle;
-      translate: { x: number; y: number } | null;
+      translate: { x: number; y: number; route?: "gsap" } | null;
       size: { width: number; height: number } | null;
       rotate?: EditingDraftRotate | null;
+      props?: EditingDraftProps | null;
     }
-  | { handle: EditingElementHandle; end: "keep" | "restore" };
+  | EditingDraftEnd;
 
 type NoParams = Record<string, never>;
 export interface EditingRequests {
@@ -324,10 +339,17 @@ export interface EditingRequests {
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
-  draft: { params: { drafts: EditingDraft[] }; result: { drawn: number } };
+  draft: {
+    params: { drafts: EditingDraft[] };
+    result: EditingDraftReply & { gsapSetTakesDrafts?: true };
+  };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
+  };
+  "gesture-base": {
+    params: { handles: EditingElementHandle[] };
+    result: { elements: Array<EditingGestureBase | null> };
   };
   "console-errors": { params: { from: number }; result: { errors: string[]; truncated: boolean } };
   /** The frame cancels these combos outside the elements that own keys, and forwards them and their
@@ -375,6 +397,8 @@ export interface EditingRequests {
   "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
   "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
   "text-edit": { params: TextEditParams; result: TextEditResult };
+  /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
+  "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -476,30 +500,88 @@ function draftPart(value: unknown, keys: string, min: number): boolean {
   return keys.split(",").every((key) => isDraftPx(value[key], min));
 }
 
+const TRANSFORM_CALL =
+  /^(?:(?:translate|scale|rotate)(?:[XYZ]|3d)?|skew[XY]?|matrix(?:3d)?|perspective|calc|var|min|max|clamp)$/;
+
+const INNER_CALL = /([\w-]+)\(([\w\s.,%+\-*/]*)\)/g;
+
+// Innermost known calls fold to a token until none is left: an unclosed paren or a comment never folds.
+export function isTransformList(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 512 || value.includes("/*")) return false;
+  let rest = value;
+  for (let last = ""; rest !== last; ) {
+    last = rest;
+    rest = rest.replace(INNER_CALL, (call, name: string) =>
+      TRANSFORM_CALL.test(name) ? "0" : call,
+    );
+  }
+  return /^[\s0]*$/.test(rest);
+}
+
+const isRotateRoute = (value: unknown): value is Record<string, unknown> =>
+  (hasKeys(value, "angle,route") && (value.route === "css" || value.route === "gsap")) ||
+  (hasKeys(value, "angle,route,value") &&
+    value.route === "transform" &&
+    isTransformList(value.value));
+
+function draftTranslate(value: unknown): boolean {
+  if (!hasKeys(value, "route,x,y")) return draftPart(value, "x,y", -MAX_DRAFT_PX);
+  return (
+    value.route === "gsap" && isDraftPx(value.x, -MAX_DRAFT_PX) && isDraftPx(value.y, -MAX_DRAFT_PX)
+  );
+}
+
 function draftRotate(value: unknown): boolean {
   if (value === undefined || value === null) return true;
-  if (!hasKeys(value, "angle,route") || (value.route !== "css" && value.route !== "gsap"))
-    return false;
+  if (!isRotateRoute(value)) return false;
   return Number.isFinite(value.angle) && Math.abs(value.angle as number) <= MAX_DRAFT_DEG;
 }
 
 function draftEntry(value: unknown): EditingDraft | null {
   if (!isPlainRecord(value) || !isHandle(value.handle)) return null;
-  const { handle, end } = value;
-  if (hasKeys(value, "end,handle"))
-    return end === "keep" || end === "restore" ? { handle, end } : null;
+  if ("end" in value) return parseDraftEnd(value);
   return drawnParts(value) ? (value as EditingDraft) : null;
 }
 
 function drawnParts(value: Record<string, unknown>): boolean {
-  const { translate, size, rotate } = value;
-  if (!hasKeys(value, "handle,size,translate") && !hasKeys(value, "handle,rotate,size,translate"))
+  const { handle: _handle, translate, size, rotate, props, ...rest } = value;
+  if (Object.keys(rest).length || !("translate" in value) || !("size" in value)) return false;
+  const parts = [
+    draftTranslate(translate),
+    draftPart(size, "height,width", 0),
+    draftRotate(rotate),
+  ];
+  return !parts.includes(false) && draftPropsWithOneXYWriter(props, translate);
+}
+
+const isPropsShape = (
+  value: unknown,
+): value is { seconds: number; values: Record<string, unknown> } =>
+  hasKeys(value, "seconds,values") &&
+  isPlainRecord(value.values) &&
+  Number.isFinite(value.seconds) &&
+  (value.seconds as number) >= 0;
+
+const isDraftValue = ([key, value]: [string, unknown]) =>
+  DRAFT_GSAP_PROPS.includes(key) && isDraftPx(value, -MAX_DRAFT_PX);
+
+const setsPosition = (keys: string[]) => keys.includes("x") || keys.includes("y");
+
+function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!isPropsShape(value)) return false;
+  const entries = Object.entries(value.values);
+  if (!entries.length || (translate !== null && setsPosition(entries.map(([key]) => key))))
     return false;
-  return (
-    draftPart(translate, "x,y", -MAX_DRAFT_PX) &&
-    draftPart(size, "height,width", 0) &&
-    draftRotate(rotate)
-  );
+  return entries.every(isDraftValue);
+}
+
+function gsapSetWithDrafts(params: unknown): GsapSetParams | null {
+  if (!isPlainRecord(params) || !("drafts" in params)) return parseGsapSet(params);
+  const { drafts, ...set } = params;
+  const parsed = parseGsapSet(set);
+  const drawn = draftList({ drafts });
+  return parsed && drawn ? { ...parsed, drafts: drawn.drafts } : null;
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {
@@ -574,6 +656,7 @@ const PARAM_PARSERS: {
   layers: (params) => noParams(params) ?? layerParams(params),
   draft: draftList,
   "gesture-start": handleList,
+  "gesture-base": handleList,
   "console-errors": (params) =>
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
   "watch-keys": comboList,
@@ -601,8 +684,8 @@ const PARAM_PARSERS: {
   "edit-element": parseEditElement,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
-  "gsap-set": parseGsapSet,
-  "patch-tweens": parsePatchTweens,
+  "gsap-set": gsapSetWithDrafts,
+  "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,
   "mark-scenes-stale": parseMarkScenesStale,
@@ -610,6 +693,10 @@ const PARAM_PARSERS: {
   "live-retime": parseLiveRetime,
   "assets-unloaded": noParams,
   "text-edit": parseTextEdit,
+  "serve-paused-frames": (params) =>
+    hasKeys(params, "channel") && params.channel instanceof MessagePort
+      ? { channel: params.channel }
+      : null,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -645,7 +732,7 @@ export interface EditingPortClient {
   request<K extends EditingRequestKind>(
     kind: K,
     params: EditingParams<K>,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; transfer?: Transferable[] },
   ): Promise<EditingResult<K>>;
   /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
@@ -707,7 +794,7 @@ export function createEditingPortClient(options: {
   timeoutMs?: number;
   host?: Window;
 }): EditingPortClient {
-  const { iframe, timeoutMs = 5_000, host = window } = options;
+  const { iframe, timeoutMs = EDITING_REQUEST_TIMEOUT_MS, host = window } = options;
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
@@ -786,7 +873,10 @@ export function createEditingPortClient(options: {
       const send = () => {
         if (!pending.has(id)) return;
         try {
-          port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id, kind, params });
+          port?.postMessage(
+            { v: EDITING_PROTOCOL_VERSION, id, kind, params },
+            requestOptions?.transfer ?? [],
+          );
         } catch (err) {
           settle(id, { error: new EditingPortError("failed", String(err)) });
         }
@@ -828,4 +918,20 @@ export function createEditingPortClient(options: {
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
-export type { TextEditEndedEvent } from "./editing/textEdit";
+export {
+  caretRangeAt,
+  takePlainTextOnly,
+  textEditResult,
+  type TextEditEndedEvent,
+  type TextEditResult,
+} from "./editing/textEdit";
+export {
+  parsePausedFrameAsk,
+  PAUSED_FRAME_BYTES,
+  PAUSED_FRAME_PARAMS,
+  PAUSED_FRAME_SOURCES,
+  type PausedFrameAsk,
+  type PausedFrameAskMessage,
+  type PausedFrameImage,
+  type PausedFrameReply,
+} from "./editing/pausedFrames";

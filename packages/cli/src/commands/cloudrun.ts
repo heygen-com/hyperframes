@@ -22,6 +22,7 @@ import { type CanvasResolution, terminalLines, terminalText } from "@hyperframes
 import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import {
   reportVariableIssues,
   resolveVariablesArg,
@@ -100,6 +101,18 @@ function loadCloudRunAdapter(): Promise<CloudRunAdapter> {
     import("@hyperframes/gcp-cloud-run/terraform"),
   ]).then(([sdk, terraform]) => ({ ...sdk, ...terraform }));
   return cloudRunAdapterPromise;
+}
+
+async function cloudRunAdapter(subcommand: string): Promise<CloudRunAdapter> {
+  try {
+    return await loadCloudRunAdapter();
+  } catch (error) {
+    if (isMissingCloudRunAdapterError(error)) {
+      console.error(missingCloudRunAdapterMessage(subcommand));
+      failCommand();
+    }
+    throw error;
+  }
 }
 
 export function isMissingCloudRunAdapterError(error: unknown): boolean {
@@ -232,25 +245,6 @@ export default defineCommand({
       console.log(HELP);
       return;
     }
-    const verbsNeedingAdapter = new Set([
-      "deploy",
-      "sites",
-      "render",
-      "render-batch",
-      "progress",
-      "destroy",
-    ]);
-    if (verbsNeedingAdapter.has(subcommand)) {
-      try {
-        await loadCloudRunAdapter();
-      } catch (error) {
-        if (isMissingCloudRunAdapterError(error)) {
-          console.error(missingCloudRunAdapterMessage(subcommand));
-          failCommand();
-        }
-        throw error;
-      }
-    }
     switch (subcommand) {
       case "deploy":
         return runDeploy(args);
@@ -265,7 +259,9 @@ export default defineCommand({
       case "destroy":
         return runDestroy(args);
       default:
-        console.error(`${c.error("Unknown subcommand:")} ${terminalText(subcommand)}\n${HELP}`);
+        printFailureLine(
+          (show) => `${c.error("Unknown subcommand:")} ${show(subcommand)}\n${HELP}`,
+        );
         failUsage();
     }
   },
@@ -344,7 +340,7 @@ async function runDeploy(args: Record<string, unknown>): Promise<void> {
   }
   const region = (args.region as string | undefined) ?? "us-central1";
   const repo = (args.repo as string | undefined) ?? "hyperframes";
-  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const { getTerraformModuleDir } = await cloudRunAdapter("deploy");
   const tfDir = getTerraformModuleDir();
   const repoRoot = findRepoRoot(tfDir);
 
@@ -504,8 +500,9 @@ function writeCloudBuildConfig(image: string): string {
 // fallow-ignore-next-line complexity
 async function runSites(args: Record<string, unknown>): Promise<void> {
   if (args.target !== "create") {
-    console.error(
-      `[cloudrun sites] unknown verb "${terminalText(String(args.target))}". Only "create" is supported.`,
+    printFailureLine(
+      (show) =>
+        `[cloudrun sites] unknown verb "${show(String(args.target))}". Only "create" is supported.`,
     );
     failUsage();
   }
@@ -515,7 +512,7 @@ async function runSites(args: Record<string, unknown>): Promise<void> {
     failUsage();
   }
   const state = readState(args);
-  const { deploySite } = await loadCloudRunAdapter();
+  const { deploySite } = await cloudRunAdapter("sites");
   const handle = await deploySite({
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
@@ -569,7 +566,7 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
   const intervalMs = parsePositiveInt(args["wait-interval-ms"], "--wait-interval-ms") ?? 5000;
   const state = readState(args);
 
-  const { renderToCloudRun, getRenderProgress } = await loadCloudRunAdapter();
+  const { renderToCloudRun, getRenderProgress } = await cloudRunAdapter("render");
   const handle = await renderToCloudRun({
     projectDir: resolve(projectDir),
     includeOutsideFiles: args["include-outside-files"] === true,
@@ -626,7 +623,7 @@ async function runProgress(args: Record<string, unknown>): Promise<void> {
     console.error("[cloudrun progress] usage: hyperframes cloudrun progress <executionName>");
     failUsage();
   }
-  const { getRenderProgress } = await loadCloudRunAdapter();
+  const { getRenderProgress } = await cloudRunAdapter("progress");
   const progress = await getRenderProgress({ executionName });
   if (args.json) {
     console.log(JSON.stringify(progress, null, 2));
@@ -678,7 +675,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
   const fps = resolveCloudRunFps(args, projectDir, "render-batch");
   buildRenderConfig(args, fps, width, height, undefined);
   if (!existsSync(resolve(batchPath))) {
-    console.error(`[cloudrun render-batch] batch file not found: ${terminalText(batchPath)}`);
+    printFailureLine((show) => `[cloudrun render-batch] batch file not found: ${show(batchPath)}`);
     failCommand();
   }
   const entries = parseBatchFile(resolve(batchPath));
@@ -701,7 +698,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
   const maxConcurrent =
     parsePositiveInt(args["max-concurrent"], "--max-concurrent") ?? DEFAULT_BATCH_MAX_CONCURRENT;
   const state = readState(args);
-  const { deploySite, renderToCloudRun } = await loadCloudRunAdapter();
+  const { deploySite, renderToCloudRun } = await cloudRunAdapter("render-batch");
 
   // Upload the project once; every entry reuses the same content-addressed
   // site handle so the tar+upload cost is paid a single time.
@@ -791,7 +788,7 @@ function parseBatchFile(path: string): BatchEntry[] {
 
 // fallow-ignore-next-line complexity
 async function runDestroy(args: Record<string, unknown>): Promise<void> {
-  const { getTerraformModuleDir } = await loadCloudRunAdapter();
+  const { getTerraformModuleDir } = await cloudRunAdapter("destroy");
   const tfDir = getTerraformModuleDir();
   const state = existsSync(statePath())
     ? (JSON.parse(readFileSync(statePath(), "utf8")) as Partial<StackState>)

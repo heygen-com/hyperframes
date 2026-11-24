@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createPausedVideoDecoder } from "./pausedVideoDecoder";
+import { createPausedVideoDecoder, type PausedVideoDecodeAsk } from "./pausedVideoDecoder";
 
 const inputs: { source: string; dispose: ReturnType<typeof vi.fn> }[] = [];
 const rebuilt: {
@@ -20,6 +20,7 @@ let displayScale = 1;
 
 vi.mock("mediabunny", () => ({
   ALL_FORMATS: [],
+  HLS: {},
   UrlSource: class {
     constructor(readonly url: string) {}
   },
@@ -55,7 +56,10 @@ vi.mock("mediabunny", () => ({
     }
   },
 }));
-vi.mock("./mediaFetch", () => ({ mediaUrlSourceOptions: () => ({ cancelReads }) }));
+vi.mock("./mediaFetch", () => ({
+  mediaUrlSourceOptions: () => ({ cancelReads }),
+  selfContainedFormats: () => [],
+}));
 vi.mock("../store/playerStore", () => ({
   usePlayerStore: {
     getState: () => ({ previewQuality, previewQualityChosenBy: qualityChosenBy }),
@@ -64,24 +68,26 @@ vi.mock("../store/playerStore", () => ({
 vi.mock("@hyperframes/core/runtime/protocol", () => ({ frameDisplayScale: () => displayScale }));
 
 const providers: ReturnType<typeof createPausedVideoDecoder>[] = [];
+/** A decoder whose asks carry `facts`' timing hints, as the frame's runtime sends them. */
 function provider(
   facts?: Record<
     string,
     { width: number; height: number; frameRate?: number; variableFrameRate?: boolean }
   >,
-  rootSize?: { width: number; height: number },
 ) {
-  const iframe = document.createElement("iframe");
-  document.body.append(iframe);
-  if (facts) Object.assign(iframe.contentWindow, { __HF_MEDIA_SOURCE_FACTS__: facts });
-  if (rootSize)
-    Object.defineProperties(iframe.contentDocument!.documentElement, {
-      clientWidth: { value: rootSize.width, configurable: true },
-      clientHeight: { value: rootSize.height, configurable: true },
-    });
-  const result = createPausedVideoDecoder(iframe);
-  providers.push(result);
-  return result;
+  const decoder = createPausedVideoDecoder();
+  providers.push(decoder);
+  const hinted = (ask: PausedVideoDecodeAsk): PausedVideoDecodeAsk => {
+    const fact = Object.entries(facts ?? {}).find(([suffix]) => ask.source.endsWith(suffix))?.[1];
+    return fact
+      ? { ...ask, frameRate: fact.frameRate, variableFrameRate: fact.variableFrameRate }
+      : ask;
+  };
+  return {
+    ...decoder,
+    decode: (asks: PausedVideoDecodeAsk[], signal: AbortSignal) =>
+      decoder.decode(asks.map(hinted), signal),
+  };
 }
 const request = (source: string) => ({
   source: `http://localhost/${source}.webm`,

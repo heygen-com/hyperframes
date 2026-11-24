@@ -21,12 +21,14 @@ import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
+  CAPTURE_STILLS,
   STUDIO_PREVIEW_ERROR_KINDS,
   STUDIO_PREVIEW_ERRORS,
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
 } from "@hyperframes/core/studio-preview-mark";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
+import { GSAP_PLUGIN_LOAD_ATTR } from "@hyperframes/core/gsap-cdn";
 import {
   PREVIEW_BUNDLE_OPTIONS,
   PREVIEW_CAPTURE_PARAM,
@@ -375,6 +377,38 @@ describe("registerPreviewRoutes", () => {
     expect(message).toContain(appended[0]?.src);
   });
 
+  // fails without the fix: a failed MotionPath preload was loaded again from the CDN and reported as the film's GSAP.
+  it("leaves the preview's own plugin load to its loader: no fallback load, no report", async () => {
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(createProjectDir()));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const fallback = /<script data-hf-gsap-fallback>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+    let onDocumentError: (event: { target: unknown }) => void = () => undefined;
+    const appended: unknown[] = [];
+    const reported: unknown[] = [];
+    new Function("document", "reportError", fallback)(
+      {
+        addEventListener: (_type: string, listener: typeof onDocumentError) => {
+          onDocumentError = listener;
+        },
+        createElement: () => ({ tagName: "SCRIPT", src: "" }),
+        head: { appendChild: (script: unknown) => appended.push(script) },
+      },
+      (error: unknown) => reported.push(error),
+    );
+
+    onDocumentError({
+      target: {
+        tagName: "SCRIPT",
+        src: "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js",
+        hasAttribute: (name: string) => name === GSAP_PLUGIN_LOAD_ATTR,
+      },
+    });
+    await new Promise((settle) => setTimeout(settle, 0));
+    expect(appended).toHaveLength(0);
+    expect(reported).toHaveLength(0);
+  });
+
   it("keeps every error a Studio preview raises from its first script, and leaves captures without it", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
@@ -479,6 +513,28 @@ describe("registerPreviewRoutes", () => {
       expect(preview, path).not.toContain(STUDIO_PREVIEW_CAPTURE_MODE);
       expect(capture, path).toContain("<script data-hf-gsap-fallback>");
     }
+  });
+
+  // fails without the fix: no page could say it was a one-shot capture, so every capture decoded its 4K originals.
+  it("marks a capture page that asked for stills, and no other page", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      "<!DOCTYPE html><html><head></head><body></body></html>",
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const page = async (query: string) =>
+      (await app.request(`http://localhost/projects/demo/preview${query}`)).text();
+    const mark = `<meta name="${CAPTURE_STILLS}">`;
+
+    const stills = await page(`?${PREVIEW_CAPTURE_PARAM}=1&${CAPTURE_STILLS}=1`);
+    const again = await page(`?${PREVIEW_CAPTURE_PARAM}=1&${CAPTURE_STILLS}=1`);
+    const capture = await page(`?${PREVIEW_CAPTURE_PARAM}=1`);
+    const preview = await page(`?${CAPTURE_STILLS}=1`);
+
+    expect([stills, again].map((html) => html.includes(mark))).toEqual([true, true]);
+    expect([capture, preview].map((html) => html.includes(CAPTURE_STILLS))).toEqual([false, false]);
   });
 
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
@@ -784,6 +840,29 @@ describe("registerPreviewRoutes", () => {
     const html = await (await app.request("http://localhost/projects/demo/preview")).text();
     return [...parseHTML(html).document.querySelectorAll("script[src]")];
   }
+
+  // fails without the fix: a page whose GSAP is the project's own file got the plugin from jsDelivr, a fetch
+  // a preview with no network cannot make and a script from a third party the page never named.
+  it.each([
+    [
+      "its own file",
+      '<script src="vendor/gsap.min.js"></script>',
+      "vendor/MotionPathPlugin.min.js",
+    ],
+    [
+      "a file the build inlined",
+      '<script data-hf-inlined-src="vendor/gsap.min.js">/* gsap */</script>',
+      "vendor/MotionPathPlugin.min.js",
+    ],
+  ])(
+    "loads the MotionPathPlugin from beside the page's GSAP when that is %s",
+    async (_, tag, plugin) => {
+      const scripts = await previewScriptSrcs(tag);
+      const srcs = scripts.map((el) => el.getAttribute("src") ?? "");
+      expect(srcs).toContain(plugin);
+      expect(srcs.filter((src) => /jsdelivr|^https?:/.test(src))).toEqual([]);
+    },
+  );
 
   it.each([
     ["a query string", "https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js?v=1"],
@@ -1546,6 +1625,34 @@ describe("preview ?variables= injection", () => {
     const injected = /<script data-hf-preview-variables>([\s\S]*?)<\/script>/.exec(html);
     expect(injected?.[1]).toContain("\\u003c/script>");
     expect(injected?.[1]).not.toContain("</script>");
+  });
+
+  it("serves every head script inside <head> when an attribute of <html> holds <head> text", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const label = '[{"label":"Page <head> and <header> text"}]';
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html lang="en" data-composition-variables='${label}'><head><title>t</title></head><body><div data-composition-id="main" data-width="320" data-height="180"></div></body></html>`,
+    );
+
+    const values = { title: '" b="1', other: "' c='1" };
+    const res = await app.request(
+      `http://localhost/projects/demo/preview?variables=${encodeURIComponent(JSON.stringify(values))}`,
+    );
+    const { document } = parseHTML(await res.text());
+    const root = document.documentElement;
+    expect(root.getAttributeNames().filter((name) => name !== "style")).toEqual([
+      "lang",
+      "data-composition-variables",
+    ]);
+    expect(root.getAttribute("data-composition-variables")).toBe(label);
+    for (const attr of ["data-hf-preview-variables", "data-hf-gsap-fallback"]) {
+      const scripts = document.querySelectorAll(`script[${attr}]`);
+      expect(scripts, attr).toHaveLength(1);
+      expect(scripts[0]?.parentElement, attr).toBe(document.head);
+    }
   });
 
   it("returns 400 for invalid JSON and non-object payloads", async () => {
@@ -3307,7 +3414,31 @@ describe("GSAP mirror configuration", () => {
     );
   });
 
-  it("preserves authored plugins and the default CDN when the override is unset", async () => {
+  // fails without the fix: an explicit jsDelivr mirror and no mirror shared an ETag, so after the mirror was
+  // removed a revalidation got a 304 and kept the cached page with the CDN plugin.
+  it.each(["", "/comp/scene.html"])(
+    "revalidates %s when the mirror setting changes",
+    async (suffix) => {
+      const projectDir = createProjectDir();
+      const source = `<html><head><script src="vendor/gsap.min.js"></script></head><body><script>gsap.to("#card", { motionPath: {} });</script></body></html>`;
+      writeFileSync(join(projectDir, "index.html"), source);
+      writeFileSync(join(projectDir, "scene.html"), source);
+      const url = previewUrl + suffix;
+      const first = await appForMirror(projectDir, "https://cdn.jsdelivr.net/npm").request(url);
+      const etag = first.headers.get("ETag");
+      expect(etag).toBeTruthy();
+      const again = await appForMirror(projectDir, "").request(url, {
+        headers: { "If-None-Match": etag! },
+      });
+      expect(again.status).toBe(200);
+      const plugin = parseHTML(await again.text()).document.querySelector(
+        'script[src*="MotionPathPlugin"]',
+      );
+      expect(plugin?.getAttribute("src")).toBe("vendor/MotionPathPlugin.min.js");
+    },
+  );
+
+  it("preserves authored plugins, and names no plugin base when the override is unset", async () => {
     const projectDir = createProjectDir();
     const plugin = "https://authored.example/MotionPathPlugin.min.js";
     writeFileSync(
@@ -3320,11 +3451,7 @@ describe("GSAP mirror configuration", () => {
     ).toHaveLength(1);
     expect(configured).toContain(`src="${plugin}"`);
     const defaults = await (await appForMirror(projectDir, "").request(previewUrl)).text();
-    expect(
-      parseHTML(defaults)
-        .document.querySelector(`meta[name="${metaName}"]`)
-        ?.getAttribute("content"),
-    ).toBe("https://cdn.jsdelivr.net/npm");
+    expect(parseHTML(defaults).document.querySelector(`meta[name="${metaName}"]`)).toBeNull();
     expect(defaults).toContain('var cdnBase="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/"');
   });
 
@@ -3488,7 +3615,8 @@ describe("bundled GSAP local root", () => {
     expect(withPath).not.toContain("jsdelivr");
   });
 
-  it("loads a plugin for another GSAP version from jsDelivr", async () => {
+  // fails without the fix: the plugin for another GSAP version came from jsDelivr, a host the page never named.
+  it("loads the bundled plugin for another GSAP version, never jsDelivr", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
       join(projectDir, "index.html"),
@@ -3499,7 +3627,8 @@ describe("bundled GSAP local root", () => {
       parseHTML(html)
         .document.querySelector('script[src*="MotionPathPlugin"]')
         ?.getAttribute("src"),
-    ).toBe("https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/MotionPathPlugin.min.js");
+    ).toBe(`${localRoot}/gsap@3.15.0/dist/MotionPathPlugin.min.js`);
+    expect(html).not.toContain("jsdelivr");
   });
 
   it("prefers HYPERFRAMES_GSAP_BASE_URL over the bundled copy", async () => {
@@ -3553,5 +3682,70 @@ describe("preview asset colour tags", () => {
     expect(body.includes("cICP")).toBe(false);
     expect(body.includes("IDAT")).toBe(true);
     expect(response.headers.get("Content-Length") ?? String(body.length)).toBe(String(body.length));
+  });
+});
+
+describe("where the preview's MotionPathPlugin tag points", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const pageUrl = "http://localhost/projects/demo/preview";
+  const LOCAL = "http://localhost/api/vendor/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js";
+  const MIRROR = "https://mirror.example/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js";
+
+  // fails without the fix: row "local root, other site". The bundled root was written as a path, which the
+  // page's <base> on another site resolved there; the runtime now loads it on demand from the document.
+  it.each<[string, string | null, string | null]>([
+    ["nothing", null, "http://localhost/api/projects/demo/preview/vendor/MotionPathPlugin.min.js"],
+    [
+      "nothing",
+      "https://assets.example/film/",
+      "https://assets.example/film/vendor/MotionPathPlugin.min.js",
+    ],
+    ["local root", null, LOCAL],
+    ["local root", "https://assets.example/film/", null],
+    ["mirror", null, MIRROR],
+    ["mirror", "https://assets.example/film/", MIRROR],
+    ["nothing", "assets/", "http://localhost/projects/demo/assets/vendor/MotionPathPlugin.min.js"],
+    ["local root", "assets/", LOCAL],
+  ])("writes the tag with %s configured under the base %s", async (setup, base, expected) => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head>${base ? `<base href="${base}">` : ""}</head><body><div id="card"></div>
+        <script src="vendor/gsap.min.js"></script>
+        <script>gsap.to("#card", { motionPath: { path: [{ x: 100, y: 50 }] } });</script>
+      </body></html>`,
+    );
+    vi.stubEnv("HYPERFRAMES_GSAP_BASE_URL", setup === "mirror" ? "https://mirror.example/npm" : "");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, setup === "local root" ? { gsapLocalRoot: "/api/vendor/npm" } : {}),
+    );
+    const doc = parseHTML(await (await app.request(pageUrl)).text()).document;
+    const src = doc.querySelector('script[src*="MotionPathPlugin"]')?.getAttribute("src");
+    const baseUrl = new URL(doc.querySelector("base[href]")?.getAttribute("href") ?? "", pageUrl);
+    expect(src === undefined ? null : new URL(src, baseUrl).href).toBe(expected);
+  });
+
+  // fails without the fix: under <base href="assets/"> the plugin was written from the site root, so it
+  // missed the folder the page's GSAP loads from and 404ed.
+  it("puts the plugin in the folder the page's GSAP loads from under a relative base", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head><base href="assets/"></head><body><div id="card"></div>
+        <script src="vendor/gsap.min.js"></script>
+        <script>gsap.to("#card", { motionPath: { path: [{ x: 100, y: 50 }] } });</script>
+      </body></html>`,
+    );
+    vi.stubEnv("HYPERFRAMES_GSAP_BASE_URL", "");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const doc = parseHTML(await (await app.request(pageUrl)).text()).document;
+    const baseUrl = new URL(doc.querySelector("base[href]")?.getAttribute("href") ?? "", pageUrl);
+    const at = (selector: string) =>
+      new URL(doc.querySelector(selector)?.getAttribute("src") ?? "missing", baseUrl).href;
+    const gsapFolder = at('script[src$="/gsap.min.js"]').replace(/gsap\.min\.js$/, "");
+    expect(at('script[src*="MotionPathPlugin"]')).toBe(`${gsapFolder}MotionPathPlugin.min.js`);
   });
 });

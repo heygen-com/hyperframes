@@ -12,7 +12,7 @@ import { buildPlayApp } from "./play.js";
 import { buildPresentApp } from "./present.js";
 
 // HeyGen's sign-in sends a CLI sign-in code back to any local port, and the play and present pages
-// share their origin with the composition frame (`sandbox-origin="same-origin"`), so anything those
+// share their origin with the composition frame (the player's default), so anything those
 // pages can read, a project's script can read through `parent`. Each probe runs on the server's own
 // page and checks that a sign-in return address that landed on that server stays out of its reach.
 
@@ -49,7 +49,6 @@ async function readReturnAddress(origin: string): Promise<Record<string, string>
     expect(await page.evaluate(() => location.origin)).toBe(origin);
     return await page.evaluate(
       async (back, viaAuthorize) => {
-        const settle = () => new Promise((done) => setTimeout(done, 1000));
         const read = (w: Window | null) => {
           if (!w) return "no window";
           if (w.closed) return "severed";
@@ -69,13 +68,19 @@ async function readReturnAddress(origin: string): Promise<Record<string, string>
         const frameViaAuthorize = framed(viaAuthorize);
         const popup = open(back);
         const popupViaAuthorize = open(viaAuthorize);
-        await settle();
-        const seen = {
+        const readAll = () => ({
           frame: read(frame.contentWindow),
           frameViaAuthorize: read(frameViaAuthorize.contentWindow),
           popup: read(popup),
           popupViaAuthorize: read(popupViaAuthorize),
-        };
+        });
+        // Each window starts on about:blank, which this page can read; wait until every navigation has landed.
+        const deadline = Date.now() + 20_000;
+        let seen = readAll();
+        while (Object.values(seen).includes("about:blank") && Date.now() < deadline) {
+          await new Promise((done) => setTimeout(done, 50));
+          seen = readAll();
+        }
         popup?.close();
         popupViaAuthorize?.close();
         return seen;

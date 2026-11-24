@@ -1,8 +1,10 @@
+import { useSyncExternalStore } from "react";
 import type { OverlayRect } from "../components/editor/domEditOverlayGeometry";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import {
-  isElementCropLifted,
-  readElementCropInsets,
+  cropLiftsVersion,
+  hugRectForElement,
+  subscribeCropLifts,
 } from "../components/editor/domEditOverlayCrop";
 
 /** Selection-box crop hug: the outline that makes the selection box hug the
@@ -15,31 +17,20 @@ export function useCropOverlay(params: {
   overlayRect: OverlayRect | null;
 }) {
   const { selection, overlayRect } = params;
+  useSyncExternalStore(subscribeCropLifts, cropLiftsVersion);
 
-  const cropInsets =
-    selection && !isElementCropLifted(selection.element)
-      ? readElementCropInsets(selection.element)
-      : null;
-  const hasCropInsets = Boolean(
-    cropInsets &&
-    (cropInsets.top > 0 || cropInsets.right > 0 || cropInsets.bottom > 0 || cropInsets.left > 0),
-  );
-
-  // Scaled insets for the crop outline child. The box div stays border-less at
-  // full bounds; a child draws the outline ON the crop boundary (a clip on the
-  // box would swallow the border everywhere the crop edge doesn't touch the
-  // element edge).
-  const sx = overlayRect && overlayRect.editScaleX > 0 ? overlayRect.editScaleX : 1;
-  const sy = overlayRect && overlayRect.editScaleY > 0 ? overlayRect.editScaleY : 1;
+  // The box div stays border-less at full bounds; a child draws the outline ON the crop boundary (a clip on the box
+  // would swallow the border everywhere the crop edge doesn't touch the element edge).
+  const hug = selection && overlayRect ? hugRectForElement(overlayRect, selection.element) : null;
   const cropOutlineInsetPx =
-    cropInsets && hasCropInsets
+    hug && overlayRect && hug !== overlayRect
       ? {
-          top: cropInsets.top * sy,
-          right: cropInsets.right * sx,
-          bottom: cropInsets.bottom * sy,
-          left: cropInsets.left * sx,
+          top: hug.top - overlayRect.top,
+          right: overlayRect.left + overlayRect.width - (hug.left + hug.width),
+          bottom: overlayRect.top + overlayRect.height - (hug.top + hug.height),
+          left: hug.left - overlayRect.left,
         }
       : undefined;
 
-  return { hasCropInsets, cropOutlineInsetPx };
+  return { hasCropInsets: Boolean(cropOutlineInsetPx), cropOutlineInsetPx };
 }
