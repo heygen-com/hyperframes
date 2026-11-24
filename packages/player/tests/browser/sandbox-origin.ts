@@ -69,7 +69,8 @@ try {
       },
       `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
     );
-    await page.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
+    // Linux's 30 s load limit, as on CI, plus slack.
+    await page.waitForFunction(() => window.__playerError !== undefined, { timeout: 36_000 });
     return page.evaluate(() => ({
       error: String(window.__playerError),
       events: (window as { __events?: string[] }).__events,
@@ -82,7 +83,7 @@ try {
     openCrossSite,
     "a cross-site film without the runtime fails sealed exactly as unsealed",
   );
-  assert.equal(openCrossSite.error, "Composition timeline not found after 8s");
+  assert.match(openCrossSite.error, /^Composition timeline not found after \d+s$/);
 
   const trusted = await browser.newPage();
   await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {

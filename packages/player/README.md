@@ -356,7 +356,7 @@ The `width` and `height` attributes define the composition's native resolution f
 
 ## How it works
 
-The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN. An opaque player adds it to a composition from the embedding page's own site, as above. No player can add it to a composition from another site, opaque or not, so that composition must load the runtime script itself; without it the player fires `error` after 8 seconds, with the message `Composition timeline not found after 8s`.
+The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN. An opaque player adds the runtime only to a composition from its own site that sets no security policy of its own; any other composition must load the runtime script itself, or the player fires `error` at the load limit, sealed or not.
 
 ## Distribution
 
