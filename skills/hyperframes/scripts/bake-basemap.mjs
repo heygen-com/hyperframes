@@ -55,7 +55,7 @@ const puppeteerEntry = trustedPackageEntry("puppeteer-core", {
   overrideName: "HYPERFRAMES_PUPPETEER_CORE",
 });
 if (!puppeteerEntry) {
-  const looked = searchedFolders().join(" and ");
+  const looked = searchedFolders({ name: "puppeteer-core" }).join(" and ");
   console.error(
     `bake-basemap needs puppeteer-core and found none in ${looked}. ${NEEDS_PUPPETEER}`,
   );
