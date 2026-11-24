@@ -69,6 +69,22 @@ describe("redactTelemetryString", () => {
     );
   });
 
+  // fails without the fix (never finishes): every path pattern rescanned the token from each delimiter in it.
+  it.each([["=,([".repeat(1024 * 1024)], ["=.".repeat(2 * 1024 * 1024)]])(
+    "redacts a multi-megabyte token of delimiters in milliseconds",
+    (token) => {
+      const start = performance.now();
+      const out = redactTelemetryString(`Conflicting script integrity requirements for ${token}`);
+      expect(performance.now() - start).toBeLessThan(1000);
+      expect(out.length).toBeLessThanOrEqual(240);
+    },
+  );
+
+  it("still redacts a path after a run too long to be a path segment", () => {
+    const out = redactTelemetryString(`${"=".repeat(300)} /Users/kim/secret.mp4`, Infinity);
+    expect(out).not.toContain("secret");
+  });
+
   it("truncates after redacting, so a long path cannot survive by being cut", () => {
     const out = redactTelemetryString(`/data/${"x".repeat(500)}/a.mp4`, 40);
     expect(out).not.toContain("xxx");

@@ -150,9 +150,17 @@ function redactFilePaths(value: string): string {
   );
 }
 
+// The path patterns cost up to the square of a token's length: input is cut, and a run no path segment needs is
+// replaced whole, before any of them runs.
+const MAX_REDACTED_INPUT = 16 * 1024;
+const LONG_RUN = /(?<![^\s/\\'"])[^\s/\\'"]{257,}/g;
+
 export function redactTelemetryString(
   value: string,
   maxLength = MAX_TELEMETRY_STRING_LENGTH,
 ): string {
-  return truncateTelemetryString(redactFilePaths(redactUrlQueryStrings(value)), maxLength);
+  const bounded =
+    value.length > MAX_REDACTED_INPUT ? `${value.slice(0, MAX_REDACTED_INPUT)}…` : value;
+  const shortRuns = redactUrlQueryStrings(bounded).replace(LONG_RUN, "[long]");
+  return truncateTelemetryString(redactFilePaths(shortRuns), maxLength);
 }
