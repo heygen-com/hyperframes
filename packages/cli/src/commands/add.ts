@@ -428,6 +428,22 @@ export function describeInstallFailure(err: unknown, registry?: string): string 
   );
 }
 
+export function printInstalledHeader(result: RunAddResult, verb: "Added" | "Installed"): void {
+  for (const warning of result.warnings) {
+    console.warn(c.warn(`Warning: ${terminalText(warning)}`));
+  }
+  console.log("");
+  console.log(
+    `${c.success("✓")} ${verb} ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
+  );
+}
+
+export function printSnippet(snippet: string): void {
+  console.log("");
+  console.log(c.dim("Include snippet:"));
+  console.log(`  ${terminalText(snippet)}`);
+}
+
 export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   return (await addToProject(opts)).result;
 }
@@ -670,13 +686,7 @@ export default defineCommand({
       if (wroteConfig) {
         console.log(c.dim(`Wrote default ${terminalText(projectConfigPath(projectDir))}`));
       }
-      for (const warning of result.warnings) {
-        console.warn(c.warn(`Warning: ${terminalText(warning)}`));
-      }
-      console.log("");
-      console.log(
-        `${c.success("✓")} Added ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
-      );
+      printInstalledHeader(result, "Added");
       const root = realpath(projectDir);
       for (const file of result.preserved) {
         console.log(
@@ -696,9 +706,7 @@ export default defineCommand({
         );
       }
       if (result.snippet) {
-        console.log("");
-        console.log(c.dim("Include snippet:"));
-        console.log(`  ${terminalText(result.snippet)}`);
+        printSnippet(result.snippet);
         console.log("");
         console.log(
           result.clipboardCopied

@@ -26,7 +26,7 @@ import { relative, resolve } from "node:path";
 import { CliUsageError, finishCommand } from "../utils/commandResult.js";
 import { printFailureLine } from "../utils/jsonError.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
-import { fromReceivedRegistry, runAdd } from "./add.js";
+import { fromReceivedRegistry, printInstalledHeader, printSnippet, runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
   assumeLocalModelConsent,
@@ -58,6 +58,9 @@ const ON_DEVICE_SETUP_COMMAND = "hyperframes catalog --on-device";
  * Warnings are returned as well as printed so `--json` can carry the same
  * reasons the terminal shows.
  */
+const fetchRegistryVectors = (registry: string, publicOnly: boolean, expectedRevision?: string) =>
+  publicOnly ? Promise.resolve(false) : fetchLocalVectors(registry, { expectedRevision });
+
 // a consent gate: each branch is a distinct reason the tier cannot run, and each has to be reported separately
 // fallow-ignore-next-line complexity
 async function prepareOnDeviceTier(opts: {
@@ -151,12 +154,11 @@ async function prepareOnDeviceTier(opts: {
   const revisionStale =
     opts.artifactRevision !== undefined && cachedLocalVectorRevision() !== opts.artifactRevision;
   if (
-    !opts.publicOnly &&
-    (!hasLocalVectors() ||
-      revisionStale ||
-      countUnindexed(opts.registryNames, localVectorNames()) > 0)
+    !hasLocalVectors() ||
+    revisionStale ||
+    countUnindexed(opts.registryNames, localVectorNames()) > 0
   ) {
-    await fetchLocalVectors(opts.registry, { expectedRevision: opts.artifactRevision });
+    await fetchRegistryVectors(opts.registry, opts.publicOnly, opts.artifactRevision);
   }
   // Deliberately not the fetch's own answer. A refresh that fails still leaves
   // the previous vectors on disk, and those still rank: reporting the tier
@@ -508,22 +510,12 @@ export default defineCommand({
         skipClipboard: false,
       });
 
-      for (const warning of result.warnings) {
-        console.warn(c.warn(`Warning: ${terminalText(warning)}`));
-      }
-      console.log("");
-      console.log(
-        `${c.success("✓")} Installed ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
-      );
+      printInstalledHeader(result, "Installed");
       const root = realpath(dir);
       for (const file of result.written) {
         console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
       }
-      if (result.snippet) {
-        console.log("");
-        console.log(c.dim("Include snippet:"));
-        console.log(`  ${terminalText(result.snippet)}`);
-      }
+      if (result.snippet) printSnippet(result.snippet);
       return;
     }
 
@@ -772,8 +764,7 @@ async function offerLocalModel(
   // is an offline tier the user turned on that silently never ranks anything.
   const vectors =
     hasLocalVectors() ||
-    (!publicOnly &&
-      (await fetchLocalVectors(registryBaseUrl, { expectedRevision: artifactRevision })));
+    (await fetchRegistryVectors(registryBaseUrl, publicOnly, artifactRevision));
   console.log(
     c.dim(
       vectors
