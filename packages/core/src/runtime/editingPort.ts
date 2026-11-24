@@ -181,6 +181,8 @@ export const EDITING_REQUEST_KINDS = [
   "wait-for-seek",
   "set-loop-start",
   "computed-styles",
+  "authored-styles",
+  "font-faces",
   "elements-at-point",
   "pointer-targets",
   "describe",
@@ -298,6 +300,14 @@ export interface EditingRequests {
   "computed-styles": {
     params: ({ selector: string } | { handle: EditingElementHandle }) & { properties: string[] };
     result: { styles: Record<string, string> | null };
+  };
+  "authored-styles": {
+    params: { handle: EditingElementHandle; properties: string[] };
+    result: { styles: Record<string, string> | null };
+  };
+  "font-faces": {
+    params: NoParams;
+    result: { families: string[]; ownFaces: Array<{ family: string; src: string }> };
   };
   /** The stack under a viewport point, topmost first, up to MAX_POINT_STACK. Describe one to keep. */
   "elements-at-point": {
@@ -638,6 +648,12 @@ const PARAM_PARSERS: {
     const properties = styleProperties(params.properties);
     return target && properties ? { ...target, properties } : null;
   },
+  "authored-styles": (params) => {
+    if (!hasKeys(params, "handle,properties") || !isHandle(params.handle)) return null;
+    const properties = styleProperties(params.properties);
+    return properties?.length ? { handle: params.handle, properties } : null;
+  },
+  "font-faces": noParams,
   "elements-at-point": point,
   "pointer-targets": point,
   describe: handleList,
