@@ -130,6 +130,17 @@ describe("a gesture recording on a sealed preview", () => {
     expect(drafts.end.mock.calls).toEqual([[standIn, "restore"]]);
   });
 
+  // fails without the fix: the frame drew only the move, so a recorded scale, opacity or turn stood still.
+  it("has a frame that can set every recorded value set them at the recording's time, and clear them on stop", () => {
+    frame.stage = { width: 1920, height: 1080 };
+    usePlayerStore.setState({ currentTime: 2 });
+    recordOnSealedFrame(100, { ...AT_REST, x: 240, y: 80, drawsProps: true }, 2.5);
+    const [standIn, last] = drafts.draw.mock.lastCall!;
+    expect(last).toEqual({ translate: null, props: { seconds: 2.5, values: { x: 440, y: 80 } } });
+    expect(usePlayerStore.getState().currentTime).toBe(2.5);
+    expect(drafts.end.mock.calls).toEqual([[standIn, "clear"]]);
+  });
+
   it("draws nothing over the channel for an unsealed frame, whose GSAP moves the layer", () => {
     frame.sealed = false;
     frame.stage = { width: 1920, height: 1080 };
