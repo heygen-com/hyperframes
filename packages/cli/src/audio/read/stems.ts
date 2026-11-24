@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -44,6 +52,7 @@ const MAX_DONE_BYTES = 64 * 1024;
 const STEM_NAMES = ["vocals", "drums", "bass", "guitar", "piano", "other"] as const;
 
 export const VOICE_STEM = "vocals";
+export const VOICE_FREE_MIX = "no-vocals.wav";
 export const DRUM_STEM = "drums";
 
 export const SELF_CONTAINED_STEM_INPUT = [
@@ -64,31 +73,41 @@ function identity(path: string): string | null {
   return found?.isFile() ? `${found.dev}:${found.ino}:${found.size}:${found.mtimeNs}` : null;
 }
 
-export function recordStems(dir: string, files: readonly string[]): void {
+function readRecord(dir: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(readFileSync(recordOutsideProject(dir), "utf8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function writeRecord(dir: string, kept: Record<string, unknown>, files: readonly string[]): void {
   try {
     const record = recordOutsideProject(dir);
     mkdirSync(dirname(record), { recursive: true, mode: 0o700 });
     const ids = Object.fromEntries(files.map((file) => [file, identity(join(dir, file))]));
-    writeFileSync(record, JSON.stringify(ids), { mode: 0o600 });
+    writeFileSync(record, JSON.stringify({ ...kept, ...ids }), { mode: 0o600 });
   } catch {
     // expected: a read-only config folder only means the stems are separated again next time
   }
 }
 
-function writtenHere(dir: string, files: readonly string[]): boolean {
-  let recorded: Record<string, unknown>;
-  try {
-    recorded = JSON.parse(readFileSync(recordOutsideProject(dir), "utf8")) as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    return false;
-  }
-  return files.every((file) => {
-    const id = identity(join(dir, file));
-    return id !== null && recorded[file] === id;
-  });
+/** Replaces the record of `dir` with `files`. */
+export const recordStems = (dir: string, files: readonly string[]) => writeRecord(dir, {}, files);
+
+/** Adds `files`, made later in the same folder, to its record. */
+export const addRecordedStems = (dir: string, files: readonly string[]) =>
+  writeRecord(dir, readRecord(dir) ?? {}, files);
+
+export function writtenHere(dir: string, files: readonly string[]): boolean {
+  const recorded = readRecord(dir);
+  return (
+    recorded !== null &&
+    files.every((file) => {
+      const id = identity(join(dir, file));
+      return id !== null && recorded[file] === id;
+    })
+  );
 }
 
 /** How to reach the stems service, or why it cannot be reached. */
@@ -230,6 +249,7 @@ export async function fetchStems(
         `the stems service returned an incomplete separation: missing ${missing.join(", ")}`,
       );
     makeRealFolder(dir, 2);
+    rmSync(join(dir, VOICE_FREE_MIX), { force: true });
     const names: Record<string, string> = {};
     for (const name of STEM_NAMES) {
       const stem = stems.find((candidate) => candidate.name === name);
