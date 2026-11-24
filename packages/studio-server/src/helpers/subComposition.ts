@@ -23,6 +23,7 @@ import {
 import { TIMELINE_REGISTRY_SCRIPT } from "./authoredCode.js";
 import { htmlHasGsapCore, insertGsapCoreBeforeHeadPlugin } from "./gsapCoreScript.js";
 import { withRootPathsRelative } from "./rootPaths.js";
+import { isCompositionPath, isCompositionSource } from "./hfIdPersist.js";
 
 /**
  * Rewrite relative asset paths in a parsed DOM tree. Shared across all
@@ -323,6 +324,7 @@ export function buildSubCompositionHtml(
   rawOverride?: string,
   gsapBaseUrl?: string,
 ): string | null {
+  if (!isCompositionPath(compPath)) return null;
   const compFile = resolveWithinProject(projectDir, compPath);
   if (!compFile || !existsSync(compFile)) return null;
 
@@ -330,6 +332,7 @@ export function buildSubCompositionHtml(
   // directly, so the build uses ids minted from the raw file, which is never
   // written by serving.
   const rawComp = rawOverride ?? readFileSync(compFile, "utf-8");
+  if (!isCompositionSource(rawComp)) return null;
 
   let compHeadContent = "";
   let rewrittenContent: string;

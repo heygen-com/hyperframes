@@ -10,7 +10,7 @@ import type { AppToast, EditingFile } from "../utils/studioHelpers";
 export function useActiveComposition({
   projectId,
   initialUrlStateRef,
-  fileTree,
+  compositions,
   fileTreeLoaded,
   masterCompPath,
   setEditingFile,
@@ -18,7 +18,7 @@ export function useActiveComposition({
 }: {
   projectId: string | null;
   initialUrlStateRef: MutableRefObject<StudioUrlState>;
-  fileTree: string[];
+  compositions: string[];
   fileTreeLoaded: boolean;
   masterCompPath: string | null;
   setEditingFile: (file: EditingFile) => void;
@@ -44,7 +44,7 @@ export function useActiveComposition({
   useHydrateActiveCompPathFromUrl({
     hydrated: activeCompPathHydrated,
     fileTreeLoaded,
-    fileTree,
+    compositions,
     initialUrlStateRef,
     setActiveCompPath,
     setHydrated: setActiveCompPathHydrated,

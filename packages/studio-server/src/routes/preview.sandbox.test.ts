@@ -11,14 +11,17 @@ writeFileSync(
   join(projectDir, "index.html"),
   '<div data-composition-id="main" data-width="320" data-height="180"></div>',
 );
-writeFileSync(join(projectDir, "page.html"), "<script>document.title = 'ran'</script>");
+writeFileSync(
+  join(projectDir, "page.html"),
+  `<div data-composition-id="page"></div><script>document.title = 'ran'</script>`,
+);
 writeFileSync(
   join(projectDir, "icon.svg"),
   '<svg xmlns="http://www.w3.org/2000/svg"><script>void 0</script></svg>',
 );
 writeFileSync(
   join(projectDir, "clip.html"),
-  '<video id="local" src="clip.mp4"></video><video id="remote" src="https://cdn.example/a.mp4"></video>',
+  '<div data-composition-id="clip"><video id="local" src="clip.mp4"></video><video id="remote" src="https://cdn.example/a.mp4"></video></div>',
 );
 afterAll(() => rmSync(projectDir, { recursive: true, force: true }));
 
