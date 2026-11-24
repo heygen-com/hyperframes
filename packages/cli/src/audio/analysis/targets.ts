@@ -24,6 +24,8 @@ export interface AudioTarget {
   ref: string | null;
   kind: "audio" | "video" | "file";
   onAnotherNetworkRoot?: true;
+  /** A film source the project may not name: outside it, private or not a regular file. Never opened. */
+  refused?: true;
   placement: Placement | null;
   /** The part of the file to analyze, in file seconds; the whole file when absent. */
   window?: { from: number; seconds: number };
