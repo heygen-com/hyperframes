@@ -533,6 +533,7 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("stop-media");
     this._stopIframeMedia();
     this._media.stopAdoptedMedia();
+    this._parentAudio?.pause();
   }
 
   seek(timeInSeconds: number, options?: { keepPlaying?: boolean }) {

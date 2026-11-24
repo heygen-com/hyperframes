@@ -45,14 +45,29 @@ export interface ParentCopy {
   start: number;
   duration: number;
   mediaStart: number;
+  layer?: number;
   loop?: boolean;
   attrs?: Partial<Record<(typeof PARENT_COPY_ATTRIBUTES)[number], string>>;
 }
 
 export function parentCopyKey(
-  copy: Pick<ParentCopy, "kind" | "src" | "start" | "mediaStart">,
+  copy: Pick<ParentCopy, "kind" | "src" | "start" | "mediaStart" | "layer">,
 ): string {
-  return JSON.stringify([copy.kind, copy.src, copy.start, copy.mediaStart]);
+  return JSON.stringify([copy.kind, copy.src, copy.start, copy.mediaStart, copy.layer ?? 0]);
+}
+
+export function layeredParentCopies(
+  elements: readonly HTMLMediaElement[],
+): { el: HTMLMediaElement; copy: ParentCopy }[] {
+  const seen = new Map<string, number>();
+  return elements.flatMap((el) => {
+    const copy = parentCopyOf(el);
+    if (!copy) return [];
+    const shared = parentCopyKey(copy);
+    const layer = seen.get(shared) ?? 0;
+    seen.set(shared, layer + 1);
+    return [{ el, copy: layer === 0 ? copy : { ...copy, layer } }];
+  });
 }
 
 export function mediaFileOf(el: HTMLMediaElement): string | null {

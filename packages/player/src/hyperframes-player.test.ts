@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
+import type { ParentAudio } from "./parent-audio.js";
 
 // Install a stubbed contentDocument getter on the given iframe element. The
 // new stopMedia / muted tests repeat this `Object.defineProperty(... { get })`
@@ -1121,6 +1122,21 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(iframeAudioPause).toHaveBeenCalledOnce();
     expect(slideProxyPause).toHaveBeenCalledOnce();
     expect(globalProxyPause).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: the parent's decoded copies and the clock it posts played on after stopMedia().
+  it("stopMedia stops a sealed film's decoded audio and the clock it posts", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = (player as unknown as { _sealedAudio(): ParentAudio | null })._sealedAudio();
+    if (!audio) throw new Error("expected a sealed WebKit player to play audio from the parent");
+    const pause = vi.spyOn(audio, "pause");
+
+    player.stopMedia();
+
+    expect(pause).toHaveBeenCalledOnce();
   });
 
   it("stopMedia pauses iframe-realm media elements", () => {

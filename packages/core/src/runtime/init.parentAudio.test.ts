@@ -20,14 +20,17 @@ function playingAudio(el: HTMLAudioElement) {
   el.load = vi.fn();
 }
 
-function sealedFilm() {
+function sealedFilm(extra = "") {
   resetRuntimeFixtureDom();
   document.body.innerHTML =
     '<div data-composition-id="main" data-root="true" data-duration="10">' +
     '<audio id="voice" data-start="0" data-duration="10" src="/voice.m4a"></audio>' +
+    extra +
     "</div>";
   const voice = document.getElementById("voice") as HTMLAudioElement;
   playingAudio(voice);
+  for (const el of document.querySelectorAll<HTMLAudioElement>("audio:not(#voice)"))
+    playingAudio(el);
   window.__timelines = { main: createMockTimeline(10) };
   now = 0;
   const frames = new Map<number, FrameRequestCallback>();
@@ -93,6 +96,29 @@ it("a clip the parent plays stays silent in the film, and is the film's again on
   control("set-parent-audio", { clips: [] });
   playFor(0.2);
   expect(voice.muted).toBe(false);
+});
+
+// fails without the fix: two layers of one recording shared a claim, so the parent's dry copy silenced the processed one.
+it("a claim silences only the layer the parent plays, not another layer of the same recording", () => {
+  const { voice, playFor, control, posted } = sealedFilm(
+    '<audio id="voice-fx" data-start="0" data-duration="10" src="/voice.m4a" data-fx-chain="[]"></audio>',
+  );
+  const processed = document.getElementById("voice-fx") as HTMLAudioElement;
+  window.__player!.play();
+  playFor(0.2);
+  control("set-parent-audio", { clips: [] });
+  playFor(0.2);
+  const lists = posted.mock.calls.filter(([message]) => message?.type === "parent-copies");
+  const media = lists.at(-1)?.[0].media as Parameters<typeof parentCopyKey>[0][];
+  const dry = media.find(
+    (copy) => !("data-fx-chain" in ((copy as { attrs?: object }).attrs ?? {})),
+  );
+  if (!dry || media.length !== 2) throw new Error("expected both layers listed");
+
+  control("set-parent-audio", { clips: [parentCopyKey(dry)] });
+  playFor(0.2);
+
+  expect([voice.muted, processed.muted]).toEqual([true, false]);
 });
 
 // fails without the fix: a seek while the parent's clock held the film put the picture back on the old audio time.

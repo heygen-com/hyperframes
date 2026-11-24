@@ -655,6 +655,7 @@ function readCopies(list: unknown): ParentCopy[] {
       typeof c.duration === "number" &&
       c.duration >= 0 &&
       Number.isFinite(c.mediaStart) &&
+      (c.layer === undefined || (Number.isSafeInteger(c.layer) && (c.layer as number) >= 0)) &&
       (c.loop === undefined || typeof c.loop === "boolean") &&
       (c.attrs === undefined || isCopyAttrs(c.attrs))
     );

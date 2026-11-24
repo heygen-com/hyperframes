@@ -273,8 +273,8 @@ import {
   audibleVideoNeedsWebAudio,
   isAudibleVideoElement,
   PARENT_COPY_ATTRIBUTES,
+  layeredParentCopies,
   parentCopyKey,
-  parentCopyOf,
 } from "../audibleVideo";
 import { setRuntimePreload } from "./runtimeAttributes";
 
@@ -546,10 +546,14 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 
+const listedCopyKeys = new WeakMap<HTMLMediaElement, string>();
 const parentCopies = () =>
-  Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).flatMap((el) =>
-    isMediaElement(el) ? (parentCopyOf(el) ?? []) : [],
-  );
+  layeredParentCopies(
+    Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).filter(isMediaElement),
+  ).map(({ el, copy }) => {
+    listedCopyKeys.set(el, parentCopyKey(copy));
+    return copy;
+  });
 
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);
@@ -3339,8 +3343,8 @@ export function initSandboxRuntimeModular(): void {
   const parentMuted = new Set<HTMLMediaElement>();
   const claimedByParent = (el: HTMLMediaElement): boolean => {
     if (state.parentAudioClips.size === 0) return false;
-    const copy = parentCopyOf(el);
-    const claimed = copy !== null && state.parentAudioClips.has(parentCopyKey(copy));
+    const key = listedCopyKeys.get(el);
+    const claimed = key !== undefined && state.parentAudioClips.has(key);
     if (claimed) parentMuted.add(el);
     return claimed;
   };
