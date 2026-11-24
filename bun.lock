@@ -359,6 +359,9 @@
     "packages/share": {
       "name": "@hyperframes/share",
       "version": "0.9.10",
+      "dependencies": {
+        "@hyperframes/parsers": "workspace:*",
+      },
       "devDependencies": {
         "@types/node": "^25.0.10",
         "typescript": "^5.0.0",
