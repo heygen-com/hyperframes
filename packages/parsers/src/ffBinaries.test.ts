@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve, win32 } from "node:path";
+import { delimiter, dirname, join, resolve, win32 } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 type FfBinariesModule = typeof import("./ffBinaries.js");
@@ -570,6 +570,15 @@ describe("assertLiteralMediaInput", () => {
       "/job/x%03?.png",
       "/job/x%1{a,b}.png",
       "file:/job/decoy%d.png",
+      // A "%" and a wildcard that are not next to each other, in either order or in different folders.
+      "/job/credentials.json%a{.xface",
+      "/job/x{%ay.png",
+      "/job/x%a*y.png",
+      "/job/x?%ay.png",
+      "/job/x%a[y].png",
+      "/job/x%a/y{.png",
+      "/job/x{/y%a.png",
+      "/job/x{%.png",
     ]) {
       expect(() => assertLiteralMediaInput(path), path).toThrow(/pattern of other files/);
     }
@@ -592,7 +601,9 @@ describe("assertLiteralMediaInput", () => {
       "/job/My%20Video.mp4",
       "/job/a%2D.png",
       "C:\\job\\clip.mp4",
+      "/job/x{y}.png",
       "https://cdn.example/a%2d.png",
+      "https://cdn.example/a%20{b}.png",
     ]) {
       expect(() => assertLiteralMediaInput(path), path).not.toThrow();
     }
@@ -685,6 +696,67 @@ describe("assertLiteralMediaInput against the installed ffprobe", () => {
         refused = true;
       }
       if (!refused && width(literal) !== "16") misread.push(form);
+    });
+    expect(misread).toEqual([]);
+  }, 60_000);
+
+  it("lets through no name where a stray % and a wildcard make ffprobe open a shorter one", async () => {
+    vi.resetModules();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+    const { assertLiteralMediaInput, findFfBinary } = await importFresh();
+    const [ffmpeg, ffprobe] = [findFfBinary("ffmpeg"), findFfBinary("ffprobe")];
+    if (!ffmpeg || !ffprobe) return;
+    const dir = mkdtempSync(join(tmpdir(), "hf-image2-stray-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const still = (size: number, at: string) =>
+      spawnSync(ffmpeg, [
+        ...["-v", "error", "-y", "-f", "lavfi", "-i", `color=red:s=${size}x${size}`],
+        ...["-frames:v", "1", "-c:v", "png", "-f", "image2", "-update", "1", at],
+      ]);
+    const [small, big] = [join(dir, "small.png"), join(dir, "big.png")];
+    still(16, small);
+    still(32, big);
+    if (!existsSync(small) || !existsSync(big)) return;
+    const width = (path: string) =>
+      spawnSync(
+        ffprobe,
+        ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width"].concat([
+          "-of",
+          "csv=p=0",
+          "--",
+          path,
+        ]),
+        { encoding: "utf8" },
+      ).stdout.trim();
+    // Each name next to a decoy at the name cut at its "%", which is what ffmpeg opens when it misreads it.
+    const cases: Array<[string, string]> = [];
+    for (const wildcard of ["{", "*", "?", "["]) {
+      cases.push(
+        [`x%a${wildcard}y.png`, "x"],
+        [`x${wildcard}%ay.png`, `x${wildcard}`],
+        [`x%a/y${wildcard}.png`, "x"],
+        [`x${wildcard}/y%a.png`, `x${wildcard}/y`],
+        [`x%a${wildcard}.xface`, "x"],
+        [`x${wildcard}%.png`, `x${wildcard}`],
+      );
+    }
+    cases.push(["x%ay.png", "x"], ["clip 100% done.png", "clip 100"], ["x{y}.png", "x{y}"]);
+    const misread: string[] = [];
+    cases.forEach(([name, prefix], index) => {
+      const at = join(dir, `case${index}`);
+      const literal = join(at, name);
+      const decoy = join(at, prefix);
+      mkdirSync(dirname(literal), { recursive: true });
+      mkdirSync(dirname(decoy), { recursive: true });
+      if (decoy !== literal) copyFileSync(big, decoy);
+      copyFileSync(small, literal);
+      try {
+        assertLiteralMediaInput(literal);
+      } catch {
+        return;
+      }
+      if (width(literal) === "32") misread.push(name);
     });
     expect(misread).toEqual([]);
   }, 60_000);
