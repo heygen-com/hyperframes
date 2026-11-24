@@ -19,9 +19,9 @@ import {
   findFilenameCollision,
   pickManifestEntry,
   runVideoMode,
-  safeFilename,
   type ManifestEntry,
 } from "./video.js";
+import { videoStem } from "../../capture/capturedVideo.js";
 
 const ENTRY = (index: number, partial: Partial<ManifestEntry> = {}): ManifestEntry => ({
   index,
@@ -36,28 +36,36 @@ const ENTRY = (index: number, partial: Partial<ManifestEntry> = {}): ManifestEnt
   ...partial,
 });
 
-describe("safeFilename", () => {
+describe("videoStem", () => {
   it("decodes percent-encoded chars", () => {
-    expect(safeFilename("Frame-2147227325%20(1).mp4")).toBe("Frame-2147227325_1_.mp4");
+    expect(videoStem("Frame-2147227325%20(1).mp4")).toBe("Frame-2147227325_1_");
   });
 
-  it("strips characters outside [A-Za-z0-9._-]", () => {
-    expect(safeFilename("video with spaces & symbols!.mp4")).toBe("video_with_spaces_symbols_.mp4");
+  it("strips characters outside [A-Za-z0-9_-]", () => {
+    expect(videoStem("video with spaces & symbols!.mp4")).toBe("video_with_spaces_symbols_");
   });
 
-  it("preserves the extension and version markers", () => {
-    expect(safeFilename("hero.mp4")).toBe("hero.mp4");
-    expect(safeFilename("hero-v2.webm")).toBe("hero-v2.webm");
+  it("drops the page's extension and keeps version markers", () => {
+    expect(videoStem("hero.mp4")).toBe("hero");
+    expect(videoStem("hero-v2.webm")).toBe("hero-v2");
+    expect(videoStem("CLAUDE.md")).toBe("CLAUDE");
+    expect(videoStem("clip.v2.mp4")).toBe("clip_v2");
+  });
+
+  it("never names a dotfile or a folder", () => {
+    expect(videoStem(".cursorrules")).toBe("_cursorrules");
+    expect(videoStem("../notes/AGENTS.md")).toBe("AGENTS");
+    expect(videoStem("")).toBe("video");
   });
 
   it("falls back when decodeURIComponent throws on a malformed sequence", () => {
     // `%E0%A4%A` is a truncated UTF-8 multibyte sequence and throws URIError.
     // We should keep the raw input rather than crashing.
-    expect(safeFilename("Bad%E0%A4%A.mp4")).toBe("Bad_E0_A4_A.mp4");
+    expect(videoStem("Bad%E0%A4%A.mp4")).toBe("Bad_E0_A4_A");
   });
 
   it("collapses runs of disallowed characters into a single underscore", () => {
-    expect(safeFilename("a   b___c")).toBe("a_b___c");
+    expect(videoStem("a   b___c")).toBe("a_b___c");
   });
 });
 
@@ -153,13 +161,13 @@ describe("pickManifestEntry", () => {
 });
 
 describe("findFilenameCollision", () => {
-  it("returns [] when no other manifest entry produces the same safeFilename", () => {
+  it("returns [] when no other manifest entry produces the same videoStem", () => {
     const manifest = [ENTRY(0), ENTRY(1), ENTRY(2)];
     expect(findFilenameCollision(manifest, manifest[1]!)).toEqual([]);
   });
 
-  it("flags collisions when two URL forms collapse to the same safeFilename", () => {
-    // "hero%20clip.mp4" and "hero clip.mp4" both → "hero_clip.mp4"
+  it("flags collisions when two URL forms collapse to the same videoStem", () => {
+    // "hero%20clip.mp4" and "hero clip.mp4" both → "hero_clip"
     const manifest = [
       ENTRY(0, { url: "https://cdn.example.com/hero%20clip.mp4", filename: "hero%20clip.mp4" }),
       ENTRY(1, { url: "https://cdn.example.com/hero clip.mp4", filename: "hero clip.mp4" }),
