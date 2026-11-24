@@ -11,12 +11,14 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 <Update
   label="HyperFrames v0.9.92"
   description="Released - 2026-11-24"
-  tags={["Release", "Studio Server", "CLI", "Producer"]}
+  tags={["Release", "Studio", "Media Use", "CLI"]}
 >
 A hand move in a sealed Studio preview now saves the same CSS as unsealed, and a sealed player follows redirects cleanly. Renders no longer stop on an image URL Node cannot parse, and local media, LUT paths and pasted edits stay where they belong.
 
 ## Fixes
 
+- **Studio:** A sealed scale resize no longer shows its old size for a frame after the drop ([eae8504c2](https://github.com/heygen-com/hyperframes/commit/eae8504c2bb17e31738ab76aa888b6167ff59664), [#8616](https://github.com/heygen-com/hyperframes/pull/8616)).
+- **Media Use:** Heygen-tts speaks the word after a lone -- as written ([e8559178c](https://github.com/heygen-com/hyperframes/commit/e8559178c6b6350a32534988031a284f5c94f41a), [#8743](https://github.com/heygen-com/hyperframes/pull/8743)).
 - **Studio Server:** File edits refuse a target outside the project and change nothing ([ee4ecfd97](https://github.com/heygen-com/hyperframes/commit/ee4ecfd97955da5bb351a3b753b4c6fe09f7e4c5), [#8737](https://github.com/heygen-com/hyperframes/pull/8737)).
 - **CLI:** Measure probe --normalize replaces a link at the output name ([f041181eb](https://github.com/heygen-com/hyperframes/commit/f041181ebbc91dcb4e5c00c48d4c74b59999a32e), [#8738](https://github.com/heygen-com/hyperframes/pull/8738)).
 - **Producer:** A downloaded asset's local path is written into the page exactly as named ([f2087431b](https://github.com/heygen-com/hyperframes/commit/f2087431b3c78df7f733a1d7cf245b7744cfdf07), [#8739](https://github.com/heygen-com/hyperframes/pull/8739)).
@@ -32,7 +34,12 @@ A hand move in a sealed Studio preview now saves the same CSS as unsealed, and a
 
 ## Catalog
 
+- **CLI:** A received project's registry is fetched only from public addresses ([c6307feea](https://github.com/heygen-com/hyperframes/commit/c6307feea45404033c698de31cc9e77e5fb56536), [#8683](https://github.com/heygen-com/hyperframes/pull/8683)).
 - **CLI:** Registry add looks for a Node package in the folders a file is written to ([2b11131be](https://github.com/heygen-com/hyperframes/commit/2b11131befef7e622486a4826b920b32a3595845), [#8722](https://github.com/heygen-com/hyperframes/pull/8722)).
+
+## Internal
+
+- **Studio:** Drop the timeline stacking-mode move no drag reaches ([3db02bade](https://github.com/heygen-com/hyperframes/commit/3db02bade8d46e713c3cf0fbed70288e119fbd2e), [#8732](https://github.com/heygen-com/hyperframes/pull/8732)).
 
 [View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.91...v0.9.92).
 </Update>
