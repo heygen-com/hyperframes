@@ -56,8 +56,9 @@ capture_hdr_layered stage (renderOrchestrator)
        ├─ a fresh capture page: the DevTools-only gates before
        │    its first seek, its load census matched to the       loadCensus.ts
        │    analysis page's (every observer by the function its  observerCallbacks.ts
-       │    callback runs, from a heap snapshot; every other
-       │    count equal), then the layered DOM session's
+       │    callback runs, from a heap snapshot taken first;
+       │    every other count equal; the page unchanged by the
+       │    census's own reads), then the layered DOM session's
        │    steps before frame 0 (scene reads, the seek and
        │    stacking query at the video's start)
        ├─ captureOverlayStates → one PNG per distinct overlay   overlayCapture.ts
@@ -75,8 +76,9 @@ capture_hdr_layered stage (renderOrchestrator)
             ffmpeg composites to raw rgb48le, a few frames
             ahead; the layered encoder (spawnStreamingEncoder,
             the layered options) takes one frame at a time,       encoderPacing.ts
-            each once its threads are idle, while its process
-            is an ffmpeg with no child of its own
+            each once its threads are idle, once its process
+            is proven to be the ffmpeg running libx265 (its
+            executable, its libx265 thread, no child)
             completed → the render records the reference background the capture page read
      completed → assemble muxes audio as usual
      fallback  → (extract deferred video frames) → runCaptureHdrStage
@@ -104,7 +106,15 @@ overlay_unverified (...)` and takes the layered path. A page callback that
   and the encode that run beside capture.
 - Any other error inside the passthrough logs `HDR passthrough failed; falling back
 to the layered HDR composite` and takes the layered path. The layered
-  encoder overwrites any partial output.
+  encoder overwrites any partial output. When the composite or the encoder
+  had exited on its own (out of memory, a signal), the error names its exit
+  code, signal and stderr tail, also behind a bare `write EPIPE`
+  (`processExits`). The error is the first failure, read before anything is
+  stopped: the overlay feed failing on the composite's closed input once the
+  encode loop stopped it no longer replaces the loop's own error ("the
+  composite stopped reading overlays" said nothing). A pacing decline whose
+  encoder then exits (its threads go before the process does: on a host out
+  of memory) is that failure, the encoder's exit named, not a decline.
 - An abort is rethrown, never turned into a fallback.
 - Both overlay pages are always closed before the layered path starts, and
   neither changes what the layered DOM session does ("Two pages" below):
@@ -124,9 +134,10 @@ The passthrough runs only when it can reproduce the layered output:
   loop, playback-rate change or late start;
 - an ffmpeg whose `maskedmerge` rounds exactly like the layered blend (see
   "ffmpeg" below; `ffmpeg_unsupported` otherwise), and a software libx265
-  encode by an ffmpeg process the encode can be paced by: no GPU encode, no
-  wrapper that runs ffmpeg as its child (see "Encoder pacing";
-  `ffmpeg_unsupported` otherwise);
+  encode by an ffmpeg process the encode can be paced by: no GPU encode,
+  and a process proven to be the ffmpeg running libx265 for this render, not
+  a wrapper around one (see "Encoder pacing"; `ffmpeg_unsupported`
+  otherwise);
 - nothing the page registered while it loaded that runs on seeks or on a
   clock of its own: no animation-frame callback, no timer whose callback is
   a string or a builtin, no observer, no custom element definition, no
@@ -264,23 +275,59 @@ running or in uninterruptible wait, three polls in a row 2 ms apart
 (not Linux) eligibility declines with `ffmpeg_unsupported`. A frame that
 does not go idle within 120 s fails the attempt, which falls back.
 
-The threads read must be the encoder's. `HYPERFRAMES_FFMPEG_PATH` can name
-a wrapper that runs ffmpeg as its child; the encoder's pid is then the
-wrapper, idle while its child encodes, and every frame would go in
-unpaced. And a GPU encoder's work does not show as thread states at all.
-So the passthrough declines (`ffmpeg_unsupported`, the layered path takes
-over):
+The threads read must be the ones running libx265 for this render.
+`HYPERFRAMES_FFMPEG_PATH` can name a wrapper, and a name proves nothing: a
+binary named `ffmpeg` that starts the real encoder outside its own process
+tree (a delayed double fork, a daemon, `setsid`) is, by the time it is
+read, a process with no child, whose threads stay idle while the real
+encoder runs; every frame then goes in unpaced, and 2 of 10 such renders
+under load decoded different from flag off. A GPU encoder's work does not
+show as thread states at all. So `watchEncoder` (`encoderPacing.ts`) proves
+the spawned process is the encoder before any frame is paced on it, and
+the passthrough declines (`ffmpeg_unsupported`, the layered path takes
+over) on anything it cannot prove:
 
 - at eligibility, when GPU encode is selected (`useGpu`, whatever encoder
   the host has) or the codec is not h265;
-- before the composite starts and again before every frame
-  (`assertPaceableEncoder`), unless the encoder process runs an executable
-  named `ffmpeg` under that name (`/proc/<pid>/exe`, `/proc/<pid>/comm`; a
-  just-spawned process still running this one's executable is read again
-  for up to 2 s) and has started no process of its own
-  (`/proc/<pid>/task/*/children`);
+- before the composite starts, unless, within 2 s (a just-spawned process
+  may still be this one's fork, a script exec-ing ffmpeg in place, or an
+  ffmpeg mapping its libraries): the executable the process runs
+  (`/proc/<pid>/exe`, opened, not looked up by name) is an ELF file that,
+  run with `-buildconf` (the same file: device and inode match), reports
+  `--enable-libx265`, and holds libx265's own code, its banner in the file
+  (a static build) or a mapped `libx265` (a shared one); and the process is
+  still this one's child, in its process group and session, with no
+  process of its own at any depth (`/proc/<pid>/task/*/children`). A
+  script runs its interpreter, a wrapper binary holds no libx265: both
+  decline. A symlink to ffmpeg, a renamed copy and a script that execs
+  ffmpeg in place run ffmpeg itself and pass;
+- after the first frame, unless its idle wait finds ffmpeg's libx265
+  encoder thread in the process itself (`enc0:0:libx265`; ffmpeg 7.0 and
+  later name it, so an older ffmpeg declines). That wait counts idle polls
+  only once the process runs more than one thread (ffmpeg starts its
+  pipeline on its first frame) and that thread is among them: on a loaded
+  host ffmpeg can sit idle, its first threads up, before it starts the
+  encoder's (1 of 16 concurrent renders declined on that before), so it
+  declines only once the process has been idle without one for 10 s
+  (`LIBX265_THREAD_WAIT_MS`);
+- before every frame, unless the process is still the one proven (same
+  executable, lineage, no child), and on every poll after the first frame,
+  unless that libx265 thread and every thread present once the first frame
+  went idle (x265's pool) are still there. A listing that misses one is
+  read again (up to three times) before the thread counts as gone, and the
+  decline names it: on a loaded host one `/proc` read in a long encode can
+  fail for another reason than the thread exiting (1 of 24 concurrent
+  renders declined mid-encode on a single listing before);
 - when a poll finds no thread states to read: an unread encoder is not an
-  idle one (it used to count as gone, and so as idle).
+  idle one.
+
+The wrappers the verify used (C binaries named `ffmpeg`: a double fork, the
+same a second into the encode, a daemon in a new session, a child in a new
+session, a plain fork, a shell script) all decline and render identical to
+flag off through the layered path; ffmpeg itself, a symlink, a renamed
+copy and both an ELF and a script that exec ffmpeg in place take the
+passthrough and decode identical to flag off
+(`encoderPacing.integration.test.ts` runs the same shapes).
 
 A wrapper also leaves its child holding the composite's pipes when the
 composite is stopped, which kept the encode from ever settling (the stage
@@ -876,13 +923,28 @@ reports 35–80%.
   events with larger buffers (`ownClock.ts`): no compile, pause or callback
   per page script, only a fixed cost before the first one and a per-request
   event, which a page could only time against its own network loads.
-- A `FinalizationRegistry` that is itself garbage by the time the load
-  census reads the page is not seen: the census's own collection runs its
-  cleanup and collects it first. With a cleanup that runs no script (a bound
-  `Element#remove`), both overlay pages paint what the cleanup did from
-  frame 0, while the layered render paints it whenever V8 happens to
-  collect the target (`gc-selfdrop-remove`); that render is not repeatable
-  either, and the passthrough's output need not be one of its outcomes.
+- A `FinalizationRegistry` whose cleanup ran, and which was collected,
+  before the load census started (a garbage collection of the page's own
+  while it loaded) is not seen; what its cleanup changed is in the page
+  both overlay pages read, while the layered render applies it whenever V8
+  happens to collect the target, which is not repeatable either. One still
+  live when the census starts is seen: the heap snapshot is the census's
+  first read, and the census declines when the page changed while it read
+  (`gc-selfdrop-remove`, `gc-selfdrop-wrap`).
+- Page code written to detect the passthrough at load time is out of scope
+  for the experimental flag. The capture page differs from the layered
+  session by one new-document script (the builtin capture, run before any
+  page script) and a second DevTools session, and a page can time their
+  side effects while it loads, with nothing running after load: the
+  builtin capture has already touched (warmed) the global interface
+  objects and their prototypes, so a first pass over them
+  (`Object.getOwnPropertyDescriptor` on every global and its `prototype`,
+  `if-gopd`; plain reads of the interface names, `if-get-mark`; one
+  interface family read in one script and decided in a later one,
+  `if-proto-late`) runs about as fast as a second one, where in the
+  layered session it is several times slower. A page that paints on that
+  difference renders differently from the layered render with no
+  fallback.
 - A registration the capture page makes while it loads is found by what it
   leaves behind once the page is ready ("The capture page is never
   paused"): one that is gone by then (an observer collected, a timer that
@@ -917,11 +979,15 @@ reports 35–80%.
   per-frame latency times the frame count, which grows with the host's
   load. Capture and the composite now run beside it, so a flag-on render
   costs about that encode plus the page loads, but no less: on a host at
-  load average 50-130 the 20 s fixtures took 277-332 s flag on against
-  434-555 s flag off (1.6-1.7x; the commit before, in the same load window,
-  328-406 s, 1.3-1.4x). The passthrough needs Linux to read the encoder's
-  thread states, a software libx265 encode, and an `ffmpeg` that is not a
-  wrapper around one.
+  load average 33-174 the 20 s `captions` and `captions-gsap` fixtures
+  rendered about 1.35-1.44x faster flag on than flag off (the round-9
+  verify), with the encoder waited on to go idle for about 75% of the
+  encode; round 10 measured 1.6-1.9x at load 34-89 (idle 65% of the
+  encode). The gain shrinks as the host's load grows. The passthrough needs
+  Linux to read the encoder's thread states, a software libx265 encode,
+  and an ffmpeg 7.0 or later (which names its encoder thread) that is the
+  spawned process itself (a symlink, a renamed copy or a script that execs
+  it in place), not a wrapper around one.
 - The census matches the capture page's observers to the analysis page's
   by the function their callback runs. A page that held a reference to one
   of the runtime's own observer callbacks could make an observer of its
@@ -1409,5 +1475,93 @@ garbage collection runs the cleanup and collects the registry before it is
 read, so both overlay pages show the box removed from frame 0 and the
 passthrough takes it (0/90 identical, on the commit before as well). Its
 layered render is not repeatable: two flag-off renders shared 19 and 22 of
-90 frames with main's (the box goes whenever V8 collects the target). It is
-listed under "Limitations".
+90 frames with main's (the box goes whenever V8 collects the target). The
+census now takes its heap snapshot first and declines when the page
+changed while it read (round 10, below).
+
+Round 10 (main merged at 5969cd2b43; ffmpeg 7.0.2 and 8.0.1):
+
+`HYPERFRAMES_FFMPEG_PATH` wrappers, 3 s HLG `captions`, flag on against one
+flag-off render. On the commit before, the verify's C wrappers that start
+ffmpeg outside their own process tree (a double fork, the same a second
+into the encode, a daemon in a new session) took the passthrough (2 of 10
+such renders under load decoded different from flag off). Now they decline
+(`ffmpeg_unsupported`, "holds no libx265 code"), as do a plain fork, a
+fork in a new session and a shell script that runs ffmpeg as its child
+("started 1 process(es)"); ffmpeg through a symlink, a renamed copy, and an
+ELF and a script that exec ffmpeg in place take the passthrough. All 11
+decode identical to flag off (90/90, bitstream identical).
+
+`gc-selfdrop-remove` and `gc-selfdrop-wrap` took the passthrough with 0/90
+frames identical on the commit before; both now decline with
+`seek_callback` (the registry is in the heap snapshot read first) and
+decode identical to flag off on both versions.
+
+Killing the encoder mid-encode with SIGKILL (7.0.2) or SIGTERM (8.0.1)
+falls back, the error naming its exit ("killed by SIGKILL"; "the encoder
+exited mid-encode ... exited with code 255", with its stderr tail), and
+decodes identical to flag off.
+
+On a loaded host three kinds of fallback in the first runs were not the
+host's: 1 of 16 concurrent renders declined on the first frame's idle wait
+ending before ffmpeg started its libx265 thread (now waited for), 1 of 24
+declined on a held thread missing from one `/proc` listing (now read
+again), and four fell back logging only "the composite stopped reading
+overlays" (the feed's failure replaced the first one; the first is now
+kept). After those changes 24 concurrent flag-on renders of the 3 s HLG
+`captions` (7.0.2) and 24 of the 3 s PQ `captions` (8.0.1) all took the
+passthrough.
+
+Concurrent load on the final code, 24 flag-on renders per version (the
+`control`, `gc-fr-remove`, `slot-then-direct` and `cis-hidden-toggle` HLG
+fixtures and the PQ `captions` and `captions-gsap`, four of each) with one
+flag-off render of each, all at once: all 48 decode identical to flag off
+with the same bitstream, stream and frame side data and audio (load
+average up to 204 and 207). 38 took the passthrough, 8 are `gc-fr-remove`
+declining for its registry, and 2 fell back after the host's `earlyoom`
+stopped an ffmpeg (a composite, "exited with code 255"; an encoder whose
+threads ended while it shut down: still a decline, naming the threads,
+as it took over a second to exit). On the commit before (no encoder exit
+named after a pacing decline), the same: 48 of 48 identical, 38
+passthrough, once that version's flag-off PQ `captions` render, which had
+stalled on the loaded host and failed by the layered path's own stall
+rule, was rendered again.
+
+The 20 s fixtures on ffmpeg 8.0.1 (the commit before), each row's eight
+renders started together:
+
+| row | load  | transfer | `captions` off / on | `captions-gsap` off / on |
+| --- | ----- | -------- | ------------------- | ------------------------ |
+| 1   | 35-89 | HLG      | 279 s / 173 s, 1.6x | 298 s / 170 s, 1.8x      |
+| 1   | 35-89 | PQ       | 277 s / 171 s, 1.6x | 298 s / 171 s, 1.7x      |
+| 2   | 34-76 | HLG      | 260 s / 151 s, 1.7x | 283 s / 151 s, 1.9x      |
+| 2   | 34-76 | PQ       | 262 s / 151 s, 1.7x | 281 s / 151 s, 1.9x      |
+
+All eight flag-on renders took the passthrough and decode identical to flag
+off (framemd5 600/600, bitstream, stream and frame side data equal); the
+encoder was waited on to go idle for 65-67% of the encode. In a lighter
+window earlier (load 25-59, main merged, before the pacing fixes) the same
+eight took 104-106 s flag on against 225-251 s flag off (2.1-2.4x).
+
+Flag off renders identical to main (5969cd2b43) on ten fixtures
+(`hdr-hlg-regression`, `hdr-regression`, `hdr-hlg-audio-windows`, the 3 s
+PQ `captions`, `dbg-timer`, `errname-raf` and four SDR producer fixtures:
+video framemd5, bitstream, stream and frame side data, audio), on the final
+code and on each build before it.
+
+The earlier rounds' fixtures and the generated 3 s sets (372 parity runs,
+448 project renders, both sides rendered, HLG and PQ, ffmpeg 7.0.2 and
+8.0.1; rounds 5 to 9, review and verify; the commit before) take the route
+they took on round 9's code but for three: the review's `src-4k` and the
+generated PQ `compile-timer`, which had fallen back under load with only
+"the composite stopped reading overlays", take the passthrough, and the
+verify's `unp-mo-rendererfn` (its `MutationObserver` constructor throws in
+every render, so the page has no observer) takes the passthrough it
+expects instead of declining. Every passthrough among them, 114 renders,
+decodes identical to flag off but the hostile load-time channels left out
+of scope ("Limitations"): `if-gopd`, `if-get-mark`, `if-proto-late` and
+`iface-timer` (6 renders; `if-gopd` and `if-proto-late` on 7.0.2 happened
+to match). Every fallback whose layered render is repeatable decodes
+identical to flag off; the others are the wall-clock fixtures as before
+(animated images and SVG, marquees, CSS and WAAPI animation, the
+`gc-selfdrop` pair, run-varying `unp-po-append` and `unp-waapi`).
