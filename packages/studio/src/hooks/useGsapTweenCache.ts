@@ -11,7 +11,7 @@ import {
   publishKeyframeCache,
   writeGsapAnimationsForElement,
 } from "./gsapKeyframeCacheHelpers";
-import { resolveClipTimingBasis, toClipKeyframes } from "./gsapShared";
+import { resolveClipTimingBasis, toClipKeyframes, tweenTargetDocument } from "./gsapShared";
 import {
   deduplicateKeyframes,
   isStaticPositionHold,
@@ -307,7 +307,7 @@ export function usePopulateKeyframeCacheForFile(
     if (!sameData) pruneKeyframeCacheToFiles(files);
     if (stale.length === 0) return;
     runtimeScanDoneRef.current = "";
-    const doc = previewDocument(iframeRef?.current);
+    const doc = tweenTargetDocument(iframeRef?.current);
     for (const sf of stale) {
       void populateKeyframeCacheFromAst(projectId, sf, doc).then((loaded) => {
         if (!loaded && loadedRef.current.dataKey === dataKey) loadedRef.current.files.delete(sf);

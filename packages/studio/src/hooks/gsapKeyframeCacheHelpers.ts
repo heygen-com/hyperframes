@@ -6,7 +6,12 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { sameData } from "../utils/sameData";
-import { resolveClipTimingBasis, resolveSelectorElementIds, toClipKeyframes } from "./gsapShared";
+import {
+  resolveClipTimingBasis,
+  resolveSelectorElementIds,
+  toClipKeyframes,
+  tweenTargetDocument,
+} from "./gsapShared";
 import {
   deduplicateKeyframes,
   synthesizeFlatTweenKeyframes,
@@ -62,6 +67,18 @@ export function publishKeyframeCache(edit: (draft: KeyframeCacheDraft) => void):
     keyframeCache: draft.keyframeCache,
     gsapAnimations: draft.gsapAnimations,
   });
+}
+
+/** Files a write's parsed tweens under the preview elements they animate, as its timeline keyframe markers. */
+export async function cacheCommittedKeyframes(
+  iframe: HTMLIFrameElement | null,
+  animations: GsapAnimation[],
+  targetPath: string,
+  selectionId: string | undefined,
+  mutation: Record<string, unknown>,
+): Promise<void> {
+  const doc = await tweenTargetDocument(iframe);
+  updateKeyframeCacheFromParsed(animations, targetPath, selectionId, mutation, doc);
 }
 
 export function updateKeyframeCacheFromParsed(
