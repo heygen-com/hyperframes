@@ -1455,6 +1455,12 @@ no progress for 2 minutes, or for its `--timeout` plus 10 seconds when that is l
 configured seek samples falls inside `--range`; a requested gate never silently
 passes without running.
 
+`check` reads the transparency of solid text fills, text strokes and backgrounds
+in `lab()`, `lch()`, `oklab()`, `oklch()` and `color()` (including `display-p3`).
+It can flag invisible text as `text_not_painted`, leave faint decorative text out
+of overlap checks, and distinguish transparent overlays from backgrounds that
+hide text.
+
 Text under a `<video>` is judged by the frame the video shows at that sample.
 An opaque video covers its whole box, as an opaque image does. A video with
 transparency, such as a `remove-background` cutout, covers only where its
