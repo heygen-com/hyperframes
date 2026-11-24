@@ -1349,7 +1349,6 @@ interface ServerAuth {
   generatedFile?: string;
 }
 
-/** The configured token, or a new one only this account can read: any local program can reach a loopback port. */
 function serverAuth(options: ServerOptions, hostname: string, port: number): ServerAuth {
   const configured = resolveAuthToken(options);
   if (configured) return { token: configured };
