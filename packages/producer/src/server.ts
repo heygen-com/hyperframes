@@ -33,6 +33,7 @@ import {
   rmSync,
   createReadStream,
 } from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { basename, resolve, dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { parseArgs } from "node:util";
@@ -50,6 +51,7 @@ import { isSafePath } from "@hyperframes/core/safe-path";
 import { foreignWritablePath } from "@hyperframes/core/cache-dir";
 import {
   RenderCancelledError,
+  EscapedRejectionError,
   createRenderJob,
   executeRenderJob,
   resolveRenderDebugDir,
@@ -1018,11 +1020,14 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     });
 
     try {
-      await executeRenderJob(
-        job,
-        input.projectDir,
-        absoluteOutputPath,
-        createBlockingProgressReporter(log, requestId),
+      await runInRenderScope(requestId, new AbortController(), (signal) =>
+        executeRenderJob(
+          job,
+          input.projectDir,
+          absoluteOutputPath,
+          createBlockingProgressReporter(log, requestId),
+          signal,
+        ),
       );
 
       const fileSize = outputFileSize(absoluteOutputPath);
@@ -1129,12 +1134,8 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const release = await renderSemaphore.acquire();
 
       try {
-        await executeRenderJob(
-          job,
-          input.projectDir,
-          absoluteOutputPath,
-          reportProgress,
-          abortController.signal,
+        await runInRenderScope(requestId, abortController, (signal) =>
+          executeRenderJob(job, input.projectDir, absoluteOutputPath, reportProgress, signal),
         ).finally(release);
         clearInterval(keepalive);
 
@@ -1340,6 +1341,29 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
   return app;
 }
 
+const renderScope = new AsyncLocalStorage<{ requestId: string; fail: (err: Error) => void }>();
+
+/** Runs a render so a rejection nobody handled inside it fails that render only. */
+export function runInRenderScope<T>(
+  requestId: string,
+  abortController: AbortController,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const fail = (err: Error) => abortController.abort(new EscapedRejectionError(err));
+  return renderScope.run({ requestId, fail }, () => run(abortController.signal));
+}
+
+export function onEscapedRejection(reason: unknown, log: ProducerLogger): void {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  const scope = renderScope.getStore();
+  log.error("Unhandled promise rejection", {
+    requestId: scope?.requestId ?? null,
+    error: err.message,
+    stack: err.stack,
+  });
+  scope?.fail(err);
+}
+
 // ---------------------------------------------------------------------------
 // Standalone server
 // ---------------------------------------------------------------------------
@@ -1448,6 +1472,7 @@ export function startServer(options: ServerOptions = {}) {
   }
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("unhandledRejection", (reason) => onEscapedRejection(reason, log));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   return server;
