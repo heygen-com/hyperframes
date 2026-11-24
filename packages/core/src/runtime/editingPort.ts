@@ -339,7 +339,10 @@ export interface EditingRequests {
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
-  draft: { params: { drafts: EditingDraft[] }; result: EditingDraftReply };
+  draft: {
+    params: { drafts: EditingDraft[] };
+    result: EditingDraftReply & { gsapSetTakesDrafts?: true };
+  };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
@@ -573,6 +576,14 @@ function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean 
   return entries.every(isDraftValue);
 }
 
+function gsapSetWithDrafts(params: unknown): GsapSetParams | null {
+  if (!isPlainRecord(params) || !("drafts" in params)) return parseGsapSet(params);
+  const { drafts, ...set } = params;
+  const parsed = parseGsapSet(set);
+  const drawn = draftList({ drafts });
+  return parsed && drawn ? { ...parsed, drafts: drawn.drafts } : null;
+}
+
 function draftList(params: unknown): EditingParams<"draft"> | null {
   if (!hasKeys(params, "drafts") || !Array.isArray(params.drafts)) return null;
   const { drafts } = params;
@@ -673,7 +684,7 @@ const PARAM_PARSERS: {
   "edit-element": parseEditElement,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
-  "gsap-set": parseGsapSet,
+  "gsap-set": gsapSetWithDrafts,
   "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,
