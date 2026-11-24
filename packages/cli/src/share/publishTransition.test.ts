@@ -51,6 +51,7 @@ describe("publish transition guard", () => {
     expect(checkPublishTransition({ dir })).toBe("unscheduled");
     const notice = vi.mocked(process.stderr.write).mock.calls[0]?.[0];
     expect(notice).toContain("hyperframes publish is deprecated for new projects");
+    expect(notice).toContain("This run continues with the usual publish steps.");
     expect(notice).toContain("hyperframes share");
     expect(notice).toContain("hyperframes publish --update <url-or-id>");
     expect(notice).not.toContain("60-day");
@@ -58,7 +59,9 @@ describe("publish transition guard", () => {
   it("announces the compatibility window once it starts", () => {
     vi.setSystemTime(new Date(start));
     expect(checkPublishTransition({ dir }, start)).toBe("compatibility");
-    expect(process.stderr.write).toHaveBeenCalledWith(expect.stringContaining("60-day"));
+    const notice = vi.mocked(process.stderr.write).mock.calls[0]?.[0];
+    expect(notice).toContain("60-day");
+    expect(notice).toContain("This run continues with the usual publish steps.");
   });
   it("guides new projects without changing their audience or uploading", () => {
     expect(() => checkPublishTransition({ dir }, start)).toThrowError(CliUsageError);

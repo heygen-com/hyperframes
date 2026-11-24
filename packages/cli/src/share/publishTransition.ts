@@ -65,6 +65,7 @@ function publishNotice(phase: ReturnType<typeof publishPhase>, update: boolean):
     const timing = phase === "compatibility" ? " The 60-day compatibility window is now open." : "";
     return (
       "hyperframes publish is deprecated for new projects." +
+      (update ? "" : " This run continues with the usual publish steps.") +
       timing +
       " For a new video review, run hyperframes share and choose who can open the link." +
       " Existing published links still work. To update one, sign in and run hyperframes publish --update <url-or-id>."
