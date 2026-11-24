@@ -179,7 +179,12 @@ describe("gesture start", () => {
   ])("owns its position through %s", (_name, make, moving) => {
     const card = turnedCard("");
     gsapWith([make(card), tween(card, { opacity: 0 }, 3)]);
-    expect(gestureStart([handleFor(card)]).elements[0]!.gsap).toEqual({ x: 200, y: 5, moving });
+    expect(gestureStart([handleFor(card)]).elements[0]!.gsap).toEqual({
+      x: 200,
+      y: 5,
+      moving,
+      drawsTranslate: true,
+    });
   });
 
   // fails without the fix: a sealed rotate never learned GSAP turns the element, so it saved a CSS rotate.

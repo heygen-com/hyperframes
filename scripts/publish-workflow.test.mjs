@@ -543,6 +543,54 @@ test("the Lambda handler zip is pinned before packing and attached before npm pu
   assert.doesNotMatch(attach.run, /--clobber/);
 });
 
+/** The steps a job runs, with each local composite action's own steps in place of its `uses`. */
+function stepsWithLocalActions(steps) {
+  return steps.flatMap((step) => {
+    if (!step.uses?.startsWith("./")) return [step];
+    const action = parse(
+      readFileSync(new URL(`../${step.uses.slice(2)}/action.yml`, import.meta.url), "utf8"),
+    );
+    return stepsWithLocalActions(action.runs?.steps ?? []);
+  });
+}
+
+test("no release job restores an Actions cache, which any run on main can write", () => {
+  for (const [name, job] of Object.entries(config.jobs)) {
+    const cached = stepsWithLocalActions(job.steps ?? []).filter((step) =>
+      /^actions\/cache(\/restore)?@/.test(step.uses ?? ""),
+    );
+    assert.deepEqual(cached, [], `${name} restores an Actions cache`);
+  }
+});
+
+test("pack always builds its own bundle, and publish takes only that bundle", () => {
+  assert.equal(pack.outputs.bundle_id, "${{ steps.bundle.outputs.artifact-id }}");
+  for (const step of pack.steps) {
+    assert.ok(
+      !/previous_bundle/.test(JSON.stringify(step)),
+      `pack step reuses a bundle: ${step.name ?? step.uses}`,
+    );
+    if (step.uses?.startsWith("actions/download-artifact@"))
+      assert.notEqual(
+        step.with?.name,
+        "release-bundle",
+        "pack downloads a release-bundle it did not build",
+      );
+  }
+  const upload = pack.steps.find((step) => step.id === "bundle");
+  assert.equal(upload.with.name, "release-bundle");
+  // A release-bundle that another job uploaded first makes this upload fail, so the release stops.
+  assert.equal(upload.with.overwrite, false);
+  assert.equal(upload.if, undefined);
+  const download = publish.steps.find(
+    (step) =>
+      step.uses?.startsWith("actions/download-artifact@") &&
+      /release-bundle/.test(step.with?.path ?? ""),
+  );
+  assert.equal(download.with["artifact-ids"], "${{ needs.pack.outputs.bundle_id }}");
+  assert.equal(download.with.name, undefined);
+});
+
 test("packing pins only the freshly built zip and never downloads release assets", () => {
   const step = pack.steps.find((s) => s.name === "Pin Lambda handler zip");
   assert.match(step.run, /ACTUAL_SHA256.*sha256sum/);
@@ -592,7 +640,7 @@ test("the workflow publishes exactly the public workspace packages", () => {
 });
 
 test("release-commit code runs only in a job without secrets", () => {
-  assert.deepEqual(pack.permissions, { contents: "read", actions: "read" });
+  assert.deepEqual(pack.permissions, { contents: "read" });
   assert.equal(pack.environment, undefined);
   const packCheckout = pack.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   assert.equal(packCheckout.with["persist-credentials"], false);
@@ -1042,7 +1090,6 @@ function runFindPrevious(step, artifacts) {
 }
 
 for (const [job, name, artifact] of [
-  ["pack", "Find previous release bundle", "release-bundle"],
   ["publish", "Find previous release receipt", "lambda-release-receipt"],
 ]) {
   test(`"${name}" hands the download step a bare artifact id, or nothing on a first attempt`, () => {

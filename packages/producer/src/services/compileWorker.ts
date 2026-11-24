@@ -1,6 +1,8 @@
 // Compiles workerData's project on its own thread, so a page that makes the compile run long holds up
 // this thread only: the parent keeps answering /health and other requests, and can end it at a deadline.
 import { parentPort, workerData } from "node:worker_threads";
+import { onTrackedChildProcess } from "@hyperframes/engine";
+import { scratchOutputOf } from "./compileScratch.js";
 import { compileForRender, type CompileForRenderOptions } from "./htmlCompiler.js";
 import type { ProducerLogger } from "../logger.js";
 
@@ -41,6 +43,17 @@ parentPort?.on("message", (message: { type?: string }) => {
 });
 // Fire-and-forget advisories may outlive the compile; they must not keep the parent's port open.
 parentPort?.unref();
+// This thread's ffmpeg/ffprobe timers die with it, so the parent hears of each child and ends what is left.
+onTrackedChildProcess((proc) => {
+  const { pid } = proc;
+  if (pid === undefined) return;
+  parentPort?.postMessage({
+    type: "child",
+    pid,
+    output: scratchOutputOf(proc.spawnfile, proc.spawnargs),
+  });
+  proc.once("exit", () => parentPort?.postMessage({ type: "childExit", pid }));
+});
 
 try {
   const compiled = await compileForRender(projectDir, htmlPath, downloadDir, {

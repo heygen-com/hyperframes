@@ -186,7 +186,7 @@ jobs:
     name: Lambda arm64 ffmpeg
     needs: [release-source]
     runs-on: ubuntu-24.04-arm
-    # A cache miss compiles ffmpeg natively, 15-20 minutes.
+    # Compiles ffmpeg natively every release, 15-20 minutes: a cached copy is one any run on main could have saved.
     timeout-minutes: 60
     permissions:
       contents: read
@@ -197,17 +197,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ env.EXPECTED_RELEASE_SHA }}
-      # lambda-arm64-image.yml saves this key on main; a release run's own saves reach only its re-runs.
-      - id: cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: out/
-          key: hf-media-linux-aarch64-${{ hashFiles('packages/aws-lambda/image/**') }}
-      - if: steps.cache.outputs.cache-hit != 'true'
-        run: >-
+      - run: >-
           docker buildx build --progress=plain --platform linux/arm64 --target artifact
           --output type=local,dest=out packages/aws-lambda/image
-      # The reviewed digest of the build; a tarball from the cache or this run that differs fails here.
+      # The reviewed digest of the build; a tarball from this run that differs fails here.
       - name: Check the tarball against its committed digest
         working-directory: out
         run: sha256sum hf-media-linux-aarch64.tar.gz && sha256sum --strict -c ../packages/aws-lambda/hf-media-linux-aarch64.sha256
@@ -330,7 +323,7 @@ jobs:
   pack:
     name: Build and pack
     outputs:
-      bundle_id: ${{ steps.previous_bundle.outputs.artifact || steps.bundle.outputs.artifact-id }}
+      bundle_id: ${{ steps.bundle.outputs.artifact-id }}
     needs: [release-source, lambda-handler-zip, lambda-video-image]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -338,7 +331,6 @@ jobs:
     # read-only token and no secrets. The publish job gets only what this job packs.
     permissions:
       contents: read
-      actions: read
     env:
       EXPECTED_RELEASE_SHA: ${{ needs.release-source.outputs.sha }}
     if: needs.release-source.outputs.sha != ''
@@ -360,27 +352,7 @@ jobs:
             exit 1
           fi
 
-      - name: Find previous release bundle
-        id: previous_bundle
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" > "$RUNNER_TEMP/previous_bundle-pages.json"
-          FOUND="$(jq -sre '[.[].artifacts[] | select(.name == "release-bundle")] | if length == 0 then "" elif length == 1 and .[0].expired == false then .[0].id | tostring else error("Missing valid unique release-bundle") end' "$RUNNER_TEMP/previous_bundle-pages.json")"
-          echo "artifact=${FOUND}" >> "$GITHUB_OUTPUT"
-
-      - name: Restore previous release bundle
-        if: steps.previous_bundle.outputs.artifact != ''
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          artifact-ids: ${{ steps.previous_bundle.outputs.artifact }}
-          path: release-bundle
-          merge-multiple: true
-
       - name: Resolve version
-        if: steps.previous_bundle.outputs.artifact == ''
         id: version
         env:
           VERSION: ${{ needs.release-source.outputs.version }}
@@ -399,7 +371,6 @@ jobs:
           echo "Resolved version=${VERSION} dist_tag=${DIST_TAG}"
 
       - name: Validate release channel
-        if: steps.previous_bundle.outputs.artifact == ''
         env:
           VERSION: ${{ steps.version.outputs.version }}
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
@@ -409,31 +380,23 @@ jobs:
 
       # The release installs the bun it downloads, never one restored from the shared cache.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        if: steps.previous_bundle.outputs.artifact == ''
         with:
           no-cache: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        if: steps.previous_bundle.outputs.artifact == ''
         with:
           node-version: 24
       - run: corepack enable
-        if: steps.previous_bundle.outputs.artifact == ''
       - run: corepack prepare pnpm@10.17.1 --activate
-        if: steps.previous_bundle.outputs.artifact == ''
       - run: bun install --frozen-lockfile
-        if: steps.previous_bundle.outputs.artifact == ''
       - run: bun run build
-        if: steps.previous_bundle.outputs.artifact == ''
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: steps.previous_bundle.outputs.artifact == ''
         with:
           name: hyperframes-lambda-handler-zip
           path: dist/lambda-handler-build
 
       # Before packing, so @hyperframes/aws-lambda pins this exact zip.
       - name: Pin Lambda handler zip
-        if: steps.previous_bundle.outputs.artifact == ''
         id: lambda_zip
         env:
           EXPECTED_SHA256: ${{ needs.lambda-handler-zip.outputs.sha256 }}
@@ -449,13 +412,11 @@ jobs:
 
       # lambda-video-image built it on ARM from the same zip sha pinned above.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: steps.previous_bundle.outputs.artifact == ''
         with:
           name: hyperframes-lambda-video-arm64
           path: dist
 
       - name: Pin Lambda video image
-        if: steps.previous_bundle.outputs.artifact == ''
         id: lambda_video_image
         env:
           EXPECTED_SHA256: ${{ needs.lambda-video-image.outputs.sha256 }}
@@ -468,12 +429,10 @@ jobs:
           bun packages/aws-lambda/scripts/pin-handler-zip.ts --video-image
 
       - run: bun run verify:packed-manifests
-        if: steps.previous_bundle.outputs.artifact == ''
 
       # pnpm pack writes the same tarball pnpm publish uploads: publishConfig
       # applied and workspace: ranges replaced with versions.
       - name: Pack packages
-        if: steps.previous_bundle.outputs.artifact == ''
         run: |
           OUT="$PWD/release-bundle/npm"
           mkdir -p "$OUT"
@@ -492,12 +451,10 @@ jobs:
           (cd packages/cli && npm pack --pack-destination "$OUT")
 
       - name: Build portable agent plugin
-        if: steps.previous_bundle.outputs.artifact == ''
         run: node scripts/package-agent-plugin.mjs
 
       # Keep the original bytes for all retries, including partially uploaded pairs.
       - name: Collect release bundle
-        if: steps.previous_bundle.outputs.artifact == ''
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -509,9 +466,9 @@ jobs:
             cp "releases/v${VERSION}.md" release-bundle/notes.md
           fi
 
+      # Never overwritten: a release-bundle another job uploaded first fails the release here.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         id: bundle
-        if: steps.previous_bundle.outputs.artifact == ''
         with:
           name: release-bundle
           path: release-bundle/

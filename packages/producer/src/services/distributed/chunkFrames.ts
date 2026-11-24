@@ -199,6 +199,7 @@ export async function extractDeferredVideoFramesForChunk(input: {
   cfg: Pick<EngineConfig, "ffmpegProcessTimeout">;
   remoteSources?: PlanV2RemoteSources;
   shownBoxes?: ReadonlyMap<string, ShownBox>;
+  onProgress?: () => void;
 }): Promise<ExtractedFrames[]> {
   const deferred = input.planVideos.extracted.filter((video) => video.deferredRange);
   const remoteSources = input.remoteSources ?? {};
@@ -224,6 +225,7 @@ export async function extractDeferredVideoFramesForChunk(input: {
     outputRoot: input.outputRoot,
     cfg: input.cfg,
     shownBoxes: input.shownBoxes,
+    ...(input.onProgress && { onProgress: input.onProgress }),
     sourceOf: (video) => {
       const range = planned.get(video.videoId)!.deferredRange!;
       const remoteUrl = remoteSources[range.sourcePath];
