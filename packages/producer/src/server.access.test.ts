@@ -7,6 +7,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -179,11 +180,27 @@ describe("createRenderHandlers: embedded contract", () => {
 describe("startServer: callers on loopback", () => {
   async function listening(options: Parameters<typeof startServer>[0]) {
     process.env.PRODUCER_DISABLE_HEALTH_WORKER = "1";
-    const server = startServer({ port: 0, ...options });
+    // The unit lane refuses fetch and any lookup but "localhost", so listen there and call the bound address.
+    const server = startServer({ port: 0, hostname: "localhost", ...options });
     if (!server.listening) await new Promise((done) => server.once("listening", done));
-    const { port } = server.address() as AddressInfo;
+    const { address, port } = server.address() as AddressInfo;
     const close = () => new Promise((done) => server.close(done));
-    return { url: (path: string) => `http://127.0.0.1:${port}${path}`, close };
+    const status = (
+      path: string,
+      init: { method?: string; headers?: Record<string, string>; body?: string } = {},
+    ) =>
+      new Promise<number>((done, fail) => {
+        const req = request(
+          { host: address, port, path, method: init.method ?? "GET", headers: init.headers },
+          (res) => {
+            res.resume();
+            done(res.statusCode ?? 0);
+          },
+        );
+        req.on("error", fail);
+        req.end(init.body);
+      });
+    return { status, close };
   }
 
   it("with no token set, makes one only this account can read, and refuses a caller without it", async () => {
@@ -206,14 +223,14 @@ describe("startServer: callers on loopback", () => {
         ["GET", "/outputs/any"],
       ] as const) {
         const body = method === "POST" ? JSON.stringify({ projectDir: "demo" }) : undefined;
-        const res = await fetch(server.url(path), { method, headers: plain, body });
-        expect(res.status, `${method} ${path}`).toBe(401);
+        expect(
+          await server.status(path, { method, headers: plain, body }),
+          `${method} ${path}`,
+        ).toBe(401);
       }
-      expect((await fetch(server.url("/health"))).status).toBe(200);
-      const queue = await fetch(server.url("/render/queue"), {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      expect(queue.status).toBe(200);
+      expect(await server.status("/health")).toBe(200);
+      const authorization = `Bearer ${token}`;
+      expect(await server.status("/render/queue", { headers: { authorization } })).toBe(200);
     } finally {
       await server.close();
     }
@@ -225,11 +242,9 @@ describe("startServer: callers on loopback", () => {
     const server = await listening({ projectsDir, rendersDir, authTokenFile, authToken: "s3cret" });
     try {
       expect(existsSync(authTokenFile)).toBe(false);
-      expect((await fetch(server.url("/render/queue"))).status).toBe(401);
-      const res = await fetch(server.url("/render/queue"), {
-        headers: { authorization: "Bearer s3cret" },
-      });
-      expect(res.status).toBe(200);
+      expect(await server.status("/render/queue")).toBe(401);
+      const authorization = "Bearer s3cret";
+      expect(await server.status("/render/queue", { headers: { authorization } })).toBe(200);
     } finally {
       await server.close();
     }
