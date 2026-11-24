@@ -2,6 +2,7 @@
 // packages/core/src/mediaGradeAnalyzer.vendoredParity.test.ts guards behavior drift.
 import { execFileSync } from "node:child_process";
 import { basename, extname } from "node:path";
+import { selfContainedInput } from "./ff-binaries.mjs";
 import { assertLiteralMediaPath } from "./literal-media-input.mjs";
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff"]);
@@ -39,6 +40,7 @@ function probeMedia(mediaPath, ffprobePath) {
       [
         "-v",
         "error",
+        ...selfContainedInput(mediaPath),
         "-select_streams",
         "v:0",
         "-show_entries",
@@ -230,6 +232,7 @@ function readSignalStats(ffmpegPath, mediaPath, seekSeconds, frames) {
         "-v",
         "error",
         ...keyframeSeek,
+        ...selfContainedInput(mediaPath),
         "-i",
         mediaPath,
         "-vf",

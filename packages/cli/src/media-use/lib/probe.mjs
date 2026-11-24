@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { extname } from "node:path";
-import { ffprobeBinary } from "./ff-binaries.mjs";
-import { assertLiteralMediaPath } from "./literal-media-input.mjs";
+import { ffprobeBinary, selfContainedInput } from "./ff-binaries.mjs";
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico"]);
 const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
@@ -12,12 +11,14 @@ export function probe(filePath) {
 
   const ffprobe = ffprobeBinary();
   try {
-    assertLiteralMediaPath(filePath);
     // execFileSync (no shell) so a hostile filename like `"; rm -rf ~; ".png`
     // can't break out of the quoting — filePath is passed as a literal argv entry.
     const raw = execFileSync(
       ffprobe,
-      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", filePath],
+      [
+        ...["-v", "quiet", ...selfContainedInput(filePath), "-print_format", "json"],
+        ...["-show_format", "-show_streams", "--", filePath],
+      ],
       { encoding: "utf8", timeout: 5000 },
     );
     const info = JSON.parse(raw);
