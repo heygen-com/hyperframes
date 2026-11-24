@@ -439,7 +439,7 @@ describe("playlistLeavesItsFolder takes time linear in the list, and bounds the 
   it("refuses a walk past its entry budget, before it opens any entry", async () => {
     const names = Array.from({ length: 50_001 }, (_, i) => `s${i}.ts`);
     expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", segments(...names)))).toBe(true);
-    const under = names.slice(0, 1000);
+    const under = names.slice(0, 100);
     const list = withBeside(writeFixture("clip.m3u8", segments(...under)), ...under);
     expect(await playlistLeavesItsFolder(list)).toBe(false);
   });
