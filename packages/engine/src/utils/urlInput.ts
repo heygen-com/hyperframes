@@ -68,7 +68,6 @@ export function urlInputArgs(
 ): string[] {
   assertLiteralMediaInput(input);
   const mediaFormats = () =>
-    // Render preflight runs the playlist folder walk on every local source before it is read.
     mediaInputFormatArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary(), input, {
       playlists: true,
     });

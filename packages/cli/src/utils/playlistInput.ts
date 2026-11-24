@@ -1,10 +1,7 @@
 export const PLAYLIST_LEAVES_FOLDER =
   "is a playlist naming files outside its folder: pass the media file itself";
 
-/**
- * The first named media file that is an HLS or ffconcat list naming a file outside its folder or private in it.
- * Check before anything reads, copies or uploads the files: ffmpeg would open what the list names, not the file.
- */
+/** The first path that is an HLS or ffconcat list naming a file outside its folder; check before any read or copy. */
 export async function playlistLeavingItsFolder(
   paths: readonly (string | undefined)[],
 ): Promise<string | undefined> {
@@ -13,7 +10,6 @@ export async function playlistLeavingItsFolder(
   return undefined;
 }
 
-/** Throws for the first named file {@link playlistLeavingItsFolder} finds. */
 export async function refusePlaylistLeavingItsFolder(
   paths: readonly (string | undefined)[],
 ): Promise<void> {

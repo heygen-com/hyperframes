@@ -347,12 +347,7 @@ export { assertLiteralMediaInput };
 
 const PLAYLIST_DEMUXERS = new Set(["hls", "applehttp", "concat"]);
 
-/**
- * Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one
- * that cannot be asked gets the self-contained list, and is asked again. Playlists (hls, concat) are read only with
- * `playlists: true`, for a caller that ran the folder walk on `input` first. Anything but an http(s) URL is read
- * only as a local file.
- */
+/** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. Playlists only with `playlists: true`; anything but an http(s) URL reads as a local file. */
 export function mediaInputFormatArgs(
   listingBinary: string,
   input: string,

@@ -67,7 +67,6 @@ export function runFfmpeg(args: string[], input?: Buffer, cwd?: string, timeout?
   });
 }
 
-/** `playlists` only for a file the playlist folder walk passed (a `guarded` probe). */
 export function ffmpegInput(path: string, { playlists = false } = {}): string[] {
   return [...mediaInputFormatArgs(ffmpegBin(), path, { playlists }), "-i", path];
 }

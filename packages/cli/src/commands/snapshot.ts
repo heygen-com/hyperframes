@@ -135,9 +135,7 @@ import { withMeta } from "../utils/updateCheck.js";
 import { trackSnapshotRun } from "../telemetry/events.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
-// Held videos reach these reads only through `projectVideoFile`, which runs the playlist folder walk first;
-// `measure extract` reads one only after `probeVideo` refused or walked it.
-const WALKED = { playlists: true };
+const WALKED_BY_PROJECT_VIDEO_FILE = { playlists: true };
 
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
 // the REAL painted pixels are viewed from an orthogonal angle (FINDING [10]:
@@ -501,7 +499,11 @@ export async function probeContainingSourceFrameSeek(
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
-          ...["-v", "error", ...mediaInputFormatArgs(ffprobe, videoPath, WALKED)],
+          ...[
+            "-v",
+            "error",
+            ...mediaInputFormatArgs(ffprobe, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
+          ],
           ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
@@ -631,7 +633,7 @@ async function probeSeekLanding(
           "error",
           "-copyts",
           "-noaccurate_seek",
-          ...mediaInputFormatArgs(ffmpeg, videoPath, WALKED),
+          ...mediaInputFormatArgs(ffmpeg, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         ],
         ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
@@ -693,7 +695,7 @@ async function frameColour(
   const read = (args: string[]) =>
     runFfmpegOnce(
       ffmpegPath,
-      [...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED), ...args],
+      [...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE), ...args],
       FFMPEG_EXTRACT_TIMEOUT_MS,
     );
   const probe = await read(firstFrameColourArgs(videoPath));
@@ -748,7 +750,7 @@ export async function extractVideoFrameToBuffer(
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
       args.push(
-        ...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED),
+        ...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         "-i",
         videoPath,
         "-map",
@@ -815,7 +817,7 @@ export async function decodeFramesInOnePass(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       args.push(
-        ...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED),
+        ...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         "-ss",
         String(start),
         "-i",

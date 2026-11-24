@@ -73,7 +73,6 @@ async function silentPart(
     {
       mono: true,
       sampleRate: SILENCE_SAMPLE_RATE,
-      // The engine probe that came first refused a playlist leaving its folder, so one that reaches here is contained.
       inputArgs: mediaInputFormatArgs(findFfBinary("ffmpeg") ?? "ffmpeg", path, {
         playlists: true,
       }),

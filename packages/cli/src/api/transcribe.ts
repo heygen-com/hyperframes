@@ -179,7 +179,6 @@ export async function runTranscribe(options: TranscribeRequest): Promise<Transcr
   if (!existsSync(inputPath)) {
     throw new TranscribeError("input_not_found", `File not found: ${options.input}`);
   }
-  // Every engine hands the file to ffmpeg itself (parakeet-mlx with no input limits).
   if (await playlistLeavingItsFolder([inputPath])) {
     throw new TranscribeError("failed", `${options.input} ${PLAYLIST_LEAVES_FOLDER}`);
   }
