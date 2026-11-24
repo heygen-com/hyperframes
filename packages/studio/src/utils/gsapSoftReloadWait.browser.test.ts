@@ -163,9 +163,13 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
         const msg = { source: "hf-parent", type: "control", action: a };
         document.querySelector("iframe")!.contentWindow!.postMessage(msg, "*");
       }, action);
+    const before = await p.time();
     await control("play");
+    const afterPlay = await p.time();
     await expect.poll(p.time).toBeGreaterThan(1);
+    const polled = await p.time();
     await control("pause");
+    const afterPause = await p.time();
     await p.frame.waitForFunction(
       () => !(window as unknown as { __player: { isPlaying(): boolean } }).__player.isPlaying(),
     );
@@ -174,6 +178,12 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
       () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
     );
     pausedAt = Math.round((await p.time()) * 100) / 100;
+    const playing = await p.frame.evaluate(() =>
+      (window as unknown as { __player: { isPlaying(): boolean } }).__player.isPlaying(),
+    );
+    console.info(
+      `[probe-play] before=${before} afterPlay=${afterPlay} polled=${polled} afterPause=${afterPause} pausedAt=${pausedAt} playing=${playing}`,
+    );
   },
   // Studio's editing port gives a request 5 s (editingPort.ts); the plugin stays held past that.
   late: () => new Promise((done) => setTimeout(done, 5_500)),
@@ -234,7 +244,7 @@ async function play(mode: string, steps: Step[]) {
   pausedAt = undefined;
   const tOpen = performance.now();
   const preview = await openPreview(mode);
-  const { page, frame, held, seek, time } = preview;
+  const { page, frame, pluginRequested, seek, time } = preview;
   const openMs = Math.round(performance.now() - tOpen);
   await seek(4);
   if (!sealed) await restoreLeftOfC(preview, sealed, 1);
@@ -255,7 +265,7 @@ async function play(mode: string, steps: Step[]) {
     (v) => (settledAs = v),
     (e) => (settledAs = `threw ${e}`),
   );
-  await expect.poll(() => held.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  await pluginRequested;
   console.info(
     `[probe] ${mode} ${steps.join(",")} open=${openMs} seen=${seenMs} held=${Math.round(performance.now() - t0)} older=${settledAs}`,
   );
@@ -504,7 +514,7 @@ describe("late answers held in transit, sealed", () => {
     const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true).catch(
       () => "closed",
     );
-    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await p.pluginRequested;
     await hold(p.page, true);
     await p.release(404);
     await expect.poll(() => heldCount(p.page)).toBe(1);
@@ -519,7 +529,7 @@ describe("late answers held in transit, sealed", () => {
   it("re-runs the newest script when a patch refusal held across the swap arrives late", async () => {
     const p = await openPreview("sealed");
     void rerun(p.page, timeline("main", "older", 60, true), 2, [], true).catch(() => {});
-    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await p.pluginRequested;
     await hold(p.page, true);
     await commit(p.page, timeline("main", "p1", 10), 10);
     await expect.poll(() => heldCount(p.page)).toBe(1);
@@ -537,7 +547,7 @@ describe("late answers held in transit, sealed", () => {
   it("still recovers an older script refusal after an unrelated successful patch", async () => {
     const p = await openPreview("sealed");
     const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
-    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await p.pluginRequested;
     await hold(p.page, true);
     await p.release(404);
     await expect.poll(() => heldCount(p.page)).toBe(1);
@@ -551,7 +561,7 @@ describe("late answers held in transit, sealed", () => {
   it("still recovers an older run that times out after an attribute-only undo", async () => {
     const p = await openPreview("sealed");
     const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
-    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await p.pluginRequested;
     expect(await undoLeftOfC(p.page, 5)).toBe("soft");
     await expect
       .poll(() => p.frame.evaluate(() => document.getElementById("c")!.style.left))

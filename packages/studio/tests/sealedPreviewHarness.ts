@@ -142,12 +142,16 @@ export async function openPreview(
   const plugin = readFileSync(require.resolve("gsap/dist/MotionPathPlugin.min.js"), "utf8");
   const held: HTTPRequest[] = [];
   let holding = true;
+  let markRequested!: () => void;
+  // A fresh Chrome's first intercepted request can take most of a second, so a test awaits this, never a short poll.
+  const pluginRequested = new Promise<void>((resolve) => (markRequested = resolve));
   await page.setRequestInterception(true);
   page.on("request", (request) => {
     const script = scripts[request.url()];
     if (script !== undefined)
       return void request.respond({ status: 200, contentType: "text/javascript", body: script });
     if (!/MotionPathPlugin/.test(request.url())) return void request.continue();
+    markRequested();
     const serve = () =>
       request.respond({ status: 200, contentType: "text/javascript", body: plugin });
     if (holding) held.push(request);
@@ -201,7 +205,7 @@ export async function openPreview(
     }, to);
     await expect.poll(time).toBeCloseTo(to, 2);
   };
-  return { page, frame, held, release, seek, time };
+  return { page, frame, pluginRequested, release, seek, time };
 }
 
 export type Preview = Awaited<ReturnType<typeof openPreview>>;

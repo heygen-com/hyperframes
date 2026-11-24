@@ -62,13 +62,21 @@ jobs:
           HF_PARITY_MODE: unsealed
         run: |
           $results = @()
-          for ($i = 1; $i -le 12; $i++) {
+          for ($i = 1; $i -le 16; $i++) {
+            $jobs = 1..4 | ForEach-Object { Start-Job { while ($true) { $x = 1 } } }
+            $out = bun run --cwd packages/studio test -- src/utils/gsapSoftReloadWait.browser.test.ts -t "play,ok" --maxWorkers=2 --reporter=verbose 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            $jobs | Stop-Job -PassThru | Remove-Job
+            $out -split "`n" | Where-Object { $_ -match 'probe-play|soft-wait\] unsealed play|Tests  ' } | ForEach-Object { "play ${i}: $_" }
+            $results += "play $i exit=$code"
+          }
+          for ($i = 1; $i -le 8; $i++) {
             $jobs = @()
             if ($i % 2 -eq 0) { $jobs = 1..4 | ForEach-Object { Start-Job { while ($true) { $x = 1 } } } }
             $out = bun run --cwd packages/studio test -- src/utils/gsapSoftReloadWait.browser.test.ts --maxWorkers=2 --reporter=verbose 2>&1 | Out-String
             $code = $LASTEXITCODE
             $jobs | Stop-Job -PassThru | Remove-Job
-            $out -split "`n" | Where-Object { $_ -match '\[probe\]|launch 1/2 ready|Tests  |FAIL|AssertionError' } | ForEach-Object { "run $i load=$($i % 2 -eq 0): $_" }
+            $out -split "`n" | Where-Object { $_ -match '\[probe\] unsealed ok |launch 1/2 ready|Tests  |FAIL|AssertionError|soft-wait\] unsealed play' } | ForEach-Object { "run $i load=$($i % 2 -eq 0): $_" }
             $results += "run $i exit=$code"
           }
           $results
