@@ -431,19 +431,10 @@ export function injectTagsAtHeadStart(html: string, tags: string): string {
   return insertBeforeDocumentTag(html, "<body", `${tags}\n`) ?? `${tags}\n${html}`;
 }
 
-/**
- * Where a tag that must run before everything else goes: just past the
- * document's own `<head…>`, else past `<html…>`, else past the doctype, else the start.
- * Never before the doctype, because content there puts the page in quirks mode.
- *
- * The prefix is read the way a browser tokenizes it, so "<head" inside an
- * attribute value or a comment is not the head, and a `<head>` that follows
- * other content (which a browser ignores) is not either. The scan ends at the
- * first thing that is not whitespace, a comment, a declaration or `<html…>`.
- */
+const BYTE_ORDER_MARK = 0xfeff;
+
 export function headContentStart(html: string): number {
-  // A byte-order mark only counts as one while it is the first thing in the file.
-  let cursor = html.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let cursor = html.charCodeAt(0) === BYTE_ORDER_MARK ? 1 : 0;
   let at = cursor;
   for (;;) {
     const prolog = skipProlog(html, cursor);
@@ -470,7 +461,6 @@ function skipProlog(html: string, from: number): { next: number; doctypeEnd: num
   return { next, doctypeEnd };
 }
 
-/** End of the whitespace, comment or declaration at `at`; `at` when it is none of those, -1 when unclosed. */
 function prologItemEnd(html: string, at: number): number {
   if (isHtmlWhitespace(html.charAt(at))) return at + 1;
   if (html.startsWith("<!--", at)) return skipComment(html, at);

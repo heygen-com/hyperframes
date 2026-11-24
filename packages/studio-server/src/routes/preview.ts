@@ -449,7 +449,6 @@ function gsapCdnFallbackScript(baseUrl: string): string {
 
 function injectGsapCdnFallback(html: string, baseUrl: string): string {
   if (html.includes(GSAP_FALLBACK_ATTR)) return html;
-  // Not the first "<head>" text: that can sit inside an attribute value or a comment.
   const at = headContentStart(html);
   return html.slice(0, at) + gsapCdnFallbackScript(baseUrl) + html.slice(at);
 }

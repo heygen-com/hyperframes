@@ -13,11 +13,9 @@ export function injectPreviewVariables(html: string, values: Record<string, unkn
   // breaking out of the injected tag.
   const json = JSON.stringify(values).replace(/</g, "\\u003c");
   const tag = `<script data-hf-preview-variables>window.__hfVariables=${json};</script>`;
-  // Never search for the text "<head": it can also sit inside an attribute
-  // value or a comment (`<html data-x='a <head> b'>`, `<!-- <head> -->`), and a
-  // tag placed there is not a script. To reproduce: preview a composition whose
-  // <html> has such an attribute with `?variables={"a":"\" b=\""}`; the tag must
-  // be a child of <head> and <html> must keep exactly its own attributes.
+  // Placed where a browser's tokenizer starts the head, never at the text "<head": that text can sit
+  // in an attribute value or a comment. To reproduce: `<html data-x='a <head> b'>` previewed with
+  // `?variables={"a":"\" b=\""}` must give one script in <head> and leave <html>'s attributes alone.
   const at = headContentStart(html);
   return html.slice(0, at) + tag + html.slice(at);
 }
