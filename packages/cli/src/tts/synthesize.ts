@@ -156,6 +156,16 @@ function ensureSynthScript(): string {
   return assertPrivateCachePath(SCRIPT_PATH, CODE_ROOT);
 }
 
+/** Why a run that printed nothing failed. Never the error's own message for an exit: that repeats the whole command, text included. */
+function quietFailure(err: unknown): string {
+  if (!(err instanceof Error)) return "";
+  const { code, status, signal } = err as { code?: unknown; status?: unknown; signal?: unknown };
+  if (typeof code === "string" || (status == null && signal == null)) return err.message;
+  return typeof status === "number"
+    ? `The script exited with code ${status}`
+    : `The script was stopped by ${String(signal)}`;
+}
+
 function regularFileMode(path: string): number | undefined {
   try {
     const stats = lstatSync(path);
@@ -235,7 +245,7 @@ export async function synthesize(
 
   // 4. Ensure output directory exists
   makeOutputFolder(dirname(outputPath));
-  refuseReadOnly(outputPath);
+  if (regularFileMode(outputPath) !== undefined) refuseReadOnly(outputPath);
 
   // 5. Run synthesis into a fresh name renamed over the output: the script writes through a link.
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);
@@ -287,7 +297,7 @@ export async function synthesize(
 
     const stderr = err && typeof err === "object" && "stderr" in err ? err.stderr : "";
     const said = typeof stderr === "string" || Buffer.isBuffer(stderr) ? String(stderr).trim() : "";
-    const reason = said ? said.slice(-500) : err instanceof Error ? err.message : "";
+    const reason = said ? said.slice(-500) : quietFailure(err);
     const detail = reason ? `\n${reason}` : "";
     throw new Error(`Speech synthesis failed${detail}`);
   } finally {

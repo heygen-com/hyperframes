@@ -25,6 +25,12 @@ vi.mock("node:child_process", async (importOriginal) => {
     if (args[0] === "--version") return "Python 3.11.0";
     if (args[0] === "-c") return "";
     if (cmd === "which" || cmd === "where") return "/usr/bin/python3\n";
+    if (args[3] === "quiet-exit")
+      throw Object.assign(new Error(`Command failed: python ${args.join(" ")}`), {
+        stderr: "",
+        status: null,
+        signal: "SIGKILL",
+      });
     if (args[3] === "no-start")
       throw Object.assign(new Error("spawn E2BIG"), { stderr: undefined });
     scriptRuns.push(args[6]!);
@@ -122,6 +128,22 @@ describe("synthesize: the output file", () => {
 
     expect(readdirSync(dir).sort()).toEqual(["other.txt", "speech.wav"]);
     expect(lstatSync(output).isDirectory()).toBe(true);
+  });
+
+  it("names the exit, not the command line, when the script dies without a word", async () => {
+    const failure = await synthesize("quiet-exit", output).catch((error: Error) => error.message);
+
+    expect(failure).toBe("Speech synthesis failed\nThe script was stopped by SIGKILL");
+  });
+
+  it("replaces a link to a write-protected file and leaves that file alone", async () => {
+    chmodSync(other, 0o444);
+    symlinkSync(other, output);
+
+    await synthesize("hello", output);
+
+    expect(lstatSync(output).isSymbolicLink()).toBe(false);
+    expect(readFileSync(other, "utf8")).toBe("kept");
   });
 
   it("says why when the script could not be started", async () => {
