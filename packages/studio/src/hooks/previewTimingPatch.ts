@@ -77,8 +77,6 @@ async function patchSealedTiming(
   await editPreviewElement(iframe, found.handle, { attributes }).drawn;
 }
 
-/** Takes deleted clips out of the live preview at once: until the reload lands, anything that re-reads the
- *  preview (composition enrichment) would otherwise put them back on the timeline. */
 export function removeIframeTimelineElements(
   iframe: HTMLIFrameElement | null,
   elements: TimelineElement[],
