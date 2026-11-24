@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { TimelineElement } from "../player";
 import {
   domEditSelectionsEqual,
@@ -49,6 +49,65 @@ function groupStillLive(
   next: DomEditSelection[],
 ): boolean {
   return next.length > 0 && live.current === refreshed;
+}
+
+type TimelineSelectionBuild = (
+  element: TimelineElement,
+  iframe: HTMLIFrameElement | null,
+) => Promise<DomEditSelection | null>;
+
+type TargetSelectionBuild = (
+  target: HTMLElement | PreviewElement,
+  options: ResolveDomSelectionOptions,
+  iframe?: HTMLIFrameElement | null,
+) => Promise<DomEditSelection | null>;
+
+// fallow-ignore-next-line complexity
+async function buildTimelineSelection(
+  element: TimelineElement,
+  iframe: HTMLIFrameElement | null,
+  lookup: Parameters<typeof findElementForTimelineElement>[2],
+  buildFromTarget: TargetSelectionBuild,
+): Promise<DomEditSelection | null> {
+  let doc: Document | null = null;
+  try {
+    doc = iframe?.contentDocument ?? null;
+  } catch {
+    return null;
+  }
+  if (!doc) {
+    await holdScenesOf(iframe, element);
+    const found = await findOpaqueTimelineElement(iframe, element, lookup);
+    return found ? buildFromTarget(found, { preferClipAncestor: false }, iframe) : null;
+  }
+
+  const held = holdScenesOf(iframe, element);
+  if (held) await held;
+  reapplyPositionEditsAfterSeek(doc);
+
+  const targetElement = findElementForTimelineElement(doc, element, lookup);
+  return targetElement ? buildFromTarget(targetElement, { preferClipAncestor: false }) : null;
+}
+
+function sharingRunningBuilds(
+  build: TimelineSelectionBuild,
+  iframeRef: { current: HTMLIFrameElement | null },
+): (element: TimelineElement) => Promise<DomEditSelection | null> {
+  const running = new Map<
+    string,
+    { iframe: HTMLIFrameElement | null; built: Promise<DomEditSelection | null> }
+  >();
+  return (element) => {
+    const key = element.key ?? element.id;
+    const iframe = iframeRef.current;
+    const shared = running.get(key);
+    if (shared?.iframe === iframe) return shared.built;
+    const built = build(element, iframe).finally(() => {
+      if (running.get(key)?.built === built) running.delete(key);
+    });
+    running.set(key, { iframe, built });
+    return built;
+  };
 }
 
 // ── Hook ──
@@ -319,36 +378,18 @@ export function useDomSelection({
     setDomEditHoverSelection(selection);
   }, []);
 
-  const buildDomSelectionForTimelineElement = useCallback(
-    // fallow-ignore-next-line complexity
-    async (element: TimelineElement): Promise<DomEditSelection | null> => {
-      const iframe = previewIframeRef.current;
-      const lookup = { activeCompositionPath: activeCompPath, compIdToSrc, isMasterView };
-      let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        return null;
-      }
-      if (!doc) {
-        await holdScenesOf(iframe, element);
-        const found = await findOpaqueTimelineElement(iframe, element, lookup);
-        return found
-          ? buildDomSelectionFromTarget(found, { preferClipAncestor: false }, iframe)
-          : null;
-      }
-
-      const held = holdScenesOf(iframe, element);
-      if (held) await held;
-      reapplyPositionEditsAfterSeek(doc);
-
-      const targetElement = findElementForTimelineElement(doc, element, lookup);
-      return targetElement
-        ? buildDomSelectionFromTarget(targetElement, {
-            preferClipAncestor: false,
-          })
-        : null;
-    },
+  const buildDomSelectionForTimelineElement = useMemo(
+    () =>
+      sharingRunningBuilds(
+        (element, iframe) =>
+          buildTimelineSelection(
+            element,
+            iframe,
+            { activeCompositionPath: activeCompPath, compIdToSrc, isMasterView },
+            buildDomSelectionFromTarget,
+          ),
+        previewIframeRef,
+      ),
     [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView, previewIframeRef],
   );
 
