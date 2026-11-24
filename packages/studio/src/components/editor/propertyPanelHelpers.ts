@@ -11,7 +11,11 @@ import {
 } from "../../player/lib/timelineElementHelpers";
 import { editsPlainCss, GSAP_TRANSFORM_KEYS } from "../../hooks/gsapRuntimeKeyframes";
 import { getIframeGsap } from "../../hooks/gsapShared";
-import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import {
+  previewComputedStyles,
+  previewDocumentMarkup,
+  previewFrameOpaque,
+} from "../../player/lib/previewChannel";
 
 export type {
   BackgroundRemovalProgress,
@@ -507,12 +511,29 @@ export function readGsapRuntimeValuesForPanel(
   }
 }
 
+type PanelBorderRadius = { tl: number; tr: number; br: number; bl: number };
+
+const RADIUS_CORNERS = [
+  "border-top-left-radius",
+  "border-top-right-radius",
+  "border-bottom-right-radius",
+  "border-bottom-left-radius",
+] as const;
+
+function cornerRadii(read: (corner: string) => string | undefined): PanelBorderRadius {
+  const [tl, tr, br, bl] = RADIUS_CORNERS.map(
+    (corner) => Number.parseFloat(read(corner) ?? "") || 0,
+  );
+  return { tl: tl!, tr: tr!, br: br!, bl: bl! };
+}
+
+/** The element's computed corner radii while GSAP animates them: at once from a readable frame, else asked of it. */
 export function readGsapBorderRadiusForPanel(
   gsapRuntimeValues: Record<string, number> | null,
   gsapAnimations: GsapAnimation[],
   element: DomEditSelection,
-  previewIframeRef: React.RefObject<HTMLIFrameElement | null>,
-): { tl: number; tr: number; br: number; bl: number } | null {
+  iframe: HTMLIFrameElement | null,
+): PanelBorderRadius | Promise<PanelBorderRadius | null> | null {
   if (!gsapRuntimeValues || !("borderRadius" in gsapRuntimeValues)) {
     const hasBRProp = gsapAnimations.some(
       (a) =>
@@ -521,53 +542,47 @@ export function readGsapBorderRadiusForPanel(
     );
     if (!hasBRProp) return null;
   }
-  const iframe = previewIframeRef?.current;
-  if (!iframe?.contentDocument) return null;
+  if (!iframe) return null;
+  if (previewFrameOpaque(iframe)) {
+    if (!element.handle) return null;
+    return previewComputedStyles(iframe, { handle: element.handle }, [...RADIUS_CORNERS]).then(
+      (styles) => styles && cornerRadii((corner) => styles[corner]),
+    );
+  }
   try {
-    const el = findPreviewNode(iframe.contentDocument, element);
+    const el = iframe.contentDocument && findPreviewNode(iframe.contentDocument, element);
     if (!el || !iframe.contentWindow) return null;
     const cs = iframe.contentWindow.getComputedStyle(el);
-    const parse = (v: string) => Number.parseFloat(v) || 0;
-    return {
-      tl: parse(cs.borderTopLeftRadius),
-      tr: parse(cs.borderTopRightRadius),
-      br: parse(cs.borderBottomRightRadius),
-      bl: parse(cs.borderBottomLeftRadius),
-    };
+    return cornerRadii((corner) => cs.getPropertyValue(corner));
   } catch {
     return null;
   }
 }
 
 /**
- * Builds the multi-line "element info" text copied to the clipboard for an AI
- * agent. Shared by both the legacy and flat inspector headers (the flat split
- * needs the same string), so it lives here rather than as a PropertyPanel
- * closure. Pure — the caller owns the clipboard write, toast, and copied state.
+ * The "element info" text copied for an AI agent, its line found in the frame's markup `src`; both inspector
+ * headers share it. Pure — the caller owns the clipboard write, toast, and copied state.
  */
 // fallow-ignore-next-line complexity
-export function buildElementInfoText(
+function buildElementInfoText(
   element: DomEditSelection,
   sourceLabel: string,
   gsapAnimations: GsapAnimation[],
-  previewIframeRef?: React.RefObject<HTMLIFrameElement | null>,
+  src: string,
 ): string {
   const file = element.sourceFile ?? "index.html";
   let lineNum: number | null = null;
-  try {
-    const src = previewIframeRef?.current?.contentDocument?.documentElement?.outerHTML ?? "";
-    if (src && element.id) {
-      const idx = src.indexOf(`id="${element.id}"`);
-      if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-    }
-    if (!lineNum && element.selector) {
-      const tag = element.tagName.toLowerCase();
-      const cls = element.selector.startsWith(".") ? element.selector.slice(1).split(".")[0] : null;
-      const search = cls ? `class="${cls}` : `<${tag}`;
-      const idx = src.indexOf(search);
-      if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-    }
-  } catch {}
+  if (src && element.id) {
+    const idx = src.indexOf(`id="${element.id}"`);
+    if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
+  }
+  if (!lineNum && element.selector) {
+    const tag = element.tagName.toLowerCase();
+    const cls = element.selector.startsWith(".") ? element.selector.slice(1).split(".")[0] : null;
+    const search = cls ? `class="${cls}` : `<${tag}`;
+    const idx = src.indexOf(search);
+    if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
+  }
   const fileLoc = lineNum ? `${file}:${lineNum}` : file;
   const lines = [
     `Element: ${element.label} (${sourceLabel})`,
@@ -590,4 +605,18 @@ export function buildElementInfoText(
     if (props) lines.push(`Properties: ${props}`);
   }
   return lines.join("\n");
+}
+
+export async function readElementInfoText(
+  element: DomEditSelection,
+  sourceLabel: string,
+  gsapAnimations: GsapAnimation[],
+  iframe: HTMLIFrameElement | null | undefined,
+): Promise<string> {
+  let src = "";
+  try {
+    if (iframe && previewFrameOpaque(iframe)) src = (await previewDocumentMarkup(iframe)) ?? "";
+    else src = iframe?.contentDocument?.documentElement?.outerHTML ?? "";
+  } catch {}
+  return buildElementInfoText(element, sourceLabel, gsapAnimations, src);
 }

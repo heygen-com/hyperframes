@@ -1,18 +1,18 @@
 import { useGsapSnapshotVersion } from "../../hooks/gsapFrameSnapshot";
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize } from "./manualEdits";
 import { readMoveOffset, readShownRotation } from "./plainTranslate";
 import {
-  buildElementInfoText,
   EMPTY_STYLES,
   formatPxMetricValue,
   parsePxMetricValue,
   RESPONSIVE_GRID,
   readGsapRuntimeValuesForPanel,
+  readElementInfoText,
   readGsapBorderRadiusForPanel,
   isSelectedElementHidden,
   selectionIdentityKey,
@@ -144,14 +144,20 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     // eslint-disable-next-line react-hooks/exhaustive-deps -- iframeRef is stable; currentTime drives re-reads during playback
     [gsapAnimIdForMemo, gsapAnimations, element, currentTime, sealedReads],
   );
-  const gsapBorderRadius = useMemo(
+  const borderRadiusRead = useMemo(
     () =>
       element
-        ? readGsapBorderRadiusForPanel(gsapRuntimeValues, gsapAnimations, element, iframeRef)
+        ? readGsapBorderRadiusForPanel(
+            gsapRuntimeValues,
+            gsapAnimations,
+            element,
+            iframeRef.current,
+          )
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [gsapRuntimeValues, gsapAnimations, element, currentTime],
   );
+  const gsapBorderRadius = useAnswered(borderRadiusRead, element);
   // The 3D Transform panel should be reachable on ANY element, not only ones GSAP is
   // already animating — otherwise you can't add depth/rotation to a fresh static
   // element (the panel never appears, the classic chicken-and-egg). Default to
@@ -236,11 +242,10 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;
 
   const handleCopyElementInfo = () => {
-    const text = buildElementInfoText(element, sourceLabel, gsapAnimations, previewIframeRef);
     // Claim the copy only once the write actually lands — a denied clipboard
     // permission otherwise reports a copy that never happened.
-    navigator.clipboard
-      .writeText(text)
+    void readElementInfoText(element, sourceLabel, gsapAnimations, previewIframeRef?.current)
+      .then((text) => navigator.clipboard.writeText(text))
       .then(() => {
         showToast(`Copied element info for ${element.label}. Paste it into any AI agent`, "info");
         setClipboardCopied(true);
@@ -577,3 +582,20 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   );
   return <DesignPanelInputProvider ui="classic">{classicPanel}</DesignPanelInputProvider>;
 });
+
+function useAnswered<T extends object>(
+  read: T | Promise<T | null> | null,
+  owner: unknown,
+): T | null {
+  const [answered, setAnswered] = useState<{ owner: unknown; value: T | null } | null>(null);
+  useEffect(() => {
+    if (!(read instanceof Promise)) return;
+    let current = true;
+    void read.then((value) => current && setAnswered({ owner, value }));
+    return () => {
+      current = false;
+    };
+  }, [read, owner]);
+  if (!(read instanceof Promise)) return read;
+  return answered && answered.owner === owner ? answered.value : null;
+}
