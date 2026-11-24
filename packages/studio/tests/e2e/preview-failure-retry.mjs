@@ -145,6 +145,10 @@ try {
   );
   await page.keyboard.press("End");
   await page.keyboard.type(" kept");
+  // The toolbar shows only over a selection, never a bare caret.
+  await page.keyboard.down("Shift");
+  await page.keyboard.press("Home");
+  await page.keyboard.up("Shift");
   await page.waitForSelector(TEXT_TOOLBAR, { timeout: 10_000 });
   await failThenRetry(page);
   const saved = await page.waitForFunction(
