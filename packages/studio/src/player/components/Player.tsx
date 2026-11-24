@@ -39,7 +39,7 @@ interface PlayerProps {
   onReadyToShowChange?: (ready: boolean) => void;
   onPreviewError?: (message: string) => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
-  onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
+  onPainted?: (details: PaintedDetails) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
@@ -73,6 +73,21 @@ const DEFAULT_PREVIEW_ERROR = "The composition preview did not become ready.";
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
   return compositionLoading;
+}
+
+export type ReadyTiming = { readyMs: number | null; loadLimitMs: number | null };
+export type PaintedDetails = ReadyTiming & {
+  iframe: HTMLIFrameElement;
+  startedAt: number;
+  loadId: number;
+};
+
+const msOrNull = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+
+export function readReadyTiming(event: Event): ReadyTiming {
+  const detail = event instanceof CustomEvent && isRecord(event.detail) ? event.detail : {};
+  return { readyMs: msOrNull(detail.readyMs), loadLimitMs: msOrNull(detail.loadLimitMs) };
 }
 
 export function readPreviewErrorMessage(event: Event): string {
@@ -158,6 +173,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const [painted, setPainted] = useState(false);
     const [compositionOverlayDeferred, setCompositionOverlayDeferred] = useState(true);
     const [previewError, setPreviewError] = useState<string | null>(null);
+    const readyTimingRef = useRef<ReadyTiming>({ readyMs: null, loadLimitMs: null });
 
     // eslint-disable-next-line no-restricted-syntax
     useEffect(() => {
@@ -196,6 +212,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           retryUrl.searchParams.set("_hfStudioRetry", String(retryCountRef.current));
           setPreviewError(null);
           setCompositionLoading(true);
+          readyTimingRef.current = { readyMs: null, loadLimitMs: null };
           loadStartedAtRef.current = performance.now();
           loadIdRef.current += 1;
           player.removeAttribute("no-load-timeout");
@@ -209,14 +226,20 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (loading !== null) setShaderTransitionLoading(loading);
         };
         let loadedDocument: Document | null = null;
-        const handleReady = () => {
+        const handleReady = (event: Event) => {
+          readyTimingRef.current = readReadyTiming(event);
           setPreviewError(null);
           setCompositionLoading(false);
           if (iframe.contentDocument && runtimeBootedIn(iframe)) handleLoad();
         };
         const handlePainted = () => {
           setPainted(true);
-          onPainted?.({ iframe, startedAt: loadStartedAtRef.current, loadId: loadIdRef.current });
+          onPainted?.({
+            iframe,
+            startedAt: loadStartedAtRef.current,
+            loadId: loadIdRef.current,
+            ...readyTimingRef.current,
+          });
         };
         const handleError = (event: Event) => {
           const message = readPreviewErrorMessage(event);
@@ -505,15 +528,18 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             data-testid="composition-preview-error"
           >
             <div className="max-w-sm">
-              <p className="text-sm font-semibold text-white">Preview failed to load</p>
-              <p className="mt-1 text-xs text-neutral-400">{previewError}</p>
+              <p className="text-sm font-semibold text-white">This preview didn't load.</p>
               <button
                 type="button"
                 className="mt-4 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black transition-colors hover:bg-neutral-200"
                 onClick={() => retryPreviewRef.current?.()}
               >
-                Retry preview
+                Try again
               </button>
+              <details className="mt-3 text-xs text-neutral-400">
+                <summary className="cursor-pointer select-none">Details</summary>
+                <p className="mt-1 break-words">{previewError}</p>
+              </details>
             </div>
           </div>
         )}

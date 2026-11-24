@@ -202,7 +202,7 @@ describe("preview errors", () => {
 
     expect(host.querySelector('[data-testid="composition-preview-error"]')).not.toBeNull();
     const retry = Array.from(host.querySelectorAll("button")).find(
-      (button) => button.textContent === "Retry preview",
+      (button) => button.textContent === "Try again",
     );
     if (!retry) throw new Error("retry action did not render");
 
@@ -336,6 +336,38 @@ describe("callbacks after the player is already mounted", () => {
     runtime = { __playerReady: true };
     act(() => void player.dispatchEvent(new Event("ready")));
     expect(onLoad).toHaveBeenCalledTimes(1);
+  });
+
+  const fail = (player: HTMLElement, message: string) =>
+    act(() => void player.dispatchEvent(new CustomEvent("error", { detail: { message } })));
+
+  // fails without the fix: the failure led with "Preview failed to load" and showed the raw cause beside it.
+  it("says the preview didn't load, with the raw cause under Details only", async () => {
+    const { host, player } = await mountPlayer();
+    fail(player, "Composition timeline not found after 30s");
+    const failure = host.querySelector('[data-testid="composition-preview-error"]')!;
+    expect(failure.querySelector("p")?.textContent).toBe("This preview didn't load.");
+    expect(failure.querySelector("details summary")?.textContent).toBe("Details");
+    expect(failure.querySelector("details")?.textContent).toContain("after 30s");
+    const outsideDetails = failure.cloneNode(true) as Element;
+    outsideDetails.querySelector("details")?.remove();
+    expect(outsideDetails.textContent).not.toContain("after 30s");
+  });
+
+  it("clears the failure when a late ready follows it", async () => {
+    const { host, player } = await mountPlayer();
+    fail(player, "Composition timeline not found after 30s");
+    act(() => void player.dispatchEvent(new CustomEvent("ready", { detail: {} })));
+    expect(host.querySelector('[data-testid="composition-preview-error"]')).toBeNull();
+  });
+
+  it("draws the failure itself when the host draws the waiting", async () => {
+    const { host, player } = await mountPlayer({
+      loadingUi: "host",
+      suppressLoadingOverlay: false,
+    });
+    fail(player, "boom");
+    expect(host.textContent).toContain("This preview didn't load.");
   });
 
   it("reports the preview error cause", async () => {
@@ -534,8 +566,27 @@ describe("ready to show", () => {
       iframe: (player as TestHyperframesPlayer).iframeElement,
       startedAt: 100,
       loadId: 1,
+      readyMs: null,
+      loadLimitMs: null,
     });
     now.mockRestore();
+  });
+
+  // fails without the fix: the first frame's report had no way to say how long the player waited, or its limit.
+  it("reports the player's ready time and load limit with the painted iframe", async () => {
+    const onPainted = vi.fn();
+    const { player } = await mountPlayer({ onPainted });
+    act(() => {
+      player.dispatchEvent(
+        new CustomEvent("ready", { detail: { readyMs: 4200, loadLimitMs: 30000 } }),
+      );
+    });
+
+    painted(player as TestHyperframesPlayer);
+
+    expect(onPainted).toHaveBeenCalledWith(
+      expect.objectContaining({ readyMs: 4200, loadLimitMs: 30000 }),
+    );
   });
 
   it("holds while the shader transition loader is up and fires once it clears", async () => {

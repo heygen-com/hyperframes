@@ -86,7 +86,7 @@ describe("a film past its load limit", () => {
     vi.advanceTimersByTime(LINUX + 10_000);
     expect(onError).toHaveBeenCalledOnce();
     Object.assign(win, { __player: { getDuration: () => 6 } });
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(1_000);
     expect(onReady).toHaveBeenCalledOnce();
     expect(onReady.mock.calls[0][0].duration).toBe(6);
   });
@@ -97,6 +97,35 @@ describe("a film past its load limit", () => {
     postTimeline();
     expect(events).toEqual(["error Composition timeline not found after 30s", "ready"]);
     expect(player.ready).toBe(true);
+  });
+
+  it("reads the document five times a second until the limit, then once a second", () => {
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    iframe.contentDocument!.body.innerHTML = '<div data-composition-id="main"></div>';
+    const probe = new CompositionProbe(iframe, { onReady: vi.fn(), onError: vi.fn() });
+    const reads = vi.spyOn(iframe, "contentDocument", "get");
+    probe.start();
+    const readsOver = (ms: number) => {
+      const from = reads.mock.calls.length;
+      vi.advanceTimersByTime(ms);
+      return reads.mock.calls.length - from;
+    };
+    vi.advanceTimersByTime(10_000);
+    const early = readsOver(2_000);
+    vi.advanceTimersByTime(LINUX - 12_000 + 2_000);
+    expect(readsOver(2_000) * 5).toBe(early);
+    probe.stop();
+  });
+
+  it("stops reading a film past its limit once the player leaves the page", () => {
+    const { player } = mountPlayer();
+    vi.advanceTimersByTime(LINUX + 2_000);
+    const reads = vi.spyOn(player.iframeElement, "contentDocument", "get");
+    player.remove();
+    const after = reads.mock.calls.length;
+    vi.advanceTimersByTime(5_000);
+    expect(reads.mock.calls.length).toBe(after);
   });
 
   it("reports how long the frame took from its load to its timeline, and the limit it had", () => {

@@ -66,8 +66,6 @@ export interface UseTimelineSyncCallbacksParams {
   ) => void;
   /** False when the load for `context` was superseded: it must then cause no side effects. */
   isCurrent?: (context?: number) => boolean;
-  /** Fires when no adapter appeared within the wait window. */
-  onLoadGiveUp?: (context?: number) => void;
   hostOwnsDeadline?: boolean;
   /** The frame on screen, when it is not this hook's own (a shadow, hidden until promoted). */
   liveFrame?: () => HTMLIFrameElement | null;
@@ -186,7 +184,6 @@ export function useTimelineSyncCallbacks({
   applyPreviewAudioState,
   onAdapterReady = revealAndCommit,
   isCurrent,
-  onLoadGiveUp,
   hostOwnsDeadline,
   liveFrame,
 }: UseTimelineSyncCallbacksParams) {
@@ -385,6 +382,7 @@ export function useTimelineSyncCallbacks({
       // Listen for those instead of polling.
       const iframe = iframeRef.current;
       let settled = false;
+      let retryEachFrame = true;
       let retryFrame = 0;
       const stopWaiting = () => {
         window.removeEventListener("message", onMessage);
@@ -400,7 +398,7 @@ export function useTimelineSyncCallbacks({
           return;
         }
         cancelAnimationFrame(retryFrame);
-        retryFrame = requestAnimationFrame(trySettle);
+        if (retryEachFrame) retryFrame = requestAnimationFrame(trySettle);
       };
 
       const onMessage = (e: MessageEvent) => {
@@ -410,13 +408,10 @@ export function useTimelineSyncCallbacks({
       stopWaitingRef.current = stopWaiting;
       if (hostOwnsDeadline) return;
 
-      // Safety net: if no message arrives within 5s, try one last time then give up.
+      // Past 5 s, show the frame and try once more; keep listening, as a slow runtime may still boot.
       probeIntervalRef.current = setTimeout(() => {
-        if (!settled) {
-          trySettle();
-        }
-        stopWaiting();
-        if (!settled) onLoadGiveUp?.(context);
+        retryEachFrame = false;
+        if (!settled) trySettle();
         revealIframe(iframeRef.current);
       }, 5000) as unknown as ReturnType<typeof setInterval>;
     },
@@ -425,7 +420,6 @@ export function useTimelineSyncCallbacks({
       iframeRef,
       probeIntervalRef,
       applyPreviewAudioState,
-      onLoadGiveUp,
       hostOwnsDeadline,
       onScreen,
     ],

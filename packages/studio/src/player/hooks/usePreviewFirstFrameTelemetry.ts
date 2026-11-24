@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import { parseTimelineFromDOM } from "../lib/timelineDOM";
 import { readTimelineDurationFromDocument } from "../lib/timelineElementHelpers";
 import type { PreviewIframeSlot } from "./useTimelineSyncCallbacks";
+import type { PaintedDetails } from "../components/Player";
 import { trackPreviewFirstFrame } from "../../telemetry/events";
 import { getBrowserSystemMeta } from "../../telemetry/system";
 import { previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
@@ -26,11 +27,7 @@ export function usePreviewFirstFrameTelemetry(previewSlots: PreviewIframeSlot[])
   return useCallback(
     (
       slot: PreviewIframeSlot,
-      {
-        iframe,
-        startedAt,
-        loadId,
-      }: { iframe: HTMLIFrameElement; startedAt: number; loadId: number },
+      { iframe, startedAt, loadId, readyMs, loadLimitMs }: PaintedDetails,
     ) => {
       const currentSlot = previewSlotsRef.current.find(
         (candidate) => candidate.gen === slot.gen && candidate.role === slot.role,
@@ -46,6 +43,8 @@ export function usePreviewFirstFrameTelemetry(previewSlots: PreviewIframeSlot[])
           composition_seconds: readTimelineDurationFromDocument(doc),
           ...readPreviewComplexity(doc),
           studio_version: getBrowserSystemMeta().studio_version,
+          ready_ms: readyMs ?? undefined,
+          load_limit_ms: loadLimitMs ?? undefined,
         });
       if (previewFrameOpaque(iframe)) void previewDocumentCopy(iframe).then(report);
       else report(iframe.contentDocument);

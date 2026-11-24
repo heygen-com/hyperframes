@@ -32,12 +32,20 @@ it("reports a sealed preview's clips and length on its first frame", async () =>
   }
   act(() => createRoot(document.createElement("div")).render(createElement(Harness)));
 
-  report!(slot, { iframe: sealedPreviewFrame().iframe, startedAt: performance.now(), loadId: 1 });
+  report!(slot, {
+    iframe: sealedPreviewFrame().iframe,
+    startedAt: performance.now(),
+    loadId: 1,
+    readyMs: 4200,
+    loadLimitMs: 30000,
+  });
 
   await vi.waitFor(() => expect(firstFrames).toHaveLength(1));
   expect(firstFrames[0]).toMatchObject({
     composition_seconds: 6,
     clip_count: 2,
     media_clip_count: 1,
+    ready_ms: 4200,
+    load_limit_ms: 30000,
   });
 });

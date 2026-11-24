@@ -17,6 +17,8 @@ export function trackPreviewFirstFrame(props: {
   clip_count: number;
   media_clip_count: number;
   studio_version: string;
+  ready_ms?: number;
+  load_limit_ms?: number;
 }): void {
   trackEvent("preview_first_frame", props);
 }

@@ -61,6 +61,7 @@ export function readPositiveDimension(value: string | null): number | null {
 export { readCompositionSizeFromDocument };
 
 const POLL_MS = 200;
+const LATE_POLL_MS = 1_000;
 
 type PlatformNavigator = Pick<Navigator, "userAgent"> & { userAgentData?: { platform?: string } };
 
@@ -128,7 +129,7 @@ export class CompositionProbe {
     this._limitMs = loadLimitMs();
     let attempts = 0;
 
-    this._interval = setInterval(() => {
+    const tick = () => {
       attempts++;
       let outcome: ProbeOutcome = null;
       try {
@@ -150,9 +151,12 @@ export class CompositionProbe {
         this._callbacks.onError(outcome.message);
       } else if (this._pastLimit(attempts)) {
         this._failure = { document: this._iframe.contentDocument, deadline: true };
+        if (this._interval) clearInterval(this._interval);
+        this._interval = setInterval(tick, LATE_POLL_MS);
         this._callbacks.onError(`Composition timeline not found after ${this._limitMs / 1000}s`);
       }
-    }, POLL_MS);
+    };
+    this._interval = setInterval(tick, POLL_MS);
   }
 
   private _pastLimit(attempts: number): boolean {

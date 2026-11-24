@@ -107,12 +107,7 @@ function isDocumentHidden(): boolean {
 
 type UseShadowPreviewReloadParams = Omit<
   UseTimelineSyncCallbacksParams,
-  | "probeIntervalRef"
-  | "onAdapterReady"
-  | "getAdapter"
-  | "isCurrent"
-  | "onLoadGiveUp"
-  | "hostOwnsDeadline"
+  "probeIntervalRef" | "onAdapterReady" | "getAdapter" | "isCurrent" | "hostOwnsDeadline"
 > & {
   getAdapter: (overrideIframe?: HTMLIFrameElement | null) => PlaybackAdapter | null;
   /** Runs right after a shadow becomes the live iframe (iframeRef already points at it). */
