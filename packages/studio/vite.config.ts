@@ -25,6 +25,7 @@ import {
   refuseOAuthReturn,
 } from "../studio-server/src/helpers/inertRefusal";
 import { devServesUrl } from "./vite.private-files";
+import { SAME_ORIGIN_FRAMING_HEADERS } from "../engine/src/utils/loopbackOnly";
 import {
   hostHeaderAllowed,
   PREVIEW_ALLOWED_HOSTS_ENV,
@@ -415,6 +416,8 @@ export default defineConfig({
     port: 5190,
     // The built Studio answers no other origin; Vite's default would let any loopback page read what it serves.
     cors: false,
+    // The same framing rule as the CLI Studio's shell, so another site cannot frame this one.
+    headers: { ...SAME_ORIGIN_FRAMING_HEADERS },
     // Vite's defaults (localhost, IP literals) still apply on top of this list.
     allowedHosts: previewAllowedHostsFromEnv(),
     watch: {

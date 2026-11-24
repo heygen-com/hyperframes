@@ -29,11 +29,11 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await server?.close();
   rmSync(link, { force: true });
   rmSync(studioDotfile, { force: true });
   rmSync(project, { recursive: true, force: true });
-});
+  await server?.close();
+}, 30_000);
 
 // fails without the fix: the dev server's own file serving answered for linked projects and checkout files.
 describe("the dev Studio's file serving", () => {
@@ -59,6 +59,14 @@ describe("the dev Studio's file serving", () => {
   it("still serves Studio's own modules", async () => {
     for (const path of ["/src/main.tsx", "/@vite/client"])
       expect((await fetch(`${origin}${path}`)).status, path).toBe(200);
+  });
+
+  it("answers with the CLI Studio's framing rule, so another site cannot frame it", async () => {
+    for (const path of ["/", "/src/main.tsx"]) {
+      const response = await fetch(`${origin}${path}`);
+      expect(response.headers.get("content-security-policy"), path).toBe("frame-ancestors 'self'");
+      expect(response.headers.get("x-frame-options"), path).toBe("SAMEORIGIN");
+    }
   });
 
   it("lets no other loopback origin read what it serves", async () => {
