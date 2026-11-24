@@ -309,14 +309,19 @@ describe("runVideoMode: the file it writes", () => {
     writeFileSync(join(projectDir, "extracted", "video-manifest.json"), JSON.stringify([entry]));
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
-    onTestFinished(() => vi.restoreAllMocks());
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
     return projectDir;
   }
   const answer = (body: Buffer) =>
     vi
       .mocked(publicRequest)
       .mockImplementation(
-        vi.fn(async () => new Response(body, { headers: { "content-type": "video/mp4" } })),
+        vi.fn(
+          async () =>
+            new Response(new Uint8Array(body), { headers: { "content-type": "video/mp4" } }),
+        ),
       );
 
   // fails without the fix: the manifest's name was written as given, so an entry naming CLAUDE.md wrote that file.

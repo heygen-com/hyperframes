@@ -488,19 +488,26 @@ describe("a captured video's file name", () => {
       ),
       screenshot: vi.fn(async () => Buffer.from("\x89PNG preview")),
     }) as unknown as Page;
+  const captureDir = () => {
+    const made = tempDir();
+    mkdirSync(join(made, "extracted"));
+    return made;
+  };
   const savedIn = (dir: string) =>
     readdirSync(join(dir, "assets", "videos")).filter((name) => name !== "previews");
   const answer = (body: Buffer, type: string) =>
     vi
       .mocked(publicRequest)
       .mockImplementation(
-        vi.fn(async () => new Response(body, { headers: { "content-type": type } })),
+        vi.fn(
+          async () => new Response(new Uint8Array(body), { headers: { "content-type": type } }),
+        ),
       );
 
   // fails without the fix: the page's own name for the file was kept whole, so a query ending "/CLAUDE.md" wrote
   // CLAUDE.md into the capture's videos folder.
   it("is the page name's stem with the extension the video's own bytes are", async () => {
-    const dir = tempDir();
+    const dir = captureDir();
     answer(MP4, "application/octet-stream");
     const src = "https://video.example/clip.mp4?next=/CLAUDE.md";
     await captureVideoManifest(pageWith({ src, filename: "CLAUDE.md" }), dir, () => {});
@@ -509,7 +516,7 @@ describe("a captured video's file name", () => {
 
   // fails without the fix: any body with a video type and over 1 KiB was saved, whatever its bytes.
   it("is never written for a body that is no video container", async () => {
-    const dir = tempDir();
+    const dir = captureDir();
     answer(Buffer.alloc(4096, "a"), "video/mp4");
     await captureVideoManifest(
       pageWith({ src: "https://video.example/hero.mp4", filename: "hero.mp4" }),
