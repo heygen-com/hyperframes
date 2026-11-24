@@ -486,6 +486,7 @@ test("vector noise over a standing branch already in main opens no empty PR", (t
       endpoint: "repos/test/catalog/git/refs/heads/bot/catalog-publish",
       method: "PATCH",
       body: { sha: fixture.git("rev-parse", "HEAD"), force: true },
+      token: "actions-token",
     },
   ]);
 });
