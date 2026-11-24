@@ -1,5 +1,13 @@
 import { readCoveredInlineStyleChars } from "./inlineTextStyleRange";
 
+/** What the formatting toolbar shows and sets on a selection. */
+export const INLINE_STYLE_PROPERTIES = [
+  "color",
+  "font-weight",
+  "font-style",
+  "text-decoration-line",
+];
+
 /**
  * What the range is styled with, for a toolbar that has to open showing the
  * truth rather than a default. Reports a property only when the whole range
