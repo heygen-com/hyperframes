@@ -53,7 +53,10 @@ async function streamToFile(
     got += next.value.byteLength;
   }
   const container = videoExtensionOf(Buffer.concat(head));
-  if (!container) throw new Error(`${url} is not a video file (no MP4, MOV or WebM container).`);
+  if (!container) {
+    await reader.return?.();
+    throw new Error(`${url} is not a video file (no MP4, MOV or WebM container).`);
+  }
   const name = `${stem}${container}`;
   const destPath = join(outDir, name);
   async function* body(): AsyncGenerator<Uint8Array> {
