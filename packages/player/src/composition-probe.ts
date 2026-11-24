@@ -104,7 +104,7 @@ export class CompositionProbe {
   private _timedFromNavigation = false;
   private _preparationTimer: ReturnType<typeof setTimeout> | null = null;
   private _limitReportedBeforeLoad = false;
-  private _preparing = false;
+  private _preparedDocumentUnwritten = false;
 
   get failed(): boolean {
     if (this._failure === null || this._failure.deadline) return false;
@@ -125,17 +125,14 @@ export class CompositionProbe {
     this._endPreparation();
   }
 
-  /** The host prepares the next document before navigating: the limit runs from now and, if the frame has
-   *  not loaded by then, is reported once, here; that load does not report it again. */
   markPreparation(): void {
     this.markNavigation();
-    this._preparing = true;
+    this._preparedDocumentUnwritten = true;
     this._preparationTimer = setTimeout(() => this._reportLimitBeforeLoad(), this._limitMs);
   }
 
-  /** The host wrote the frame: its next load is the document the clock has been timing. */
   frameWritten(): void {
-    this._preparing = false;
+    this._preparedDocumentUnwritten = false;
   }
 
   endNavigation(): void {
@@ -147,7 +144,7 @@ export class CompositionProbe {
     if (this._preparationTimer !== null) clearTimeout(this._preparationTimer);
     this._preparationTimer = null;
     this._limitReportedBeforeLoad = false;
-    this._preparing = false;
+    this._preparedDocumentUnwritten = false;
   }
 
   private _reportLimitBeforeLoad(): void {
@@ -176,8 +173,7 @@ export class CompositionProbe {
     this.stop();
     this._failure = null;
     this._runtimeInjected = false;
-    // A load while the next document is still being prepared is the frame's previous one.
-    if (this._preparing) return;
+    if (this._preparedDocumentUnwritten) return;
     if (!this._navigationPending) {
       this._startedAt = performance.now();
       this._limitMs = loadLimitMs();
