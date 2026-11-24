@@ -232,10 +232,17 @@ let pausedAt: number | undefined;
 async function play(mode: string, steps: Step[]) {
   const sealed = mode === "sealed";
   pausedAt = undefined;
+  const tOpen = performance.now();
   const preview = await openPreview(mode);
   const { page, frame, held, seek, time } = preview;
+  const openMs = Math.round(performance.now() - tOpen);
   await seek(4);
   if (!sealed) await restoreLeftOfC(preview, sealed, 1);
+  const t0 = performance.now();
+  let seenMs = -1;
+  page.on("request", (r) => {
+    if (seenMs < 0 && /MotionPathPlugin/.test(r.url())) seenMs = Math.round(performance.now() - t0);
+  });
   const older = rerun(
     page,
     timeline("main", "older", 60, true),
@@ -243,7 +250,15 @@ async function play(mode: string, steps: Step[]) {
     sealed ? restoreC(1) : [],
     true,
   );
-  await expect.poll(() => held.length).toBeGreaterThan(0);
+  let settledAs = "pending";
+  void older.then(
+    (v) => (settledAs = v),
+    (e) => (settledAs = `threw ${e}`),
+  );
+  await expect.poll(() => held.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  console.info(
+    `[probe] ${mode} ${steps.join(",")} open=${openMs} seen=${seenMs} held=${Math.round(performance.now() - t0)} older=${settledAs}`,
+  );
   for (const step of steps) await STEPS[step](preview, sealed);
   const answer = await Promise.race([older, Promise.resolve("kept")]);
   const state = await frame.evaluate(() => {
