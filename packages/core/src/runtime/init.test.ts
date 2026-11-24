@@ -3500,6 +3500,44 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.currentTime).toBe(0);
   });
 
+  describe("a looped sound in a slot longer than its source", () => {
+    function audioIn(loop: boolean): HTMLAudioElement {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      const audio = document.createElement("audio");
+      audio.setAttribute("data-start", "2");
+      audio.setAttribute("data-duration", "18");
+      audio.loop = loop;
+      root.appendChild(audio);
+      Object.defineProperty(audio, "duration", { value: 4, writable: true, configurable: true });
+      Object.defineProperty(audio, "paused", { value: true, writable: true, configurable: true });
+      Object.defineProperty(audio, "readyState", { value: 4, writable: true, configurable: true });
+      Object.defineProperty(audio, "currentTime", { value: 0, writable: true, configurable: true });
+      audio.load = () => {};
+      audio.pause = () => {};
+      window.__timelines = { main: createMockTimeline(20) };
+      initSandboxRuntimeModular();
+      return audio;
+    }
+
+    // fails without the fix: the clip ended at its 4 s source, so preview paused it after one pass.
+    it("is placed on its second pass at 7 s", () => {
+      const audio = audioIn(true);
+      window.__player?.seek(7);
+      expect(audio.currentTime).toBeCloseTo(1, 3);
+    });
+
+    it("still ends with its source when it does not loop", () => {
+      const audio = audioIn(false);
+      window.__player?.seek(7);
+      expect(audio.currentTime).toBe(0);
+    });
+  });
+
   it("seeks sub-composition timelines at data-start near 0 during renderSeek", () => {
     // Regression: sub-compositions starting at or near t=0 kept their initial CSS state
     // in render. Each scene now gets its own seek, so the paused root need not reach it.
