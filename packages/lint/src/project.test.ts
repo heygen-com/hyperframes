@@ -308,6 +308,15 @@ describe("missing_or_empty_sub_composition", () => {
     expect(finding?.message).toContain("does not exist");
   });
 
+  it("errors on a source longer than any file path, before resolving it", async () => {
+    const src = "a/".repeat(500_000) + "scene.html";
+    const started = performance.now();
+    const { finding } = await lintSubComp(src);
+    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(finding?.message).toContain("longer than any file path can be");
+    expect(finding?.message.length).toBeLessThan(400);
+  });
+
   it("errors, instead of crashing, when the referenced sub-composition is a folder", async () => {
     const project = makeProject(htmlWithSubComp("compositions/scene-title"), {});
     mkdirSync(join(project, "compositions", "scene-title"));
