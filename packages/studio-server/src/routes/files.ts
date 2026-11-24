@@ -31,11 +31,13 @@ import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
   folderGone,
   isInHiddenOrVendorDir,
+  isPrivateProjectFile,
   isSafePath,
   isWritableProjectFile,
   mkdirWithinProject,
   pinWithinProject,
   pinWritableWithinProject,
+  projectRelativePath,
   protectedEntryWithin,
   resolveWithinProject,
   resolveWritableWithinProject,
@@ -738,29 +740,34 @@ function directoryReal(entry: Dirent, full: string): string | null {
 /**
  * After a rename, update all references to the old path in project files.
  * Scans HTML, CSS, JS, and JSON files for the old path and replaces it where it names that path.
+ * `unchanged` lists the files that name the old path and Studio does not write; private files are not read.
  */
 function updateReferences(
   projectDir: string,
   oldPath: string,
   newPath: string,
   isDirectory: boolean,
-): number {
+): { updated: number; unchanged: string[] } {
   const textFiles = walkFiles(projectDir, canNameFiles);
 
   const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
   let updatedCount = 0;
+  const unchanged: string[] = [];
   for (const file of textFiles) {
-    if (!isSafePath(projectDir, file) || !isWritableProjectFile(projectDir, file)) continue;
+    if (!isSafePath(projectDir, file) || isPrivateProjectFile(projectDir, file)) continue;
     const content = readableText(file);
     if (content === null) continue;
 
     const updated = rewrite(content, referenceSyntax(file));
-    if (updated !== content) {
-      replaceFileAtomically(file, updated, statSync(file).mode);
-      updatedCount++;
+    if (updated === content) continue;
+    if (!isWritableProjectFile(projectDir, file)) {
+      unchanged.push(projectRelativePath(projectDir, file));
+      continue;
     }
+    replaceFileAtomically(file, updated, statSync(file).mode);
+    updatedCount++;
   }
-  return updatedCount;
+  return { updated: updatedCount, unchanged };
 }
 
 // ── GSAP script extraction ──────────────────────────────────────────────────
@@ -3468,9 +3475,14 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     renameSync(res.absPath, newAbs);
 
     // Update references to the old path across all project files
-    const updatedFiles = updateReferences(res.project.dir, res.filePath, newPath, isDirectory);
+    const references = updateReferences(res.project.dir, res.filePath, newPath, isDirectory);
 
-    return c.json({ ok: true, path: newPath, updatedReferences: updatedFiles });
+    return c.json({
+      ok: true,
+      path: newPath,
+      updatedReferences: references.updated,
+      unchangedReferences: references.unchanged,
+    });
   });
 
   // ── Duplicate ──

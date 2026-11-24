@@ -334,6 +334,11 @@ export function useFileManager({
         }
         await refreshFileTree();
         setRefreshKey((k) => k + 1);
+        const data = await res.json().catch(() => null);
+        const unchanged: unknown = data?.unchangedReferences;
+        if (Array.isArray(unchanged) && unchanged.length > 0) {
+          showToast(`Still pointing at ${oldPath}: ${unchanged.join(", ")}`, "info");
+        }
       } else {
         const err = await res.json().catch(() => ({ error: "unknown" }));
         console.error(`Rename failed: ${err.error}`);
