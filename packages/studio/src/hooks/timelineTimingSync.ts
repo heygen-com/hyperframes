@@ -10,9 +10,7 @@ import {
   readNestedFiles,
   settleNestedReads,
 } from "../utils/gsapSoftReload";
-import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
 import type { RecordEditInput } from "../utils/studioFileHistory";
-import { patchDocumentRootDuration } from "./timelineEditingGsap";
 import {
   GsapOwnershipProtocolError,
   GsapPreviewConvergenceError,
@@ -50,34 +48,6 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
     throw new Error(`Missing file contents for ${targetPath}`);
   }
   return data.content;
-}
-
-/** Best-effort live-iframe wrapper for patchDocumentRootDuration (see timelineEditingGsap). */
-function patchIframeRootDuration(iframe: HTMLIFrameElement | null, contentEnd: number): void {
-  try {
-    patchDocumentRootDuration(iframe?.contentDocument ?? null, contentEnd);
-  } catch {
-    // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
-  }
-}
-
-/** Keep the duration readout and live root aligned with optimistically patched clips. */
-export function syncPreviewContentDuration(iframe: HTMLIFrameElement | null): void {
-  const end = furthestClipEndFromDocument(iframe?.contentDocument ?? null);
-  if (end > 0) {
-    usePlayerStore.getState().setDuration(end);
-    patchIframeRootDuration(iframe, end);
-  }
-}
-
-/** Restore both store and live-root duration when a timing persist fails. */
-export function captureDurationRollback(iframe: HTMLIFrameElement | null): () => void {
-  const previousDuration = usePlayerStore.getState().duration;
-  return () => {
-    if (usePlayerStore.getState().duration === previousDuration) return;
-    usePlayerStore.getState().setDuration(previousDuration);
-    patchIframeRootDuration(iframe, previousDuration);
-  };
 }
 
 /** Re-derive live timing windows without re-executing composition scripts.

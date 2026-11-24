@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { realpath as realpathNative } from "node:fs/promises";
 import { promisify } from "node:util";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { projectPathSegments } from "@hyperframes/parsers/private-path";
 
 export {
@@ -90,6 +91,7 @@ export function isSafePath(base: string, resolved: string): boolean {
     // Base must exist and be resolvable; fail closed if not.
     return false;
   }
+  if (!isWithinProjectRoot(base, target) && !isWithinProjectRoot(baseReal, target)) return false;
 
   const trailing: string[] = [];
   let probe = target;

@@ -107,7 +107,14 @@ async function writeMeasuredCarve(
   const automation = readAutomation(bed);
   const { next, carvedNodes, duckNode } = mintCarveNodes(chain, measured.carved, measured.duck);
   await write(HF_AUDIO_FX_ATTR, serializeAudioFxChain(next));
-  const lanes = carveLanes(carvedNodes, duckNode, measured.duck, measured.voiceMix, measured.bands);
+  const lanes = carveLanes(
+    carvedNodes,
+    duckNode,
+    measured.duck,
+    measured.voiceMix,
+    measured.bands,
+    measured.sampleRate,
+  );
   const carriedOver = withoutCarveLanes(automation, chain);
   const nextAutomation = { version: 1, lanes: [...carriedOver.lanes, ...lanes] };
   await write(HF_AUDIO_AUTOMATION_ATTR, automationAttrValue(nextAutomation) || null);

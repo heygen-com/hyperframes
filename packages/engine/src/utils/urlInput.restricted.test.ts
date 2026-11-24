@@ -125,8 +125,10 @@ describe("media inputs with PRODUCER_RESTRICT_PAGE_NETWORK on", () => {
   });
 
   it("reads a local file and a URL the render declared as before, with no proxy", () => {
-    expect(urlInputArgs("/renders/clip.mp4")).not.toContain("-protocol_whitelist");
-    expect(urlInputArgs("C:\\renders\\clip.mp4")).not.toContain("-protocol_whitelist");
+    for (const local of ["/renders/clip.mp4", "C:\\renders\\clip.mp4"]) {
+      expect(urlInputArgs(local).slice(0, 2)).toEqual(["-protocol_whitelist", "file"]);
+      expect(urlInputArgs(local)).not.toContain("-http_proxy");
+    }
     const declared = "https://bucket.s3.amazonaws.com/renders/abc.mp4";
     declareContentAddressedUrl(declared, "a".repeat(64));
     const args = urlInputArgs(`${declared}?X-Amz-Signature=deadbeef`, {
