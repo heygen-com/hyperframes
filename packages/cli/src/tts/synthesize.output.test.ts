@@ -171,8 +171,8 @@ describe("synthesize: the output file", () => {
       await synthesize("hello", output);
 
       expect(readFileSync(other, "utf8")).toBe("kept");
-      expect(lstatSync(output).isSymbolicLink()).toBe(false);
       expect(readFileSync(output, "utf8")).toBe(AUDIO);
+      expect(lstatSync(output).isSymbolicLink()).toBe(false);
     },
   );
 
