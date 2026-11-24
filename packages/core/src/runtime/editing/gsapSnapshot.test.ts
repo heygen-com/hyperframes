@@ -135,6 +135,23 @@ describe("gsapSnapshot", () => {
 
   // fails without the fix: GSAP's own state on a keyframes tween's vars tripped the nesting bound, so a sealed preview
   // read no GSAP values and Add keyframe at playhead added nothing.
+  it("lists the tweens only GSAP's global timeline runs, once, beside the registered ones", async () => {
+    document.body.innerHTML = `<div id="a"></div><div id="b"></div>`;
+    realGsap.globalTimeline.clear();
+    const tl = realGsap.timeline({ paused: true });
+    tl.to("#a", { x: 100, duration: 1 }, 0);
+    realGsap.to("#b", { opacity: 0.5, duration: 1, paused: true });
+    Object.assign(window, { gsap: realGsap, __timelines: { main: tl } });
+
+    const snapshot = await gsapSnapshot();
+    realGsap.globalTimeline.clear();
+
+    const handle = (id: string) => handleFor(document.getElementById(id)!);
+    expect(snapshot.timelines[0]!.tweens.map((tween) => tween.targets)).toEqual([[handle("a")]]);
+    expect(snapshot.globalTweens.map((tween) => tween.targets)).toEqual([[handle("b")]]);
+    expect(snapshot.globalTweens[0]!.vars).toMatchObject({ opacity: 0.5 });
+  });
+
   it("reads a real GSAP keyframes tween", async () => {
     document.body.innerHTML = `<div id="box"></div>`;
     const tl = realGsap.timeline({ paused: true });
