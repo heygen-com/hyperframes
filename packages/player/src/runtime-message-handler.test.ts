@@ -43,6 +43,23 @@ const stageSizeEvent = (width: unknown, height: unknown, source: object): Messag
   }) as unknown as MessageEvent;
 
 describe("handleRuntimeMessage stage-size", () => {
+  it("leaves the frame's size alone for a root's measured box, which follows the frame", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+    const measured = {
+      source: frameWindow,
+      data: {
+        source: "hf-preview",
+        type: "stage-size",
+        measuredSize: { width: 1280, height: 720 },
+      },
+    } as unknown as MessageEvent;
+
+    handleRuntimeMessage(measured, frameWindow, callbacks);
+
+    expect(callbacks.setCompositionSize).not.toHaveBeenCalled();
+  });
+
   it("applies a finite positive stage size", () => {
     const frameWindow = {} as Window;
     const callbacks = makeCallbacks();

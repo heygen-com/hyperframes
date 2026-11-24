@@ -140,10 +140,9 @@ it("re-runs the saved script in place when the frame refuses a patch of a soft-r
   );
 
   await vi.waitFor(() =>
-    expect(previewRequest.mock.calls.map(([, kind]) => kind)).toEqual([
-      "patch-tweens",
-      "soft-reload",
-    ]),
+    expect(
+      previewRequest.mock.calls.map(([, kind]) => kind).filter((kind) => kind !== "gsap-snapshot"),
+    ).toEqual(["patch-tweens", "soft-reload"]),
   );
   expect(reloadPreview).not.toHaveBeenCalled();
 });

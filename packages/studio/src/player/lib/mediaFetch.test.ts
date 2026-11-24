@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MediaFetchError, mediaUrlSourceOptions, reportMediaFetchFailure } from "./mediaFetch";
+import {
+  MediaFetchError,
+  mediaUrlSourceOptions,
+  reportMediaFetchFailure,
+  selfContainedFormats,
+} from "./mediaFetch";
 
 const URL_WITH_PATH = "http://127.0.0.1:5190/api/projects/demo/preview/clips/take-1.mp4";
 
@@ -736,5 +741,67 @@ describe("reportMediaFetchFailure", () => {
     expect(warn.mock.calls).toEqual([
       ["[Studio] thumbnail range fetch failed: network TypeError after 2 retries"],
     ]);
+  });
+});
+
+describe("one source reads one address", () => {
+  const OTHER = "http://127.0.0.1:5190/api/projects/other/preview/clips/take-2.mp4";
+  const PLAYLIST = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n#EXTINF:4,\n${OTHER}\n#EXT-X-ENDLIST\n`;
+
+  function playlistServer() {
+    const asked: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        asked.push(String(input));
+        return new Response(PLAYLIST, { status: 200 });
+      }),
+    );
+    return asked;
+  }
+
+  it("refuses a read of a second address without sending it, and does not retry it", async () => {
+    const sent = vi.fn(async () => new Response("", { status: 206 }));
+    vi.stubGlobal("fetch", sent);
+    const { fetchFn, getRetryDelay } = mediaUrlSourceOptions("thumbnail");
+    await fetchFn(URL_WITH_PATH);
+
+    const error = await fetchFn(OTHER).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ name: "MediaFetchError", status: null, code: "OtherAddress" });
+    expect(String((error as Error).message)).not.toContain("take-2");
+    expect(getRetryDelay(1, error)).toBeNull();
+    expect(sent).toHaveBeenCalledTimes(1);
+    await expect(fetchFn(new URL(URL_WITH_PATH))).resolves.toBeInstanceOf(Response);
+  });
+
+  it("fails a file whose content is a playlist, having read only the address it was given", async () => {
+    const asked = playlistServer();
+    const mb = await import("mediabunny");
+    const input = new mb.Input({
+      source: new mb.UrlSource(URL_WITH_PATH), // the library's own fetch: nothing but the formats stops a second read
+      formats: selfContainedFormats(mb),
+    });
+
+    const track = await input.getPrimaryVideoTrack().catch((e: unknown) => e);
+    input.dispose();
+
+    expect(track).toBeInstanceOf(Error);
+    expect(new Set(asked)).toEqual(new Set([URL_WITH_PATH]));
+  });
+
+  it("sends nothing to the address a playlist names, even when playlists are read", async () => {
+    const asked = playlistServer();
+    const mb = await import("mediabunny");
+    const input = new mb.Input({
+      source: new mb.UrlSource(URL_WITH_PATH, mediaUrlSourceOptions("thumbnail")),
+      formats: mb.ALL_FORMATS,
+    });
+
+    const track = await input.getPrimaryVideoTrack().catch((e: unknown) => e);
+    input.dispose();
+
+    expect(track).toBeInstanceOf(Error);
+    expect(new Set(asked)).toEqual(new Set([URL_WITH_PATH]));
   });
 });

@@ -24,6 +24,7 @@ import { rateAt, sourceTimeAt, timeAtSourceTime } from "../speedRamp.js";
 import { classifyWebAudioMediaRoute, reportWebAudioMediaRoute } from "./webAudioRoute.js";
 import { assetUrl } from "./assetUrl.js";
 import { mediaElementTime } from "./mediaClock.js";
+import { sourceLengthOf } from "./sourceLength.js";
 import { clampFadesToDuration, fadeGain, readElementFades } from "../audioFade.js";
 
 const MASTER_FX_ATTRS: FxAttributes = { automation: null };
@@ -92,8 +93,11 @@ function startBoundedSource(
   const remaining = (clipDuration - from) * mediaRate;
   if (hasBound && remaining <= 0) return false;
   const when = from > elapsed ? scheduledAt + (from - elapsed) / globalRate : 0;
-  if (hasBound) node.start(when, from * mediaRate + mediaStart, remaining);
-  else node.start(when, from * mediaRate + mediaStart);
+  let offset = from * mediaRate + mediaStart;
+  if (node.loop)
+    offset = node.loopStart + ((offset - node.loopStart) % (node.loopEnd - node.loopStart));
+  if (hasBound) node.start(when, offset, remaining);
+  else node.start(when, offset);
   return true;
 }
 
@@ -982,6 +986,13 @@ export class WebAudioTransport {
       const sourceNode = this._ctx.createBufferSource();
       sourceNode.buffer = buffer;
       sourceNode.playbackRate.value = sourceRate;
+      const sourceLength = sourceLengthOf(el);
+      const loopEnd = Number.isFinite(sourceLength) ? sourceLength : buffer.duration;
+      if (el.loop && loopEnd > mediaStart) {
+        sourceNode.loop = true;
+        sourceNode.loopStart = mediaStart;
+        sourceNode.loopEnd = loopEnd;
+      }
 
       const gainNode = this._ctx.createGain();
       gainNode.gain.value = volume;

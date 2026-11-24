@@ -60,7 +60,8 @@ try {
     },
     `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
   );
-  await direct.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
+  // Linux's 30 s load limit, as on CI, plus slack.
+  await direct.waitForFunction(() => window.__playerError !== undefined, { timeout: 36_000 });
   const sealedError = String(await direct.evaluate(() => window.__playerError));
   assert.match(
     sealedError,
@@ -80,7 +81,8 @@ try {
     },
     `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
   );
-  await elsewhere.waitForFunction(() => window.__playerError !== undefined, { timeout: 15_000 });
+  // Linux's 30 s load limit, as on CI, plus slack.
+  await elsewhere.waitForFunction(() => window.__playerError !== undefined, { timeout: 36_000 });
   assert.doesNotMatch(
     String(await elsewhere.evaluate(() => window.__playerError)),
     /sandbox-origin/,
@@ -143,7 +145,8 @@ try {
         new MessageEvent("message", { data: w.__lastTimeline, source: frame.contentWindow }),
       );
       const started = performance.now();
-      while (performance.now() - started < 14_000 && w.__playerError === undefined)
+      // Linux's 30 s load limit, as on CI, plus slack.
+      while (performance.now() - started < 36_000 && w.__playerError === undefined)
         await new Promise((resolve) => setTimeout(resolve, 100));
       return w.__playerError ?? null;
     },

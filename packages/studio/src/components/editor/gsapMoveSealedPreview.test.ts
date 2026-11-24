@@ -204,6 +204,15 @@ it("ends a sealed drag on GSAP's route without its drawn translate, so the saved
   await vi.waitFor(() => expect(document.getElementById("box")!.style.translate).toBe(""));
 });
 
+// fails without the fix: a sealed drag on GSAP's route left its offset on Studio's stand-in, the next gesture counted
+// from it, and a second scale resize of the layer saved its position that far off.
+it("leaves no Studio offset on the stand-in once a sealed drag ends on GSAP's route", async () => {
+  mount(SCRIPT);
+  const { standIn } = await dragBoxOnSealedFrame(SCRIPT);
+
+  expect((standIn as HTMLElement).style.getPropertyValue("--hf-studio-offset-x")).toBe("");
+});
+
 // fails without the fix: ending the draft on GSAP's route took back the size a resize had drawn too.
 it("keeps the size a sealed resize drew when its anchor ends on GSAP's route", async () => {
   mount(SCRIPT);

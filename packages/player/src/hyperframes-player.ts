@@ -58,6 +58,15 @@ const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
 const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
+
+type FrameTarget = { src: string } | { srcdoc: string | null };
+type SealedPage = { bySrc: true } | { bySrc: false; html: string; url: string };
+
+// A srcdoc copy runs under the embedding page's policy, so a page that sets its own, or whose headers this
+// player can't all read (a redirect to another site), loads by src.
+const OWN_POLICY_HEADERS = ["content-security-policy", "x-frame-options"];
+const mayCarryOwnPolicy = (response: Response) =>
+  response.type !== "basic" || OWN_POLICY_HEADERS.some((name) => response.headers.has(name));
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // Bounds how long the player waits on a same-origin composition's readiness
 // inputs (media, compute, paint-and-idle) before playing anyway — a stuck
@@ -102,6 +111,8 @@ type PendingRuntimeDataDelivery = {
   requestId: number;
   timeoutId: number;
 };
+
+const roundOrNull = (ms: number | null) => (ms === null ? null : Math.round(ms));
 
 function clampPlaybackRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
@@ -285,6 +296,7 @@ class HyperframesPlayer extends HTMLElement {
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
+    this.probe.endNavigation();
     this.probe.stop();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -327,7 +339,7 @@ class HyperframesPlayer extends HTMLElement {
           this._showDocument(val);
         } else {
           this._documentLoad++;
-          this.iframe.removeAttribute("srcdoc");
+          this._navigateFrame({ srcdoc: null });
           const src = this.getAttribute("src");
           if (src !== null && (this._wantsVideo() || this.hasAttribute(SANDBOX_ORIGIN_ATTR)))
             this._navigateSrc(src);
@@ -425,7 +437,7 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     const src = this.getAttribute("src");
-    if (src === null) this.iframe.src = "about:blank";
+    if (src === null) this._navigateFrame({ src: "about:blank" });
     else this._loadSrc(src);
   }
 
@@ -1128,7 +1140,7 @@ class HyperframesPlayer extends HTMLElement {
     }
     this._teardownVideo();
     if (this.hasAttribute("srcdoc")) {
-      this.iframe.src = prepareSrcForElement(this, src);
+      this._navigateFrame({ src: prepareSrcForElement(this, src) });
       return;
     }
     const url = parseUrl(src);
@@ -1136,12 +1148,26 @@ class HyperframesPlayer extends HTMLElement {
       this._showSealedSrc(src, url.href);
       return;
     }
-    this._navigateFrame(src);
+    this.probe.markNavigation();
+    this._writeSrcOverSrcdoc(src);
   }
 
-  private _navigateFrame(src: string): void {
+  /** Loads src in place of a sealed srcdoc this player may be showing. */
+  private _writeSrcOverSrcdoc(src: string): void {
     this.iframe.removeAttribute("srcdoc");
-    this.iframe.src = prepareSrcForElement(this, src);
+    this._writeFrame({ src: prepareSrcForElement(this, src) });
+  }
+
+  private _navigateFrame(to: FrameTarget): void {
+    this.probe.markNavigation();
+    this._writeFrame(to);
+  }
+
+  private _writeFrame(to: FrameTarget): void {
+    this.probe.frameWritten();
+    if (!("srcdoc" in to)) this.iframe.src = to.src;
+    else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
+    else this.iframe.srcdoc = to.srcdoc;
   }
 
   /** The frame shows `html`. A sealed frame gets the runtime as text, so it is shown once that loads. */
@@ -1149,9 +1175,10 @@ class HyperframesPlayer extends HTMLElement {
     const load = ++this._documentLoad;
     if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
       this._srcdocUrl = null;
-      this.iframe.srcdoc = prepareSrcdocForElement(this, html);
+      this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, html) });
       return;
     }
+    this.probe.markPreparation();
     this._showSealedDocument(html, undefined, load);
   }
 
@@ -1160,10 +1187,11 @@ class HyperframesPlayer extends HTMLElement {
       (doc) => {
         if (load !== this._documentLoad) return;
         this._srcdocUrl = base ?? null;
-        this.iframe.srcdoc = doc;
+        this._writeFrame({ srcdoc: doc });
       },
       () => {
         if (load !== this._documentLoad) return;
+        this.probe.endNavigation();
         this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
       },
     );
@@ -1176,20 +1204,24 @@ class HyperframesPlayer extends HTMLElement {
    */
   private _showSealedSrc(src: string, href: string): void {
     const load = ++this._documentLoad;
+    this.probe.markPreparation();
     fetch(href, { credentials: "same-origin" })
-      .then(async (response) => {
+      .then(async (response): Promise<SealedPage> => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (mayCarryOwnPolicy(response)) return { bySrc: true };
         const html = decodePage(await response.arrayBuffer(), response.headers.get("content-type"));
-        return { html, url: response.url || href };
+        return carriesRuntime(html)
+          ? { bySrc: true }
+          : { bySrc: false, html, url: response.url || href };
       })
       .then(
-        ({ html, url }) => {
+        (page) => {
           if (load !== this._documentLoad) return;
-          if (carriesRuntime(html)) this._navigateFrame(src);
-          else this._showSealedDocument(html, url, load);
+          if (page.bySrc) this._writeSrcOverSrcdoc(src);
+          else this._showSealedDocument(page.html, page.url, load);
         },
         () => {
-          if (load === this._documentLoad) this._navigateFrame(src);
+          if (load === this._documentLoad) this._writeSrcOverSrcdoc(src);
         },
       );
   }
@@ -1222,6 +1254,7 @@ class HyperframesPlayer extends HTMLElement {
       // Unloads a composition this player was showing before it switched to video.
       this.iframe.src = "about:blank";
     }
+    this.probe.endNavigation();
     this.probe.stop();
     const { video, adapter } = this._videoSource;
     this._directTimelineAdapter = adapter;
@@ -1668,10 +1701,13 @@ class HyperframesPlayer extends HTMLElement {
 
   private _dispatchReady(): void {
     this._readyDocument = this._getSameOriginIframeDocument();
+    this.probe.endNavigation();
     const detail = {
       duration: this._duration,
       compositionWidth: this._compositionWidth,
       compositionHeight: this._compositionHeight,
+      readyMs: this._videoSource ? null : roundOrNull(this.probe.elapsedMs()),
+      loadLimitMs: this._videoSource ? null : this.probe.limitMs,
     };
     this._emit(new CustomEvent("ready", { detail }));
     // Once ready: covers a size message that never came, and lets a zero-size player warn.

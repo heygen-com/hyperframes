@@ -22,10 +22,28 @@ export function servePausedVideoFrames(iframe: HTMLIFrameElement): void {
   served.set(iframe, client);
   const { port1, port2 } = new MessageChannel();
   const host = pausedFrameHost(port1, project);
-  iframe.addEventListener("load", host.close, { once: true });
+  closeOnNextDocument(iframe, host.close);
   client
     .request("serve-paused-frames", { channel: port2 }, { transfer: [port2] })
     .then(({ served: on }) => on || host.close(), host.close);
+}
+
+function readableDocument(iframe: HTMLIFrameElement): Document | null {
+  try {
+    return iframe.contentDocument;
+  } catch {
+    return null;
+  }
+}
+
+function closeOnNextDocument(iframe: HTMLIFrameElement, close: () => void): void {
+  const served = readableDocument(iframe);
+  const onLoad = () => {
+    if (served && readableDocument(iframe) === served) return;
+    iframe.removeEventListener("load", onLoad);
+    close();
+  };
+  iframe.addEventListener("load", onLoad);
 }
 
 async function projectFiles(project: string): Promise<Set<string>> {

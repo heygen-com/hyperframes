@@ -10,14 +10,14 @@ import type { WaitingPressState } from "./domEditOverlayGestures";
 import type { OverChannel, Shown } from "./previewGestureStartRead";
 import { useDomEditNudge } from "./useDomEditNudge";
 
-const { readShownGestureStarts } = vi.hoisted(() => ({ readShownGestureStarts: vi.fn() }));
+const { askShownGestureStarts } = vi.hoisted(() => ({ askShownGestureStarts: vi.fn() }));
 vi.mock("../../player/lib/previewChannel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../player/lib/previewChannel")>()),
   previewFrameOpaque: () => true,
 }));
 vi.mock("./previewGestureStartRead", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./previewGestureStartRead")>()),
-  readShownGestureStarts,
+  askShownGestureStarts,
 }));
 
 installReactActEnvironment();
@@ -35,11 +35,13 @@ function Harness({
   selection,
   flush,
   pressing = ref(null),
+  onBlocked = () => {},
 }: {
   commit: () => Promise<unknown>;
   selection: ReturnType<typeof sealed>;
   flush?: { current: () => void };
   pressing?: { current: WaitingPressState | null };
+  onBlocked?: (selection: unknown, reason?: string) => void;
 }) {
   const { flushNudge } = useDomEditNudge({
     selection,
@@ -56,7 +58,7 @@ function Harness({
     blockedMoveRef: ref(null),
     waitingPressRef: pressing,
     onManualDragStartRef: ref(() => {}),
-    onBlockedMoveRef: ref(() => {}),
+    onBlockedMoveRef: ref(onBlocked),
     onPathOffsetCommitRef: ref(commit),
     onGroupPathOffsetCommitRef: ref(async () => {}),
   });
@@ -70,11 +72,11 @@ const arrowRight = () =>
 /** Each frame read waits until the test answers it, in any order. */
 function heldReads() {
   const answers: ((read: OverChannel) => void)[] = [];
-  readShownGestureStarts.mockImplementation(
+  askShownGestureStarts.mockImplementation(
     () => new Promise<OverChannel>((resolve) => answers.push(resolve)),
   );
   return async (i: number) => {
-    const [, , , [selection]] = readShownGestureStarts.mock.calls[i]!;
+    const [, , , [selection]] = askShownGestureStarts.mock.calls[i]!;
     const shown: Shown = {
       selection,
       rect: RECT,
@@ -103,7 +105,7 @@ function mount(props: React.ComponentProps<typeof Harness>) {
 beforeEach(() => {
   vi.useFakeTimers();
   __resetForTests();
-  readShownGestureStarts.mockReset();
+  askShownGestureStarts.mockReset();
   dot = sealed("Dot", "e1");
 });
 afterEach(() => {
@@ -125,7 +127,7 @@ it("moves a sealed element GSAP animates by its tween, counting the keys pressed
   await answer(0);
   act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS));
 
-  expect(readShownGestureStarts).toHaveBeenCalledOnce();
+  expect(askShownGestureStarts).toHaveBeenCalledOnce();
   expect(commit).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({ handle: "e1" }),
     { x: 3, y: 0 },
@@ -205,7 +207,7 @@ it("asks the frame nothing for an arrow pressed while a canvas press waits, and 
   mount({ commit, selection: dot, pressing });
 
   act(() => arrowRight());
-  expect(readShownGestureStarts).not.toHaveBeenCalled();
+  expect(askShownGestureStarts).not.toHaveBeenCalled();
 
   pressing.current = null;
   act(() => arrowRight());
@@ -215,5 +217,18 @@ it("asks the frame nothing for an arrow pressed while a canvas press waits, and 
     expect.objectContaining({ handle: "e1" }),
     { x: 1, y: 0 },
     { plainTranslate: false },
+  );
+});
+
+// fails without the fix: a nudge the frame never answered was dropped without a word.
+it("says the preview didn't answer when a sealed nudge's read never does", async () => {
+  askShownGestureStarts.mockResolvedValue("unanswered");
+  const onBlocked = vi.fn();
+  mount({ commit: vi.fn(async () => {}), selection: dot, onBlocked });
+  act(() => void arrowRight());
+  await settle();
+  expect(onBlocked).toHaveBeenCalledWith(
+    expect.objectContaining({ handle: "e1" }),
+    "The preview didn't answer, so Studio can't move this layer. Try again.",
   );
 });

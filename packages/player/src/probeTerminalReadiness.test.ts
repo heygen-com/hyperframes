@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HyperframesPlayer } from "./hyperframes-player.js";
+import { loadLimitMs } from "./composition-probe.js";
 import { RUNTIME_CDN_URL } from "./runtime-url.js";
+
+const LIMIT = loadLimitMs();
 
 function mountPlayer() {
   const player = document.createElement("hyperframes-player") as HyperframesPlayer;
@@ -52,19 +55,19 @@ describe("terminal probe readiness", () => {
     vi.useRealTimers();
   });
 
-  it("does not accept a runtime timeline message after the probe timed out", () => {
+  it("accepts a runtime timeline message after the load limit, after its error", () => {
     const { player, iframe, onError, onReady } = mountPlayer();
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(onError).toHaveBeenCalledOnce();
     vi.advanceTimersByTime(1000);
     sendTimeline(iframe);
-    expectUnready(player, onReady);
+    expectTimelineReady(player, onReady);
   });
 
-  it("waits past 8 s for a slow runtime when the host owns the deadline", () => {
+  it("waits past the load limit for a slow runtime when the host owns the deadline", () => {
     const { player, iframe, onError, onReady } = mountPlayer();
     player.setAttribute("no-load-timeout", "");
-    vi.advanceTimersByTime(20_000);
+    vi.advanceTimersByTime(LIMIT + 20_000);
     expect(onError).not.toHaveBeenCalled();
     Object.assign(iframe.contentWindow!, { __player: { getDuration: () => 9 } });
     vi.advanceTimersByTime(200);
@@ -81,7 +84,7 @@ describe("terminal probe readiness", () => {
 
   it("rejects the failed document while its replacement is still navigating", () => {
     const { player, iframe, onReady } = mountPlayer();
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     keepDocument(iframe, iframe.contentDocument);
     player.setAttribute("src", "next.html");
     sendTimeline(iframe);
@@ -90,7 +93,7 @@ describe("terminal probe readiness", () => {
 
   it("accepts the replacement document handshake before its load event", () => {
     const { player, iframe, onReady } = mountPlayer();
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     keepDocument(iframe, iframe.contentDocument);
     player.setAttribute("src", "next.html");
     const replacement = document.implementation.createHTMLDocument("Replacement");
@@ -102,7 +105,7 @@ describe("terminal probe readiness", () => {
   it("keeps an opaque document failure latched until its next load event", () => {
     const { player, iframe, onError, onReady } = mountPlayer();
     keepDocument(iframe, null);
-    vi.advanceTimersByTime(8000);
+    vi.advanceTimersByTime(LIMIT);
     expect(onError).toHaveBeenCalledOnce();
     player.setAttribute("src", "https://example.org/next.html");
     sendTimeline(iframe);

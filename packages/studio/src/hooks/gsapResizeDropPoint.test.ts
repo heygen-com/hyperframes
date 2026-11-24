@@ -21,6 +21,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { drawPreviewDraft, previewDraftsSent } from "../components/editor/previewDrafts";
+import { applyStudioBoxSize, readStudioBoxSize } from "../components/editor/manualEdits";
 import { measurePreviewGestureStart } from "../components/editor/previewGestureStartRead";
 import {
   findPreviewElementForSelection,
@@ -439,7 +440,8 @@ it("lands on the drop point when undo paints the box back while its animations l
   expect(settled.w).toBeCloseTo(dropPoint.w, 0);
 });
 
-it("lands on the drop point in a sealed preview, measured by the frame, with no second move", async () => {
+/** A sealed scale resize dropped at 900x360, with the frame measuring the drop; resolves once it is committed. */
+async function sealedScaleDrop(beforeCommit: (frameElement: HTMLElement) => void = () => {}) {
   const box = { w: 630, h: 252 };
   const base = { x: 489, y: 195 };
   const drop = { w: 900, h: 360, x: 300, y: 100 };
@@ -487,9 +489,11 @@ it("lands on the drop point in a sealed preview, measured by the frame, with no 
   });
   await previewDraftsSent(iframe);
   const dropPoint = el.getBoundingClientRect();
+  applyStudioBoxSize(selection.element, { width: drop.w, height: drop.h });
   const animations = [scaleTween(false), positionAnimation("static-set", base)!];
   const commitMutation = vi.fn();
 
+  beforeCommit(el);
   const outcome = await tryGsapResizeIntercept(
     selection,
     { width: drop.w, height: drop.h },
@@ -509,6 +513,13 @@ it("lands on the drop point in a sealed preview, measured by the frame, with no 
     },
   );
 
+  return { outcome, commitMutation, box, el, dropPoint, standIn: selection.element };
+}
+
+// fails without the fix: a sealed scale drop kept the dropped size on Studio's stand-in, so the next resize of the
+// layer started from that size on top of the saved scale and jumped, saving the jump.
+it("lands on the drop point in a sealed preview, measured by the frame, and leaves no box size behind", async () => {
+  const { outcome, commitMutation, box, el, dropPoint, standIn } = await sealedScaleDrop();
   expect(outcome).toMatchObject({ status: "persisted", ownsDragOffset: true });
   const written = persistedPositions(commitMutation.mock.calls).at(-1);
   const scale = persistedScale(commitMutation.mock.calls)!;
@@ -517,4 +528,12 @@ it("lands on the drop point in a sealed preview, measured by the frame, with no 
     expect(shown.x).toBeCloseTo(dropPoint.x, 0);
     expect(shown.y).toBeCloseTo(dropPoint.y, 0);
   }
+  expect(readStudioBoxSize(standIn)).toEqual({ width: 0, height: 0 });
+});
+
+// fails without the fix: when the frame could not measure the drop (its element gone, as mid-reload), the early return
+// cleared the box size only on a scriptable preview's element, so the sealed stand-in kept the dropped size.
+it("leaves no box size on the sealed stand-in when the frame cannot measure the drop", async () => {
+  const { standIn } = await sealedScaleDrop((frameElement) => frameElement.remove());
+  expect(readStudioBoxSize(standIn)).toEqual({ width: 0, height: 0 });
 });

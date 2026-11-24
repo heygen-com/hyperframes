@@ -183,12 +183,9 @@ export type RuntimeStaticCompositionMessage = {
   height: number | null;
 };
 
-export type RuntimeStageSizeMessage = {
-  source: "hf-preview";
-  type: "stage-size";
-  width: number;
-  height: number;
-};
+export type RuntimeStageSizeMessage =
+  | { source: "hf-preview"; type: "stage-size"; width: number; height: number }
+  | { source: "hf-preview"; type: "stage-size"; measuredSize: { width: number; height: number } };
 
 /**
  * Fired once per session when the runtime's attempt to play a timed media
