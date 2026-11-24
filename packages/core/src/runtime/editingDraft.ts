@@ -3,10 +3,12 @@
  * resize here, on the element's inline style, so the preview moves with the pointer. What the
  * element had before its first draft is kept until the parent ends the draft or the frame loads again.
  */
+import { seekGsapTimeline } from "./adapters/gsap";
 import { isStylableElement, type StylableElement as Styled } from "./domRealm";
 import { elementForHandle } from "./editingHandles";
 import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
 import type { EditingDraft, EditingDraftRotate } from "./editingPort";
+import type { RuntimeTimelineLike } from "./types";
 
 export const SIZE_PROPERTIES = [
   "box-sizing",
@@ -26,6 +28,7 @@ interface Before {
   translate: string[];
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
+  gsapPosition?: { x: number; y: number };
   drewTransform?: boolean;
 }
 
@@ -36,6 +39,7 @@ type Gsap = {
 const frameGsap = () => (window as unknown as { gsap?: Gsap }).gsap;
 
 const before = new WeakMap<Element, Before>();
+const liveDrafts = new Map<Styled, EditingDraft>();
 let lastDraft = 0;
 
 /** "calc(50% + 2px) 4px" as its top-level parts. */
@@ -115,8 +119,42 @@ export function movedTranslate(
   return `calc(${x} + ${offset.x}px) calc(${y} + ${offset.y}px)${z ? ` ${z}` : ""}`;
 }
 
-function drawTranslate(element: Styled, offset: { x: number; y: number }): void {
-  element.style.setProperty("translate", movedTranslate(beforeOf(element).translate, offset));
+type DraftTranslate = NonNullable<Extract<EditingDraft, { translate: unknown }>["translate"]>;
+
+function drawTranslate(element: Styled, offset: DraftTranslate): void {
+  const saved = beforeOf(element);
+  if (offset.route !== "gsap")
+    return void element.style.setProperty("translate", movedTranslate(saved.translate, offset));
+  const gsap = frameGsap();
+  const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
+  saved.gsapPosition ??= { x: read("x"), y: read("y") };
+  element.style.setProperty("translate", "none");
+  gsap?.set?.(element, { x: offset.x, y: offset.y });
+}
+
+export function rebaseDrawnPosition(element: Element, props: Record<string, unknown>): void {
+  const position = before.get(element)?.gsapPosition;
+  for (const axis of ["x", "y"] as const) {
+    const value = props[axis];
+    if (position && typeof value === "number" && Number.isFinite(value)) position[axis] = value;
+  }
+}
+
+function restoreGsapPosition(element: Styled): void {
+  const { gsapPosition } = before.get(element) ?? {};
+  if (gsapPosition) frameGsap()?.set?.(element, { ...gsapPosition });
+}
+
+function redrawTimelines(): void {
+  const timelines = Object.values(
+    (window as { __timelines?: Record<string, RuntimeTimelineLike> }).__timelines ?? {},
+  );
+  for (const timeline of timelines) {
+    const time = timeline.totalTime?.();
+    if (typeof time !== "number") continue;
+    seekGsapTimeline(timeline, 0, true);
+    seekGsapTimeline(timeline, time, true);
+  }
 }
 
 export function writeDrawnSize(
@@ -158,37 +196,61 @@ function drawRotate(element: Styled, rotate: EditingDraftRotate | null): void {
   gsap?.set?.(element, { rotation: rotate.angle });
 }
 
-function end(element: Styled, ending: EditingDraftEnd): void {
+function end(element: Styled, ending: EditingDraftEnd): boolean {
   const saved = before.get(element);
-  if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return;
+  if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return false;
   if (ending.end === "restore") {
     restore(element, DRAWN);
+    restoreGsapPosition(element);
     restoreGsapRotation(element);
   }
   if (ending.end === "keep-size") restore(element, ["translate"]);
   before.delete(element);
+  liveDrafts.delete(element);
+  return ending.end === "restore";
 }
 
-function apply(element: Styled, draft: EditingDraft): void {
+function apply(element: Styled, draft: EditingDraft): boolean {
   if ("end" in draft) return end(element, draft);
+  const last = liveDrafts.get(element);
+  const keepsRotation = !("rotate" in draft) && last && "rotate" in last;
+  liveDrafts.set(element, keepsRotation ? { ...draft, rotate: last.rotate } : draft);
   if ("rotate" in draft) drawRotate(element, draft.rotate ?? null);
   if (draft.translate) drawTranslate(element, draft.translate);
   else restore(element, ["translate"]);
   if (draft.size) drawSize(element, draft.size);
   else restore(element, SIZE_PROPERTIES);
+  return false;
+}
+
+/** Re-renders the timelines, then puts every live draft back over what they drew. */
+function redrawOwned(element: Styled, draft: Exclude<EditingDraft, { end: unknown }>): void {
+  if ("rotate" in draft && draft.rotate) drawRotate(element, draft.rotate);
+  if (draft.translate) drawTranslate(element, draft.translate);
+  if (draft.size) drawSize(element, draft.size);
+}
+
+function redrawKeepingLiveDrafts(): void {
+  redrawTimelines();
+  for (const [element, draft] of liveDrafts) {
+    if (element.isConnected && !("end" in draft)) redrawOwned(element, draft);
+    else liveDrafts.delete(element);
+  }
 }
 
 /** Applies each draft in order; one for an element this load no longer has is skipped. */
 export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
   let drawn = 0;
+  let restored = false;
   const numbers: Record<string, number> = {};
   for (const draft of drafts) {
     const element = elementForHandle(draft.handle);
     if (!isStylableElement(element)) continue;
-    apply(element, draft);
+    restored = apply(element, draft) || restored;
     drawn++;
     const saved = before.get(element);
     if (saved) numbers[draft.handle] = saved.draft;
   }
+  if (restored) redrawKeepingLiveDrafts();
   return { drawn, drafts: numbers };
 }
