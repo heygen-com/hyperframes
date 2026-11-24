@@ -239,12 +239,12 @@ describe("registry resolver", () => {
     it("says why a registry on a private address was not read", async () => {
       const fetch = vi.fn();
       vi.stubGlobal("fetch", fetch);
-      const error = await resolveItemWithDependencies("alpha", {
+      const resolved = resolveItemWithDependencies("alpha", {
         baseUrl: "https://127.0.0.1:9/registry",
         publicOnly: true,
-      }).catch((caught: unknown) => caught as Error);
-      expect(error.message).toContain("127.0.0.1:9 is not a public address");
-      expect(error.message).not.toMatch(/contacted/i);
+      });
+      await expect(resolved).rejects.toThrow("127.0.0.1:9 is not a public address");
+      await expect(resolved).rejects.not.toThrow(/contacted/i);
       expect(fetch).not.toHaveBeenCalled();
     });
 
