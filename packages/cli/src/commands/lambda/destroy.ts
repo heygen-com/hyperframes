@@ -30,6 +30,7 @@ export async function runDestroy(args: DestroyArgs): Promise<void> {
     c.dim(terminalText(`→ sam delete (stack=${stack.stackName} region=${stack.region})`)),
   );
   const root = repoRoot();
+  if (root) console.log(c.dim(terminalText(`→ Using the source checkout at ${root}`)));
   const awsProfile = args.awsProfile ?? process.env.AWS_PROFILE;
   // Mirror deploy.ts's AWS_PROFILE env fallback — `AWS_PROFILE=prod
   // hyperframes lambda destroy` should hit the same account `deploy`
