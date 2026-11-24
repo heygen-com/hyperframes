@@ -716,3 +716,150 @@ describe.skipIf(process.platform === "win32")("a FIFO with no writer", () => {
     expect(await playlistLeavesItsFolder(list)).toBe(true);
   });
 });
+
+describe("playlistLeavesItsFolder judges the name ffmpeg opens for each entry", () => {
+  const FFPROBE_8 = /^ffprobe version n?8\./.test(
+    spawnSync(getFfprobeBinary(), ["-version"], { encoding: "utf-8" }).stdout ?? "",
+  );
+  const segments = (extra = "") =>
+    `#EXTM3U\n#EXT-X-TARGETDURATION:1\n${extra}#EXTINF:1,\nseg.ts\n#EXT-X-ENDLIST\n`;
+  const kinds: [string, (name: string) => string][] = [
+    [
+      "segment",
+      (name) => `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${name}\n#EXT-X-ENDLIST\n`,
+    ],
+    ["variant", (name) => `#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n${name}\n`],
+    [
+      "rendition",
+      (name) =>
+        `#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=a,NAME=a,URI="${name}"\n` +
+        '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="a"\nv.m3u8\n',
+    ],
+    ["key", (name) => segments(`#EXT-X-KEY:METHOD=AES-128,URI="${name}"\n`)],
+    ["map", (name) => segments(`#EXT-X-MAP:URI="${name}"\n`)],
+  ];
+  const uriKinds = kinds.filter(([kind]) => !["segment", "variant"].includes(kind));
+  const outsideList = `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${join(tmpdir(), "outside.ts")}\n#EXT-X-ENDLIST\n`;
+
+  /** The list, a harmless file at the name the walk used to judge, and the list ffmpeg opens instead. */
+  function withDecoy(list: string, suffix: string): string {
+    const top = writeTree({ "clip.m3u8": list, "v.m3u8": segments(), "seg.ts": "media" });
+    writeFileSync(join(top, "..", suffix.replace(/^%3F/i, "?")), "media");
+    if (suffix.startsWith("?")) writeFileSync(`${top}${suffix}`, outsideList);
+    return top;
+  }
+
+  const forms = [
+    ...(process.platform === "win32" ? [] : ["?x.m3u8", "%3Fx.m3u8"]).flatMap((suffix) =>
+      kinds.map(([kind, list]) => [kind, suffix, list] as const),
+    ),
+    ...uriKinds.flatMap(([kind, list]) => [
+      [kind, "#x.m3u8", list] as const,
+      [kind, "", list] as const,
+    ]),
+  ];
+
+  it.each(forms)("refuses a %s entry %j with no path before it", async (_kind, suffix, list) => {
+    const top = withDecoy(list(suffix), suffix || "decoy");
+    expect(await playlistLeavesItsFolder(top)).toBe(true);
+    expect(await isNotMediaPayload(top)).toBe(true);
+    await expect(assertMediaPayload(top, "clip")).rejects.toBeInstanceOf(NotMediaPayloadError);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a segment line that trims to a query",
+    async () => {
+      const top = withDecoy(kinds[0]![1](" ?x.m3u8"), "?x.m3u8");
+      expect(await playlistLeavesItsFolder(top)).toBe(true);
+    },
+  );
+
+  it.skipIf(!FFPROBE_8 || process.platform === "win32")(
+    "matches ffprobe, which opens the list's own name plus a query-only entry",
+    async () => {
+      const top = withDecoy(kinds[0]![1]("?x.ts"), "?x.ts");
+      const probe = spawnSync(
+        getFfprobeBinary(),
+        ["-loglevel", "debug", "-show_format", "--", top],
+        {
+          encoding: "utf-8",
+        },
+      );
+      expect(probe.stderr).toContain(`Opening '${top}?x.ts' for reading`);
+    },
+  );
+
+  it.skipIf(!FFPROBE_8)("matches ffprobe on the name each kind of entry opens", async () => {
+    for (const [kind, list] of kinds) {
+      const name = kind === "variant" || kind === "rendition" ? "sub/in.m3u8" : `sub/${kind}.ts`;
+      const top = writeTree({ "clip.m3u8": list(name), "v.m3u8": segments(), "seg.ts": "media" });
+      mkdirSync(join(top, "..", "sub"), { recursive: true });
+      writeFileSync(join(top, "..", "sub", "seg.ts"), "media");
+      writeFileSync(join(top, "..", name), name.endsWith(".m3u8") ? segments() : "media");
+      expect(await playlistLeavesItsFolder(top)).toBe(false);
+      const probe = spawnSync(
+        getFfprobeBinary(),
+        ["-loglevel", "debug", "-show_format", "--", top],
+        {
+          encoding: "utf-8",
+        },
+      );
+      expect(probe.stderr, kind).toContain(`Opening '${join(top, "..", name)}' for reading`);
+    }
+  });
+
+  it("keeps a query or fragment after a name, as ffmpeg opens it beside the list", async () => {
+    const names = process.platform === "win32" ? ["seg#1.ts"] : ["seg#1.ts", "seg?v=1.ts"];
+    const list = withBeside(writeFixture("clip.m3u8", kinds[0]![1](names.join("\n"))), ...names);
+    expect(await playlistLeavesItsFolder(list)).toBe(false);
+  });
+});
+
+describe("playlistLeavesItsFolder refuses a list behind an ID3v2 tag", () => {
+  const tag = (version: number, flags: number, body = 4) =>
+    Buffer.concat([
+      Buffer.from([0x49, 0x44, 0x33, version, 0, flags, 0, 0, 0, body]),
+      Buffer.alloc(body),
+    ]);
+  const concat = "ffconcat version 1.0\nfile seg.mp4\n";
+  const tags = [2, 3, 4, 5].flatMap((version) =>
+    [0, 0x10].map((flags) => [version, flags] as const),
+  );
+
+  it.each(tags)(
+    "refuses a list behind a v2.%i tag with flags %i, at the top and nested",
+    async (version, flags) => {
+      const tagged = Buffer.concat([
+        tag(version, flags),
+        Buffer.alloc(flags ? 10 : 0),
+        Buffer.from(concat),
+      ]);
+      const top = withBeside(writeFixture("clip.mp4", tagged), "seg.mp4");
+      expect(await playlistLeavesItsFolder(top)).toBe(true);
+      expect(await isNotMediaPayload(top)).toBe(true);
+      const root = mkdtempSync(join(tmpdir(), "hf-playlist-id3-"));
+      writeFileSync(join(root, "clip.mp4"), "ffconcat version 1.0\nfile inner.mp4\n");
+      writeFileSync(join(root, "inner.mp4"), tagged);
+      writeFileSync(join(root, "seg.mp4"), "media");
+      expect(await playlistLeavesItsFolder(join(root, "clip.mp4"))).toBe(true);
+    },
+  );
+
+  it("refuses a list whose start the tag's footer flag moves", async () => {
+    // A v2.3 tag with the footer flag: ffmpeg's demuxer reads the list from the tag's end, its probe 10 bytes later.
+    const root = mkdtempSync(join(tmpdir(), "hf-playlist-id3-"));
+    writeFileSync(join(root, "clip.mp4"), Buffer.concat([tag(3, 0x10), Buffer.from(concat)]));
+    writeFileSync(join(root, "seg.mp4"), "media");
+    expect(await playlistLeavesItsFolder(join(root, "clip.mp4"))).toBe(true);
+  });
+
+  it("keeps a tagged mp3 segment named by a list", async () => {
+    const list = "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\na.mp3\n#EXT-X-ENDLIST\n";
+    const top = writeFixture("clip.m3u8", list);
+    writeFileSync(
+      join(top, "..", "a.mp3"),
+      Buffer.concat([tag(3, 0x10), Buffer.from([0xff, 0xfb, 0x90, 0])]),
+    );
+    expect(await playlistLeavesItsFolder(top)).toBe(false);
+  });
+});
