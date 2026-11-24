@@ -96,7 +96,9 @@ async function deleteClip(mode: string) {
   try {
     await preview.page.evaluate(() => {
       const posted: string[][] = [];
-      window.addEventListener("message", ({ data }) => {
+      const frame = document.querySelector("iframe")!;
+      window.addEventListener("message", ({ source, data }) => {
+        if (source !== frame.contentWindow) return;
         if (data?.source === "hf-preview" && data.type === "timeline")
           posted.push(data.clips.map((clip: { id: string | null }) => clip.id));
       });
@@ -108,7 +110,7 @@ async function deleteClip(mode: string) {
         sourceFile: "index.html",
         kind: "element",
       };
-      studio.removeIframeTimelineElements(document.querySelector("iframe")!, [clip]);
+      studio.removeIframeTimelineElements(frame, [clip]);
       (window as unknown as { posted: string[][] }).posted = posted;
     });
     const inFrame = () =>
