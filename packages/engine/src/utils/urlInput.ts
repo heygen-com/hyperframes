@@ -39,11 +39,16 @@ const ROUTES = new Map<string, "local" | "proxy">([
   ["https", "proxy"],
 ]);
 
-function restrictedRoute(input: string): "local" | "declared" | "proxy" {
+function schemeRoute(input: string): "local" | "proxy" {
   const scheme = /^subfile,/i.test(input) ? "subfile" : SCHEME.exec(input)?.[1]?.toLowerCase();
   const route = scheme === undefined ? "local" : ROUTES.get(scheme);
-  if (!route)
-    throw new Error(`[FFmpeg] a ${scheme}: input is not read with a restricted page network`);
+  if (route) return route;
+  const where = resolveRestrictPageNetwork() ? " with a restricted page network" : "";
+  throw new Error(`[FFmpeg] a ${scheme}: input is not read${where}`);
+}
+
+function restrictedRoute(input: string): "local" | "declared" | "proxy" {
+  const route = schemeRoute(input);
   return route === "proxy" && /^https:/i.test(input) && contentAddressedSha256(input)
     ? "declared"
     : route;
@@ -73,6 +78,8 @@ export function urlInputArgs(
       ...proxiedLimits(),
       ...PROXY_THAT_REACHES_NOTHING,
     ];
+  if ((route ?? schemeRoute(input)) === "local")
+    return ["-protocol_whitelist", "file", ...mediaFormats()];
   if (!/^https:\/\//i.test(input)) return mediaFormats();
   const caFile = caBundles.find((path) => existsSync(path));
   if (!caFile) {
