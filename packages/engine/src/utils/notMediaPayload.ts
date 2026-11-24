@@ -313,28 +313,53 @@ export async function isNotImagePayload(filePath: string): Promise<boolean> {
 
 const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
 const MAX_PLAYLIST_DEPTH = 8;
+// The whole walk, nested lists included, is refused past these, so its cost never depends on what a list holds.
+const MAX_WALK_BYTES = 2 * MAX_PLAYLIST_BYTES;
+const MAX_WALK_ENTRIES = 50_000;
 const HTTP_URL = /^https?:\/\//i;
 const COLON_IN_FIRST_SEGMENT = /^[^/\\?#]*:/;
 const FOLDER_CUT_AT_QUERY_OR_FRAGMENT = /[?#]/;
 
-// ffmpeg reads a playlist line into a 4096-byte buffer and drops the rest of it.
-const MAX_HLS_LINE_BYTES = 4095;
+// ffmpeg reads a playlist line into a 4096-byte buffer and drops the rest of it, so it would read a longer line
+// as a different name. No real list has one, and a longer line is refused before it is parsed.
+const MAX_LIST_LINE_BYTES = 4095;
 const ATTRIBUTE_GAP = /[\t\n\v\f\r ,]/;
+const SPACE = /\s/;
+const TRAILING_HLS_BLANK = /[\t\v\f ]/;
+
+/** `line` up to its last character that `isBlank` does not match. A scan from the end, so linear in the blanks. */
+function withoutTrailing(line: string, isBlank: RegExp): string {
+  let end = line.length;
+  while (end > 0 && isBlank.test(line[end - 1]!)) end--;
+  return line.slice(0, end);
+}
 
 /**
- * Every name an HLS list can open, read as ffmpeg's hls demuxer reads it and also as written.
- * The text is latin1, one character per byte, so a line is cut where ffmpeg cuts it.
+ * Every name an HLS list can open, read as ffmpeg's hls demuxer reads it; true when a line is too long to read
+ * whole. The text is latin1, one character per byte, so a line's length is its length in bytes.
  */
-function hlsEntries(body: string): string[] {
+function hlsEntries(body: string): string[] | true {
   const names = new Set<string>();
   for (const raw of body.replaceAll("\0", "\n").split(/[\r\n]/)) {
-    for (const whole of new Set([raw, raw.slice(0, MAX_HLS_LINE_BYTES)])) {
-      const line = whole.replace(/[\t\v\f ]+$/, "");
-      const found = line.startsWith("#") ? attributeUris(line) : [line, line.trim()];
-      for (const name of found) if (name) names.add(name);
-    }
+    if (raw.length > MAX_LIST_LINE_BYTES) return true;
+    const line = withoutTrailing(raw, TRAILING_HLS_BLANK);
+    const found = line.startsWith("#") ? attributeUris(line) : [line, line.trim()];
+    for (const name of found) if (name) names.add(name);
   }
   return [...names];
+}
+
+/** The name an ffconcat `file` line gives, as `/^\s*file\s+(.*)$/` would match it, in one pass; undefined for any other line. */
+function concatFileName(raw: string): string | undefined {
+  let at = 0;
+  while (at < raw.length && SPACE.test(raw[at]!)) at++;
+  if (!raw.startsWith("file", at)) return undefined;
+  let rest = at + 4;
+  while (rest < raw.length && SPACE.test(raw[rest]!)) rest++;
+  // `\s+` needs one blank, and `.` matches no carriage return, so one left past the blanks fails the match.
+  if (rest === at + 4 || raw.includes("\r", rest)) return undefined;
+  const value = raw.slice(rest).trim();
+  return value.startsWith("'") ? value.slice(1, -1).replace(/\\(.)/g, "$1") : value;
 }
 
 /** `URI=` values of a tag, split as ffmpeg's `ff_parse_key_value` splits them. */
@@ -373,16 +398,18 @@ function attributeValue(line: string, at: number): [string, number] {
 
 const UTF8_BOM = "\xEF\xBB\xBF";
 
-function playlistEntries(text: string): string[] | undefined {
+/** The names a list can open; true when a line is too long to read whole; undefined when the text is no list. */
+function playlistEntries(text: string): string[] | true | undefined {
   const body = (text.startsWith(UTF8_BOM) ? text.slice(UTF8_BOM.length) : text).trimStart();
   if (body.startsWith("#EXTM3U")) return hlsEntries(body);
   if (/^ffconcat\s+version/i.test(body)) {
-    return body.split(/\r?\n/).flatMap((raw) => {
-      const match = /^\s*file\s+(.*)$/.exec(raw);
-      if (!match) return [];
-      const value = match[1]!.trim();
-      return [value.startsWith("'") ? value.slice(1, -1).replace(/\\(.)/g, "$1") : value];
-    });
+    const names: string[] = [];
+    for (const raw of body.split(/\r?\n/)) {
+      if (raw.length > MAX_LIST_LINE_BYTES) return true;
+      const name = concatFileName(raw);
+      if (name !== undefined) names.push(name);
+    }
+    return names;
   }
   return undefined;
 }
@@ -414,6 +441,8 @@ interface Walk {
   folder: string;
   seen: Set<string>;
   verdicts: Map<string, boolean>;
+  bytes: number;
+  entries: number;
 }
 
 /**
@@ -425,7 +454,13 @@ export async function playlistLeavesItsFolder(
   placedAt = filePath,
 ): Promise<boolean> {
   const placed = asBytes(resolve(placedAt));
-  const walk: Walk = { folder: dirname(placed), seen: new Set(), verdicts: new Map() };
+  const walk: Walk = {
+    folder: dirname(placed),
+    seen: new Set(),
+    verdicts: new Map(),
+    bytes: 0,
+    entries: 0,
+  };
   try {
     return await listLeaves(asBytes(resolve(filePath)), placed, walk, 0);
   } catch {
@@ -495,6 +530,15 @@ const isMissing = (error: unknown): boolean =>
     (error as NodeJS.ErrnoException | null)?.code ?? "",
   );
 
+/** A list's entries, counted against the walk's budget; true when the list or the walk must be refused. */
+function budgetedEntries(text: string, walk: Walk): string[] | true {
+  walk.bytes += text.length;
+  const entries = playlistEntries(text) ?? [];
+  if (entries === true) return true;
+  walk.entries += entries.length;
+  return walk.bytes > MAX_WALK_BYTES || walk.entries > MAX_WALK_ENTRIES ? true : entries;
+}
+
 /** Every list a list names is read too, against the top list's folder. A nested file that exists but cannot be read is refused. */
 async function listLeaves(
   readPath: string,
@@ -509,7 +553,9 @@ async function listLeaves(
   if (text === true || depth >= MAX_PLAYLIST_DEPTH) return true;
   if (walk.seen.has(path)) return false;
   walk.seen.add(path);
-  for (const entry of playlistEntries(text) ?? []) {
+  const entries = budgetedEntries(text, walk);
+  if (entries === true) return true;
+  for (const entry of entries) {
     if (await entryLeaves(entry, dirname(path), walk, depth)) return true;
   }
   return false;
