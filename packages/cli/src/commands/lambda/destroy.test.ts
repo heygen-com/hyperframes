@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stateFilePath, writeStackOutputs } from "./state.js";
 
 const samDirs = vi.hoisted(() => [] as string[]);
-vi.mock("./repoRoot.js", () => ({ repoRoot: () => undefined }));
+const root = vi.hoisted(() => ({ value: undefined as string | undefined }));
+vi.mock("./repoRoot.js", () => ({ repoRoot: () => root.value }));
 vi.mock("./sam.js", () => ({
   samDelete: vi.fn((opts: { samDir: string }) => {
     samDirs.push(opts.samDir);
@@ -36,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   quiet.mockRestore();
+  root.value = undefined;
   process.chdir(previousCwd);
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -60,6 +62,18 @@ describe("runDestroy", () => {
     expect(samDirs[0]).not.toBe(tmpdir());
     expect(existsSync(samDirs[0]!)).toBe(false);
     expect(existsSync(stateFilePath("Demo", cwd))).toBe(false);
+  });
+
+  it("in a source checkout, says which checkout it deletes from and runs sam there", async () => {
+    writeStackOutputs(stack, cwd);
+    root.value = cwd;
+
+    await runDestroy({ stackName: "Demo" });
+
+    expect(samDirs).toEqual([join(cwd, "examples", "aws-lambda")]);
+    expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain(
+      `Using the source checkout at ${cwd}`,
+    );
   });
 
   it("deletes the stack's own video repository, whatever name the state file records", async () => {

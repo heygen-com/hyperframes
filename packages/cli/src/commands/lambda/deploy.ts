@@ -153,6 +153,7 @@ function warmVideoFunction(functionName: string | undefined, args: DeployArgs): 
 /** Checkout: build the ZIP from source. Otherwise: stage the adapter's pinned prebuilt ZIP. */
 async function prepareSamDir(root: string | undefined, args: DeployArgs): Promise<string> {
   if (!root) return stagePrebuiltHandler();
+  console.log(c.dim(terminalText(`→ Using the source checkout at ${root}`)));
   const samDir = dirname(locateSamTemplate(root));
   if (!args.skipBuild) {
     console.log(c.dim("→ Building handler ZIP"));

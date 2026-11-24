@@ -6,6 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { recordFolder } from "../utils/projectRecords.js";
 
@@ -71,6 +72,7 @@ export function ffmpegInput(path: string): string[] {
 }
 
 export function ffmpegToFile(args: string[], out: string, input?: Buffer): string {
+  assertLiteralMediaOutput(out);
   const work = createStagingDir(dirname(out), ".ffmpeg-");
   try {
     const made = join(work, basename(out));
