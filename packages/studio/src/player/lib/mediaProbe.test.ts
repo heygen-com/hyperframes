@@ -16,7 +16,8 @@ const requestedSources: string[] = [];
 const sourceRetryRules: string[] = [];
 
 vi.mock("mediabunny", () => ({
-  ALL_FORMATS: {},
+  ALL_FORMATS: [],
+  HLS: {},
   UrlSource: class {
     constructor(
       readonly url: string,
