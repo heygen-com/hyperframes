@@ -21,7 +21,8 @@ const knownHosts = new Set([
 
 const scannedFile = /\.(?:html|css|svg|js|mjs)$/i;
 // Bundled third-party builds cite outside pages in their license comments.
-const vendoredFile = /(?:^|\/)vendor\/|\.min\.js$/i;
+const vendoredDir = /(?:^|\/)vendor\//i;
+const minifiedFile = /\.min\.js$/i;
 
 function remoteHosts(text: string): string[] {
   // XML namespace names are identifiers, never fetched.
@@ -77,7 +78,9 @@ describe("registry examples", () => {
   it("load nothing from an outside host that is not already known", () => {
     const files = starterFiles(examplesDir)
       .map((path) => relative(examplesDir, path).split("\\").join("/"))
-      .filter((path) => scannedFile.test(path) && !vendoredFile.test(path));
+      .filter(
+        (path) => scannedFile.test(path) && !vendoredDir.test(path) && !minifiedFile.test(path),
+      );
     expect(files.some((path) => path.endsWith(".html"))).toBe(true);
 
     const unexpected: string[] = [];
