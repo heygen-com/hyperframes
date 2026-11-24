@@ -406,7 +406,11 @@ describe("AudioFxGroup dynamic carve", () => {
     }
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })),
+      vi.fn(async () => ({
+        ok: true,
+        headers: new Headers(),
+        arrayBuffer: async () => new ArrayBuffer(8),
+      })),
     );
     vi.stubGlobal(
       "OfflineAudioContext",
@@ -436,7 +440,11 @@ describe("AudioFxGroup dynamic carve", () => {
     });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })),
+      vi.fn(async () => ({
+        ok: true,
+        headers: new Headers(),
+        arrayBuffer: async () => new ArrayBuffer(8),
+      })),
     );
     vi.stubGlobal(
       "OfflineAudioContext",
@@ -465,7 +473,11 @@ describe("AudioFxGroup dynamic carve", () => {
   async function levelledLane(data: Float32Array, dataAttributes: Record<string, string>) {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })),
+      vi.fn(async () => ({
+        ok: true,
+        headers: new Headers(),
+        arrayBuffer: async () => new ArrayBuffer(8),
+      })),
     );
     vi.stubGlobal(
       "OfflineAudioContext",
@@ -531,7 +543,11 @@ describe("AudioFxGroup dynamic carve", () => {
   function stubServerPcm(data: Float32Array): ReturnType<typeof vi.fn> {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, arrayBuffer: async () => data.slice().buffer })),
+      vi.fn(async () => ({
+        ok: true,
+        headers: new Headers(),
+        arrayBuffer: async () => data.slice().buffer,
+      })),
     );
     const decode = vi.fn();
     vi.stubGlobal(
@@ -946,7 +962,11 @@ describe("AudioFxGroup dynamic carve", () => {
     });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, arrayBuffer: async () => voice.slice().buffer })),
+      vi.fn(async () => ({
+        ok: true,
+        headers: new Headers(),
+        arrayBuffer: async () => voice.slice().buffer,
+      })),
     );
     vi.stubGlobal("mediaHeaderSeconds", (url: string) => (url.includes("bed") ? 90 * 60 : 60));
     const { host, onSetAttributeQuiet } = mount(
@@ -1164,7 +1184,11 @@ describe("AudioFxGroup dynamic carve", () => {
     function stubFiles(files: Record<string, Float32Array>): void {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async (url: string) => ({ ok: true, arrayBuffer: async () => url })),
+        vi.fn(async (url: string) => ({
+          ok: true,
+          headers: new Headers(),
+          arrayBuffer: async () => url,
+        })),
       );
       vi.stubGlobal(
         "OfflineAudioContext",

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { usePlayerStore } from "../player/store/playerStore";
 import { fitsBeatAnalysis, resolveBeatSourceTrack } from "../utils/timelineInspector";
 import { analyzeMusicFromSignal, type MusicBeatAnalysis } from "@hyperframes/core/beats";
-import { analysisRateOf, readPcm } from "../utils/projectPcm";
+import { analysisRateOf, readPcmChannels } from "../utils/projectPcm";
 import { whenTimelineIdle } from "../player/components/timelineMotion";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { mergeUserBeats } from "../utils/beatEditing";
@@ -55,11 +55,8 @@ type Loaded = { analysis: MusicAnalysis } & Beats;
 async function analyzeTrack(url: string): Promise<MusicBeatAnalysis> {
   await whenTimelineIdle();
   const rate = await analysisRateOf([url]);
-  const samples = await readPcm(url, rate, (r) => new OfflineAudioContext(1, 1, r), true);
-  return analyzeMusicFromSignal(
-    { sampleRate: rate, channels: [samples] },
-    { pause: whenTimelineIdle },
-  );
+  const channels = await readPcmChannels(url, rate, (r) => new OfflineAudioContext(1, 1, r));
+  return analyzeMusicFromSignal({ sampleRate: rate, channels }, { pause: whenTimelineIdle });
 }
 
 /** A track's analysis (memoized per URL), or null when decode or analysis fails. */

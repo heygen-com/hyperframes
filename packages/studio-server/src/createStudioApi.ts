@@ -202,6 +202,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   api.use("/projects/:id/thumbnail/*", refuseForAnotherSite("thumbnail"));
   api.use("/projects/:id/waveform/*", refuseForAnotherSite("waveform"));
   api.use("/projects/:id/peaks/*", refuseForAnotherSite("peaks"));
+  api.use("/projects/:id/pcm/*", refuseForAnotherSite("pcm"));
   api.use("/projects/:id/image-thumbnail/*", refuseForAnotherSite("image thumbnail"));
   api.use("/projects/:id/media/metadata", refuseForAnotherSite("media metadata"));
   api.use("/projects/:id/lint", refuseForAnotherSite("lint"));

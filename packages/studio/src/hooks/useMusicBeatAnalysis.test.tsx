@@ -7,12 +7,15 @@ import { FileManagerProvider } from "../contexts/FileManagerContext";
 import { mountReactHarness } from "./domSelectionTestHarness";
 
 const analyze = vi.hoisted(() => vi.fn());
-const read = vi.hoisted(() => vi.fn(async (_url: string) => new Float32Array(1)));
+const read = vi.hoisted(() => vi.fn(async (_url: string) => [new Float32Array(1)]));
 vi.mock("@hyperframes/core/beats", async (actual) => ({
   ...(await actual<typeof import("@hyperframes/core/beats")>()),
   analyzeMusicFromSignal: analyze,
 }));
-vi.mock("../utils/projectPcm", () => ({ analysisRateOf: async () => 48_000, readPcm: read }));
+vi.mock("../utils/projectPcm", () => ({
+  analysisRateOf: async () => 48_000,
+  readPcmChannels: read,
+}));
 // The timeline is at rest, so a read starts within the settle below and "nothing was read" means it.
 vi.mock("../player/components/timelineMotion", async (actual) => ({
   ...(await actual<typeof import("../player/components/timelineMotion")>()),
