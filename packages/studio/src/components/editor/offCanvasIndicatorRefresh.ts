@@ -127,11 +127,9 @@ export function startOffCanvasIndicatorRefresh(
         reading = false;
       });
   };
-  const update = () => {
+  const updateFromDocument = () => {
     const iframe = options.iframeRef.current;
     const overlayEl = options.overlayRef.current;
-    if (iframe && overlayEl && previewFrameOpaque(iframe))
-      return updateOverChannel(iframe, overlayEl);
     const doc = iframe?.contentDocument ?? null;
     if (doc !== options.observedDocRef.current) {
       attachObserver(doc);
@@ -164,6 +162,12 @@ export function startOffCanvasIndicatorRefresh(
       options.setRects,
       walkCache,
     );
+  };
+  const update = () => {
+    const iframe = options.iframeRef.current;
+    const overlayEl = options.overlayRef.current;
+    if (iframe && overlayEl && previewFrameOpaque(iframe)) updateOverChannel(iframe, overlayEl);
+    else updateFromDocument();
   };
   const unsubscribe = subscribeOverlayFrame(update);
   return () => {
