@@ -149,7 +149,7 @@ export function rebaseDrawnPosition(element: Element, props: Record<string, unkn
   const saved = before.get(element);
   const moved = (["x", "y"] as const).filter((axis) => Number.isFinite(props[axis]));
   if (!moved.length || !isStylableElement(element)) return;
-  element.style.setProperty("translate", "none");
+  if (!saved) element.style.setProperty("translate", "none");
   for (const entry of saved?.inline ?? [])
     if (entry[0] === "translate") [entry[1], entry[2]] = ["none", ""];
   for (const axis of moved)
