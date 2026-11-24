@@ -67,6 +67,16 @@ describe("tts command", () => {
     );
   });
 
+  it("speaks a word that starts with two separators, and never reads the file it names", async () => {
+    writeFileSync(join(dir, "script.txt"), "From the file\n");
+
+    for (const input of [`/${join(dir, "script.txt")}`, "\\\\host\\share\\script.txt"]) {
+      synthesizeMock.mockClear();
+      await runCommand(ttsCommand, { rawArgs: [input, "--json"] });
+      expect(synthesizeMock).toHaveBeenCalledWith(input, expect.any(String), expect.anything());
+    }
+  });
+
   it.each(["0.05", "1x", "1.5junk", "1 2", "", " ", "NaN", "Infinity", "0", "-1", "3.01"])(
     "rejects invalid speed %j before synthesis",
     async (speed) => {

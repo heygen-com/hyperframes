@@ -608,8 +608,14 @@ npx hyperframes tts script.txt
 npx hyperframes tts --list
 ```
 
+A single argument that names an existing `.txt` file is read; anything else is
+spoken. An argument that starts with two slashes or backslashes
+(`\\server\share\script.txt`) is always spoken: to read a file on a network
+share, pass it with `--text-file`.
+
 | Flag           | Description                                                                                                                             |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `--text-file`  | Read the text from this file, whatever its path looks like                                                                               |
 | `--output, -o` | Output path (default `speech.wav` in the current directory)                                                                              |
 | `--voice, -v`  | Voice ID. Run `--list` to see them all.                                                                                                 |
 | `--speed, -s`  | Speed multiplier (default 1.0)                                                                                                          |

@@ -85,9 +85,14 @@ if (listOnly) {
 }
 
 // ---------- resolve text + voice ----------
+// Two leading separators name a network share or a device on Windows; looking one up reaches out
+// to that host, so such a word is text.
+const NETWORK_OR_DEVICE_PATH = /^[\\/]{2}/;
 if (!positional) die("no text given. Pass a string or a .txt path, or use --list.");
 const text =
-  positional.endsWith(".txt") && existsSync(resolve(positional))
+  positional.endsWith(".txt") &&
+  !NETWORK_OR_DEVICE_PATH.test(positional) &&
+  existsSync(resolve(positional))
     ? readFileSync(resolve(positional), "utf8").trim()
     : positional;
 if (!text) die("input text is empty");
