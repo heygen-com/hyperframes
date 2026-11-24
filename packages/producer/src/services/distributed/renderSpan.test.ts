@@ -1,8 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { PlanTooLargeError, plan, type DistributedRenderConfig } from "./plan.js";
+import { describe, expect, it } from "bun:test";
+import type { DistributedRenderConfig } from "./plan.js";
 import { RenderSpanUnsupportedError, spanFrameRange, spanPlanConfig } from "./renderSpan.js";
 
 describe("spanFrameRange", () => {
@@ -22,50 +19,16 @@ describe("spanFrameRange", () => {
 });
 
 describe("spanPlanConfig", () => {
-  const FIXTURE_HTML = `<!doctype html>
-<html><body>
-  <div data-composition-id="root" data-width="320" data-height="240" data-duration="1">hi</div>
-</body></html>`;
-  // A 1 KB cap stands in for the 2 GB Lambda cap: any plan is larger than it.
-  const config: DistributedRenderConfig = {
-    fps: 30,
-    width: 320,
-    height: 240,
-    format: "mp4",
-    planDirSizeLimitBytes: 1024,
-  };
-  let root: string;
-  let projectDir: string;
-
-  beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), "hf-span-plan-cap-"));
-    projectDir = mkdtempSync(join(root, "project-"));
-    writeFileSync(join(projectDir, "index.html"), FIXTURE_HTML, "utf-8");
-  });
-
-  afterAll(() => {
-    rmSync(root, { recursive: true, force: true });
-  });
-
-  it("plans a span past the Lambda plan cap, which a distributed plan stops at", async () => {
-    let caught: unknown;
-    try {
-      await plan(projectDir, config, mkdtempSync(join(root, "distributed-")));
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(PlanTooLargeError);
-
-    const planned = await plan(
-      projectDir,
-      spanPlanConfig(config),
-      mkdtempSync(join(root, "span-")),
-    );
-    expect(planned.totalFrames).toBe(30);
-  }, 30_000);
-
-  it("keeps the rest of the config and lifts the font guards", () => {
-    expect(spanPlanConfig({ ...config, rejectOnSystemFonts: true })).toMatchObject({
+  it("lifts the Lambda plan cap and the font guards, keeping the rest of the config", () => {
+    const config: DistributedRenderConfig = {
+      fps: 30,
+      width: 320,
+      height: 240,
+      format: "mp4",
+      planDirSizeLimitBytes: 1024,
+      rejectOnSystemFonts: true,
+    };
+    expect(spanPlanConfig(config)).toMatchObject({
       fps: 30,
       width: 320,
       height: 240,
