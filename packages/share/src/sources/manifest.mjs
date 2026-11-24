@@ -88,7 +88,7 @@ function canonicalInventory(files, out, policy) {
   try {
     checkInventoryPaths(
       ordered.map((file) => file.path),
-      policy.mode === "v4Base" ? v4ComparisonKey : undefined,
+      policy.mode === "localV4" ? v4ComparisonKey : undefined,
     );
   } catch (error) {
     policy.pathErrors.push(violationOf(error));
@@ -171,22 +171,34 @@ export function parseCanonicalManifest(body) {
 export const parseStoredManifest = (raw) => parseManifest(raw, true);
 
 /** Verify the local parent snapshot under the filename rules its writer supported. @param {unknown} raw */
-export const localBaseDigest = (raw) => readManifest(raw, "v4Base").sha256;
+export const localBaseDigest = (raw) => readManifest(raw, "localV4").sha256;
 
 /** @param {{uploadId?: unknown, snapshotId?: unknown}} saved */
-export const isUnconfirmedUpload = (saved) => saved.uploadId === null && saved.snapshotId === null;
+function confirmedUploadId(saved) {
+  if (saved.uploadId === null && saved.snapshotId === null) return null;
+  if (
+    typeof saved.uploadId !== "string" ||
+    !saved.uploadId ||
+    typeof saved.snapshotId !== "string" ||
+    !saved.snapshotId
+  )
+    throw new Error("Incomplete saved source upload identity.");
+  return saved.uploadId;
+}
 
-/** Only an unconfirmed Begin can be discarded when its paths no longer pass validation.
- * @param {{manifest?: unknown, manifestSha256?: unknown, uploadId?: unknown, snapshotId?: unknown}} saved */
-export function readUploadManifest(saved) {
+/** Confirmed requests are reconciled by ID; only an unconfirmed Begin can need its manifest again.
+ * @param {{manifest?: unknown, manifestSha256?: unknown, uploadId?: unknown, snapshotId?: unknown}} saved
+ * @returns {{uploadId: string} | {manifest: Manifest} | null} */
+export function readUploadIntent(saved) {
+  const uploadId = confirmedUploadId(saved);
   /** @type {Violation[]} */
   const obsoletePaths = [];
-  const manifest = readManifest(
-    saved.manifest,
-    "stored",
-    isUnconfirmedUpload(saved) ? obsoletePaths : undefined,
-  );
+  const manifest =
+    uploadId === null
+      ? readManifest(saved.manifest, "stored", obsoletePaths)
+      : readManifest(saved.manifest, "localV4");
   if (manifest.sha256 !== saved.manifestSha256)
     throw new Error("Saved source upload manifest does not match its checksum.");
-  return obsoletePaths.length ? null : manifest;
+  if (uploadId !== null) return { uploadId };
+  return obsoletePaths.length ? null : { manifest };
 }

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { NotWritable, uploadNeeded } from "./uploadFiles.mjs";
 import { canUploadStoredPath } from "./pathPolicy.mjs";
-import { isUnconfirmedUpload, readUploadManifest } from "./manifest.mjs";
+import { readUploadIntent } from "./manifest.mjs";
 import { SyncApiError } from "./errors.mjs";
 
 /** @typedef {import("./adapterTypes.js").SourceRun} SourceRun
@@ -130,18 +130,19 @@ export async function recoverSourceUpload(job) {
   const { binding, api } = job;
   const saved = binding.inflight;
   if (!saved) return null;
-  const manifest = readUploadManifest(saved);
+  const intent = readUploadIntent(saved);
   if (
-    !manifest ||
-    (isUnconfirmedUpload(saved) &&
-      manifest.document.files.some(({ path }) => !canUploadStoredPath(path)))
+    !intent ||
+    ("manifest" in intent &&
+      intent.manifest.document.files.some(({ path }) => !canUploadStoredPath(path)))
   ) {
     await clearIntent(job);
     return null;
   }
-  let receipt = saved.uploadId
-    ? await api.status(binding.ownerSpaceId, binding.compositionId, saved.uploadId)
-    : await begin({ ...job, manifest });
+  let receipt =
+    "uploadId" in intent
+      ? await api.status(binding.ownerSpaceId, binding.compositionId, intent.uploadId)
+      : await begin({ ...job, manifest: intent.manifest });
   assertReceipt(binding, receipt);
   if (receipt.status === "pending") receipt = await cancelPending(job, receipt);
   assertReceipt(binding, receipt);

@@ -417,13 +417,138 @@ test("a corrected v4 project publishes a new snapshot on its original base", asy
   assert.equal((await f.store.read(f.key)).base.manifestSha256, request.manifest.sha256);
 });
 
-test("an incompatible pending manifest still requires a matching checksum and unconfirmed IDs", async (t) => {
+async function confirmedV4Share(t) {
+  const f = await interruptedV4Share(t);
+  const saved = f.binding.inflight;
+  Object.assign(saved, { uploadId: "v4-upload", snapshotId: "v4-snapshot" });
+  await f.store.write(f.binding);
+  await rename(join(f.root, f.oldName), join(f.root, "alternate.svg"));
+  const rendered = await projectFingerprint(f.root);
+  const receipt = {
+    uploadId: saved.uploadId,
+    snapshotId: saved.snapshotId,
+    compositionId: f.binding.compositionId,
+    manifestSha256: saved.manifestSha256,
+    status: "pending",
+    result: null,
+  };
+  const server = fakeServer();
+  const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+  return { ...f, server, source, rendered, receipt };
+}
+
+test("a confirmed v4 upload that publishes during cancellation parents only the corrected share", async (t) => {
+  const { root, rendered, receipt, server, source, key, store, binding } =
+    await confirmedV4Share(t);
+  const events = [];
+  let status = "pending";
+  server.api.status = async (...ids) => {
+    assert.deepEqual(ids, [binding.ownerSpaceId, binding.compositionId, receipt.uploadId]);
+    events.push(status);
+    return {
+      ...receipt,
+      status,
+      result:
+        status === "completed"
+          ? {
+              snapshotId: receipt.snapshotId,
+              publicationOutcome: "published",
+            }
+          : null,
+    };
+  };
+  server.api.cancel = async (...ids) => {
+    assert.deepEqual(ids, [binding.ownerSpaceId, binding.compositionId, receipt.uploadId]);
+    events.push("cancel");
+    status = "verifying";
+    throw new SyncApiError("upload-not-pending");
+  };
+
+  assert.equal((await source.prepare(root, rendered)).reason, "source_verification_pending");
+  assert.deepEqual((await store.read(key)).inflight, binding.inflight);
+  assert.equal(await source.filesForExport(root, rendered), null);
+  assert.equal(server.calls.begin.length, 0);
+  assert.equal(server.calls.puts.length, 0);
+
+  status = "completed";
+  const result = await source.prepare(root, rendered);
+  assert.deepEqual(events, ["pending", "cancel", "verifying", "completed"]);
+  assert.equal(result.at, "ready");
+  assert.notEqual(result.snapshot.snapshot_id, receipt.snapshotId);
+  assert.deepEqual(await source.filesForExport(root, rendered), result.snapshot);
+  assert.equal(server.calls.begin.length, 1);
+  const [request] = server.calls.begin;
+  assert.equal(request.baseSnapshotId, receipt.snapshotId);
+  assert.notEqual(request.idempotencyKey, binding.inflight.idempotencyKey);
+  assert.deepEqual(
+    request.manifest.document.files.map(({ path }) => path),
+    ["alternate.svg", "cover.svg", "index.html"],
+  );
+  assert.deepEqual(server.calls.puts.map((bytes) => bytes.toString()).sort(), [
+    "<html>video</html>",
+    "alternate",
+    "cover",
+  ]);
+  assert.equal((await store.read(key)).base.snapshotId, result.snapshot.snapshot_id);
+});
+
+for (const status of ["pending", "failed", "expired"]) {
+  test(`a ${status} confirmed v4 upload can be replaced after a filename correction`, async (t) => {
+    const { root, rendered, receipt, server, source, binding } = await confirmedV4Share(t);
+    server.api.status = async () => ({ ...receipt, status });
+    let cancellations = 0;
+    server.api.cancel = async () => {
+      cancellations++;
+      return { ...receipt, status: "failed", errorCode: "cancelled" };
+    };
+    assert.equal((await source.prepare(root, rendered)).at, "ready");
+    assert.equal(cancellations, status === "pending" ? 1 : 0);
+    assert.equal(server.calls.begin.length, 1);
+    const [request] = server.calls.begin;
+    assert.equal(request.baseSnapshotId, null);
+    assert.notEqual(request.idempotencyKey, binding.inflight.idempotencyKey);
+    assert.equal(request.manifest.sha256, await shareSourceFingerprint(root));
+  });
+}
+
+test("mismatched receipts leave a confirmed v4 upload intact", async (t) => {
+  const { root, rendered, receipt, server, source, key, store, binding } =
+    await confirmedV4Share(t);
+  for (const [field, error] of [
+    ["uploadId", /upload receipt identity/],
+    ["snapshotId", /snapshot identity/],
+    ["compositionId", /composition/],
+    ["manifestSha256", /captured project/],
+  ]) {
+    server.api.status = async () => ({ ...receipt, [field]: "other" });
+    server.api.cancel = async () => assert.fail("cannot cancel a mismatched upload");
+    await assert.rejects(source.prepare(root, rendered), error);
+    assert.deepEqual(await store.read(key), binding);
+  }
+  server.api.status = async () => {
+    throw new SyncApiError("not-found");
+  };
+  await assert.rejects(source.prepare(root, rendered), /not-found/);
+  assert.deepEqual(await store.read(key), binding);
+  server.api.status = async () => receipt;
+  server.api.cancel = async () => ({ ...receipt, status: "failed", uploadId: "other" });
+  await assert.rejects(source.prepare(root, rendered), /upload receipt identity/);
+  assert.deepEqual(await store.read(key), binding);
+  assert.equal(server.calls.begin.length, 0);
+  assert.equal(server.calls.puts.length, 0);
+});
+
+test("an incompatible pending manifest requires a matching checksum and a complete ID pair", async (t) => {
   const f = await interruptedV4Share(t);
   const saved = f.binding.inflight;
   for (const [change, error] of [
     [{ manifestSha256: "0".repeat(64) }, /checksum/],
-    [{ uploadId: "known-upload" }, /path_collision/],
-    [{ snapshotId: "known-snapshot" }, /path_collision/],
+    [{ uploadId: "known-upload" }, /identity/],
+    [{ snapshotId: "known-snapshot" }, /identity/],
+    [
+      { uploadId: "known-upload", snapshotId: "known-snapshot", manifestSha256: "0".repeat(64) },
+      /checksum/,
+    ],
     [{ manifest: { ...saved.manifest, extra: true } }, /invalid_schema/],
   ]) {
     await f.store.write({ ...f.binding, inflight: { ...saved, ...change } });

@@ -90,7 +90,7 @@ function compile(document) {
         rules: storedRules,
         stems: shortNameStems(document.stored_manifest.legacy_short_name_alias_names),
       },
-      v4Base: { rules: storedRules, stems: new Set() },
+      localV4: { rules: storedRules, stems: new Set() },
     },
     canonicalRoots: new Map(
       limits.canonical_spelling_roots.map((root) => [comparisonKey(root), root]),
@@ -117,8 +117,8 @@ export function classifyPath(path) {
   return found.rule;
 }
 
-/** Checks 1 to 10 of the registry's `path.checks`: the ones about the string itself. @param {string} path @param {boolean} v4Base */
-function checkSpelling(path, v4Base) {
+/** Checks 1 to 10 of the registry's `path.checks`: the ones about the string itself. @param {string} path @param {boolean} localV4 */
+function checkSpelling(path, localV4) {
   const { limits, invalidCharacter } = policy();
   if (!path) throw new PathViolation("path_empty", path);
   if (invalidCharacter.test(path)) throw new PathViolation("path_invalid_character", path);
@@ -128,13 +128,13 @@ function checkSpelling(path, v4Base) {
   if (Buffer.byteLength(path, "utf8") > limits.max_path_bytes)
     throw new PathViolation("path_too_long", path);
   if (path.startsWith("/")) throw new PathViolation("path_not_relative", path);
-  return checkSegments(path, limits, v4Base);
+  return checkSegments(path, limits, localV4);
 }
 
-/** @param {string} path @param {PolicyDocument["path"]} limits @param {boolean} v4Base */
-function checkSegments(path, limits, v4Base) {
+/** @param {string} path @param {PolicyDocument["path"]} limits @param {boolean} localV4 */
+function checkSegments(path, limits, localV4) {
   const segments = path.split("/");
-  const bare = v4Base ? segments : segments.map(withoutIgnorable);
+  const bare = localV4 ? segments : segments.map(withoutIgnorable);
   if (bare.some((segment) => !segment)) throw new PathViolation("path_empty_segment", path);
   if (bare.some((segment) => segment === "." || segment === ".."))
     throw new PathViolation("path_dot_segment", path);
@@ -152,14 +152,14 @@ function isShortNameAlias(key, stems) {
   return stem !== undefined && stems.has(stem);
 }
 
-/** @typedef {"current" | "stored" | "v4Base"} PathMode */
+/** @typedef {"current" | "stored" | "localV4"} PathMode */
 
 /** `path` unchanged when every client can store it and the policy lets it travel; throws PathViolation otherwise,
  * naming the first failing check in the registry's order. @param {string} path
  * @param {PathMode} [mode] */
 export function validatePath(path, mode = "current") {
-  const segments = checkSpelling(path, mode === "v4Base");
-  const keys = segments.map(mode === "v4Base" ? v4ComparisonKey : comparisonKey);
+  const segments = checkSpelling(path, mode === "localV4");
+  const keys = segments.map(mode === "localV4" ? v4ComparisonKey : comparisonKey);
   const { reservedSegment, canonicalRoots } = policy();
   const { rules, stems } = policy().paths[mode];
   if (keys.some((key) => reservedSegment.test(key))) throw new PathViolation("reserved_name", path);
