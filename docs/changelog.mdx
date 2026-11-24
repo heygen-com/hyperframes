@@ -9,6 +9,34 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.89"
+  description="Released - 2026-11-24"
+  tags={["Release", "Inspector", "Studio Server", "CLI"]}
+>
+A Studio capture shows a 4K clip from the server's frame, and deleting a clip no longer re-renders every player. File, media and backup reads touch only the one path they were given.
+
+## Fixes
+
+- **Inspector:** The page server answers only its own page ([03698f2511](https://github.com/heygen-com/hyperframes/commit/03698f251140442c7a796198cd6463c9c44a9069), [#8654](https://github.com/heygen-com/hyperframes/pull/8654)).
+- **Studio Server:** File routes and the received-files follower read one path ([b76bb07077](https://github.com/heygen-com/hyperframes/commit/b76bb07077c72e2284d35a64b02087bfa8726c32), [#8652](https://github.com/heygen-com/hyperframes/pull/8652)).
+- **CLI:** Check finding captures probe only the project's own videos ([29a7d471ac](https://github.com/heygen-com/hyperframes/commit/29a7d471ac0b325461c8954033e532f961b9792c), [#8647](https://github.com/heygen-com/hyperframes/pull/8647)).
+- **Engine:** An upstream reply the capture proxy cannot re-send fails only that request ([faf4dd82a1](https://github.com/heygen-com/hyperframes/commit/faf4dd82a115f05c14b16d4b567e65bb975c9eca), [#8646](https://github.com/heygen-com/hyperframes/pull/8646)).
+- **CLI:** Read every media path a command is given as that one file ([de3e6153cc](https://github.com/heygen-com/hyperframes/commit/de3e6153cc38059084251d6fc8b4ba72636611ef), [#8650](https://github.com/heygen-com/hyperframes/pull/8650)).
+- **Skills:** Raise the launcher's minimum CLI release to 0.9.80 ([10b105fb26](https://github.com/heygen-com/hyperframes/commit/10b105fb2683cee02ed1d5012bbafbf8db2ac65e), [#8651](https://github.com/heygen-com/hyperframes/pull/8651)).
+- **Parsers:** Refuse media paths with digits between a percent sign and a wildcard ([40c4f98ba4](https://github.com/heygen-com/hyperframes/commit/40c4f98ba41faacf52d5d729931677229b252fc4), [#8648](https://github.com/heygen-com/hyperframes/pull/8648)).
+- **Studio Server:** Studio no longer writes scripts node tooling may run ([7b29b81011](https://github.com/heygen-com/hyperframes/commit/7b29b810114383ad4062a6f4a5c787ba8d07b1d8), [#8645](https://github.com/heygen-com/hyperframes/pull/8645)).
+- **CLI:** Timeline undo restores only project files from the project's backups ([7051b2512b](https://github.com/heygen-com/hyperframes/commit/7051b2512b0b1db4e55adf2bf634f23368551401), [#8643](https://github.com/heygen-com/hyperframes/pull/8643)).
+- **Studio:** A sealed drag draws and saves from the open preview's rounded position ([7a1828f8ee](https://github.com/heygen-com/hyperframes/commit/7a1828f8ee76a0748581bc905e2b6c179139a71b), [#8587](https://github.com/heygen-com/hyperframes/pull/8587)).
+- **Producer:** A video element naming a PNG cut short fails the render up front ([5a1b992a08](https://github.com/heygen-com/hyperframes/commit/5a1b992a085c00f6fe63c355529a1246939e97c4), [#8644](https://github.com/heygen-com/hyperframes/pull/8644)).
+- **Publish:** A release builds arm64 ffmpeg itself and publishes only its own pack ([9bf40af0e5](https://github.com/heygen-com/hyperframes/commit/9bf40af0e5ec0687856a4c492ab259dc840b1472), [#8641](https://github.com/heygen-com/hyperframes/pull/8641)).
+- **Core:** A one-shot Studio capture shows a 4K clip as the server's frame instead of decoding it ([c5e3ac89e4](https://github.com/heygen-com/hyperframes/commit/c5e3ac89e43b2bdf4d72f82a3054ac77502b6352), [#8626](https://github.com/heygen-com/hyperframes/pull/8626)).
+- **Producer:** A compile's ffmpeg runs end with it, and are bounded on their own ([4354b177ee](https://github.com/heygen-com/hyperframes/commit/4354b177eee9bbf9295cbf11a6938e2c877f483d), [#8638](https://github.com/heygen-com/hyperframes/pull/8638)).
+- **Studio:** A deleted clip's focus fallback no longer re-renders every player store subscriber ([a383d0205b](https://github.com/heygen-com/hyperframes/commit/a383d0205b39f106884242fcae709737372e5b49), [#8633](https://github.com/heygen-com/hyperframes/pull/8633)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.88...v0.9.89).
+</Update>
+
+<Update
   label="HyperFrames v0.9.88"
   description="Released - 2026-11-24"
   tags={["Release", "Producer", "Studio", "CLI"]}
