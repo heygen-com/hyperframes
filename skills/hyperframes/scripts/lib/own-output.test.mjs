@@ -64,6 +64,15 @@ test("ownFolder replaces a link at the folder with a real one, and refuses one u
   assert.deepEqual(readdirSync(outside), ["victim.txt"]);
 });
 
+test("ownFolder refuses a linked folder outside the working folder and keeps the link", (t) => {
+  const { project, outside } = inProject(t);
+  const shots = join(project, "..", "shots");
+  symlinkSync(outside, shots);
+  assert.throws(() => ownFolder(shots), /shots: it is a link/);
+  assert.ok(lstatSync(shots).isSymbolicLink());
+  assert.deepEqual(readdirSync(outside), ["victim.txt"]);
+});
+
 // Every name bake-basemap writes, each planted as a link to a file outside the project.
 test("bake-basemap's output names are replaced, never written through", (t) => {
   const { project, outside } = inProject(t);

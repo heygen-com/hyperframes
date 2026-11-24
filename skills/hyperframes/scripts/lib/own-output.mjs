@@ -7,18 +7,22 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 const isLink = (path) => lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
 
 /**
- * `dir` as a real folder, made if missing. A link at `dir` is removed and a folder made in its place; a folder above
- * it inside the working folder that is a link is refused, since it may be the person's own.
+ * `dir` as a real folder, made if missing. Inside the working folder a link at `dir` is replaced by a real folder,
+ * and one above it is refused. Outside it a link at `dir` is refused: it is the person's own, and theirs to keep.
  */
 export function ownFolder(dir) {
   const target = resolve(dir);
   const root = process.cwd();
-  if (target.startsWith(root + sep)) {
+  const inside = target.startsWith(root + sep);
+  if (inside) {
     for (let at = dirname(target); at !== root; at = dirname(at)) {
       if (isLink(at)) throw new Error(`refusing to write into ${at}: it is a link`);
     }
   }
-  if (isLink(target)) rmSync(target);
+  if (isLink(target)) {
+    if (!inside) throw new Error(`refusing to write into ${target}: it is a link`);
+    rmSync(target);
+  }
   mkdirSync(target, { recursive: true });
   return target;
 }
