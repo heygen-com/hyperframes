@@ -1,11 +1,12 @@
 // fallow-ignore-file code-duplication complexity
 import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
 import {
@@ -370,7 +371,7 @@ export async function ensureModel(
       }
     },
   });
-  if (pin) writeFileSync(verifiedMarker(modelPath), verifiedStamp(modelPath, pin));
+  if (pin) replaceFileAtomically(verifiedMarker(modelPath), verifiedStamp(modelPath, pin));
   return modelPath;
 }
 
@@ -381,12 +382,20 @@ function verifiedStamp(modelPath: string, pin: ModelFile): string {
   return `${pin.sha256} ${size} ${mtimeMs} ${ino}`;
 }
 
+const readStamp = (marker: string) => {
+  try {
+    return readFileSync(marker, "utf8");
+  } catch {
+    return undefined;
+  }
+};
+
 async function cachedCopyVerified(modelPath: string, pin: ModelFile): Promise<boolean> {
   const marker = verifiedMarker(modelPath);
   const stamp = verifiedStamp(modelPath, pin);
-  if (existsSync(marker) && readFileSync(marker, "utf8") === stamp) return true;
+  if (readStamp(marker) === stamp) return true;
   if (!(await verifies(modelPath, pin))) return false;
-  writeFileSync(marker, stamp);
+  replaceFileAtomically(marker, stamp);
   return true;
 }
 
