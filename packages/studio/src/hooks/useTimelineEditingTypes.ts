@@ -46,6 +46,8 @@ export interface UseTimelineEditingOptions {
   forceReloadSdkSession?: () => void;
   /** Reparse authored animations after a timing rewrite changes their positions. */
   invalidateGsapCache?: () => void;
+  /** @deprecated Ignored: a lane drag restacks through the timeline's own stacking sync. */
+  handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;
   /** Refuses a hand edit at the persist boundary when set; absent = Studio unchanged. */
   canEdit?: CanEditTimelineElement;
 }

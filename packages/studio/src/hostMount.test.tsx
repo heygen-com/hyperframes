@@ -3,7 +3,7 @@
 // Proves the package's public exports, not internal hook paths, are enough
 // for a host to mount hand editing outside EditorShell: an edit writes
 // through the history path, Undo restores it, and a 409 shows the banner.
-import { act, createElement } from "react";
+import { act, createElement, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 // Backend/storage mocking only, standing in for a host's own server and
@@ -158,6 +158,7 @@ function mountHost(
       },
     });
     undo = historyActions.undo;
+    const commitRef = useRef(null);
     timelineEditing = useTimelineEditing({
       projectId: "p1",
       activeCompPath: "index.html",
@@ -183,6 +184,7 @@ function mountHost(
       previewIframeRef: { current: iframe },
       pendingTimelineEditPathRef: { current: new Set<string>() },
       uploadProjectFiles: async () => [],
+      handleDomZIndexReorderCommitRef: commitRef,
     });
     return null;
   }
