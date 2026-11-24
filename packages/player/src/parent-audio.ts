@@ -121,12 +121,15 @@ export class ParentAudio {
       entry.duration,
     );
     if (!scheduled) return;
-    if (!entry.claimed) {
-      entry.claimed = true;
-      entry.el.pause();
-      this.postClaims();
-    }
+    this._claim(entry);
     this._startClock(transport);
+  }
+
+  private _claim(entry: ProxyEntry): void {
+    if (entry.claimed) return;
+    entry.claimed = true;
+    entry.el.pause();
+    this.postClaims();
   }
 
   /** The audio clock once a buffer plays; until then the film's time, which the first buffer starts from. */

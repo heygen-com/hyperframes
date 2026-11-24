@@ -654,19 +654,33 @@ function readCopies(list: unknown): ParentCopy[] {
   return list.filter((item): item is ParentCopy => {
     if (typeof item !== "object" || item === null) return false;
     const c = item as Record<string, unknown>;
-    return (
-      (c.kind === "audio" || c.kind === "video") &&
-      typeof c.src === "string" &&
-      Number.isFinite(c.start) &&
-      typeof c.duration === "number" &&
-      c.duration >= 0 &&
-      Number.isFinite(c.mediaStart) &&
-      (c.layer === undefined || (Number.isSafeInteger(c.layer) && (c.layer as number) >= 0)) &&
-      (c.loop === undefined || typeof c.loop === "boolean") &&
-      (c.mastered === undefined || typeof c.mastered === "boolean") &&
-      (c.attrs === undefined || isCopyAttrs(c.attrs))
-    );
+    return isCopyTiming(c) && isCopyExtras(c);
   });
+}
+
+function isCopyTiming(c: Record<string, unknown>): boolean {
+  return (
+    (c.kind === "audio" || c.kind === "video") &&
+    typeof c.src === "string" &&
+    Number.isFinite(c.start) &&
+    typeof c.duration === "number" &&
+    c.duration >= 0 &&
+    Number.isFinite(c.mediaStart)
+  );
+}
+
+const optional = (value: unknown, ok: (value: unknown) => boolean) =>
+  value === undefined || ok(value);
+const isBoolean = (value: unknown) => typeof value === "boolean";
+const isLayer = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
+
+function isCopyExtras(c: Record<string, unknown>): boolean {
+  return (
+    optional(c.layer, isLayer) &&
+    optional(c.loop, isBoolean) &&
+    optional(c.mastered, isBoolean) &&
+    optional(c.attrs, isCopyAttrs)
+  );
 }
 
 const COPY_ATTR_NAMES = new Set<string>(PARENT_COPY_ATTRIBUTES);

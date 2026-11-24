@@ -305,25 +305,28 @@ export type PlaybackHeldBy = {
   fetchMs: number | FetchNotSeenToStart;
 };
 
+/** How playback went over the last few seconds of play. */
+export type PlaybackHealthReport = {
+  droppedShare: number;
+  seconds: number;
+  choppy: boolean;
+  fps: number;
+  worstFrameMs: number;
+  skippedShare: number;
+  waitingShare: number;
+  frozenShare: number;
+  gapP50Ms: number;
+  gapP95Ms: number;
+  clockSource: "audio" | "webaudio" | "monotonic";
+  heldBy: PlaybackHeldBy | null;
+  mode: "play";
+};
+
 export type RuntimePreviewHealthMessage = {
   source: "hf-preview";
   type: "preview-health";
-  /** How playback went over the last few seconds of play; null while paused, seeking or warming up. */
-  health: {
-    droppedShare: number;
-    seconds: number;
-    choppy: boolean;
-    fps: number;
-    worstFrameMs: number;
-    skippedShare: number;
-    waitingShare: number;
-    frozenShare: number;
-    gapP50Ms: number;
-    gapP95Ms: number;
-    clockSource: "audio" | "webaudio" | "monotonic";
-    heldBy: PlaybackHeldBy | null;
-    mode: "play";
-  } | null;
+  /** Null while paused, seeking or warming up. */
+  health: PlaybackHealthReport | null;
 };
 
 export type RuntimePreviewFactsMessage = {

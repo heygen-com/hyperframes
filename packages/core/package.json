@@ -526,14 +526,14 @@
       "types": "./src/runtime/mediaSteer.ts"
     },
     "./runtime/web-audio-transport": {
+      "browser": "./src/runtime/webAudioTransport.ts",
       "bun": "./src/runtime/webAudioTransport.ts",
-      "node": "./dist/runtime/webAudioTransport.js",
       "import": "./src/runtime/webAudioTransport.ts",
       "types": "./src/runtime/webAudioTransport.ts"
     },
     "./runtime/decodes-first": {
+      "browser": "./src/runtime/decodesFirst.ts",
       "bun": "./src/runtime/decodesFirst.ts",
-      "node": "./dist/runtime/decodesFirst.js",
       "import": "./src/runtime/decodesFirst.ts",
       "types": "./src/runtime/decodesFirst.ts"
     },

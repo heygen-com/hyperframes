@@ -522,13 +522,13 @@
       "source": "./src/runtime/webAudioTransport.ts",
       "runtime": "./dist/runtime/webAudioTransport.js",
       "types": "./dist/runtime/webAudioTransport.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["browser"]
     },
     "./runtime/decodes-first": {
       "source": "./src/runtime/decodesFirst.ts",
       "runtime": "./dist/runtime/decodesFirst.js",
       "types": "./dist/runtime/decodesFirst.d.ts",
-      "environments": ["browser", "bun", "node"]
+      "environments": ["browser"]
     },
     "./runtime/clip-reveal": {
       "source": "./src/runtime/clipReveal.ts",
