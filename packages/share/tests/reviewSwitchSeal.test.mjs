@@ -5,7 +5,7 @@ import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { bindShareHost, retryOldLink } from "../src/index.mjs";
+import { bindShareHost, changeSpace, retryOldLink } from "../src/index.mjs";
 import { readReviewSwitch, reviewSwitchPath, sealedSwitch } from "../src/reviewShare.mjs";
 
 bindShareHost({
@@ -92,4 +92,35 @@ test("an earlier journal of this install written back once the record is on the 
   await writeFile(reviewSwitchPath(dir), JSON.stringify(sealedSwitch(dir, midSwitch)));
   assert.deepEqual(await readReviewSwitch(dir), midSwitch, "sealed by this install");
   await retryOldLink({ projectPath: dir, client: noRequests });
+});
+
+test("a press to move the review drops an earlier journal written back, turning no link on or off", async () => {
+  bindShareHost({ journalKey: randomBytes(32) });
+  const dir = await project();
+  const { opened: _opened, ...midSwitch } = change;
+  await writeFile(reviewSwitchPath(dir), JSON.stringify(sealedSwitch(dir, midSwitch)));
+  /** @type {string[]} */
+  const writes = [];
+  const write = (/** @type {string} */ name) => async () => void writes.push(name);
+  const client = /** @type {any} */ ({
+    share: async () => ({ revoked: true, link_generation: 1, space: { space_id: "sp_old" } }),
+    spaces: async () => [],
+    linkOn: write("linkOn"),
+    updateShare: write("updateShare"),
+    linkOff: write("linkOff"),
+  });
+  const refused = await changeSpace({
+    projectPath: dir,
+    title: "Launch",
+    client,
+    spaceId: "sp_team",
+    upload: async () => assert.fail("nothing to upload"),
+    canUpload: async () => null,
+  }).then(
+    () => null,
+    (error) => error,
+  );
+  assert.deepEqual(writes, [], "no link turned on, opened up or off");
+  assert.equal(refused?.reason, "space_forbidden");
+  assert.equal(await readReviewSwitch(dir), null, "the written-back journal is dropped");
 });

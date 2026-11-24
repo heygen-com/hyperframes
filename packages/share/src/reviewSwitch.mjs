@@ -342,7 +342,12 @@ export const changeSpace = ({ projectPath, title, client, spaceId, upload, canUp
   inTurn(projectPath, async () => {
     const record = await sharedRecord(projectPath);
     const from = record.projectId;
-    const saved = await readSwitch(projectPath);
+    let saved = await readSwitch(projectPath);
+    // An unopened change whose new project the record is already on is an earlier journal written back (cleanupOf).
+    if (saved?.projectId === from && !saved.opened) {
+      await dropSwitch(projectPath, saved);
+      saved = null;
+    }
     if (saved?.projectId === from) await oldLinkFirst(client, projectPath, saved);
     // A change already registered there carries on; one never registered is made again, with the same key.
     if (saved?.from === from && saved.spaceId === spaceId) {
