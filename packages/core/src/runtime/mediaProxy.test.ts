@@ -1436,6 +1436,16 @@ describe("preview quality: lighter copies of heavy files", () => {
         expect([captured(), el.hasAttribute(CAPTURE_STILL_ATTR)]).toEqual([true, true]);
       });
 
+      // fails without the fix: the visibility pass gave a stilled clip on screen its file turn, decoding the original.
+      it("never gives a clip its still stands in for its file turn", async () => {
+        const { el } = await capturedAt(1.25);
+        const { decideFileTurn } = await import("./mediaProxy");
+
+        decideFileTurn(el, true);
+
+        expect(el.hasAttribute("src")).toBe(false);
+      });
+
       // fails without the fix: a still the server failed to cut released the capture with the clip marked drawn and no
       // source, so the frame showed nothing where the clip was.
       it("decodes its own file when the server cannot cut the frame, and the capture waits for that frame", async () => {

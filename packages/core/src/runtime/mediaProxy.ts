@@ -529,6 +529,7 @@ export function decideFileTurn(el: HTMLMediaElement, onScreen: boolean): void {
   if (playingItsFile && !playingItsFile.isConnected) playingItsFile = null;
   if (!onScreen || playingItsFile || !heldForCopy.has(el) || el.getAttribute("src") !== null)
     return;
+  if (captureStills.has(el)) return; // a capture page shows the server's still, never decodes the original
   const before = heldForCopy.get(el);
   const src = before ? before.written : authoredSrcOf(el);
   if (src === null || !decodesItsFile(el, src)) return;
