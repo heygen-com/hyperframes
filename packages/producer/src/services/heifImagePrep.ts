@@ -69,8 +69,8 @@ function abortError(): Error {
   return error;
 }
 
-const MAX_CONVERSION_CPU_SECONDS = 300;
-const MAX_CONVERSION_OUTPUT_BYTES = 256 * 1024 * 1024;
+const FFMPEG_SELF_CPU_SECONDS_CAP = 300;
+const FFMPEG_SELF_OUTPUT_BYTES_CAP = 256 * 1024 * 1024;
 
 const TOOL_FAILURE_RE =
   /(?:ffmpeg|ffprobe) not found|ENOENT|Option not found|Unrecognized option|Unknown decoder|Decoder \S+ not found/i;
@@ -207,9 +207,8 @@ export async function convertHeifToJpeg(request: HeifTranscodeRequest): Promise<
       "-hide_banner",
       "-loglevel",
       "error",
-      // Self-enforced, so a conversion still ends if whatever supervises it is gone (see animatedGifPrep.ts).
       "-timelimit",
-      String(MAX_CONVERSION_CPU_SECONDS),
+      String(FFMPEG_SELF_CPU_SECONDS_CAP),
       ...urlInputArgs(request.inputPath),
       "-i",
       request.inputPath,
@@ -219,7 +218,7 @@ export async function convertHeifToJpeg(request: HeifTranscodeRequest): Promise<
       "-q:v",
       "2",
       "-fs",
-      String(MAX_CONVERSION_OUTPUT_BYTES),
+      String(FFMPEG_SELF_OUTPUT_BYTES_CAP),
       "-f",
       "mjpeg",
       "-y",
@@ -286,7 +285,6 @@ async function ensurePreparedJpeg(
   mkdirSync(dirname(outputPath), { recursive: true });
 
   if (!isUsableFile(cachePath)) {
-    // Worker threads share process.pid, so the uuid keeps two renders that miss the same cache entry apart.
     const tmpPath = `${cachePath}.tmp-${process.pid}-${randomUUID()}`;
     const inlinePath = `${tmpPath}.heic`;
     const inputPath = source.path ?? inlinePath;
@@ -299,8 +297,7 @@ async function ensurePreparedJpeg(
         signal: options.signal,
       });
       if (!isUsableFile(tmpPath)) throw new Error("conversion produced an empty file");
-      // ffmpeg ends at -fs as if it had finished; a capped file is cut short and must not be cached.
-      if (statSync(tmpPath).size >= MAX_CONVERSION_OUTPUT_BYTES) {
+      if (statSync(tmpPath).size >= FFMPEG_SELF_OUTPUT_BYTES_CAP) {
         throw new Error("conversion reached its output size limit");
       }
       renameWithRetry(tmpPath, cachePath);

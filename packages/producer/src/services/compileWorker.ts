@@ -2,7 +2,7 @@
 // this thread only: the parent keeps answering /health and other requests, and can end it at a deadline.
 import { parentPort, workerData } from "node:worker_threads";
 import { onTrackedChildProcess } from "@hyperframes/engine";
-import { scratchOutputOf } from "./compileInWorker.js";
+import { scratchOutputOf } from "./compileScratch.js";
 import { compileForRender, type CompileForRenderOptions } from "./htmlCompiler.js";
 import type { ProducerLogger } from "../logger.js";
 
@@ -43,8 +43,7 @@ parentPort?.on("message", (message: { type?: string }) => {
 });
 // Fire-and-forget advisories may outlive the compile; they must not keep the parent's port open.
 parentPort?.unref();
-// The timers that end ffmpeg and ffprobe live on this thread and die with it, so the parent hears of each child, and
-// of the temp file an ffmpeg run writes last, and ends whatever is still running once it stops this thread.
+// This thread's ffmpeg/ffprobe timers die with it, so the parent hears of each child and ends what is left.
 onTrackedChildProcess((proc) => {
   const { pid } = proc;
   if (pid === undefined) return;

@@ -3,10 +3,6 @@ import type { ChildProcess } from "node:child_process";
 const tracked = new Set<ChildProcess>();
 const listeners = new Set<(proc: ChildProcess) => void>();
 
-/**
- * Called with each child this module copy starts tracking. A worker thread has its own copy, and its timers die
- * with it, so it reports its children here to the thread that can still end them.
- */
 export function onTrackedChildProcess(listener: (proc: ChildProcess) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

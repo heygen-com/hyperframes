@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { compileForRenderInWorker, scratchOutputOf } from "./compileInWorker.js";
+import { compileForRenderInWorker } from "./compileInWorker.js";
+import { scratchOutputOf } from "./compileScratch.js";
 import { compileForRender } from "./htmlCompiler.js";
 import { extractSafeRenderErrorMetadata } from "../server.js";
 
@@ -104,7 +105,7 @@ describe("compileForRenderInWorker", () => {
     ).catch((e: unknown) => e);
     expect(extractSafeRenderErrorMetadata(error)?.errorCode).toBe("COMPILE_TIMEOUT");
     // The thread never hears the abort, so the parent ends its children itself once the thread is gone.
-    // A killed child the dead thread can no longer wait on shows as a zombie: not running.
+    // Under plain node the thread's teardown then waits on them; vitest's own worker doesn't, so a zombie counts as ended.
     const running = (pidFile: string) =>
       spawnSync("ps", ["-o", "stat=", "-p", readFileSync(join(dir, pidFile), "utf8")], {
         encoding: "utf8",

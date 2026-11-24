@@ -1,5 +1,5 @@
 import { existsSync, rmSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import {
@@ -45,11 +45,25 @@ function compileTimeoutMs(): number {
 
 let warnedMissingEntry = false;
 
-/** The temp file an ffmpeg run writes, when its last argument is one: what to remove if the run is cut off. */
-export function scratchOutputOf(spawnfile: string, args: readonly string[]): string | undefined {
-  const last = args.at(-1);
-  if (!/^ffmpeg(\.exe)?$/i.test(basename(spawnfile)) || !last) return undefined;
-  return /\.tmp-\d+-[\w-]+$/.test(basename(last)) ? last : undefined;
+const endOnProcessExit = new Set<() => void>();
+let processExitHooked = false;
+function onProcessExit(end: () => void): () => void {
+  if (!processExitHooked) {
+    processExitHooked = true;
+    process.on("exit", () => {
+      for (const each of endOnProcessExit) each();
+    });
+  }
+  endOnProcessExit.add(end);
+  return () => endOnProcessExit.delete(end);
+}
+
+function tryQuietly(action: () => void): void {
+  try {
+    action();
+  } catch {
+    // Best effort: one child or file that can't be ended must not stop the rest.
+  }
 }
 
 /**
@@ -109,8 +123,6 @@ export async function compileForRenderInWorker(
     const thread = new Worker(entry, {
       workerData: { projectDir, htmlPath, downloadDir, options: cloneable },
     });
-    // Children the worker started and that are still running, with the temp file an ffmpeg run writes, when it
-    // is inside this compile's own directories.
     const children = new Map<number, string | undefined>();
     const scratchRoots = [downloadDir, options.animatedGifCacheDir].flatMap((dir) =>
       dir ? [resolvePath(dir)] : [],
@@ -120,22 +132,19 @@ export async function compileForRenderInWorker(
         const rel = relative(root, resolvePath(path));
         return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
       });
-    // A child that exited without the thread reporting it was never waited on, so it stays a zombie of this process
-    // and its pid cannot be reused: killing a recorded pid never reaches another process.
-    const reapChildren = () => {
+    // Only while the thread lives: an exited child it hasn't reported is still its zombie, so the pid is not reused.
+    const endChildren = (signal: boolean) => {
       for (const [pid, output] of children) {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {
-          // Already gone.
-        }
-        if (output) rmSync(output, { force: true });
+        if (signal) tryQuietly(() => process.kill(pid, "SIGKILL"));
+        if (output) tryQuietly(() => rmSync(output, { force: true }));
       }
       children.clear();
-      process.off("exit", reapChildren);
     };
-    // The threads end with the process, but their children would not.
-    process.once("exit", reapChildren);
+    const offProcessExit = onProcessExit(() => endChildren(true));
+    const endThread = () => {
+      endChildren(true);
+      void thread.terminate();
+    };
     let settled = false;
     const settle = (finish: () => void) => {
       if (settled) return;
@@ -146,7 +155,7 @@ export async function compileForRenderInWorker(
     };
     const stop = () => {
       thread.postMessage({ type: "abort" });
-      setTimeout(() => void thread.terminate(), TERMINATE_GRACE_MS).unref();
+      setTimeout(endThread, TERMINATE_GRACE_MS).unref();
     };
     const timer = setTimeout(() => {
       stop();
@@ -161,7 +170,7 @@ export async function compileForRenderInWorker(
     // and ends after the grace.
     const retire = (graceMs: number) => {
       thread.unref();
-      setTimeout(() => void thread.terminate(), graceMs).unref();
+      setTimeout(endThread, graceMs).unref();
     };
 
     thread.on(
@@ -198,7 +207,9 @@ export async function compileForRenderInWorker(
     );
     thread.on("error", (error) => settle(() => reject(error)));
     thread.on("exit", (code) => {
-      reapChildren();
+      offProcessExit();
+      // Its teardown has waited on its children, so their pids may be free; ffmpeg's own limits end any left running.
+      endChildren(false);
       settle(() =>
         reject(new Error(`The compile worker exited with code ${code} before answering`)),
       );
