@@ -12,6 +12,37 @@ function namedAfterCrash(message: string): string {
     : message;
 }
 
+export class SetupStepsError extends Error {
+  constructor(
+    readonly summary: string,
+    readonly stepsWrittenByCli: string,
+  ) {
+    super(`${summary}\n\n${stepsWrittenByCli}`);
+  }
+}
+
+export const LINUX_ARM_BROWSER_STEPS =
+  `Install Chromium manually and point hyperframes to it:\n\n` +
+  `  sudo apt-get install -y chromium-browser\n` +
+  `  export HYPERFRAMES_BROWSER_PATH=$(which chromium-browser)\n\n` +
+  `Then re-run your command. The HYPERFRAMES_BROWSER_PATH env var persists for the session.`;
+
+export function splitStepsWrittenByCli(message: string): {
+  summary: string;
+  stepsWrittenByCli?: string;
+} {
+  const joined = `\n\n${LINUX_ARM_BROWSER_STEPS}`;
+  const at = message.indexOf(joined);
+  if (at === -1) return { summary: message };
+  return {
+    summary: message.slice(0, at) + message.slice(at + joined.length),
+    stepsWrittenByCli: LINUX_ARM_BROWSER_STEPS,
+  };
+}
+
+export const stackOrMessage = (error: unknown): string =>
+  error instanceof Error ? (error.stack ?? error.message) : String(error);
+
 export function normalizeErrorMessage(error: unknown): string {
   if (error instanceof Error) return namedAfterCrash(error.message);
   if (typeof error === "string") return error;

@@ -10,6 +10,8 @@ export type LaunchOpts = {
   width?: number;
   height?: number;
   headless?: boolean;
+  /** "gesture": Chrome's own rule, where a frame without a tap may not start sound. */
+  autoplay?: "free" | "gesture";
 };
 
 export type LoadOpts = {
@@ -84,7 +86,7 @@ export async function launchBrowser(options: LaunchOpts = {}): Promise<Browser> 
       "--use-angle=swiftshader",
       "--font-render-hinting=none",
       "--force-color-profile=srgb",
-      "--autoplay-policy=no-user-gesture-required",
+      `--autoplay-policy=${options.autoplay === "gesture" ? "user-gesture-required" : "no-user-gesture-required"}`,
       `--window-size=${width},${height}`,
     ],
   };

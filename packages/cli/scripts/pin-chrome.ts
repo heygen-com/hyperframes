@@ -1,7 +1,7 @@
 // Prints PINNED_SHELL_DIGESTS for packages/engine/src/services/chromeHostCeiling.ts: each pinned build's headless
 // shell, downloaded from Chrome for Testing with the installer the CLI uses, digested as the CLI checks it.
 //
-//   bun run --cwd packages/cli pin:chrome 158.0.8127.36 150.0.7871.124
+//   bun run --cwd packages/cli pin:chrome 158.0.8127.88 150.0.7871.124
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

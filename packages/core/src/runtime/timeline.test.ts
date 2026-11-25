@@ -6,6 +6,7 @@ import {
   runtimeElementWindow,
 } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
+import { rememberSourceLength } from "./sourceLength";
 
 type TimelineTestWindow = Window & {
   __timelines?: Record<string, { duration: () => number }>;
@@ -112,6 +113,88 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(trackOf("clip-video")).toBe(1);
     expect(trackOf("clip-caption")).toBe(1);
     expect(trackOf("clip-other")).toBe(2);
+  });
+
+  it("names both clips of a GSAP transition on the clip message, for a preview that cannot read the page", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    root.innerHTML = `
+      <div id="a" data-start="0" data-duration="3" data-track-index="0"></div>
+      <div id="b" data-start="2" data-duration="3" data-track-index="0"></div>
+      <div id="c" data-start="5" data-duration="3" data-track-index="0"></div>`;
+    document.body.appendChild(root);
+    (window as TimelineTestWindow).__timelines = {
+      main: { duration: () => 10, labels: { "hf:transition:a:b:fade": 2 } } as never,
+    };
+
+    const labels = collectRuntimeTimelinePayload(defaultParams).clips.map((clip) => [
+      clip.id,
+      clip.transitionLabel,
+    ]);
+    expect(labels).toEqual([
+      ["a", "hf:transition:a:b:fade"],
+      ["b", "hf:transition:a:b:fade"],
+      ["c", null],
+    ]);
+  });
+
+  // fails without the fix: a sealed preview's timeline could not tell a nested composition's own timeline length
+  // from the one it inherits from its parent, so it showed a row an open preview leaves out.
+  it("sends a nested composition's own timeline length, and none for one with no timeline", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "20");
+    root.innerHTML = `
+      <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+        <div id="logo" data-composition-id="logo" data-start="3"></div>
+      </div>
+      <div id="outro" data-composition-id="outro" data-start="12"></div>`;
+    document.body.appendChild(root);
+    (window as TimelineTestWindow).__timelines = {
+      main: { duration: () => 20 },
+      intro: { duration: () => 9 },
+      outro: { duration: () => 4 },
+    };
+
+    const lengths = collectRuntimeTimelinePayload(defaultParams).clips.map((clip) => [
+      clip.id,
+      clip.duration,
+      clip.timelineDuration,
+    ]);
+    expect(lengths).toEqual([
+      ["intro", 10, 9],
+      ["logo", 7, null],
+      ["outro", 4, 4],
+    ]);
+  });
+
+  it("still lists every clip, with the labels it can read, when one timeline's labels throw", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    root.innerHTML = `
+      <div id="a" data-start="0" data-duration="3" data-track-index="0"></div>
+      <div id="b" data-start="2" data-duration="3" data-track-index="0"></div>`;
+    document.body.appendChild(root);
+    (window as TimelineTestWindow).__timelines = {
+      broken: {
+        duration: () => 10,
+        getLabels: () => {
+          throw new Error("a page's own timeline");
+        },
+      } as never,
+      main: { duration: () => 10, labels: { "hf:transition:a:b:fade": 2 } } as never,
+    };
+
+    const labels = collectRuntimeTimelinePayload(defaultParams).clips.map((clip) => [
+      clip.id,
+      clip.transitionLabel,
+    ]);
+    expect(labels).toEqual([
+      ["a", "hf:transition:a:b:fade"],
+      ["b", "hf:transition:a:b:fade"],
+    ]);
   });
 
   it("collects clips from elements with data-start and data-duration", () => {
@@ -307,6 +390,26 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips.find((item) => item.id === clip.id)?.stackingContextId).not.toBe(
       "css:root",
     );
+  });
+
+  // fails without the fix: a far clip the runtime let go of dropped out of the clip list.
+  it("keeps an untrimmed clip the runtime let go of, at its measured length", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    document.body.appendChild(root);
+    const video = document.createElement("video");
+    video.id = "far";
+    video.src = "far.mp4";
+    video.setAttribute("data-start", "300");
+    root.appendChild(video);
+    Object.defineProperty(video, "duration", { value: 600, writable: true, configurable: true });
+    rememberSourceLength(video);
+    video.duration = Number.NaN;
+
+    const far = collectRuntimeTimelinePayload(defaultParams).clips.find(
+      (clip) => clip.id === "far",
+    );
+    expect(far?.duration).toBe(600);
   });
 
   it("identifies video clips by tag", () => {

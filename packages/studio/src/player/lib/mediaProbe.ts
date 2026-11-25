@@ -1,6 +1,6 @@
 import { authoredSrcPath, resolveMediaPreviewUrl } from "../components/thumbnailUtils";
 import { TIMELINE_VIEWPORT_BUDGETS } from "./timelineViewportBudgets";
-import { mediaUrlSourceOptions, reportMediaFetchFailure } from "./mediaFetch";
+import { mediaUrlSourceOptions, reportMediaFetchFailure, selfContainedFormats } from "./mediaFetch";
 
 export interface MediaProbeResult {
   duration: number;
@@ -57,7 +57,7 @@ async function probeOne(url: string): Promise<MediaProbeResult | null> {
 
   const input = new mb.Input({
     source: new mb.UrlSource(url, mediaUrlSourceOptions("probe")),
-    formats: mb.ALL_FORMATS,
+    formats: selfContainedFormats(mb),
   });
   try {
     const duration = await input.getDurationFromMetadata();

@@ -14,6 +14,19 @@ export function parseCompositionDimension(value: string | null | undefined): num
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+/** The composition's size as a document alone gives it: the composition root's, else any element that declares both. */
+export function readCompositionSizeFromDocument(
+  doc: ParentNode | null | undefined,
+): { width: number; height: number } | null {
+  const root =
+    doc?.querySelector("[data-composition-id][data-width][data-height]") ??
+    doc?.querySelector("[data-width][data-height]");
+  if (!root) return null;
+  const width = parseCompositionDimension(root.getAttribute("data-width"));
+  const height = parseCompositionDimension(root.getAttribute("data-height"));
+  return width !== null && height !== null ? { width, height } : null;
+}
+
 export function findRootCompositionElement(doc: ParentNode = document): HTMLElement | null {
   const explicitRoot = doc.querySelector('[data-composition-id][data-root="true"]');
   if (isHtmlElement(explicitRoot)) return explicitRoot;

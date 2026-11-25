@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./processTree.js", () => ({
+vi.mock("./processTree.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./processTree.js")>()),
   terminateProcessTree: () => Promise.reject(new Error("taskkill exited with status 128")),
 }));
 

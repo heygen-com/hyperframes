@@ -25,6 +25,13 @@ import { join } from "node:path";
 import { mkdirSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
+import { importEntry, searchedFolders, trustedPackageEntry } from "./lib/trusted-package.mjs";
+
+const NEEDS_PUPPETEER = `It loads puppeteer-core only from your own install, never from the project folder:
+install it from your home folder (cd ~ && npm install --global puppeteer-core), or set
+HYPERFRAMES_PUPPETEER_CORE to the absolute path of a puppeteer-core folder you installed.
+Never run npm install in the project: that runs the project's .npmrc, overrides and scripts.`;
 
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
   console.log(`usage: [NAME=..] [STYLE=satellite|dark|light|<{z}/{x}/{y} url>] [CENTER="lng,lat"]
@@ -36,12 +43,24 @@ FROM pans the camera from that point to CENTER over the first PAN of the move, w
 runs from PAN/2 to HOLD; ZSTART about 1.8 frames the whole globe, ZEND 16 is a building.
 Writes <OUT>/<NAME>.mp4 (all-intra basemap) and <OUT>/<NAME>-coords.json (projected borders).
 Needs puppeteer-core, ffmpeg, a Chrome or chrome-headless-shell, and network for the tiles.
-Run one bake at a time; it prints its pace and an estimate as it goes.`);
+Run one bake at a time; it prints its pace and an estimate as it goes.
+${NEEDS_PUPPETEER}`);
   process.exit(0);
 }
 
 // Loaded after the --help check so usage prints without puppeteer-core installed.
-const { default: puppeteer } = await import("puppeteer-core");
+const puppeteerEntry = trustedPackageEntry("puppeteer-core", {
+  override: process.env.HYPERFRAMES_PUPPETEER_CORE,
+  overrideName: "HYPERFRAMES_PUPPETEER_CORE",
+});
+if (!puppeteerEntry) {
+  const looked = searchedFolders({ name: "puppeteer-core" }).join(" and ");
+  console.error(
+    `bake-basemap needs puppeteer-core and found none in ${looked}. ${NEEDS_PUPPETEER}`,
+  );
+  process.exit(1);
+}
+const puppeteer = await importEntry(puppeteerEntry);
 
 // --- resolve Chrome dynamically (no hardcoded machine path) ---
 function resolveChrome() {
@@ -132,6 +151,7 @@ const TILES =
 
 const OUT = process.env.OUT || process.cwd(); // artifacts → workspace (cwd), NOT the installed skill dir
 const framesDir = join(OUT, "frames-" + NAME);
+assertLiteralMediaPath(framesDir);
 mkdirSync(framesDir, { recursive: true });
 
 // A seeded star field behind the globe, so every bake of the same move is identical.

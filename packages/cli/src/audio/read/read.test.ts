@@ -20,9 +20,17 @@ import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { readAudio } from "./read.js";
 import { formatRead } from "./format.js";
 import { READ_VERSION } from "./types.js";
-import { cachedStems, fetchStems } from "./stems.js";
+import { cachedStems, fetchStems, recordStems } from "./stems.js";
 
 const RATE = 22_050;
+
+/** Marks stems a test wrote by hand as this install's, as a separation would. */
+function ownStems(stemDir: string): void {
+  recordStems(
+    stemDir,
+    readdirSync(stemDir).filter((name) => lstatSync(join(stemDir, name)).isFile()),
+  );
+}
 const dir = mkdtempSync(join(tmpdir(), "hf-audio-read-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -195,6 +203,14 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     const path = wav("episode.wav", 8, (t) => voiced(t) + boom(t) + bed(t));
     vi.stubEnv("HEYGEN_API_KEY", "test-key");
     const cacheDir = join(dir, "cache-stems");
+    // A voice-free mix that arrived with the project is cleared by the fetch, never reported as the mix.
+    const plantedDir = join(
+      cacheDir,
+      "stems",
+      createHash("sha256").update(readFileSync(path)).digest("hex").slice(0, 12),
+    );
+    mkdirSync(plantedDir, { recursive: true });
+    writeFileSync(join(plantedDir, "no-vocals.wav"), "planted");
     const { analysis, textPath } = await readAudio(path, "episode.wav", {
       cacheDir,
       quality: "best",
@@ -217,6 +233,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
         "stems not described: the description service answered 404",
       ],
     });
+    expect(readFileSync(join(plantedDir, "no-vocals.wav"), "utf8")).not.toBe("planted");
     expect(analysis.voice!.source).toBe("activity");
     expect(analysis.effects!.events.map((e) => [Math.round(e.t * 10) / 10, e.kind])).toEqual([
       [2.4, "effect"],
@@ -252,6 +269,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
         ...Object.fromEntries(names.map((n) => [n, "silence.wav"])),
       }),
     );
+    ownStems(stemDir);
     const { analysis, textPath, jsonPath } = await readAudio(path, "room.wav", {
       cacheDir,
       quality: "best",
@@ -306,6 +324,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
         ...Object.fromEntries(["vocals", "bass", "guitar", "piano"].map((n) => [n, "silence.wav"])),
       }),
     );
+    ownStems(stemDir);
     const { analysis, textPath } = await readAudio(path, "effect-in-room.wav", { cacheDir });
     expect(analysis.ambience).toHaveLength(1);
     expect(analysis.effects!.events).toHaveLength(1);
@@ -344,6 +363,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
         ),
       }),
     );
+    ownStems(stemDir);
     const { analysis } = await readAudio(path, file, { cacheDir });
     expect(analysis.music!.segments.length).toBeGreaterThan(0);
     expect(analysis.effects!.events).toEqual([]);
@@ -460,6 +480,7 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
         names[stem] = `${stem}.audio`;
       }
       writeFileSync(join(stemDir, "stems.json"), JSON.stringify(names));
+      ownStems(stemDir);
       writeFileSync(
         `${path}.transcript.json`,
         JSON.stringify({
@@ -679,6 +700,7 @@ describe.skipIf(!ffmpeg || process.platform === "win32")("readAudio cache links"
       join(stemDir, "stems.json"),
       JSON.stringify({ ...names, guitar: "bed.wav", piano: "bed.wav", other: "bed.wav" }),
     );
+    ownStems(stemDir);
     symlinkSync(victim, join(stemDir, `no-vocals.wav.${process.pid}.tmp.wav`));
     const { analysis } = await readAudio(path, "mix-links.wav", { cacheDir, quality: "fast" });
     expect(analysis.voiceFreeMix).toMatch(/no-vocals\.wav$/);

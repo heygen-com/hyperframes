@@ -26,8 +26,7 @@ import { relative, resolve } from "node:path";
 import { CliUsageError, finishCommand } from "../utils/commandResult.js";
 import { printFailureLine } from "../utils/jsonError.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
-import { shellArg } from "../utils/shellArg.js";
-import { runAdd } from "./add.js";
+import { fromReceivedRegistry, printInstalledHeader, printSnippet, runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
   assumeLocalModelConsent,
@@ -59,6 +58,9 @@ const ON_DEVICE_SETUP_COMMAND = "hyperframes catalog --on-device";
  * Warnings are returned as well as printed so `--json` can carry the same
  * reasons the terminal shows.
  */
+const fetchRegistryVectors = (registry: string, publicOnly: boolean, expectedRevision?: string) =>
+  publicOnly ? Promise.resolve(false) : fetchLocalVectors(registry, { expectedRevision });
+
 // a consent gate: each branch is a distinct reason the tier cannot run, and each has to be reported separately
 // fallow-ignore-next-line complexity
 async function prepareOnDeviceTier(opts: {
@@ -68,6 +70,7 @@ async function prepareOnDeviceTier(opts: {
   /** Only an explicit --on-device installs the runtime; a plain search never waits on it. */
   installRuntime: boolean;
   registry: string;
+  publicOnly: boolean;
   registryNames: ReadonlySet<string>;
   status: LocalModelStatus;
 }): Promise<string[]> {
@@ -155,7 +158,7 @@ async function prepareOnDeviceTier(opts: {
     revisionStale ||
     countUnindexed(opts.registryNames, localVectorNames()) > 0
   ) {
-    await fetchLocalVectors(opts.registry, { expectedRevision: opts.artifactRevision });
+    await fetchRegistryVectors(opts.registry, opts.publicOnly, opts.artifactRevision);
   }
   // Deliberately not the fetch's own answer. A refresh that fails still leaves
   // the previous vectors on disk, and those still rank: reporting the tier
@@ -229,6 +232,7 @@ export default defineCommand({
     const interactive = args["human-friendly"] === true;
     const dir = resolve(process.cwd());
     const config = loadProjectConfig(dir) ?? DEFAULT_PROJECT_CONFIG;
+    const publicOnly = fromReceivedRegistry(dir, config.registry);
 
     let typeFilter: ItemType | undefined;
     if (args.type === "block") typeFilter = "hyperframes:block";
@@ -240,10 +244,12 @@ export default defineCommand({
 
     // Asked for the whole manifest on purpose: its item list defines coverage,
     // and its artifact revision is the one owner of vector freshness.
-    const manifest = await readRegistryManifest(config.registry).catch((error: unknown) => {
-      printFailureLine((show) => show(error instanceof Error ? error.message : String(error)));
-      return finishCommand(1);
-    });
+    const manifest = await readRegistryManifest(config.registry, { publicOnly }).catch(
+      (error: unknown) => {
+        printFailureLine((show) => show(error instanceof Error ? error.message : String(error)));
+        return finishCommand(1);
+      },
+    );
     const entries = manifest.items;
     const artifactRevision = manifest.catalogArtifact?.revision;
     const catalog = entries.filter((e) => e.type !== "hyperframes:example");
@@ -256,7 +262,7 @@ export default defineCommand({
       return;
     }
 
-    const items = await loadAllItems(filtered, { baseUrl: config.registry });
+    const items = await loadAllItems(filtered, { baseUrl: config.registry, publicOnly });
 
     const tagFilter = args.tag?.toLowerCase();
     const tagged = tagFilter
@@ -285,6 +291,7 @@ export default defineCommand({
         canPrompt: !isUnattended() && !json,
         installRuntime: args["on-device"] === true,
         registry: config.registry,
+        publicOnly,
         registryNames,
         status: searchContext.status,
       });
@@ -343,7 +350,7 @@ export default defineCommand({
               // Withheld when the query never parsed: the catalog has not been
               // shown to be missing anything, so inviting a gap report here
               // would file noise against a search that never ran.
-              ...(unsearchable ? {} : { report_gap: searchMissReport(query, tierToken(searched)) }),
+              ...(unsearchable ? {} : { report_gap: searchMissReport(tierToken(searched)) }),
               results: [],
             },
             null,
@@ -378,11 +385,11 @@ export default defineCommand({
           if (query) {
             console.log("");
             console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
-            console.log(c.dim(`  ${searchMissReport(query, tierToken(searched))}`));
+            console.log(c.dim(`  ${searchMissReport(tierToken(searched))}`));
           }
         }
       }
-      if (query) await offerLocalModel(0, json, config.registry, artifactRevision);
+      if (query) await offerLocalModel(0, json, config.registry, publicOnly, artifactRevision);
       // A query with no searchable words is bad input, not an empty shelf, so it
       // exits non-zero like an invalid --type does. An agent that only checks the
       // exit code would otherwise read "searched successfully, catalog has
@@ -416,7 +423,7 @@ export default defineCommand({
             // plausible items and none of them did the thing — a judgement
             // only the reader can make, so the command has to already be in
             // the envelope by the time they make it.
-            report_gap: searchMissReport(query, tierToken(searched)),
+            report_gap: searchMissReport(tierToken(searched)),
             results: output,
           },
           null,
@@ -458,7 +465,13 @@ export default defineCommand({
         if (warnings.length === 0) {
           const hint = localModelHint(json, effectiveStatus);
           if (hint) console.error(terminalLines(hint));
-          await offerLocalModel(matching.length, json, config.registry, artifactRevision);
+          await offerLocalModel(
+            matching.length,
+            json,
+            config.registry,
+            publicOnly,
+            artifactRevision,
+          );
         }
       }
       if (query) {
@@ -470,9 +483,7 @@ export default defineCommand({
         // in. Every catalog gap reported to date came from the word tier. The
         // tier rides along in the command so a vocabulary miss stays
         // distinguishable from a meaning miss when the reports are read.
-        console.log(
-          c.dim(`  None of these do it? ${searchMissReport(query, tierToken(searched))}`),
-        );
+        console.log(c.dim(`  None of these do it? ${searchMissReport(tierToken(searched))}`));
       }
     }
 
@@ -499,22 +510,12 @@ export default defineCommand({
         skipClipboard: false,
       });
 
-      for (const warning of result.warnings) {
-        console.warn(c.warn(`Warning: ${terminalText(warning)}`));
-      }
-      console.log("");
-      console.log(
-        `${c.success("✓")} Installed ${c.accent(terminalText(result.name))} (${terminalText(result.type)})`,
-      );
+      printInstalledHeader(result, "Installed");
       const root = realpath(dir);
       for (const file of result.written) {
         console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
       }
-      if (result.snippet) {
-        console.log("");
-        console.log(c.dim("Include snippet:"));
-        console.log(`  ${terminalText(result.snippet)}`);
-      }
+      if (result.snippet) printSnippet(result.snippet);
       return;
     }
 
@@ -700,33 +701,11 @@ function tierDetail(searched: { localMode: LocalMode } | null): string {
 }
 
 /**
- * The command that turns a fruitless search into a catalog gap report, or how
- * to send one when no line would carry the query as typed in the user's shell.
- *
- * A search that returns nothing usable is the only moment anyone knows what
- * the catalog is missing, and it was also the one moment we said nothing:
- * `feedback --search-miss` was documented in the skill and printed by
- * `feedback --help`, neither of which is open when a query comes back wrong.
- * Handing back the exact line, with the query already in it, is the whole
- * difference between a gap someone reports and a gap someone works around.
- *
- * Only the command is built here. Sending it stays a separate deliberate act,
- * so plain `catalog --query` keeps its promise that the query text never
- * leaves the machine.
+ * The line that reports a gap, ready to run. It names the move that was missing and the tier;
+ * the query is left out, so the searched words never leave the machine.
  */
-export function searchMissReport(
-  query: string,
-  tier: "on-device" | "words",
-  platform: NodeJS.Platform = process.platform,
-): string {
-  const searched = shellArg(query, platform);
-  if (searched === null) {
-    return `Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier ${tier}.`;
-  }
-  return (
-    `npx hyperframes feedback --search-miss ${searched} ` +
-    `--wanted "<the move you needed>" --tier ${tier}`
-  );
+export function searchMissReport(tier: "on-device" | "words"): string {
+  return `npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier ${tier}`;
 }
 
 type LocalMode = "local-model" | "words";
@@ -759,6 +738,7 @@ async function offerLocalModel(
   matchCount: number,
   json: boolean,
   registryBaseUrl: string,
+  publicOnly: boolean,
   artifactRevision?: string,
 ): Promise<void> {
   if (json || isUnattended()) return;
@@ -784,7 +764,7 @@ async function offerLocalModel(
   // is an offline tier the user turned on that silently never ranks anything.
   const vectors =
     hasLocalVectors() ||
-    (await fetchLocalVectors(registryBaseUrl, { expectedRevision: artifactRevision }));
+    (await fetchRegistryVectors(registryBaseUrl, publicOnly, artifactRevision));
   console.log(
     c.dim(
       vectors

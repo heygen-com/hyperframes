@@ -75,6 +75,28 @@ async function open(beforeNavigate) {
   return { page, iframe, frame };
 }
 
+// A sealed frame gets Studio's seeks as posted messages, which an in-frame seek can overtake. Studio's own message
+// queue to the frame is ordered: once a message posted after them arrives, they have all been applied.
+async function afterStudioMessages(host) {
+  await host.frame.evaluate((studio) => {
+    window.__regressionBarrier = new Promise((resolve) => {
+      const isBarrier = (event) =>
+        event.source === parent && event.data?.type === "preview-regression-barrier";
+      const onMessage = (event) => {
+        if (event.origin !== studio || !isBarrier(event)) return;
+        removeEventListener("message", onMessage);
+        resolve();
+      };
+      addEventListener("message", onMessage);
+    });
+  }, new URL(host.page.url()).origin);
+  const iframe = await host.frame.frameElement();
+  await iframe.evaluate((el) =>
+    el.contentWindow.postMessage({ type: "preview-regression-barrier" }, "*"),
+  );
+  await host.frame.evaluate(() => window.__regressionBarrier);
+}
+
 async function seek(host, time) {
   const start = performance.now();
   await host.frame.evaluate(async (time) => {
@@ -153,6 +175,18 @@ async function collectGarbage(host) {
   await session.detach();
 }
 
+// The preview server's own CORS answer to `request`: a sealed frame plays its media only with that grant.
+async function serverCorsFor(request) {
+  const origin = request.headers().origin;
+  if (!origin) return {};
+  const res = await fetch(request.url(), {
+    headers: { origin, "sec-fetch-dest": "video", range: "bytes=0-0" },
+  });
+  await res.body?.cancel();
+  const cors = /^(access-control-|vary$|x-content-type-options$)/;
+  return Object.fromEntries([...res.headers].filter(([header]) => cors.test(header)));
+}
+
 async function withBlockedNative(test) {
   const assets = new Map(
     await Promise.all(
@@ -168,17 +202,18 @@ async function withBlockedNative(test) {
   const host = await open(async (page) => {
     await page.setRequestInterception(true);
     page.on("requestfailed", (request) => held.delete(request));
-    const respondPrefix = (request, name, data) => {
+    const respondPrefix = async (request, name, data) => {
       if (prefixed.has(name)) {
         held.add(request);
         return;
       }
       prefixed.add(name);
       const prefix = data.subarray(0, 16 * 1024);
-      void request.respond({
+      await request.respond({
         status: 206,
         contentType: "video/mp4",
         headers: {
+          ...(await serverCorsFor(request)),
           "Content-Range": `bytes 0-${prefix.length - 1}/${data.length}`,
           "Content-Length": String(prefix.length),
           "Accept-Ranges": "bytes",
@@ -189,7 +224,8 @@ async function withBlockedNative(test) {
     page.on("request", (request) => {
       const name = new URL(request.url()).pathname.split("/").at(-1);
       const data = assets.get(name);
-      if (request.resourceType() === "media" && data && blocked) respondPrefix(request, name, data);
+      if (request.resourceType() === "media" && data && blocked)
+        void respondPrefix(request, name, data);
       else void request.continue();
     });
   });
@@ -235,7 +271,7 @@ async function nativeOnlyHandoff() {
     await host.frame.evaluate(() => window.__hf.setPausedVideoFrameProvider(null));
     await seek(host, 0);
     await host.frame.waitForFunction(
-      () => !document.querySelector("[data-hf-preview-video-canvas]"),
+      () => !document.querySelector("canvas[data-hf-preview-video-canvas]"),
     );
     const baseline = await picture(host, "native-only-paused");
     assert.equal(baseline.scene, "A");
@@ -312,7 +348,7 @@ async function delayedNativeRecovery() {
     const deliveredAt = performance.now();
     await release();
     await host.frame.waitForFunction(
-      () => !document.querySelector("[data-hf-preview-video-canvas]"),
+      () => !document.querySelector("canvas[data-hf-preview-video-canvas]"),
       { timeout: 5000 },
     );
     const recovery = await host.frame.evaluate(() => ({
@@ -399,6 +435,7 @@ try {
     await picture(host, `drag-${fraction}`);
   }
   await host.page.mouse.up();
+  await afterStudioMessages(host);
   await seek(host, 7);
   await picture(host, "paused-b");
   await seek(host, 5.5);
@@ -423,7 +460,7 @@ try {
   assert.equal(await host.frame.evaluate(() => window.__player.isPlaying()), false);
   await play(host);
   await host.frame.waitForFunction(
-    () => document.querySelectorAll("[data-hf-preview-video-canvas]").length === 0,
+    () => document.querySelectorAll("canvas[data-hf-preview-video-canvas]").length === 0,
   );
   await collectGarbage(host);
   assert.deepEqual(errors, [], "Browser logged an error or unclosed VideoSample");

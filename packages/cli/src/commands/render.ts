@@ -115,6 +115,7 @@ import {
 } from "../telemetry/renderCpu.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
+import { hyperframesConfigDir } from "../utils/configDir.js";
 import {
   afterCleanRender,
   afterRevert,
@@ -1164,7 +1165,7 @@ async function executeLocalRender(
               ? "."
               : ", or render WebM instead: hyperframes render --format webm --output output.webm"),
         );
-        failCommand();
+        failCommand(1, error);
       }
       // Capability probing is advisory. Let the real encode surface the
       // authoritative FFmpeg error instead of failing here with a bare stack.
@@ -1222,6 +1223,10 @@ async function executeLocalRender(
 
   const engineConfig = producer.resolveConfig({
     browserGpuMode: options.browserGpuMode ?? "software",
+    ...(options.browserGpuMode === "auto" && {
+      gpuChoiceFile: hyperframesConfigDir("gpu-choice.json"),
+      hyperframesVersion: VERSION,
+    }),
     // Local auto opts out of the software-GPU screenshot clamp, and a BeginFrame that draws no first frame
     // retries by screenshot. Docker and --no-browser-gpu request software; --resolution supersamples via screenshot.
     ...(options.browserGpuMode === "auto" &&

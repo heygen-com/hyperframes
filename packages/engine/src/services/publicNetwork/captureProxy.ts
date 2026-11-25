@@ -90,13 +90,31 @@ function refuse(response: ServerResponse): void {
   response.end();
 }
 
-async function httpPeer(url: URL, proxy: UpstreamProxy | undefined) {
+async function resolveOrReportFailure(hostname: string, fail: () => void): Promise<string> {
+  try {
+    return await resolvePublicAddress(hostname);
+  } catch (error) {
+    if (!(error instanceof NonPublicHostError)) fail();
+    throw error;
+  }
+}
+
+async function httpPeer(url: URL, proxy: UpstreamProxy | undefined, fail: () => void) {
   if (!proxy) {
-    const hostname = await resolvePublicAddress(url.hostname);
+    const hostname = await resolveOrReportFailure(url.hostname, fail);
     return { hostname, family: 4, port: url.port || 80, path: url.pathname + url.search };
   }
   assertPublicHostname(url.hostname);
   return { hostname: proxy.host, port: proxy.port, path: url.href };
+}
+
+function relayedReplyHead(received: IncomingMessage, response: ServerResponse): boolean {
+  try {
+    response.writeHead(received.statusCode ?? 502, forwardHeaders(received));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function forwardHttp(
@@ -109,11 +127,16 @@ async function forwardHttp(
 ): Promise<void> {
   try {
     const url = destination(incoming.url ?? "", false);
-    const peer = await httpPeer(url, proxy);
+    const peer = await httpPeer(url, proxy, fail);
     if (incoming.destroyed || response.destroyed) return;
     const headers = forwardHeaders(incoming);
     headers.host = url.host;
     if (proxy?.authorization) headers["proxy-authorization"] = proxy.authorization;
+    const badGateway = () => {
+      fail();
+      if (!response.headersSent) response.writeHead(502, { Connection: "close" });
+      response.end();
+    };
     const upstream = request(
       {
         ...peer,
@@ -123,7 +146,10 @@ async function forwardHttp(
         signal: AbortSignal.timeout(30_000),
       },
       (received) => {
-        response.writeHead(received.statusCode ?? 502, forwardHeaders(received));
+        if (!relayedReplyHead(received, response)) {
+          received.resume();
+          return badGateway();
+        }
         received.on("error", () => response.destroy());
         received.pipe(response);
       },
@@ -132,11 +158,7 @@ async function forwardHttp(
     upstream.setTimeout(CONNECTION_TIMEOUT_MS, () =>
       upstream.destroy(new Error("Capture request timed out")),
     );
-    upstream.on("error", () => {
-      fail();
-      if (!response.headersSent) response.writeHead(502, { Connection: "close" });
-      response.end();
-    });
+    upstream.on("error", badGateway);
     response.on("close", () => upstream.destroy());
     incoming.on("error", () => upstream.destroy());
     incoming.pipe(upstream);
@@ -198,7 +220,7 @@ async function forwardTunnel(
       assertPublicHostname(url.hostname);
       return await forwardTunnelViaUpstream(url, proxy, client, head, sockets, fail);
     }
-    const address = await resolvePublicAddress(url.hostname);
+    const address = await resolveOrReportFailure(url.hostname, fail);
     if (client.destroyed) return;
     const upstream = connect({ host: address, family: 4, port: Number(url.port || 443) });
     trackSocket(upstream, sockets);

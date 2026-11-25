@@ -129,7 +129,7 @@ describe("shellArg", () => {
   );
 
   const argvScript = join(root, "argv.cjs");
-  writeFileSync(argvScript, "process.stdout.write(JSON.stringify(process.argv.slice(2)));");
+  writeFileSync(argvScript, 'process.stdout.write(JSON.stringify(process.argv.slice(2)) + "\\n");');
   const readArgv = (output: string): string[] => JSON.parse(output) as string[];
 
   it.runIf(process.platform === "win32")(
@@ -150,19 +150,28 @@ describe("shellArg", () => {
   it.runIf(process.platform === "win32")(
     "prints a Windows word that PowerShell reads as written",
     () => {
-      for (const name of WINDOWS_ROUND_TRIP) {
-        const line = `& '${process.execPath}' '${argvScript}' ${shellArg(name, "win32")}`;
-        const output = execFileSync(
-          "powershell.exe",
-          ["-NoProfile", "-EncodedCommand", Buffer.from(line, "utf16le").toString("base64")],
-          { encoding: "utf8" },
-        );
+      // One Windows PowerShell for every name: a cold start each pushed a slow runner past the timeout.
+      const lines = WINDOWS_ROUND_TRIP.map(
+        (name) => `& '${process.execPath}' '${argvScript}' ${shellArg(name, "win32")}`,
+      );
+      const output = execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-EncodedCommand",
+          Buffer.from(lines.join("\n"), "utf16le").toString("base64"),
+        ],
+        { encoding: "utf8" },
+      );
+      const runs = output.split(/\r?\n/).filter(Boolean);
+      expect(runs).toHaveLength(WINDOWS_ROUND_TRIP.length);
+      WINDOWS_ROUND_TRIP.forEach((name, index) => {
         // Windows PowerShell hands a space-free word to a program unquoted, so a doubled trailing backslash stays doubled.
         expect(
-          readArgv(output).map((arg) => win32.normalize(arg)),
+          readArgv(runs[index]!).map((arg) => win32.normalize(arg)),
           name,
         ).toEqual([win32.normalize(name)]);
-      }
+      });
     },
   );
 });

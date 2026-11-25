@@ -14,15 +14,21 @@ import {
   MAX_QUERY_MATCHES,
   MAX_SNAP_TARGETS,
   MAX_SOURCE_GROUPS,
+  isStableSelector,
+  isTransformList,
   type EditingElementBox,
   type EditingElementDescription,
   type EditingElementGeometry,
+  type EditingGestureBase,
   type EditingGestureStart,
   type EditingElementHit,
   type EditingElementMatch,
   type EditingElementSource,
   type EditingLayer,
   type EditingStackingSibling,
+  type EditingParams,
+  type TextEditResult,
+  textEditResult,
 } from "@hyperframes/core/runtime/editing-port";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
 import { previewRequest } from "./previewChannel";
@@ -81,14 +87,22 @@ function readHit(value: unknown): PreviewElementHit | null {
   return isRect(value.rect) ? (value as unknown as PreviewElementHit) : null;
 }
 
+function hasOwnIdentity({ id, selector }: Fields): boolean {
+  if (!isValueOrNull(id) || !isValueOrNull(selector)) return false;
+  return (
+    typeof selector !== "string" || isStableSelector(selector, typeof id === "string" ? id : null)
+  );
+}
+
 /** Frame data checked against `EditingElementDescription`; null when any field is off. */
 export function readPreviewElement(value: unknown): PreviewElement | null {
   if (!readHit(value) || !isFields(value)) return null;
   if (value.parent !== null && !isHandle(value.parent)) return null;
   if (value.label !== undefined && !isValue(value.label)) return null;
-  if (!isValueOrNull(value.id) || !isValueOrNull(value.selector)) return null;
+  if (!hasOwnIdentity(value)) return null;
   if (!isSource(value.source) || typeof value.locked !== "boolean") return null;
   if (!isStyles(value.inlineStyles) || !isLongText(value.text)) return null;
+  if (value.textMarkup !== undefined && typeof value.textMarkup !== "boolean") return null;
   return hasPlainFields(value) ? (value as unknown as PreviewElement) : null;
 }
 
@@ -199,13 +213,20 @@ const isSourceBox = (value: unknown) =>
 
 const isClipPath = isValueOrNull;
 
+const isLayout = (value: unknown) =>
+  isFields(value) &&
+  [value.width, value.height].every(
+    (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
+  );
+
 const isBox = (value: unknown): value is EditingElementBox =>
   isFields(value) &&
   isRect(value.rect) &&
   Number.isFinite(value.angle) &&
   isCorners(value.corners) &&
   isSourceBox(value.source) &&
-  isClipPath(value.clipPath);
+  isClipPath(value.clipPath) &&
+  isLayout(value.layout);
 
 const readGeometry = (value: unknown): EditingElementGeometry | null => {
   if (!isBox(value) || !isFields(value) || typeof value.visible !== "boolean") return null;
@@ -247,26 +268,38 @@ const isFlag = (value: unknown) => typeof value === "boolean";
 const isFiniteFields = (value: unknown, keys: string[]) =>
   isFields(value) && keys.every((key) => Number.isFinite(value[key]));
 
-const isLayout = (value: unknown) =>
-  isFields(value) &&
-  [value.width, value.height].every(
-    (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
-  );
-
 const isTurnOrNull = (value: unknown) =>
   value === null || (Number.isFinite(value) && Math.abs(value as number) <= MAX_DRAFT_DEG);
 
 const kept = <T>(value: T, valid: boolean) => (valid ? value : undefined);
 
-export type ReadGestureStart = Omit<EditingGestureStart, "gsapRotation" | "planar"> & {
+const isTurn = (value: unknown) => value !== null && isTurnOrNull(value);
+
+const isRotationTarget = (target: unknown) =>
+  isFields(target) &&
+  (target.property === "rotate" || target.property === "transform") &&
+  isTransformList(target.before) &&
+  isTransformList(target.after) &&
+  isTurn(target.share) &&
+  (target.sign === 1 || target.sign === -1) &&
+  isFlag(target.inline);
+
+const isCssRotation = (value: unknown) =>
+  value === null || (isFields(value) && isTurn(value.angle) && isRotationTarget(value.target));
+
+export type ReadGestureStart = Omit<
+  EditingGestureStart,
+  "gsapRotation" | "cssRotation" | "planar" | "grow"
+> & {
   gsapRotation?: number | null;
+  grow?: EditingGestureStart["grow"];
+  cssRotation?: EditingGestureStart["cssRotation"];
 };
 
 const readGestureStart = (value: unknown): ReadGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
-  const { layout, move, gsap, gsapRotation } = value;
+  const { move, gsap, gsapRotation, grow, cssRotation } = value;
   const valid = [
-    isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
   ];
@@ -275,6 +308,8 @@ const readGestureStart = (value: unknown): ReadGestureStart | null => {
   return {
     ...start,
     gsapRotation: kept(start.gsapRotation, isTurnOrNull(gsapRotation)),
+    grow: kept(start.grow, isFiniteFields(grow, ["a", "b", "c", "d"])),
+    cssRotation: kept(start.cssRotation, isCssRotation(cssRotation)),
   };
 };
 
@@ -296,6 +331,20 @@ export async function previewGestureStart(
   if (!Array.isArray(elements) || elements.length !== handles.length) return null;
   if (!Array.isArray(snap) || snap.length > MAX_SNAP_TARGETS || !snap.every(isBox)) return null;
   return { elements: elements.map(readGestureStart), snap };
+}
+
+export async function previewGestureBase(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+): Promise<Array<EditingGestureBase | null> | null> {
+  if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
+  const elements: unknown = (
+    await previewRequest(iframe, "gesture-base", { handles: [...handles] })
+  )?.elements;
+  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  return elements.map((base) =>
+    isFiniteFields(base, ["x", "y", "opacity", "scale"]) ? (base as EditingGestureBase) : null,
+  );
 }
 
 const LAYER_KINDS = new Set(["image", "video", "audio", "vector", "group", "text", "shape"]);
@@ -375,6 +424,13 @@ function ownedPutBack(
   return any ? { styles, attributes, html } : null;
 }
 
+export async function previewTextEdit(
+  iframe: HTMLIFrameElement,
+  params: EditingParams<"text-edit">,
+): Promise<TextEditResult | null> {
+  return textEditResult(await previewRequest(iframe, "text-edit", params));
+}
+
 export interface PreviewElementEdit {
   drawn: Promise<boolean>;
   restore(names?: readonly string[]): void;
@@ -386,14 +442,15 @@ const latestWriters = new WeakMap<HTMLIFrameElement, Map<string, symbol>>();
 export function editPreviewElement(
   iframe: HTMLIFrameElement,
   handle: string,
-  edit: { styles?: EditEntry[]; attributes?: EditEntry[]; html?: string },
+  edit: { styles?: EditEntry[]; attributes?: EditEntry[]; html?: string; expect?: string },
 ): PreviewElementEdit {
-  const send = (styles: StyleEntry[], attributes: EditEntry[], html?: string) =>
+  const send = (styles: StyleEntry[], attributes: EditEntry[], html?: string, expect?: string) =>
     previewRequest(iframe, "edit-element", {
       handle,
       styles,
       attributes,
       ...(html !== undefined && { html }),
+      ...(html !== undefined && expect !== undefined && { expect }),
     });
   const writers = latestWriters.get(iframe) ?? new Map<string, symbol>();
   latestWriters.set(iframe, writers);
@@ -402,7 +459,7 @@ export function editPreviewElement(
   for (const [name] of edit.styles ?? []) writers.set(key("style", name), self);
   for (const [name] of edit.attributes ?? []) writers.set(key("attr", name), self);
   if (edit.html !== undefined) writers.set(key("html", ""), self);
-  const reply = send(edit.styles ?? [], edit.attributes ?? [], edit.html);
+  const reply = send(edit.styles ?? [], edit.attributes ?? [], edit.html, edit.expect);
   return {
     drawn: reply.then((before) => before?.applied === true),
     restore(names) {

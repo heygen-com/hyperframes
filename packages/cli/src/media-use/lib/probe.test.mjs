@@ -4,7 +4,8 @@ import { chmodSync, mkdtempSync, writeFileSync, existsSync, rmSync } from "node:
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { probe } from "./probe.mjs";
-import childProcess from "node:child_process";
+import { SELF_CONTAINED_FORMATS } from "./ff-binaries.mjs";
+import childProcess, { spawnSync } from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 
 function mockProbe(t, streams, format = { duration: "2" }) {
@@ -216,6 +217,80 @@ test(
     } finally {
       process.chdir(prevCwd);
       rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test("a file whose name reads as an ffmpeg pattern is never probed", (t) => {
+  const calls = t.mock.method(childProcess, "execFileSync", () => "{}");
+  syncBuiltinESMExports();
+  t.after(() => {
+    calls.mock.restore();
+    syncBuiltinESMExports();
+  });
+  assert.deepEqual(probe("/project/still%d.png"), {
+    duration: null,
+    width: null,
+    height: null,
+    codec: null,
+  });
+  assert.equal(calls.mock.callCount(), 0);
+});
+
+test("probe reads a file only as one local self-contained container", (t) => {
+  let seen = [];
+  t.mock.method(childProcess, "execFileSync", (_binary, args) => {
+    seen = args;
+    return JSON.stringify({ streams: [AUDIO_STREAM], format: { duration: "3" } });
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  });
+  probe("/project/assets/song.mp3");
+  const at = (flag) => seen.indexOf(flag);
+  assert.equal(seen[at("-protocol_whitelist") + 1], "file");
+  assert.equal(seen[at("-format_whitelist") + 1], SELF_CONTAINED_FORMATS);
+  assert.ok(at("-format_whitelist") < seen.indexOf("/project/assets/song.mp3"));
+});
+
+const realFfprobe = spawnSync("ffprobe", ["-version"]).status === 0;
+
+test(
+  "ordinary assets keep their metadata, and a list or manifest named as media reads as nothing",
+  { skip: !realFfprobe },
+  (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "mu-probe-lists-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const make = (name, args) =>
+      spawnSync("ffmpeg", ["-v", "error", "-y", ...args, join(dir, name)], { stdio: "ignore" });
+    make("tone.mp3", ["-f", "lavfi", "-i", "sine=duration=1"]);
+    make("tone.wav", ["-f", "lavfi", "-i", "sine=duration=1"]);
+    make("clip.mp4", ["-f", "lavfi", "-i", "color=red:s=32x32:d=1"]);
+    make("still.png", ["-f", "lavfi", "-i", "color=red:s=32x32", "-frames:v", "1"]);
+    const audio = ["tone.caf", "tone.w64", "tone.wv", "tone.au", "tone.ac3"];
+    for (const name of audio) make(name, ["-f", "lavfi", "-i", "sine=duration=1"]);
+    for (const name of ["tone.mp3", "tone.wav", "clip.mp4", "still.png", ...audio]) {
+      assert.ok(probe(join(dir, name)).codec, name);
+    }
+    // Each names the real clip next to it, which ffmpeg would open if it read the list.
+    const lists = {
+      "concat.mp4": "ffconcat version 1.0\nfile 'clip.mp4'\n",
+      "playlist.mp4": "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nclip.mp4\n#EXT-X-ENDLIST\n",
+      "manifest.mp4":
+        '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static">' +
+        '<Period><AdaptationSet><Representation id="1" bandwidth="1"><BaseURL>clip.mp4</BaseURL>' +
+        "</Representation></AdaptationSet></Period></MPD>",
+    };
+    for (const [name, text] of Object.entries(lists)) {
+      writeFileSync(join(dir, name), text);
+      assert.deepEqual(probe(join(dir, name)), {
+        duration: null,
+        width: null,
+        height: null,
+        codec: null,
+      });
     }
   },
 );

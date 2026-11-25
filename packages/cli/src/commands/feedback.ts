@@ -40,7 +40,7 @@ export const examples: Example[] = [
   ],
   [
     "Report a catalog gap after a fruitless search",
-    'hyperframes feedback --search-miss "typewriter that deletes" --wanted "text that types then backspaces"',
+    'hyperframes feedback --search-miss --wanted "text that types then backspaces"',
   ],
   [
     "Also file a GitHub issue with a published repro",
@@ -50,6 +50,24 @@ export const examples: Example[] = [
 
 function normalizeComment(raw?: string): string | undefined {
   return raw || undefined;
+}
+
+async function reportSearchMiss(rawWanted?: string, rawTier?: string): Promise<void> {
+  if (!shouldTrack()) {
+    console.log(c.dim("Telemetry is disabled. Nothing sent."));
+    return;
+  }
+  const wanted = normalizeComment(rawWanted);
+  if (!wanted) {
+    console.error(c.error("Describe the move you needed with --wanted"));
+    failUsage();
+  }
+  const tier = normalizeComment(rawTier);
+  trackCatalogSearchMiss({ wanted, tier });
+  // Ack before the forward, which is best-effort and bounded, so the
+  // reporter is never left waiting on it.
+  console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
+  await submitCatalogSearchMiss({ wanted, tier, cliVersion: VERSION });
 }
 
 /**
@@ -289,8 +307,9 @@ export default defineCommand({
       description: 'Who wrote the report: "person" or "agent"',
     },
     "search-miss": {
-      type: "string",
-      description: "Report a catalog search that found nothing useful; pass the query you ran",
+      type: "boolean",
+      description:
+        "Report a catalog search that found nothing useful; describe the move with --wanted",
     },
     wanted: {
       type: "string",
@@ -326,21 +345,7 @@ export default defineCommand({
     // A search miss is a different report from a rating: it names a gap in the
     // catalog rather than scoring an experience, so it carries no rating and
     // must not land in the same number.
-    const searchMiss = normalizeComment(args["search-miss"]);
-    if (searchMiss) {
-      if (!shouldTrack()) {
-        console.log(c.dim("Telemetry is disabled. Nothing sent."));
-        return;
-      }
-      const wanted = normalizeComment(args.wanted);
-      const tier = normalizeComment(args.tier);
-      trackCatalogSearchMiss({ query: searchMiss, wanted, tier });
-      // Ack before the forward, which is best-effort and bounded, so the
-      // reporter is never left waiting on it.
-      console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
-      await submitCatalogSearchMiss({ query: searchMiss, wanted, tier, cliVersion: VERSION });
-      return;
-    }
+    if (args["search-miss"]) return reportSearchMiss(args.wanted, args.tier);
 
     const comment = normalizeComment(args.comment);
     const rating = reportRating(args.rating, comment, args["file-issue"] === true);

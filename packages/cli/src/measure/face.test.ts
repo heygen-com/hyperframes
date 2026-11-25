@@ -153,8 +153,8 @@ describe.skipIf(!media)("readSamples", () => {
   it("refuses text that a text-art demuxer would show as a picture", () => {
     const art = join(dir, "notes.ans");
     writeFileSync(art, "SECRET=abc\n");
-    const info = probeVideo(art);
-    expect(readSamples(info, [0], 80, 48)).toHaveLength(1);
+    const info = { ...probeVideo(video), path: art };
+    expect(() => readSamples(info, [0], 80, 48)).toThrow(/not on whitelist/);
     expect(() => readSamples({ ...info, guarded: true }, [0], 80, 48)).toThrow(/not on whitelist/);
   });
 

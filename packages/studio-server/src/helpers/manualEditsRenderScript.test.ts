@@ -546,6 +546,62 @@ describe("createStudioPositionSeekReapplyScript", () => {
     expect(card.style.getPropertyValue("width")).toBe("260px");
   });
 
+  /** The sealed preview script in a sealed frame whose page loaded with no Studio edit. */
+  function unmarkedSealedPreview() {
+    const window = new Window();
+    window.document.body.innerHTML = '<div id="card"></div>';
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+    Object.defineProperty(window, "parent", { value: SEALED });
+    const frames: Array<() => void> = [];
+    const player = { time: 0, getTime: () => player.time };
+    const built: unknown[] = [];
+    const gsap = {
+      timeline: () => ({ fromTo: (el: unknown) => void built.push(el), totalTime: () => {} }),
+    };
+    Object.assign(window, {
+      __hf: {},
+      __player: player,
+      __timelines: {},
+      gsap,
+      requestAnimationFrame: (callback: () => void) => frames.push(callback),
+      setTimeout: (callback: () => void) => callback(),
+    });
+    runPositionScript(window, { script: createSealedPreviewSeekReapplyScript() });
+    const moveFrame = () => {
+      player.time += 1;
+      frames.splice(0).forEach((callback) => callback());
+    };
+    return { window, card, built, moveFrame };
+  }
+
+  // fails without the fix: a sealed page loaded with no Studio edit never started its reapply, so the frame refused the
+  // first undo or redo that added one (restore-attributes needs a started reapply) and reloaded instead.
+  it.each([
+    ["box-size", ["data-hf-studio-box-size", "true"], "--hf-studio-width: 200px"],
+    ["rotation", ["data-hf-studio-rotation", "true"], "--hf-studio-rotation: 30deg"],
+    ["path-offset", ["data-hf-studio-path-offset", "true"], "--hf-studio-offset-x: 10px"],
+    ["motion", ["data-hf-studio-motion", '{"start":0,"duration":1,"to":{"x":10}}'], ""],
+  ] as const)(
+    "keeps a %s mark a restore adds to a sealed page that loaded with none",
+    (mark, [name, value], style) => {
+      const { window, card, built, moveFrame } = unmarkedSealedPreview();
+      expect((window as unknown as Record<string, unknown>)[STUDIO_SEEK_REAPPLY_STARTED]).toBe(
+        true,
+      );
+      card.setAttribute(name, value);
+      if (style) card.setAttribute("style", style);
+      moveFrame();
+      const kept = {
+        "box-size": () => card.style.getPropertyValue("width") === "200px",
+        rotation: () => card.style.getPropertyValue("rotate").includes("--hf-studio-rotation"),
+        "path-offset": () =>
+          card.style.getPropertyValue("translate").includes("--hf-studio-offset-x"),
+        motion: () => built.includes(card),
+      }[mark];
+      expect(kept()).toBe(true);
+    },
+  );
+
   it("follows no frames in a preview Studio can script, nor in a page with no parent", () => {
     expect(sealedPreview({ document: {} }).frames).toHaveLength(0);
     expect(sealedPreview(null).frames).toHaveLength(0);

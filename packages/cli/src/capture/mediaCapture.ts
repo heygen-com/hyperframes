@@ -7,6 +7,7 @@
  * tsx/esbuild __name injection (see esbuild issue #1031).
  */
 
+import { videoExtensionOf, videoStem } from "./capturedVideo.js";
 import type { Browser, Page } from "puppeteer-core";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -241,10 +242,10 @@ export function remainingVideoDownloadTimeoutMs(
  * Guards, in order: direct-file extension only — HLS (.m3u8) / DASH (.mpd) /
  * blob: streams are skipped · SSRF via safeFetch, which re-validates isPrivateUrl
  * on EVERY redirect hop (a bare redirect:"follow" only checks the initial URL,
- * so a public URL could 30x to an internal/metadata host) · Content-Type must be
- * video/* or octet-stream · a hard byte cap enforced WHILE streaming so a
- * missing or lying Content-Length cannot exhaust memory. Streams from the
- * Response body rather than buffering whole because videos are large.
+ * so a public URL could 30x to an internal/metadata host) · Content-Type must be video/* or octet-stream
+ * · the bytes a video container, which names the extension · a hard byte cap enforced WHILE streaming so a
+ * missing or lying Content-Length cannot exhaust memory. Streams from the Response body rather than buffering
+ * whole because videos are large.
  */
 // fallow-ignore-next-line complexity
 async function downloadVideoBody(
@@ -252,6 +253,7 @@ async function downloadVideoBody(
   filename: string,
   videosDir: string,
   timeoutMs: number,
+  taken: Set<string>,
 ): Promise<string | null> {
   if (isPrivateUrl(srcUrl)) return null; // cheap pre-check; safeFetch re-checks every hop
   let ext = "";
@@ -282,8 +284,14 @@ async function downloadVideoBody(
       chunks.push(Buffer.from(chunk));
     }
     if (total < 1024) return null; // too small to be a real video (likely an error blob)
-    const safe = /\.[a-z0-9]+$/i.test(filename) ? filename.replace(/[^\w.-]/g, "_") : `video${ext}`;
-    writeCaptureFileSync(join(videosDir, safe), Buffer.concat(chunks));
+    const body = Buffer.concat(chunks);
+    const container = videoExtensionOf(body);
+    if (!container) return null;
+    const stem = videoStem(filename);
+    let safe = `${stem}${container}`;
+    for (let n = 2; taken.has(safe.toLowerCase()); n++) safe = `${stem}-${n}${container}`;
+    taken.add(safe.toLowerCase());
+    writeCaptureFileSync(join(videosDir, safe), body);
     return `assets/videos/${safe}`;
   } catch {
     return null;
@@ -492,6 +500,7 @@ export async function captureVideoManifest(
   }> = [];
 
   const dlStart = Date.now();
+  const savedNames = new Set<string>();
   for (let vi = 0; vi < merged.length && vi < 20; vi++) {
     const iterationRemainingMs = liveRemainingMs(
       opts ?? {},
@@ -550,7 +559,13 @@ export async function captureVideoManifest(
     );
     const savedPath =
       downloadTimeoutMs > 0
-        ? await downloadVideoBody(v.src, v.filename, videoManifestDir, downloadTimeoutMs)
+        ? await downloadVideoBody(
+            v.src,
+            v.filename,
+            videoManifestDir,
+            downloadTimeoutMs,
+            savedNames,
+          )
         : null;
 
     // A network-only video with neither a preview nor a downloaded body carries

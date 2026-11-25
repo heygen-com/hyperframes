@@ -90,9 +90,14 @@ export function ownMediaDir(projectDir) {
 
 /** The project's own folder for `type` under `.media`, made if missing; throws when any folder on the way is a link. */
 export function ownTypeDir(projectDir, type) {
-  let dir = ownMediaDir(projectDir);
+  return ownFolder(ownMediaDir(projectDir), typeSubdir(type));
+}
+
+/** Folder `rel` under `base`, made if missing; throws when any folder on the way is a link. */
+export function ownFolder(base, rel) {
+  let dir = base;
   // Each folder is looked at before it is made, so nothing is ever made through a link.
-  for (const part of typeSubdir(type).split("/")) {
+  for (const part of rel.split(/[\\/]/).filter(Boolean)) {
     dir = join(dir, part);
     if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
       throw new Error(
@@ -118,8 +123,12 @@ export function writeTempBeside(path, content) {
   try {
     writeFileSync(temp, content, { flag: "wx" });
   } catch (error) {
-    // EEXIST: the random name belongs to another writer, so it is left alone.
-    if (error?.code !== "EEXIST") rmSync(temp, { force: true });
+    // EEXIST: the random name belongs to another writer, so it is left alone. A failed cleanup must not hide `error`.
+    if (error?.code !== "EEXIST") {
+      try {
+        rmSync(temp, { force: true });
+      } catch {}
+    }
     throw error;
   }
   return temp;
@@ -304,7 +313,7 @@ export function withMediaLock(projectDir, fn) {
 export function allocateId(projectDir, type, ext) {
   ownTypeDir(projectDir, type);
   return withMediaLock(projectDir, () => {
-    const id = nextFreeId(projectDir, type);
+    const id = nextFreeId(projectDir, type, ext);
     const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
     // Same shape as core atomicTempPath: an empty file at the final name would be committed.
     const markerPath = `${join(projectDir, localPath)}.hf${randomBytes(3).toString("hex")}.tmp`;
@@ -313,9 +322,10 @@ export function allocateId(projectDir, type, ext) {
   });
 }
 
-// Call under the lock: counts recorded ids and ids reserved by a file not yet recorded.
-function nextFreeId(projectDir, type) {
-  const re = new RegExp(`^${type}_(\\d+)`);
+// Call under the lock: counts recorded ids and ids reserved by a file not yet recorded. Ids past nine digits are
+// ignored, so a planted huge id can't push the count past exact integers, and a name already taken is skipped.
+function nextFreeId(projectDir, type, ext) {
+  const re = new RegExp(`^${type}_(\\d{1,9})(?!\\d)`);
   let max = 0;
   for (const r of readManifest(projectDir)) {
     if (r.type !== type) continue;
@@ -327,7 +337,10 @@ function nextFreeId(projectDir, type) {
     const m = f.match(re);
     if (m) max = Math.max(max, parseInt(m[1], 10));
   }
-  return `${type}_${String(max + 1).padStart(3, "0")}`;
+  const idFor = (n) => `${type}_${String(n).padStart(3, "0")}`;
+  let next = max + 1;
+  while (lstatSync(join(typeDir, `${idFor(next)}${ext}`), { throwIfNoEntry: false })) next += 1;
+  return idFor(next);
 }
 
 function reservedFile(projectDir, type, ext) {

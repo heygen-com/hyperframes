@@ -1,12 +1,16 @@
-import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useCallback, useRef } from "react";
 import { useCaptionStore } from "../store";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { trackEvent } from "../../telemetry/client";
 import type { CaptionStyle } from "../types";
-import { studioWriteHeaders } from "../../utils/studioFileVersion";
-import { studioApiFetch } from "../../utils/studioApiFetch";
-import { heldFileWordsOf } from "../../utils/studioSaveDiagnostics";
+import type { useProjectFileWriter } from "../../hooks/useProjectFileWriter";
+import { StudioSaveHttpError } from "../../utils/studioSaveDiagnostics";
+
+const OVERRIDES_FILE = "caption-overrides.json";
+type CaptionFiles = Pick<
+  ReturnType<typeof useProjectFileWriter>,
+  "readOptionalProjectFile" | "writeProjectFile"
+>;
 
 interface CaptionOverrideEntry {
   wordId?: string;
@@ -63,9 +67,9 @@ function buildOverrides(model: {
  * Auto-saves caption overrides to caption-overrides.json on every model change.
  * Also provides loadOverrides for reading existing overrides on edit mode entry.
  */
-export function useCaptionSync(projectId: string | null) {
-  const projectIdRef = useRef(projectId);
-  projectIdRef.current = projectId;
+export function useCaptionSync(files: CaptionFiles) {
+  const filesRef = useRef(files);
+  filesRef.current = files;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Flag to suppress auto-save during loadOverrides
@@ -86,30 +90,11 @@ export function useCaptionSync(projectId: string | null) {
       pendingRef.current = false;
       return;
     }
-    const pid = projectIdRef.current;
-    if (!pid) {
-      pendingRef.current = false;
-      return;
-    }
-
     const seqAtSave = editSeqRef.current;
-    const overrides = buildOverrides(state.model);
-    let held: string | null = null;
-
-    studioApiFetch(
-      buildProjectApiPath(pid, `/files/${encodeURIComponent("caption-overrides.json")}`),
-      {
-        method: "PUT",
-        headers: { "Content-Type": "text/plain", ...studioWriteHeaders() },
-        body: JSON.stringify(overrides, null, 2),
-      },
-    )
-      .then(async (res) => {
-        if (!res.ok) {
-          held = await heldFileWordsOf(res, "caption-overrides.json");
-          throw new Error(`HTTP ${res.status}`);
-        }
-        // A newer edit may have re-armed the debounce while this PUT was in
+    filesRef.current
+      .writeProjectFile(OVERRIDES_FILE, JSON.stringify(buildOverrides(state.model), null, 2))
+      .then(() => {
+        // A newer edit may have re-armed the debounce while this save was in
         // flight — its beforeunload/unmount flush still needs pending=true.
         if (editSeqRef.current === seqAtSave) pendingRef.current = false;
         const s = useCaptionStore.getState();
@@ -122,6 +107,7 @@ export function useCaptionSync(projectId: string | null) {
           error_name: error instanceof Error ? error.name : typeof error,
           error: String(error),
         });
+        const held = error instanceof StudioSaveHttpError && error.heldFile ? error.message : null;
         useCaptionStore.getState().setSyncError(held ?? "Caption changes couldn't be saved");
       });
   }, []);
@@ -178,23 +164,16 @@ export function useCaptionSync(projectId: string | null) {
   const loadOverrides = useCallback(async () => {
     const state = useCaptionStore.getState();
     if (!state.model || !state.sourceFilePath) return;
-    const pid = projectIdRef.current;
-    if (!pid) return;
-
-    let data: { content?: string };
+    let content: string;
     try {
-      const res = await studioApiFetch(
-        buildProjectApiPath(pid, `/files/${encodeURIComponent("caption-overrides.json")}`),
-      );
-      if (!res.ok) return; // no overrides file yet — normal
-      data = await res.json();
+      content = await filesRef.current.readOptionalProjectFile(OVERRIDES_FILE);
     } catch {
       return; // network failure fetching an optional file — nothing to restore
     }
-    if (!data.content) return;
+    if (!content) return;
 
     try {
-      const overrides: CaptionOverrideEntry[] = JSON.parse(data.content);
+      const overrides: CaptionOverrideEntry[] = JSON.parse(content);
       if (!Array.isArray(overrides)) throw new Error("not an array");
 
       const model = state.model;

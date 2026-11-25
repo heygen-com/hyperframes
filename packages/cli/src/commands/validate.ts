@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, splitStepsWrittenByCli } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import {
@@ -657,7 +657,9 @@ export function emitFailureReport(message: string, asJson: boolean): void {
     );
     return;
   }
-  console.error(`${c.error("✗")} ${terminalText(message)}`);
+  const { summary, stepsWrittenByCli } = splitStepsWrittenByCli(message);
+  console.error(`${c.error("✗")} ${terminalText(summary)}`);
+  if (stepsWrittenByCli) console.error(`\n${stepsWrittenByCli}\n`);
 }
 
 export default defineCommand({

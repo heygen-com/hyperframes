@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -149,6 +149,30 @@ describe("render diagnostic wire", () => {
       "CAPTURE_PROTOCOL_TIMEOUT",
     ],
     [new Error(PRIVATE), "RENDER_FAILED"],
+    [
+      Object.assign(new Error(PRIVATE), { name: "SegmentEncoderSpawnError" }),
+      "SEGMENT_ENCODER_SPAWN",
+    ],
+    [
+      Object.assign(new Error(`spawn ffmpeg ENOENT ${PRIVATE}`), {
+        name: "SegmentEncoderSpawnError",
+      }),
+      "SEGMENT_ENCODER_SPAWN",
+    ],
+    [new Error(`Faststart failed: FFmpeg exited with code 1 ${PRIVATE}`), "FASTSTART_FAILED"],
+    [new Error(`Audio muxing failed: ${PRIVATE}`), "AUDIO_MUX_FAILED"],
+    [new Error(`Encoding failed: FFmpeg exited with code 1 ${PRIVATE}`), "ENCODER_EXITED"],
+    [new Error(`Segment 2 encode failed: ${PRIVATE}`), "ENCODER_EXITED"],
+    [
+      new Error(`Streaming encoder exited before frame 0 was written: ${PRIVATE}`),
+      "ENCODER_EXITED",
+    ],
+    [new Error(`Faststart failed: ENOSPC: no space left on device ${PRIVATE}`), "ENOSPC"],
+    [new Error(`FFmpeg exited with code 1: ${PRIVATE}`), "RENDER_FAILED"],
+    [
+      new Error(`Animated GIF transcode failed: FFmpeg exited with code 1 ${PRIVATE}`),
+      "RENDER_FAILED",
+    ],
   ])("names a failed render's code without its words (%#)", (error, code) => {
     const line = capture(() => renderFailureDiagnostic(undefined, error, false));
     expect(JSON.parse(line.slice("@hf-diagnostic ".length))).toEqual({
@@ -157,6 +181,19 @@ describe("render diagnostic wire", () => {
       code,
     });
     expect(line).not.toContain(PRIVATE);
+  });
+
+  it("names a render that stopped outside its own report, once", async () => {
+    vi.resetModules();
+    const { renderExitDiagnostic } = await import("./renderDiagnostic.js");
+    const crash = Object.assign(new Error(PRIVATE), {
+      cause: Object.assign(new Error(PRIVATE), { name: "H264EncoderUnavailableError" }),
+    });
+    const line = capture(() => renderExitDiagnostic(crash, "UNCAUGHT_EXCEPTION"));
+    expect(line).toBe(
+      '@hf-diagnostic {"version":1,"operation":"render","code":"H264_ENCODER_UNAVAILABLE"}\n',
+    );
+    expect(capture(() => renderExitDiagnostic(new Error(PRIVATE), "UNCAUGHT_EXCEPTION"))).toBe("");
   });
 
   it("stays silent for a terminal or a container attached to a terminal", () => {
@@ -203,7 +240,7 @@ const cases: Array<{ name: string; script?: string; expected: AudioFailureDiagno
   {
     name: "group submix",
     script:
-      'const fs = require("node:fs"); if (process.argv.includes("-filter_complex_script")) process.exit(9); fs.writeFileSync(process.argv.at(-1), "audio");',
+      'const fs = require("node:fs"); if (process.argv.includes("-demuxers")) process.exit(0); if (process.argv.includes("-filter_complex_script")) process.exit(9); fs.writeFileSync(process.argv.at(-1), "audio");',
     expected: {
       stage: "mix",
       reason: "ffmpeg_failed",
@@ -221,6 +258,9 @@ for (const scenario of cases) {
     async () => {
       const root = mkdtempSync(join(tmpdir(), "hf-diagnostic-private-"));
       roots.push(root);
+      // A stand-in answering every call as an encode wrote "audio" to `-demuxers`, the listing's last argument.
+      const stray = join(process.cwd(), "-demuxers");
+      rmSync(stray, { force: true });
       const executable = join(root, "ffmpeg-private");
       if (scenario.script) {
         writeFileSync(executable, `#!${process.execPath}\n${scenario.script}\n`);
@@ -274,6 +314,7 @@ for (const scenario of cases) {
         "private-customer-stderr",
       ])
         expect(line).not.toContain(secret);
+      expect(existsSync(stray)).toBe(false);
     },
   );
 }

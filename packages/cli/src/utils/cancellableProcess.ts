@@ -2,7 +2,7 @@ import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import { killWithThisProcess } from "./childReaper.js";
-import { terminateProcessTree } from "./processTree.js";
+import { terminateProcessTree, windowsImageOf } from "./processTree.js";
 import { renderSetupFailureFrom, renderSetupResultFrom } from "../renderSetupWorkerLifecycle.js";
 
 export interface CancellableProcessResult {
@@ -77,7 +77,9 @@ export function runCancellableProcess(
       return;
     }
 
-    const release = child.pid ? killWithThisProcess(child.pid, detached) : undefined;
+    const release = child.pid
+      ? killWithThisProcess(child.pid, detached, windowsImageOf(child.spawnfile))
+      : undefined;
     if (child.pid) options.onSpawn?.(child.pid);
     let stdout = "";
     let stderr = "";

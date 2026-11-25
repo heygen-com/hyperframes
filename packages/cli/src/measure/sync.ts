@@ -2,6 +2,7 @@
 // region's mean luma change, per frame the change of the sound's loudness, and the lag where the two correlate best.
 // A motion and energy proxy, not phoneme sync: head motion, gestures, cuts and music in the ROI or mix move it.
 import {
+  ffmpegInput,
   Fix,
   pearson,
   readClip,
@@ -17,7 +18,14 @@ const RATE = 16000;
 /** Mono samples of the window at RATE Hz. */
 function samples(info: VideoInfo, start: number, seconds: number): Float32Array {
   const raw = runFfmpeg([
-    ...["-ss", String(start), "-i", info.path, "-t", String(seconds), "-vn"],
+    ...[
+      "-ss",
+      String(start),
+      ...ffmpegInput(info.path, { playlists: info.guarded }),
+      "-t",
+      String(seconds),
+      "-vn",
+    ],
     ...["-af", "aresample=async=1:first_pts=0"],
     ...["-ac", "1", "-ar", String(RATE), "-f", "f32le", "-"],
   ]);

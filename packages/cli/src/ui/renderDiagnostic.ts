@@ -48,18 +48,52 @@ function captureCodeOf(error: unknown, message: string): string | undefined {
   return error.pageErrorLines.length > 0 ? "PAGE_ERROR" : `CAPTURE_${error.kind.toUpperCase()}`;
 }
 
+const ENCODER_ERRORS: Record<string, string> = {
+  SegmentEncoderSpawnError: "SEGMENT_ENCODER_SPAWN",
+  H264EncoderUnavailableError: "H264_ENCODER_UNAVAILABLE",
+};
+const ENCODER_MESSAGES: Array<[RegExp, string]> = [
+  [/^Faststart failed\b/, "FASTSTART_FAILED"],
+  [/^Audio muxing failed\b/, "AUDIO_MUX_FAILED"],
+  [
+    /^(?:Encoding|Streaming encode|HDR encode|Segment \d+ encode) failed\b|^Streaming encoder exited before frame\b/,
+    "ENCODER_EXITED",
+  ],
+];
+
+function causesOf(error: unknown): Error[] {
+  const causes: Error[] = [];
+  for (let seen = error; causes.length < 5 && seen instanceof Error; seen = seen.cause)
+    causes.push(seen);
+  return causes;
+}
+
+const encoderClassOf = (error: unknown) =>
+  causesOf(error)
+    .map((seen) => ENCODER_ERRORS[seen.name])
+    .find(Boolean);
+
+const encoderMessageOf = (error: unknown) =>
+  causesOf(error)
+    .map((seen) => ENCODER_MESSAGES.find(([words]) => words.test(seen.message))?.[1])
+    .find(Boolean);
+
 /** A failed render's code: never its words, which can name the person's files and folders. */
-function renderFailureCode(error: unknown): string {
+function renderFailureCode(error: unknown, fallback = "RENDER_FAILED"): string {
   const message = error instanceof Error ? error.message : String(error);
   if (error instanceof RenderQualityError && error.warnings[0])
     return error.warnings[0].code.toUpperCase();
   return (
     producerCodeOf(error) ??
+    encoderClassOf(error) ??
     fileErrorOf(error, message) ??
+    encoderMessageOf(error) ??
     captureCodeOf(error, message) ??
-    "RENDER_FAILED"
+    fallback
   );
 }
+
+let codeWritten = false;
 
 /** Versioned, content-free failure line for Desktop's piped CLI, separate from human error output. */
 export function renderMachineDiagnostic(values: readonly unknown[], code?: string): void {
@@ -73,6 +107,11 @@ export function renderMachineDiagnostic(values: readonly unknown[], code?: strin
     ...(failures.length > 0 ? { audioFailures: failures } : {}),
   };
   process.stdout.write(`@hf-diagnostic ${JSON.stringify(line)}\n`);
+  if (code) codeWritten = true;
+}
+
+export function renderExitDiagnostic(error: unknown, fallback: string): void {
+  if (!codeWritten) renderMachineDiagnostic([], renderFailureCode(error, fallback));
 }
 
 export function renderFailureDiagnostic(

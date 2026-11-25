@@ -16,6 +16,11 @@ export const skillModuleCopies = [
     "packages/cli/src/media-use/lib/received-env.mjs",
     ["skills/media-use/scripts/lib/received-env.mjs"],
   ],
+  ["packages/cli/src/media-use/lib/telemetry.mjs", ["skills/media-use/scripts/lib/telemetry.mjs"]],
+  [
+    "packages/cli/src/media-use/lib/telemetry-opt-out.mjs",
+    ["skills/media-use/scripts/lib/telemetry-opt-out.mjs"],
+  ],
   [
     "packages/cli/src/media-use/lib/openverse.mjs",
     ["skills/media-use/audio/scripts/lib/openverse.mjs"],
@@ -25,6 +30,14 @@ export const skillModuleCopies = [
     [
       "skills/media-use/audio/scripts/lib/main-module.mjs",
       "packages/cli/src/media-use/lib/main-module.mjs",
+    ],
+  ],
+  [
+    "skills/hyperframes/scripts/lib/literal-media-input.mjs",
+    [
+      "skills/media-use/scripts/lib/literal-media-input.mjs",
+      "skills/figma/scripts/lib/literal-media-input.mjs",
+      "packages/cli/src/media-use/lib/literal-media-input.mjs",
     ],
   ],
   [

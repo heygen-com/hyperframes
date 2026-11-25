@@ -6,16 +6,19 @@ import {
   mkdirSync,
   writeFileSync,
   symlinkSync,
+  realpathSync,
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   folderGone,
+  isPrivateFileUnder,
   isProjectRootMissing,
   isSafePath,
   isStudioPrivatePath,
   mkdirWithinProject,
+  resolveExistingWithinProjectOff,
   resolveWithinProject,
   toolTrustedFileKind,
 } from "./safePath.js";
@@ -189,6 +192,20 @@ describe("resolveWithinProject", () => {
     if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
     expect(resolveWithinProject(base, "link/secret.txt")).toBeNull();
   });
+
+  it("answers the same off the event loop for a file that exists", async () => {
+    const base = tmpDir("rwp-base-");
+    const external = tmpDir("rwp-external-");
+    writeFileSync(join(base, "in.js"), "in");
+    writeFileSync(join(external, "secret.txt"), "top secret");
+    expect(await resolveExistingWithinProjectOff(base, "in.js")).toBe(join(base, "in.js"));
+    // fails without the fix: a path that does not resolve threw instead of answering null.
+    expect(await resolveExistingWithinProjectOff(base, "missing.js")).toBeNull();
+    const escape = join("..", basename(external), "secret.txt");
+    expect(await resolveExistingWithinProjectOff(base, escape)).toBeNull();
+    if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
+    expect(await resolveExistingWithinProjectOff(base, "link/secret.txt")).toBeNull();
+  });
 });
 
 describe("mkdirWithinProject", () => {
@@ -264,6 +281,46 @@ describe("folderGone", () => {
       }
     },
   );
+});
+
+describe("isStudioPrivatePath on very long paths", () => {
+  const MILLION = 1_000_000;
+  it.each([
+    ["a million empty segments", "/".repeat(MILLION), false],
+    ["a million named segments", "a/".repeat(MILLION) + "clip.png", false],
+    [
+      "Studio's own file after a million empty segments",
+      "/".repeat(MILLION) + ".hyperframes/studio-motion.json",
+      false,
+    ],
+    [
+      "the media folder after a million empty segments",
+      "/".repeat(MILLION) + ".media/take.mp4",
+      false,
+    ],
+    [
+      "a nested .hyperframes after a million named segments",
+      "a/".repeat(MILLION) + ".hyperframes/studio-motion.json",
+      true,
+    ],
+    ["a hidden file after a million named segments", "a/".repeat(MILLION) + ".token", true],
+  ])("judges %s in linear time, as before", (_, path, privateFile) => {
+    const started = performance.now();
+    expect(isStudioPrivatePath(path)).toBe(privateFile);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
+  it("judges a file named past the platform's path limit in linear time", () => {
+    const projectDir = realpathSync(mkdtempSync(join(tmpdir(), "hf-long-name-")));
+    try {
+      const started = performance.now();
+      const file = join(projectDir, "a/".repeat(200_000) + "clip.png");
+      expect(isPrivateFileUnder(projectDir, file, isStudioPrivatePath)).toBe(false);
+      expect(performance.now() - started).toBeLessThan(2_000);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("isStudioPrivatePath", () => {

@@ -426,6 +426,28 @@ describe("a lighter copy of a file Chrome can play", () => {
     expect(scan.sourceFacts["/cam.mp4"]?.codec).toBe("h264");
     expect(scan.sourceFacts["/broll.mov"]?.codec).toBe("hevc");
   });
+
+  // fails without the fix: a page knew a file was see-through only from the codec map, which lists the files a browser
+  // cannot play, so a playable alpha WebM looked opaque and a capture swapped it for an opaque JPEG.
+  it("says which playable videos carry alpha", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project, "cam.mp4"), "fake video bytes");
+    writeFileSync(join(project, "glass.webm"), "fake video bytes");
+
+    const scan = await scanProjectMedia(project, [{ html: videoHtml("cam.mp4", "glass.webm") }], {
+      runner: makeRunner({
+        [join(project, "cam.mp4")]: { codecName: "h264", size: [3840, 2160] },
+        [join(project, "glass.webm")]: {
+          codecName: "vp9",
+          size: [3840, 2160],
+          tags: { ALPHA_MODE: "1" },
+        },
+      }),
+    });
+
+    expect(scan.sourceFacts["/glass.webm"]?.hasAlpha).toBe(true);
+    expect(scan.sourceFacts["/cam.mp4"]?.hasAlpha).toBeUndefined();
+  });
 });
 
 describe("proxyVariantFor", () => {

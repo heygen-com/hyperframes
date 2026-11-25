@@ -13,7 +13,7 @@ import { isIP } from "node:net";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { bindNodeRequestSignal } from "./vite.request-signal.js";
-import { watch } from "chokidar";
+import { type FSWatcher, watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
@@ -25,6 +25,7 @@ import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "../studio-server/src/helpers/requestIdentity";
+import { TELEMETRY_OPT_OUT_DEFINE } from "./vite.telemetry";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -111,9 +112,10 @@ function viteAllowsHost(host: string, allowedHosts: readonly string[]): boolean 
 
 // ── Vite plugin ──────────────────────────────────────────────────────────────
 
-function devProjectApi(): Plugin {
+export function devProjectApi(): Plugin {
   const dataDir = resolve(__dirname, "data/projects");
   const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
+  let watching: FSWatcher | undefined;
 
   return {
     name: "studio-dev-api",
@@ -139,12 +141,12 @@ function devProjectApi(): Plugin {
         /* dataDir doesn't exist yet */
       }
 
-      const projectWatcher = watch([...watchedProjects.keys()], {
+      const projectWatcher = (watching = watch([...watchedProjects.keys()], {
         ignoreInitial: true,
         // A project write is a whole-file replace; wait for it to settle so a
         // half-written composition is never announced.
         awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
-      });
+      }));
 
       // This watcher, and not Vite's, is what clears the preview signature.
       // Vite's ignores `data/projects/**`, so subscribing the cache to it left
@@ -211,6 +213,7 @@ function devProjectApi(): Plugin {
           _api = mod.createStudioApi(adapter, {
             allowedHosts: mod.previewAllowedHostsFromEnv(),
             sandboxThumbnailCaptures: true,
+            sandboxDirectOpens: true,
           });
         }
         return _api;
@@ -355,8 +358,8 @@ function devProjectApi(): Plugin {
           },
         });
       });
-      server.httpServer?.on("close", () => void projectWatcher.close());
     },
+    closeBundle: () => watching?.close(),
   };
 }
 
@@ -364,6 +367,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), devProjectApi()],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
+    ...TELEMETRY_OPT_OUT_DEFINE,
   },
   resolve: {
     alias: {
@@ -375,6 +379,11 @@ export default defineConfig({
       // openComposition and silently loses its SDK session. See the stub.
       canvas: resolve(__dirname, "src/shims/canvasBrowserStub.js"),
       "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),
+      // Studio serves the runtime itself, so the player it bundles carries no second copy.
+      "@hyperframes/core/runtime-script": resolve(
+        __dirname,
+        "src/shims/runtimeScriptFromStudio.ts",
+      ),
       "@hyperframes/studio-server/source-mutation": resolve(
         __dirname,
         "../studio-server/src/helpers/sourceMutation.ts",
@@ -416,7 +425,7 @@ export default defineConfig({
   },
   test: {
     exclude: ["data/**", "node_modules/**"],
-    setupFiles: ["src/test-setup.ts"],
+    setupFiles: ["src/test-setup.ts", "../core/vitest.mediaHeader.ts"],
     environmentOptions: {
       happyDOM: { settings: { enableIframePageLoading: true } },
     },

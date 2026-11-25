@@ -291,6 +291,12 @@ For a state of your own, toggle a class or data attribute from your script and s
 
 **Fix:** Register each composition timeline on `window.__timelines[compositionId]`.
 
+### `linked_files_not_checked`
+
+**Warning.** The stylesheets and scripts a file links add up to more than one page may hold (64 MB), so lint stopped reading them. Each file is read once, under any of its names; the ones past the limit are not checked, and `missing_timeline_registry` is not reported when a skipped script could hold the registry.
+
+**Fix:** Link each file once, and keep large data out of linked stylesheets and scripts.
+
 ### `non_deterministic_code`
 
 **Error.** A script uses a non-deterministic value source (`Math.random`, `Date.now`, `gsap.utils.random`, `"random(...)"`), so renders can differ between frames or runs.
@@ -584,7 +590,7 @@ Source: `packages/lint/src/rules/media.ts`.
 
 **Warning.** An element has `data-volume` gain and a GSAP tween on `volume`; tween values are absolute and replace the gain rather than scale it.
 
-**Fix:** Write tween targets as absolute gains that already include the gain, or reset `data-volume` to 1 and let the tween carry the level.
+**Fix:** Keep the level you set. Use an absolute gain for each level the tween should reach: for `data-volume="0.3"`, use `volume: 0.3` where it should reach that level, and keep `volume: 0` at endpoints intended to be silent. If `data-volume="0"`, the clip is authored silent: drop the volume tween to keep it silent, or deliberately set `data-volume="1"` and let the tween carry the level. If the level is in doubt, measure the rendered file with `hyperframes audio render.mp4` (replace `render.mp4` with your output file) before changing it.
 
 ### `base64_media_prohibited`
 

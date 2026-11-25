@@ -5,6 +5,7 @@
 // fallow-ignore-file complexity
 import { failCommand, finishCommand, failUsage } from "../utils/commandResult.js";
 import { printFailureLine } from "../utils/jsonError.js";
+import { playlistLeavingItsFolder } from "../utils/playlistInput.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { runCommand } from "citty";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -50,6 +51,7 @@ import { trackInitTemplate } from "../telemetry/events.js";
 import { DEFAULT_MODEL, hasFFmpeg } from "../whisper/manager.js";
 import { TRANSCRIPT_FILE } from "../whisper/transcriptFile.js";
 import { initialModelForLanguage } from "../whisper/transcribe.js";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { VERSION } from "../version.js";
 import {
@@ -130,7 +132,17 @@ function probeVideo(filePath: string): VideoMeta | undefined {
     if (!ffprobePath) return undefined;
     const raw = execFileSync(
       ffprobePath,
-      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", filePath],
+      [
+        "-v",
+        "quiet",
+        ...mediaInputFormatArgs(ffprobePath, filePath),
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+        "--",
+        filePath,
+      ],
       { encoding: "utf-8", timeout: 15_000 },
     );
 
@@ -232,6 +244,7 @@ export function transcodeToMp4(inputPath: string, outputPath: string): Promise<b
     const child = spawn(
       ffmpegPath,
       [
+        ...mediaInputFormatArgs(ffmpegPath, inputPath),
         "-i",
         inputPath,
         "-c:v",
@@ -480,6 +493,15 @@ async function patchTranscript(dir: string, transcriptPath: string): Promise<voi
   const { words } = loadTranscript(transcriptPath);
   if (words.length === 0) return;
   patchCaptionHtml(dir, words);
+}
+
+async function refuseInteractive(path: string): Promise<void> {
+  if (!(await playlistLeavingItsFolder([path]))) return;
+  clack.log.error(
+    `${terminalText(path)} is a playlist naming files outside its folder: pass the media file itself`,
+  );
+  clack.cancel("Setup cancelled.");
+  failCommand();
 }
 
 // ---------------------------------------------------------------------------
@@ -953,6 +975,15 @@ export default defineCommand({
         printFailureLine((show) => c.error(`Audio file not found: ${show(String(audioFlag))}`));
         failCommand();
       }
+      const leaving = await playlistLeavingItsFolder([videoPath, audioPath]);
+      if (leaving) {
+        printFailureLine((show) =>
+          c.error(
+            `${show(leaving)} is a playlist naming files outside its folder: pass the media file itself`,
+          ),
+        );
+        failCommand();
+      }
 
       mkdirSync(destDir, { recursive: true });
 
@@ -1146,6 +1177,7 @@ export default defineCommand({
         clack.cancel("Setup cancelled.");
         failCommand();
       }
+      await refuseInteractive(videoPath);
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = videoPath;
       const result = await handleVideoFile(videoPath, destDir, true, keepOriginal);
@@ -1160,6 +1192,7 @@ export default defineCommand({
         clack.cancel("Setup cancelled.");
         failCommand();
       }
+      await refuseInteractive(audioPath);
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = audioPath;
       copyIntoProjectUnlessAlreadyThere(audioPath, resolve(destDir, basename(audioPath)));

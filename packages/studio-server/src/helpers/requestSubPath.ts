@@ -5,10 +5,18 @@ export { decodeWellFormedEscapes } from "@hyperframes/parsers/asset-paths";
 
 // The decoded path after `route` ("projects/:id/preview", "composition"), cut by segment from the raw URL:
 // Hono's c.req.path leaves %40 %25 %23 %26 %3F encoded, so cutting a decoded prefix out of it misses.
-export function requestSubPath(url: string, route: string): string {
+// The route's segments match decoded, as Hono matched them; null when the route is not in the URL.
+export function requestSubPath(url: string, route: string): string | null {
   const routeSegments = route.split("/");
   const segments = new URL(url).pathname.split("/");
-  const start = segments.indexOf(routeSegments[0] ?? "");
+  const matchesAt = (start: number) =>
+    routeSegments.every(
+      (part, at) =>
+        start + at < segments.length &&
+        (part.startsWith(":") || decodeWellFormedEscapes(segments[start + at]!) === part),
+    );
+  const start = segments.findIndex((_, at) => matchesAt(at));
+  if (start < 0) return null;
   return decodeWellFormedEscapes(segments.slice(start + routeSegments.length).join("/"));
 }
 

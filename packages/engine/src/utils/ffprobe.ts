@@ -6,6 +6,7 @@ import { chunkCrc32 } from "./crc32.js";
 import { StringDecoder } from "node:string_decoder";
 import { tmpdir } from "os";
 import { basename, join } from "path";
+import { fileURLToPath } from "node:url";
 import { parseSampleAspectRatio, redactTelemetryString, streamRotation } from "@hyperframes/core";
 import {
   alphaDecoderFor,
@@ -18,7 +19,11 @@ import {
   urlInputArgs,
   withPublicOnlyProxy,
 } from "./urlInput.js";
-import { TextArtMediaError } from "./notMediaPayload.js";
+import {
+  PlaylistLeavesFolderError,
+  TextArtMediaError,
+  playlistLeavesItsFolder,
+} from "./notMediaPayload.js";
 import { decodableAudioStream, misstatesPcmByteRate } from "@hyperframes/parsers/media-streams";
 import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
@@ -66,6 +71,14 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
 const REFUSED_TEXT_ART = /^\[(?:tty|bin|xbin|idf|adf) @ [^\]]*\] Format not on whitelist/m;
 
+const localPathOf = (input: string): string => {
+  try {
+    return /^file:/i.test(input) ? fileURLToPath(input) : input;
+  } catch {
+    return input;
+  }
+};
+
 export async function runFfprobe(
   filePath: string,
   argsWithoutInput: string[],
@@ -81,6 +94,10 @@ export async function runFfprobe(
   if (filePath === "-") {
     throw new Error('[FFmpeg] Refusing to probe "-": stdin is not a supported input path.');
   }
+
+  // urlInputArgs lets ffprobe read playlists; render preflight walks them, a CLI probe may not have.
+  if (!/^https?:\/\//i.test(filePath) && (await playlistLeavesItsFolder(localPathOf(filePath))))
+    throw new PlaylistLeavesFolderError();
 
   const command = getFfprobeBinary();
   const args = [
@@ -625,6 +642,10 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
 }
 
 class StructurallyIncompletePngError extends Error {}
+
+export function isStructurallyIncompletePngError(error: unknown): boolean {
+  return error instanceof StructurallyIncompletePngError;
+}
 
 const TEXT_ART_CODECS = new Set(["ansi", "bintext", "xbin", "idf"]);
 

@@ -75,6 +75,13 @@ function refreshGsapSnapshot(iframe: HTMLIFrameElement): Promise<void> {
   return pending;
 }
 
+export function rereadGsapSnapshot(iframe: HTMLIFrameElement): void {
+  const client = previewEditingClient(iframe);
+  held.delete(client);
+  asking.delete(client);
+  void refreshGsapSnapshot(iframe);
+}
+
 /** Reads the frame again unless the held read is at the paused playhead; false if an opaque frame holds none. */
 export async function settleGsapSnapshot(iframe: HTMLIFrameElement | null): Promise<boolean> {
   if (!iframe || !previewFrameOpaque(iframe)) return true;
@@ -91,11 +98,7 @@ async function read(iframe: HTMLIFrameElement, client: EditingPortClient): Promi
   watchPlayhead();
   if (!watched.has(client)) {
     watched.add(client);
-    const stopOnUndoRerun = onPreviewRestoredInPlace(iframe, () => {
-      held.delete(client);
-      asking.delete(client);
-      void refreshGsapSnapshot(iframe);
-    });
+    const stopOnUndoRerun = onPreviewRestoredInPlace(iframe, () => rereadGsapSnapshot(iframe));
     const stop = onPreviewContentReplaced(iframe, () => {
       stop();
       stopOnUndoRerun();

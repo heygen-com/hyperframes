@@ -30,6 +30,7 @@ import { hiddenCopy, layerVerdict, scoreLayerFrame, type LayerVerdict } from "./
 import { compareLook, look, sameLook, type LookComparison } from "./look.js";
 import {
   decode,
+  ffmpegInput,
   ffmpegToFile,
   Fix,
   frameAt,
@@ -602,7 +603,10 @@ async function captureProject(
   return {
     dir: seq,
     clip: {
-      input: ["-framerate", ref.fpsText, "-i", join(seq, "%06d.png")],
+      input: [
+        ...["-framerate", ref.fpsText, "-protocol_whitelist", "file", "-f", "image2"],
+        ...["-i", join(seq, "%06d.png")],
+      ],
       filters: [],
       width: ref.width,
       height: ref.height,
@@ -1174,7 +1178,7 @@ function onsetCurve(path: string): number[] {
   // On the sound's own timestamps (first_pts=0 pads up to its first decoded sample), not the probe's start_time:
   // ffmpeg 5.1 drops an HE-AAC edit list's skip twice, keeps the rest timestamped right, and still probes 0.
   const raw = runFfmpeg([
-    ...["-i", path, "-vn", "-af", "aresample=async=1:first_pts=0"],
+    ...[...ffmpegInput(path), "-vn", "-af", "aresample=async=1:first_pts=0"],
     ...["-t", "20", "-ac", "1", "-ar", "8000", "-f", "f32le", "-"],
   ]);
   const samples = new Float32Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 4));
@@ -1222,7 +1226,14 @@ function sideBySide(
   const skip = (seconds: number) => (seconds > 0 ? ["-ss", String(seconds)] : []);
   return ffmpegToFile(
     [
-      ...["-y", ...skip(-offset), "-i", reference, ...skip(offset), "-i", yours, "-filter_complex"],
+      ...[
+        "-y",
+        ...skip(-offset),
+        ...ffmpegInput(reference),
+        ...skip(offset),
+        ...ffmpegInput(yours),
+      ],
+      "-filter_complex",
       `[0:v]setsar=1[a];[1:v]scale=${ref.width}:${ref.height},setsar=1[b];[a][b]hstack=inputs=2,pad=ceil(iw/2)*2:ceil(ih/2)*2[v]`,
       ...["-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p"],
       ...["-c:a", "aac", "-shortest"],
@@ -1426,7 +1437,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
     const ledgerText =
       opts.ledger && existsSync(opts.ledger) ? readFileSync(opts.ledger, "utf8") : undefined;
     const people = new Map<Segment, PersonVerdict>();
-    let clips: ReturnType<typeof placeClips> = [];
+    let clips: Awaited<ReturnType<typeof placeClips>> = [];
     const regenerated = opts.segments?.some((s) => s.regenerated || s.pixels === "regenerated");
     if (offset && regenerated && yoursInfo)
       warnings.push(
@@ -1442,7 +1453,9 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       const uses = project
         ? await clipUses(project).catch(() => new Map<string, never[]>())
         : new Map<string, never[]>();
-      clips = ledgerText ? placeClips(generatedClips(ledgerText), project, ref, refCuts, uses) : [];
+      clips = ledgerText
+        ? await placeClips(generatedClips(ledgerText), project, ref, refCuts, uses)
+        : [];
       if (clips.length && clips.every((c) => !c.info))
         warnings.push(
           "the ledger's generated clips are not found, so text carried in them is not checked: pass --project <folder>",

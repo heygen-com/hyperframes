@@ -883,11 +883,9 @@ describe("resolveProxy", () => {
     const vp8 = resolveProxy(projectDir, sourcePath, "vp8");
     await flush();
     const vp8Args = calls[0]!.args;
-    expect(vp8Args.slice(vp8Args.indexOf("-i") - 4, vp8Args.indexOf("-i"))).toEqual([
-      "-c:v",
-      "libvpx-vp9",
-      ...MEDIA_INPUT_ARGS,
-    ]);
+    expect(
+      vp8Args.slice(vp8Args.indexOf("-i") - 2 - MEDIA_INPUT_ARGS.length, vp8Args.indexOf("-i")),
+    ).toEqual(["-c:v", "libvpx-vp9", ...MEDIA_INPUT_ARGS]);
     succeed(calls[0]!, "fake-vp8-bytes");
     await vp8;
 
@@ -1566,6 +1564,48 @@ describe("resolveProxy", () => {
       expect(clipOf(calls[2]!)).toBe("thumb");
       succeed(calls[2]!);
       await thumb;
+    });
+
+    // fails without the fix: two copies nobody watched (thumbnail capture pages') held both slots, and the copy the
+    // preview waited on started only when one of them finished.
+    it("starts the copy a viewer waits on at once, even when other copies fill every slot", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot(8, 2);
+      const clip = clips(projectDir, [
+        "thumb-a",
+        "thumb-b",
+        "preview",
+        "second-preview",
+        "thumb-c",
+      ]);
+
+      const thumbs = [
+        resolveProxy(projectDir, clip["thumb-a"]!),
+        resolveProxy(projectDir, clip["thumb-b"]!),
+      ];
+      const preview = resolveProxy(projectDir, clip.preview!, "h264", undefined, {
+        priority: true,
+      });
+      const second = resolveProxy(projectDir, clip["second-preview"]!, "h264", undefined, {
+        priority: true,
+      });
+      const thumbC = resolveProxy(projectDir, clip["thumb-c"]!);
+      await flush();
+      expect(calls.map(clipOf)).toEqual(["thumb-a", "thumb-b", "preview"]);
+
+      succeed(calls[0]!);
+      await thumbs[0];
+      await flush();
+      expect(calls.map(clipOf).slice(3)).toEqual([]);
+      succeed(calls[2]!);
+      await preview;
+      await flush();
+      expect(calls.map(clipOf).slice(3)).toEqual(["second-preview"]);
+      for (const call of [calls[1]!, calls[3]!]) succeed(call);
+      await Promise.all([thumbs[1], second]);
+      await flush();
+      expect(calls.map(clipOf).slice(4)).toEqual(["thumb-c"]);
+      succeed(calls[4]!);
+      await thumbC;
     });
 
     it("runs a background copy's encode at the lowest priority, until a viewer asks for it", async () => {
@@ -2424,7 +2464,7 @@ describe("resolveStill", () => {
   });
 
   it.skipIf(!canStill)(
-    "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
+    "cuts one JPEG at the asked time and reuses it within the same tenth of a second",
     async () => {
       vi.resetModules();
       vi.doUnmock("./mediaMetadata.js");
@@ -2436,12 +2476,99 @@ describe("resolveStill", () => {
         ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
       ]);
 
-      const first = await resolveStill(projectDir, clip, 1.26, { width: 160, height: 90 });
+      const first = await resolveStill(projectDir, clip, 1.21, { width: 160, height: 90 });
       expect(first.endsWith(".jpg")).toBe(true);
       const bytes = readFileSync(first);
       expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
-      expect(await resolveStill(projectDir, clip, 1.34, { width: 160, height: 90 })).toBe(first);
+      expect(await resolveStill(projectDir, clip, 1.29, { width: 160, height: 90 })).toBe(first);
       expect(await resolveStill(projectDir, clip, 2.5, { width: 160, height: 90 })).not.toBe(first);
+    },
+    60_000,
+  );
+
+  // fails without the fix: the JPEG kept the file's BT.709 values and was read as BT.601, so a still's colours were off
+  // the decoded video's (green 140 showed as 179) wherever it stood in for it.
+  it.skipIf(!canStill)(
+    "shows the colours a browser decodes the file with",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "color=c=0x008c00:s=320x180:r=25:d=2"],
+        ...["-vf", "scale=out_color_matrix=bt709,format=yuv420p", "-c:v", "libx264", clip],
+      ]);
+
+      const still = await resolveStill(projectDir, clip, 1);
+      const rgb = execFileSync(realFfmpeg!, [
+        ...[
+          "-v",
+          "error",
+          "-i",
+          still,
+          "-vf",
+          "crop=2:2",
+          "-f",
+          "rawvideo",
+          "-pix_fmt",
+          "rgb24",
+          "-",
+        ],
+      ]);
+
+      const off = [0, 140, 0].map((want, channel) => Math.abs(rgb[channel]! - want));
+      expect(Math.max(...off), `rgb ${[...rgb.subarray(0, 3)]}`).toBeLessThanOrEqual(8);
+    },
+    60_000,
+  );
+
+  // fails without the fix: 1.97 s rounded up to the clip's 2.00 s end, where ffmpeg cuts no frame and the still failed.
+  it.skipIf(!canStill)(
+    "cuts the last frames of a clip, never a time past its end",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=2"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+
+      const still = await resolveStill(projectDir, clip, 1.97);
+
+      expect(readFileSync(still).subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+    },
+    60_000,
+  );
+
+  // fails without the fix: a still cut before the colour fix kept its key, so the cache served its old colours.
+  it.skipIf(!canStill)(
+    "never serves a still cached by an older encoding",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill, CACHE_DIR_NAME, PROXY_PARAMS_VERSION } =
+        await import("./proxyTranscoder.js");
+      const { fastCopyKey } = await import("./proxyCacheKey.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=2"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+      mkdirSync(join(projectDir, CACHE_DIR_NAME), { recursive: true });
+      const old = join(
+        projectDir,
+        CACHE_DIR_NAME,
+        `${fastCopyKey(realpathSync(clip), PROXY_PARAMS_VERSION, "still@1", undefined)}.jpg`,
+      );
+      writeFileSync(old, readFileSync(await resolveStill(projectDir, clip, 1)));
+
+      expect(await resolveStill(projectDir, clip, 1)).not.toBe(old);
     },
     60_000,
   );

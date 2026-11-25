@@ -3539,6 +3539,34 @@ describe("layout-audit.browser occlusion", () => {
     expect(headlineIssue?.text).toBe("Visible copy");
   });
 
+  // fails without the fix: an opaque colour ending in ", 0)" read as transparent, so the cover was skipped.
+  it.each(["rgb(0, 0, 0)", "rgb(200, 30, 0)"])(
+    "counts an opaque %s overlay as text occlusion",
+    (backgroundColor) => {
+      const occluded = auditOcclusionScene({
+        overlayStyle: { backgroundColor },
+        topmostId: "overlay",
+      }).find((issue) => issue.code === "text_occluded");
+      expect(occluded).toMatchObject({ selector: "#headline", containerSelector: "#overlay" });
+    },
+  );
+
+  // fails without the fix: a gradient holding oklch()/lab() could not be scored, so it counted as opaque.
+  it.each([
+    {
+      name: "scrim",
+      backgroundImage: "repeating-linear-gradient(0deg, oklch(1 0 0 / 0.04) 0px, transparent 1px)",
+    },
+    {
+      name: "dot grid",
+      backgroundImage: "radial-gradient(lab(100 0 0 / 0.9) 1px, transparent 1px)",
+      backgroundSize: "38px 38px",
+    },
+  ])("does not count a modern-colour $name as an opaque occluder", (overlayStyle) => {
+    const issues = auditOcclusionScene({ overlayStyle, topmostId: "overlay" });
+    expect(issues.some((issue) => issue.code === "text_occluded")).toBe(false);
+  });
+
   it("does not count a low-alpha gradient overlay (grid/scrim) as an opaque occluder", () => {
     const issues = auditOcclusionScene({
       overlayStyle: {

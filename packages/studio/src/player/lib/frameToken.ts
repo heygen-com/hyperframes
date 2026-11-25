@@ -1,6 +1,6 @@
 import { studioApiFetch } from "../../utils/studioApiFetch";
 
-const PREVIEW_PATH = /^(\/api\/projects\/[^/?#]+)\/preview(?:\/~[\w-]{43})?(?=[/?#]|$)/;
+export const PREVIEW_PATH = /^(\/api\/projects\/[^/?#]+)\/preview(?:\/~[\w-]{43})?(?=[/?#]|$)/;
 
 export function fetchFrameToken(frameTokenPath: string): Promise<string | null> {
   return studioApiFetch(frameTokenPath)
