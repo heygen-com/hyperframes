@@ -5618,13 +5618,14 @@ export async function captureFrame(
   session: CaptureSession,
   frameIndex: number,
   time: number,
+  fileIndex: number = frameIndex,
 ): Promise<CaptureResult> {
   const { buffer, quantizedTime, captureTimeMs } = await captureFrameCore(
     session,
     frameIndex,
     time,
   );
-  const framePath = writeCapturedFrame(session, frameIndex, buffer);
+  const framePath = writeCapturedFrame(session, fileIndex, buffer);
   return { frameIndex, time: quantizedTime, path: framePath, captureTimeMs };
 }
 
