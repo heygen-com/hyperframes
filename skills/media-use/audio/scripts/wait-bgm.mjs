@@ -136,7 +136,7 @@ const isFromBeforeTheJob = (file) =>
   file.size === before.size &&
   file.mtimeMs === before.mtime_ms;
 
-const started = Date.now();
+const started = performance.now();
 let lastFailure = "";
 let lastTail = "";
 
@@ -148,7 +148,7 @@ for (;;) {
       ...base,
       status: "ready",
       ready: true,
-      waited_ms: Date.now() - started,
+      waited_ms: Math.round(performance.now() - started),
       size_bytes: size,
       message: `BGM ready at ${bgmPath}.`,
     });
@@ -170,7 +170,7 @@ for (;;) {
       ...base,
       status: "failed",
       ready: false,
-      waited_ms: Date.now() - started,
+      waited_ms: Math.round(performance.now() - started),
       process_alive: alive,
       message,
       error_tail: (lastFailure || lastTail).slice(-2000),
@@ -179,7 +179,7 @@ for (;;) {
     process.exit(0);
   }
 
-  const waited = Date.now() - started;
+  const waited = performance.now() - started;
   if (waited >= timeoutMs) break;
   await sleep(Math.min(intervalMs, timeoutMs - waited));
 }
@@ -188,7 +188,7 @@ const status = writeStatus({
   ...base,
   status: "timeout",
   ready: false,
-  waited_ms: Date.now() - started,
+  waited_ms: Math.round(performance.now() - started),
   process_alive: isProcessAlive(pid),
   message: `Timed out waiting for ${bgmPath}; assemble-index will skip BGM if still absent.`,
   log_tail: lastTail.slice(-2000),
