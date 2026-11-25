@@ -227,7 +227,10 @@ describe("registerPreviewRoutes", () => {
 
   it("encodes the project name in <base>, so a '#' or '\"' in it keeps assets in its own folder", async () => {
     const projectDir = createProjectDir();
-    writeFileSync(join(projectDir, "scene.html"), "<template><section></section></template>");
+    writeFileSync(
+      join(projectDir, "scene.html"),
+      '<template><section data-composition-id="scene"></section></template>',
+    );
     const app = new Hono();
     registerPreviewRoutes(app, createAdapter(projectDir));
     const baseOf = async (path: string) =>
@@ -495,7 +498,7 @@ describe("registerPreviewRoutes", () => {
   it("serves a later scene's image lazy, and captures every image eager under a capture-mode mark", async () => {
     const projectDir = createProjectDir();
     const later =
-      '<!DOCTYPE html><html><head></head><body><div data-start="5"><img src="b.png"></div></body></html>';
+      '<!DOCTYPE html><html><head></head><body><div data-composition-id="scene" data-start="5"><img src="b.png"></div></body></html>';
     writeFileSync(join(projectDir, "index.html"), later);
     writeFileSync(join(projectDir, "scene.html"), later);
     const app = new Hono();
@@ -1374,7 +1377,7 @@ describe("hf-id surfacing in preview route", () => {
     );
     writeFileSync(
       files[1]!,
-      `<div class="clip" data-start="0" data-end="3"><img src="logo.png"></div>`,
+      `<div class="clip" data-composition-id="scene" data-start="0" data-end="3"><img src="logo.png"></div>`,
     );
     const snapshot = () => files.map((f) => [readFileSync(f, "utf-8"), statSync(f).mtimeMs]);
     const before = snapshot();
@@ -1393,7 +1396,7 @@ describe("hf-id surfacing in preview route", () => {
     const compPath = join(projectDir, "scene.html");
     writeFileSync(
       compPath,
-      `<div class="clip" data-start="0" data-end="3"><img src="assets/logo.png"></div>`,
+      `<div class="clip" data-composition-id="scene" data-start="0" data-end="3"><img src="assets/logo.png"></div>`,
     );
     const app = new Hono();
     const adapter = createAdapter(projectDir);
@@ -1476,8 +1479,14 @@ describe("hf-id surfacing in preview route", () => {
   it("returns ByteString-safe stable and distinct ETags for percent-encoded CJK sub-comp paths", async () => {
     const projectDir = createProjectDir();
     mkdirSync(join(projectDir, "compositions"));
-    writeFileSync(join(projectDir, "compositions/測試.html"), "<div>First</div>");
-    writeFileSync(join(projectDir, "compositions/別頁.html"), "<div>Second</div>");
+    writeFileSync(
+      join(projectDir, "compositions/測試.html"),
+      '<div data-composition-id="first">First</div>',
+    );
+    writeFileSync(
+      join(projectDir, "compositions/別頁.html"),
+      '<div data-composition-id="second">Second</div>',
+    );
     const app = new Hono();
     registerPreviewRoutes(
       app,
@@ -1505,7 +1514,7 @@ describe("hf-id surfacing in preview route", () => {
   it("sub-comp served ids equal the source's ids even when relative asset paths are rewritten", async () => {
     // Guards setTiming element_not_found: minting after the route rewrites src gives ids the source lacks.
     const projectDir = createProjectDir();
-    const raw = `<div class="clip" data-start="0" data-end="3"><img src="assets/logo.png"></div>`;
+    const raw = `<div class="clip" data-composition-id="scene" data-start="0" data-end="3"><img src="assets/logo.png"></div>`;
     writeFileSync(join(projectDir, "scene.html"), raw);
     const app = new Hono();
     registerPreviewRoutes(app, createAdapter(projectDir));
@@ -1688,7 +1697,7 @@ describe("preview ?variables= injection", () => {
     const projectDir = createProjectDir();
     writeFileSync(
       join(projectDir, "scene.html"),
-      "<!doctype html><html><head></head><body><div class='clip' data-start='0' data-duration='2'>Scene</div></body></html>",
+      "<!doctype html><html><head></head><body><div class='clip' data-composition-id='scene' data-start='0' data-duration='2'>Scene</div></body></html>",
     );
     const app = new Hono();
     registerPreviewRoutes(app, createAdapter(projectDir));
@@ -1710,7 +1719,7 @@ describe("sub-composition preview attribute integrity", () => {
     ]);
     writeFileSync(
       join(projectDir, "card.html"),
-      `<!doctype html><html data-composition-variables='${decls}'><head></head><body><div class="clip" data-start="0" data-duration="2">x</div></body></html>`,
+      `<!doctype html><html data-composition-variables='${decls}'><head></head><body><div class="clip" data-composition-id="scene" data-start="0" data-duration="2">x</div></body></html>`,
     );
     const app = new Hono();
     registerPreviewRoutes(app, createAdapter(projectDir));
@@ -3354,7 +3363,7 @@ describe("GSAP mirror configuration", () => {
     async (mode) => {
       const projectDir = createProjectDir();
       const authored = "https://authored.example/gsap@3.14.2/dist/gsap.min.js";
-      const source = `<html><head><meta name="${metaName}" content="https://authored.example/npm"><script src="${authored}"></script></head><body><script>gsap.to("#card", { motionPath: {} });</script></body></html>`;
+      const source = `<html><head><meta name="${metaName}" content="https://authored.example/npm"><script src="${authored}"></script></head><body><div data-composition-id="main"></div><script>gsap.to("#card", { motionPath: {} });</script></body></html>`;
       writeFileSync(join(projectDir, "index.html"), source);
       writeFileSync(join(projectDir, "scene.html"), source);
       const app = appForMirror(projectDir, mirror, {
@@ -3398,7 +3407,10 @@ describe("GSAP mirror configuration", () => {
         ],
       }),
     );
-    writeFileSync(join(projectDir, "scene.html"), "<template><section>Scene</section></template>");
+    writeFileSync(
+      join(projectDir, "scene.html"),
+      '<template><section data-composition-id="scene">Scene</section></template>',
+    );
     const app = appForMirror(projectDir, mirror);
     const root = parseHTML(await (await app.request(previewUrl)).text()).document;
     const urls = [...root.querySelectorAll("script[src]")].map((script) =>
@@ -3420,7 +3432,7 @@ describe("GSAP mirror configuration", () => {
     "revalidates %s when the mirror setting changes",
     async (suffix) => {
       const projectDir = createProjectDir();
-      const source = `<html><head><script src="vendor/gsap.min.js"></script></head><body><script>gsap.to("#card", { motionPath: {} });</script></body></html>`;
+      const source = `<html><head><script src="vendor/gsap.min.js"></script></head><body><div data-composition-id="main"></div><script>gsap.to("#card", { motionPath: {} });</script></body></html>`;
       writeFileSync(join(projectDir, "index.html"), source);
       writeFileSync(join(projectDir, "scene.html"), source);
       const url = previewUrl + suffix;
@@ -3443,7 +3455,7 @@ describe("GSAP mirror configuration", () => {
     const plugin = "https://authored.example/MotionPathPlugin.min.js";
     writeFileSync(
       join(projectDir, "index.html"),
-      `<html><head><script src="${plugin}"></script></head><body><script>gsap.to("#card", { motionPath: {} });</script></body></html>`,
+      `<html><head><script src="${plugin}"></script></head><body><div data-composition-id="main"></div><script>gsap.to("#card", { motionPath: {} });</script></body></html>`,
     );
     const configured = await (await appForMirror(projectDir, mirror).request(previewUrl)).text();
     expect(
@@ -3471,7 +3483,10 @@ describe("GSAP mirror configuration", () => {
 
   it("invalidates root, subcomposition, and persistent preview caches when the mirror changes", async () => {
     const projectDir = createProjectDir();
-    writeFileSync(join(projectDir, "scene.html"), "<template><section>Scene</section></template>");
+    writeFileSync(
+      join(projectDir, "scene.html"),
+      '<template><section data-composition-id="scene">Scene</section></template>',
+    );
     const bundle = vi.fn(
       async () =>
         '<html><head></head><body><div data-hf-scene="a">Cached preview</div></body></html>',
@@ -3580,7 +3595,10 @@ describe("bundled GSAP local root", () => {
         ],
       }),
     );
-    writeFileSync(join(projectDir, "scene.html"), "<template><section>Scene</section></template>");
+    writeFileSync(
+      join(projectDir, "scene.html"),
+      '<template><section data-composition-id="scene">Scene</section></template>',
+    );
   }
 
   it("loads every GSAP dependency Studio adds from the host's bundled copy", async () => {
@@ -3604,7 +3622,7 @@ describe("bundled GSAP local root", () => {
 
     writeFileSync(
       join(projectDir, "index.html"),
-      `<html><head><script src="vendor/gsap.min.js"></script></head><body><script>gsap.to("#card", { motionPath: {} });</script></body></html>`,
+      `<html><head><script src="vendor/gsap.min.js"></script></head><body><div data-composition-id="main"></div><script>gsap.to("#card", { motionPath: {} });</script></body></html>`,
     );
     const withPath = await (await app.request(previewUrl)).text();
     expect(
@@ -3620,7 +3638,7 @@ describe("bundled GSAP local root", () => {
     const projectDir = createProjectDir();
     writeFileSync(
       join(projectDir, "index.html"),
-      `<html><head><script src="vendor/gsap@3.14.2/dist/gsap.min.js"></script></head><body><script>gsap.to("#card", { motionPath: {} });</script></body></html>`,
+      `<html><head><script src="vendor/gsap@3.14.2/dist/gsap.min.js"></script></head><body><div data-composition-id="main"></div><script>gsap.to("#card", { motionPath: {} });</script></body></html>`,
     );
     const html = await (await appForHost(projectDir).request(previewUrl)).text();
     expect(

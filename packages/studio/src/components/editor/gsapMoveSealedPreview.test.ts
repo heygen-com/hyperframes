@@ -575,7 +575,7 @@ it("a sealed move's save ends its draft in the same frame message, and the teard
   const { iframe } = await dragBoxOnSealedFrame(SCRIPT, undefined, undefined, async (frame) => {
     await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(frame);
     const box = document.getElementById("box")!;
-    expect([box.style.translate, drawnAt(box)]).toEqual(["", { x: 110, y: 40 }]);
+    expect([box.style.translate, drawnAt(box)]).toEqual(["none", { x: 110, y: 40 }]);
   });
   const [[, , params]] = patchRequests() as unknown as [
     [unknown, unknown, { endsDrafts?: unknown[] }],
@@ -662,7 +662,7 @@ describe("a newer gesture that takes the element before the older save lands", (
     await dragBoxOnSealedFrame(later, undefined, regrab(7), async (iframe, standIn) => {
       await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
       endPreviewDraft(standIn, "restore");
-      await vi.waitFor(() => expect(box().style.translate).toBe(""));
+      await vi.waitFor(() => expect(box().style.translate).toBe("none"));
       expect(drawnAt(box())).toEqual({ x: 110, y: 40 });
     });
   });
@@ -705,7 +705,7 @@ describe("a newer gesture that takes the element before the older save lands", (
       armPreviewDraftEnd(standIn, "#box");
       await savePosition({ kind: "global-set", props: { x: 110, y: 40 } })(iframe);
       expect(savedEnds()).toEqual([expect.objectContaining({ end: "keep-size" })]);
-      expect([box().style.translate, drawnAt(box())]).toEqual(["", { x: 110, y: 40 }]);
+      expect([box().style.translate, drawnAt(box())]).toEqual(["none", { x: 110, y: 40 }]);
     });
   });
 });

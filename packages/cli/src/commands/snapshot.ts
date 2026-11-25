@@ -10,7 +10,7 @@ import {
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { projectFolder } from "../utils/projectRecords.js";
 import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
@@ -499,11 +499,7 @@ export async function probeContainingSourceFrameSeek(
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
-          ...[
-            "-v",
-            "error",
-            ...mediaInputFormatArgs(ffprobe, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
-          ],
+          ...["-v", "error", ...mediaInputArgs(ffprobe, videoPath, WALKED_BY_PROJECT_VIDEO_FILE)],
           ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
@@ -633,7 +629,7 @@ async function probeSeekLanding(
           "error",
           "-copyts",
           "-noaccurate_seek",
-          ...mediaInputFormatArgs(ffmpeg, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
+          ...mediaInputArgs(ffmpeg, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         ],
         ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
@@ -695,7 +691,7 @@ async function frameColour(
   const read = (args: string[]) =>
     runFfmpegOnce(
       ffmpegPath,
-      [...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE), ...args],
+      [...mediaInputArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE), ...args],
       FFMPEG_EXTRACT_TIMEOUT_MS,
     );
   const probe = await read(firstFrameColourArgs(videoPath));
@@ -750,7 +746,7 @@ export async function extractVideoFrameToBuffer(
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
       args.push(
-        ...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
+        ...mediaInputArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         "-i",
         videoPath,
         "-map",
@@ -817,7 +813,7 @@ export async function decodeFramesInOnePass(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       args.push(
-        ...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
+        ...mediaInputArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         "-ss",
         String(start),
         "-i",
