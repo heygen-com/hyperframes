@@ -2,6 +2,7 @@ import { sourceTimeAt } from "../speedRamp";
 import { readElementRateSpec, readMediaStart } from "./playbackRate";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { isClipOnScreenAt } from "./clipWindow";
+import { isElementNode } from "./domRealm";
 import type { RuntimeDeterministicAdapter } from "./types";
 
 export interface FrameSource {
@@ -22,6 +23,9 @@ interface RegisteredSource {
 const sources = new Map<Element, RegisteredSource>();
 
 export const hasFrameSources = (): boolean => sources.size > 0;
+
+export const hasFrameSource = (element: unknown): boolean =>
+  isElementNode(element) && sources.has(element);
 
 /** Bind a frame source to a timed host. Unregister before replacing its source. */
 export function registerFrameSource(source: FrameSource): () => void {

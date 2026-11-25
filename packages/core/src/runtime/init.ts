@@ -90,7 +90,7 @@ import { createGoogleMapsAdapter } from "./adapters/google-maps";
 import { createMaplibreAdapter } from "./adapters/maplibre";
 import { createD3Adapter } from "./adapters/d3";
 import { createTypegpuAdapter } from "./adapters/typegpu";
-import { createFrameSourceAdapter } from "./frameSources";
+import { createFrameSourceAdapter, hasFrameSource } from "./frameSources";
 import {
   patchVideoTextureCompat,
   patchWebGLVideoTextureCompat,
@@ -6598,7 +6598,8 @@ export function initSandboxRuntimeModular(): void {
     // Same clips and source time as the media sync that follows, so it has nothing left to seek.
     const clips = withTimingResolver(() => buildRuntimeMediaCache().mediaClips);
     for (const clip of transportMovableClips(clips) ?? []) {
-      if (!clip.el.isConnected || !isInClipWindow(timeSeconds, clip.start, clip.end)) continue;
+      if (!clip.el.isConnected || hasFrameSource(clip.el)) continue;
+      if (!isInClipWindow(timeSeconds, clip.start, clip.end)) continue;
       const target = mediaSourceTimeAt(clip, timeSeconds);
       // A seek flushes the decoder even when it lands where the video already is.
       if (Math.abs(clip.el.currentTime - target) <= tolerance) continue;

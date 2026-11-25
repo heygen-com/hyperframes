@@ -24,4 +24,8 @@ Draws are serialized per source. Rapid preview seeks coalesce while a draw is in
 
 Call `unregister()` when replacing a source. Removal of its host or runtime teardown also unregisters it. The callback's `AbortSignal` is aborted, queued work is cancelled, capture waiters are released, and `dispose` runs once. Stop any underlying work in response to the signal or in `dispose`; cancellation cannot forcibly interrupt synchronous JavaScript.
 
+## Media elements
+
+A frame source can supply a timed `<video>` or `<audio>`, for example one decoded with WebCodecs from bytes the page reads itself. The runtime then leaves the element alone: it never loads, preloads, seeks or plays it, and the first-frame asset check does not wait for it. The element needs no `src`.
+
 Registration does not expose arbitrary scene code as editable keyframes. Manual element edits need stable identities and persistent parameters or overrides. Imported iframe sources also need screenshot capture and an explicit message bridge; this API does not grant access to sandboxed DOM.

@@ -1,3 +1,4 @@
+import { hasFrameSource } from "./runtime/frameSources.js";
 import { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 import { isRuntimeElementVisibleAt } from "./runtime/timeline.js";
 import type { RuntimeTimelineLike } from "./runtime/types.js";
@@ -115,7 +116,7 @@ export function scanPendingCompositionAssets(
         runtimeWindow?.__timelines ?? {},
       ),
     )
-    .filter((el) => el.readyState < HAVE_FUTURE_DATA);
+    .filter((el) => el.readyState < HAVE_FUTURE_DATA && !hasFrameSource(el));
   // A lazy image off the first frame loads only once shown, so no scope can wait on it.
   const pendingImages = Array.from(doc.querySelectorAll("img"))
     .filter((img) =>

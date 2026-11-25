@@ -26,6 +26,7 @@ import {
   MEDIA_SYNC_TOLERANCE_SECONDS,
   steerMedia,
 } from "./mediaSteer.js";
+import { hasFrameSource } from "./frameSources";
 import { setRuntimePreload } from "./runtimeAttributes";
 export { MEDIA_HARD_SYNC_SECONDS, MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
 export type { RuntimeMediaClip } from "./types.js";
@@ -551,7 +552,7 @@ export function syncRuntimeMedia(params: {
   playheadWasRunning = params.playing && params.clockAdvancing !== false;
   for (const clip of params.clips) {
     const { el } = clip;
-    if (!el.isConnected) continue;
+    if (!el.isConnected || hasFrameSource(el)) continue;
     dropSilentAudioTrack(el);
     const clipRate = clip.rate ?? clip.playbackRate;
     const origin = clip.origin ?? clip.start;
