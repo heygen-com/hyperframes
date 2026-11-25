@@ -710,7 +710,7 @@ class Engine {
     );
     if (!log) return this.firstOpen();
     this.takeLog(log);
-    if ((log.baselineLines ?? 0) > 1) this.persistLog();
+    this.compactGrownLog();
     await this.reclaimUncopied();
     if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
@@ -933,6 +933,10 @@ class Engine {
   firstCopyWaitMs(path: string): number {
     const wait = this.options.firstCopyFileMs;
     return typeof wait === "function" ? wait(path) : (wait ?? FIRST_COPY_FILE_MS);
+  }
+
+  compactGrownLog(): void {
+    if ((this.log.baselineLines ?? 0) > 1) this.persistLog();
   }
 
   saveAdopting(): void {
