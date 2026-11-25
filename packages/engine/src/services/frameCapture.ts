@@ -594,8 +594,21 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<stri
 const BROWSER_CONSOLE_BUFFER_SIZE = 200;
 const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
+const PAGE_TEXT_MAX_CHARS = 2_000;
+const PAGE_LIST_MAX = 50;
+
+const CUT_NOTE_MAX_CHARS = 40;
+
+function boundedPageText(text: string): string {
+  if (text.length <= PAGE_TEXT_MAX_CHARS) return text;
+  let end = PAGE_TEXT_MAX_CHARS - CUT_NOTE_MAX_CHARS;
+  const high = text.charCodeAt(end - 1);
+  if (high >= 0xd800 && high <= 0xdbff) end -= 1;
+  return `${text.slice(0, end)}… (${text.length - end} more characters)`;
+}
+
 function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
-  session.browserConsoleBuffer.push(text);
+  session.browserConsoleBuffer.push(boundedPageText(text));
   if (session.browserConsoleBuffer.length > BROWSER_CONSOLE_BUFFER_SIZE) {
     session.browserConsoleBuffer.shift();
   }
@@ -2926,7 +2939,8 @@ function assertVfxIntact(session: CaptureSession): void {
 }
 
 // A `vfx:` detail is a chain that cannot paint, so every frame is wrong; `vfx-frame:` is one frame, a page error.
-function recordConsoleScriptError(session: CaptureSession, error: string | null): void {
+function recordConsoleScriptError(session: CaptureSession, detail: string | null): void {
+  const error = detail && boundedPageText(detail);
   if (!error?.startsWith("runtime-error:vfx:")) {
     recordPageError(session, error);
     return;
@@ -2941,13 +2955,16 @@ function recordConsoleScriptError(session: CaptureSession, error: string | null)
 function loggedEarlierInRender(session: CaptureSession, text: string): boolean {
   if (!text.startsWith(SCENE_CALLBACK_ERROR_PREFIX)) return false;
   const logged = (session.subTimelineWaitMemo.loggedSceneCallbackErrors ??= []);
-  if (logged.includes(text)) return true;
-  logged.push(text);
+  const kept = boundedPageText(text);
+  if (logged.includes(kept) || logged.length >= PAGE_LIST_MAX) return true;
+  logged.push(kept);
   return false;
 }
 
 function recordPageError(session: CaptureSession, error: string | null): void {
-  if (error && !session.pageErrors.includes(error)) session.pageErrors.push(error);
+  const kept = error && boundedPageText(error);
+  if (kept && session.pageErrors.length < PAGE_LIST_MAX && !session.pageErrors.includes(kept))
+    session.pageErrors.push(kept);
 }
 
 // A 4xx `response` and a `requestfailed` can both fire for the same script
@@ -2959,8 +2976,12 @@ function recordScriptLoadFailure(
   url: string,
   cause: ScriptLoadCause,
 ): void {
-  if (!session.scriptLoadFailures.includes(url)) {
-    session.scriptLoadFailures.push(url);
+  const kept = boundedPageText(url);
+  if (
+    session.scriptLoadFailures.length < PAGE_LIST_MAX &&
+    !session.scriptLoadFailures.includes(kept)
+  ) {
+    session.scriptLoadFailures.push(kept);
     (session.scriptLoadCauses ??= []).push(cause);
   }
 }
@@ -3148,7 +3169,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       !quietRuntimeDetail(text) &&
       !loggedEarlierInRender(session, text)
     ) {
-      console.error(terminalText(diagnostic.text));
+      console.error(terminalText(boundedPageText(diagnostic.text)));
     }
     appendBrowserDiagnostic(session, diagnostic.text);
 
@@ -3164,7 +3185,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const text = `[Browser:PAGEERROR] ${message}`;
 
     // Benign play/pause race during frame capture — suppress terminal noise, keep in buffer.
-    if (!isPlayPauseAbort(message)) console.error(terminalText(text));
+    if (!isPlayPauseAbort(message)) console.error(terminalText(boundedPageText(text)));
 
     appendBrowserDiagnostic(session, text);
   });
@@ -3211,11 +3232,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     recordPageError(session, error);
     if (!error) return;
     // Recorded first so fail-fast sees it; the throw site is appended once the source is fetched.
+    const kept = boundedPageText(error);
     void describeThrowSite(runtimeClient, exceptionDetails, projectScripts).then((site) => {
-      const i = session.pageErrors.indexOf(error);
+      const i = session.pageErrors.indexOf(kept);
       if (!site || i < 0) return;
-      if (session.pageErrors.includes(`${error}${site}`)) session.pageErrors.splice(i, 1);
-      else session.pageErrors[i] = `${error}${site}`;
+      const sited = boundedPageText(`${kept}${site}`);
+      if (session.pageErrors.includes(sited)) session.pageErrors.splice(i, 1);
+      else session.pageErrors[i] = sited;
     });
   });
   await runtimeClient.send("Runtime.enable");
