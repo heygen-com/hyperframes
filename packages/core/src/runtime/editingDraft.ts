@@ -236,9 +236,15 @@ function clearProps(element: Styled, saved: Before): void {
   putLiveDraftsBack();
 }
 
-function dropTranslateNoOneWroteSince(element: Styled, saved: Before): void {
-  const drewOnGsap = saved.gsapPosition !== undefined;
-  if (!drewOnGsap && element.style.getPropertyValue("translate") === saved.drawnTranslate)
+function settleTranslateUnderGsap(element: Styled): void {
+  restore(element, ["translate"]);
+  const under = getComputedStyle(element).getPropertyValue("translate");
+  if (under && under !== "none") element.style.setProperty("translate", "none");
+}
+
+function dropDrawnTranslate(element: Styled, saved: Before): void {
+  if (saved.gsapPosition !== undefined) return settleTranslateUnderGsap(element);
+  if (element.style.getPropertyValue("translate") === saved.drawnTranslate)
     restore(element, ["translate"]);
 }
 
@@ -252,7 +258,7 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
     restoreGsapPosition(element);
     restoreGsapRotation(element);
   }
-  if (ending.end === "keep-size") dropTranslateNoOneWroteSince(element, saved);
+  if (ending.end === "keep-size") dropDrawnTranslate(element, saved);
   before.delete(element);
   return ending.end === "restore";
 }
