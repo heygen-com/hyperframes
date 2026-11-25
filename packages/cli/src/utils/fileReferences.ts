@@ -1,7 +1,7 @@
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { isNonRelativeUrl } from "@hyperframes/core";
 import { resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core/color-grading";

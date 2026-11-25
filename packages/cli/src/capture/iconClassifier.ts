@@ -14,7 +14,7 @@
  * resize for raster. They answer "does this drawing carry its own backdrop", nothing more.
  */
 
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { loadSharp } from "../utils/optionalPackages.js";
 
 /** What a downloaded icon is, as a drawing. `unknown` when the format cannot be inspected. */

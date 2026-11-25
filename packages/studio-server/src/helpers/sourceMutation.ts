@@ -1,5 +1,5 @@
 import { replacementTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { removeElementWithGsapCascade } from "@hyperframes/parsers";
 import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import postcss from "postcss";
@@ -710,7 +710,7 @@ export function wrapElementsInHtml(
   const seen = new Set<Element>();
   for (const target of targets) {
     const el = findTargetElement(document, target);
-    if (!el || !isHTMLElement(el) || seen.has(el)) continue;
+    if (!el || !isHTMLElement(el) || isNonContentElement(el) || seen.has(el)) continue;
     seen.add(el);
     els.push(el);
   }

@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { renameWithRetry, runFfmpeg, runFfprobe, urlInputArgs } from "@hyperframes/engine";
 import { readHeifPrimaryRotation } from "./heifRotation.js";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
