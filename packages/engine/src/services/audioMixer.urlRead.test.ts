@@ -37,9 +37,9 @@ async function streamBody(
 
 // A range server like S3's (ffmpeg asks for `bytes=<start>-`). With `cut`, the first read starting
 // at `cut.from` or later (past the probes' header reads) stops at `cut.at`, and every later request
-// is refused, as for a link that just expired. With `served`, each answer is capped at SERVED_RANGE_BYTES:
-// an open-ended answer is written into the kernel's socket buffers long before the client closes it, so
-// the count would measure buffering, which varies with load, not what the client read.
+// is refused, as for a link that just expired. With `cut` or `served`, each answer is capped at
+// SERVED_RANGE_BYTES: an open-ended answer sits in the socket buffers long before the client closes it,
+// so under load ffmpeg reads on through it instead of seeking, and a cut keyed on a read's start never fires.
 const SERVED_RANGE_BYTES = 1_048_576;
 function serve(
   body: Buffer,
@@ -47,10 +47,11 @@ function serve(
   served?: { bytes: number },
 ): Promise<Server> {
   let refusing = false;
+  const capped = served !== undefined || cut !== undefined;
   const server = createServer(async (req, res) => {
     if (refusing) return void res.writeHead(403).end("Request has expired");
     const start = Number(/bytes=(\d+)-/.exec(req.headers.range ?? "")?.[1] ?? 0);
-    const end = served ? Math.min(body.length, start + SERVED_RANGE_BYTES) : body.length;
+    const end = capped ? Math.min(body.length, start + SERVED_RANGE_BYTES) : body.length;
     res.writeHead(206, {
       "Accept-Ranges": "bytes",
       "Content-Length": end - start,
