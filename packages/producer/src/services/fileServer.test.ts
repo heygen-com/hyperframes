@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path, { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -1339,4 +1339,29 @@ describe("createFileServer tool records", () => {
       }
     },
   );
+});
+
+// fails without the fix: a name too long for the file system threw ENAMETOOLONG out of the file lookup, so the
+// server answered 500 and logged the page's whole path with a stack trace
+describe("createFileServer names the file system refuses", () => {
+  it("answers a name too long for the file system with 404 and logs it cut short", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-long-name-"));
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      writeEmptyIndex(projectDir);
+      await withFileServer(projectDir, async (server) => {
+        expect((await fetch(`${server.url}/${"a".repeat(10_000)}.png`)).status).toBe(404);
+      });
+      const logged = [...warn.mock.calls, ...error.mock.calls].map((args) =>
+        args.map(String).join(" "),
+      );
+      expect(logged.some((line) => line.includes("404 Not Found"))).toBe(true);
+      expect(Math.max(...logged.map((line) => line.length))).toBeLessThanOrEqual(2_100);
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -3,6 +3,7 @@ import type { CapturePerfSummary, CaptureWarning } from "../types.js";
 // What a render keeps of the page's own text: each entry, each list and all warnings are bounded here.
 export const PAGE_TEXT_MAX_CHARS = 2_000;
 export const PAGE_LIST_MAX = 50;
+export const SERVED_SCRIPTS_MAX = 10_000;
 // Warnings are the one list a page can grow without a count cap: this caps one session's and one render's.
 const WARNINGS_TEXT_MAX_CHARS = 1_000_000;
 
