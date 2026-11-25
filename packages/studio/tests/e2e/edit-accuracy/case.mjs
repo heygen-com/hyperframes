@@ -721,6 +721,16 @@ async function waitingQuad(page, map) {
 const WAITING_BOX = "[data-dom-edit-press-waiting]";
 const WAITING_ON_SAVE = `${WAITING_BOX}:not([data-dom-edit-press-waiting="frame"])`;
 
+/** The waiting marker's quad, or null once Studio has taken that box out of the page. */
+async function markerQuad(waiting, quadOf) {
+  try {
+    return await quadOf(waiting);
+  } catch (error) {
+    if (await waiting.evaluate((e) => e.isConnected)) throw error;
+    return null;
+  }
+}
+
 /** The box as the preview shows it: the waiting marker's quad while a press waits for its replay, else the element. */
 export async function measureShown(
   ctx,
@@ -734,12 +744,12 @@ export async function measureShown(
     try {
       const m = await read(ctx);
       if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
-      const quad = waiting && (await quadOf(waiting)).map(m.map.toComp);
-      // Replay removes the marker before moving the element. Do not combine a pre-replay
-      // element read with a post-replay marker read into a position nobody displayed.
+      const quad = waiting && (await markerQuad(waiting, quadOf))?.map(m.map.toComp);
+      // Replay removes the marker before moving the element, and may then remount the box. Do not
+      // combine a pre-replay element read with a post-replay marker read into a position nobody displayed.
       if (
         waiting &&
-        !(await waiting.evaluate((e) => e.hasAttribute("data-dom-edit-press-waiting")))
+        !(quad && (await waiting.evaluate((e) => e.hasAttribute("data-dom-edit-press-waiting"))))
       )
         continue;
       return { m: quad ? { ...m, quad, visible: quad } : m, actual: m.visible };

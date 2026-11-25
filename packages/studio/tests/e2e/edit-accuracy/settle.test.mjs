@@ -313,6 +313,25 @@ describe("the box a press is measured against", () => {
     );
     expect(shown.m.visible[0][0]).toBe(0);
   });
+
+  // fails without the fix: a sealed fast-keys drag threw "element has no rendered box" when Studio
+  // remounted the selection box right after the replay, before the marker's box was read.
+  it("reads again when Studio took the waiting box out of the page before its box was read", async () => {
+    const gone = async () => {
+      throw new Error("element has no rendered box");
+    };
+    const shown = await measureShown({ page: page([marker([false])]) }, "move", read, gone);
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  it("still fails when a waiting box in the page has no box", async () => {
+    const empty = async () => {
+      throw new Error("element has no rendered box");
+    };
+    await expect(
+      measureShown({ page: page([marker([true])]) }, "move", read, empty),
+    ).rejects.toThrow("element has no rendered box");
+  });
 });
 
 // fails without the fix: the sequence read the file once its write count was met, while a sealed press that waited for
