@@ -62,6 +62,7 @@ import { colorGradingPlayback } from "./editing/color-grading-playback";
 import { assignAudioGroup } from "./editing/assignAudioGroup";
 import { audioMeter } from "./editing/audioMeter";
 import { documentMarkup } from "./editing/documentMarkup";
+import { removeElements } from "./editing/removeElements";
 import { authoredStyles, fontFaces } from "./editing/textStyleReads";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
@@ -232,6 +233,7 @@ const HANDLERS: Handlers = {
   "max-z-index": () => maxZIndex(),
   "crop-lift": cropLift,
   "edit-element": editElement,
+  "remove-elements": removeElements,
   "stacking-family": stackingFamily,
   "gsap-set": gsapSet,
   "patch-tweens": patchTweens,

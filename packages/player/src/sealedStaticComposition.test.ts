@@ -77,7 +77,7 @@ describe("a sealed film whose runtime boots late", () => {
     const { player, events, postStatic } = framedPlayer();
     postStatic(over);
     vi.advanceTimersByTime(LIMIT);
-    expect(events).toEqual([`error ${timelineNotFound(LIMIT, true)}`]);
+    expect(events).toEqual([`error ${timelineNotFound(LIMIT)}`]);
     expect(player.ready).toBe(false);
   });
 
@@ -85,7 +85,7 @@ describe("a sealed film whose runtime boots late", () => {
     const { player, events, postStatic } = framedPlayer();
     postStatic({}, window);
     vi.advanceTimersByTime(LIMIT);
-    expect(events).toEqual([`error ${timelineNotFound(LIMIT, true)}`]);
+    expect(events).toEqual([`error ${timelineNotFound(LIMIT)}`]);
     expect(player.ready).toBe(false);
   });
 
