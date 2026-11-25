@@ -182,6 +182,36 @@ describe("handleRuntimeMessage media autoplay fallback", () => {
     );
   });
 
+  // fails without the fix: a player asking for the list to decode it had no answer to read.
+  it("builds a sealed film's copies from a list it asked for, and leaves them unpromoted for its buffers", () => {
+    const frameWindow = {} as Window;
+    const onParentCopies = vi.fn();
+    const callbacks = {
+      ...makeCallbacks(),
+      getCompositionUrl: () => "https://films.test/f/index.html",
+      onParentCopies,
+    };
+    const media = [
+      { kind: "audio", src: "https://films.test/f/a.m4a", start: 0, duration: 5, mediaStart: 0 },
+    ];
+
+    handleRuntimeMessage(
+      {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "parent-copies", media },
+      } as unknown as MessageEvent,
+      frameWindow,
+      callbacks,
+    );
+
+    expect(callbacks.media.setupFromList).toHaveBeenCalledWith(
+      media,
+      "https://films.test/f/index.html",
+    );
+    expect(onParentCopies).toHaveBeenCalledOnce();
+    expect(callbacks.media.promoteToParentProxy).not.toHaveBeenCalled();
+  });
+
   it("does not promote or mute iframe output when the host vetoes the fallback", () => {
     const frameWindow = {} as Window;
     const callbacks = {
