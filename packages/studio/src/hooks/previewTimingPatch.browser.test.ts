@@ -203,3 +203,47 @@ it.each(MODES)(
     await moveThenDelete(mode);
   },
 );
+
+// A rebind rebuilds from the frame's attributes, so a move whose live patch did not land must reload the saved file.
+async function moveWithoutAPatch(mode: string) {
+  const preview = await openPreview(browser, studioBundle, previewHtml(), mode);
+  try {
+    await preview.page.evaluate(async () => {
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      const iframe = document.querySelector("iframe")!;
+      const reloads = { count: 0 };
+      (window as unknown as { reloads: { count: number } }).reloads = reloads;
+      const gone = {
+        id: "gone",
+        domId: "gone",
+        selector: "#gone",
+        sourceFile: "index.html",
+        kind: "element",
+      };
+      studio.patchIframeDomTiming(iframe, gone, [["data-start", "3"]]);
+      await studio.finishTimelineTimingFallback({
+        iframe,
+        projectId: null,
+        reloadPreview: () => (reloads.count += 1),
+        onGsapError: () => {},
+        rebindWhenUnmutated: true,
+      });
+    });
+    const reloads = () =>
+      preview.page.evaluate(
+        () => (window as unknown as { reloads: { count: number } }).reloads.count,
+      );
+    await expect
+      .poll(reloads, { message: "the frame never showed the move, so the saved file reloads" })
+      .toBe(1);
+  } finally {
+    await preview.page.close();
+  }
+}
+
+it.each(MODES)(
+  "a move whose live patch found no clip reloads the saved file, in a %s preview",
+  async (mode) => {
+    await moveWithoutAPatch(mode);
+  },
+);
