@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -14,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { SELF_CONTAINED_FORMATS } from "./lib/literal-media-input.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./transcript-cut.mjs", import.meta.url));
 const HAS_FFMPEG =
@@ -412,3 +415,57 @@ test("a cut into a new folder inside the project is made there", { skip: !HAS_FF
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.ok(lstatSync(join(dir, "cuts", "deep", "out.wav")).isFile());
 });
+
+// fails without the fix: --copy writes each part in --out's container (a raw .aac keeps packet bytes as they came),
+// and the join opened the parts with every reader, so a part could be read as a manifest naming other files.
+test(
+  "a --copy cut reads its parts back only as the container it wrote them in",
+  { skip: (!HAS_FFMPEG || process.platform === "win32") && "needs ffmpeg and a POSIX shell" },
+  (t) => {
+    const { dir, cleanup } = fixture();
+    t.after(cleanup);
+    const source = join(dir, "source.m4a");
+    execFileSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1", source]);
+    const transcriptPath = join(dir, "transcript.json");
+    writeFileSync(transcriptPath, JSON.stringify({ words: [{ text: "tone", start: 0, end: 1 }] }));
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    const log = join(dir, "ffmpeg-calls.txt");
+    const real = execFileSync("sh", ["-c", "command -v ffmpeg"], { encoding: "utf8" }).trim();
+    writeFileSync(
+      join(bin, "ffmpeg"),
+      `#!/bin/sh\nfor a in "$@"; do printf '%s\\t' "$a"; done >> '${log}'\necho >> '${log}'\nexec '${real}' "$@"\n`,
+    );
+    chmodSync(join(bin, "ffmpeg"), 0o755);
+    const out = join(dir, "cut.aac");
+    const result = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        "--input",
+        source,
+        "--transcript",
+        transcriptPath,
+        "--keep",
+        "0.1-0.6",
+        "--copy",
+        "--out",
+        out,
+      ],
+      { encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } },
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.ok(statSync(out).size > 0);
+    const calls = readFileSync(log, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => line.split("\t").slice(0, -1));
+    const join_ = calls.find((args) => args.includes("concat"));
+    const value = (args, flag) => args[args.indexOf(flag) + 1];
+    assert.equal(value(join_, "-protocol_whitelist"), "file");
+    const [list, reader, ...rest] = value(join_, "-format_whitelist").split(",");
+    assert.deepEqual([list, rest], ["concat", []]);
+    assert.ok(SELF_CONTAINED_FORMATS.split(",").includes(reader), reader);
+    assert.equal(reader, "aac", "a raw .aac part is read only as ADTS");
+  },
+);
