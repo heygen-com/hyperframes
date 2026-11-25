@@ -15,6 +15,9 @@ import {
   procThreadStates,
   readEncoderProcess,
   scanExecutable,
+  type StdinHolders,
+  stdinHolders,
+  threadCpuNs,
   type ThreadState,
   waitUntilIdle,
   watchEncoder,
@@ -125,6 +128,7 @@ const FFMPEG: EncoderProcessFacts = {
   exeId: "1:2",
   lineage: { ppid: 100, pgrp: 90, session: 80 },
   descendants: 0,
+  stdin: "socket:[5150]",
 };
 
 describe("encoderProcessProblem", () => {
@@ -152,6 +156,8 @@ describe("encoderProcessProblem", () => {
     ["an unreadable executable", { ...FFMPEG, exe: null }, "cannot be read"],
     ["an unreadable stat", { ...FFMPEG, lineage: null }, "cannot be read"],
     ["unreadable children", { ...FFMPEG, descendants: null }, "child processes cannot be read"],
+    ["a closed stdin", { ...FFMPEG, stdin: null }, "stdin cannot be read"],
+    ["a stdin that is a file", { ...FFMPEG, stdin: "/dev/null" }, "not the pipe it was spawned"],
   ])("declines %s", (_name, facts, detail) => {
     expect(encoderProcessProblem(facts, SELF)).toContain(detail);
   });
@@ -187,6 +193,12 @@ function watchDeps(over: Partial<EncoderWatchDeps> = {}): EncoderWatchDeps {
     readExecutable: async () => ({ elf: true, staticLibx265: true, reportsLibx265: true }),
     threads: () => threadsOf(["S", "S", "S"], ["ffmpeg", "enc0:0:libx265", "vf#0:0"]),
     mapsLibx265: () => false,
+    stdinHolders: async () => ({ holders: [] }),
+    // The libx265 thread runs 1 ms on each read.
+    threadCpuNs: (() => {
+      let ns = 0;
+      return () => (ns += 1_000_000);
+    })(),
     self: () => ({ ...SELF, exeId: "9:9" }),
     sleep: async () => {},
     now: Date.now,
@@ -200,6 +212,7 @@ describe("watchEncoder", () => {
     pacer.check();
     await pacer.waitUntilIdle(fast);
     await pacer.waitUntilIdle(fast);
+    await pacer.finish();
   });
 
   it("declines with no pid", async () => {
@@ -379,6 +392,122 @@ describe("watchEncoder", () => {
     dropFrom = reads + 2;
     await pacer.waitUntilIdle(fast);
     expect(reads).toBeGreaterThan(dropFrom);
+  });
+});
+
+// A wrapper that starts the real ffmpeg outside its process tree hands it the encoder's stdin,
+// so the two share it until the wrapper closes its own: whatever the wrapper's names and maps.
+describe("watchEncoder: the process that reads the frames", () => {
+  it("declines while another process holds the encoder's stdin", async () => {
+    let scans = 0;
+    const error = await watchEncoder(
+      7,
+      watchDeps({
+        stdinHolders: async (pid, stdin) => {
+          scans++;
+          expect([pid, stdin]).toEqual([7, "socket:[5150]"]);
+          return { holders: [4321] };
+        },
+      }),
+    ).catch((e) => e);
+    expect(error).toBeInstanceOf(EncoderPacingError);
+    expect(error.message).toContain("process(es) 4321 also hold the encoder's stdin");
+    // Read again until the exec wait runs out, like every other unproven fact.
+    expect(scans).toBeGreaterThan(1);
+  });
+
+  it("declines when who holds the encoder's stdin cannot be read", async () => {
+    await expect(
+      watchEncoder(
+        7,
+        watchDeps({ stdinHolders: async () => ({ unreadable: "process 99's descriptors" }) }),
+      ),
+    ).rejects.toThrow("cannot be read (process 99's descriptors)");
+  });
+
+  it("declines a process that gave up its stdin, or took another, after it was proven", async () => {
+    let facts: EncoderProcessFacts = FFMPEG;
+    const pacer = await watchEncoder(7, watchDeps({ readProcess: () => facts }));
+    pacer.check();
+    facts = { ...FFMPEG, stdin: null };
+    expect(() => pacer.check()).toThrow("stdin cannot be read");
+    facts = { ...FFMPEG, stdin: "pipe:[6000]" };
+    expect(() => pacer.check()).toThrow("not the pipe it was spawned with (socket:[5150])");
+  });
+
+  it("declines once another process holds the stdin at the first idle or after the last frame", async () => {
+    let scan: StdinHolders = { holders: [] };
+    const deps = watchDeps({ stdinHolders: async () => scan });
+    const early = await watchEncoder(7, deps);
+    scan = { holders: [55] };
+    await expect(early.waitUntilIdle(fast)).rejects.toThrow("55 also hold the encoder's stdin");
+    scan = { holders: [] };
+    const late = await watchEncoder(7, deps);
+    await late.waitUntilIdle(fast);
+    await late.waitUntilIdle(fast);
+    scan = { holders: [56, 57] };
+    await expect(late.finish()).rejects.toThrow("56, 57 also hold the encoder's stdin");
+  });
+
+  it("declines a libx265 thread that has not run since the first frame went idle", async () => {
+    // A thread that bears ffmpeg's name for it and only waits.
+    const pacer = await watchEncoder(7, watchDeps({ threadCpuNs: () => 40_000_000 }));
+    await pacer.waitUntilIdle(fast);
+    await pacer.waitUntilIdle(fast);
+    await expect(pacer.finish()).rejects.toThrow("has not run since the first frame");
+  });
+
+  it("declines when the libx265 thread's CPU time cannot be read, or no frame was paced", async () => {
+    const unread = await watchEncoder(7, watchDeps({ threadCpuNs: () => null }));
+    await expect(unread.waitUntilIdle(fast)).rejects.toThrow("CPU time cannot be read");
+    const none = await watchEncoder(7, watchDeps());
+    await expect(none.finish()).rejects.toThrow("no frame was paced");
+  });
+
+  it("declines at finish a process that is no longer the one proven", async () => {
+    let facts: EncoderProcessFacts = FFMPEG;
+    const pacer = await watchEncoder(7, watchDeps({ readProcess: () => facts }));
+    await pacer.waitUntilIdle(fast);
+    facts = { ...FFMPEG, stdin: null };
+    await expect(pacer.finish()).rejects.toThrow("stdin cannot be read");
+  });
+});
+
+describe.skipIf(process.platform !== "linux")("stdinHolders and threadCpuNs", () => {
+  it("finds every other process holding a child's stdin, and only those", async () => {
+    // A shell whose background child shares its stdin, as a double-forked ffmpeg would (an async
+    // command's stdin is /dev/null unless redirected).
+    const shell = spawn("sh", ["-c", "exec 3<&0; sleep 5 <&3 3<&- & wait"], {
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    try {
+      await new Promise((done) => setTimeout(done, 300));
+      const facts = readEncoderProcess(shell.pid ?? -1);
+      expect(facts.stdin).toMatch(/^(pipe|socket):\[\d+\]$/);
+      const scan = await stdinHolders(shell.pid ?? -1, facts.stdin ?? "");
+      expect(scan).toEqual({ holders: [expect.any(Number)] });
+      expect(await stdinHolders(shell.pid ?? -1, "socket:[1]")).toEqual({ holders: [] });
+    } finally {
+      shell.kill("SIGKILL");
+    }
+  });
+
+  it("cannot scan for a process that does not exist", async () => {
+    expect(await stdinHolders(2 ** 22 + 7, "socket:[1]")).toEqual({
+      unreadable: "the encoder's start time",
+    });
+  });
+
+  it("reads a thread's CPU time, which grows while it runs", () => {
+    const before = threadCpuNs(process.pid, process.pid);
+    const until = Date.now() + 30;
+    while (Date.now() < until) {
+      // Spin.
+    }
+    const after = threadCpuNs(process.pid, process.pid);
+    expect(before).not.toBeNull();
+    expect(after as number).toBeGreaterThan(before as number);
+    expect(threadCpuNs(2 ** 22 + 7, 1)).toBeNull();
   });
 });
 

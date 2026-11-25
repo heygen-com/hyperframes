@@ -535,6 +535,8 @@ export async function compositeAndEncode(
       request.onFramesEncoded?.(framesWritten);
       asked = Date.now();
     }
+    // While the encoder's stdin is still open: whatever reads the frames holds it until then.
+    if (framesWritten > 0) await pacer.finish();
     await feeding;
     if (feedError !== undefined) throw feedError;
     const decoded = await composite.wait();

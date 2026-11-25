@@ -623,6 +623,7 @@ describe.skipIf(!HAS_X265 || process.platform !== "linux")(
               throw new EncoderPacingError("the encoder process started 1 process(es)");
           },
           waitUntilIdle: (options) => waitUntilIdle(() => procThreadStates(pid ?? -1), options),
+          finish: async () => undefined,
         }),
       }).catch((e) => e);
       expect(error).toBeInstanceOf(EncoderPacingError);

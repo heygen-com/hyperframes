@@ -4,7 +4,9 @@
  * renamed copy or a script that execs it in place (all paced), or a wrapper
  * that starts the real encoder as its child, in its own session, or outside
  * its process tree after a delay (all declined: pacing would read the
- * wrapper's idle threads).
+ * wrapper's idle threads), and wrappers forged to pass those checks by name
+ * that leave the frames to an ffmpeg outside their process tree (declined:
+ * it shares the encoder's stdin with them, or they give theirs up).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -22,7 +24,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getFfmpegBinary, spawnStreamingEncoder } from "@hyperframes/engine";
-import { ENCODER_IDLE, EncoderPacingError, watchEncoder } from "./encoderPacing.js";
+import { ENCODER_IDLE, EncoderPacingError, LIBX265_BANNER, watchEncoder } from "./encoderPacing.js";
 
 const FFMPEG = getFfmpegBinary();
 const HAS_X265 =
@@ -108,6 +110,80 @@ int main(int argc, char **argv) {
   return binary;
 }
 
+/**
+ * A C wrapper named ffmpeg forged to look like the encoder by name: `banner`
+ * holds libx265's banner text, `library` maps a shared library named
+ * libx265; both start ffmpeg-named idle threads, one named as ffmpeg names
+ * its libx265 encoder thread, and run the real ffmpeg as a setsid'd,
+ * double-forked grandchild that reads the frames from the stdin it inherits.
+ * They stay, with no process of their own, until it exits, and return its
+ * exit code.
+ */
+function compileForgedWrapper(dir: string, forgery: "banner" | "library"): string {
+  const folder = join(dir, `forged-${forgery}`);
+  mkdirSync(folder);
+  const library = join(folder, "libx265.so.209");
+  if (forgery === "library") {
+    const libSource = join(folder, "libx265.c");
+    writeFileSync(libSource, "int x265_dummy(void) { return 265; }\n");
+    const built = spawnSync("cc", ["-shared", "-fPIC", "-o", library, libSource], {
+      encoding: "utf-8",
+    });
+    if (built.status !== 0) throw new Error(`cc failed: ${built.stderr}`);
+  }
+  const source = `#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <pthread.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
+const char banner[] = ${JSON.stringify(forgery === "banner" ? LIBX265_BANNER.toString() : "")};
+static void *idle(void *arg) { (void)arg; for (;;) pause(); return 0; }
+int main(int argc, char **argv) {
+  volatile const char *keep = banner; (void)keep;
+  ${forgery === "library" ? `dlopen(${JSON.stringify(library)}, RTLD_NOW);` : ""}
+  int encoding = 0;
+  for (int i = 1; i < argc; i++) if (!strcmp(argv[i], "rawvideo")) encoding = 1;
+  int alive[2], status[2];
+  if (pipe(alive) || pipe(status)) return 1;
+  pid_t middle = fork();
+  if (middle == 0) {
+    setsid();
+    if (fork() == 0) {
+      close(alive[0]); close(status[0]);
+      pid_t real = fork();
+      if (real == 0) { close(status[1]); argv[0] = ${JSON.stringify(FFMPEG)}; execv(argv[0], argv); _exit(127); }
+      close(0); close(1);
+      int s; waitpid(real, &s, 0);
+      unsigned char code = WIFEXITED(s) ? WEXITSTATUS(s) : 1;
+      if (write(status[1], &code, 1) != 1) _exit(1);
+      _exit(0);
+    }
+    _exit(0);
+  }
+  close(alive[1]); close(status[1]);
+  int s; waitpid(middle, &s, 0);
+  if (encoding) for (int i = 0; i < 6; i++) {
+    pthread_t thread; pthread_create(&thread, 0, idle, 0);
+    pthread_setname_np(thread, i == 0 ? "enc0:0:libx265" : "x265 pool");
+  }
+  close(0); close(1);
+  unsigned char code = 1; char byte;
+  while (read(alive[0], &byte, 1) > 0) {}
+  if (read(status[0], &code, 1) != 1) code = 1;
+  return code;
+}
+`;
+  const sourcePath = join(folder, "wrapper.c");
+  writeFileSync(sourcePath, source);
+  const binary = join(folder, "ffmpeg");
+  const built = spawnSync("cc", ["-O1", "-pthread", "-o", binary, sourcePath, "-ldl"], {
+    encoding: "utf-8",
+  });
+  if (built.status !== 0) throw new Error(`cc failed: ${built.stderr}`);
+  return binary;
+}
+
 describe.skipIf(!HAS_X265 || process.platform !== "linux")("watchEncoder on real processes", () => {
   const saved = process.env.HYPERFRAMES_FFMPEG_PATH;
   let dir: string;
@@ -129,8 +205,12 @@ describe.skipIf(!HAS_X265 || process.platform !== "linux")("watchEncoder on real
     return path;
   }
 
-  /** Encodes three frames through `ffmpegPath` paced by `watchEncoder`: "paced", or why it declined. */
-  async function pace(ffmpegPath: string, codec: "h264" | "h265" = "h265"): Promise<string> {
+  /** Encodes `frames` frames through `ffmpegPath` paced by `watchEncoder`: "paced", or why it declined. */
+  async function pace(
+    ffmpegPath: string,
+    codec: "h264" | "h265" = "h265",
+    frames = 3,
+  ): Promise<string> {
     process.env.HYPERFRAMES_FFMPEG_PATH = ffmpegPath;
     const encoder = await spawnStreamingEncoder(join(dir, `out-${Math.random()}.mp4`), {
       fps: { num: 30, den: 1 },
@@ -144,11 +224,12 @@ describe.skipIf(!HAS_X265 || process.platform !== "linux")("watchEncoder on real
     });
     try {
       const pacer = await watchEncoder(encoder.pid);
-      for (let frame = 0; frame < 3; frame++) {
+      for (let frame = 0; frame < frames; frame++) {
         pacer.check();
         expect(await encoder.writeFrame(FRAME)).toBe(true);
         await pacer.waitUntilIdle(ENCODER_IDLE);
       }
+      await pacer.finish();
       return "paced";
     } catch (error) {
       if (error instanceof EncoderPacingError) return error.message;
@@ -209,9 +290,10 @@ describe.skipIf(!HAS_X265 || process.platform !== "linux")("watchEncoder on real
     async (_name, mode) => {
       mkdirSync(join(dir, `script-${mode}`));
       const wrapper = executable(join(`script-${mode}`, "ffmpeg"), wrapperScript(mode));
-      // Its process runs the shell, which is no ffmpeg (or, for `child`, has a child first).
+      // Its process runs the shell, which is no ffmpeg (or, for `child`, has a child first), and
+      // reads the FIFO it left ffmpeg holding instead of the encoder's stdin.
       expect(await pace(wrapper)).toMatch(
-        /started 1 process\(es\)|which does not report --enable-libx265/,
+        /started 1 process\(es\)|which does not report --enable-libx265|not the pipe it was spawned with/,
       );
       expectEncodes(wrapper, `script-${mode}`);
     },
@@ -223,8 +305,13 @@ describe.skipIf(!HAS_X265 || process.platform !== "linux")("watchEncoder on real
   // away. They hand -buildconf to the real ffmpeg, so that reports libx265 too.
   describe.skipIf(!HAS_CC)("compiled wrappers", () => {
     it.each([
-      ["a delayed double fork", "delayed" as const, /holds no libx265 code/],
-      ["a daemon (setsid, then fork)", "daemon" as const, /holds no libx265 code/],
+      // They also close the stdin they leave to ffmpeg.
+      ["a delayed double fork", "delayed" as const, /holds no libx265 code|stdin cannot be read/],
+      [
+        "a daemon (setsid, then fork)",
+        "daemon" as const,
+        /holds no libx265 code|stdin cannot be read/,
+      ],
       ["a child in its own session", "child" as const, /started 1 process\(es\)/],
     ])(
       "declines a binary that runs ffmpeg as %s",
@@ -232,6 +319,24 @@ describe.skipIf(!HAS_X265 || process.platform !== "linux")("watchEncoder on real
         const wrapper = compileWrapper(dir, mode);
         expect(await pace(wrapper)).toMatch(reason);
         expectEncodes(wrapper, `binary-${mode}`);
+      },
+      60_000,
+    );
+
+    // Forged to pass every check by name (libx265 code, the encoder thread): only who reads the
+    // encoder's stdin gives them away. The pipe is shared with the real ffmpeg until the wrapper
+    // closes its own copy, after which it has none.
+    it.each([
+      ["carries libx265's banner", "banner" as const],
+      ["maps a library named libx265", "library" as const],
+    ])(
+      "declines a forged wrapper that %s and leaves the frames to a daemonized ffmpeg",
+      async (_name, forgery) => {
+        const wrapper = compileForgedWrapper(dir, forgery);
+        expect(await pace(wrapper, "h265", 10)).toMatch(
+          /also hold the encoder's stdin|the encoder's stdin cannot be read/,
+        );
+        expectEncodes(wrapper, `forged-${forgery}`);
       },
       60_000,
     );

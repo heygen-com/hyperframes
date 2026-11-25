@@ -38,12 +38,24 @@
  * - the process is still this one's child, in this process's group and
  *   session, and has started no process (`/proc/<pid>/task/*\/children`,
  *   at any depth);
+ * - it reads the frames: its stdin (`/proc/<pid>/fd/0`) is the pipe it was
+ *   spawned with, a pipe or socket that stays the same on every frame, and
+ *   no other process of this user holds that pipe (every `/proc/<n>/fd`),
+ *   read when it is proven, once its first frame has gone idle and after
+ *   the last frame, before the pipe is closed. A process of this user whose
+ *   descriptors cannot be read declines, unless it started before the
+ *   encoder did, when it cannot have been handed the encoder's pipe at
+ *   spawn. A wrapper that leaves the pipe to an ffmpeg it started outside
+ *   its process tree shares it, or gives it up, and declines;
  * - after the first frame, and before that frame's idle wait can finish,
  *   the process holds ffmpeg's libx265 encoder thread (`enc0:0:libx265`;
  *   ffmpeg 7.0 and later name it; idle polls before it exists do not count,
  *   and 10 s of them decline), and from then on that thread and every
  *   thread present when the first frame went idle (x265's pool) are still
- *   there on every poll.
+ *   there on every poll; after the last frame, that thread has run since
+ *   the first frame went idle (its CPU time, `/proc/<pid>/task/<tid>/schedstat`
+ *   or `stat`, grew): ffmpeg hands every frame to libx265 on it, so a thread
+ *   that only bears the name stays at its CPU time.
  *
  * Each frame checks the process again (`EncoderPacer.check`), and a poll
  * that finds no thread states fails rather than counting as idle. A GPU
@@ -121,6 +133,8 @@ export interface EncoderProcessFacts {
   lineage: { ppid: number; pgrp: number; session: number } | null;
   /** Processes it started that are still its descendants, at any depth. */
   descendants: number | null;
+  /** What its stdin is (`/proc/<pid>/fd/0`), e.g. `pipe:[123]` or `socket:[123]`. */
+  stdin: string | null;
 }
 
 const read = <T>(get: () => T): T | null => {
@@ -167,6 +181,7 @@ export function readEncoderProcess(pid: number): EncoderProcessFacts {
       return { ppid: Number(fields[1]), pgrp: Number(fields[2]), session: Number(fields[3]) };
     }),
     descendants: read(() => countDescendants(pid)),
+    stdin: read(() => readlinkSync(`/proc/${pid}/fd/0`)),
   };
 }
 
@@ -191,7 +206,162 @@ export function encoderProcessProblem(
   if (facts.descendants > 0) {
     return `the encoder process started ${facts.descendants} process(es) of its own`;
   }
+  if (facts.stdin === null) return "the encoder's stdin cannot be read";
+  if (!SPAWNED_STDIN.test(facts.stdin)) {
+    return `the encoder's stdin is ${facts.stdin}, not the pipe it was spawned with`;
+  }
   return null;
+}
+
+/** The stdin `spawn` hands the encoder: a pipe or a socket pair, by inode. */
+const SPAWNED_STDIN = /^(?:pipe|socket):\[\d+\]$/;
+
+/** Who else holds the encoder's stdin (`stdinHolders`), or why that cannot be read. */
+export type StdinHolders = { holders: number[] } | { unreadable: string };
+
+const errorCode = (error: unknown) => (error as NodeJS.ErrnoException).code;
+/** A process or descriptor that went away while it was read. */
+const isGone = (error: unknown) => errorCode(error) === "ENOENT" || errorCode(error) === "ESRCH";
+
+/** `/proc/<pid>/stat`'s start time (clock ticks since boot). */
+function startTimeOf(pid: number): number {
+  const start = Number(parseStat(readFileSync(`/proc/${pid}/stat`, "latin1"))?.fields[19]);
+  if (!Number.isFinite(start)) throw new Error(`unreadable stat of ${pid}`);
+  return start;
+}
+
+/** The real and effective uid of `pid` (`/proc/<pid>/status`). */
+function uidsOf(pid: number): number[] {
+  const line = /^Uid:\s+(\d+)\s+(\d+)/m.exec(readFileSync(`/proc/${pid}/status`, "latin1"));
+  if (!line) throw new Error(`unreadable status of ${pid}`);
+  return [Number(line[1]), Number(line[2])];
+}
+
+/** Why `pid`'s descriptors could not be listed matters, or not ("gone", or false: it is older). */
+function unlistedDescriptors(
+  pid: number,
+  error: unknown,
+  encoderStart: number,
+): false | "gone" | string {
+  if (isGone(error)) return "gone";
+  // A process older than the encoder was not handed its stdin at spawn (a non-dumpable one,
+  // e.g. an ssh session's, keeps its descriptors from this user).
+  if (read(() => startTimeOf(pid) < encoderStart)) return false;
+  const name = read(() => /^Name:\s*(.*)$/m.exec(readFileSync(`/proc/${pid}/status`, "latin1")));
+  return `process ${pid}${name ? ` (${name[1]})` : ""}'s descriptors`;
+}
+
+/** What a descriptor link names: null once it was closed while read, undefined when it cannot be read. */
+function descriptorTarget(path: string): string | null | undefined {
+  try {
+    return readlinkSync(path);
+  } catch (error) {
+    return isGone(error) ? null : undefined;
+  }
+}
+
+/**
+ * Whether `pid` holds `stdin` among its descriptors: "gone" when it exited
+ * while read, "other" when it is not this user's, or the part of it that
+ * cannot be read.
+ */
+function holdsStdin(
+  pid: number,
+  uid: number,
+  stdin: string,
+  encoderStart: number,
+): boolean | "gone" | "other" | string {
+  let fds: string[];
+  try {
+    if (!uidsOf(pid).includes(uid)) return "other";
+    fds = readdirSync(`/proc/${pid}/fd`);
+  } catch (error) {
+    return unlistedDescriptors(pid, error, encoderStart);
+  }
+  for (const fd of fds) {
+    const target = descriptorTarget(`/proc/${pid}/fd/${fd}`);
+    if (target === stdin) return true;
+    if (target === undefined) return `process ${pid}'s descriptor ${fd}`;
+  }
+  return false;
+}
+
+/**
+ * How long a process whose descriptors could not be read is read again
+ * (first after 5 ms, then twice as long each time, up to 200 ms apart): a
+ * process starting up (a browser's helper, a shell running a command)
+ * cannot be read until its `execve` is done, which takes a few hundred
+ * milliseconds on a loaded host.
+ */
+const UNREADABLE_WAIT_MS = 5_000;
+const UNREADABLE_FIRST_REREAD_MS = 5;
+const UNREADABLE_MAX_REREAD_MS = 200;
+
+/**
+ * The processes of this user, other than the encoder `pid` and this one,
+ * that hold `stdin` (the encoder's), from every `/proc/<n>/fd`; or what
+ * could not be read.
+ */
+export async function stdinHolders(
+  pid: number,
+  stdin: string,
+  sleep: (ms: number) => Promise<void> = defaultSleep,
+): Promise<StdinHolders> {
+  const uid = process.getuid?.();
+  if (uid === undefined) return { unreadable: "this process's user" };
+  const encoderStart = read(() => startTimeOf(pid));
+  if (encoderStart === null) return { unreadable: "the encoder's start time" };
+  const entries = read(() => readdirSync("/proc"));
+  if (entries === null) return { unreadable: "/proc" };
+  const holders: number[] = [];
+  let unread = new Map<number, string>();
+  const scan = (other: number) => {
+    const holds = holdsStdin(other, uid, stdin, encoderStart);
+    if (holds === true) holders.push(other);
+    else if (typeof holds === "string" && holds !== "gone" && holds !== "other") {
+      unread.set(other, holds);
+    }
+  };
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    const other = Number(entry);
+    if (other !== pid && other !== process.pid) scan(other);
+  }
+  for (
+    let delay = UNREADABLE_FIRST_REREAD_MS, waited = 0;
+    unread.size > 0 && waited < UNREADABLE_WAIT_MS;
+    waited += delay, delay = Math.min(delay * 2, UNREADABLE_MAX_REREAD_MS)
+  ) {
+    await sleep(delay);
+    const pending = [...unread.keys()];
+    unread = new Map();
+    for (const other of pending) scan(other);
+  }
+  const [unreadable] = unread.values();
+  return unreadable === undefined ? { holders } : { unreadable };
+}
+
+/** Why `scan` (of the encoder's stdin) does not leave it the encoder's alone, or null. */
+function stdinHoldersProblem(scan: StdinHolders): string | null {
+  if ("unreadable" in scan) {
+    return `who holds the encoder's stdin cannot be read (${scan.unreadable})`;
+  }
+  if (scan.holders.length === 0) return null;
+  return `process(es) ${scan.holders.join(", ")} also hold the encoder's stdin`;
+}
+
+/**
+ * The CPU time thread `tid` of `pid` has run, in ns: `schedstat`'s, or
+ * `stat`'s utime + stime (clock ticks of 10 ms); null when neither can be read.
+ */
+export function threadCpuNs(pid: number, tid: number): number | null {
+  const scheduled = read(() =>
+    Number(readFileSync(`/proc/${pid}/task/${tid}/schedstat`, "latin1").split(" ")[0]),
+  );
+  if (scheduled !== null && Number.isFinite(scheduled)) return scheduled;
+  const fields = read(() => parseStat(readFileSync(`/proc/${pid}/task/${tid}/stat`, "latin1")));
+  const ticks = Number(fields?.fields[11]) + Number(fields?.fields[12]);
+  return Number.isFinite(ticks) ? ticks * 10_000_000 : null;
 }
 
 /** What an executable holds, for the proof (see the module comment). */
@@ -371,6 +541,12 @@ export interface EncoderPacer {
   check(): void;
   /** After each frame: resolves once the encoder is idle; the first also proves its libx265 thread. */
   waitUntilIdle(options: IdleWaitOptions): Promise<void>;
+  /**
+   * After the last frame's idle wait, before the encoder's stdin is closed:
+   * throws `EncoderPacingError` unless the process is still the one proven,
+   * holds its stdin alone and ran libx265 after the first frame.
+   */
+  finish(): Promise<void>;
 }
 
 /** What `watchEncoder` reads; injectable for tests. */
@@ -379,6 +555,8 @@ export interface EncoderWatchDeps {
   readExecutable: (pid: number, exe: string, exeId: string) => Promise<ExecutableFacts | null>;
   threads: (pid: number) => readonly ThreadState[] | null;
   mapsLibx265: (pid: number) => boolean | null;
+  stdinHolders: (pid: number, stdin: string) => Promise<StdinHolders>;
+  threadCpuNs: (pid: number, tid: number) => number | null;
   self: () => { pid: number; pgrp: number; session: number; exeId: string | null };
   sleep: (ms: number) => Promise<void>;
   now: () => number;
@@ -399,6 +577,8 @@ const DEFAULT_ENCODER_WATCH_DEPS: EncoderWatchDeps = {
   readExecutable,
   threads: procThreadStates,
   mapsLibx265,
+  stdinHolders,
+  threadCpuNs,
   self: readSelf,
   sleep: defaultSleep,
   now: Date.now,
@@ -428,7 +608,9 @@ async function unprovenProblem(
   const executableIssue = executableProblem(exe, executable);
   if (executableIssue) return executableIssue;
   const staticLibx265 = executable?.staticLibx265 === true;
-  return libx265Problem(exe, staticLibx265, staticLibx265 || deps.mapsLibx265(pid));
+  const libx265Issue = libx265Problem(exe, staticLibx265, staticLibx265 || deps.mapsLibx265(pid));
+  if (libx265Issue) return libx265Issue;
+  return stdinHoldersProblem(await deps.stdinHolders(pid, facts.stdin as string));
 }
 
 /**
@@ -447,7 +629,7 @@ export async function watchEncoder(
   for (let waited = 0; ; waited += EXEC_POLL_MS) {
     const facts = deps.readProcess(pid);
     const problem = await unprovenProblem(pid, facts, self, deps);
-    if (!problem) return pacerFor(pid, facts.exeId as string, self, deps);
+    if (!problem) return pacerFor(pid, facts as ProvenFacts, self, deps);
     if (waited >= EXEC_WAIT_MS) throw new EncoderPacingError(problem);
     await deps.sleep(EXEC_POLL_MS);
   }
@@ -512,6 +694,9 @@ function stillHeld(
   return current;
 }
 
+/** The facts of a proven encoder process: its executable and stdin as they were proven. */
+type ProvenFacts = EncoderProcessFacts & { exeId: string; stdin: string };
+
 /**
  * The pacer of a proven encoder process: each frame re-checks the process;
  * the first frame's idle wait counts only once the process runs more than
@@ -519,31 +704,49 @@ function stillHeld(
  * libx265 thread among them (declining once it has been idle without one
  * for `LIBX265_THREAD_WAIT_MS`), and that thread and every thread
  * present once the first frame went idle must be there on every later
- * poll.
+ * poll. Once the first frame has gone idle and at `finish`, no other process
+ * may hold the encoder's stdin; at `finish`, the libx265 thread must have
+ * run since that first idle.
  */
 function pacerFor(
   pid: number,
-  exeId: string,
+  proven: ProvenFacts,
   self: { pid: number; pgrp: number; session: number },
   deps: EncoderWatchDeps,
 ): EncoderPacer {
   let held: ReadonlyMap<number, string> | undefined;
   let encoderThread: number | undefined;
+  let firstIdleCpuNs: number | undefined;
+  const stdinAlone = async () => {
+    const problem = stdinHoldersProblem(await deps.stdinHolders(pid, proven.stdin));
+    if (problem) throw new EncoderPacingError(problem);
+  };
+  const encoderCpuNs = (): number => {
+    const cpu = encoderThread === undefined ? null : deps.threadCpuNs(pid, encoderThread);
+    if (cpu === null) throw new EncoderPacingError("the libx265 thread's CPU time cannot be read");
+    return cpu;
+  };
   const holding = (): readonly ThreadState[] | null => {
     const threads = deps.threads(pid);
     if (!threads || threads.length === 0) return threads;
     encoderThread ??= threads.find((thread) => LIBX265_THREAD.test(thread.name))?.tid;
     return held ? stillHeld(threads, () => deps.threads(pid), held, encoderThread) : threads;
   };
+  const check = () => {
+    const now = deps.readProcess(pid);
+    const problem = encoderProcessProblem(now, self);
+    if (problem) throw new EncoderPacingError(problem);
+    if (now.exeId !== proven.exeId) {
+      throw new EncoderPacingError("the encoder process runs another executable than it did");
+    }
+    if (now.stdin !== proven.stdin) {
+      throw new EncoderPacingError(
+        `the encoder's stdin is ${now.stdin}, not the pipe it was spawned with (${proven.stdin})`,
+      );
+    }
+  };
   return {
-    check() {
-      const now = deps.readProcess(pid);
-      const problem = encoderProcessProblem(now, self);
-      if (problem) throw new EncoderPacingError(problem);
-      if (now.exeId !== exeId) {
-        throw new EncoderPacingError("the encoder process runs another executable than it did");
-      }
-    },
+    check,
     async waitUntilIdle(options) {
       if (held) return waitUntilIdle(holding, options);
       let idleSince: number | undefined;
@@ -563,6 +766,16 @@ function pacerFor(
         throw new EncoderPacingError("the encoder's libx265 thread is gone");
       }
       held = new Map(threads.map((thread) => [thread.tid, thread.name]));
+      await stdinAlone();
+      firstIdleCpuNs = encoderCpuNs();
+    },
+    async finish() {
+      if (firstIdleCpuNs === undefined) throw new EncoderPacingError("no frame was paced");
+      check();
+      await stdinAlone();
+      if (!(encoderCpuNs() > firstIdleCpuNs)) {
+        throw new EncoderPacingError("the libx265 thread has not run since the first frame");
+      }
     },
   };
 }

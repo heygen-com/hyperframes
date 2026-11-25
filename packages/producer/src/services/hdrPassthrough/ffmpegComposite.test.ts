@@ -295,6 +295,9 @@ describe("compositeAndEncode", () => {
           waitUntilIdle: async (options) => {
             log.push(`idle ${pid} ${options.calmPolls}`);
           },
+          finish: async () => {
+            log.push(`finish ${pid}`);
+          },
         };
       },
     };
@@ -317,10 +320,30 @@ describe("compositeAndEncode", () => {
       "check 4242",
       `write 2 ${FRAME}`,
       "idle 4242 3",
+      // After the last frame, while the encoder's stdin is still open.
+      "finish 4242",
       "close",
     ]);
     expect(heard).toEqual([1, 2, 3]);
     expect(result.framesEncoded).toBe(3);
+  });
+
+  it("declines, before the encode is closed as finished, when the last frame's check fails", async () => {
+    const log: string[] = [];
+    const d = deps(log, fakeEncoder(log), 3 * FRAME);
+    d.watchEncoder = async () => ({
+      check: () => undefined,
+      waitUntilIdle: async () => undefined,
+      finish: async () => {
+        log.push("finish");
+        throw new EncoderPacingError("process(es) 77 also hold the encoder's stdin");
+      },
+    });
+    const error = await compositeAndEncode(small(), d).catch((e) => e);
+    expect(error).toBeInstanceOf(EncoderPacingError);
+    expect(error.message).toContain("also hold the encoder's stdin");
+    // Checked after the last frame, then both processes are stopped rather than finished.
+    expect(log.slice(log.indexOf("finish"))).toEqual(["finish", "drop composite", "close"]);
   });
 
   it("fails when the composite ends inside a frame or short of the plan", async () => {
@@ -371,7 +394,7 @@ describe("compositeAndEncode pacing guards", () => {
     }),
     watchEncoder: async () => {
       await watch();
-      return { check, waitUntilIdle: async () => undefined };
+      return { check, waitUntilIdle: async () => undefined, finish: async () => undefined };
     },
   });
 
@@ -535,7 +558,11 @@ describe("compositeAndEncode with capture still running", () => {
           },
         };
       },
-      watchEncoder: async () => ({ check: () => undefined, waitUntilIdle: async () => undefined }),
+      watchEncoder: async () => ({
+        check: () => undefined,
+        waitUntilIdle: async () => undefined,
+        finish: async () => undefined,
+      }),
     };
     const encoding = compositeAndEncode(
       {
@@ -579,7 +606,11 @@ describe("compositeAndEncode when a process dies", () => {
           },
         };
       },
-      watchEncoder: async () => ({ check: () => undefined, waitUntilIdle: async () => undefined }),
+      watchEncoder: async () => ({
+        check: () => undefined,
+        waitUntilIdle: async () => undefined,
+        finish: async () => undefined,
+      }),
     };
     return deps;
   }
@@ -675,6 +706,7 @@ describe("compositeAndEncode when a process dies", () => {
         waitUntilIdle: async () => {
           throw new Error("hdrPassthrough: the encoder did not go idle within 120000 ms");
         },
+        finish: async () => undefined,
       }),
     };
     const error = await compositeAndEncode(
@@ -702,6 +734,7 @@ describe("compositeAndEncode when a process dies", () => {
         setTimeout(() => (exited = true), 50);
         throw new EncoderPacingError("the encoder's thread 12 (vf#0:0) is gone");
       },
+      finish: async () => undefined,
     });
     deps.spawnComposite = () => ({
       overlays: new PassThrough().resume(),
@@ -728,6 +761,7 @@ describe("compositeAndEncode when a process dies", () => {
         throw new EncoderPacingError("the encoder process started 1 process(es) of its own");
       },
       waitUntilIdle: async () => undefined,
+      finish: async () => undefined,
     });
     deps.spawnComposite = () => ({
       overlays: new PassThrough().resume(),
