@@ -8,7 +8,7 @@
  * Hash is CONTENT ONLY (tag + sorted attrs + own text) — no sibling position,
  * so inserting a non-identical sibling never shifts another element's id.
  */
-import { parseHTML } from "linkedom";
+import { parseHTML } from "./linkedom.js";
 import { EXCLUDED_TAGS, assignHfIds, getChildElements } from "./hfIdAssignment.js";
 export {
   EXCLUDED_TAGS,

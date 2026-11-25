@@ -340,7 +340,7 @@ export function createManualOffsetDragMember(input: {
 }): ManualOffsetDragMemberResult {
   const { start, gesture } = input;
   const plainTranslate = start
-    ? !start.gsap
+    ? !start.gsap && (gesture !== "resize" || editsPlainCss(input.element, "resize"))
     : !!gesture && editsPlainCss(input.element, gesture === "resize" ? "resize" : "move");
   // The APPLIED offset, never a dormant var, so a stale one can't fling the element off-screen.
   const initialOffset = plainTranslate
@@ -357,7 +357,8 @@ export function createManualOffsetDragMember(input: {
   // getProperty makes GSAP bake the CSS translate into its transform, so a plain move never reads it.
   const gsapX = (!plainTranslate && win?.gsap?.getProperty?.(input.element, "x")) || 0;
   const gsapY = (!plainTranslate && win?.gsap?.getProperty?.(input.element, "y")) || 0;
-  const baseGsap = start?.gsap ? { x: start.gsap.x, y: start.gsap.y } : { x: gsapX, y: gsapY };
+  const atPress = start ? (start.gsap ?? start.gsapAt) : undefined;
+  const baseGsap = atPress ? { x: atPress.x, y: atPress.y } : { x: gsapX, y: gsapY };
   const moving = start?.gsap?.moving === true;
   const gsapOwnsPosition = !plainTranslate && Boolean(start ?? getOffsetDragGsap(input.element));
   const frameDraftRoute = gsapOwnsPosition && start?.gsap?.drawsTranslate ? "gsap" : undefined;

@@ -20,7 +20,7 @@
     "unpacked": 170124
   },
   "@hyperframes/inspector": {
-    "packed": 933584,
+    "packed": 945000,
     "unpacked": 4010650
   },
   "@hyperframes/lint": {
@@ -28,7 +28,7 @@
     "unpacked": 737342
   },
   "@hyperframes/parsers": {
-    "packed": 215500,
+    "packed": 229500,
     "unpacked": 930000
   },
   "@hyperframes/player": {
@@ -37,7 +37,7 @@
   },
   "@hyperframes/producer": {
     "packed": 1065767,
-    "unpacked": 3702639
+    "unpacked": 3740484
   },
   "@hyperframes/sdk": {
     "packed": 90662,

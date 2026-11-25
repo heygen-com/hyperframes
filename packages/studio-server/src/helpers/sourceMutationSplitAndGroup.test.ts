@@ -385,6 +385,18 @@ describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {
     ]);
   });
 
+  it.each(["script", "style"])("never wraps a <%s> into a group", (tag) => {
+    const raw = `<${tag} id="raw">.raw{}</${tag}>`;
+    const source = FIXTURE.replace("</div></body>", `${raw}</div></body>`);
+    const alone = wrapElementsInHtml(source, [{ id: "raw" }], "Group 1", BBOX, []);
+    expect(alone.matched).toBe(false);
+    expect(alone.html).toBe(source);
+    const mixed = wrapElementsInHtml(source, [{ id: "title" }, { id: "raw" }], "Group 1", BBOX, []);
+    const group = parseHTML(mixed.html).document.querySelector("[data-hf-group]");
+    expect(Array.from(group?.children ?? []).map((child) => child.id)).toEqual(["title"]);
+    expect(mixed.html).toContain(raw);
+  });
+
   it("wraps members in a data-hf-group div, preserving order and rebasing left/top", () => {
     const { html, matched, groupId } = wrapElementsInHtml(
       FIXTURE,

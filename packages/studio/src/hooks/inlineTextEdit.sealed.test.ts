@@ -18,7 +18,10 @@ import {
   afterStudioManualEditGestures,
   isStudioManualEditGestureLiveIn,
 } from "../components/editor/manualEditGesture";
-import { canEditSealedTextInline } from "../components/editor/domEditInlineText";
+import {
+  canEditElementTextInline,
+  canEditSealedTextInline,
+} from "../components/editor/domEditInlineText";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { describePreviewElements, previewTextEdit } from "../player/lib/previewElements";
 import { keepKeyboardOutOfSealedFrame } from "../player/lib/sealedFrameKeyboard";
@@ -961,6 +964,18 @@ it("opens no sealed text edit on a layer the frame would refuse, so Enter stays 
   document.body.innerHTML = `<section id="s"><div>One</div><div>Two</div></section><p id="p">x</p>`;
   const { iframe } = sealedFrame();
   expect(canEditSealedTextInline(await select(iframe, "s"))).toBe(false);
+  expect(canEditSealedTextInline(await select(iframe, "p"))).toBe(true);
+});
+
+// fails without the fix: a sealed empty box opened a text edit, so the press that dragged it after its select click
+// was taken as a double press and the drag moved nothing (edit bench seqab-none-px-r0-nested-z100).
+it("opens no sealed text edit on a box with no text, as a regular preview opens none", async () => {
+  document.body.innerHTML = `<div id="box"></div><div id="blank"> </div><p id="p">x</p>`;
+  const { iframe } = sealedFrame();
+  for (const id of ["box", "blank"]) {
+    expect(canEditElementTextInline(document.getElementById(id))).toBe(false);
+    expect(canEditSealedTextInline(await select(iframe, id))).toBe(false);
+  }
   expect(canEditSealedTextInline(await select(iframe, "p"))).toBe(true);
 });
 

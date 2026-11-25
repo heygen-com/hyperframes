@@ -50,6 +50,7 @@ import {
   completeDeferredDrawElementInit,
   createCaptureSession,
   getCapturePerfSummary,
+  retainCapturePerf,
   initializeSession,
   prepareCaptureSessionForReuse,
 } from "@hyperframes/engine";
@@ -670,5 +671,5 @@ async function captureSessionFrames(
   );
   // Capture the sequential session's static-dedup perf before close (the
   // counters are valid only while the session is live).
-  dedupPerfs.push(getCapturePerfSummary(session));
+  retainCapturePerf(dedupPerfs, getCapturePerfSummary(session));
 }

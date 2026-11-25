@@ -62,6 +62,7 @@ import {
   distributeFramesInterleaved,
   executeParallelCapture,
   getCapturePerfSummary,
+  retainCapturePerf,
   psnrDb,
   resolveDeVerifyMinDb,
   recaptureDrawElementFrameForVerify,
@@ -1208,7 +1209,7 @@ export async function runCaptureStreamingStage(
           }
           // Capture the session's static-dedup perf before close (counters valid
           // only while the session is live).
-          dedupPerfs.push(getCapturePerfSummary(session));
+          retainCapturePerf(dedupPerfs, getCapturePerfSummary(session));
           // This must mirror disk capture: catch wraps the original failure with
           // browser diagnostics, finally only handles cleanup.
           // fallow-ignore-next-line code-duplication

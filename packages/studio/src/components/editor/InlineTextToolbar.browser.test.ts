@@ -28,23 +28,33 @@ beforeAll(async () => {
 });
 afterAll(() => closeTestChrome(browser));
 
+async function openEdit(mode: string, markup: string) {
+  const { page: studio, frame } = await openStudio(browser, bundle, page(markup), 2, mode);
+  // The test page has none of Studio's stylesheet; the toolbar's placement needs its own position.
+  await studio.addStyleTag({ content: ".fixed { position: fixed; }" });
+  await studio.evaluate(
+    async (sealed, saved) => {
+      const w = window as unknown as Editing;
+      w.__hold = false;
+      const iframe = document.querySelector("iframe");
+      w.__text = w.hfStudio.mountTextEditing(iframe, sealed, saved, "t", () => {});
+      w.__text.controls().start((await w.__text.select()).element);
+    },
+    mode === "sealed",
+    file(markup),
+  );
+  // The edit focuses the text and puts its caret on the next frame (useInlineTextEdit); a selection made before
+  // that is collapsed by it.
+  await frame.waitForFunction(() => {
+    const t = document.getElementById("t")!;
+    return t.isContentEditable && document.activeElement === t;
+  });
+  return { studio, frame };
+}
+
 async function boldMiddleWord(mode: string) {
-  const { page: studio, frame } = await openStudio(browser, bundle, page(WORDS), 2, mode);
+  const { studio, frame } = await openEdit(mode, WORDS);
   try {
-    // The test page has none of Studio's stylesheet; the toolbar's placement needs its own position.
-    await studio.addStyleTag({ content: ".fixed { position: fixed; }" });
-    await studio.evaluate(
-      async (sealed, saved) => {
-        const w = window as unknown as Editing;
-        w.__hold = false;
-        const iframe = document.querySelector("iframe");
-        w.__text = w.hfStudio.mountTextEditing(iframe, sealed, saved, "t", () => {});
-        w.__text.controls().start((await w.__text.select()).element);
-      },
-      mode === "sealed",
-      file(WORDS),
-    );
-    await frame.waitForFunction(() => document.getElementById("t")!.isContentEditable);
     await frame.evaluate(() => {
       const words = document.getElementById("t")!.firstChild!;
       const range = document.createRange();
@@ -101,21 +111,8 @@ const COLOURED = Object.entries(COLOURS)
   .replace(/(<span id="current"[^>]*>current<\/span>)/, '<span style="color: blue">$1</span>');
 
 async function colourReadings(mode: string, lie?: string) {
-  const { page: studio, frame } = await openStudio(browser, bundle, page(COLOURED), 2, mode);
+  const { studio, frame } = await openEdit(mode, COLOURED);
   try {
-    await studio.addStyleTag({ content: ".fixed { position: fixed; }" });
-    await studio.evaluate(
-      async (sealed, saved) => {
-        const w = window as unknown as Editing;
-        w.__hold = false;
-        const iframe = document.querySelector("iframe");
-        w.__text = w.hfStudio.mountTextEditing(iframe, sealed, saved, "t", () => {});
-        w.__text.controls().start((await w.__text.select()).element);
-      },
-      mode === "sealed",
-      file(COLOURED),
-    );
-    await frame.waitForFunction(() => document.getElementById("t")!.isContentEditable);
     // A composition owns its frame, so it can make the colour the runtime reads as painted say anything.
     if (lie)
       await frame.evaluate((lie) => {
@@ -175,3 +172,57 @@ it.each(["url(x)", "red; background: url(x)"])(
     expect(readings.map((reading) => JSON.stringify(reading)).join()).not.toContain("url(");
   },
 );
+
+// fails without the fix: text coloured by the composition's stylesheet, not inline, drew a white swatch.
+async function sheetReadings(mode: string) {
+  const { studio, frame } = await openEdit(
+    mode,
+    'Launch <span style="color: rgb(0, 255, 0)">day</span> news',
+  );
+  try {
+    await frame.evaluate(() => {
+      const sheet = document.createElement("style");
+      sheet.textContent = "#t { color: rgb(255, 0, 0); }";
+      document.head.append(sheet);
+    });
+    const readings: Record<string, unknown> = {};
+    // "Launch" alone, painted by the stylesheet; then through "day", painted by its span.
+    for (const [name, throughDay] of [
+      ["sheet", false],
+      ["both", true],
+    ] as const) {
+      await frame.evaluate(() => getSelection()!.removeAllRanges());
+      await studio.waitForFunction(() => !document.querySelector("[data-inline-text-toolbar]"));
+      await frame.evaluate((throughDay) => {
+        const launch = document.getElementById("t")!.firstChild!;
+        const range = document.createRange();
+        range.setStart(launch, 0);
+        if (throughDay) range.setEnd(document.querySelector("#t span")!.firstChild!, "day".length);
+        else range.setEnd(launch, "Launch".length);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      }, throughDay);
+      await studio.waitForSelector("[data-inline-text-toolbar]");
+      readings[name] = await studio.evaluate(() => {
+        const swatch = document.querySelector<HTMLElement>(
+          "[data-inline-text-toolbar] span[aria-hidden]",
+        )!;
+        const { backgroundColor, backgroundImage } = getComputedStyle(swatch);
+        return { backgroundColor, backgroundImage };
+      });
+    }
+    return readings;
+  } finally {
+    await studio.close();
+  }
+}
+
+it.each(MODES)("a %s text edit's swatch shows a colour the stylesheet paints", async (mode) => {
+  expect(await sheetReadings(mode)).toEqual({
+    sheet: { backgroundColor: "rgb(255, 0, 0)", backgroundImage: "none" },
+    both: {
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      backgroundImage: "linear-gradient(135deg, rgb(255, 0, 0) 0%, rgb(0, 255, 0) 100%)",
+    },
+  });
+});

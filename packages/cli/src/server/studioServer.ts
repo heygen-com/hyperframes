@@ -91,6 +91,7 @@ import {
   carriesOAuthReturn,
   inertRefusal,
   refuseOAuthReturn,
+  RANGE_NOT_RENDERED,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import { isLinkFreeWithinProject } from "@hyperframes/studio-server/safe-path";
@@ -695,6 +696,15 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           progress: 0,
           outputPath: opts.outputPath,
           error: "Studio server is shutting down",
+        };
+      }
+      if (opts.range) {
+        return {
+          id: opts.jobId,
+          status: "failed",
+          progress: 0,
+          outputPath: opts.outputPath,
+          error: RANGE_NOT_RENDERED,
         };
       }
       // The render POST is a request boundary like any other. Without this an
