@@ -241,7 +241,6 @@ export interface CaptureSession {
   scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
-  /** Page errors whose throw site was looked up, at most THROW_SITE_LOOKUP_MAX. */
   throwSiteLookups?: Set<string>;
   /** True once this session honoured `options.strictVariables`: the check ran and passed. */
   strictVariablesChecked?: boolean;
@@ -3234,7 +3233,6 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const error = classifyPageError(exceptionDetails, projectScripts);
     if (!error) return;
     const kept = boundedPageText(error);
-    // Each lookup downloads the whole script: one per distinct error, a few per session.
     const lookedUp = (session.throwSiteLookups ??= new Set());
     if (lookedUp.has(kept)) return;
     // Recorded first so fail-fast sees it; the throw site is appended once the source is fetched.
