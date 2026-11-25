@@ -2197,8 +2197,6 @@ describe("resolveProxy", () => {
     return import("./proxyTranscoder.js");
   }
 
-  const sleep = (ms: number) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
-
   it("keeps an environment failure briefly, so an ask that stopped waiting hears it next", async () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
     const { spawn, calls } = createSpawnSpy();
@@ -2215,16 +2213,16 @@ describe("resolveProxy", () => {
     await expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toBeInstanceOf(
       ProxyWaitTimeoutError,
     );
-    await sleep(30);
-    await expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toThrow(
-      "ffmpeg binary not found",
+    await vi.waitFor(() =>
+      expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toThrow(
+        "ffmpeg binary not found",
+      ),
     );
 
     ffmpegPath = FFMPEG_PATH;
     now.mockReturnValue(1_000 + 10_001);
     const retry = resolveProxy(projectDir, sourcePath);
-    await sleep(30);
-    expect(calls).toHaveLength(1);
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
     succeed(calls[0]!);
     await expect(retry).resolves.toBeTruthy();
     now.mockRestore();
@@ -2247,8 +2245,9 @@ describe("resolveProxy", () => {
     await expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toBeInstanceOf(
       ProxyWaitTimeoutError,
     );
-    await sleep(30);
-    await expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toThrow("EBUSY");
+    await vi.waitFor(() =>
+      expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toThrow("EBUSY"),
+    );
     expect(probe).toHaveBeenCalledTimes(1);
   });
 
