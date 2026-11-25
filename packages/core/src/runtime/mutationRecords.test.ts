@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTimingRecordFilter } from "./mutationRecords";
 
 const recordsMoveTiming = createTimingRecordFilter(["data-start", "data-duration", "id"]);
@@ -95,5 +95,17 @@ describe("createTimingRecordFilter", () => {
     expect(
       recordsMoveTiming(recordsOf((root) => root.append(document.createElement("script")))),
     ).toBe(true);
+  });
+
+  // fails without the fix: an observer callback run after its page was torn down threw on the missing global Node
+  it("judges an inserted element without the global Node, as a callback after its page is gone does", () => {
+    mount();
+    const records = recordsOf((root) => root.append(document.createElement("video")));
+    vi.stubGlobal("Node", undefined);
+    try {
+      expect(recordsMoveTiming(records)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
