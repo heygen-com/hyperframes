@@ -6,6 +6,7 @@ import { handleFor } from "./editingHandles";
 
 afterEach(() => {
   document.body.innerHTML = "";
+  document.head.innerHTML = "";
   delete (window as { gsap?: unknown }).gsap;
 });
 
@@ -209,7 +210,21 @@ describe("moves through GSAP", () => {
     const { element, handle, position, move } = gsapHeld();
     move(30, 36);
     drawDrafts([{ handle, end: "keep-size" }]);
-    expect([position, element.style.translate]).toEqual([{ x: 30, y: 36 }, "4px 2px"]);
+    expect([position, element.style.translate]).toEqual([{ x: 30, y: 36 }, "none"]);
+  });
+
+  // fails without the fix: a sealed resize saved as GSAP x/y over a stylesheet translate drew 50 px off after the
+  // drop, because the end put back the press's empty inline translate over the none GSAP's soft reload had set.
+  it("keeps the translate GSAP folded off when a soft reload set it before the end", () => {
+    document.head.innerHTML = "<style>#card { translate: 40px 30px }</style>";
+    const { element, handle } = card("width: 50px");
+    (window as { gsap?: unknown }).gsap = { getProperty: () => 0, set: () => {} };
+    drawDrafts([{ handle, translate: { x: -50, y: -33 }, size: { width: 80, height: 40 } }]);
+    element.style.setProperty("translate", "none");
+
+    drawDrafts([{ handle, end: "keep-size" }]);
+
+    expect([getComputedStyle(element).translate, element.style.width]).toEqual(["none", "80px"]);
   });
 
   // fails without the fix: restore compared GSAP's x/y with the drawn one, so a later set to that same value, or one

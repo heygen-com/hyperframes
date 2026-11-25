@@ -230,6 +230,14 @@ function clearProps(element: Styled, saved: Before): void {
   putLiveDraftsBack();
 }
 
+// keep-size ends a draft whose save holds the position in GSAP's x/y, and GSAP folds a translate into those,
+// so one still showing under them would apply twice (Studio's own preview settles the same way on a drop).
+function dropDrawnTranslate(element: Styled): void {
+  restore(element, ["translate"]);
+  const under = getComputedStyle(element).getPropertyValue("translate");
+  if (frameGsap() && under && under !== "none") element.style.setProperty("translate", "none");
+}
+
 function end(element: Styled, ending: EditingDraftEnd): boolean {
   const saved = before.get(element);
   if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return false;
@@ -240,7 +248,7 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
     restoreGsapPosition(element);
     restoreGsapRotation(element);
   }
-  if (ending.end === "keep-size") restore(element, ["translate"]);
+  if (ending.end === "keep-size") dropDrawnTranslate(element);
   before.delete(element);
   return ending.end === "restore";
 }
