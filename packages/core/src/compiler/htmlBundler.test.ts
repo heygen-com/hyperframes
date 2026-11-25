@@ -4416,6 +4416,7 @@ describe("bundleToSingleHtml composition file marks", () => {
   <div data-composition-id="scene" data-width="1920" data-height="1080">
     <h1 id="claim" data-composition-file="index.html">Scene</h1>
     <section id="wrap" data-composition-file="compositions/other.html"><b id="deep">deep</b></section>
+    <i id="shout" DATA-Composition-File="index.html">shout</i>
   </div>
 </template>`,
       "compositions/other.html": `<div data-composition-id="other"></div>`,
@@ -4431,6 +4432,7 @@ describe("bundleToSingleHtml composition file marks", () => {
     expect(fileOf("top")).toBeNull();
     expect(fileOf("claim")).toBe("compositions/scene.html");
     expect(fileOf("deep")).toBe("compositions/scene.html");
+    expect(document.getElementById("shout")?.getAttributeNames()).toEqual(["id"]);
     expect(document.querySelectorAll("[data-composition-file]")).toHaveLength(1);
   });
 });

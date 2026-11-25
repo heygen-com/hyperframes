@@ -140,7 +140,7 @@ const runStillJob = createJobSlots(4, 16);
 
 /** The saved page served when the build fails: it skips the build, so its authored file marks go here instead. */
 function unbuiltMainHtml(html: string): string {
-  if (!html.includes("data-composition-file")) return ensureHfIds(html);
+  if (!/data-composition-file/i.test(html)) return ensureHfIds(html);
   const { document } = parseHTML(html);
   dropAuthoredCompositionFiles(document as unknown as Document);
   return ensureHfIds(document.toString());

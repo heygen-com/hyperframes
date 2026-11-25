@@ -135,6 +135,8 @@ function extractFullDocumentParts(
   bodyAttrs: string;
 } {
   const { document: doc } = parseHTML(rawHtml);
+  // Its <html> and <body> attributes are copied onto the page as text below, past the content-only drop.
+  dropAuthoredCompositionFiles(doc as unknown as Document);
 
   const rewriteTargets = [doc.head, doc.body].filter(Boolean);
   for (const target of rewriteTargets) {

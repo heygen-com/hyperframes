@@ -11,14 +11,14 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-const ENTRY = `<html><head></head><body><div data-composition-id="main">
-  <p id="claim" data-composition-file="scenes/other.html">Hi</p>
+const entry = (mark: string) => `<html><head></head><body><div data-composition-id="main">
+  <p id="claim" ${mark}="scenes/other.html">Hi</p>
 </div></body></html>`;
 
-function api(bundle: StudioApiAdapter["bundle"]) {
+function api(bundle: StudioApiAdapter["bundle"], mark: string) {
   const project = mkdtempSync(join(tmpdir(), "hf-preview-unbuilt-marks-"));
   dirs.push(project);
-  writeFileSync(join(project, "index.html"), ENTRY);
+  writeFileSync(join(project, "index.html"), entry(mark));
   return createStudioApi({
     listProjects: () => [],
     resolveProject: async (id) => ({ id, dir: project }),
@@ -30,19 +30,25 @@ function api(bundle: StudioApiAdapter["bundle"]) {
   });
 }
 
+const noBuild: StudioApiAdapter["bundle"] = async () => null;
+const failedBuild: StudioApiAdapter["bundle"] = async () => {
+  throw new Error("esbuild failed");
+};
+
 describe("the saved page served when the build does not run", () => {
   it.each([
-    ["returns nothing", async () => null],
-    [
-      "throws",
-      async () => {
-        throw new Error("esbuild failed");
-      },
-    ],
-  ] as const)("drops the file marks it authored when the build %s", async (_label, bundle) => {
-    const page = await (await api(bundle).request("http://localhost/projects/demo/preview")).text();
+    ["returns nothing", "data-composition-file", noBuild],
+    ["throws", "data-composition-file", failedBuild],
+    ["returns nothing", "DATA-Composition-File", noBuild],
+    ["throws", "DATA-Composition-File", failedBuild],
+  ] as const)(
+    "drops the file marks it authored when the build %s (written %s)",
+    async (_label, mark, bundle) => {
+      const res = await api(bundle, mark).request("http://localhost/projects/demo/preview");
+      const page = await res.text();
 
-    expect(page).toContain('id="claim"');
-    expect(page).not.toContain("data-composition-file");
-  });
+      expect(page).toContain('id="claim"');
+      expect(page.toLowerCase()).not.toContain("data-composition-file");
+    },
+  );
 });
