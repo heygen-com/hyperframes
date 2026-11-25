@@ -247,11 +247,14 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
   it("counts the pages a scan did not reach by its limit, and judges none of them", () => {
     const projectDir = createProjectDir();
     const files = ["index.html", "compositions/scene.html"];
-    const scan = (leaveUncheckedAfterMs: number) =>
-      runPreviewJob({ kind: "compositions", projectDir, files, leaveUncheckedAfterMs });
+    const scan = (timeLeftMs: number) =>
+      runPreviewJob(
+        { kind: "compositions", projectDir, files, keptBackForPageInProgressMs: 5_000 },
+        timeLeftMs,
+      );
 
     expect(scan(60_000)).toEqual({ compositions: files, unchecked: 0 });
-    expect(scan(-1)).toEqual({ compositions: [], unchecked: 2 });
+    expect(scan(4_000)).toEqual({ compositions: [], unchecked: 2 });
   });
 
   // A list that misses pages would drop open compositions in Studio, which keeps its last list when none is sent.
@@ -269,6 +272,31 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
     expect(payload).toMatchObject({ files: expect.arrayContaining(["index.html"]) });
     expect(payload).not.toHaveProperty("compositions");
     expect(warned).toHaveBeenCalledTimes(1);
+  });
+
+  // fails without the fix: each listing put its own scan in the worker's queue.
+  it("gives listings that arrive during a scan one shared scan after it", async () => {
+    let scansAsked = 0;
+    const ends: Array<() => void> = [];
+    scan.result = () => {
+      scansAsked++;
+      return new Promise((resolve) =>
+        ends.push(() => resolve({ compositions: ["index.html"], unchecked: 0 })),
+      );
+    };
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(createProjectDir()));
+    const ask = () => app.request("http://localhost/projects/demo").then((r) => r.json());
+
+    const listings = [ask(), ask(), ask(), ask()];
+    await vi.waitFor(() => expect(ends).toHaveLength(1));
+    ends[0]?.();
+    await vi.waitFor(() => expect(ends).toHaveLength(2));
+    ends[1]?.();
+
+    for (const listing of await Promise.all(listings))
+      expect(listing).toMatchObject({ compositions: ["index.html"] });
+    expect(scansAsked).toBe(2);
   });
 
   it("lists no hidden file but Studio's own and the media folder's, nothing under .hyperframes/ that isn't Studio's", async () => {

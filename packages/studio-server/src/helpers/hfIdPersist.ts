@@ -50,8 +50,7 @@ function limitedAdapter(elements: number): TreeAdapter<DefaultTreeAdapterMap> {
       refuseBelowMaxDepth(parent);
       defaultTreeAdapter.appendChild(parent, child);
     },
-    // Where a node sits among its siblings does not change which elements exist, and keeping the
-    // order means a search or a shift of all the siblings for each node moved.
+    // Sibling order does not change which elements exist, and keeping it costs a search per node moved.
     insertBefore(parent, child) {
       refuseBelowMaxDepth(parent);
       defaultTreeAdapter.appendChild(parent, child);
@@ -74,8 +73,7 @@ function limitedAdapter(elements: number): TreeAdapter<DefaultTreeAdapterMap> {
   };
 }
 
-// More attributes on one tag than any real page has. The parser has no limit of its own, and compares
-// each attribute name on a tag with every one before it.
+// The parser compares each attribute name on a tag with every one before it, without a limit.
 const MAX_ATTRIBUTES = 4096;
 
 class AttributeLimitedTokenizer extends Tokenizer {
@@ -97,8 +95,7 @@ class AttributeLimitedTokenizer extends Tokenizer {
   }
 }
 
-/** The document a browser with scripting on builds from `html`. Throws past a limit. */
-function parseAsABrowser(html: string): Node {
+function parseAsABrowserWithScripting(html: string): Node {
   // Every element a page asks for takes at least three characters, so a real page stays under this.
   const treeAdapter = limitedAdapter(html.length + 16);
   const parser = new Parser({ scriptingEnabled: true, treeAdapter });
@@ -120,28 +117,26 @@ function hasCompositionElement(document: Node): boolean {
 
 /** True when `html`, read as a browser with scripting on reads it, has an element whose
  * `data-composition-id` attribute has a value; a template's content counts. The marker's text alone
- * is not enough, since Studio runs a composition's scripts on its own origin: the text inside a
- * script, style, comment or another attribute is no element. A page nested deeper than a browser
- * nests, or with thousands of attributes on one tag, is refused. */
+ * is not enough, since Studio runs a composition's scripts on its own origin. A page past a limit
+ * above is refused. */
 export function isCompositionSource(html: string): boolean {
   if (!COMPOSITION_ID_TEXT.test(html)) return false;
   const hash = contentHash(html);
-  let answer = answers.get(hash);
+  let answer = answersByContentHash.get(hash);
   if (answer === undefined) {
     try {
-      answer = hasCompositionElement(parseAsABrowser(html));
+      answer = hasCompositionElement(parseAsABrowserWithScripting(html));
     } catch {
       answer = false;
     }
-    if (answers.size >= MAX_ANSWERS) answers.clear();
-    answers.set(hash, answer);
+    if (answersByContentHash.size >= MAX_ANSWERS) answersByContentHash.clear();
+    answersByContentHash.set(hash, answer);
   }
   return answer;
 }
 
-// The project listing asks about every page on every request; a page is parsed once per content.
 const MAX_ANSWERS = 2048;
-const answers = new Map<string, boolean>();
+const answersByContentHash = new Map<string, boolean>();
 
 export const isCompositionPath = (relPath: string): boolean =>
   /\.html?$/i.test(relPath) && !isInHiddenOrVendorDir(relPath);

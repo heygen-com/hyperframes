@@ -8,17 +8,14 @@ import { resolveProjectSignature } from "../helpers/projectSignature.js";
 const WHOLE_SCAN_LIMIT_MS = 30_000;
 const PAGE_IN_PROGRESS_GRACE_MS = 5_000;
 
-async function compositionFiles(
-  projectDir: string,
-  files: string[],
-): Promise<string[] | undefined> {
-  const htmlFiles = files.filter(isCompositionPath);
-  if (htmlFiles.length === 0) return [];
+type Scan = Promise<string[] | undefined>;
+
+async function scan(projectDir: string, htmlFiles: string[]): Scan {
   const job = {
     kind: "compositions" as const,
     projectDir,
     files: htmlFiles,
-    leaveUncheckedAfterMs: WHOLE_SCAN_LIMIT_MS,
+    keptBackForPageInProgressMs: PAGE_IN_PROGRESS_GRACE_MS,
   };
   const deadline = performance.now() + WHOLE_SCAN_LIMIT_MS + PAGE_IN_PROGRESS_GRACE_MS;
   const listing = `[hyperframes] listing ${projectDir}: the compositions are left out of this answer,`;
@@ -30,6 +27,34 @@ async function compositionFiles(
     console.warn(`${listing} the scan did not end:`, error);
   }
   return undefined;
+}
+
+const scans = new Map<string, { last: Scan; waiting?: { files: string[]; answer: Scan } }>();
+
+/** A project folder has one scan with the worker and at most one waiting behind it, which every listing that
+ * arrives meanwhile shares; it reads the files the latest of them named. */
+function compositionFiles(projectDir: string, files: string[]): Scan {
+  const htmlFiles = files.filter(isCompositionPath);
+  if (htmlFiles.length === 0) return Promise.resolve([]);
+  const now = scans.get(projectDir);
+  if (now?.waiting) {
+    now.waiting.files = htmlFiles;
+    return now.waiting.answer;
+  }
+  const start = (named: string[]): Scan => {
+    const answer = scan(projectDir, named).finally(() => {
+      if (scans.get(projectDir)?.last === answer) scans.delete(projectDir);
+    });
+    scans.set(projectDir, { last: answer });
+    return answer;
+  };
+  if (!now) return start(htmlFiles);
+  const waiting: { files: string[]; answer: Scan } = {
+    files: htmlFiles,
+    answer: now.last.then(() => start(waiting.files)),
+  };
+  now.waiting = waiting;
+  return waiting.answer;
 }
 
 export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): void {

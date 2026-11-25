@@ -87,8 +87,11 @@ function isCompositionFile(path: string): boolean {
   }
 }
 
-function compositions({ projectDir, files, leaveUncheckedAfterMs }: CompositionsJob) {
-  const stop = performance.now() + leaveUncheckedAfterMs;
+function compositions(
+  { projectDir, files, keptBackForPageInProgressMs }: CompositionsJob,
+  timeLeftMs: number,
+) {
+  const stop = performance.now() + timeLeftMs - keptBackForPageInProgressMs;
   const found: string[] = [];
   let unchecked = 0;
   for (const file of files) {
@@ -99,7 +102,7 @@ function compositions({ projectDir, files, leaveUncheckedAfterMs }: Compositions
 }
 
 /** One build job's result, on whichever thread calls it (the build worker, or a test). */
-export function runPreviewJob(job: SubCompositionJob) {
+export function runPreviewJob(job: SubCompositionJob, timeLeftMs = Infinity) {
   switch (job.kind) {
     case "build":
       return build(job);
@@ -110,7 +113,7 @@ export function runPreviewJob(job: SubCompositionJob) {
     case "parts":
       return parts(job);
     case "compositions":
-      return compositions(job);
+      return compositions(job, timeLeftMs);
     default:
       return job satisfies never;
   }
