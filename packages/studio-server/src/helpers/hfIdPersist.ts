@@ -11,7 +11,11 @@ import {
   type DefaultTreeAdapterTypes,
   type TreeAdapter,
 } from "parse5";
-import { replaceFileAtomically, replaceFileAtomicallyAsync } from "@hyperframes/core/atomic-file";
+import {
+  replaceFileAtomically,
+  replaceFileAtomicallyAsync,
+  writesSoFar,
+} from "@hyperframes/core/atomic-file";
 import {
   isInHiddenOrVendorDir,
   mkdirOwnedWithinProject,
@@ -154,6 +158,7 @@ interface Opened {
   html: string;
   mode: number;
   writable: boolean;
+  writes: number;
 }
 
 /** The file work a stamp asks for. The stamping rules live in the passes below; each driver only answers these. */
@@ -161,7 +166,14 @@ type FileStep =
   | { kind: "list"; dir: string }
   | { kind: "read"; path: string }
   | { kind: "open"; path: string }
-  | { kind: "replace"; path: string; expected: string; content: string; mode: number }
+  | {
+      kind: "replace";
+      path: string;
+      expected: string;
+      content: string;
+      mode: number;
+      writes: number;
+    }
   | { kind: "record"; projectDir: string; path: string; content: string }
   | { kind: "pause" };
 
@@ -239,14 +251,14 @@ function* stampFile(filePath: string): Pass<string | null> {
   try {
     const opened = (yield { kind: "open", path: filePath }) as Opened | null;
     if (opened === null) return null;
-    const { html, mode, writable } = opened;
+    const { html, mode, writable, writes } = opened;
     const normalized = stampHfIdsInPlace(html);
     // Attribute count, not string equality — linkedom serialization normalizes
     // quote style/whitespace even when no ids were minted.
     const idsBefore = (html.match(/\bdata-hf-id=/g) ?? []).length;
     const idsAfter = (normalized.match(/\bdata-hf-id=/g) ?? []).length;
     if (writable && idsAfter > idsBefore)
-      yield { kind: "replace", path: filePath, expected: html, content: normalized, mode };
+      yield { kind: "replace", path: filePath, expected: html, content: normalized, mode, writes };
     return normalized;
   } catch (err) {
     console.warn("[hyperframes] stampFileHfIds: failed to stamp ids:", err);
@@ -317,7 +329,7 @@ async function answerAsync(step: FileStep): Promise<unknown> {
       return openAsyncForStamp(step.path);
     case "replace":
       if (await unchangedAsync(step.path, step.expected))
-        await replaceFileAtomicallyAsync(step.path, step.content, step.mode);
+        await replaceFileAtomicallyAsync(step.path, step.content, step.mode, step.writes);
       return undefined;
     case "record":
       await mkdirOwnedWithinProjectAsync(step.projectDir, dirname(step.path));
@@ -344,6 +356,7 @@ function openNoFollow(filePath: string, flags: number): number | null {
 
 /** Opened for writing when it can be, else read only; null when it can't be opened or is not a regular file. */
 function openSyncForStamp(filePath: string): Opened | null {
+  const writes = writesSoFar(filePath);
   let fd = openNoFollow(filePath, constants.O_RDWR);
   const writable = fd !== null;
   fd ??= openNoFollow(filePath, constants.O_RDONLY);
@@ -351,7 +364,7 @@ function openSyncForStamp(filePath: string): Opened | null {
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile()) return null;
-    return { html: readFileSync(fd, "utf-8"), mode: stat.mode, writable };
+    return { html: readFileSync(fd, "utf-8"), mode: stat.mode, writable, writes };
   } finally {
     closeSync(fd);
   }
@@ -366,6 +379,7 @@ async function openNoFollowAsync(filePath: string, flags: number) {
 }
 
 async function openAsyncForStamp(filePath: string): Promise<Opened | null> {
+  const writes = writesSoFar(filePath);
   let handle = await openNoFollowAsync(filePath, constants.O_RDWR);
   const writable = handle !== null;
   handle ??= await openNoFollowAsync(filePath, constants.O_RDONLY);
@@ -373,7 +387,7 @@ async function openAsyncForStamp(filePath: string): Promise<Opened | null> {
   try {
     const stat = await handle.stat();
     if (!stat.isFile()) return null;
-    return { html: await handle.readFile("utf-8"), mode: stat.mode, writable };
+    return { html: await handle.readFile("utf-8"), mode: stat.mode, writable, writes };
   } finally {
     await handle.close();
   }

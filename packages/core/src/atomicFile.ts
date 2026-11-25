@@ -23,6 +23,7 @@ const NO_HARD_LINKS = new Set([
 const MAX_LINK_HOPS = 40;
 const TEMP_NAME_TRIES = 3;
 const TEMP_SUFFIX = /\.hf[0-9a-f]{6}\.tmp$/;
+const writesInProcess = new Map<string, number>();
 
 export function cannotHardLink(error: unknown): boolean {
   return NO_HARD_LINKS.has(errorCode(error));
@@ -35,6 +36,14 @@ export function atomicTempPath(filePath: string): string {
 
 export function isAtomicTempPath(path: string): boolean {
   return TEMP_SUFFIX.test(path);
+}
+
+export function writesSoFar(filePath: string): number {
+  return writesInProcess.get(resolve(filePath)) ?? 0;
+}
+
+function noteWrite(filePath: string): void {
+  writesInProcess.set(resolve(filePath), writesSoFar(filePath) + 1);
 }
 
 /** With HF_WRITE_TRACE naming a file, one JSON line per replaced .html: its hash, size and caller. */
@@ -63,6 +72,7 @@ export function replaceFileAtomically(
 ): void {
   traceWrite(filePath, content);
   refuseReadOnly(filePath);
+  noteWrite(filePath);
   // Node fs.rename uses libuv uv_fs_rename; win32 calls MoveFileExW with MOVEFILE_REPLACE_EXISTING.
   publishSibling(filePath, content, mode, operations, (tempPath) =>
     renameWithRetry(tempPath, filePath, { rename: operations.renameSync }),
@@ -74,13 +84,20 @@ export async function replaceFileAtomicallyAsync(
   filePath: string,
   content: string | Uint8Array,
   mode?: number,
-): Promise<void> {
+  unlessWrittenSince?: number,
+): Promise<boolean> {
   traceWrite(filePath, content);
   await refuseReadOnlyAsync(filePath);
   const tempPath = await writeTempSiblingAsync(filePath, content, mode);
   try {
     if (mode !== undefined) await fsp.chmod(tempPath, mode);
+    if (unlessWrittenSince !== undefined && writesSoFar(filePath) !== unlessWrittenSince) {
+      await fsp.unlink(tempPath).catch(() => undefined);
+      return false;
+    }
+    noteWrite(filePath);
     await renameWithRetryAsync(tempPath, filePath);
+    return true;
   } catch (error) {
     await fsp.unlink(tempPath).catch(() => undefined);
     throw error;
@@ -132,6 +149,7 @@ export function createFileAtomically(
   content: string | Uint8Array,
   operations: DirectFileSystem & Pick<typeof fs, "linkSync"> = fs,
 ): void {
+  noteWrite(filePath);
   publishSibling(filePath, content, undefined, operations, (tempPath) => {
     try {
       operations.linkSync(tempPath, filePath);
