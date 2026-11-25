@@ -27,10 +27,13 @@ import "../../scripts/lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
 import {
   accessSync,
-  chmodSync,
+  closeSync,
   constants,
+  fchmodSync,
   lstatSync,
+  openSync,
   realpathSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -388,14 +391,24 @@ export function readComposition(compPath, from = process.cwd()) {
 /**
  * Saves the composition as a new file renamed over the old one, so a link put at the name since the
  * read is replaced, not followed. The file keeps its permissions, and one that may not be written
- * is refused as before.
+ * is refused as before. Until it has those permissions the new file is readable by its owner only.
+ * `written(temp)` runs once the text is in the new file, before it gets its permissions and its name.
  */
-export function saveComposition(compPath, html) {
+export function saveComposition(compPath, html, written = () => {}) {
   const old = lstatSync(compPath, { throwIfNoEntry: false });
   if (old?.isFile()) accessSync(compPath, constants.W_OK);
+  const mode = old?.isFile() ? old.mode & 0o777 : 0o666 & ~process.umask();
   replaceFileWith(compPath, (temp) => {
-    writeFileSync(temp, html);
-    if (old?.isFile()) chmodSync(temp, old.mode & 0o777);
+    // The helper's temp is empty and has default permissions: ours is made again, owner-only, and filled by the handle that made it.
+    rmSync(temp);
+    const file = openSync(temp, "wx", 0o600);
+    try {
+      writeFileSync(file, html);
+      written(temp);
+      fchmodSync(file, mode);
+    } finally {
+      closeSync(file);
+    }
   });
 }
 

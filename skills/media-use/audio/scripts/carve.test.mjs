@@ -551,6 +551,39 @@ test(
     }),
 );
 
+// fails without the fix: the new file held the composition under default permissions until a later chmod.
+test(
+  "while the new file holds the composition and is not yet in place, only its owner can read it",
+  { skip: process.platform === "win32" && "POSIX permission bits" },
+  () =>
+    inTempDir((dir) => {
+      const comp = join(dir, "index.html");
+      for (const mode of [0o644, 0o600]) {
+        writeFileSync(comp, "old");
+        chmodSync(comp, mode);
+        const seen = [];
+        saveComposition(comp, "new", (temp) => seen.push(modeAndText(temp), modeAndText(comp)));
+        assert.deepEqual(seen, [
+          [0o600, "new"],
+          [mode, "old"],
+        ]);
+        assert.deepEqual(modeAndText(comp), [mode, "new"]);
+      }
+      rmSync(comp);
+      saveComposition(comp, "first");
+      assert.deepEqual(modeAndText(comp), [0o666 & ~process.umask(), "first"]);
+      assert.throws(
+        () =>
+          saveComposition(comp, "never", () => {
+            throw new Error("stopped before the rename");
+          }),
+        /stopped before the rename/,
+      );
+      assert.equal(readFileSync(comp, "utf-8"), "first");
+      assert.deepEqual(readdirSync(dir), ["index.html"]);
+    }),
+);
+
 for (const [kind, plant] of [
   ["symbolic link", (target, at) => symlinkSync(target, at)],
   ["dangling symbolic link", (target, at) => symlinkSync(`${target}.missing`, at)],
