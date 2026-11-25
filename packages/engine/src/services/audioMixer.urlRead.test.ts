@@ -35,32 +35,27 @@ async function streamBody(
   res.end();
 }
 
-// A range server like S3's (ffmpeg asks for `bytes=<start>-`). With `cut`, the first read starting
-// at `cut.from` or later (past the probes' header reads) stops at `cut.at`, and every later request
-// is refused, as for a link that just expired. With `cut` or `served`, each answer is capped at
-// SERVED_RANGE_BYTES: an open-ended answer sits in the socket buffers long before the client closes it,
-// so under load ffmpeg reads on through it instead of seeking, and a cut keyed on a read's start never fires.
+// A range server like S3's. With `cut`, the link dies at `cut.at`: every answer starting before it stops
+// there and drops the connection. With `served`, each answer is capped at SERVED_RANGE_BYTES, since an
+// open-ended answer fills the socket buffers before the client closes it and the count would measure
+// buffering, which varies with load, not what the client read.
 const SERVED_RANGE_BYTES = 1_048_576;
 function serve(
   body: Buffer,
-  cut?: { from: number; at: number },
+  cut?: { at: number; fired?: boolean },
   served?: { bytes: number },
 ): Promise<Server> {
-  let refusing = false;
-  const capped = served !== undefined || cut !== undefined;
   const server = createServer(async (req, res) => {
-    if (refusing) return void res.writeHead(403).end("Request has expired");
     const start = Number(/bytes=(\d+)-/.exec(req.headers.range ?? "")?.[1] ?? 0);
-    const end = capped ? Math.min(body.length, start + SERVED_RANGE_BYTES) : body.length;
+    const end = served ? Math.min(body.length, start + SERVED_RANGE_BYTES) : body.length;
     res.writeHead(206, {
       "Accept-Ranges": "bytes",
       "Content-Length": end - start,
       "Content-Range": `bytes ${start}-${end - 1}/${body.length}`,
       "Content-Type": "audio/wav",
     });
-    const cutHere = cut !== undefined && start >= cut.from && start < cut.at;
-    if (!cutHere) return streamBody(res, body, start, end, served);
-    refusing = true;
+    if (cut === undefined || start >= cut.at) return streamBody(res, body, start, end, served);
+    cut.fired = true;
     res.write(body.subarray(start, cut.at), () => res.destroy());
   });
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
@@ -150,7 +145,8 @@ describe.skipIf(!HAS_FFMPEG)("audio cut from a cloud-held file's URL", { timeout
 
   it("fails the track when the read is cut mid-span, instead of padding it with silence", async () => {
     // The clip reads source seconds 2 to 12; the link fails at second 6.
-    server = await serve(makeVoice(), { from: BYTES_PER_SECOND, at: 6 * BYTES_PER_SECOND });
+    const cut = { at: 6 * BYTES_PER_SECOND, fired: false };
+    server = await serve(makeVoice(), cut);
 
     const result = await mixFromUrl();
 
@@ -164,6 +160,7 @@ describe.skipIf(!HAS_FFMPEG)("audio cut from a cloud-held file's URL", { timeout
         retryable: true,
       }),
     ]);
+    expect(cut.fired).toBe(true);
   });
 
   it("mixes a video whose audio track ends before its picture", async () => {
