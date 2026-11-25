@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HTTPRequest, Page } from "puppeteer-core";
 import { trustedCacheRoot } from "@hyperframes/core/cache-dir";
-import { ffmpegInput, Fix, round, runFfmpeg, type VideoInfo } from "./media.js";
+import { ffmpegInput, Fix, guardedCwd, round, runFfmpeg, type VideoInfo } from "./media.js";
 import { ensurePinnedFiles, type PinnedFile } from "./pinnedFiles.js";
 
 const VERSION = "1.0.0";
@@ -150,19 +150,23 @@ export function handFrames(
   fps: number,
   dir: string,
 ): string[] {
-  runFfmpeg([
-    "-y",
-    "-ss",
-    start.toFixed(3),
-    ...ffmpegInput(info.path, { playlists: info.guarded }),
-    "-t",
-    (end - start).toFixed(3),
-    "-vf",
-    `fps=${fps}:round=near,scale=${WIDTH}:-2`,
-    "-q:v",
-    "3",
-    join(dir, "t%05d.jpg"),
-  ]);
+  runFfmpeg(
+    [
+      "-y",
+      "-ss",
+      start.toFixed(3),
+      ...ffmpegInput(info.path, { playlists: info.guarded }),
+      "-t",
+      (end - start).toFixed(3),
+      "-vf",
+      `fps=${fps}:round=near,scale=${WIDTH}:-2`,
+      "-q:v",
+      "3",
+      join(dir, "t%05d.jpg"),
+    ],
+    undefined,
+    guardedCwd(info),
+  );
   return readdirSync(dir)
     .filter((name) => FRAME_NAME.test(name))
     .sort();
