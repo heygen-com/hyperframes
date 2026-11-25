@@ -25,19 +25,20 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
   }
 }
 
+const beforeOtherLoadHandlers = { capture: true } as const;
+
 /** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
   if (open) return open.client;
   const client = createEditingPortClient({ iframe });
   const retire = () => {
-    iframe.removeEventListener("load", retire, { capture: true });
+    iframe.removeEventListener("load", retire, beforeOtherLoadHandlers);
     client.dispose();
     if (clients.get(iframe)?.client === client) clients.delete(iframe);
   };
   clients.set(iframe, { client, retire });
-  // Capture runs before every other load handler, so none of them is handed the old load's client.
-  iframe.addEventListener("load", retire, { once: true, capture: true });
+  iframe.addEventListener("load", retire, { ...beforeOtherLoadHandlers, once: true });
   return client;
 }
 
