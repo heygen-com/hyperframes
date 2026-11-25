@@ -21,6 +21,7 @@ import {
   sameFiles,
   selectTarget,
   settled,
+  shownAfterKeys,
   saveFault,
   seekTo,
   sleep,
@@ -263,11 +264,18 @@ async function driveStep(ctx, step, state) {
     return { do: "undo", shownMs, restMs };
   }
   if (step.do === "nudge") {
+    const from = (await measure(ctx.A)).visible;
     await recording(page, true);
     await pressNudges(page, step.count);
     state.smooth.push(smoothness(await recording(page, false)));
     state.depth += 1;
-    state.intended = (await measure(ctx.A)).visible;
+    state.intended = (
+      await shownAfterKeys(
+        () => measure(ctx.A),
+        from,
+        () => nextFrame(page),
+      )
+    ).visible;
     return { do: "nudge", count: step.count };
   }
   if (step.do === "text") return editText(ctx.A, step, state);
