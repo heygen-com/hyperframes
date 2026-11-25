@@ -10,7 +10,7 @@ import {
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
-import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegCwd, fromEmptyFolder, mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { projectFolder } from "../utils/projectRecords.js";
 import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
@@ -503,7 +503,11 @@ export async function probeContainingSourceFrameSeek(
           ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
-        { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 32 * 1024 * 1024 },
+        {
+          timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS,
+          maxBufferBytes: 32 * 1024 * 1024,
+          cwd: ffmpegCwd(),
+        },
       );
       const parsed: unknown = JSON.parse(stdout);
       return typeof parsed === "object" && parsed !== null
@@ -634,7 +638,11 @@ async function probeSeekLanding(
         ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
       ],
-      { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 1024 * 1024 },
+      {
+        timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS,
+        maxBufferBytes: 1024 * 1024,
+        cwd: ffmpegCwd(),
+      },
     );
     const base = /^#tb 0: (\d+)\/(\d+)/m.exec(stdout);
     const row = /^0,\s*-?\d+,\s*(-?\d+),/m.exec(stdout);
@@ -986,7 +994,17 @@ export function serveCapturePage(projectDir: string, html: string, proxy: boolea
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
  */
-export async function captureSnapshots(
+export function captureSnapshots(
+  projectDir: string,
+  opts: Parameters<typeof captureSnapshotsFrom>[1],
+): Promise<CapturedSnapshots> {
+  const against = opts.against && resolve(opts.against);
+  return fromEmptyFolder(() =>
+    captureSnapshotsFrom(resolve(projectDir), { ...opts, ...(against ? { against } : {}) }),
+  );
+}
+
+async function captureSnapshotsFrom(
   projectDir: string,
   opts: {
     frames?: number;

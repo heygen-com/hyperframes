@@ -26,6 +26,7 @@ import {
   type CapturePerfSummary,
   type BeforeCaptureHook,
 } from "./frameCapture.js";
+import { retainCapturePerf } from "./pageTextBounds.js";
 import { psnrDb, resolveDeVerifyMinDb } from "../utils/psnr.js";
 // Hard ceiling on `--workers N`: past it, CDP dispatch through Node's event loop and OS scheduling noise
 // outweigh more parallelism. Raised 10 -> 24 in hf#732 so 32-96+ core hosts can use their cores.
@@ -1318,6 +1319,7 @@ export async function executeParallelCapture(
   });
   const onFailure = failureHandler.onFailure;
   const gate = hooks?.verifyFirstSession && createFirstSessionGate(hooks.verifyFirstSession);
+  const collected: CapturePerfSummary[] = [];
   const results = await launchWithinMemory(tasks, (task, onLoaded) =>
     executeWorkerTask(
       task,
@@ -1334,6 +1336,8 @@ export async function executeParallelCapture(
       hooks?.onWorkerOperation,
       gate,
       onLoaded,
+    ).then((result) =>
+      result.perf ? { ...result, perf: retainCapturePerf(collected, result.perf) } : result,
     ),
   );
 
