@@ -48,6 +48,7 @@ export function isWhisperUnavailable(err: unknown): err is WhisperUnavailableErr
 }
 
 const MODEL_REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1";
+const ONE_PLAIN_FILE_NAME_PART = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 function getModelUrl(model: string): string {
   return `https://huggingface.co/ggerganov/whisper.cpp/resolve/${MODEL_REVISION}/ggml-${model}.bin`;
@@ -343,6 +344,11 @@ export async function ensureModel(
     onDownloadProgress?: (receivedBytes: number, totalBytes: number | null) => void;
   },
 ): Promise<string> {
+  if (!ONE_PLAIN_FILE_NAME_PART.test(model)) {
+    throw new Error(
+      `"${model}" is not a whisper model name. Use a name such as small.en or large-v3-turbo.`,
+    );
+  }
   const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
   const pin = PINNED_MODELS.get(model);
   ensurePrivateCacheDir(MODELS_DIR, hyperframesCacheDir());

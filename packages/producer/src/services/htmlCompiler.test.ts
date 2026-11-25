@@ -1,7 +1,15 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runInThisContext } from "node:vm";
@@ -293,6 +301,20 @@ describe("collectExternalAssets", () => {
     const result = collectExternalAssets(html, projectDir);
     expect(result.externalAssets.size).toBe(0);
     expect(result.html).toBe(html); // unchanged
+  });
+
+  it("leaves out a private project file named by a path spelled outside the project", () => {
+    const alias = `${projectDir}-alias`;
+    symlinkSync(projectDir, alias);
+    mkdirSync(join(projectDir, ".git"), { recursive: true });
+    writeFileSync(join(projectDir, ".git", "clip.png"), "fake-private");
+    const warnings: string[] = [];
+    const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+    const html = `<html><body><img src="../project-alias/.git/clip.png"><img src="../project-alias/logo.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir, log);
+    rmSync(alias, { force: true });
+    expect([...result.externalAssets.values()]).toEqual([join(alias, "logo.png")]);
+    expect(warnings).toHaveLength(1);
   });
 
   it("collects and rewrites assets outside projectDir via src attribute", () => {
@@ -3583,6 +3605,33 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
       rmSync(projectDir, { recursive: true, force: true });
     },
   );
+
+  it("never probes a private project file named by a path spelled outside the project", async () => {
+    const projectDir = writeProject("<!--media-->");
+    const alias = `${projectDir}-alias`;
+    symlinkSync(projectDir, alias);
+    const src = join(alias, ".git", "clip.mp4");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      readFileSync(join(projectDir, "index.html"), "utf8").replace(
+        "<!--media-->",
+        `<video id="v1" src="${src}" data-start="0" muted></video>`,
+      ),
+    );
+    mkdirSync(join(projectDir, ".git"), { recursive: true });
+    writeFileSync(src, readFileSync(join(projectDir, "assets", "nested.html")));
+    const warnings: string[] = [];
+    const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+
+    await compileForRender(projectDir, join(projectDir, "index.html"), projectDir, {
+      log,
+      allowOutsideProjectAssets: true,
+    });
+
+    expect(warnings.join("\n")).not.toContain("text document");
+    rmSync(alias, { force: true });
+    rmSync(projectDir, { recursive: true, force: true });
+  });
 });
 
 describe("duplicate media ids across nested compositions", () => {

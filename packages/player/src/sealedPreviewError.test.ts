@@ -57,7 +57,7 @@ describe("an error a sealed frame's preview records", () => {
     const { events, postError } = sealedPlayer();
     postError(THROWN, window);
     vi.advanceTimersByTime(LIMIT);
-    expect(events).toEqual([`error ${timelineNotFound(LIMIT, true)}`]);
+    expect(events).toEqual([`error ${timelineNotFound(LIMIT)}`]);
   });
 
   it("ignores an error once the film is ready", () => {
@@ -76,7 +76,7 @@ describe("an error a sealed frame's preview records", () => {
     const { events, postError } = sealedPlayer();
     postError(message);
     vi.advanceTimersByTime(LIMIT);
-    expect(events).toEqual([`error ${timelineNotFound(LIMIT, true)}`]);
+    expect(events).toEqual([`error ${timelineNotFound(LIMIT)}`]);
   });
 
   it("keeps the first 1000 characters of a longer text, as plain text", () => {

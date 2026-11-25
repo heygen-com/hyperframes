@@ -223,6 +223,7 @@ describe("installEditingAgent", () => {
           "max-z-index",
           "crop-lift",
           "edit-element",
+          "remove-elements",
           "stacking-family",
           "gsap-set",
           "patch-tweens",

@@ -245,6 +245,7 @@ describe("registry resolver", () => {
       });
       await expect(resolved).rejects.toThrow("127.0.0.1:9 is not a public address");
       await expect(resolved).rejects.not.toThrow(/contacted/i);
+      await expect(resolved).rejects.not.toThrow(/capture/i);
       expect(fetch).not.toHaveBeenCalled();
     });
 
