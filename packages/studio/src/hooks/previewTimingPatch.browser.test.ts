@@ -226,7 +226,11 @@ it.each(MODES)(
         const frame = document.querySelector("iframe")!;
         const reported: number[] = [];
         window.addEventListener("message", ({ source, data }) => {
-          if (source === frame.contentWindow && data?.source === "hf-preview" && data.type === "timeline")
+          if (
+            source === frame.contentWindow &&
+            data?.source === "hf-preview" &&
+            data.type === "timeline"
+          )
             reported.push(data.durationSeconds);
         });
         const w = window as unknown as Held & { reported: number[] };
@@ -237,7 +241,10 @@ it.each(MODES)(
       const shown = () =>
         preview.page.evaluate(() => {
           const w = window as unknown as Held & { reported: number[] };
-          return { reported: w.reported.at(-1), readout: w.hfStudio.usePlayerStore.getState().duration };
+          return {
+            reported: w.reported.at(-1),
+            readout: w.hfStudio.usePlayerStore.getState().duration,
+          };
         });
       await expect.poll(shown, { message: "the film ends with the clip left, #b at 2 s" }).toEqual({
         reported: 2,
@@ -270,7 +277,9 @@ it("a sealed delete whose lookups answered just before the reload is promoted re
       w.hfStudio.announcePreviewPromoted({ retired, live });
       w.hfStudio.retirePreviewEditingClient(retired);
     });
-    await expect.poll(() => hasB(shadow), { message: "the new frame drops the deleted clip" }).toBe(false);
+    await expect
+      .poll(() => hasB(shadow), { message: "the new frame drops the deleted clip" })
+      .toBe(false);
   } finally {
     await preview.page.close();
   }
