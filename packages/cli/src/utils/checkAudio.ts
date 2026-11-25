@@ -9,6 +9,7 @@ import {
   type AudioElement,
   type AudioMetadata,
 } from "@hyperframes/engine";
+import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { decodeAudio } from "../audio/analysis/decode.js";
 import { createProbeGate } from "../timeline/describeProject.js";
 import { findingAtRoot } from "./checkFindings.js";
@@ -69,7 +70,13 @@ async function silentPart(
       duration: probed.durationSeconds,
       misstatedByteRate: probed.misstatedByteRate,
     },
-    { mono: true, sampleRate: SILENCE_SAMPLE_RATE },
+    {
+      mono: true,
+      sampleRate: SILENCE_SAMPLE_RATE,
+      inputArgs: mediaInputFormatArgs(findFfBinary("ffmpeg") ?? "ffmpeg", path, {
+        playlists: true,
+      }),
+    },
   );
   const samples = decoded?.signal.channels[0]?.length ?? 0;
   if (!decoded || samples === 0) return true;

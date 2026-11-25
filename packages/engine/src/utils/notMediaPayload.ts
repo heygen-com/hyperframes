@@ -65,6 +65,14 @@ export class TextArtMediaError extends NotMediaPayloadError {
   }
 }
 
+/** A playlist naming a file outside its own folder or private in it, which ffmpeg would open. */
+export class PlaylistLeavesFolderError extends NotMediaPayloadError {
+  constructor() {
+    super([]);
+    this.message = "Media source is a playlist naming files outside its own folder";
+  }
+}
+
 /** Stable, bounded correlation key. Never the raw element id or source. */
 export function fingerprintElementId(elementId: string): string {
   return createHash("sha256").update(elementId).digest("hex").slice(0, 16);
@@ -319,6 +327,8 @@ const MAX_WALK_ENTRIES = 50_000;
 const HTTP_URL = /^https?:\/\//i;
 const COLON_IN_FIRST_SEGMENT = /^[^/\\?#]*:/;
 const FOLDER_CUT_AT_QUERY_OR_FRAGMENT = /[?#]/;
+// ffmpeg reads a name with no path before its query or fragment as the list's own path plus that suffix.
+const NO_PATH = /^(?:[?#]|$)/;
 
 // ffmpeg reads a list line into a 4096-byte buffer, so a longer line would name something else: it is refused unread.
 const MAX_LIST_LINE_BYTES = 4095;
@@ -345,9 +355,11 @@ function hlsEntries(body: string): Entry[] | true {
     const line = withoutTrailing(raw, TRAILING_HLS_BLANK);
     const found = line.startsWith("#")
       ? attributeUris(line).map((uri) => [uri])
-      : [[line, line.trim()]];
-    for (const names of found.map((entry) => [...new Set(entry.filter(Boolean))])) {
-      if (names.length > 0) entries.set(names.join("\n"), names);
+      : line
+        ? [[line, line.trim()]]
+        : [];
+    for (const names of found.map((entry) => [...new Set(entry)])) {
+      entries.set(names.join("\n"), names);
     }
   }
   return [...entries.values()];
@@ -428,7 +440,7 @@ function entryLeavesFolder(entry: string, base: string, folder: string): boolean
   if (HTTP_URL.test(entry)) return false;
   if (FOLDER_CUT_AT_QUERY_OR_FRAGMENT.test(base)) return true;
   return [entry, percentDecoded(entry)].some((path) => {
-    if (COLON_IN_FIRST_SEGMENT.test(path)) return true;
+    if (NO_PATH.test(path) || COLON_IN_FIRST_SEGMENT.test(path)) return true;
     if (isAbsolute(path) || path.startsWith("\\")) return true;
     const inside = relative(folder, resolve(base, path));
     return (
@@ -447,7 +459,7 @@ function percentDecoded(value: string): string {
 /** Paths are walked as latin1 strings, one character per byte, and opened by those bytes. */
 const asBytes = (path: string): string => Buffer.from(path).toString("latin1");
 
-/** A nested name that is not there: ffmpeg would open nothing by it, but the walk may have computed the wrong name. */
+/** A nested name that is not there: ffmpeg opens nothing by it. An entry naming nothing that is there is refused. */
 const MISSING = Symbol("missing");
 type Verdict = boolean | typeof MISSING;
 
@@ -494,18 +506,50 @@ function isId3Header(head: Buffer): boolean {
   );
 }
 
+const id3End = (head: Buffer, offset: number): number =>
+  offset + 10 + ((head[6]! << 21) | (head[7]! << 14) | (head[8]! << 7) | head[9]!);
+
 /** Where the text starts: ffmpeg skips leading ID3v2 tags before it probes or parses a file. -1 past {@link MAX_ID3_TAGS}. */
 async function textStart(fh: FileHandle, first: Buffer): Promise<number> {
   let offset = 0;
   let head = first;
   for (let tags = 0; tags <= MAX_ID3_TAGS; tags++) {
     if (!isId3Header(head)) return offset;
-    const size = (head[6]! << 21) | (head[7]! << 14) | (head[8]! << 7) | head[9]!;
-    offset += 10 + size + (head[5]! & 0x10 ? 10 : 0);
+    offset = id3End(head, offset) + (head[5]! & 0x10 ? 10 : 0);
     head = await readAt(fh, 10, offset);
   }
   return -1;
 }
+
+const MAX_TEXT_STARTS = 64;
+
+/** Every offset a list may be read from: ffmpeg's probe counts a tag's footer, its demuxer only for a clean v2.4 tag. */
+async function textStarts(fh: FileHandle, first: Buffer): Promise<number[] | null> {
+  const starts = new Set<number>();
+  let tagged = [0];
+  for (let tags = 0; tagged.length > 0; tags++) {
+    if (tags > MAX_ID3_TAGS || tagged.length + starts.size > MAX_TEXT_STARTS) return null;
+    tagged = await pastTags(fh, first, tagged, starts);
+  }
+  return [...starts];
+}
+
+async function pastTags(
+  fh: FileHandle,
+  first: Buffer,
+  offsets: number[],
+  starts: Set<number>,
+): Promise<number[]> {
+  const next = new Set<number>();
+  for (const offset of offsets) {
+    const head = offset === 0 ? first : await readAt(fh, 10, offset);
+    if (!isId3Header(head)) starts.add(offset);
+    else for (const footer of footers(head)) next.add(id3End(head, offset) + footer);
+  }
+  return [...next];
+}
+
+const footers = (head: Buffer): number[] => (head[5]! & 0x10 ? [0, 10] : [0]);
 
 // Encrypted segments and keys open with random bytes, so only a real document signature counts.
 const MANIFEST_SIGNATURE = /^<(\?xml|MPD\b|!DOCTYPE|html\b|SmoothStreamingMedia\b)/i;
@@ -527,16 +571,29 @@ async function readList(path: string, nested: boolean): Promise<string | null | 
   const fh = await openRegular(Buffer.from(path, "latin1"));
   if (!fh) return true;
   try {
-    const first = await readAt(fh, SNIFF_BYTES, 0);
-    const start = await textStart(fh, first);
-    if (start < 0) return true;
-    const head = start === 0 ? first : await readAt(fh, SNIFF_BYTES, start);
-    if (!startsAsPlaylist(head)) return nested && opensAsManifest(head) ? true : null;
-    const body = await readAt(fh, MAX_PLAYLIST_BYTES + 1, start);
-    return body.length > MAX_PLAYLIST_BYTES ? true : body.toString("latin1");
+    return await listText(fh, nested);
   } finally {
     await fh.close().catch(() => {});
   }
+}
+
+async function listText(fh: FileHandle, nested: boolean): Promise<string | null | true> {
+  const first = await readAt(fh, SNIFF_BYTES, 0);
+  const starts = await textStarts(fh, first);
+  if (!starts) return true;
+  // ffmpeg's probe and demuxer can read a tagged list from different bytes, so a list behind a tag is refused.
+  if (starts.length > 1 || starts[0] !== 0) return (await taggedList(fh, starts, nested)) || null;
+  if (!startsAsPlaylist(first)) return nested && opensAsManifest(first) ? true : null;
+  const body = await readAt(fh, MAX_PLAYLIST_BYTES + 1, 0);
+  return body.length > MAX_PLAYLIST_BYTES ? true : body.toString("latin1");
+}
+
+async function taggedList(fh: FileHandle, starts: number[], nested: boolean): Promise<boolean> {
+  for (const start of starts) {
+    const head = await readAt(fh, SNIFF_BYTES, start);
+    if (startsAsPlaylist(head) || (nested && opensAsManifest(head))) return true;
+  }
+  return false;
 }
 
 const isMissing = (error: unknown): boolean =>

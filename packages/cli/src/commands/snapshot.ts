@@ -135,6 +135,8 @@ import { withMeta } from "../utils/updateCheck.js";
 import { trackSnapshotRun } from "../telemetry/events.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
+const WALKED_BY_PROJECT_VIDEO_FILE = { playlists: true };
+
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
 // the REAL painted pixels are viewed from an orthogonal angle (FINDING [10]:
 // snapshot only captured the composition's own head-on camera, so 3D depth /
@@ -497,7 +499,11 @@ export async function probeContainingSourceFrameSeek(
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
-          ...["-v", "error", ...mediaInputFormatArgs(ffprobe, videoPath)],
+          ...[
+            "-v",
+            "error",
+            ...mediaInputFormatArgs(ffprobe, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
+          ],
           ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
@@ -627,7 +633,7 @@ async function probeSeekLanding(
           "error",
           "-copyts",
           "-noaccurate_seek",
-          ...mediaInputFormatArgs(ffmpeg, videoPath),
+          ...mediaInputFormatArgs(ffmpeg, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         ],
         ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
@@ -689,7 +695,7 @@ async function frameColour(
   const read = (args: string[]) =>
     runFfmpegOnce(
       ffmpegPath,
-      [...mediaInputFormatArgs(ffmpegPath, videoPath), ...args],
+      [...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE), ...args],
       FFMPEG_EXTRACT_TIMEOUT_MS,
     );
   const probe = await read(firstFrameColourArgs(videoPath));
@@ -743,7 +749,13 @@ export async function extractVideoFrameToBuffer(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
-      args.push(...mediaInputFormatArgs(ffmpegPath, videoPath), "-i", videoPath, "-map", "0:v:0");
+      args.push(
+        ...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
+        "-i",
+        videoPath,
+        "-map",
+        "0:v:0",
+      );
       const filters = frameFilters(seek.select, displayedPixels, metadata, toneMapFilter);
       if (filters.length > 0) args.push("-vf", filters.join(","));
       args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
@@ -805,7 +817,7 @@ export async function decodeFramesInOnePass(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       args.push(
-        ...mediaInputFormatArgs(ffmpegPath, videoPath),
+        ...mediaInputFormatArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         "-ss",
         String(start),
         "-i",

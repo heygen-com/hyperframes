@@ -272,7 +272,8 @@ npx hyperframes init my-video --tailwind
 
 Pass `--video` or `--audio` and the CLI transcribes the audio with Whisper and
 patches the captions into the composition for you. `--skip-transcribe` turns
-that off.
+that off. Each must be a single self-contained media file; HLS playlists and
+concat lists are refused.
 
 `--tailwind` injects the pinned Tailwind v4 browser runtime and exposes a
 `window.__tailwindReady` promise that renders wait on before capturing frame 0.
@@ -528,6 +529,8 @@ local files are still read directly; every other request goes to that proxy.
 Turn audio or video into word-level timestamps, or import a transcript you
 already have.
 
+Each named file must be a single self-contained media file; HLS playlists and concat lists are refused.
+
 ```bash
 # Local transcription
 npx hyperframes transcribe audio.mp3
@@ -647,7 +650,8 @@ phonemizer, for a stylized accent.
 
 Cut the background out of a video or image with a local AI model. The output is
 transparent media you can drop straight into a `<video>` or `<img>`. No green
-screen.
+screen. The input must be a single self-contained media file; HLS playlists and
+concat lists are refused.
 
 ```bash
 # Default: VP9-with-alpha WebM, plays natively in HTML5
@@ -901,6 +905,8 @@ at a different sample rate, which can shift a beat slightly.
 ### `audio`
 
 Measure how sound moves in time, so a cut or an animation can land on it.
+
+Each named file must be a single self-contained media file; HLS playlists and concat lists are refused.
 
 ```bash
 npx hyperframes audio sfx/whoosh.mp3                  # one file, in file seconds
