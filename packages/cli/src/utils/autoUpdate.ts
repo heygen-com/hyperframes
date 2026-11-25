@@ -23,8 +23,11 @@
  *     postmortem; the user's terminal stays clean.
  */
 
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, openSync } from "node:fs";
+import { resolve } from "node:path";
+import { globalInstallLocation } from "./homeCliCommand.js";
 import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
@@ -73,6 +76,7 @@ function log(line: string): void {
 }
 
 export interface InstallerScriptOptions {
+  cwd: string;
   configFile: string;
   version: string;
   bin: string;
@@ -144,7 +148,7 @@ export function installerScript(o: InstallerScriptOptions): string {
       clearInterval(lockBeat);
       if (ownsLock()) { try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} }
     };
-    const install = () => execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
+    const install = () => execFile(BIN, ARGS, { cwd: ${JSON.stringify(o.cwd)}, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
       withLock(() => {
         let cfg = {};
         try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }
@@ -205,16 +209,18 @@ function launchDetachedInstall(
   invocation: InstallInvocation,
   displayCommand: string,
   version: string,
+  cwd: string,
 ): void {
   mkdirSync(configDir(), { recursive: true, mode: 0o700 });
   const configFile = seededConfigFile("config.json");
 
   const nodeScript = installerScript({
-    configFile,
+    cwd,
+    configFile: resolve(configFile),
     version,
     bin: invocation.bin,
     args: invocation.args,
-    runningDir: runningDir(),
+    runningDir: resolve(runningDir()),
     pollMs: INSTALL_POLL_MS,
     maxWaitMs: INSTALL_MAX_WAIT_MS,
     staleMs: RUNNING_STALE_MS,
@@ -222,13 +228,19 @@ function launchDetachedInstall(
 
   const out = openSync(logFile(), "a", 0o600);
   const child = spawn(process.execPath, ["-e", nodeScript], {
+    cwd,
     detached: true,
     stdio: ["ignore", out, out],
     windowsHide: true,
     env: { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: "1", HYPERFRAMES_NO_AUTO_INSTALL: "1" },
   });
+  if (child.pid === undefined) {
+    // A vanished cwd makes spawn return without a pid and emit its error on the next tick.
+    child.once("error", (err) => log(`[error] ${err.message}`));
+    throw new Error("Detached installer did not start");
+  }
   child.unref();
-  log(`[launch] pid=${child.pid ?? "?"} cmd=${displayCommand} version=${version}`);
+  log(`[launch] pid=${child.pid} cmd=${displayCommand} version=${version}`);
 }
 
 function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean {
@@ -276,6 +288,14 @@ function backgroundInstaller(
 export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
   if (isAutoInstallDisabled()) return false;
   if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
+  const installer = backgroundInstaller(latestVersion);
+  if (!installer) return false;
+  const location = globalInstallLocation();
+  if ("reason" in location) {
+    // The rejected home may be shared or belong to another user, so avoid opening a log in it.
+    process.stderr.write(`  Skipping CLI auto-update: ${location.reason}\n`);
+    return false;
+  }
   if (!registeredAsRunning()) {
     log(
       `[skip] ${latestVersion}: this CLI is not on record as running, so an install could replace it mid-run`,
@@ -283,8 +303,6 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
     return false;
   }
 
-  const installer = backgroundInstaller(latestVersion);
-  if (!installer) return false;
   const { installCommand, invocation } = installer;
 
   const config = readConfig();
@@ -313,7 +331,7 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
   if (!writeConfig(config)) return false;
 
   try {
-    launchDetachedInstall(invocation, installCommand, latestVersion);
+    launchDetachedInstall(invocation, installCommand, latestVersion, location.cwd);
     return true;
   } catch (err) {
     log(`[error] spawn failed: ${String(err)}`);
@@ -349,12 +367,14 @@ export function reportCompletedUpdate(): void {
   if (!process.stderr.isTTY) return;
 
   if (done.ok) {
-    process.stderr.write(`  hyperframes auto-updated to v${done.version}\n\n`);
+    process.stderr.write(
+      `  hyperframes auto-updated to v${terminalText(String(done.version))}\n\n`,
+    );
   } else if (!done.reported) {
     // Failed installs are surfaced once too — the user should know why the
     // auto-update didn't take.
     process.stderr.write(
-      `  hyperframes auto-update to v${done.version} failed. Run \`hyperframes upgrade\` to retry.\n\n`,
+      `  hyperframes auto-update to v${terminalText(String(done.version))} failed. Run \`hyperframes upgrade\` to retry.\n\n`,
     );
   }
 }

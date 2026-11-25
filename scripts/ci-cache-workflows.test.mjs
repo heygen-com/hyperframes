@@ -42,3 +42,21 @@ test("preflight installs without downloading ffmpeg or Chrome", () => {
   assert.ok(ffmpeg >= 0 && ffmpeg < install, "prepare-ffmpeg-bin runs before bun install");
   assert.equal(steps[install].env?.PUPPETEER_SKIP_DOWNLOAD, "true");
 });
+
+// A dispatched run's cache scope is its own ref; a ref chosen by an input would run that code under main's scope.
+test("no dispatched workflow checks out a ref its inputs choose", () => {
+  const chosen = workflows.flatMap(({ file, doc }) => {
+    const inputs = Object.keys(doc.on?.workflow_dispatch?.inputs ?? {});
+    return Object.entries(doc.jobs ?? {}).flatMap(([name, job]) =>
+      (job.steps ?? [])
+        .filter((step) => step.uses?.startsWith("actions/checkout@"))
+        .filter(
+          (step) =>
+            /\binputs\.|github\.event\.inputs\./.test(String(step.with?.ref ?? "")) ||
+            inputs.includes("ref"),
+        )
+        .map(() => `${file} ${name}`),
+    );
+  });
+  assert.deepEqual([...new Set(chosen)], []);
+});

@@ -3,11 +3,13 @@ import { MAX_DESCRIBE_HANDLES, type EditingLayer } from "@hyperframes/core/runti
 import {
   describePreviewElements,
   previewLayers,
+  previewStackingSiblings,
   queryPreviewElements,
   type PreviewElement,
 } from "../../player/lib/previewElements";
 import type { Rect } from "../../utils/marqueeGeometry";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
+import type { RenderEntry } from "./canvasContextMenuZOrder";
 import { buildElementLabel, getDataAttributes } from "./domEditingDom";
 import { getDomEditLayerKey } from "./domEditingLayers";
 import type { DomEditContextOptions, DomEditLayerItem, DomEditSelection } from "./domEditingTypes";
@@ -97,6 +99,54 @@ async function allPreviewLayers(iframe: HTMLIFrameElement): Promise<EditingLayer
     if (!reply.truncated || !reply.layers.length) break;
   }
   return layers;
+}
+
+export async function collectAllPreviewLayerItems(
+  iframe: HTMLIFrameElement,
+  activeCompositionPath: string | null,
+): Promise<DomEditLayerItem[] | null> {
+  const layers = await allPreviewLayers(iframe);
+  const described =
+    layers &&
+    (await describeAll(
+      iframe,
+      layers.map((layer) => layer.handle),
+    ));
+  if (!layers || !described) return null;
+  return layers.flatMap((layer, index) => {
+    const element = described[index];
+    return element ? [layerItem(iframe, layer, element, activeCompositionPath)] : [];
+  });
+}
+
+/** `getFamily` for a stand-in, read from its frame; null when the frame cannot say. */
+export async function previewStackingFamily(
+  iframe: HTMLIFrameElement,
+  handle: string,
+  path: string | null,
+) {
+  const reply = await previewStackingSiblings(iframe, handle);
+  const siblings = reply?.family;
+  const described =
+    siblings &&
+    (await describeAll(
+      iframe,
+      siblings.map((s) => s.handle),
+    ));
+  if (!reply || !siblings || !described) return null;
+  const identities = new Map<
+    HTMLElement,
+    ReturnType<typeof previewIdentity> & { handle: string }
+  >();
+  const entries: RenderEntry[] = [];
+  for (const [domIndex, sibling] of siblings.entries()) {
+    const element = described[domIndex];
+    if (!element) return null;
+    const standIn = standInFor(iframe, element);
+    identities.set(standIn, { ...previewIdentity(element, path), handle: sibling.handle });
+    entries.push({ element: standIn, zIndex: sibling.zIndex, domIndex });
+  }
+  return { entries, identities, locked: reply.locked };
 }
 
 /** A layer's `data-` attribute; a stand-in's comes from its description. */

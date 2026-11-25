@@ -48,10 +48,20 @@ describe("publish transition guard", () => {
   });
   it("leaves the shipped window unscheduled even far in the future", () => {
     vi.setSystemTime(new Date("2099-01-01T00:00:00.000Z"));
-    expect(() => checkPublishTransition({ dir })).not.toThrow();
-    expect(process.stderr.write).toHaveBeenCalledWith(
-      expect.stringContaining("not been scheduled"),
-    );
+    expect(checkPublishTransition({ dir })).toBe("unscheduled");
+    const notice = vi.mocked(process.stderr.write).mock.calls[0]?.[0];
+    expect(notice).toContain("hyperframes publish is deprecated for new projects");
+    expect(notice).toContain("This run continues with the usual publish steps.");
+    expect(notice).toContain("hyperframes share");
+    expect(notice).toContain("hyperframes publish --update <url-or-id>");
+    expect(notice).not.toContain("60-day");
+  });
+  it("announces the compatibility window once it starts", () => {
+    vi.setSystemTime(new Date(start));
+    expect(checkPublishTransition({ dir }, start)).toBe("compatibility");
+    const notice = vi.mocked(process.stderr.write).mock.calls[0]?.[0];
+    expect(notice).toContain("60-day");
+    expect(notice).toContain("This run continues with the usual publish steps.");
   });
   it("guides new projects without changing their audience or uploading", () => {
     expect(() => checkPublishTransition({ dir }, start)).toThrowError(CliUsageError);
@@ -73,9 +83,20 @@ describe("publish transition guard", () => {
       expect.stringContaining("uses the legacy update workflow"),
     );
   });
-  it("keeps committed team project targets", () => {
+  it("keeps committed team project targets this machine linked the folder to", () => {
     writeTeamProject(dir, { projectId: "legacy-team", spaceId: "team" });
+    writeProjectLink(dir, { projectId: "legacy-team", url: "", spaceId: "team" });
     expect(() => checkPublishTransition({ dir }, start)).not.toThrow();
+  });
+  it("does not count a received team descriptor as this user's legacy update", () => {
+    writeTeamProject(dir, { projectId: "someone-elses", spaceId: "team" });
+    expect(() => checkPublishTransition({ dir }, start)).toThrowError(
+      expect.objectContaining({ code: "publish_replaced" }),
+    );
+    writeProjectLink(dir, { projectId: "mine", url: "" });
+    expect(() => checkPublishTransition({ dir }, start)).toThrowError(
+      expect.objectContaining({ code: "publish_replaced" }),
+    );
   });
   it("does not count an unused local identity or whitespace as a published project", () => {
     writeProjectLink(dir, { projectId: "unused", url: "" });

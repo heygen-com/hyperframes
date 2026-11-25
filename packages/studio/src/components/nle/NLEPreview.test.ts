@@ -29,18 +29,19 @@ vi.mock("../../player", async () => {
         onReadyToShowChange?: (ready: boolean) => void;
         suppressLoadingOverlay?: boolean;
         style?: React.CSSProperties;
+        sandboxOrigin?: "opaque";
       },
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
       if (!props.suppressLoadingOverlay) livePlayerProps = props;
-      React.useEffect(() => {
-        props.onLoad?.();
-      }, [props]);
+      const onLoad = React.useRef(props.onLoad);
+      React.useEffect(() => onLoad.current?.(), []);
       React.useState(() => playerMounts.push(props.suppressLoadingOverlay ? "shadow" : "live"));
 
       return React.createElement("div", {
         ref: ref as React.ForwardedRef<HTMLDivElement>,
         "data-testid": "mock-player",
+        "data-sandbox-origin": props.sandboxOrigin,
         style: props.style,
       });
     }),
@@ -54,10 +55,9 @@ class MockResizeObserver {
   constructor(cb: ResizeObserverCallback) {
     this.cb = cb;
   }
+  // A browser calls back at its next frame, never inside observe(); renderPreview fires them.
   observe() {
-    const fire = () => this.cb([], this as unknown as ResizeObserver);
-    resizeCallbacks.push(fire);
-    fire();
+    resizeCallbacks.push(() => this.cb([], this as unknown as ResizeObserver));
   }
   disconnect() {}
 }
@@ -65,6 +65,8 @@ class MockResizeObserver {
 const originalResizeObserver = globalThis.ResizeObserver;
 
 function setRect(node: Element, rect: { width: number; height: number }) {
+  Object.defineProperty(node, "clientWidth", { configurable: true, value: rect.width });
+  Object.defineProperty(node, "clientHeight", { configurable: true, value: rect.height });
   Object.defineProperty(node, "getBoundingClientRect", {
     configurable: true,
     value: () => ({
@@ -89,10 +91,12 @@ function renderPreview(
     box = { width: 800, height: 600 },
     fillBox,
     compositionSizeHint,
+    sandboxOrigin,
   }: {
     box?: { width: number; height: number };
     fillBox?: boolean;
     compositionSizeHint?: { width: number; height: number };
+    sandboxOrigin?: "opaque";
   } = {},
 ) {
   resizeCallbacks = [];
@@ -116,6 +120,7 @@ function renderPreview(
           resetPreviewSlots: () => {},
           fillBox,
           compositionSizeHint,
+          sandboxOrigin,
         }),
       );
     });
@@ -488,6 +493,37 @@ describe("NLEPreview", () => {
     filled.cleanup();
   });
 
+  it("sizes the stage within the resize callback, so the frame painted after a resize is never at the old size", () => {
+    const view = renderPreview(undefined, { box: { width: 640, height: 360 }, fillBox: true });
+    setRect(view.viewport, { width: 1920, height: 1080 });
+    // Outside act: the browser paints right after this callback returns.
+    for (const fire of resizeCallbacks) fire();
+    expect([view.stage.style.width, view.stage.style.height]).toEqual(["1920px", "1080px"]);
+    view.cleanup();
+  });
+
+  it("sizes the stage from the box's own size while a host scales the box on screen", () => {
+    const view = renderPreview(undefined, { box: { width: 640, height: 360 }, fillBox: true });
+    setRect(view.viewport, { width: 1920, height: 1080 });
+    // A host growing the preview from a quarter of its size: on screen the box is 480 x 270 for now.
+    Object.defineProperty(view.viewport, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 480,
+        bottom: 270,
+        width: 480,
+        height: 270,
+      }),
+    });
+    for (const fire of resizeCallbacks) fire();
+    expect([view.stage.style.width, view.stage.style.height]).toEqual(["1920px", "1080px"]);
+    view.cleanup();
+  });
+
   it("takes the host's composition size as the stage's shape until the preview measures its own", () => {
     const box = { width: 800, height: 600 };
     const plain = renderPreview(undefined, { box });
@@ -519,6 +555,22 @@ describe("NLEPreview", () => {
     }
   });
 
+  it("takes a sealed preview's size once its film is ready to show, after the frame has loaded", () => {
+    const box = { width: 800, height: 600 };
+    const sealed = renderPreview(undefined, { box, sandboxOrigin: "opaque" });
+    try {
+      expect([sealed.stage.style.width, sealed.stage.style.height]).toEqual(["784px", "441px"]);
+      measured.size = { width: 1080, height: 1920 };
+      act(() => livePlayerProps.onReadyToShowChange?.(true));
+      const shape = parseFloat(sealed.stage.style.width) / parseFloat(sealed.stage.style.height);
+      expect(shape).toBeCloseTo(1080 / 1920, 3);
+      expect(sealed.stage.style.height).toBe("584px");
+    } finally {
+      measured.size = null;
+      sealed.cleanup();
+    }
+  });
+
   it("clips a shadow reload so its own loading overlay cannot paint over the live frame", () => {
     const view = renderPreview([
       { gen: 0, role: "live" },
@@ -532,6 +584,50 @@ describe("NLEPreview", () => {
     expect(players[1].style.pointerEvents).toBe("none");
     view.cleanup();
   });
+
+  it.each([["opaque" as const], [undefined]])(
+    "gives every player it draws the host's sandbox origin (%s)",
+    (sandboxOrigin) => {
+      const view = renderPreview(
+        [
+          { gen: 0, role: "live" },
+          { gen: 1, role: "shadow", url: "/api/projects/p/preview?_t=1" },
+        ],
+        { sandboxOrigin },
+      );
+      view.render("/api/projects/p/preview/components/card.html", "p");
+      const players = [...view.stage.querySelectorAll('[data-testid="mock-player"]')];
+      expect(players).toHaveLength(3);
+      for (const player of players) {
+        expect(player.getAttribute("data-sandbox-origin")).toBe(sandboxOrigin ?? null);
+      }
+      view.cleanup();
+    },
+  );
+
+  // Chrome stops rendering a hidden or clipped cross-origin frame, and a sealed one is cross-origin.
+  it.each([
+    ["opaque" as const, ["opacity: 0"], ["visibility", "clip-path", "z-index"]],
+    [undefined, ["visibility: hidden", "clip-path: inset(100%)"], ["opacity"]],
+  ])(
+    "keeps a reload's preview out of sight, and a sealed one rendering (%s)",
+    (sandboxOrigin, present, absent) => {
+      const view = renderPreview(
+        [
+          { gen: 0, role: "live" },
+          { gen: 1, role: "shadow", url: "/api/projects/p/preview?_t=1" },
+        ],
+        { sandboxOrigin },
+      );
+      const shadow = [...view.stage.querySelectorAll('[data-testid="mock-player"]')]
+        .map((player) => player.getAttribute("style") ?? "")
+        .filter((style) => style.includes("pointer-events: none"));
+      expect(shadow).toHaveLength(1);
+      for (const rule of present) expect(shadow[0]).toContain(rule);
+      for (const rule of absent) expect(shadow[0]).not.toContain(rule);
+      view.cleanup();
+    },
+  );
 
   it("covers the live preview with the cached frame-0 poster until it is ready to show", () => {
     const view = renderPreview();

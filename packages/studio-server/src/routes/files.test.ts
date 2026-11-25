@@ -1197,6 +1197,44 @@ describe("registerFileRoutes", () => {
     expect(response.headers.get("etag")).toBe(payload.version);
   });
 
+  it("names a cut's right half from the file's own id, whatever id the request carries", async () => {
+    const projectDir = createProjectDir();
+    const before = `<style>#a { color: blue; }</style>
+<div id="a" data-hf-id="h1" data-start="0" data-duration="4">A</div>
+<script data-hyperframes-gsap>
+const tl = gsap.timeline();
+tl.to("#a", { x: 100, duration: 1 }, 3);
+</script>`;
+    writeFileSync(join(projectDir, "index.html"), before);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await postCutBatch(app, [
+      {
+        path: "index.html",
+        expectedVersion: fileContentVersion(before),
+        targets: [
+          {
+            target: { hfId: "h1", id: "t{} main { display: none } #t" },
+            originalId: "x{} body { display: none } #q",
+            splitTime: 2,
+            elementStart: 0,
+            elementDuration: 4,
+          },
+        ],
+      },
+    ]);
+    const after = readFileSync(join(projectDir, "index.html"), "utf-8");
+
+    expect(response.status).toBe(200);
+    expect(after).not.toContain("display");
+    expect(after.match(/<style>[\s\S]*?<\/style>/)![0].replace(/\s+/g, "")).toBe(
+      "<style>#a{color:blue;}#a-split{color:blue;}</style>",
+    );
+    expect(after).toContain('id="a-split"');
+    expect(after).toContain('"#a-split"');
+  });
+
   it("folds multiple same-file cuts and writes one canonical file result", async () => {
     const projectDir = createProjectDir();
     const before =

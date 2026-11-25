@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.9.43",
+  "version": "0.9.93",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -57,6 +57,11 @@
       "bun": "./src/utils/networkPolicy.ts",
       "import": "./src/utils/networkPolicy.ts",
       "types": "./src/utils/networkPolicy.ts"
+    },
+    "./public-network": {
+      "bun": "./src/services/publicNetwork/index.ts",
+      "import": "./src/services/publicNetwork/index.ts",
+      "types": "./src/services/publicNetwork/index.ts"
     }
   },
   "publishConfig": {
@@ -94,6 +99,10 @@
       "./network-policy": {
         "import": "./dist/utils/networkPolicy.js",
         "types": "./dist/utils/networkPolicy.d.ts"
+      },
+      "./public-network": {
+        "import": "./dist/services/publicNetwork/index.js",
+        "types": "./dist/services/publicNetwork/index.d.ts"
       }
     },
     "main": "./dist/index.js",
@@ -117,6 +126,7 @@
   "devDependencies": {
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
+    "selfsigned": "5.5.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.12"
   },

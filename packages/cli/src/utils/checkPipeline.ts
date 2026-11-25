@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
@@ -5,6 +6,7 @@ import {
   CheckBudgetError,
   CheckDeadline,
   CheckCopiesUnfinishedError,
+  CheckChromeStartError,
   CheckDeadlineError,
   CheckStoppedError,
   idleWindow,
@@ -24,7 +26,7 @@ import {
   findingFrameRequests,
 } from "./checkFindingFrames.js";
 export { selectFindingFrames } from "./checkFindingFrames.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
 import { join, relative } from "node:path";
@@ -58,7 +60,7 @@ import {
 } from "./motionAudit.js";
 import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
 import { auditCraft } from "./craftAudit.js";
-import { inspectHdrAutoPromotion } from "./hdrPromotion.js";
+import { inspectHdrAutoPromotion, remoteMediaNotInspected } from "./hdrPromotion.js";
 import { collectProjectMedia, type ProjectMedia } from "./projectMedia.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
@@ -89,12 +91,14 @@ import type {
   CraftFinding,
   CraftFrame,
   CraftResult,
+  FaceCheck,
   GeometryCandidateRequest,
   MotionSpecResolution,
   OffPivotFrame,
   OffPivotRotationSample,
   RotationSample,
   SeekClock,
+  TextOverVideoCandidate,
 } from "./checkTypes.js";
 
 export type {
@@ -312,6 +316,10 @@ interface GridSamples {
    * material-point geometry + dial hub per layout sample; flattened by selector
    * to detect off_pivot_rotation. */
   indicatorFrames: OffPivotFrame[];
+  /** Text painted in front of a video at each layout sample; faces are looked for after the run. */
+  textOverVideo: TextOverVideoCandidate[];
+  /** No page that sampled could report text over video. */
+  textOverVideoUnavailable: boolean;
   craftFrames: CraftFrame[];
 }
 
@@ -497,6 +505,8 @@ function emptyGridSamples(): GridSamples {
     layoutStateSignatures: [],
     rotationSamples: [],
     indicatorFrames: [],
+    textOverVideo: [],
+    textOverVideoUnavailable: false,
     craftFrames: [],
   };
 }
@@ -511,6 +521,8 @@ function appendGridSamples(into: GridSamples, from: GridSamples): void {
   into.layoutStateSignatures.push(...from.layoutStateSignatures);
   into.rotationSamples.push(...from.rotationSamples);
   into.indicatorFrames.push(...from.indicatorFrames);
+  into.textOverVideo.push(...from.textOverVideo);
+  into.textOverVideoUnavailable ||= from.textOverVideoUnavailable;
   into.craftFrames.push(...from.craftFrames);
 }
 
@@ -548,6 +560,9 @@ async function collectSampleAt(
     });
     collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
     collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
+    if (driver.collectTextOverVideo) {
+      collected.textOverVideo.push(...(await driver.collectTextOverVideo(time)));
+    } else collected.textOverVideoUnavailable = true;
   }
   if (sets.canvas) {
     const geometryIssues = await collectGeometryAt(driver, options, grid, sets, sets.canvas, time);
@@ -1587,6 +1602,24 @@ export function reportingProgress<T extends object>(
   });
 }
 
+async function textOverFace(
+  collected: GridSamples,
+  onFile: () => void,
+  stop?: AbortSignal,
+): Promise<{ issues: AnchoredLayoutIssue[]; faceCheck: FaceCheck }> {
+  if (collected.textOverVideoUnavailable) {
+    return {
+      issues: [],
+      faceCheck: { ran: false, reason: "this check driver does not report text over video" },
+    };
+  }
+  if (collected.textOverVideo.length === 0) {
+    return { issues: [], faceCheck: { ran: true, candidates: 0, faces: 0 } };
+  }
+  const { findTextOverFace } = await import("./textOverFace.js");
+  return findTextOverFace(collected.textOverVideo, undefined, onFile, stop);
+}
+
 export async function runAuditGrid(
   driver: CheckAuditDriver,
   options: CheckOptions,
@@ -1595,6 +1628,7 @@ export async function runAuditGrid(
   enter: (phase: CheckPhase, detail?: string) => void = () => {},
   report: CheckProgress = () => {},
   keep: (read: () => Partial<CheckBrowserResult>) => void = () => {},
+  stop?: AbortSignal,
 ): Promise<CheckBrowserResult> {
   enter("samples");
   await driver.initialize(options.contrast);
@@ -1652,6 +1686,7 @@ export async function runAuditGrid(
     await analysing.getCanvas(),
   );
   const offPivotFindings = detectOffPivotRotation(collected.indicatorFrames);
+  const overFace = await textOverFace(collected, () => enter("analysis", "faces under text"), stop);
   const contrast = buildContrastResults(collected.contrastEntries);
   report("analyze", 2, 3);
   const craft = craftEnabled(analysing, options)
@@ -1681,6 +1716,7 @@ export async function runAuditGrid(
       ...sweepFindings,
       ...rotationFindings,
       ...offPivotFindings,
+      ...overFace.issues,
       ...motionIssues,
       ...contrast.findings,
       ...craft.findings,
@@ -1701,7 +1737,9 @@ export async function runAuditGrid(
       ...sweepFindings,
       ...rotationFindings,
       ...offPivotFindings,
+      ...overFace.issues,
     ],
+    faceCheck: overFace.faceCheck,
     motionIssues,
     motionSampleCount: collected.motionFrames.length,
     contrastSamples: grid.contrastSamples,
@@ -1767,8 +1805,7 @@ export async function runCheckPipeline(
         { kind: "none" },
         [],
         [],
-        hdr.autoPromotion,
-        hdr.inspection,
+        hdr,
         await audio,
       );
     }
@@ -1813,8 +1850,7 @@ export async function runCheckPipeline(
         motion,
         specFindings,
         snapshotFiles,
-        hdr.autoPromotion,
-        hdr.inspection,
+        hdr,
         await audio,
       );
       outcome = {
@@ -1906,7 +1942,7 @@ async function withFindingCrops(
     }
     // Still non-gating, but observable: rollouts need the crop-failure rate
     // (a second Chrome launch failing/timing out) without failing the run.
-    console.error("   finding crops skipped: " + normalizeErrorMessage(error));
+    console.error("   finding crops skipped: " + terminalLines(normalizeErrorMessage(error)));
     trackCommandFailure("check-finding-crops", error);
     return report;
   }
@@ -1938,7 +1974,7 @@ async function withOptionalFindingFrames(
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
-    console.error("   finding frames skipped: " + normalizeErrorMessage(error));
+    console.error("   finding frames skipped: " + terminalLines(normalizeErrorMessage(error)));
     trackCommandFailure("check-finding-frames", error);
     return report;
   }
@@ -2085,8 +2121,7 @@ function buildReport(
   motion: MotionSpecResolution,
   extraMotionFindings: CheckFinding[],
   snapshotFiles: string[],
-  hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null,
-  hdrInspection: CheckReport["hdr"]["inspection"] = "available",
+  hdr: CheckReport["hdr"] = { autoPromotion: null, inspection: "available" },
   audioFindings: CheckFinding[] = [],
 ): CheckReport {
   const shaping = options.components?.length
@@ -2148,7 +2183,7 @@ function buildReport(
       samples: browser.craft.samples,
     },
     audio: audioSection,
-    hdr: { autoPromotion: hdrPromotion, inspection: hdrInspection },
+    hdr,
     snapshots: {
       enabled: options.snapshots,
       files: snapshotFiles,
@@ -2226,6 +2261,8 @@ function filterComponentReport(report: CheckReport, options: CheckOptions): Chec
   return report;
 }
 
+const FACE_CHECK_NOT_REACHED = "the check stopped before looking for faces under text";
+
 function shapeLayoutSection(
   issues: AnchoredLayoutIssue[],
   browser: CheckBrowserResult,
@@ -2241,6 +2278,7 @@ function shapeLayoutSection(
     tolerance: options.tolerance,
     totalIssueCount: shaped.totalIssueCount,
     truncated: shaped.truncated,
+    faceCheck: browser.faceCheck ?? { ran: false, reason: FACE_CHECK_NOT_REACHED },
   };
 }
 
@@ -2326,6 +2364,7 @@ function emptyBrowserResult(): CheckBrowserResult {
 const STOP_CODES = [
   "media_copies_unfinished",
   "check_budget_reached",
+  "check_deadline",
   "check_runtime_failure",
 ] as const;
 export type StopCode = (typeof STOP_CODES)[number];
@@ -2337,7 +2376,9 @@ function runtimeFailure(error: unknown, code?: string): CheckFinding {
         ? "media_copies_unfinished"
         : error instanceof CheckBudgetError
           ? "check_budget_reached"
-          : "check_runtime_failure"),
+          : error instanceof CheckDeadlineError || error instanceof CheckChromeStartError
+            ? "check_deadline"
+            : "check_runtime_failure"),
     "error",
     normalizeErrorMessage(error),
     error instanceof CheckDeadlineError ? (error.sourceFile ?? "index.html") : "index.html",
@@ -2418,7 +2459,6 @@ async function writeSnapshot(
   pngBase64: string,
 ): Promise<string> {
   const snapshotDir = checkSnapshotDirectory(projectDir);
-  mkdirSync(snapshotDir, { recursive: true });
   const filename = `frame-${String(index).padStart(2, "0")}-at-${time.toFixed(1)}s.png`;
   const path = join(snapshotDir, filename);
   writeFileSync(path, Buffer.from(pngBase64, "base64"));
@@ -2454,11 +2494,17 @@ async function inspectProjectMedia(
   const media = (dependencies.collectMedia ?? collectMedia)(project);
   let hdr: CheckReport["hdr"];
   try {
+    const found = await media;
     const promotion = (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(
       project,
-      await media,
+      found,
     );
-    hdr = { autoPromotion: await promotion, inspection: "available" };
+    const remote = remoteMediaNotInspected(found);
+    hdr = {
+      autoPromotion: await promotion,
+      inspection: "available",
+      ...(remote.length > 0 ? { remoteNotInspected: remote } : {}),
+    };
   } catch {
     hdr = { autoPromotion: null, inspection: "unavailable" };
   }

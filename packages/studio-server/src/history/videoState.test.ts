@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory.js";
 import {
   recordRenderSuccess,
@@ -80,8 +80,7 @@ describe("video state", () => {
     const window = await f.history.beginWindow(person, "Pending");
     writeFileSync(join(f.projectDir, "index.html"), "pending");
     f.history.noteChange("index.html");
-    await new Promise((r) => setTimeout(r, 80));
-    expect(read(f.projectDir).pendingChanges).toBe(true);
+    await vi.waitFor(() => expect(read(f.projectDir).pendingChanges).toBe(true));
     expect(read(f.projectDir).currentRevision).toBe(first);
     await window.close();
     const second = read(f.projectDir).currentRevision!;
@@ -218,9 +217,10 @@ describe("video state", () => {
 
   it("repairs malformed derived state without losing committed history", async () => {
     const f = await fixture();
-    const revision = await f.edit("first");
+    await f.edit("first");
     writeFileSync(join(f.projectDir, ".hyperframes/video-state.json"), "{bad");
-    await f.history.flush();
+    // The next change rewrites it: a flush that finds nothing leaves the file alone.
+    const revision = await f.edit("second");
     expect(read(f.projectDir).currentRevision).toBe(revision);
     expect(
       readdirSync(join(f.projectDir, ".hyperframes")).some((name) =>

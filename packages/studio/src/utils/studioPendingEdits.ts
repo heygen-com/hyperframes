@@ -1,5 +1,5 @@
 import { StudioFileConflictError, type StudioSaveDrainResult } from "./studioSaveDiagnostics";
-import { isTypingTarget } from "./typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 
 const STUDIO_FLUSH_PENDING_EDITS_EVENT = "hf-studio-flush-pending-edits";
 
@@ -32,6 +32,12 @@ let historyClaims: () => number = () => 0;
 
 export function setStudioPendingEditClaimClock(read: (() => number) | null): void {
   historyClaims = read ?? (() => 0);
+}
+
+let allSettled: (() => void) | null = null;
+
+export function setStudioPendingEditsSettled(run: (() => void) | null): void {
+  allSettled = run;
 }
 const NOT_SAVED = () => Promise.resolve(false);
 let cancelWaitingPress: (() => boolean) | null = null;
@@ -81,12 +87,23 @@ export function beginStudioShownRestore(): () => void {
   let end = () => {};
   const landed = new Promise<void>((resolve) => (end = resolve));
   shownRestores.add(landed);
-  void landed.then(() => shownRestores.delete(landed));
+  markEditsSavingOnPage();
+  void landed.then(() => {
+    shownRestores.delete(landed);
+    markEditsSavingOnPage();
+  });
   return end;
 }
 
 export function isStudioEditSaving(): boolean {
   return pendingEdits.size > 0 || shownRestores.size > 0;
+}
+
+function markEditsSavingOnPage(): void {
+  globalThis.document?.documentElement.toggleAttribute(
+    "data-studio-edits-saving",
+    isStudioEditSaving(),
+  );
 }
 
 export function afterStudioPendingEdits(run: () => void): () => void {
@@ -119,10 +136,13 @@ export function trackStudioPendingEdit(
     showAgain: null,
     claimsAtBegin: historyClaims(),
   });
-  promise.then(
-    () => pendingEdits.delete(promise),
-    () => pendingEdits.delete(promise),
-  );
+  markEditsSavingOnPage();
+  const done = () => {
+    pendingEdits.delete(promise);
+    markEditsSavingOnPage();
+    if (!pendingEdits.size) allSettled?.();
+  };
+  promise.then(done, done);
   return promise;
 }
 
@@ -240,6 +260,13 @@ export function revertNewestStudioPendingEdit(): (() => void) | null {
   return paintBackNewestStudioPendingEdit()?.showAgain ?? null;
 }
 
+const openEdits = new Set<() => unknown>();
+
+export function settleOnDrain(settle: () => unknown): () => void {
+  openEdits.add(settle);
+  return () => openEdits.delete(settle);
+}
+
 export async function flushStudioPendingEdits({
   onlyCurrent = false,
 } = {}): Promise<StudioPendingEditsDrainResult> {
@@ -250,6 +277,7 @@ export async function flushStudioPendingEdits({
     await Promise.resolve();
     await waitForPostBlurEffects();
   }
+  for (const settle of [...openEdits]) trackStudioPendingEdit(settle());
   const detail: StudioFlushPendingEditsDetail = { promises: [] };
   window.dispatchEvent(
     new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),

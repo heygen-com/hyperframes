@@ -3,19 +3,23 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
+import type { ExecFileSyncOptions } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, onTestFinished, vi } from "vitest";
 import { optionalPackageDir } from "../utils/optionalPackages.js";
 import {
   TESTED_FFMPEG_VERSION,
   buildDoctorReport,
   ffmpegDoctorDetail,
+  checkDocker,
+  checkDockerRunning,
   checkFramesCache,
   checkOptionalPackage,
   redactHome,
@@ -81,6 +85,79 @@ describe("redactHome", () => {
   it("leaves strings without HOME unchanged", () => {
     process.env["HOME"] = "/Users/alice";
     expect(redactHome("brew install ffmpeg")).toBe("brew install ffmpeg");
+  });
+});
+
+describe("Docker checks", () => {
+  const dockerName = process.platform === "win32" ? "docker.exe" : "docker";
+
+  type RunFile = (file: string, args: string[], options: ExecFileSyncOptions) => string;
+
+  function dir(prefix: string): string {
+    const path = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+    onTestFinished(() => rmSync(path, { recursive: true, force: true }));
+    return path;
+  }
+
+  function projectWithDocker(): { projectBin: string; projectDocker: string } {
+    const project = dir("hf-doctor-project-");
+    const projectBin = join(project, "node_modules", ".bin");
+    mkdirSync(projectBin, { recursive: true });
+    const projectDocker = join(projectBin, dockerName);
+    writeFileSync(projectDocker, "#!/bin/sh\n", { mode: 0o755 });
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllEnvs();
+    });
+    return { projectBin, projectDocker };
+  }
+
+  it("runs docker by its absolute path from a folder outside the project, with no shell", () => {
+    const { projectBin } = projectWithDocker();
+    const outside = dir("hf-doctor-bin-");
+    const docker = join(outside, dockerName);
+    writeFileSync(docker, "#!/bin/sh\n", { mode: 0o755 });
+    vi.stubEnv("PATH", [projectBin, outside].join(delimiter));
+    const run = vi.fn<RunFile>(() => "Docker version 27.0.0\n");
+
+    expect(checkDocker(undefined, run)).toEqual({ ok: true, detail: "Docker version 27.0.0" });
+    expect(checkDockerRunning(undefined, run)).toEqual({ ok: true, detail: "Running" });
+
+    expect(run.mock.calls.map(([file, args]) => [file, args])).toEqual([
+      [docker, ["--version"]],
+      [docker, ["info"]],
+    ]);
+    for (const [, , options] of run.mock.calls) expect(options).not.toHaveProperty("shell");
+  });
+
+  it("reports a docker found only inside the project as missing and says it was skipped", () => {
+    const { projectBin, projectDocker } = projectWithDocker();
+    vi.stubEnv("PATH", [projectBin, "."].join(delimiter));
+    const run = vi.fn<RunFile>(() => "");
+
+    const result = checkDocker(undefined, run);
+
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe("Not found");
+    expect(result.hint).toContain(projectDocker);
+    expect(result.hint).toContain("outside the project");
+    expect(result.hint).toContain("https://docs.docker.com/get-docker/");
+    expect(checkDockerRunning(undefined, run)).toMatchObject({ ok: false, detail: "Not running" });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("keeps the plain install hint when there is no docker anywhere", () => {
+    vi.spyOn(process, "cwd").mockReturnValue(dir("hf-doctor-empty-"));
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+
+    expect(checkDocker(() => undefined)).toEqual({
+      ok: false,
+      detail: "Not found",
+      hint: "https://docs.docker.com/get-docker/",
+    });
   });
 });
 

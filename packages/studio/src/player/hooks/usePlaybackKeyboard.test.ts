@@ -8,6 +8,8 @@ import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { usePlayerStore } from "../store/playerStore";
 import { setStudioKeys } from "../components/studioShortcuts";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
+import { detachedFakeIframe, serveEditingRequests } from "./timelinePlayerTestHarness";
+import { previewRequest } from "../lib/previewChannel";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -28,10 +30,11 @@ interface Spies {
 interface HookHandle {
   dispatch: (event: KeyboardEvent) => void;
   release: (event: KeyboardEvent) => void;
+  attach: () => void;
   spies: Spies;
 }
 
-function setupHook(): HookHandle {
+function setupHook(iframe: HTMLIFrameElement | null = null): HookHandle {
   const spies: Spies = {
     seek: vi.fn(),
     play: vi.fn(),
@@ -42,7 +45,7 @@ function setupHook(): HookHandle {
   let captured: ReturnType<typeof usePlaybackKeyboard> | null = null;
 
   function Harness() {
-    const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
+    const iframeRef = React.useRef<HTMLIFrameElement | null>(iframe);
     const shuttleDirectionRef = React.useRef<"forward" | "backward" | null>(null);
     const shuttleSpeedIndexRef = React.useRef(0);
     const iframeShortcutCleanupRef = React.useRef<(() => void) | null>(null);
@@ -72,6 +75,7 @@ function setupHook(): HookHandle {
   return {
     dispatch: (event) => captured!.playbackKeyDownRef.current(event),
     release: (event) => captured!.playbackKeyUpRef.current(event),
+    attach: () => captured!.attachIframeShortcutListeners(),
     spies,
   };
 }
@@ -481,5 +485,57 @@ describe("usePlaybackKeyboard: modifier combos and named keys", () => {
     send(dispatch, { code: "KeyJ", key: "j" });
     expect(spies.seek).toHaveBeenCalledTimes(1);
     expect(spies.playBackward).not.toHaveBeenCalled();
+  });
+});
+
+// fails without the fix: the sealed frame was asked to report playback keys, and every report it sent was acted on.
+describe("usePlaybackKeyboard: a sealed preview frame", () => {
+  const closers: Array<() => void> = [];
+  afterEach(() => closers.splice(0).forEach((close) => close()));
+
+  it("asks the frame for no keys and plays on none it reports", async () => {
+    const frame: Record<string, unknown> = {};
+    const iframe = detachedFakeIframe(frame);
+    Object.defineProperty(iframe, "contentDocument", { value: null });
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+    const watched: unknown[] = [];
+    const ports: MessagePort[] = [];
+    closers.push(
+      serveEditingRequests(
+        frame,
+        (kind, params) => {
+          if (kind === "max-z-index") return { zIndex: 1 };
+          if (kind === "watch-keys") watched.push(params);
+          return null;
+        },
+        (port) => ports.push(port),
+      ),
+    );
+    const { attach, spies } = setupHook(iframe);
+    attach();
+    await previewRequest(iframe, "max-z-index", {}, 1_000);
+    for (const port of ports) {
+      port.postMessage({
+        v: 1,
+        event: "key",
+        key: {
+          type: "keydown",
+          key: " ",
+          code: "Space",
+          altKey: false,
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: false,
+          repeat: false,
+        },
+      });
+    }
+    await previewRequest(iframe, "max-z-index", {}, 1_000);
+    expect(watched).toEqual([]);
+    expect(spies.play).not.toHaveBeenCalled();
   });
 });

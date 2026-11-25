@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { VERSION } from "../version.js";
+import { hyperframesConfigDir } from "../utils/configDir.js";
 
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
@@ -17,6 +18,7 @@ const producerState = vi.hoisted(() => ({
     _job: Record<string, unknown>,
     _abortSignal?: AbortSignal,
     _assertRenderActive?: () => void,
+    _onProgress?: (job: { progress: number }, message: string) => void,
   ): Promise<void> => undefined,
 }));
 
@@ -124,9 +126,17 @@ vi.mock("../utils/producer.js", () => ({
       }),
     ),
     renderConfigFromRequest: vi.fn(
-      (request: { options: Record<string, unknown> }, runtime: { logger?: unknown }) => {
+      (
+        request: { options: Record<string, unknown> },
+        runtime: { logger?: unknown; allowOutsideProjectAssets?: boolean },
+      ) => {
         const { engineConfig, ...options } = request.options;
-        return { ...options, producerConfig: engineConfig, logger: runtime.logger };
+        return {
+          ...options,
+          producerConfig: engineConfig,
+          logger: runtime.logger,
+          allowOutsideProjectAssets: runtime.allowOutsideProjectAssets,
+        };
       },
     ),
     createRenderJob: vi.fn((config: Record<string, unknown>) => {
@@ -138,10 +148,10 @@ vi.mock("../utils/producer.js", () => ({
         job: Record<string, unknown>,
         _projectDir: string,
         _outputPath: string,
-        _onProgress: unknown,
+        onProgress: ((job: { progress: number }, message: string) => void) | undefined,
         abortSignal?: AbortSignal,
         assertRenderActive?: () => void,
-      ) => producerState.executeImpl(job, abortSignal, assertRenderActive),
+      ) => producerState.executeImpl(job, abortSignal, assertRenderActive, onProgress),
     ),
   })),
 }));
@@ -312,6 +322,85 @@ describe("renderLocal browser GPU config", () => {
   it("points strict warning-only renders to --strict-all", () => {
     expect(renderLintContinuationHint(true)).toContain("--strict-all");
     expect(renderLintContinuationHint(true)).not.toContain("Use --strict to block");
+  });
+
+  // fails without the fix: a failure reported as progress was written as it arrived, over several lines.
+  it("writes a progress update whose text has line breaks as one line", async () => {
+    const written: string[] = [];
+    const isTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    }) as never);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    producerState.executeImpl = async (_job, _signal, _active, onProgress) => {
+      onProgress?.({ progress: 40 }, "Failed: encoder said\nno such filter\r\nexit 1");
+    };
+    try {
+      await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+        throwOnError: true,
+      });
+    } finally {
+      out.mockRestore();
+      Object.defineProperty(process.stdout, "isTTY", { value: isTTY, configurable: true });
+    }
+    const update = written.find((chunk) => chunk.includes("Failed: encoder said"));
+    expect(update).toContain("Failed: encoder said\\x0ano such filter\\x0d\\x0aexit 1");
+    expect(update?.trimEnd()).not.toMatch(/[\r\n]/);
+  });
+
+  // fails without the fix: the check's detail and hint, the probe failure and the job's warning are printed as they arrived.
+  it("shows control characters in a preflight warning, a probe failure and a job warning as text", async () => {
+    const esc = String.fromCharCode(27);
+    const odd = `od${esc}[2Jd${String.fromCharCode(7)}`;
+    const shown = "od\\x1b[2Jd\\x07";
+    const warned: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warned.push(args.join(" "));
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const outcomes = preflightState.result.outcomes as Array<Record<string, unknown>>;
+    outcomes.push({
+      name: "Disk",
+      ok: true,
+      level: "warn",
+      detail: `low ${odd}`,
+      hint: `free ${odd}`,
+    });
+    ffmpegEncoderState.error = new Error(`probe ${odd}`);
+    producerState.executeImpl = async (job) => {
+      job.outcome = "completed_with_warnings";
+      job.warnings = [{ code: "late_media", message: `late ${odd}\nsecond line` }];
+    };
+    try {
+      await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+        throwOnError: true,
+      });
+    } finally {
+      outcomes.pop();
+    }
+    const said = warned.join("\n").replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+    expect(said).toContain(`Disk: low ${shown}`);
+    expect(said).toContain(`free ${shown}`);
+    expect(said).toContain(`Unable to probe H.264 encoder capabilities: probe ${shown}`);
+    expect(said).toContain(`[late_media] late ${shown}\nsecond line`);
+    expect(said).not.toContain(esc);
   });
 
   it("points non-strict renders to --strict for lint errors", () => {
@@ -535,6 +624,32 @@ describe("renderLocal browser GPU config", () => {
     expect(cpuSamplerState.samplers.map((s) => s.stopped)).toEqual([true, true]);
   });
 
+  it("shows control characters in a failed render's message as escapes, one line each", async () => {
+    producerState.executeImpl = async () => {
+      throw new Error("FFmpeg could not read clip\u009b\b\r.mp4\nsecond\u0007 line");
+    };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "mp4",
+          gpu: false,
+          browserGpuMode: "software",
+          hdrMode: "auto",
+          quiet: true,
+        }),
+      ).rejects.toMatchObject({ name: "CliRuntimeError" });
+      const output = errors.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(output).toContain("clip\\x9b\\x08\\x0d.mp4");
+      expect(output).toMatch(/\n\s*.*second\\x07 line/);
+      for (const control of ["\u009b", "\b", "\r", "\u0007"]) expect(output).not.toContain(control);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it.each([
     { kind: "solid", rgb: [10, 46, 138] },
     { kind: "none" },
@@ -578,6 +693,59 @@ describe("renderLocal browser GPU config", () => {
     expect(result?.outcome).toBe("completed");
     expect(result?.warnings?.map((warning) => warning.code)).toEqual(["audio_lowered"]);
     warn.mockRestore();
+  });
+
+  it.each([
+    { name: "a received entry", files: ["index.html"], allowed: false },
+    { name: "a record listing only an image", files: ["assets/in.png"], allowed: true },
+    { name: "a record listing a received stylesheet", files: ["style.css"], allowed: false },
+    { name: "a record listing no files", files: [], allowed: true },
+    { name: "no received-files record", files: undefined, allowed: true },
+  ])("brings in outside files for $name: $allowed", async ({ files, allowed }) => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-received-"));
+    writeFileSync(join(projectDir, "index.html"), "<div></div>");
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(
+      join(projectDir, "assets", "in.png"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    if (files) {
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files }),
+      );
+    }
+    try {
+      await renderLocal(projectDir, join(projectDir, "out.mp4"), {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+        throwOnError: true,
+      });
+      expect(producerState.createdJobs.at(-1)?.allowOutsideProjectAssets).toBe(allowed);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("brings in no outside file when the render is told to refuse them", async () => {
+    await renderLocal(PROJECT_DIR, join(PROJECT_DIR, "out.mp4"), {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      throwOnError: true,
+      refuseOutsideFiles: true,
+    });
+    expect(producerState.createdJobs.at(-1)?.allowOutsideProjectAssets).toBe(false);
   });
 
   it("cleans orphaned browser trees before starting a local render", async () => {
@@ -805,6 +973,29 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.loggerLevels).toEqual(["warn", "info", "debug"]);
   });
 
+  it("prints an output path with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderLocal(PROJECT_DIR, `/tmp/video${esc}]0;x${String.fromCharCode(7)}.mp4`, {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+      });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+      expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(human).toContain("/tmp/video\\x1b]0;x\\x07.mp4");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {
     setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
 
@@ -878,6 +1069,12 @@ describe("renderLocal browser GPU config", () => {
     ]);
   });
 
+  // Auto mode reuses the GPU choice measured on this machine, kept with the CLI's other state.
+  const AUTO_GPU_CHOICE = {
+    gpuChoiceFile: hyperframesConfigDir("gpu-choice.json"),
+    hyperframesVersion: VERSION,
+  };
+
   it("forwards browserGpuMode='auto' into producer config (probe-then-choose)", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -891,6 +1088,7 @@ describe("renderLocal browser GPU config", () => {
 
     expect(producerState.resolveConfigCalls).toContainEqual({
       browserGpuMode: "auto",
+      ...AUTO_GPU_CHOICE,
       forceScreenshot: false,
       beginFrameFirstFrameDeadlineMs: 20_000,
     });
@@ -913,7 +1111,10 @@ describe("renderLocal browser GPU config", () => {
         hdrMode: "auto",
         quiet: true,
       });
-      expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
+      expect(producerState.resolveConfigCalls).toContainEqual({
+        browserGpuMode: "auto",
+        ...AUTO_GPU_CHOICE,
+      });
       expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("forceScreenshot");
     } finally {
       if (prev === undefined) delete process.env.PRODUCER_FORCE_SCREENSHOT;
@@ -933,7 +1134,10 @@ describe("renderLocal browser GPU config", () => {
       outputResolution: "landscape",
     });
 
-    expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
+    expect(producerState.resolveConfigCalls).toContainEqual({
+      browserGpuMode: "auto",
+      ...AUTO_GPU_CHOICE,
+    });
     expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("forceScreenshot");
     expect(producerState.resolveConfigCalls[0]).not.toHaveProperty(
       "beginFrameFirstFrameDeadlineMs",
@@ -2404,6 +2608,62 @@ describe("render command batch options", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe("dockerRenderOptions", () => {
+  const { dockerRenderOptions } = renderModule;
+  const options = {
+    fps: { num: 30, den: 1 },
+    quality: "standard",
+    format: "mp4",
+    gpu: false,
+    hdrMode: "auto",
+    quiet: true,
+  } as const;
+
+  function receivedProject(files: string[] | undefined): { root: string; projectDir: string } {
+    const root = mkdtempSync(join(tmpdir(), "hf-docker-received-"));
+    const projectDir = join(root, "scene");
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, "index.html"), '<img src="../output/photo.png">');
+    writeFileSync(
+      join(projectDir, "photo.png"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    if (files) {
+      mkdirSync(join(root, ".hyperframes"));
+      writeFileSync(join(root, ".hyperframes", "received-files.json"), JSON.stringify({ files }));
+    }
+    return { root, projectDir };
+  }
+
+  it("refuses outside files when a record in a folder above the project lists its entry", () => {
+    const { root, projectDir } = receivedProject(["scene/index.html"]);
+    mkdirSync(join(root, "output"));
+    writeFileSync(join(root, "output", "photo.png"), "secret");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(dockerRenderOptions(projectDir, options).refuseOutsideFiles).toBe(true);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringMatching(/came from someone else.*photo\.png/),
+      );
+    } finally {
+      warn.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { name: "no received-files record", files: undefined },
+    { name: "a record listing only an image", files: ["scene/photo.png"] },
+  ])("leaves outside files in for $name", ({ files }) => {
+    const { root, projectDir } = receivedProject(files);
+    try {
+      expect(dockerRenderOptions(projectDir, options).refuseOutsideFiles).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("normalizeStageCode", () => {

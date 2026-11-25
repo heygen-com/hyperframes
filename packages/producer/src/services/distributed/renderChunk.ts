@@ -58,7 +58,7 @@ import {
   readWebGlVendorInfoFromCanvas,
   resolveConfig,
   type ShownBox,
-  usableCpuCount,
+  cpuBudget,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
 import {
@@ -132,7 +132,7 @@ export {
   rebuildExtractedFramesFromPlanDir,
   RenderChunkValidationError,
 } from "./chunkFrames.js";
-import { noteStaticDedupActivity } from "../render/shared.js";
+import { noteCaptureActivity } from "../render/shared.js";
 
 const LEGACY_DISTRIBUTED_VP9_CPU_USED = 2;
 
@@ -750,7 +750,7 @@ export async function renderChunk(
         deferredVideos.filter((video) => remoteVideoIds.has(video.videoId)),
       ),
     });
-    captureOptions.onStaticDedupActivity = () => noteStaticDedupActivity(job);
+    captureOptions.onStaticDedupActivity = () => noteCaptureActivity(job);
 
     // Resolve worker count up-front. Sequential capture reuses the initialized
     // session below. Parallel BeginFrame capture pays one bounded preflight
@@ -901,6 +901,7 @@ export async function renderChunk(
               cfg,
               remoteSources,
               shownBoxes,
+              onProgress: () => noteCaptureActivity(job),
             }).then((frames) => {
               videoExtractMs = Date.now() - extractStarted;
               return frames;
@@ -1043,8 +1044,11 @@ export async function renderChunk(
           const captureSession = session;
           session = null;
           verifyStarted = Date.now();
-          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, usableCpuCount())
-            ? encodeWhileCapturing(encodeInput, framesInChunk)
+          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, cpuBudget())
+            ? encodeWhileCapturing(encodeInput, framesInChunk, {
+                workerCount: chunkWorkerCount,
+                cpuCount: cpuBudget(),
+              })
             : null;
           await observeRenderStage(
             new RenderObservabilityRecorder({ pipelineStartMs: start, log }),

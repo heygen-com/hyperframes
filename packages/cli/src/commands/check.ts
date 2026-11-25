@@ -1,7 +1,8 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   recordArtifacts,
@@ -19,7 +20,7 @@ import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
 import { registerBrowserSessionCleanup } from "../browser/launch.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, splitStepsWrittenByCli } from "../utils/errorMessage.js";
 import { CliUsageError, failUsage, setCommandExitCode } from "../utils/commandResult.js";
 import { swallowedFlagUsageError } from "../utils/reject-unknown-flags.js";
 import { formatLayoutIssue } from "../utils/layoutAudit.js";
@@ -53,6 +54,7 @@ import {
   readCachedPass,
   storePass,
 } from "../utils/checkCache.js";
+import { recordFolder } from "../utils/projectRecords.js";
 import { VERSION } from "../version.js";
 
 export const examples: Example[] = [
@@ -80,7 +82,9 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
     const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
     const id = randomUUID();
     console.error(
-      `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+      terminalText(
+        `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+      ),
     );
     const report = await runCheckPipeline(project, options);
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
@@ -104,12 +108,21 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
 };
 
 function warnNotRecorded(error: unknown): undefined {
-  console.warn(`${c.warn("⚠")}  Check report was not recorded: ${normalizeErrorMessage(error)}`);
+  console.warn(
+    `${c.warn("⚠")}  Check report was not recorded: ${terminalLines(normalizeErrorMessage(error))}`,
+  );
   return undefined;
 }
 
 export function checkReportFile(projectDir: string, id: string): string {
   return join(projectDir, ".hyperframes", "artifacts", "checks", `${id}.json`);
+}
+
+function makeReportFolder(path: string, projectDir: string): void {
+  if (!recordFolder(projectDir, "artifacts/checks"))
+    throw new Error(
+      `${dirname(path)} is reached through a link or a file; remove it and run again`,
+    );
 }
 
 async function saveCheckReport(
@@ -120,7 +133,7 @@ async function saveCheckReport(
   id: string,
 ): Promise<SavedCheck> {
   const path = checkReportFile(project.dir, id);
-  mkdirSync(dirname(path), { recursive: true });
+  makeReportFolder(path, project.dir);
   writeFileSync(path, JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
   const reportScope =
     "scope" in report && typeof report.scope === "object" && report.scope !== null
@@ -190,7 +203,7 @@ const CHECK_COMMAND_ARGS = {
   },
   samples: {
     type: "string",
-    description: "Number of midpoint samples across the duration (default: 9)",
+    description: "Number of midpoint samples across the duration",
     default: "9",
   },
   range: {
@@ -220,17 +233,17 @@ const CHECK_COMMAND_ARGS = {
   },
   "max-issues": {
     type: "string",
-    description: "Maximum issues to print or return after static collapse (default: 80)",
+    description: "Maximum issues to print or return after static collapse",
     default: "80",
   },
   "collapse-static": {
     type: "boolean",
-    description: "Collapse repeated static issues across samples (default: true)",
+    description: "Collapse repeated static issues across samples",
     default: true,
   },
   tolerance: {
     type: "string",
-    description: "Allowed pixel overflow before reporting an issue (default: 2)",
+    description: "Allowed pixel overflow before reporting an issue",
     default: "2",
   },
   budget: {
@@ -334,7 +347,7 @@ export function createCheckCommand(
         const options = parseCheckOptions(args);
         const project = dependencies.resolveProject(args.dir);
         if (!asJson) {
-          console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
+          console.log(`${c.accent("◆")}  Checking ${c.accent(terminalText(project.name))}`);
         }
         if (args["prepare-media"] === true) {
           await runPrepareMedia(dependencies, project, options, asJson);
@@ -350,13 +363,17 @@ export function createCheckCommand(
         if (asJson) {
           console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
           if (report.saved)
-            console.error(`[hyperframes] check: report saved to ${report.saved.report}`);
+            console.error(
+              terminalText(`[hyperframes] check: report saved to ${report.saved.report}`),
+            );
         } else {
           printHumanReport(report);
           if (report.saved) {
-            console.log(`Report: ${report.saved.report}`);
+            console.log(terminalText(`Report: ${report.saved.report}`));
             console.log(
-              `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              terminalText(
+                `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
+              ),
             );
           }
         }
@@ -407,7 +424,9 @@ function reportCheckFailure(
     const code = usage ? error.code : "runtime_error";
     console.log(JSON.stringify(addMeta(jsonFailure(code, message)), null, 2));
   } else {
-    console.error(`${c.error("✗")} Check failed: ${message}`);
+    const { summary, stepsWrittenByCli } = splitStepsWrittenByCli(message);
+    console.error(`${c.error("✗")} Check failed: ${terminalText(summary)}`);
+    if (stepsWrittenByCli) console.error(`\n${stepsWrittenByCli}\n`);
   }
   if (usage) failUsage();
   setCommandExitCode(1);
@@ -474,7 +493,8 @@ async function runPrepareMedia(
     console.log(
       `${mark}  Browser-playable copies: ${files.length - failed.length}/${files.length} ready`,
     );
-    for (const file of failed) console.log(`   ${file.file}: ${file.reason}`);
+    for (const file of failed)
+      console.log(`   ${terminalText(file.file)}: ${terminalLines(file.reason ?? "")}`);
   }
   setCommandExitCode(failed.length === 0 ? 0 : 1);
 }
@@ -769,13 +789,13 @@ function browserSkippedLine(report: CheckReport): string {
 function printHumanReport(report: CheckReport): void {
   if (report.cached)
     console.log(
-      `${c.dim("◇")} Nothing changed since the pass at ${report.cached.at}; showing that result. Remote scripts and assets were not fetched again. Run with --no-cache to check again.`,
+      `${c.dim("◇")} Nothing changed since the pass at ${terminalText(report.cached.at)}; showing that result. Remote scripts and assets were not fetched again. Run with --no-cache to check again.`,
     );
   if (report.scope) {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,
     );
-    for (const note of report.scope.notes) console.log(note);
+    for (const note of report.scope.notes) console.log(terminalLines(note));
   }
   printSection("Lint", report.lint);
   if (report.browserSkipped) {
@@ -846,10 +866,12 @@ function printContrastSection(report: CheckReport): void {
     return;
   }
   for (const finding of section.findings) {
+    const text = finding.text ? ` ${c.dim(`"${terminalText(finding.text)}"`)}` : "";
     console.log(
-      `  ${c.error("✗")} ${finding.selector} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
+      `  ${findingIcon(finding)} ${terminalText(finding.selector)}${text} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
     );
-    console.log(`    ${c.dim(`Try ${finding.suggestedColor}; source ${finding.sourceFile}`)}`);
+    const source = `Try ${terminalText(finding.suggestedColor)}; source ${terminalText(finding.sourceFile)}`;
+    console.log(`    ${c.dim(source)}`);
   }
   printCounts(section);
 }
@@ -872,21 +894,27 @@ function printSnapshotSection(report: CheckReport): void {
     console.log(`  ${c.dim("◇")} disabled`);
   } else {
     console.log(`  ${c.success("◇")} ${report.snapshots.files.length} PNG(s) saved`);
-    for (const file of report.snapshots.files) console.log(`    ${c.dim(file)}`);
+    for (const file of report.snapshots.files) console.log(`    ${c.dim(terminalText(file))}`);
     if (report.snapshots.findingFiles.length > 0) {
       console.log(
         `  ${c.success("◇")} ${report.snapshots.findingFiles.length} finding crop(s) saved`,
       );
-      for (const file of report.snapshots.findingFiles) console.log(`    ${c.dim(file)}`);
+      for (const file of report.snapshots.findingFiles)
+        console.log(`    ${c.dim(terminalText(file))}`);
     }
   }
 }
 
 function printFinding(finding: CheckFinding): void {
-  const where = `${finding.sourceFile} ${finding.selector} ${formatFindingTimes(finding)}`;
-  console.log(`  ${findingIcon(finding)} ${finding.code}: ${finding.message}`);
+  const where = `${terminalText(finding.sourceFile)} ${terminalText(finding.selector)} ${formatFindingTimes(finding)}`;
+  const { summary, stepsWrittenByCli } =
+    finding.code === "check_runtime_failure"
+      ? splitStepsWrittenByCli(finding.message)
+      : { summary: finding.message, stepsWrittenByCli: undefined };
+  console.log(`  ${findingIcon(finding)} ${terminalText(finding.code)}: ${terminalText(summary)}`);
   console.log(`    ${c.dim(where)}`);
-  if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${finding.fixHint}`)}`);
+  if (stepsWrittenByCli) console.log(`\n${stepsWrittenByCli}\n`);
+  if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${terminalText(finding.fixHint)}`)}`);
 }
 
 function findingIcon(finding: CheckFinding): string {

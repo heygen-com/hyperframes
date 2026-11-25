@@ -44,11 +44,15 @@ let root: Root;
 let host: HTMLDivElement;
 let snapshot: LocalShareSnapshot;
 let calls: unknown[];
+let confirmedReviews: unknown[];
+let confirm: ReturnType<typeof vi.fn<(message?: string) => boolean>>;
 let job: LocalShareJob;
 const token = "a".repeat(43);
 beforeEach(() => {
   interaction.mockReset();
   calls = [];
+  confirmedReviews = [];
+  confirm = vi.fn(() => true);
   snapshot = {
     versionSharing: true,
     share: {
@@ -56,6 +60,8 @@ beforeEach(() => {
       state: "not_shared",
       url: null,
       manageUrl: "https://hyperframes.dev/shares",
+      reviewId: null,
+      reviewTitle: null,
       changed: false,
       audience: null,
       spaceId: null,
@@ -83,12 +89,15 @@ beforeEach(() => {
       expect(new Headers(init?.headers).get("X-Hyperframes-Share-CSRF")).toBe(token);
       if (url.endsWith("/snapshot")) return Response.json(snapshot);
       if (url.endsWith("/actions")) {
-        calls.push(JSON.parse(String(init?.body)));
+        const { confirmedReview, ...body } = JSON.parse(String(init?.body));
+        calls.push(body);
+        confirmedReviews.push(confirmedReview);
         return Response.json(job, { status: 202 });
       }
       return Response.json(job);
     }),
   );
+  vi.stubGlobal("confirm", confirm);
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -674,4 +683,114 @@ it("counts explicit audience, source and manage interactions without sending pro
     [token, { event: "share_source_toggled", enabled: true }],
     [token, { event: "share_navigation_clicked", destination: "manage" }],
   ]);
+});
+
+it("sends nothing when the person cancels the confirmation", async () => {
+  confirm.mockReturnValue(false);
+  await mount();
+  await choose("public");
+  await act(async () => button("Create share link")?.click());
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(calls).toEqual([]);
+});
+it("names the review and who can open it before changing access, and sends that review", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "ready",
+    url: "https://hyperframes.dev/s/existing",
+    manageUrl: "https://hyperframes.studio/reviews/existing",
+    reviewId: "existing",
+    reviewTitle: "Launch film",
+    audience: "invite",
+    spaceId: "team1",
+  };
+  await mount();
+  await choose("public");
+  await act(async () => button("Save access")?.click());
+  const message = confirm.mock.calls[0]?.[0] ?? "";
+  expect(message).toContain('Review: "Launch film"');
+  expect(message).toContain("Link: https://hyperframes.dev/s/existing");
+  expect(message).toContain("Workspace: Design team");
+  expect(message).toContain("Now: Only invited people");
+  expect(message).toContain("After: Anyone with the link");
+  expect(calls).toEqual([{ action: "access", audience: "public" }]);
+  expect(confirmedReviews).toEqual(["existing"]);
+});
+it("says a folder is already linked to a review before a first share reaches it", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    reviewId: "linked",
+    reviewTitle: "Someone's review\nWho can open it: Only you",
+  };
+  await mount();
+  await choose("public");
+  await act(async () => button("Create share link")?.click());
+  const message = confirm.mock.calls[0]?.[0] ?? "";
+  expect(message).toContain("already linked to an existing review");
+  expect(message).toContain(`Review: "Someone's review Who can open it: Only you"`);
+  expect(message).not.toContain("\nWho can open it: Only you");
+  expect(message).not.toContain("Workspace:");
+  expect(confirmedReviews).toEqual(["linked"]);
+});
+it("confirms a first share as reaching no existing review", async () => {
+  await mount();
+  await choose("public");
+  await act(async () => button("Create share link")?.click());
+  expect(confirm.mock.calls[0]?.[0]).toContain("Create a share link for this project?");
+  expect(confirmedReviews).toEqual([null]);
+});
+it("drops the earlier choice when the project now points to a different review", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "ready",
+    url: "https://hyperframes.dev/s/existing",
+    reviewId: "existing",
+    audience: "invite",
+  };
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (String(url).endsWith("/actions")) {
+      calls.push(JSON.parse(String(init?.body)));
+      snapshot.share = { ...snapshot.share, reviewId: "other", audience: "private" };
+      return Response.json(
+        {
+          code: "share_target_changed",
+          message: "This project now points to a different shared review.",
+        },
+        { status: 409 },
+      );
+    }
+    return Response.json(snapshot);
+  });
+  await mount();
+  await choose("public");
+  await act(async () => button("Save access")?.click());
+  expect(calls).toHaveLength(1);
+  expect(host.textContent).toContain("different shared review");
+  expect(button("Save access")).toBeUndefined();
+});
+it("says when editable project files are included before uploading them", async () => {
+  await mount();
+  await choose("public");
+  await act(async () => {
+    const box = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    box?.click();
+  });
+  await act(async () => button("Create share link")?.click());
+  expect(confirm.mock.calls[0]?.[0]).toContain("Includes editable project files");
+  expect(confirm.mock.calls[0]?.[0]).toContain("Workspace: Design team");
+});
+it("signs in without asking for a confirmation", async () => {
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (String(url).endsWith("/snapshot"))
+      return Response.json({ code: "unauthenticated", message: "Sign in" }, { status: 400 });
+    if (String(url).endsWith("/actions")) {
+      calls.push(JSON.parse(String(init?.body)));
+      return Response.json({ ...job, step: "signing_in" }, { status: 202 });
+    }
+    return Response.json(job);
+  });
+  await mount();
+  await act(async () => button("Sign in")?.click());
+  expect(confirm).not.toHaveBeenCalled();
+  expect(calls).toEqual([{ action: "login" }]);
 });

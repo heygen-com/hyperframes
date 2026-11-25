@@ -1,6 +1,9 @@
 import type { HfColorGradingTarget } from "../colorGrading";
+import type { PreviewTarget } from "../studioPreviewMark";
 import type { RuntimeAnalyticsEvent } from "./analytics";
+import type { TextLayerRead } from "./editingElement";
 import type { AudioFades } from "../audioFade";
+import type { ParentCopy } from "../audibleVideo";
 import type { RateSpec } from "../speedRamp";
 import type { VolumeKeyframe } from "./mediaVolumeEnvelope";
 
@@ -32,7 +35,8 @@ type RuntimeBridgeControlActionBase =
   | "set-root-duration"
   | "set-play-range"
   | "stop-media"
-  | "flash-elements";
+  | "flash-elements"
+  | "scrub-audio";
 
 type RuntimeBridgeControlMessageBase = {
   source: "hf-parent";
@@ -51,7 +55,8 @@ type RuntimeBridgeControlMessageBase = {
   level?: number;
   on?: boolean;
   playbackRate?: number;
-  target?: HfColorGradingTarget | string | null;
+  target?: HfColorGradingTarget | PreviewTarget | string | null;
+  time?: number | null;
   grading?: RuntimeJson;
   compare?: RuntimeJson;
   seekMode?: "drag" | "commit";
@@ -94,6 +99,9 @@ export type RuntimeTimelineClip = RuntimeTimelineClipIdentity & {
   timelineLabel: string | null;
   timelineGroup: string | null;
   timelinePriority: number | null;
+  text: TextLayerRead | null;
+  transitionLabel: string | null;
+  timelineDuration: number | null;
 };
 
 export type RuntimeTimelineScene = {
@@ -119,6 +127,7 @@ export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
    * the composition's assets have settled yet. Absent on older runtimes, whose
    * parents must not wait for a message that never comes. */
   assetsReady?: boolean;
+  sceneSwap?: boolean;
 };
 
 export type RuntimeDiagnosticMessage = {
@@ -161,12 +170,18 @@ export type RuntimePickerCancelledMessage = {
   type: "pick-mode-cancelled";
 };
 
-export type RuntimeStageSizeMessage = {
+/** The document's own length and size, posted before the runtime boots (`compositionLength.readStaticComposition`). */
+export type RuntimeStaticCompositionMessage = {
   source: "hf-preview";
-  type: "stage-size";
-  width: number;
-  height: number;
+  type: "static-composition";
+  durationSeconds: number;
+  width: number | null;
+  height: number | null;
 };
+
+export type RuntimeStageSizeMessage =
+  | { source: "hf-preview"; type: "stage-size"; width: number; height: number }
+  | { source: "hf-preview"; type: "stage-size"; measuredSize: { width: number; height: number } };
 
 /**
  * Fired once per session when the runtime's attempt to play a timed media
@@ -178,6 +193,7 @@ export type RuntimeStageSizeMessage = {
 export type RuntimeMediaAutoplayBlockedMessage = {
   source: "hf-preview";
   type: "media-autoplay-blocked";
+  media: ParentCopy[];
 };
 
 /**
@@ -332,6 +348,7 @@ export type RuntimeOutboundMessage =
   | RuntimePickerPickedManyMessage
   | RuntimePickerCancelledMessage
   | RuntimeStageSizeMessage
+  | RuntimeStaticCompositionMessage
   | RuntimeMediaAutoplayBlockedMessage
   | RuntimeReadyMessage
   | RuntimeAssetsReadyMessage

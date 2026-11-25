@@ -1,10 +1,16 @@
 // fallow-ignore-file complexity
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
-import { DEFAULT_VP9_CPU_USED, runFfmpeg, renameWithRetry } from "@hyperframes/engine";
+import {
+  DEFAULT_VP9_CPU_USED,
+  isPrivateUnderAssetRoots,
+  runFfmpeg,
+  renameWithRetry,
+  urlInputArgs,
+} from "@hyperframes/engine";
 import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { isHttpUrl } from "../utils/urlDownloader.js";
 import { escapesAssetRoot, outsideAssetRefusal } from "../utils/paths.js";
@@ -32,8 +38,9 @@ export interface PrepareAnimatedGifInputsOptions {
   cacheDir?: string;
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (input: AnimatedGifTranscodeRequest) => Promise<void>;
-  assetRoot?: string;
+  allowOutsideFiles?: boolean;
 }
 
 export interface AnimatedGifTranscodeRequest {
@@ -41,6 +48,7 @@ export interface AnimatedGifTranscodeRequest {
   outputPath: string;
   args: string[];
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface PrepareAnimatedGifInputsResult {
@@ -83,7 +91,7 @@ export function resolveLocalImageSourcePath(
   src: string,
   options: Pick<
     PrepareAnimatedGifInputsOptions,
-    "projectDir" | "downloadDir" | "sourceAssets" | "assetRoot"
+    "projectDir" | "downloadDir" | "sourceAssets" | "allowOutsideFiles"
   >,
 ): string | null {
   const trimmed = src.trim();
@@ -98,21 +106,24 @@ export function resolveLocalImageSourcePath(
   if (mapped && existsSync(mapped)) return mapped;
   if (isHttpUrl(trimmed)) return null;
 
-  const protocolRelativeUrlOnShare =
-    basePath.startsWith("/") && namesAnotherNetworkRoot(options.projectDir, basePath);
   const projectRelative = basePath.startsWith("/") ? basePath.slice(1) : basePath;
   const candidates = [
-    ...(protocolRelativeUrlOnShare
-      ? []
-      : [isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative)]),
+    isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative),
     resolve(options.downloadDir, normalizedBase),
   ];
 
+  const assetRoot = options.allowOutsideFiles ? undefined : options.projectDir;
   const allowed = (candidate: string) =>
-    (!escapesAssetRoot(candidate, options.assetRoot) &&
+    !namesAnotherNetworkRoot(options.projectDir, candidate) &&
+    !isPrivateUnderAssetRoots(
+      candidate,
+      [options.projectDir, options.downloadDir],
+      options.allowOutsideFiles,
+    ) &&
+    ((!escapesAssetRoot(candidate, assetRoot) &&
       outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
-    !escapesAssetRoot(candidate, options.downloadDir);
-  return candidates.find((candidate) => existsSync(candidate) && allowed(candidate)) ?? null;
+      !escapesAssetRoot(candidate, options.downloadDir));
+  return candidates.find((candidate) => allowed(candidate) && existsSync(candidate)) ?? null;
 }
 
 function isUsableFile(path: string): boolean {
@@ -154,6 +165,8 @@ function resolveLoop(metadata: AnimatedGifMetadata, override: boolean | null): b
  */
 const MAX_LOOP_ITERATIONS = 1_000;
 const MAX_PAD_SECONDS = 3_600;
+const FFMPEG_SELF_CPU_SECONDS_CAP = 3_600;
+const FFMPEG_SELF_OUTPUT_BYTES_CAP = 1024 * 1024 * 1024;
 
 function resolveCompositionDurationSeconds(document: Document): number | null {
   let max: number | null = null;
@@ -215,13 +228,20 @@ export function buildAnimatedGifTranscodeArgs(input: {
   loopIterations: number;
   padSeconds?: number;
 }): string[] {
-  const args = ["-hide_banner", "-loglevel", "error"];
+  const args = [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-timelimit",
+    String(FFMPEG_SELF_CPU_SECONDS_CAP),
+  ];
   if (input.loopIterations > 1) {
     args.push("-stream_loop", String(input.loopIterations - 1));
   }
   args.push(
     "-ignore_loop",
     "1",
+    ...urlInputArgs(input.inputPath),
     "-i",
     input.inputPath,
     "-an",
@@ -244,6 +264,8 @@ export function buildAnimatedGifTranscodeArgs(input: {
       : []),
     // Explicit muxer: the transcode writes to a `.tmp-<pid>-<ts>` path whose
     // extension ffmpeg cannot infer the container from.
+    "-fs",
+    String(FFMPEG_SELF_OUTPUT_BYTES_CAP),
     "-f",
     "webm",
     "-y",
@@ -252,10 +274,17 @@ export function buildAnimatedGifTranscodeArgs(input: {
   return args;
 }
 
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 async function runAnimatedGifTranscode(request: AnimatedGifTranscodeRequest): Promise<void> {
   const timeout = request.timeoutMs ?? 300_000;
-  const result = await runFfmpeg(request.args, { timeout });
+  const result = await runFfmpeg(request.args, { timeout, signal: request.signal });
   if (result.success) return;
+  if (request.signal?.aborted) throw abortError();
   if (result.failureReason === "external_interruption") {
     throw encoderFailureError("Animated GIF transcode failed", {
       error: `exit ${result.exitCode}: ${result.stderr.slice(-500)}`,
@@ -278,6 +307,7 @@ async function ensurePreparedWebm(input: {
   loopIterations: number;
   padSeconds: number;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (request: AnimatedGifTranscodeRequest) => Promise<void>;
 }): Promise<void> {
   if (!existsSync(dirname(input.cachePath))) {
@@ -288,7 +318,7 @@ async function ensurePreparedWebm(input: {
   }
 
   if (!isUsableFile(input.cachePath)) {
-    const tmpPath = `${input.cachePath}.tmp-${process.pid}-${Date.now()}`;
+    const tmpPath = `${input.cachePath}.tmp-${process.pid}-${randomUUID()}`;
     const args = buildAnimatedGifTranscodeArgs({
       inputPath: input.sourcePath,
       outputPath: tmpPath,
@@ -302,9 +332,13 @@ async function ensurePreparedWebm(input: {
         outputPath: tmpPath,
         args,
         timeoutMs: input.timeoutMs,
+        signal: input.signal,
       });
       if (!isUsableFile(tmpPath)) {
         throw new Error("Animated GIF transcode produced an empty output");
+      }
+      if (statSync(tmpPath).size >= FFMPEG_SELF_OUTPUT_BYTES_CAP) {
+        throw new Error("Animated GIF transcode reached its output size limit");
       }
       if (!isUsableFile(input.cachePath)) {
         renameWithRetry(tmpPath, input.cachePath);
@@ -422,6 +456,7 @@ export async function prepareAnimatedGifInputs(
       loopIterations,
       padSeconds,
       timeoutMs: options.timeoutMs,
+      signal: options.signal,
       transcode: options.transcode,
     });
 

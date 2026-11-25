@@ -605,7 +605,7 @@
   }
 }
 
-/* Toast enter/exit (StudioToast) */
+/* Feedback card enter/exit (StudioFeedbackCard) */
 @keyframes hf-toast-in {
   from {
     opacity: 0;
@@ -643,6 +643,24 @@
   }
   .hf-toast-exit {
     opacity: 0;
+  }
+}
+
+/* A toast rises in and leaves at once (StudioToast). */
+@keyframes hf-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.hf-notice-in {
+  animation: hf-notice-in 200ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-notice-in {
+    animation: none;
   }
 }
 

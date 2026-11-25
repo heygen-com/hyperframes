@@ -1,8 +1,13 @@
 export { createStudioApi, type StudioApiOptions } from "./createStudioApi.js";
 export {
+  refuseServiceWorkerScripts,
+  serviceWorkerScriptFetch,
+} from "./helpers/serviceWorkerScripts.js";
+export {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "./helpers/requestIdentity.js";
+export { carriesOAuthReturn, inertRefusal, refuseOAuthReturn } from "./helpers/inertRefusal.js";
 export { MAX_UPLOAD_BYTES } from "./routes/files.js";
 export {
   createProjectSignature,
@@ -17,6 +22,8 @@ export { cleanupProxyCache } from "./helpers/proxyCache.js";
 export { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "./helpers/proxyTranscoder.js";
 export type {
   StudioApiAdapter,
+  StudioRefusal,
+  StudioRefusalWhy,
   ResolvedProject,
   RenderJobState,
   MediaProcessingJobState,
@@ -64,6 +71,7 @@ export {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
   type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "./helpers/screenshotClip.js";
 export {
   thumbnailDeviceScaleFactor,

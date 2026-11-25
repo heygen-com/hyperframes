@@ -25,6 +25,7 @@ describe("composition rules", () => {
       `<template>${scene("a")}</template>`,
       `<template><svg></svg></template><template>${scene("a")}</template>`,
       `<template>${scene("a")}</template><template>${scene("b")}</template>${scene("live")}`,
+      `<svg><template>${scene("a")}</template></svg><template>${scene("b")}</template>`,
     ])("is quiet for %s", async (html) => {
       expect(await find(html)).toBeUndefined();
     });
@@ -195,7 +196,7 @@ describe("composition rules", () => {
       expect(finding?.fixHint).toContain("Split this sub-composition further");
     });
 
-    it("warns when more than 3 timed elements share the same track", async () => {
+    it("warns when a file has more than 3 timed elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
@@ -212,10 +213,10 @@ describe("composition rules", () => {
       const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe("warning");
-      expect(finding?.message).toContain("Track 0 has 4 timed elements");
+      expect(finding?.message).toContain("4 timed elements");
     });
 
-    it("does not warn when 3 timed elements share the same track", async () => {
+    it("does not warn on 3 timed elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
@@ -230,20 +231,29 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
-    it("does not warn when timed elements are split across tracks", async () => {
-      const html = `<!DOCTYPE html>
+    const tenScenes = (track: (i: number) => string) => `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
-    <div class="clip" data-start="0" data-duration="1" data-track-index="0">A</div>
-    <div class="clip" data-start="1" data-duration="1" data-track-index="0">B</div>
-    <div class="clip" data-start="2" data-duration="1" data-track-index="1">C</div>
-    <div class="clip" data-start="3" data-duration="1" data-track-index="1">D</div>
+${Array.from({ length: 10 }, (_, i) => `    <div class="clip" data-start="${i}" data-duration="1"${track(i)}>S${i}</div>`).join("\n")}
   </div>
 </body></html>`;
+    const denseFinding = async (html: string) =>
+      (await lintHyperframeHtml(html, { filePath: "/project/index.html" })).findings.find(
+        (f) => f.code === "timeline_track_too_dense",
+      );
 
-      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
-      const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
-      expect(finding).toBeUndefined();
+    it("never advises another lane for scenes that share one", async () => {
+      const finding = await denseFinding(tenScenes(() => ` data-track-index="0"`));
+      expect(finding?.message).toContain("10 timed elements");
+      expect(`${finding?.message} ${finding?.fixHint}`).not.toMatch(/track|lane/i);
+    });
+
+    it("still warns the same when the scenes are spread over lanes or have none", async () => {
+      const oneLane = await denseFinding(tenScenes(() => ` data-track-index="0"`));
+      const tenLanes = await denseFinding(tenScenes((i) => ` data-track-index="${i}"`));
+      const noLane = await denseFinding(tenScenes(() => ""));
+      expect(tenLanes).toEqual(oneLane);
+      expect(noLane).toEqual(oneLane);
     });
 
     it("does not count timed media or script/style tags as dense track elements", async () => {
@@ -1827,6 +1837,30 @@ describe("composition rules", () => {
       expect(find(result.findings)).toBeDefined();
     });
 
+    it("stays silent when the mount resolves its start at runtime", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="20">
+          <div class="clip" id="intro" data-start="0" data-duration="15"></div>
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="intro + 0.5" data-duration="5"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("measures a negative start from zero, as the renderer does", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="10">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="-2" data-duration="3"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = find(result.findings);
+      expect(finding?.message).toContain("ends at 3s");
+      expect(finding?.message).toContain("~7s");
+      expect(finding?.fixHint).toContain("data-duration to 10");
+    });
+
     it("stays silent on an intentional short intro followed by another clip", async () => {
       const html = `<html><body>
         <div id="root" data-composition-id="main" data-start="0" data-duration="60">
@@ -1943,6 +1977,32 @@ describe("composition rules", () => {
       const derived = result.findings.find((f) => f.code === "root_composition_duration_derived");
       expect(derived?.message).toContain("at least 3s");
       expect(derived?.message).toContain("2 clip(s) whose length is only known at runtime");
+    });
+
+    it("falls back to a valid data-end when data-duration is not numeric", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="clip" data-start="0" data-duration="abc" data-end="4"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+      expect(
+        result.findings.find((f) => f.code === "root_composition_duration_derived")?.message,
+      ).toContain("at least 4s");
+    });
+
+    it("derives from a negative start like the parser does", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="clip" data-start="-2" data-duration="1"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+      expect(
+        result.findings.find((f) => f.code === "root_composition_duration_derived")?.message,
+      ).toContain("at least 1s");
     });
 
     it("does not count a clip whose data-end is before its start", async () => {

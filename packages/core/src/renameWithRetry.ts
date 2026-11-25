@@ -1,9 +1,10 @@
-import { copyFileSync, renameSync } from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { copyFileSync, readdirSync, renameSync } from "node:fs";
 import { copyFile, rename } from "node:fs/promises";
 import { removeScratch } from "./removeScratch.js";
 
-// Windows reports EPERM/EACCES/EBUSY while antivirus or a just-exited process still holds the
-// file; the hold clears within milliseconds. Total wait before giving up: about 1.3 s.
+// Windows reports EPERM/EACCES/EBUSY while antivirus or a just-exited process holds the file (clears in ms; ~1.3 s of
+// waits in all). EPERM onto a folder with files in it never clears; an empty one may be a removed folder still held.
 const RETRYABLE = new Set(["EPERM", "EACCES", "EBUSY"]);
 const BACKOFF_MS = [10, 20, 40, 80, 160, 320, 640];
 
@@ -18,11 +19,51 @@ export function isWindowsHold(error: unknown, platform = process.platform): bool
   return RETRYABLE.has((error as NodeJS.ErrnoException | undefined)?.code ?? "");
 }
 
+const holdScope = new AsyncLocalStorage<{ open: boolean; held: unknown }>();
+
+class HeldRename {
+  constructor(readonly error: unknown) {}
+}
+
+export async function catchHeldRename(work: () => Promise<void>): Promise<unknown> {
+  const scope: { open: boolean; held: unknown } = { open: true, held: null };
+  try {
+    await holdScope.run(scope, work);
+  } catch (thrown) {
+    if (!(thrown instanceof HeldRename)) throw thrown;
+  } finally {
+    scope.open = false;
+  }
+  return scope.held;
+}
+
+function handOverHold(error: unknown): void {
+  const scope = holdScope.getStore();
+  if (!scope?.open) return;
+  scope.open = false;
+  scope.held = error;
+  throw new HeldRename(error);
+}
+
 /** What a refused rename does next: wait and try again, fall back to a copy, or give up with the error. */
-function nextStep(error: unknown, attempt: number, options: Options, platform: NodeJS.Platform) {
-  if (!isWindowsHold(error, platform)) return "throw";
+function nextStep(
+  error: unknown,
+  attempt: number,
+  options: Options,
+  platform: NodeJS.Platform,
+  to: string,
+) {
+  if (!isWindowsHold(error, platform) || isFilledFolder(to)) return "throw";
   if (attempt < BACKOFF_MS.length) return "wait";
   return options.copyFallback ? "copy" : "throw";
+}
+
+function isFilledFolder(path: string): boolean {
+  try {
+    return readdirSync(path).length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function sleepSync(ms: number): void {
@@ -46,8 +87,9 @@ export function renameWithRetry(
       doRename(from, to);
       return;
     } catch (error) {
-      const step = nextStep(error, attempt, options, platform);
+      const step = nextStep(error, attempt, options, platform, to);
       if (step === "throw") throw error;
+      handOverHold(error);
       if (step === "wait") {
         sleepSync(BACKOFF_MS[attempt]!);
         continue;
@@ -80,7 +122,7 @@ export async function renameWithRetryAsync(
       await doRename(from, to);
       return;
     } catch (error) {
-      const step = nextStep(error, attempt, options, platform);
+      const step = nextStep(error, attempt, options, platform, to);
       if (step === "throw") throw error;
       if (step === "wait") {
         await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));

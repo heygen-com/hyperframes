@@ -45,7 +45,6 @@ export async function submitFeedback(input: {
   }
 }
 
-const MAX_QUERY = 500;
 const MAX_WANTED = 500;
 const MAX_TIER = 50;
 
@@ -58,8 +57,7 @@ const MAX_TIER = 50;
  * `submitFeedback` — a gap report must never fail the command that sent it.
  */
 export async function submitCatalogSearchMiss(input: {
-  query: string;
-  wanted?: string;
+  wanted: string;
   tier?: string;
   cliVersion: string;
 }): Promise<void> {
@@ -68,7 +66,6 @@ export async function submitCatalogSearchMiss(input: {
     await fetch(`${apiBaseUrl}/v1/hyperframes/catalog_search_miss`, {
       method: "POST",
       body: JSON.stringify({
-        query: cap(input.query, MAX_QUERY),
         wanted: cap(input.wanted, MAX_WANTED),
         tier: cap(input.tier, MAX_TIER),
         cli_version: cap(input.cliVersion, MAX_CLI_VERSION),

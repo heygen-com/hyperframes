@@ -8,6 +8,7 @@ import {
   StudioSaveHttpError,
   StudioSaveNetworkError,
   createStudioSaveHttpError,
+  heldFileWordsOf,
   buildStudioSaveFailureProperties,
   getStudioSaveStatusCode,
   retryStudioSave,
@@ -30,6 +31,15 @@ describe("a file the server says is held or protected", () => {
     });
     expect(error.message).toBe(words);
     expect(error.statusCode).toBe(status);
+  });
+
+  it("reads a refused answer's words from a copy, leaving its body for the caller", async () => {
+    const response = new Response(JSON.stringify({ error: "x", why: "busy" }), { status: 423 });
+    expect(await heldFileWordsOf(response, "a/index.html")).toBe(
+      "index.html is open in another program. Close it there, then try again.",
+    );
+    expect(await response.json()).toEqual({ error: "x", why: "busy" });
+    expect(await heldFileWordsOf(new Response("boom", { status: 500 }), "index.html")).toBeNull();
   });
 
   it("keeps the status and body for any other answer, and without a path", async () => {
@@ -65,7 +75,7 @@ describe("studio save diagnostics", () => {
     });
   });
 
-  it("builds save_failure properties with stable diagnostics", () => {
+  it("builds save_failure properties as fixed codes, never the error's words", () => {
     const error = new StudioSaveHttpError("Failed to save index.html (503)", 503);
 
     expect(
@@ -78,7 +88,9 @@ describe("studio save diagnostics", () => {
       }),
     ).toEqual({
       source: "code_editor",
-      error_message: "Failed to save index.html (503)",
+      error_class: "StudioSaveHttpError",
+      error_key: "http",
+      server_why: "other",
       status_code: 503,
       file_path: "index.html",
       mutation_type: "put",
@@ -88,6 +100,21 @@ describe("studio save diagnostics", () => {
       target_selector: undefined,
       target_source_file: undefined,
     });
+  });
+
+  it("names the server's fixed refusal and keeps its words out", async () => {
+    const response = new Response(
+      JSON.stringify({ error: "forbidden path: compositions/x.html", why: "protected_path" }),
+      { status: 403 },
+    );
+    const error = await createStudioSaveHttpError(response, "Failed to save compositions/x.html");
+    const properties = buildStudioSaveFailureProperties({ source: "dom_edit", error });
+    expect(properties).toMatchObject({
+      error_key: "http",
+      server_why: "protected_path",
+      status_code: 403,
+    });
+    expect(JSON.stringify(properties)).not.toContain("compositions/x.html");
   });
 
   it("emits expected direct-edit refusals on edit_blocked", () => {
@@ -102,7 +129,8 @@ describe("studio save diagnostics", () => {
 
     expect(trackStudioEvent).toHaveBeenCalledWith("edit_blocked", {
       source: "gsap_commit",
-      error_message: error.message,
+      error_class: "Error",
+      error_key: "unknown",
       status_code: null,
       file_path: "index.html",
       mutation_type: "drag",

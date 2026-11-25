@@ -1,9 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
-import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { resolvePreviewSelection, standInFor } from "./previewSelection";
 import { manualOffsetMoveRevert } from "./gestureUndoRevert";
@@ -23,6 +21,12 @@ import {
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
 import { endResizeWithoutMember, resolveResizeDraftRect } from "./resizeDraft";
+import {
+  armPreviewDraftEnd,
+  drawPreviewDraft,
+  frameDraftTranslate,
+  takePreviewDraftEnds,
+} from "./previewDrafts";
 import { applySoftReloadFinalization } from "../../utils/gsapSoftReload";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState } from "./domEditOverlayGestures";
@@ -35,38 +39,14 @@ vi.mock("../../player/lib/previewChannel", async (importOriginal) => {
 const draftRequests = () =>
   vi.mocked(previewRequest).mock.calls.filter(([, kind]) => kind === "draft");
 
-const closers: Array<() => void> = [];
 beforeEach(() => {
   document.body.innerHTML = `<main data-composition-id="main"><div id="card" style="width: 200px; height: 100px"></div><div id="chip" style="translate: 30px 0px"></div><div id="centred" style="width: 200px; height: 100px; translate: -50% -50%"></div><div id="moved" data-hf-studio-original-inline-translate="" style="translate: 10px 20px"></div></main>`;
 });
 afterEach(() => {
-  closers.splice(0).forEach((close) => close());
   document.body.innerHTML = "";
 });
 
 /** A frame whose window refuses every read, as a cross-origin one does; its runtime serves this document. */
-function opaqueFrame(): HTMLIFrameElement {
-  const blocked = () => {
-    throw new DOMException("blocked", "SecurityError");
-  };
-  const target: Record<string, unknown> = {};
-  const frame = new Proxy(target, {
-    get: (_, key) => (key === "postMessage" ? target.postMessage : blocked()),
-  });
-  const iframe = detachedFakeIframe(frame);
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installEditingAgent(parent);
-  target.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
-  return iframe;
-}
 
 async function described(iframe: HTMLIFrameElement, selector: string) {
   const handle = (await queryPreviewElements(iframe, selector))!.matches[0]!.handle;
@@ -104,9 +84,24 @@ const shown = (element: HTMLElement) =>
       [...axis.matchAll(/-?[\d.]+px/g)].reduce((sum, [px]) => sum + parseFloat(px), 0),
     );
 
+// fails without the fix: the frame got the raw offset, where an open preview's drag writes it rounded to 3 decimals.
+describe("the translate a drag sends the frame", () => {
+  it("is the open preview's rounded offset less where the layer started", () => {
+    const member = {
+      element: document.createElement("div"),
+      initialOffset: { x: 10.5555, y: -3.25 },
+      baseGsap: { x: 0, y: 0 },
+    };
+    expect(frameDraftTranslate(member, { x: 30.55624, y: 4.0004 })).toEqual({
+      x: 30.556 - 10.5555,
+      y: 4 + 3.25,
+    });
+  });
+});
+
 describe("gesture drafts on an opaque frame", () => {
   it("moves the frame's element with a drag, and puts it back when the drag is cancelled", async () => {
-    const member = dragMember(await standIn(opaqueFrame(), "#card"));
+    const member = dragMember(await standIn(sealedPreviewFrame().iframe, "#card"));
     applyManualOffsetDragDraft(member, 10, 0);
     applyManualOffsetDragDraft(member, 40, 20);
     await vi.waitFor(() => expect(shown(card())).toEqual([80, 40]));
@@ -117,7 +112,7 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("holds a saved drag where it was dropped, and the next drag starts from there", async () => {
-    const element = await standIn(opaqueFrame(), "#card");
+    const element = await standIn(sealedPreviewFrame().iframe, "#card");
     const first = dragMember(element);
     applyManualOffsetDragCommit(first, 40, 20);
     endManualOffsetDragMembers([first]);
@@ -128,7 +123,7 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("draws a drag that grabs the layer again before the last save settles from where that one left it", async () => {
-    const element = await standIn(opaqueFrame(), "#card");
+    const element = await standIn(sealedPreviewFrame().iframe, "#card");
     const first = dragMember(element);
     applyManualOffsetDragCommit(first, 40, 20);
     await vi.waitFor(() => expect(shown(card())).toEqual([80, 40]));
@@ -143,7 +138,7 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("puts a move back on the frame when an undo painted over it does not go through", async () => {
-    const member = dragMember(await standIn(opaqueFrame(), "#card"));
+    const member = dragMember(await standIn(sealedPreviewFrame().iframe, "#card"));
     applyManualOffsetDragCommit(member, 40, 20);
     await vi.waitFor(() => expect(shown(card())).toEqual([80, 40]));
     const putBack = manualOffsetMoveRevert([member])();
@@ -155,7 +150,7 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("moves a % translate from the px the frame renders it at, and keeps the author's value to reset to", async () => {
-    const iframe = opaqueFrame();
+    const iframe = sealedPreviewFrame().iframe;
     const options = { activeCompositionPath: "index.html", isMasterView: false };
     const selection = await resolvePreviewSelection(
       iframe,
@@ -175,7 +170,7 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("refuses to move a % translate it has no rendered px for, rather than drop it", async () => {
-    const element = await standIn(opaqueFrame(), "#centred");
+    const element = await standIn(sealedPreviewFrame().iframe, "#centred");
     const made = createManualOffsetDragMember({
       key: "k",
       selection: { element } as DomEditSelection,
@@ -187,13 +182,13 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("keeps the translate the author had before Studio moved the layer as the one to reset to", async () => {
-    const element = await standIn(opaqueFrame(), "#moved");
+    const element = await standIn(sealedPreviewFrame().iframe, "#moved");
     applyManualOffsetDragCommit(dragMember(element), 40, 0);
     expect(element.getAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR)).toBe("");
   });
 
   it("starts a drag on a freshly loaded frame from the translate its element has", async () => {
-    const member = dragMember(await standIn(opaqueFrame(), "#chip"));
+    const member = dragMember(await standIn(sealedPreviewFrame().iframe, "#chip"));
     expect(member.initialOffset).toEqual({ x: 30, y: 0 });
     expect(applyManualOffsetDragCommit(member, 40, 0)).toEqual({ x: 110, y: 0 });
     const chip = document.getElementById("chip")!;
@@ -201,15 +196,85 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("sends one request at a time and draws only the latest of the moves that waited", async () => {
-    const member = dragMember(await standIn(opaqueFrame(), "#card"));
+    const member = dragMember(await standIn(sealedPreviewFrame().iframe, "#card"));
     vi.mocked(previewRequest).mockClear();
-    for (let dx = 2; dx <= 40; dx += 2) applyManualOffsetDragDraft(member, dx, 0);
+    applyManualOffsetDragDraft(member, 2, 0);
+    await Promise.resolve();
+    for (let dx = 4; dx <= 40; dx += 2) applyManualOffsetDragDraft(member, dx, 0);
     await vi.waitFor(() => expect(shown(card())).toEqual([80, 0]));
     expect(draftRequests()).toHaveLength(2);
   });
 
+  // fails without the fix: the step's offset left alone with the old size, and the frame painted that half state.
+  it("sends a resize step's offset and size in one message, so the frame never shows one without the other", async () => {
+    const iframe = sealedPreviewFrame().iframe;
+    const element = await standIn(iframe, "#card");
+    const g = {
+      ...{ originLeft: 10, originTop: 20, originWidth: 100, originHeight: 50 },
+      ...{ actualWidth: 200, actualHeight: 100, editScaleX: 0.5, editScaleY: 0.5 },
+      actualRotation: 0,
+      pathOffsetMember: dragMember(element),
+    } as GestureState;
+    vi.mocked(previewRequest).mockClear();
+    const size = { width: 300, height: 140 };
+    resolveResizeDraftRect(g, element, null, iframe, () => null, { wanted: size, written: size });
+    await vi.waitFor(() => expect(card().style.width).toBe("300px"));
+    const sent = draftRequests().map(([, , params]) => (params as { drafts: object[] }).drafts);
+    expect(sent).toEqual([[expect.objectContaining({ translate: { x: -50, y: -20 }, size })]]);
+  });
+
+  it("keeps what each draw before one send set: a later field wins, and a size drawn earlier stays", async () => {
+    const element = await standIn(sealedPreviewFrame().iframe, "#card");
+    vi.mocked(previewRequest).mockClear();
+    drawPreviewDraft(element, { size: null });
+    drawPreviewDraft(element, { size: { width: 260, height: 90 } });
+    drawPreviewDraft(element, { translate: { x: 4, y: 0 } });
+    drawPreviewDraft(element, { translate: { x: 7, y: 3 } });
+    await vi.waitFor(() => expect(card().style.width).toBe("260px"));
+    const sent = draftRequests().map(([, , params]) => (params as { drafts: object[] }).drafts);
+    expect(sent).toEqual([
+      [expect.objectContaining({ translate: { x: 7, y: 3 }, size: { width: 260, height: 90 } })],
+    ]);
+  });
+
+  // fails without the fix: a later sample replaced one still waiting, so a depth the recording saves never showed.
+  it("sends every recording sample that waited, in order, so none the recording saves goes unshown", async () => {
+    const element = await standIn(sealedPreviewFrame().iframe, "#card");
+    vi.mocked(previewRequest).mockClear();
+    drawPreviewDraft(element, { translate: null, props: { seconds: 1, values: { x: 1 } } });
+    await Promise.resolve();
+    drawPreviewDraft(element, { props: { seconds: 1.1, values: { z: 5 } } });
+    drawPreviewDraft(element, { props: { seconds: 1.2, values: { x: 3, y: 2 } } });
+    await vi.waitFor(() => expect(draftRequests()).toHaveLength(2));
+    const sent = draftRequests().map(([, , params]) =>
+      (params as { drafts: Array<{ props?: unknown }> }).drafts.map((draft) => draft.props),
+    );
+    expect(sent).toEqual([
+      [{ seconds: 1, values: { x: 1 } }],
+      [
+        { seconds: 1.1, values: { z: 5 } },
+        { seconds: 1.2, values: { x: 3, y: 2 } },
+      ],
+    ]);
+  });
+
+  it("sends a draw still waiting for its microtask before a save that carries its end", async () => {
+    const iframe = sealedPreviewFrame().iframe;
+    const element = await standIn(iframe, "#card");
+    const member = dragMember(element);
+    applyManualOffsetDragDraft(member, 10, 0);
+    await settled();
+    vi.mocked(previewRequest).mockClear();
+    applyManualOffsetDragDraft(member, 12, 0);
+    armPreviewDraftEnd(element, "#card");
+    const ends = takePreviewDraftEnds(iframe, ["#card"]);
+    // without the flush the draw still waits, so the end can't ride the save and a late draw could undo it
+    expect(draftRequests()).toHaveLength(1);
+    expect(ends).toEqual([expect.objectContaining({ end: "keep-size" })]);
+  });
+
   it("grows a resized box about its centre without measuring the frame, and draws it there", async () => {
-    const iframe = opaqueFrame();
+    const iframe = sealedPreviewFrame().iframe;
     const element = await standIn(iframe, "#card");
     const g = {
       ...{ originLeft: 10, originTop: 20, originWidth: 100, originHeight: 50 },
@@ -230,7 +295,7 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("keeps a saved resize with no offset member on the frame when a later restore runs", async () => {
-    const iframe = opaqueFrame();
+    const iframe = sealedPreviewFrame().iframe;
     const element = await standIn(iframe, "#card");
     const before = captureStudioBoxSize(element);
     const token = beginStudioManualEditGesture(element, "resize");
@@ -258,6 +323,6 @@ describe("gesture drafts on an opaque frame", () => {
   });
 
   it("reports a timeline rebind it cannot reach, so the caller syncs the preview another way", () => {
-    expect(applySoftReloadFinalization(opaqueFrame(), 1)).toBe(false);
+    expect(applySoftReloadFinalization(sealedPreviewFrame().iframe, 1)).toBe(false);
   });
 });

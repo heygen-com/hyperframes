@@ -1,14 +1,16 @@
 // Runtime-state reads over a preview frame's editing port; an opaque frame's window is out of reach.
 import {
   createEditingPortClient,
+  EditingPortError,
   type EditingParams,
   type EditingPortClient,
   type EditingRequestKind,
   type EditingResult,
 } from "@hyperframes/core/runtime/editing-port";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
+import { wellFormedClips } from "./manifestClips";
 
-const clients = new WeakMap<HTMLIFrameElement, EditingPortClient>();
+const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
 
 /** A frame whose window refuses Studio's reads; one with no window has nothing to reach either way. */
@@ -23,18 +25,23 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
   }
 }
 
-/** One client per frame load: the frame's next load disposes it. */
+/** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
-  if (open) return open;
+  if (open) return open.client;
   const client = createEditingPortClient({ iframe });
-  clients.set(iframe, client);
-  const onLoad = () => {
+  const retire = () => {
+    iframe.removeEventListener("load", retire);
     client.dispose();
-    if (clients.get(iframe) === client) clients.delete(iframe);
+    if (clients.get(iframe)?.client === client) clients.delete(iframe);
   };
-  iframe.addEventListener("load", onLoad, { once: true });
+  clients.set(iframe, { client, retire });
+  iframe.addEventListener("load", retire, { once: true });
   return client;
+}
+
+export function retirePreviewEditingClient(iframe: HTMLIFrameElement): void {
+  clients.get(iframe)?.retire();
 }
 
 export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | null): void {
@@ -54,7 +61,15 @@ export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | n
 
 export const AGENT_PROBE_MS = 1_000;
 
+const agents = new WeakMap<EditingPortClient, boolean>();
+
 async function agentConnected(client: EditingPortClient): Promise<boolean> {
+  const known = agents.get(client);
+  if (known !== undefined) return known;
+  client.ready.then(
+    () => agents.set(client, true),
+    () => agents.set(client, false),
+  );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const probe = new Promise<boolean>(
     (resolve) => (timer = setTimeout(resolve, AGENT_PROBE_MS, false)),
@@ -67,19 +82,39 @@ async function agentConnected(client: EditingPortClient): Promise<boolean> {
     probe,
   ]);
   clearTimeout(timer);
+  if (!agents.has(client)) agents.set(client, connected);
   return connected;
 }
 
-/** Null when no port comes within AGENT_PROBE_MS (a runtime without the editing agent), or on error. */
+export const PREVIEW_REJECTED = Symbol("preview-rejected");
+export const PREVIEW_STALE = Symbol("preview-stale");
+
+/** previewRequest's reply, keeping an error answer (PREVIEW_REJECTED) apart from no reply (null: no port, timeout). */
+export async function previewAnswer<K extends EditingRequestKind>(
+  iframe: HTMLIFrameElement,
+  kind: K,
+  params: EditingParams<K>,
+  timeoutMs?: number,
+  admit?: () => boolean,
+): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | typeof PREVIEW_STALE | null> {
+  const client = previewEditingClient(iframe);
+  if (!(await agentConnected(client))) return null;
+  if (admit && !admit()) return PREVIEW_STALE;
+  return client.request(kind, params, { timeoutMs }).catch((err: unknown) => {
+    const noReply =
+      err instanceof EditingPortError && (err.code === "timeout" || err.code === "disposed");
+    return noReply ? null : PREVIEW_REJECTED;
+  });
+}
+
 export async function previewRequest<K extends EditingRequestKind>(
   iframe: HTMLIFrameElement,
   kind: K,
   params: EditingParams<K>,
   timeoutMs?: number,
 ): Promise<EditingResult<K> | null> {
-  const client = previewEditingClient(iframe);
-  if (!(await agentConnected(client))) return null;
-  return client.request(kind, params, { timeoutMs }).catch(() => null);
+  const answer = await previewAnswer(iframe, kind, params, timeoutMs);
+  return answer === PREVIEW_REJECTED || answer === PREVIEW_STALE ? null : answer;
 }
 
 export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: number) {
@@ -94,7 +129,29 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   const { clips, durationInFrames } = manifest as Partial<ClipManifest>;
   if (!Array.isArray(clips) || typeof durationInFrames !== "number") return null;
   if (!Number.isFinite(durationInFrames)) return null;
-  return manifest as ClipManifest;
+  return { ...(manifest as ClipManifest), clips: wellFormedClips(clips) };
+}
+
+export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map<string, string>> {
+  const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
+  const pairs: unknown = snapshot?.clipParents;
+  const parents = new Map<string, string>();
+  if (!Array.isArray(pairs)) return parents;
+  for (const pair of pairs) {
+    if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
+      parents.set(pair[0], pair[1]);
+  }
+  return parents;
+}
+
+export async function previewConsoleErrors(
+  iframe: HTMLIFrameElement,
+  from: number,
+): Promise<{ errors: string[]; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "console-errors", { from });
+  const errors: unknown = reply?.errors;
+  if (!Array.isArray(errors) || typeof reply?.truncated !== "boolean") return null;
+  return { errors: errors.map(String), truncated: reply.truncated };
 }
 
 /** The runtime's computed `properties` for the element `target` names; null when it has none. */
@@ -105,7 +162,19 @@ export async function previewComputedStyles(
 ): Promise<Record<string, string> | null> {
   const element = typeof target === "string" ? { selector: target } : { handle: target.handle };
   const reply = await previewRequest(iframe, "computed-styles", { ...element, properties });
-  const styles: unknown = reply?.styles;
+  return readStyles(reply?.styles, properties);
+}
+
+export async function previewAuthoredStyles(
+  iframe: HTMLIFrameElement,
+  handle: string,
+  properties: string[],
+): Promise<Record<string, string> | null> {
+  const reply = await previewRequest(iframe, "authored-styles", { handle, properties });
+  return readStyles(reply?.styles, properties);
+}
+
+function readStyles(styles: unknown, properties: string[]): Record<string, string> | null {
   if (typeof styles !== "object" || styles === null) return null;
   const read: Record<string, string> = {};
   for (const name of properties) {
@@ -113,4 +182,45 @@ export async function previewComputedStyles(
     if (typeof value === "string" && value) read[name] = value;
   }
   return read;
+}
+
+type FontFaces = { families: string[]; ownFaces: Array<{ family: string; src: string }> };
+
+export async function previewFontFaces(iframe: HTMLIFrameElement): Promise<FontFaces | null> {
+  const reply = await previewRequest(iframe, "font-faces", {});
+  const { families, ownFaces } = reply ?? {};
+  const isText = (value: unknown): value is string => typeof value === "string";
+  const isFace = (face: unknown): face is FontFaces["ownFaces"][number] =>
+    typeof face === "object" &&
+    face !== null &&
+    isText((face as { family?: unknown }).family) &&
+    isText((face as { src?: unknown }).src);
+  if (!Array.isArray(families) || !families.every(isText)) return null;
+  if (!Array.isArray(ownFaces) || !ownFaces.every(isFace)) return null;
+  return { families, ownFaces: ownFaces.map(({ family, src }) => ({ family, src })) };
+}
+
+export async function previewAssetsUnloaded(iframe: HTMLIFrameElement): Promise<boolean | null> {
+  const reply = await previewRequest(iframe, "assets-unloaded", {});
+  return typeof reply?.unloaded === "boolean" ? reply.unloaded : null;
+}
+
+async function documentMarkup(iframe: HTMLIFrameElement) {
+  const reply = await previewRequest(iframe, "document-markup", {});
+  if (typeof reply?.html !== "string" || typeof reply.baseURI !== "string") return null;
+  return { html: reply.html, baseURI: reply.baseURI };
+}
+
+export async function previewDocumentMarkup(iframe: HTMLIFrameElement): Promise<string | null> {
+  return (await documentMarkup(iframe))?.html ?? null;
+}
+
+export async function previewDocumentCopy(iframe: HTMLIFrameElement): Promise<Document | null> {
+  const markup = await documentMarkup(iframe);
+  if (!markup) return null;
+  const doc = new DOMParser().parseFromString(markup.html, "text/html");
+  const base = doc.createElement("base");
+  base.setAttribute("href", markup.baseURI);
+  doc.head.prepend(base);
+  return doc;
 }

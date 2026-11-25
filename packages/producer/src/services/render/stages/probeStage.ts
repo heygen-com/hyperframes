@@ -29,10 +29,11 @@
 
 import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   type CaptureOptions,
   type CaptureSession,
+  type CaptureVideoMetadataHint,
   type CompositionLengthSource,
   type EngineConfig,
   type SubTimelineWaitMemo,
@@ -41,11 +42,14 @@ import {
   compositionRequiresWebGpu,
   createCaptureSession,
   deriveBeginFrameProbeTimeTicks,
+  extractMediaMetadata,
   getCompositionDuration,
   getCompositionLengthSource,
   initializeSession,
+  isMemoryExhaustionError,
   isTransientBrowserError,
   probeBeginFrameLiveness,
+  resolveProjectRelativeSrc,
   videoAudioId,
 } from "@hyperframes/engine";
 import {
@@ -56,6 +60,7 @@ import {
   shiftRateLane,
   sourceTimeAt,
   timeAtSourceTime,
+  terminalText,
 } from "@hyperframes/core";
 import { parseHostVariableValues, readDeclaredDefaults } from "@hyperframes/core/compiler";
 import { extractMediaSrcMutations } from "@hyperframes/parsers";
@@ -73,10 +78,12 @@ import {
   type FileServerHandle,
   VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
+import { hasClosedMediaTag } from "../../htmlTagScans.js";
+import { servedPath } from "../../servedPath.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
-  noteStaticDedupActivity,
+  noteCaptureActivity,
   projectBrowserEndToCompositionTimeline,
   resolveBrowserMediaEnd,
   writeCompiledArtifacts,
@@ -184,36 +191,125 @@ export function hasAutoStartVideos(html: string): boolean {
   return document.querySelector("video[data-hf-auto-start]") !== null;
 }
 
+type VariablesByComp = Record<string, Record<string, unknown>>;
+
+/** Ancestor steps one variable-media scan may take before it gives the conservative answer. */
+const MAX_VARIABLE_SCOPE_STEPS = 1_000_000;
+
+interface VariableScopeScan {
+  readonly ids: Map<Element, ReadonlySet<string>>;
+  steps: number;
+}
+
+function variableIdsOn(scan: VariableScopeScan, element: Element): ReadonlySet<string> {
+  let ids = scan.ids.get(element);
+  if (!ids) {
+    ids = new Set([
+      ...Object.keys(parseHostVariableValues(element)),
+      ...Object.keys(readDeclaredDefaults(element)),
+    ]);
+    scan.ids.set(element, ids);
+  }
+  return ids;
+}
+
+/** The compiled table of the element's composition scope; null once the scan is out of steps. */
+function scopedVariablesFor(
+  scan: VariableScopeScan,
+  element: Element,
+  variablesByComp: VariablesByComp,
+): Record<string, unknown> | undefined | null {
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    if (++scan.steps > MAX_VARIABLE_SCOPE_STEPS) return null;
+    if (!node.hasAttribute("data-composition-id")) continue;
+    const compId = node.getAttribute("data-composition-id")?.trim() ?? "";
+    return compId && Object.hasOwn(variablesByComp, compId) ? variablesByComp[compId] : undefined;
+  }
+  return undefined;
+}
+
+/** True when the variable has a value, or when the scan ran out of steps and cannot rule one out. */
 function variableHasValue(
+  scan: VariableScopeScan,
   element: Element,
   variableId: string,
   variables: Record<string, unknown> | undefined,
+  variablesByComp: VariablesByComp,
 ): boolean {
   if (variables && Object.hasOwn(variables, variableId)) return true;
+  const scoped = scopedVariablesFor(scan, element, variablesByComp);
+  if (scoped === null) return true;
+  if (scoped) return Object.hasOwn(scoped, variableId);
   for (let scope = element.parentElement; scope; scope = scope.parentElement) {
-    if (Object.hasOwn(parseHostVariableValues(scope), variableId)) return true;
-    if (Object.hasOwn(readDeclaredDefaults(scope), variableId)) return true;
+    if (++scan.steps > MAX_VARIABLE_SCOPE_STEPS) return true;
+    if (variableIdsOn(scan, scope).has(variableId)) return true;
   }
-  return Object.hasOwn(readDeclaredDefaults(element.ownerDocument.documentElement), variableId);
+  return variableIdsOn(scan, element.ownerDocument.documentElement).has(variableId);
 }
 
 /**
  * Variable-bound sources are resolved by the browser runtime, not the static compiler. Probe them whenever the
- * element's variable has a value (the render's, its mount's `data-variable-values`, a declared default).
+ * element's variable has a value (the render's, its scope's compiled table entry, its mount's, a declared default).
  */
 export function hasVariableBoundMedia(
   html: string,
   variables: Record<string, unknown> | undefined,
+  variablesByComp: VariablesByComp = {},
 ): boolean {
   const { document } = parseHTML(html);
+  const scan: VariableScopeScan = { ids: new Map(), steps: 0 };
   return Array.from(
     document.querySelectorAll(
       "img[data-var-src], audio[data-var-src], video[data-var-src], source[data-var-src]",
     ),
   ).some((element) => {
     const variableId = element.getAttribute("data-var-src")?.trim();
-    return Boolean(variableId && variableHasValue(element, variableId, variables));
+    return Boolean(
+      variableId && variableHasValue(scan, element, variableId, variables, variablesByComp),
+    );
   });
+}
+
+/**
+ * Videos the probe page holds at preload none with their FFmpeg size, as capture pages hold extracted ones:
+ * live, 40 clips of one 4K file stop Chrome answering. A runtime-set or sizeless source stays live.
+ */
+export async function probeVideoHold(
+  videos: readonly { id: string; src: string }[],
+  html: string,
+  projectDir: string,
+  compiledDir: string,
+): Promise<Pick<CaptureOptions, "skipReadinessVideoIds" | "videoMetadataHints">> {
+  const { document } = parseHTML(html);
+  const bound = new Set<string>();
+  for (const video of document.querySelectorAll("video")) {
+    if (!video.matches("[data-var-src]") && !video.querySelector("source[data-var-src]")) continue;
+    const id = video.getAttribute(MEDIA_RENDER_ID_ATTR) || video.getAttribute("id");
+    if (id) bound.add(id);
+  }
+  const hints = await Promise.all(
+    videos.map(async ({ id, src }): Promise<CaptureVideoMetadataHint | null> => {
+      if (bound.has(id) || /^https?:\/\//i.test(src)) return null;
+      try {
+        const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
+        const { width, height } = await extractMediaMetadata(path);
+        return width > 0 && height > 0 ? { id, width, height } : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const held = hints.filter((hint): hint is CaptureVideoMetadataHint => hint !== null);
+  return { skipReadinessVideoIds: held.map((hint) => hint.id), videoMetadataHints: held };
+}
+
+/** A probe page can serve capture only when capture holds every video it held: an unextracted one needs Chrome. */
+export function probeHoldFitsCapture(
+  probeHeld: readonly string[] | undefined,
+  captureHeld: readonly string[],
+): boolean {
+  const held = new Set(captureHeld);
+  return (probeHeld ?? []).every((id) => held.has(id));
 }
 
 /** Each clip's own start point as the compiled markup gives it, keyed like the browser probe. */
@@ -274,13 +370,76 @@ function reconcileBrowserMediaEnd(
   return existingEnd <= 0 ? projectedEnd : Math.min(existingEnd, projectedEnd);
 }
 
+/** Characters a static selector check may examine before the browser probe decides instead. */
+const MAX_MEDIA_SELECTOR_WORK = 1_000_000;
+const ATTRIBUTE_SELECTOR =
+  /\[\s*[\w-]+\s*(?:[~|^$*]?=\s*(?:"[^"\\]*"|'[^'\\]*'|[\w-]+)\s*(?:[is]\s*)?)?\]/g;
+const COMPOUND_SELECTORS = /^[\w\s#.*>,@-]+$/;
+
+/**
+ * The selector list with each attribute test as `@` and whitespace collapsed, when every part costs
+ * at most one check per ancestor: tags, ids, classes and attributes, joined by `>` and at most one
+ * descendant combinator. Null for anything else, such as pseudo-classes, sibling combinators or escapes.
+ */
+function cheapSelectorShape(selector: string): string | null {
+  const shape = selector.replace(ATTRIBUTE_SELECTOR, "@").trim();
+  if (!COMPOUND_SELECTORS.test(shape)) return null;
+  const collapsed = shape.replace(/\s+/g, " ").replace(/ ?([>,]) ?/g, "$1");
+  const parts = collapsed.split(",");
+  return parts.every((part) => part !== "" && part.split(" ").length <= 2) ? collapsed : null;
+}
+
+type ManagedMedia = { element: Element; depth: number; chainAttributeChars: number };
+
+const attributeChars = (element: Element): number =>
+  Array.from(element.attributes).reduce((sum, a) => sum + a.name.length + a.value.length + 1, 0);
+
+/** With `measure`, each entry also sums the attribute text of the element and its ancestors. */
+function managedMediaElements(document: Document, measure: boolean): ManagedMedia[] {
+  const managed: ManagedMedia[] = [];
+  type Pending = { element: Element; inMedia: boolean; depth: number; above: number };
+  const pending: Pending[] = Array.from(document.children, (element) => ({
+    element,
+    inMedia: false,
+    depth: 0,
+    above: 0,
+  }));
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const { element, depth } = next;
+    const chainAttributeChars = measure ? next.above + attributeChars(element) : 0;
+    const name = element.tagName.toLowerCase();
+    const isMedia = name === "video" || name === "audio";
+    if (isMedia || (next.inMedia && name === "source")) {
+      managed.push({ element, depth, chainAttributeChars });
+    }
+    for (const child of Array.from(element.children)) {
+      const inMedia = next.inMedia || isMedia;
+      pending.push({ element: child, inMedia, depth: depth + 1, above: chainAttributeChars });
+    }
+  }
+  return managed;
+}
+
+/** A match compiles the selector, tests each ancestor, and reads attributes once per simple test. */
+function selectorCheckCost(selector: string, measured: readonly ManagedMedia[]): number {
+  const shape = cheapSelectorShape(selector);
+  if (shape === null) return Infinity;
+  const tests = (shape.match(/[.#@]/g)?.length ?? 0) + shape.split(/[ >,]/).length;
+  let cost = 0;
+  for (const media of measured) {
+    cost += selector.length * (media.depth + 1) + tests * media.chainAttributeChars;
+    if (cost > MAX_MEDIA_SELECTOR_WORK) return cost;
+  }
+  return cost;
+}
+
 /**
  * Runtime-created media does not exist when the static compiler scans the HTML.
  * Launch a browser probe so discoverMediaFromBrowser can reconcile it before
  * extraction, even when the root duration is already known. External script
  * sources have no inline text to inspect and remain a known heuristic gap.
  */
-function hasRuntimeMediaChanges(html: string): boolean {
+export function hasRuntimeMediaChanges(html: string): boolean {
   const { document } = parseHTML(html);
   const scriptBodies = [...document.querySelectorAll("script")].map(
     (script) => script.textContent ?? "",
@@ -289,29 +448,35 @@ function hasRuntimeMediaChanges(html: string): boolean {
     (script) =>
       /\bcreateElement\s*\(\s*["'`](?:video|audio)["'`]\s*\)/i.test(script) ||
       /\bnew\s+(?:Audio|Video)\s*\(/i.test(script) ||
-      /<(?:video|audio)\b[^>]*>/i.test(script),
+      hasClosedMediaTag(script),
   );
   if (insertedMedia) return true;
 
-  const isManagedMedia = (element: Element): boolean => {
-    const name = element.tagName.toLowerCase();
-    if (name === "video" || name === "audio") return true;
-    return name === "source" && element.closest("video, audio") !== null;
-  };
+  const managed = managedMediaElements(document, false);
+  if (managed.length === 0) return false;
+  const managedIds = new Set(managed.map((m) => m.element.getAttribute("id")).filter(Boolean));
+  const selectors = new Set<string>();
+  let work = 0;
+  let measured: ManagedMedia[] | undefined;
   for (const script of scriptBodies) {
     for (const mutation of extractMediaSrcMutations(script)) {
-      try {
-        const id = /^#[A-Za-z_][\w-]*$/.test(mutation.selector) ? mutation.selector.slice(1) : null;
-        const idTarget = id ? document.getElementById(id) : null;
-        const targets = id
-          ? idTarget
-            ? [idTarget]
-            : []
-          : [...document.querySelectorAll(mutation.selector)];
-        if (targets.some(isManagedMedia)) return true;
-      } catch {
-        // Invalid selectors are diagnosed by lint and cannot prove a media target here.
+      const id = /^#[A-Za-z_][\w-]*$/.test(mutation.selector) ? mutation.selector.slice(1) : null;
+      if (id) {
+        if (managedIds.has(id)) return true;
+        continue;
       }
+      if (selectors.has(mutation.selector)) continue;
+      selectors.add(mutation.selector);
+      measured ??= managedMediaElements(document, true);
+      work += selectorCheckCost(mutation.selector, measured);
+      if (work > MAX_MEDIA_SELECTOR_WORK) return true;
+    }
+  }
+  for (const selector of selectors) {
+    try {
+      if (managed.some((media) => media.element.matches(selector))) return true;
+    } catch {
+      // A selector the matcher rejects throws in the page too, so it cannot target media.
     }
   }
   return false;
@@ -370,6 +535,23 @@ export function reportedLengthSource(
   return { from: "media", tag: source.tag, trimmed: source.trimmed, srcHash };
 }
 
+const STOPPED = "Preparing the render stopped while ";
+
+/** A failed page call says which probe step it was, so a hung one is named in the render's error. */
+async function probeStep<T>(step: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      !error.message.startsWith(STOPPED) &&
+      !isMemoryExhaustionError(error)
+    )
+      error.message = `${STOPPED}${step}: ${error.message}`;
+    throw error;
+  }
+}
+
 export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageResult> {
   const {
     projectDir,
@@ -406,7 +588,11 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     compiled.html,
     composition.audios.length,
   );
-  const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
+  const hasVariableMedia = hasVariableBoundMedia(
+    compiled.html,
+    job.config.variables,
+    compiled.variablesByComp,
+  );
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
   const needsBrowser =
     cfg.videoLayerPassthrough ||
@@ -444,6 +630,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         preHeadScripts: [VIRTUAL_TIME_SHIM],
         fps: job.config.fps,
         allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+        includeOutsideScripts: job.config.includeOutsideScripts,
       });
       assertNotAborted();
 
@@ -453,6 +640,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       // is on disk.
       const motionBlur = job.config.motionBlur;
       const captureOpts: CaptureOptions = {
+        ...(await probeVideoHold(
+          composition.videos,
+          compiled.html,
+          projectDir,
+          join(workDir, "compiled"),
+        )),
         recordReferenceBackground: input.recordReferenceBackground,
         width,
         height,
@@ -471,7 +664,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         staticDedupMemo,
         compositionHash: computeCompositionObservabilityHash(compiled.html),
         deferStaticDedup: true,
-        onStaticDedupActivity: () => noteStaticDedupActivity(job),
+        onStaticDedupActivity: () => noteCaptureActivity(job),
       };
 
       const PROBE_MAX_ATTEMPTS = 2;
@@ -492,7 +685,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             log.info(`Still waiting for browser initialization... (${elapsed}s elapsed)`);
           }, 30_000);
           try {
-            await initializeSession(probeSession);
+            const opening = probeSession;
+            await probeStep("opening the film in the browser", () => initializeSession(opening));
           } finally {
             clearInterval(heartbeat);
           }
@@ -586,7 +780,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             null,
             { ...probeCfg, forceScreenshot: true },
           );
-          await initializeSession(probeSession);
+          const reopening = probeSession;
+          await probeStep("opening the film in the browser", () => initializeSession(reopening));
           assertNotAborted();
           lastBrowserConsole = probeSession.browserConsoleBuffer;
         }
@@ -601,8 +796,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       // Discover root composition duration
       if (composition.duration <= 0) {
         log.info("Discovering composition duration...");
-        const discoveredDuration = await getCompositionDuration(session);
-        lengthSource = reportedLengthSource(await getCompositionLengthSource(session));
+        const discoveredDuration = await probeStep("reading the film's length", () =>
+          getCompositionDuration(session),
+        );
+        lengthSource = reportedLengthSource(
+          await probeStep("reading the film's length", () => getCompositionLengthSource(session)),
+        );
         assertNotAborted();
         log.info("Probed composition duration from browser", {
           discoveredDuration,
@@ -618,9 +817,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
 
       // Resolve unresolved composition durations via window.__timelines
       if (compiled.unresolvedCompositions.length > 0) {
-        const resolutions = await resolveCompositionDurations(
-          session.page,
-          compiled.unresolvedCompositions,
+        const resolutions = await probeStep("reading each scene's length", () =>
+          resolveCompositionDurations(session.page, compiled.unresolvedCompositions),
         );
         assertNotAborted();
         if (resolutions.length > 0) {
@@ -630,6 +828,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             projectDir,
             join(workDir, "downloads"),
             job.config.allowOutsideProjectAssets ? undefined : projectDir,
+            { includeScripts: job.config.includeOutsideScripts },
           );
           assertNotAborted();
           // Update composition metadata with re-parsed media
@@ -642,7 +841,9 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
 
       // Discover media elements from browser DOM (catches dynamically-set src)
       log.info("Discovering media assets from browser DOM...");
-      const browserMedia = await discoverMediaFromBrowser(session.page);
+      const browserMedia = await probeStep("listing the film's videos, audio and images", () =>
+        discoverMediaFromBrowser(session.page),
+      );
       assertNotAborted();
       if (browserMedia.length > 0) {
         const existingVideoIds = new Set(composition.videos.map((v) => v.id));
@@ -668,7 +869,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
               const existing = composition.videos.find((v) => v.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -718,7 +919,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             if (existingAudioIds.has(el.id)) {
               const existing = composition.audios.find((a) => a.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -796,11 +997,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         log.info("Discovering audio volume automation...", {
           audioCount: composition.audios.length,
         });
-        const automation = await discoverAudioVolumeAutomationFromTimeline(
-          session.page,
-          composition.audios.map((audio) => audio.id),
-          composition.duration,
-          fpsToNumber(job.config.fps),
+        const automation = await probeStep("reading the audio's volume changes", () =>
+          discoverAudioVolumeAutomationFromTimeline(
+            session.page,
+            composition.audios.map((audio) => audio.id),
+            composition.duration,
+            fpsToNumber(job.config.fps),
+          ),
         );
         assertNotAborted();
         if (automation.length > 0) {
@@ -822,9 +1025,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         log.info("Discovering video visibility windows...", {
           videoCount: composition.videos.length,
         });
-        const visibilityWindows = await discoverVideoVisibilityFromTimeline(
-          session.page,
-          composition.duration,
+        const visibilityWindows = await probeStep("finding when each video is on screen", () =>
+          discoverVideoVisibilityFromTimeline(session.page, composition.duration),
         );
         assertNotAborted();
 
@@ -941,7 +1143,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         failures: failedRequests.slice(0, 10),
       });
       for (const line of failedRequests.slice(0, 5)) {
-        console.warn(`[Render] Asset load failure: ${line}`);
+        console.warn(`[Render] Asset load failure: ${terminalText(line)}`);
       }
     }
   }

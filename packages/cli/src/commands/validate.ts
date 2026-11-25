@@ -1,4 +1,5 @@
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 // The media-metadata wait exists twice on purpose: once Node-side and once
 // inside a page.evaluate() body, which is serialized into the browser and
 // cannot import the Node helper. Line-level markers don't survive the clone
@@ -11,10 +12,14 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, splitStepsWrittenByCli } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
-import { resolveNaturalMediaTimelineDuration } from "@hyperframes/core";
+import {
+  resolveNaturalMediaTimelineDuration,
+  terminalText,
+  terminalTextDeep,
+} from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
@@ -139,6 +144,29 @@ export function raceMediaReady(
   });
 }
 
+function unmeasuredClipWarnings(unreadable: string[], unloadable: string[]): ConsoleEntry[] {
+  const warnings: ConsoleEntry[] = [];
+  if (unreadable.length > 0) {
+    warnings.push({
+      level: "warning",
+      text:
+        `Could not read the duration of ${unreadable.length} media element(s) within the ` +
+        `validate timeout (${unreadable.join(", ")}); their slot vs. source fit was not checked. ` +
+        `Re-run with a longer --timeout if the source is slow to load.`,
+    });
+  }
+  if (unloadable.length > 0) {
+    warnings.push({
+      level: "warning",
+      text:
+        `${unloadable.length} media element(s) failed to load (${unloadable.join(", ")}), so ` +
+        `their slot vs. source fit was not checked. A longer --timeout will not help: check ` +
+        `that the source exists and plays in Chrome.`,
+    });
+  }
+  return warnings;
+}
+
 /**
  * Flag `<audio>` clips whose source is meaningfully shorter than their
  * `data-duration` slot (the slot gets silently shortened in renders). Videos
@@ -204,6 +232,7 @@ export async function auditClipDurations(
       attributes: Record<string, string | null>;
       duration: number;
       loop: boolean;
+      failed: boolean;
     }> = [];
     for (const el of nodes) {
       const slot = parseFloat(el.getAttribute("data-duration") ?? "");
@@ -222,6 +251,7 @@ export async function auditClipDurations(
           ? el.duration
           : (reads.get(el)?.duration ?? Number.NaN),
         loop: el.loop || el.getAttribute("data-loop") === "true",
+        failed: Boolean(el.error ?? reads.get(el)?.error),
       });
     }
     return rows;
@@ -229,11 +259,12 @@ export async function auditClipDurations(
 
   const warnings: ConsoleEntry[] = [];
   const unreadable: string[] = [];
+  const unloadable: string[] = [];
   for (const clip of clips) {
     if (!Number.isFinite(clip.duration) || clip.duration <= 0) {
       // Metadata never loaded (e.g. slow remote source) — record so the gap in
       // coverage isn't silent, rather than dropping it.
-      unreadable.push(clip.id);
+      (clip.failed ? unloadable : unreadable).push(clip.id);
       continue;
     }
     const mediaSeconds = resolveNaturalMediaTimelineDuration(
@@ -251,15 +282,7 @@ export async function auditClipDurations(
         `Set data-duration to ~${mediaSeconds.toFixed(2)}s if that isn't intended.`,
     });
   }
-  if (unreadable.length > 0) {
-    warnings.push({
-      level: "warning",
-      text:
-        `Could not read the duration of ${unreadable.length} media element(s) within the ` +
-        `validate timeout (${unreadable.join(", ")}); their slot vs. source fit was not checked. ` +
-        `Re-run with a longer --timeout if the source is slow to load.`,
-    });
-  }
+  warnings.push(...unmeasuredClipWarnings(unreadable, unloadable));
   return warnings;
 }
 
@@ -456,11 +479,17 @@ async function validateInBrowser(
     const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
     const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
-    const chromeBrowser = await launchManagedBrowser(puppeteer.default, {
-      headless: true,
-      executablePath: browser.executablePath,
-      args: buildChromeArgs({ ...viewport, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
-    });
+    const chromeBrowser = await launchWithPageNetwork(server.url, (network) =>
+      launchManagedBrowser(puppeteer.default, {
+        headless: true,
+        executablePath: browser.executablePath,
+        userDataDir: network.userDataDir,
+        args: [
+          ...buildChromeArgs({ ...viewport, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
+          ...network.args,
+        ],
+      }),
+    );
 
     try {
       const page = await chromeBrowser.newPage();
@@ -614,7 +643,7 @@ function emitTextReport(
   console.log(`${c.accent("◇")}  ${formatTotals(errors, warnings, contrastFailures)}`);
 }
 
-function emitFailureReport(message: string, asJson: boolean): void {
+export function emitFailureReport(message: string, asJson: boolean): void {
   if (asJson) {
     console.log(
       JSON.stringify(
@@ -628,7 +657,9 @@ function emitFailureReport(message: string, asJson: boolean): void {
     );
     return;
   }
-  console.error(`${c.error("✗")} ${message}`);
+  const { summary, stepsWrittenByCli } = splitStepsWrittenByCli(message);
+  console.error(`${c.error("✗")} ${terminalText(summary)}`);
+  if (stepsWrittenByCli) console.error(`\n${stepsWrittenByCli}\n`);
 }
 
 export default defineCommand({
@@ -653,7 +684,7 @@ Examples:
     timeout: {
       type: "string",
       description:
-        "Ms to wait for scripts to settle and media to load (default: 3000). Also raises the " +
+        "Ms to wait for scripts to settle and media to load. Also raises the " +
         "page-navigation budget above its 10s floor when a slow external <script> needs longer.",
       default: "3000",
     },
@@ -666,7 +697,9 @@ Examples:
     const asJson = Boolean(args.json);
 
     if (!asJson) {
-      console.log(`${c.accent("◆")}  Validating ${c.accent(project.name)} in headless Chrome`);
+      console.log(
+        `${c.accent("◆")}  Validating ${c.accent(terminalText(project.name))} in headless Chrome`,
+      );
     }
 
     try {
@@ -682,7 +715,7 @@ Examples:
   },
 });
 
-function printValidationResult(
+export function printValidationResult(
   result: { errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] },
   asJson: boolean,
 ): number {
@@ -693,7 +726,8 @@ function printValidationResult(
   if (asJson) {
     emitJsonReport(errors, warnings, contrast, contrastFailures);
   } else {
-    emitTextReport(errors, warnings, contrastFailures, contrastPassed);
+    const shown = terminalTextDeep({ errors, warnings, contrastFailures, contrastPassed });
+    emitTextReport(shown.errors, shown.warnings, shown.contrastFailures, shown.contrastPassed);
   }
   return errors.length > 0 ? 1 : 0;
 }

@@ -87,6 +87,20 @@ describe("lint command exit handling", () => {
     expect(vi.mocked(process.exit)).not.toHaveBeenCalled();
     expect(consumeCommandResult().exitCode).toBe(1);
   });
+
+  it("names a file with control characters in it as visible escapes", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    lintProjectMock.mockResolvedValue({
+      results: [{ result: { findings: [] }, file: "a\u001b]0;t\u0007.html" }],
+      totalErrors: 0,
+      totalWarnings: 0,
+      totalInfos: 0,
+    });
+    await run({ json: false, verbose: false });
+    const header = String(log.mock.calls.find((call) => String(call[0]).includes("Linting"))?.[0]);
+    expect(header).toContain("proj/a\\x1b]0;t\\x07.html");
+    expect(header).not.toContain("\u001b]");
+  });
 });
 
 describe("lint --lint-verbose", () => {
@@ -166,4 +180,20 @@ describe("lint and compositions the project never mounts", () => {
       "compositions/b.html",
     ]);
   });
+});
+
+// fails without the fix: the failure line reached the terminal with its control characters live.
+it("prints a failure's control characters as visible escapes", async () => {
+  consumeCommandResult();
+  lintProjectMock.mockRejectedValue(new Error("Cannot read scenes/a\u001b[2Jb.html\nline two"));
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await run({ json: false, verbose: false });
+    expect(error.mock.calls.map((call) => call.join(" "))).toEqual([
+      "Cannot read scenes/a\\x1b[2Jb.html\nline two",
+    ]);
+  } finally {
+    error.mockRestore();
+    consumeCommandResult();
+  }
 });

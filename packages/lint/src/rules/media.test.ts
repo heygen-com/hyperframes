@@ -419,6 +419,35 @@ describe("media rules", () => {
     expect(audio).toContain('data-start="0"');
   });
 
+  // The parser keeps any tag name up to whitespace, `/` or `>`, so a wrapper's name can hold
+  // regex syntax. Its close tag must be matched literally: unescaped, `x(` throws and a
+  // nested-quantifier name backtracks exponentially over the text before the video.
+  it("matches a timed wrapper's close tag literally whatever its name holds", async () => {
+    const nestedCodes = async (body: string) =>
+      (
+        await lintHyperframeHtml(`
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">${body}</div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`)
+      ).findings.map((f) => f.code);
+    const video = `<video id="v" src="a.mp4" data-start="0" data-duration="5" muted></video>`;
+
+    expect(await nestedCodes(`<x( data-start="0" data-duration="5">${video}</x(>`)).toContain(
+      "video_nested_in_timed_element",
+    );
+    expect(await nestedCodes(`<x( data-start="0" data-duration="3"></x(>${video}`)).not.toContain(
+      "video_nested_in_timed_element",
+    );
+
+    const started = performance.now();
+    const backtracking = await nestedCodes(
+      `<a(b+)+c data-start="0" data-duration="5"><span title="</a${"b".repeat(29)}!"></span>${video}</a(b+)+c>`,
+    );
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(backtracking).toContain("video_nested_in_timed_element");
+  });
+
   it("allows audible video clips to omit muted when data-has-audio is true", async () => {
     const html = `
 <html><body>
@@ -465,6 +494,20 @@ describe("media rules", () => {
     expect(finding?.fixHint?.indexOf("data-has-audio")).toBeLessThan(
       finding?.fixHint?.indexOf("muted") ?? -1,
     );
+  });
+
+  it("video_audio_double_source still fires when the video starts negative", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v" data-start="-5" data-duration="3" data-has-audio="true" src="clip.mp4" playsinline></video>
+    <audio id="a" data-start="0" data-duration="2" src="clip.mp4"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const codes = result.findings.map((f) => f.code);
+    expect(codes).toContain("video_audio_double_source");
   });
 
   it("video_audio_double_source suggests removing the <audio> first", async () => {
@@ -914,13 +957,42 @@ describe("audio_volume_tween_overrides_gain", () => {
     expect(finding?.severity).toBe("warning");
     expect(finding?.elementId).toBe("bgm");
     expect(finding?.message).toMatch(/5\.8 dB/);
+    expect(finding?.fixHint).toContain("`volume: 1.949845`");
   });
 
-  it("warns about an attenuation the tween overrides, not just a boost", async () => {
+  it.each([
+    ["0.3", "0.3"],
+    ["1.95", "1.95"],
+    ["0.030000", "0.03"],
+    ["3e-2", "0.03"],
+  ])("preserves the authored gain %s in its advice", async (authored, gain) => {
     const res = await lintHyperframeHtml(
-      withScript(`data-volume="0.3"`, `tl.to("#bgm", { volume: 1 });`),
+      withScript(`data-volume="${authored}"`, `tl.to("#bgm", { volume: 1 });`),
     );
-    expect(res.findings.some((f) => f.code === "audio_volume_tween_overrides_gain")).toBe(true);
+    const finding = res.findings.find((f) => f.code === "audio_volume_tween_overrides_gain");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("bgm");
+    expect(finding?.fixHint).toContain(`\`volume: ${gain}\``);
+    expect(finding?.fixHint).toContain(
+      "measure the rendered file with `hyperframes audio render.mp4`",
+    );
+    expect(finding?.fixHint).toContain("keep `volume: 0` at endpoints intended to be silent");
+    expect(finding?.fixHint).not.toContain('data-volume="1"');
+    expect(finding?.fixHint).not.toContain("`volume: 1`");
+  });
+
+  it("names both deliberate choices for an authored silent clip", async () => {
+    const res = await lintHyperframeHtml(
+      withScript(`data-volume="0"`, `tl.fromTo("#bgm", { volume: 0 }, { volume: 1 });`),
+    );
+    const finding = res.findings.find((f) => f.code === "audio_volume_tween_overrides_gain");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.message).toContain("(silence)");
+    expect(finding?.fixHint).toContain('authored silent (`data-volume="0"`)');
+    expect(finding?.fixHint).toContain("To keep it silent, drop the volume tween");
+    expect(finding?.fixHint).toContain('to let the tween carry the level, set `data-volume="1"`');
+    expect(finding?.fixHint).toContain("choose its absolute volume targets deliberately");
+    expect(finding?.fixHint).toContain("hyperframes audio render.mp4");
   });
 
   it("stays quiet on the fade the docs recommend, which carries no data-volume", async () => {

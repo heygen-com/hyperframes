@@ -1,8 +1,14 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   fingerprintElementId,
+  isHttpUrl,
+  isInsideAssetRoots,
+  isNotImagePayload,
   isNotMediaPayload,
+  isPrivateUnderAssetRoots,
+  isStructurallyIncompletePngError,
+  playlistLeavesItsFolder,
   NotMediaPayloadError,
   probeMediaProfile,
   resolveProjectRelativeSrc,
@@ -12,7 +18,7 @@ import {
   type VideoElement,
 } from "@hyperframes/engine";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
-import { escapesAssetRoot, leftOutOfRender, outsideAssetRefusal } from "../utils/paths.js";
+import { leftOutOfRender, outsideAssetRefusal } from "../utils/paths.js";
 import type { ProducerLogger } from "../logger.js";
 
 export const ASSET_MEDIA_TYPE_MISMATCH = "ASSET_MEDIA_TYPE_MISMATCH" as const;
@@ -28,8 +34,11 @@ export interface AssetMediaTypeMismatch {
 }
 
 export class AssetMediaTypeMismatchError extends Error {
+  // fallow-ignore-next-line unused-class-member
   readonly code = ASSET_MEDIA_TYPE_MISMATCH;
+  // fallow-ignore-next-line unused-class-member
   readonly owner = "user" as const;
+  // fallow-ignore-next-line unused-class-member
   readonly retryable = false as const;
   readonly mismatches: readonly AssetMediaTypeMismatch[];
 
@@ -87,11 +96,11 @@ interface MediaReference {
   expected: AssetElementMediaType;
 }
 
-function isRemoteOrInlineSource(src: string): boolean {
-  return /^(?:https?:|data:|blob:|about:)/i.test(src.trim());
+export function mediaAssetRoots(projectDir: string, compiledDir: string): string[] {
+  return [projectDir, compiledDir, join(dirname(compiledDir), "downloads")];
 }
 
-/** Treats local media outside the project, compiled and download dirs as missing: no probe or extraction opens it. */
+/** Treats local media outside the project, compiled and download dirs, or private there, as missing: none is opened. */
 export function dropMediaOutsideProject(input: {
   projectDir: string;
   workDir: string;
@@ -101,11 +110,15 @@ export function dropMediaOutsideProject(input: {
 }): void {
   const { projectDir, workDir, composition, log } = input;
   const compiledDir = join(workDir, "compiled");
-  const roots = [projectDir, compiledDir, join(workDir, "downloads")];
+  const roots = mediaAssetRoots(projectDir, compiledDir);
   const staysInside = ({ id, src }: { id: string; src: string }) => {
-    if (!src || isRemoteOrInlineSource(src)) return true;
+    if (!src || isHttpUrl(src)) return true;
     const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
-    if (roots.some((root) => !escapesAssetRoot(path, root))) return true;
+    if (isPrivateUnderAssetRoots(path, roots, input.allowOutsideProjectAssets)) {
+      log.warn(`[Render] Media "${id}" source is missing: it is a private project file`, { src });
+      return false;
+    }
+    if (isInsideAssetRoots(path, roots)) return true;
     if (input.allowOutsideProjectAssets) {
       const refusal = outsideAssetRefusal(projectDir, path);
       if (refusal) log.warn(`[Render] ${leftOutOfRender(`Media "${id}"`, src, refusal)}`);
@@ -119,11 +132,34 @@ export function dropMediaOutsideProject(input: {
   composition.images = composition.images.filter(staysInside);
 }
 
+// STUDIO-5433: the one place every local src is seen whatever its timing. Documents are refused under <video> only
+// (a bad audio track is per-element in audioMixer), and non-SVG markup or JSON under <img>; a leaving playlist, under any.
+async function notMediaReferences(
+  path: string,
+  references: MediaReference[],
+): Promise<MediaReference[]> {
+  const videos = references.filter((ref) => ref.expected === "video");
+  if (videos.length > 0 && (await isNotMediaPayload(path))) return videos;
+  const images = references.filter((ref) => ref.expected === "image");
+  if (images.length > 0 && (await isNotImagePayload(path))) return images;
+  return (await playlistLeavesItsFolder(path)) ? references : [];
+}
+
+function pngCutShort(references: MediaReference[]): AssetMediaTypeMismatch[] {
+  return references
+    .filter((reference) => reference.expected === "video")
+    .map((reference) => ({
+      expected: "video",
+      detected: "image",
+      elementFingerprint: fingerprintElementId(reference.id),
+    }));
+}
+
 /**
- * Fail early when a successfully-probed local asset cannot satisfy the HTML
- * element that owns it. Missing, corrupt, remote-at-runtime, and unprobeable
- * inputs deliberately remain untouched so their existing source/download/
- * invalid-media classification is preserved downstream.
+ * Fail early when a probed local asset cannot satisfy its HTML element, a PNG
+ * cut short under a <video> included. Other missing, corrupt, remote-at-runtime
+ * and unprobeable inputs deliberately remain untouched so their existing
+ * source/download/invalid-media classification is preserved downstream.
  */
 export async function preflightCompositionAssetMediaTypes(input: {
   projectDir: string;
@@ -151,7 +187,7 @@ export async function preflightCompositionAssetMediaTypes(input: {
 
   const byPath = new Map<string, MediaReference[]>();
   for (const reference of references) {
-    if (!reference.src || isRemoteOrInlineSource(reference.src)) continue;
+    if (!reference.src || isHttpUrl(reference.src)) continue;
     const resolvedPath = resolveProjectRelativeSrc(
       reference.src,
       input.projectDir,
@@ -167,21 +203,9 @@ export async function preflightCompositionAssetMediaTypes(input: {
   await Promise.all(
     entries.map(([resolvedPath, pathReferences]) =>
       withMediaProbeSlot(async () => {
-        // STUDIO-5433. This preflight is the only place every local media src is
-        // seen regardless of its authored timing, so it is where a document
-        // payload behind a `data-end` video gets caught — the compiler's own
-        // sniff only runs for elements whose duration it has to resolve.
-        //
-        // Video only, deliberately. An `<img>` may legitimately be an SVG,
-        // which ffprobe reads through its `svg_pipe` demuxer. And a bad audio
-        // source is non-fatal by existing policy (audioStage ships the render
-        // without the track and reports `audioError`), so it is classified
-        // per-element in audioMixer instead of aborted here.
-        const sniffableReferences = pathReferences.filter((ref) => ref.expected === "video");
-        if (sniffableReferences.length > 0 && (await isNotMediaPayload(resolvedPath))) {
-          notMediaFingerprints.push(
-            ...sniffableReferences.map((ref) => fingerprintElementId(ref.id)),
-          );
+        const refused = await notMediaReferences(resolvedPath, pathReferences);
+        if (refused.length > 0) {
+          notMediaFingerprints.push(...refused.map((ref) => fingerprintElementId(ref.id)));
           return;
         }
 
@@ -190,6 +214,8 @@ export async function preflightCompositionAssetMediaTypes(input: {
           profile = await probeMediaProfile(resolvedPath, { signal: input.signal });
         } catch (error) {
           if (input.signal?.aborted) throw input.signal.reason ?? error;
+          if (isStructurallyIncompletePngError(error))
+            mismatches.push(...pngCutShort(pathReferences));
           return;
         }
         for (const reference of pathReferences) {

@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -17,6 +18,65 @@ import { fileURLToPath } from "node:url";
 // The stub stands in for the `hyperframes` CLI the caller hands over in HYPERFRAMES_CLI_ENTRY,
 // run as `transcribe <in> --dir <dir> ...`: it records its args, writes the CLI's flat array and
 // prints the CLI's --json line naming `cliEngine`.
+// fails without the fix: parakeet-mlx started in the project, and it reads the default model id
+// mlx-community/parakeet-tdt-0.6b-v3 as a folder when the working directory has one.
+test(
+  "parakeet-mlx starts in the home folder; a ./ model path still means the caller's folder",
+  { skip: process.platform === "win32" ? "the stand-in runner is an sh script" : false },
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "media-use-parakeet-cwd-"));
+    try {
+      const home = join(root, "home");
+      const project = join(root, "project");
+      mkdirSync(home);
+      mkdirSync(join(project, "mlx-community", "parakeet-tdt-0.6b-v3"), { recursive: true });
+      const runner = join(root, "parakeet-mlx");
+      const record = join(root, "record");
+      writeFileSync(
+        runner,
+        `#!/bin/sh\nprintf '%s\\n' "$PWD" "$3" > "${record}"\n` +
+          `printf '{"text":"a","sentences":[]}' > "$7/in.json"\n`,
+      );
+      chmodSync(runner, 0o755);
+      writeFileSync(join(project, "in.wav"), "");
+      const script = fileURLToPath(new URL("./transcribe.mjs", import.meta.url));
+      const run = (extra = [], parakeet = runner) => {
+        execFileSync(
+          process.execPath,
+          [script, "--input", "in.wav", "--engine", "parakeet", ...extra],
+          {
+            cwd: project,
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              HOME: home,
+              HYPERFRAMES_PARAKEET: parakeet,
+              HYPERFRAMES_MEDIA_HOME: join(root, "media"),
+              HYPERFRAMES_NO_TELEMETRY: "1",
+            },
+          },
+        );
+        return readFileSync(record, "utf8").trimEnd().split("\n");
+      };
+      assert.deepEqual(run(), [realpathSync(home), "mlx-community/parakeet-tdt-0.6b-v3"]);
+      assert.deepEqual(run(["--model", "./models/mine"]), [
+        realpathSync(home),
+        join(realpathSync(project), "models", "mine"),
+      ]);
+      // A runner override written relative to the project still names the project's copy.
+      writeFileSync(join(project, "parakeet-mlx"), readFileSync(runner));
+      chmodSync(join(project, "parakeet-mlx"), 0o755);
+      rmSync(runner);
+      assert.deepEqual(run([], "./parakeet-mlx"), [
+        realpathSync(home),
+        "mlx-community/parakeet-tdt-0.6b-v3",
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
 function runScript(engine, cliEngine) {
   const root = mkdtempSync(join(tmpdir(), "media-use-transcribe-"));
   try {
@@ -148,6 +208,49 @@ test(
       assert.equal(res.status, 1);
       assert.match(JSON.parse(res.stdout.trim()).error, /HYPERFRAMES_CLI_ENTRY/);
       assert.equal(existsSync(marker), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+// fails without the fix: the transcript went through a link at `<out>.tmp-<pid>`, onto a file outside.
+test(
+  "the transcript is never written through a link beside it",
+  { skip: process.platform === "win32" },
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "media-use-transcribe-link-"));
+    try {
+      const outside = join(root, "outside.txt");
+      writeFileSync(outside, "keep me");
+      const out = join(root, "in.transcribe.json");
+      const cli = join(root, "cli.mjs");
+      // The stand-in runs as this script's child, so its parent pid is the one the temp name would use.
+      writeFileSync(
+        cli,
+        `import { symlinkSync, writeFileSync } from "node:fs";\nconst a = process.argv.slice(2);\n` +
+          `symlinkSync(${JSON.stringify(outside)}, ${JSON.stringify(out)} + ".tmp-" + process.ppid);\n` +
+          `writeFileSync(a[a.indexOf("--dir") + 1] + "/transcript.json", '[{"text":"a","start":0,"end":1}]');\n` +
+          `console.log('{"ok":true,"engine":"whisper"}');\n`,
+      );
+      writeFileSync(join(root, "in.wav"), "");
+      const script = fileURLToPath(new URL("./transcribe.mjs", import.meta.url));
+      const env = { ...process.env, HYPERFRAMES_CLI_ENTRY: cli, HOME: root };
+      delete env.HYPERFRAMES_PARAKEET;
+      execFileSync(
+        process.execPath,
+        [script, "--input", join(root, "in.wav"), "--engine", "whisper", "--json"],
+        {
+          encoding: "utf8",
+          env: {
+            ...env,
+            HYPERFRAMES_MEDIA_HOME: join(root, "home"),
+            HYPERFRAMES_NO_TELEMETRY: "1",
+          },
+        },
+      );
+      assert.equal(readFileSync(outside, "utf8"), "keep me");
+      assert.match(readFileSync(out, "utf8"), /"text"/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

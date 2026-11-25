@@ -90,12 +90,12 @@ describe.skipIf(process.platform === "win32")("the tool's own folders inside a p
     expect(listing(outside)).toEqual(["notes.txt"]);
   });
 
-  it("keep a new history id from creating the target of a dangling link", () => {
+  it("keep a new history id from creating the target of a dangling link", async () => {
     const { project, outside } = projectWithOutsideFolder();
     mkdirSync(join(project, ".hyperframes"));
     symlinkSync(join(outside, "planted"), join(project, ".hyperframes", "history-id"));
 
-    const id = projectHistoryId(project, tempDir());
+    const id = await projectHistoryId(project, tempDir());
 
     expect(listing(outside)).toEqual(["notes.txt"]);
     expect(readFileSync(join(project, ".hyperframes", "history-id"), "utf-8")).toBe(`${id}\n`);
@@ -117,7 +117,7 @@ describe.skipIf(process.platform === "win32")("the tool's own folders inside a p
     mkdirSync(join(project, ".hyperframes"));
     symlinkSync(outside, join(project, ".hyperframes", "preview"));
 
-    createPreviewDocumentStore(project, "salt").write("key", "<html></html>");
+    createPreviewDocumentStore(project, "salt", "secret").write("key", "<html></html>");
 
     expect(listing(outside)).toEqual(["notes.txt"]);
   });

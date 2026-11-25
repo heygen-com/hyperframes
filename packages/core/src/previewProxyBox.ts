@@ -57,6 +57,9 @@ export type PreviewSourceFacts = {
   codec?: string;
   frameRate?: number;
   variableFrameRate?: boolean;
+  sampleAspectRatio?: number;
+  rotation?: number;
+  hasAlpha?: boolean;
 };
 
 export const HEAVY_PIXEL_SHARE = 0.5;
@@ -66,10 +69,20 @@ export function scalePreviewProxyBox(box: PreviewProxyBox, level: PreviewQuality
   return quantizePreviewProxyBox(box.width * level, box.height * level) ?? box;
 }
 
+export function isOversizedForPreview(facts: PreviewSourceFacts, box: PreviewProxyBox): boolean {
+  return box.width * box.height <= HEAVY_PIXEL_SHARE * facts.width * facts.height;
+}
+
 export function isHeavyForPreview(facts: PreviewSourceFacts, copyBox: PreviewProxyBox): boolean {
   return (
-    copyBox.width * copyBox.height <= HEAVY_PIXEL_SHARE * facts.width * facts.height ||
-    facts.bitDepth > 8 ||
-    facts.bitrate >= HEAVY_BITRATE
+    isOversizedForPreview(facts, copyBox) || facts.bitDepth > 8 || facts.bitrate >= HEAVY_BITRATE
   );
+}
+
+export function wantsLighterCopy(
+  facts: PreviewSourceFacts,
+  box: PreviewProxyBox,
+  level: PreviewQuality,
+): boolean {
+  return level < 1 ? isHeavyForPreview(facts, box) : isOversizedForPreview(facts, box);
 }

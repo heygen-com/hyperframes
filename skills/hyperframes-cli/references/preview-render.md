@@ -1,4 +1,4 @@
-# preview, play, render, publish
+# preview, play, render, share, publish
 
 Serve, render, and share commands.
 
@@ -189,14 +189,10 @@ Hit a reproducible bug? Add `--file-issue` (optionally `--dir <project>` and `--
 
 ## publish
 
-```bash
-npx hyperframes publish              # upload current project privately, return stable URL
-npx hyperframes publish ./my-video   # specific project
-npx hyperframes publish --public     # allow anyone with the URL to view the claimed project
-npx hyperframes publish --yes        # skip the confirmation prompt (scripts/CI)
-```
-
-Uploads the project's source (HTML + assets) and returns a stable hosted URL that renders in the browser. A fresh publish is private by default and requires authentication plus access to view. Use `--public` to allow anyone with the URL to view the claimed project. Updating a project in place keeps its existing visibility: re-publishing without `--public` never turns a public project private. `--yes` only skips the confirmation prompt; it does not change visibility. A signed-out publish returns an authentication-required claim URL rather than a public playback URL. Lint findings are surfaced before upload but do not block.
+`publish` is deprecated for new projects. For a new review, follow
+[Share a video for review](#share-a-video-for-review). To update a project at
+its existing published URL, sign in with `hyperframes auth login` and run
+`hyperframes publish --update <url-or-id>`.
 
 ## Where to render, and skill attribution
 
@@ -216,6 +212,11 @@ calling the video ready to watch. Re-running `share` retrieves the existing
 link; `share --update` explicitly renders/uploads changed content. Five retained
 free projects are counted per workspace across CLI and Desktop; versions do
 not consume slots and turning a link off does not release a slot.
+
+On `review_confirmation_required`, show the user the review the error names:
+its title, and its link from `hyperframes share --status --json` when it has
+one. Ask before re-running with `--review <review-id>`. Never pass `--review`
+on your own.
 
 `publish` uploads source to legacy `/p/` pages. It is not a review share alias.
 During the announced 60-day window its old behavior stays available with a

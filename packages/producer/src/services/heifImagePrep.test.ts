@@ -141,6 +141,26 @@ describe("prepareHeifImageInputs", () => {
     expectUprightPhoto(prepared!.outputPath);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "forwards the abort signal to the transcode",
+    async () => {
+      const d = project({ "photo.heic": readFileSync(FIXTURE) });
+      const controller = new AbortController();
+      const calls: HeifTranscodeRequest[] = [];
+
+      await prepareHeifImageInputs('<img src="photo.heic">', {
+        ...d,
+        signal: controller.signal,
+        transcode: async (request) => {
+          calls.push(request);
+          writeFileSync(request.outputPath, "jpg");
+        },
+      });
+
+      expect(calls[0]?.signal).toBe(controller.signal);
+    },
+  );
+
   it("converts an inline data URL", async () => {
     const d = project({});
     const uri = `data:image/heic;base64,${readFileSync(FIXTURE).toString("base64")}`;
@@ -239,6 +259,29 @@ describe("prepareHeifImageInputs", () => {
     };
     expect(primaryGrid(probed)?.width).toBe(222);
     expect(primaryGrid({ stream_groups: [grid(5)] })?.width).toBe(5);
+  });
+
+  it("reads no HEIC outside the project unless the caller allows outside files", async () => {
+    const d = project({});
+    const outside = join(d.base, "Pictures", "IMG_0001.HEIC");
+    spawnSync("mkdir", ["-p", join(outside, "..")]);
+    writeFileSync(outside, readFileSync(FIXTURE));
+    const html = `<img src="../Pictures/IMG_0001.HEIC"><img src="${outside}">`;
+    const { calls, transcode } = countingTranscode();
+
+    const contained = await prepareHeifImageInputs(html, { ...d, transcode });
+    expect(contained.html).toBe(html);
+    expect(contained.preparedImages).toEqual([]);
+    expect(calls).toHaveLength(0);
+    expect(existsSync(d.outputDir)).toBe(false);
+
+    const trusted = await prepareHeifImageInputs(html, {
+      ...d,
+      transcode,
+      allowOutsideFiles: true,
+    });
+    expect(trusted.preparedImages).toHaveLength(2);
+    expect(trusted.html).not.toContain("IMG_0001.HEIC");
   });
 
   it("spawns nothing and writes nothing without a HEIC image", async () => {

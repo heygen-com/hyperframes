@@ -1,0 +1,15 @@
+name: Cache opencv.js for the CLI tests
+description: >-
+  Restore opencv.js and the face models into ~/.cache/hyperframes/opencv, where the CLI tests copy them from.
+  On a cache miss, fetch them once with opencv.ts's own pins, before any test runs.
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ~/.cache/hyperframes/opencv
+        key: opencv-${{ runner.os }}-${{ hashFiles('packages/cli/src/measure/opencv.ts') }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: node --import tsx packages/cli/scripts/prepare-test-opencv.mjs

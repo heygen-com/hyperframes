@@ -35,6 +35,32 @@ function captured(capture) {
   return /** @type {Extract<typeof capture, { at: "captured" }>} */ (capture);
 }
 
+test("capture skips a private directory and a symlink with the same name", async (t) => {
+  const root = await project({ "index.html": "project", "actual/.ssh/config": "fixture" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "linked"));
+  await symlink(join(root, "actual/.ssh"), join(root, "linked/.ssh"), "dir");
+  const result = captured(await captureProject(root));
+  assert.deepEqual(
+    result.manifest.document.files.map((file) => file.path),
+    ["index.html"],
+  );
+});
+
+test("a private filename excludes a file but preserves authored assets in a folder of that name", async (t) => {
+  const root = await project({
+    "index.html": "project",
+    "credentials.json": "private fixture",
+    "assets/credentials.json/cover.svg": "<svg/>",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { manifest } = captured(await captureProject(root));
+  assert.deepEqual(
+    manifest.document.files.map((file) => file.path),
+    ["assets/credentials.json/cover.svg", "index.html"],
+  );
+});
+
 test("a capture lists portable files with their hashes and leaves out what the policy excludes", async () => {
   const root = await project({
     "index.html": "<html></html>",
@@ -56,6 +82,24 @@ test("a capture lists portable files with their hashes and leaves out what the p
   ]);
   assert.match(manifest.sha256, /^[0-9a-f]{64}$/);
   assert.deepEqual([waiting, skippedLinks], [[], []]);
+});
+
+// fails without the fix: the .hyperframes rules matched only at the project root, so a copied project's records travelled.
+test("a .hyperframes folder below the root stays out, while the root's Studio files still travel", async () => {
+  const root = await project({
+    "index.html": "<html></html>",
+    ".hyperframes/studio-motion.json": "{}",
+    ".hyperframes/agent-runs.jsonl": "{}",
+    "sub/index.html": "<html></html>",
+    "sub/.hyperframes/agent-runs.jsonl": "{}",
+    "sub/.hyperframes/studio-motion.json": "{}",
+    "compositions/x/.HyperFrames/app-history.jsonl": "{}",
+  });
+  const { manifest } = captured(await captureProject(root));
+  assert.deepEqual(
+    manifest.document.files.map((file) => file.path),
+    [".hyperframes/studio-motion.json", "index.html", "sub/index.html"],
+  );
 });
 
 test("a render output the CLI recorded outside renders/ stays out", async () => {

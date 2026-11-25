@@ -22,7 +22,9 @@
  */
 import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { replaceFileWith } from "./lib/link-safe-write.mjs";
+import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
 
 const N1 = 9,
   PAD1 = 0.4; // stage 1: strips per axis, padding in STRIP units
@@ -32,10 +34,17 @@ const GREEN = "0x3CDC5A",
   BLUE = "0x3C82FF",
   RED = "0xFF3232";
 
-const ff = (args) =>
-  execFileSync("ffmpeg", ["-v", "error", "-y", ...args], {
-    stdio: ["ignore", "ignore", "inherit"],
-  });
+// A PNG written beside `dst` and renamed over it: a link already at `dst` is replaced, never written through.
+const ff = (args, dst) =>
+  replaceFileWith(dst, (temp) =>
+    execFileSync(
+      "ffmpeg",
+      ["-v", "error", "-y", ...args, "-f", "image2", "-c:v", "png", "-update", "1", temp],
+      {
+        stdio: ["ignore", "ignore", "inherit"],
+      },
+    ),
+  );
 function probe(img) {
   const out = execFileSync("ffprobe", [
     "-v",
@@ -54,31 +63,25 @@ function probe(img) {
   const [w, h] = out.split(",").map(Number);
   return { w, h };
 }
-function font() {
-  const dst = "/tmp/locate-font.ttf";
-  if (!existsSync(dst)) {
-    for (const c of [
-      "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-      "/System/Library/Fonts/Supplemental/Arial.ttf",
-      "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    ]) {
-      if (existsSync(c)) {
-        copyFileSync(c, dst);
-        break;
-      }
-    }
-  }
-  return dst;
+const FONT_FILES = [
+  "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+  "/System/Library/Fonts/Supplemental/Arial.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+];
+// ffmpeg reads the system font in place; with none found, drawtext falls back to its default font.
+function fontOption() {
+  const file = FONT_FILES.find((candidate) => existsSync(candidate));
+  return file ? `fontfile='${file}':` : "";
 }
 function gridFilters(w, h, n, axis, fz) {
-  const F = font(),
+  const F = fontOption(),
     fs = [];
   if (axis === "v" || axis === "both") {
     for (let i = 1; i < n; i++)
       fs.push(`drawbox=x=${Math.round((i * w) / n)}:y=0:w=2:h=${h}:color=${GREEN}@0.8:t=fill`);
     for (let i = 0; i < n; i++)
       fs.push(
-        `drawtext=fontfile=${F}:text='${i + 1}':x=${Math.round(((i + 0.5) * w) / n - fz * 0.3)}:y=6:fontsize=${fz}:fontcolor=black:box=1:boxcolor=white@0.95:boxborderw=5`,
+        `drawtext=${F}text='${i + 1}':x=${Math.round(((i + 0.5) * w) / n - fz * 0.3)}:y=6:fontsize=${fz}:fontcolor=black:box=1:boxcolor=white@0.95:boxborderw=5`,
       );
   }
   if (axis === "h" || axis === "both") {
@@ -86,7 +89,7 @@ function gridFilters(w, h, n, axis, fz) {
       fs.push(`drawbox=x=0:y=${Math.round((j * h) / n)}:w=${w}:h=2:color=${BLUE}@0.8:t=fill`);
     for (let j = 0; j < n; j++)
       fs.push(
-        `drawtext=fontfile=${F}:text='${j + 1}':x=6:y=${Math.round(((j + 0.5) * h) / n - fz * 0.5)}:fontsize=${fz}:fontcolor=black:box=1:boxcolor=white@0.95:boxborderw=5`,
+        `drawtext=${F}text='${j + 1}':x=6:y=${Math.round(((j + 0.5) * h) / n - fz * 0.5)}:fontsize=${fz}:fontcolor=black:box=1:boxcolor=white@0.95:boxborderw=5`,
       );
   }
   return fs;
@@ -108,6 +111,7 @@ const opt = {};
 for (let i = 0; i < rest.length; i++)
   if (rest[i].startsWith("--")) opt[rest[i].slice(2)] = rest[i + 1];
 const img = pos[0];
+for (const path of [img, opt.out]) if (path) assertLiteralMediaPath(path);
 
 if (cmd === "overlay") {
   const dir = opt.out || ".";
@@ -115,8 +119,8 @@ if (cmd === "overlay") {
   const n = Number(opt.n || N1);
   const { w, h } = probe(img);
   const fz = Math.max(16, Math.round(Math.min(w, h) / 22));
-  ff(["-i", img, "-vf", gridFilters(w, h, n, "v", fz).join(","), `${dir}/gv.png`]);
-  ff(["-i", img, "-vf", gridFilters(w, h, n, "h", fz).join(","), `${dir}/gh.png`]);
+  ff(["-i", img, "-vf", gridFilters(w, h, n, "v", fz).join(",")], `${dir}/gv.png`);
+  ff(["-i", img, "-vf", gridFilters(w, h, n, "h", fz).join(",")], `${dir}/gh.png`);
   out({
     w,
     h,
@@ -139,17 +143,19 @@ if (cmd === "overlay") {
   const uw = Math.max(cw, 640),
     uh = Math.round((ch * uw) / cw);
   const fz = Math.max(15, Math.round(Math.min(uw, uh) / 16));
-  ff([
-    "-i",
-    img,
-    "-vf",
+  ff(
     [
-      `crop=${cw}:${ch}:${cx}:${cy}`,
-      `scale=${uw}:${uh}`,
-      ...gridFilters(uw, uh, nf, "both", fz),
-    ].join(","),
+      "-i",
+      img,
+      "-vf",
+      [
+        `crop=${cw}:${ch}:${cx}:${cy}`,
+        `scale=${uw}:${uh}`,
+        ...gridFilters(uw, uh, nf, "both", fz),
+      ].join(","),
+    ],
     `${dir}/gc.png`,
-  ]);
+  );
   out({
     region: reg.map(r4),
     crop_grid: `${dir}/gc.png`,
@@ -183,7 +189,7 @@ if (cmd === "overlay") {
   const bw = Math.max(2, Math.round((box[2] - box[0]) * w)),
     bh = Math.max(2, Math.round((box[3] - box[1]) * h));
   const dst = opt.out || "./check.png";
-  ff(["-i", img, "-vf", `drawbox=x=${bx}:y=${by}:w=${bw}:h=${bh}:color=${RED}@1:t=6`, dst]);
+  ff(["-i", img, "-vf", `drawbox=x=${bx}:y=${by}:w=${bw}:h=${bh}:color=${RED}@1:t=6`], dst);
   out({
     marked: dst,
     next: "READ it — red box on the target? If off, redo region/final with corrected strips.",

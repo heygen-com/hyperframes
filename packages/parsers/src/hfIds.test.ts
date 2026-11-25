@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { ensureHfIds, mintHfId, stampHfIdsInPlace, walkCompositionDescendants } from "./hfIds.js";
+import {
+  ensureHfIds,
+  isNonContentElement,
+  mintHfId,
+  stampHfIdsInPlace,
+  walkCompositionDescendants,
+} from "./hfIds.js";
 import { parseHTML } from "linkedom";
 import { assignHfIds } from "./hfIdAssignment.js";
 
@@ -228,6 +234,31 @@ describe("ensureHfIds", () => {
     expect(b).toMatch(/^hf-[a-z0-9]{4}$/);
   });
 
+  it("mints a run of identical elements with a few set lookups each, not one per earlier twin", () => {
+    const { document } = parseHTML(`<p class="x">same</p>`);
+    const el = document.querySelector("p") as Element;
+    let lookups = 0;
+    class Counted extends Set<string> {
+      override has(id: string) {
+        lookups += 1;
+        return super.has(id);
+      }
+    }
+    const assigned = new Counted();
+    const twins = 2000;
+    for (let i = 0; i < twins; i += 1) mintHfId(el, assigned);
+    expect(assigned.size).toBe(twins);
+    expect(lookups).toBeLessThan(3 * twins);
+  });
+
+  it("past 10,000 identical elements, every id is still unique", () => {
+    const { document } = parseHTML(`<p class="x">same</p>`);
+    const el = document.querySelector("p") as Element;
+    const assigned = new Set<string>();
+    for (let i = 0; i < 10050; i += 1) mintHfId(el, assigned);
+    expect(assigned.size).toBe(10050);
+  });
+
   // Post-persist stability: once data-hf-id is written back to source, edits
   // don't drift the id because the attribute is already present and pinned.
   it("pinned id survives text edit after first persist", () => {
@@ -344,5 +375,14 @@ describe("ensureHfIds — edit lifecycle (R1 stability)", () => {
     const pair = ids(ensureHfIds(doc(`<p class="x">same</p><p class="x">same</p>`)));
     expect(pair[0]).toBe(single); // first identical element: stable, content-derived
     expect(pair[1]).not.toBe(single); // second: dedup id, exists only by position
+  });
+});
+
+describe("isNonContentElement", () => {
+  it("names script, style and the other excluded tags in either case, never a content element", () => {
+    for (const tagName of ["script", "STYLE", "Template", "meta", "link", "noscript", "base"])
+      expect(isNonContentElement({ tagName })).toBe(true);
+    for (const tagName of ["div", "SPAN", "textarea", "title", "head"])
+      expect(isNonContentElement({ tagName })).toBe(false);
   });
 });

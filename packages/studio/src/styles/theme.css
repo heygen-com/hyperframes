@@ -285,6 +285,9 @@
     0 16px 40px light-dark(rgb(0 0 0 / 0.14), rgb(0 0 0 / 0.55)),
     0 0 0 1px light-dark(rgb(0 0 0 / 0.07), rgb(0 0 0 / 0.45));
 
+  /* The toast pill: a close contact shadow under a soft lift. */
+  --shadow-notice: 0 2px 4px rgb(0 0 0 / 0.12), 0 14px 36px -8px rgb(0 0 0 / 0.4);
+
   /* The primary button reads as a raised key rather than a floating panel: a tight
    * contact shadow, a soft ambient one, and an inner top highlight. */
   --shadow-btn-primary:

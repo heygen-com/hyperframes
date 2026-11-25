@@ -1,6 +1,7 @@
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, runMeasure, videoArg, window } from "../../measure/command.js";
+import { continuedShots } from "../../measure/continues.js";
 import { classifiedCuts, signatures } from "../../measure/cuts.js";
 import { probeVideo, round, videoClip } from "../../measure/media.js";
 
@@ -13,7 +14,7 @@ export default defineCommand({
   meta: {
     name: "cuts",
     description:
-      "Hard cuts from the frame-to-frame difference (scene scores miss some), and the shots between them; light flashes, whips and fast moves are listed apart as not_cuts",
+      "Hard cuts from the frame-to-frame difference (scene scores miss some), and the shots between them, a shot that resumes an earlier camera setup naming that shot as continues; light flashes, whips and fast moves are listed apart as not_cuts",
   },
   args: {
     video: videoArg,
@@ -26,8 +27,10 @@ export default defineCommand({
       const info = probeVideo(String(args.video));
       const [start, end] = window(info, args.start, args.end);
       const clip = videoClip(info.path, start, end - start, info);
-      const all = classifiedCuts(signatures(clip.input, clip.filters).frames);
+      const frames = signatures(clip.input, clip.filters).frames;
+      const all = classifiedCuts(frames);
       const found = all.filter((c) => !c.kind);
+      const continues = continuedShots(frames, found);
       const f0 = Math.ceil(start * info.fps - 1e-6);
       const not_cuts = all.flatMap((c) =>
         c.kind ? [{ t: round((f0 + c.frame) / info.fps, 3), kind: c.kind }] : [],
@@ -50,6 +53,7 @@ export default defineCommand({
           start: round(edges[i]!, 3),
           end: round(e, 3),
           seconds: round(e - edges[i]!, 2),
+          ...(continues[i] !== undefined ? { continues: continues[i] } : {}),
         })),
       };
     });

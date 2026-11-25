@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { spawnSync } from "node:child_process";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -17,15 +18,26 @@ import { basename, dirname, join, relative } from "node:path";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import {
   browserPathFromEnv,
+  isPinnedHeadlessShell,
   managedChromeVersion,
   pickSharedShell,
 } from "@hyperframes/engine/chrome-host-ceiling";
 import { getFreeDiskMb } from "../telemetry/system.js";
 import { BrowserDownloadStalledError, installInChild } from "./installInChild.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import {
+  LINUX_ARM_BROWSER_STEPS,
+  normalizeErrorMessage,
+  SetupStepsError,
+} from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
+  foreignWritableTree,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -41,8 +53,8 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   }
 }
 
-const CACHE_ROOT_DIR = hyperframesCacheDir();
-const CACHE_DIR = hyperframesCacheDir("chrome");
+const CACHE_ROOT_DIR = trustedCacheRoot();
+const CACHE_DIR = join(CACHE_ROOT_DIR, "chrome");
 const ARCHIVE_PLUS_UNPACKED_SHELL_MB = 512;
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
@@ -151,7 +163,7 @@ export async function withInstallLock<T>(
   // recursive:false below needs the parent to already exist (unlike `mkdir -p`).
   // Keep lock dirs outside CACHE_DIR so force-clearing the Chrome cache cannot
   // delete another installer's in-flight lock.
-  if (!existsSync(CACHE_ROOT_DIR)) mkdirSync(CACHE_ROOT_DIR, { recursive: true });
+  ensurePrivateCacheDir(CACHE_ROOT_DIR, CACHE_ROOT_DIR);
   let deadline = Date.now() + timings.staleMs;
   const waitStart = Date.now();
   let lastNoticeMs = 0;
@@ -316,7 +328,7 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
     const suffix = code ? ` (${code})` : "";
     console.warn(
-      `[hyperframes] Browser cache read failed${suffix}: ${normalizeErrorMessage(err)}. Falling back to system Chrome or a fresh download.`,
+      `[hyperframes] Browser cache read failed${terminalText(suffix)}: ${terminalLines(normalizeErrorMessage(err))}. Falling back to system Chrome or a fresh download.`,
     );
     installed = [];
   }
@@ -333,7 +345,11 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
       b.buildId === managedChromeVersion() &&
       b.platform === hostPlatform,
   );
-  if (match && isUsableExecutable(match.executablePath)) {
+  if (
+    match &&
+    isPinnedHeadlessShell(match.executablePath) &&
+    !foreignWritableTree(dirname(match.executablePath), CACHE_ROOT_DIR)
+  ) {
     return { result: { executablePath: match.executablePath, source: "cache" } };
   }
   if (match) {
@@ -385,7 +401,7 @@ function findFromPuppeteerCache(): BrowserResult | undefined {
   }
   const binary = pickSharedShell(versions, (version) => {
     const candidate = join(PUPPETEER_CACHE_DIR, version, ...executable);
-    return isUsableExecutable(candidate) ? candidate : undefined;
+    return isPinnedHeadlessShell(candidate) ? candidate : undefined;
   });
   return binary ? { executablePath: binary, source: "cache" } : undefined;
 }
@@ -414,7 +430,7 @@ function warnSystemFallbackOnce(executablePath: string): void {
   if (isHeadlessShellBinary(executablePath)) return;
   _warnedSystemFallback = true;
   console.warn(
-    `[hyperframes] Using system Chrome at ${executablePath}; HeadlessExperimental.beginFrame is unavailable in regular Chrome builds, so the perf-optimized capture path falls back to screenshot mode. Install chrome-headless-shell for the optimized path:\n  npx @puppeteer/browsers install chrome-headless-shell\n(Or set HYPERFRAMES_BROWSER_PATH to point at an existing chrome-headless-shell binary.)`,
+    `[hyperframes] Using system Chrome at ${terminalText(executablePath)}; HeadlessExperimental.beginFrame is unavailable in regular Chrome builds, so the perf-optimized capture path falls back to screenshot mode. Install chrome-headless-shell for the optimized path:\n  npx @puppeteer/browsers install chrome-headless-shell@${managedChromeVersion()}\n(Or set HYPERFRAMES_BROWSER_PATH to point at an existing chrome-headless-shell binary.)`,
   );
 }
 
@@ -452,7 +468,7 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
   if (fromCache.result) return fromCache.result;
   if (fromCache.staleHyperframesCachePath) {
     console.warn(
-      `[browser] Cached binary unusable (missing, empty or not a file) at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+      `[browser] Cached binary missing, not the pinned build, or writable by another account at ${terminalText(fromCache.staleHyperframesCachePath)} — re-downloading...`,
     );
     try {
       return await withInstallLock(() => downloadBrowser());
@@ -500,7 +516,7 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
     if (result.status === 0) {
       const afterInstall = await findBrowser();
       if (afterInstall) {
-        console.error(`\n✅ Chromium installed at ${afterInstall.executablePath}\n`);
+        console.error(`\n✅ Chromium installed at ${terminalText(afterInstall.executablePath)}\n`);
         return afterInstall;
       }
     } else {
@@ -512,12 +528,9 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
   }
 
   // Could not auto-install — give clear manual instructions.
-  throw new Error(
-    `Chrome Headless Shell is not available for Linux ARM64 (DGX Spark, GB10, Jetson).\n\n` +
-      `Install Chromium manually and point hyperframes to it:\n\n` +
-      `  sudo apt-get install -y chromium-browser\n` +
-      `  export HYPERFRAMES_BROWSER_PATH=$(which chromium-browser)\n\n` +
-      `Then re-run your command. The HYPERFRAMES_BROWSER_PATH env var persists for the session.`,
+  throw new SetupStepsError(
+    `Chrome Headless Shell is not available for Linux ARM64 (DGX Spark, GB10, Jetson).`,
+    LINUX_ARM_BROWSER_STEPS,
   );
 }
 
@@ -583,7 +596,7 @@ async function ensureBrowserInCurrentProcess(
     if (fromCache.result) return fromCache.result;
     if (fromCache.staleHyperframesCachePath) {
       console.warn(
-        `[browser] Cached binary unusable (missing, empty or not a file) at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+        `[browser] Cached binary missing, not the pinned build, or writable by another account at ${terminalText(fromCache.staleHyperframesCachePath)} — re-downloading...`,
       );
       return withInstallLock(() => downloadBrowser(options));
     }
@@ -703,7 +716,8 @@ function wrapDownloadFailureWithBrowserPathHint(
       `  export HYPERFRAMES_BROWSER_PATH="${installed}"\n\n` +
       `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. `
     : `No Chrome or Chromium was found on this machine. Install Google Chrome, then set ` +
-      `HYPERFRAMES_BROWSER_PATH to its executable and re-run your command. `;
+      `HYPERFRAMES_BROWSER_PATH to its executable. Run \`hyperframes doctor\` to see which ` +
+      `Chrome was found. Then re-run your command. `;
   const message =
     `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
     pointAt +
@@ -727,7 +741,9 @@ export async function retryOnStall<T>(
       return await run();
     } catch (err) {
       if (!(err instanceof BrowserDownloadStalledError) || attempt >= attempts) throw err;
-      console.warn(`[hyperframes] ${err.message} Retrying (${attempt}/${attempts - 1}).`);
+      console.warn(
+        `[hyperframes] ${terminalLines(err.message)} Retrying (${attempt}/${attempts - 1}).`,
+      );
       clear();
     }
   }
@@ -844,7 +860,11 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
     rmSync(stagingDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
   const unzipLog = { lines: [] as string[] };
-  const runInstall = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
+  const install = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
+  const runInstall = () => {
+    ensurePrivateCacheDir(stagingDir, CACHE_ROOT_DIR);
+    return install();
+  };
 
   try {
     const staged = await retryWhileLocked(
@@ -853,7 +873,7 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
           () =>
             installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
               console.warn(
-                `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
+                `[hyperframes] Downloaded browser archive was corrupt (${terminalLines(normalizeErrorMessage(err))}); re-downloading.`,
               ),
             ),
           clearStaging,
@@ -862,6 +882,11 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
       clearStaging,
     );
     assertExecutableUnpacked(stagingDir, staged.executablePath);
+    if (!isPinnedHeadlessShell(staged.executablePath)) {
+      throw new Error(
+        `the downloaded browser is not the build this version pins (${managedChromeVersion()}).`,
+      );
+    }
     unzipLog.lines = [];
     const executablePath = await retryWhileLocked(() =>
       moveStagedInstallIntoCache(stagingDir, staged),
@@ -881,14 +906,6 @@ function executableState(path: string): "usable" | "is missing" | "is empty" | "
   return stat.size > 0 ? "usable" : "is empty";
 }
 
-function isUsableExecutable(path: string): boolean {
-  try {
-    return executableState(path) === "usable";
-  } catch {
-    return false;
-  }
-}
-
 // install() returns without checking that the unzip produced the executable.
 function assertExecutableUnpacked(stagingDir: string, executablePath: string): void {
   const state = executableState(executablePath);
@@ -906,7 +923,8 @@ function moveStagedInstallIntoCache(
 ): string {
   const target = join(CACHE_DIR, relative(stagingDir, staged.path));
   const aside = join(CACHE_ROOT_DIR, `${REPLACED_PREFIX}${randomUUID()}`);
-  mkdirSync(dirname(target), { recursive: true });
+  sealCacheInstall(staged.path, stagingDir);
+  ensurePrivateCacheDir(dirname(target), CACHE_ROOT_DIR, 0o755);
   let replaced = false;
   try {
     renameSync(target, aside);
@@ -921,7 +939,11 @@ function moveStagedInstallIntoCache(
     throw err;
   }
   if (replaced) removeLeftover(aside);
-  return join(target, relative(staged.path, staged.executablePath));
+  sealCacheInstall(target, CACHE_ROOT_DIR);
+  return assertPrivateCachePath(
+    join(target, relative(staged.path, staged.executablePath)),
+    CACHE_ROOT_DIR,
+  );
 }
 
 const STAGING_PREFIX = ".chrome-staging-";

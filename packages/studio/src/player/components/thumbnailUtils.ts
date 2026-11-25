@@ -36,11 +36,11 @@ export function thumbnailFrameForTile(
  * abort signal, so an unmounted clip cannot leave Blink retaining a pending
  * image request and its former React tree.
  */
-export function probeImageAspect(
+export function probeImageSize(
   imageSrc: string,
   signal: AbortSignal,
   tolerateSvgError = false,
-): Promise<number> {
+): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const cleanup = () => {
@@ -63,13 +63,13 @@ export function probeImageAspect(
       cleanup();
       resolve(
         image.naturalWidth > 0 && image.naturalHeight > 0
-          ? image.naturalWidth / image.naturalHeight
-          : 16 / 9,
+          ? { width: image.naturalWidth, height: image.naturalHeight }
+          : { width: 1920, height: 1080 },
       );
     };
     image.onerror = () => {
       cleanup();
-      if (tolerateSvgError && /\.svg($|\?)/i.test(imageSrc)) resolve(16 / 9);
+      if (tolerateSvgError && /\.svg($|\?)/i.test(imageSrc)) resolve({ width: 1920, height: 1080 });
       else reject(new Error("Image thumbnail failed to load"));
     };
     signal.addEventListener("abort", onAbort, { once: true });

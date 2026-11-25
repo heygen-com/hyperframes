@@ -20,7 +20,6 @@ import { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 import { usePreviewDocumentVersion } from "./hooks/usePreviewDocumentVersion";
 import { useTimelineEditing } from "./hooks/useTimelineEditing";
 import { useTimelineMoveEditsHandler } from "./hooks/timelineMoveAdapter";
-import type { TimelineZIndexReorderCommit } from "./hooks/useTimelineEditingTypes";
 import type { BlockPreviewInfo } from "./components/sidebar/BlocksTab";
 import { useDomEditSession } from "./hooks/useDomEditSession";
 import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
@@ -86,7 +85,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const captionEditMode = useCaptionStore((s) => s.isEditMode);
   const captionHasSelection = useCaptionStore((s) => s.selectedSegmentIds.size > 0);
-  const captionSync = useCaptionSync(projectId);
   const timelineElements = usePlayerStore((s) => s.elements);
   const setSelectedTimelineElementId = usePlayerStore((s) => s.setSelectedElementId);
   const setTimelineSelectionSet = usePlayerStore((s) => s.setSelectedElementIds);
@@ -102,7 +100,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     rightPanelTab: initialUrlStateRef.current.rightPanelTab,
   });
   const editHistory = useStableHandlers(usePersistentEditHistory({ projectId }), projectId);
-  const handleDomZIndexReorderCommitRef = useRef<TimelineZIndexReorderCommit | null>(null);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
   const setRefreshKey = useCallback((next: SetStateAction<number>) => {
@@ -117,6 +114,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     setRefreshKey,
   });
   const fileManager = useStableHandlers(fileManagerResult, projectId);
+  const captionSync = useCaptionSync(fileManager);
   const masterCompPath = useMemo(
     () => resolveMasterCompositionPath(fileManager.compositions),
     [fileManager.compositions],
@@ -181,7 +179,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     publishSdkSession: sdkHandle.publish,
     forceReloadSdkSession: sdkHandle.forceReload,
     invalidateGsapCache,
-    handleDomZIndexReorderCommitRef,
   });
   const handleTimelineElementsMove = useTimelineMoveEditsHandler(
     timelineEditing.handleTimelineGroupMove,
@@ -322,8 +319,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   });
   const domEditSession = useStableHandlers(domEditSessionResult, projectId);
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
-  const { handleDomZIndexReorderCommit: zCommit, handleDomEditElementDelete: del } = domEditSession;
-  handleDomZIndexReorderCommitRef.current = trackedStudioEdit(zCommit);
+  const { handleDomEditElementDelete: del } = domEditSession;
   clearDomSelectionRef.current = domEditSession.clearDomSelection;
   handleDomEditElementDeleteRef.current = trackedStudioEdit(del);
   resetKeyframesRef.current = domEditSession.handleResetSelectedElementKeyframes;

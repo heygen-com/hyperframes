@@ -29,7 +29,12 @@ describe("dom edit save queue", () => {
 
     expect(onOpen).toHaveBeenCalledWith({
       consecutiveFailures: 2,
-      errorMessage: "Still down",
+      errorCodes: {
+        error_class: "StudioSaveHttpError",
+        error_key: "http",
+        server_why: "other",
+        block_reason: undefined,
+      },
       statusCode: 503,
     });
 
@@ -146,7 +151,12 @@ describe("dom edit save queue", () => {
 
     expect(onOpen).toHaveBeenCalledWith({
       consecutiveFailures: 1,
-      errorMessage: "File changed elsewhere",
+      errorCodes: {
+        error_class: "StudioSaveHttpError",
+        error_key: "http",
+        server_why: "other",
+        block_reason: undefined,
+      },
       statusCode: 409,
     });
     await expect(queue.enqueue(async () => {})).rejects.toThrow("Auto-save is paused");

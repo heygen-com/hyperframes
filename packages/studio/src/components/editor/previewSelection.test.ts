@@ -4,8 +4,6 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EDITING_ELEMENT_HANDLE, MAX_ELEMENT_TEXT } from "@hyperframes/core/runtime/editing-port";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
 import {
   findElementForSelection,
   findElementForTimelineElement,
@@ -13,6 +11,7 @@ import {
   type DomEditSelection,
 } from "./domEditing";
 import { setCompositionSourceMap } from "./domEditingDom";
+import { dropElementCropLift, liftElementCrop, readElementCropInsets } from "./domEditOverlayCrop";
 import { domEditSelectionToFacts } from "./domEditingLayers";
 import {
   findPreviewElementForSelection,
@@ -29,6 +28,9 @@ import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { useDomSelection } from "../../hooks/useDomSelection";
 import type { TimelineElement } from "../../player";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
+import { resolveTimelineIdForSelection } from "../../utils/studioHelpers";
+import { announceTimelineSelection } from "../../hooks/domSelectionTimelineMirror";
 
 installReactActEnvironment();
 
@@ -52,29 +54,6 @@ function liveFrame(): HTMLIFrameElement {
   return iframe;
 }
 
-/** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
-function opaqueFrame(): HTMLIFrameElement {
-  const frame: Record<string, unknown> = {};
-  const iframe = detachedFakeIframe(frame);
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
-  return iframe;
-}
-
 const CONTEXT: PreviewSelectionOptions = {
   activeCompositionPath: "index.html",
   isMasterView: false,
@@ -85,7 +64,7 @@ function shared(selection: DomEditSelection | null) {
   if (!selection) return null;
   const { element: _element, handle: _handle, textFields: _fields, ...rest } = selection;
   // Read off the description only when `element` is a stand-in; checked on their own below.
-  const { hasAudio: _audio, src: _src, ...compared } = rest;
+  const { hasAudio: _audio, src: _src, textMarkup: _markup, ...compared } = rest;
   return compared;
 }
 
@@ -101,7 +80,7 @@ async function describedOnOpaque(iframe: HTMLIFrameElement, element: Element) {
 }
 
 async function bothPaths(element: HTMLElement, options: PreviewSelectionOptions = CONTEXT) {
-  const opaque = opaqueFrame();
+  const opaque = sealedPreviewFrame().iframe;
   const live = await resolveDomEditSelection(element, options);
   const remote = await resolvePreviewSelection(
     opaque,
@@ -183,7 +162,7 @@ describe("opaque frame selections match same-origin ones", () => {
   it("follows a drilled-into group: its nested group, then its children, else the top level", async () => {
     document.body.innerHTML = FIXTURE;
     const member = document.querySelector<HTMLElement>("[data-hf-id=m1]")!;
-    const opaque = opaqueFrame();
+    const opaque = sealedPreviewFrame().iframe;
     const described = await describedOnOpaque(opaque, member);
     const outerLive = document.querySelector<HTMLElement>('[data-hf-group="outer"]')!;
     const innerLive = document.querySelector<HTMLElement>('[data-hf-group="inner"]')!;
@@ -224,7 +203,11 @@ describe("opaque frame selections match same-origin ones", () => {
   ])("finds an element for a selection %s", async (_name, selection) => {
     document.body.innerHTML = FIXTURE;
     const live = findElementForSelection(document, selection, "index.html");
-    const found = await findPreviewElementForSelection(opaqueFrame(), selection, "index.html");
+    const found = await findPreviewElementForSelection(
+      sealedPreviewFrame().iframe,
+      selection,
+      "index.html",
+    );
     expect(live === null ? null : nameOf(live)).toBe(found === null ? null : found && named(found));
     if (selection.selector !== ".missing" && selection.selector !== "p[")
       expect(live).not.toBeNull();
@@ -243,9 +226,55 @@ describe("opaque frame selections match same-origin ones", () => {
     document.body.innerHTML = FIXTURE;
     const options = { activeCompositionPath: "index.html", isMasterView };
     const live = findElementForTimelineElement(document, element, options);
-    const found = await findPreviewElementForTimelineElement(opaqueFrame(), element, options);
+    const found = await findPreviewElementForTimelineElement(
+      sealedPreviewFrame().iframe,
+      element,
+      options,
+    );
     expect(live && nameOf(live)).toBe(expected);
     expect(found && named(found)).toBe(expected);
+  });
+});
+
+describe("the timeline clip an opaque frame selection belongs to", () => {
+  // fails without the fix: a sealed pick's stand-in has no parents, so a clip's child found no clip and copy, cut and
+  // duplicate acted on the element instead of the clip a same-origin pick selects.
+  it("is the clip a same-origin pick of the same child belongs to", async () => {
+    document.body.innerHTML = `
+      <div data-composition-id="main" data-width="1920" data-height="1080">
+        <div class="clip" id="zone" data-start="0" data-duration="6"><div id="shape"></div></div>
+      </div>`;
+    const { live, remote } = await bothPaths(document.querySelector<HTMLElement>("#shape")!);
+    const clips = [
+      {
+        id: "zone",
+        domId: "zone",
+        key: "index.html#zone",
+        start: 0,
+        duration: 6,
+        track: 0,
+        tag: "div",
+      },
+    ] as TimelineElement[];
+    const announced = (selection: DomEditSelection) => {
+      const setSelectedTimelineElementId = vi.fn();
+      announceTimelineSelection(
+        {
+          timelineElements: clips,
+          activeCompPath: "index.html",
+          getTimelineSelectionSet: () => new Set(),
+          setSelectedTimelineElementId,
+          setTimelineSelectionSet: () => {},
+        },
+        [selection],
+        selection,
+      );
+      return setSelectedTimelineElementId.mock.calls.at(-1)?.[0] ?? null;
+    };
+
+    expect(announced(live!)).toBe("index.html#zone");
+    expect(announced(remote!)).toBe("index.html#zone");
+    expect(resolveTimelineIdForSelection(remote!, clips, "index.html")).toBe("index.html#zone");
   });
 });
 
@@ -268,7 +297,7 @@ describe("opaque frame selection handles", () => {
 
   it("builds nothing for a removed element, and finds nothing the runtime cannot name", async () => {
     document.body.innerHTML = FIXTURE;
-    const opaque = opaqueFrame();
+    const opaque = sealedPreviewFrame().iframe;
     const locked = document.querySelector("#locked")!;
     const described = await describedOnOpaque(opaque, locked);
     // A description whose parent is not the element its runtime names as the parent.
@@ -300,7 +329,7 @@ describe("opaque frame selection handles", () => {
   it("says it cannot tell when a capped query does not reach the index", async () => {
     document.body.innerHTML = "<i class='n'></i>".repeat(2_049);
     const found = await findPreviewElementForSelection(
-      opaqueFrame(),
+      sealedPreviewFrame().iframe,
       { selector: ".n", selectorIndex: 2_048 },
       "index.html",
     );
@@ -357,7 +386,7 @@ describe("opaque frame selections read only what arrived whole", () => {
 
   it("builds nothing when the frame cannot read computed styles or the composition root", async () => {
     document.body.innerHTML = FIXTURE;
-    const opaque = opaqueFrame();
+    const opaque = sealedPreviewFrame().iframe;
     const locked = await describedOnOpaque(opaque, document.querySelector("#locked")!);
     const bg = await describedOnOpaque(opaque, document.querySelector("#bg")!);
     expect(await resolvePreviewSelection(opaque, bg, CONTEXT)).not.toBeNull();
@@ -419,7 +448,7 @@ describe("useDomSelection on an opaque frame", () => {
   it("selects a timeline clip, refreshes it, and drops it once the frame no longer has it", async () => {
     document.body.innerHTML = FIXTURE;
     const liveHook = renderSelection(liveFrame());
-    const hook = renderSelection(opaqueFrame());
+    const hook = renderSelection(sealedPreviewFrame().iframe);
     await act(() => liveHook().handleTimelineElementSelect(clip("#locked")));
     await act(() => hook().handleTimelineElementSelect(clip("#locked")));
     const selected = hook().domEditSelection!;
@@ -438,7 +467,7 @@ describe("useDomSelection on an opaque frame", () => {
 
   it("re-finds every group member on refresh", async () => {
     document.body.innerHTML = FIXTURE;
-    const hook = renderSelection(opaqueFrame());
+    const hook = renderSelection(sealedPreviewFrame().iframe);
     await act(() => hook().handleTimelineElementSelect(clip("#locked")));
     const first = hook().domEditSelection!;
     await act(() => hook().handleTimelineElementSelect(clip("#plain")));
@@ -454,7 +483,7 @@ describe("useDomSelection on an opaque frame", () => {
 
   it("leaves a group the user changed while its refresh was reading the frame", async () => {
     document.body.innerHTML = FIXTURE;
-    const hook = renderSelection(opaqueFrame());
+    const hook = renderSelection(sealedPreviewFrame().iframe);
     await act(() => hook().handleTimelineElementSelect(clip("#plain")));
     const plain = hook().domEditSelection!;
     await act(() => hook().handleTimelineElementSelect(clip("#locked")));
@@ -477,5 +506,36 @@ describe("useDomSelection on an opaque frame", () => {
     }
     expect(hook().domEditSelection!.id).toBe("scene");
     expect(hook().domEditGroupSelections.map((s) => s.id)).toEqual(["scene"]);
+  });
+});
+
+describe("an opaque frame selection's crop", () => {
+  it("reads the clip-path the frame renders, as a scriptable frame's does", async () => {
+    document.body.innerHTML = FIXTURE;
+    const plain = document.querySelector<HTMLElement>("#plain")!;
+    plain.style.clipPath = "inset(10px 20px 30px 40px)";
+    const { live, remote } = await bothPaths(plain);
+
+    expect(readElementCropInsets(remote!.element)).toEqual(readElementCropInsets(live!.element));
+    expect(readElementCropInsets(remote!.element)).toMatchObject({
+      top: 10,
+      right: 20,
+      bottom: 30,
+      left: 40,
+    });
+  });
+
+  it("shows the element uncropped in the frame while selected, and crops it again after", async () => {
+    document.body.innerHTML = FIXTURE;
+    const plain = document.querySelector<HTMLElement>("#plain")!;
+    plain.style.clipPath = "inset(10px 20px 30px 40px)";
+    const { remote } = await bothPaths(plain);
+    const shown = () => window.getComputedStyle(plain).clipPath;
+
+    liftElementCrop(remote!.element);
+    await vi.waitFor(() => expect(shown()).toBe("none"));
+    expect(readElementCropInsets(remote!.element)).toMatchObject({ top: 10, left: 40 });
+    dropElementCropLift(remote!.element);
+    await vi.waitFor(() => expect(shown()).toBe("inset(10px 20px 30px 40px)"));
   });
 });

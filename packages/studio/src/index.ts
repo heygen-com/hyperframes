@@ -14,8 +14,8 @@ export {
   studioKeyClash,
   useStudioKeys,
 } from "./player/components/studioShortcuts";
-export { formatCombo, matchCombo, parseCombo } from "./player/components/studioCombo";
-export type { Combo } from "./player/components/studioCombo";
+export { formatCombo, matchCombo, parseCombo } from "@hyperframes/core/key-combo";
+export type { Combo } from "@hyperframes/core/key-combo";
 export type { StudioKeyAction, StudioKeys } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
 export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
@@ -45,6 +45,35 @@ export {
   formatTime,
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
+export {
+  previewAuthoredStyles,
+  previewDocumentCopy,
+  previewEditingClient,
+  previewFontFaces,
+  previewFrameOpaque,
+} from "./player/lib/previewChannel";
+export {
+  describePreviewElements,
+  previewAncestors,
+  previewElementsAtPoint,
+  previewGeometry,
+  previewLayers,
+  previewPointerTargets,
+  queryPreviewElements,
+  type PreviewElement,
+  type PreviewElementEdit,
+  type PreviewElementHit,
+} from "./player/lib/previewElements";
+export {
+  editSealedSelection,
+  findPreviewElementForSelection,
+  findPreviewElementForTimelineElement,
+  readable,
+  resolveFoundSelection,
+  standInFor,
+  standInHandle,
+  type PreviewSelectionOptions,
+} from "./components/editor/previewSelection";
 export { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "@hyperframes/core/preview-quality";
 export type {
   PlaybackHealth,
@@ -98,6 +127,7 @@ export { ImageThumbnail } from "./player/components/ImageThumbnail";
 export type { ImageThumbnailProps } from "./player/components/ImageThumbnail";
 export { useRenderClipContent } from "./hooks/useRenderClipContent";
 export { useThumbnailStill } from "./hooks/useThumbnailStill";
+export { fetchParsedAnimations, getAnimationsForElement } from "./hooks/useGsapTweenCache";
 export type { ThumbnailStill, UseThumbnailStillOptions } from "./hooks/useThumbnailStill";
 export type { UseRenderClipContentOptions } from "./hooks/useRenderClipContent";
 export type { ThumbnailPriority } from "./player/lib/thumbnailScheduler";

@@ -1,4 +1,6 @@
+import { sourceLengthOf } from "./sourceLength";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { runtimeLoad } from "./runtimeLoad";
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
@@ -24,6 +26,7 @@ import {
   MEDIA_SYNC_TOLERANCE_SECONDS,
   steerMedia,
 } from "./mediaSteer.js";
+import { setRuntimePreload } from "./runtimeAttributes";
 export { MEDIA_HARD_SYNC_SECONDS, MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
 export type { RuntimeMediaClip } from "./types.js";
 export {
@@ -87,20 +90,22 @@ function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
  * Resolve a media element's timeline window without conflating a video's
  * authored display slot with the amount of source left to decode.
  *
- * An explicit video slot may outlive its source and holds the final frame.
- * Audio remains source-bounded because it has no visual hold state.
+ * An explicit video slot may outlive its source and hold the final frame; a loop fills its slot.
+ * Other audio remains source-bounded because it has no visual hold state.
  */
 export function resolveRuntimeMediaClipDuration(params: {
   isVideo: boolean;
+  loops: boolean;
   sourceDuration: number | null;
   hostRemaining: number | null;
   explicitDuration: number | null;
 }): number | null {
-  const mediaDuration = params.isVideo
+  const fillsSlot = params.isVideo || params.loops;
+  const mediaDuration = fillsSlot
     ? (params.explicitDuration ?? params.sourceDuration)
     : params.sourceDuration;
   const candidates = (
-    params.isVideo
+    fillsSlot
       ? [mediaDuration, params.hostRemaining]
       : [mediaDuration, params.hostRemaining, params.explicitDuration]
   ).filter((value): value is number => value != null && Number.isFinite(value) && value >= 0);
@@ -149,7 +154,8 @@ export function refreshRuntimeMediaCache(params?: {
     const playbackRate = readElementPlaybackRate(el);
     const rate = readElementRateSpec(el);
     const loop = el.loop;
-    const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
+    const length = sourceLengthOf(el);
+    const sourceDuration = Number.isFinite(length) && length > 0 ? length : null;
     let duration =
       params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
     if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {
@@ -696,7 +702,7 @@ export function syncRuntimeMedia(params: {
       // past the buffered range. Setting this on every tick is cheap
       // (no-op when already "auto") and catches elements whose preload
       // was overridden after init.ts set it.
-      if (el.preload !== "auto" && !isRenderFrameVideo(el)) el.preload = "auto";
+      if (el.preload !== "auto" && !isRenderFrameVideo(el)) setRuntimePreload(el, "auto");
       if (!params.playing && ownsPausedVideoTime(el)) {
         if (!el.paused) el.pause();
         continue;
@@ -726,8 +732,20 @@ export function syncRuntimeMedia(params: {
       const STRICT_REQUIRED_SAMPLES = 2;
 
       const currentElTime = el.currentTime || 0;
-      const drift = Math.abs(currentElTime - relTime);
-      const offset = relTime - currentElTime;
+      const nativeLoopLap =
+        clip.loop &&
+        clip.mediaStart === 0 &&
+        clip.sourceDuration != null &&
+        params.playing &&
+        !el.paused
+          ? clip.sourceDuration
+          : 0;
+      const offsetWithLaps = relTime - currentElTime;
+      const offset =
+        nativeLoopLap > 0
+          ? offsetWithLaps - Math.round(offsetWithLaps / nativeLoopLap) * nativeLoopLap
+          : offsetWithLaps;
+      const drift = Math.abs(offset);
       const prevOffset = lastOffset.get(el);
       lastOffset.set(el, offset);
       const firstTickOfClip = prevOffset === undefined;
@@ -852,7 +870,7 @@ export function syncRuntimeMedia(params: {
           else heldTailSeekedTo.delete(el);
           if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
             seekLoadRetried.add(el);
-            el.load();
+            runtimeLoad(el);
             try {
               el.currentTime = mediaElementTime(relTime);
             } catch (err) {

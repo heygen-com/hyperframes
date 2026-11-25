@@ -104,6 +104,8 @@ export interface RenderCommandArgs {
   wait?: boolean;
   strict?: boolean;
   "strict-all"?: boolean;
+  "include-outside-files"?: boolean;
+  "refuse-outside-files"?: boolean;
   "lint-verbose"?: boolean;
   "max-concurrent-renders"?: string;
   variables?: string;
@@ -131,6 +133,7 @@ export interface RenderPlan {
   renderTarget: string;
   fps: Fps;
   quality: RenderQuality;
+  qualityPreset: keyof typeof QUALITY_ALIASES;
   authoringSkill?: string;
   invalidAuthoringSkill?: string;
   /** Which resolution step provided authoringSkill: an explicit --skill flag, or the project's own config. */
@@ -167,6 +170,8 @@ export interface RenderPlan {
   /** Segmented capture: keep the segment directory after success. */
   keepSegments: boolean;
   bestEffort: boolean;
+  includeOutsideScripts: boolean;
+  refuseOutsideFiles: boolean;
   waitForRenderSlot: boolean;
   batchJson: boolean;
   effectiveQuiet: boolean;
@@ -638,6 +643,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     renderTarget,
     fps,
     quality,
+    qualityPreset: qualityRaw as keyof typeof QUALITY_ALIASES,
     authoringSkill,
     invalidAuthoringSkill,
     authoringSkillSource,
@@ -669,6 +675,8 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     resumeSegments: args.resume ?? false,
     keepSegments: args["keep-segments"] ?? false,
     bestEffort: args["best-effort"] ?? true,
+    includeOutsideScripts: args["include-outside-files"] ?? false,
+    refuseOutsideFiles: args["refuse-outside-files"] ?? false,
     waitForRenderSlot: args.wait ?? true,
     batchJson,
     effectiveQuiet: quiet || batchJson,

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.9.43",
+  "version": "0.9.93",
   "description": "",
   "repository": {
     "type": "git",
@@ -116,14 +116,14 @@
     "@hyperframes/shader-transitions": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
     "@lezer/highlight": "^1.2.3",
-    "@mcp-b/global": "^5.0.1",
+    "@mcp-b/global": "^6.1.0",
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.14.13",
     "acorn": "^8.17.0",
     "cn": "0.2.4",
     "dockview-react": "8.3.1",
     "gsap": "^3.13.0",
-    "mediabunny": "^1.65.2"
+    "mediabunny": "^1.66.0"
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",

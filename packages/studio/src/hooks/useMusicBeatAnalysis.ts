@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { usePlayerStore } from "../player/store/playerStore";
-import { resolveBeatSourceTrack } from "../utils/timelineInspector";
-import { analyzeMusicFromUrl } from "@hyperframes/core/beats";
+import { fitsBeatAnalysis, resolveBeatSourceTrack } from "../utils/timelineInspector";
+import { analyzeMusicFromSignal, type MusicBeatAnalysis } from "@hyperframes/core/beats";
+import { analysisRateOf, readPcmChannels } from "../utils/projectPcm";
 import { whenTimelineIdle } from "../player/components/timelineMotion";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { mergeUserBeats } from "../utils/beatEditing";
@@ -16,12 +17,12 @@ import {
 
 // Module-level cache so the same URL isn't re-decoded/analyzed on re-mount.
 // Capped so decoded PCM buffers don't accumulate unbounded across a session.
-const analysisCache = new Map<string, ReturnType<typeof analyzeMusicFromUrl>>();
+const analysisCache = new Map<string, Promise<MusicBeatAnalysis>>();
 const MAX_ANALYSIS_CACHE = 4;
 
 const PERSIST_DEBOUNCE_MS = 350;
 
-function cacheAnalysis(url: string, promise: ReturnType<typeof analyzeMusicFromUrl>): void {
+function cacheAnalysis(url: string, promise: Promise<MusicBeatAnalysis>): void {
   analysisCache.set(url, promise);
   while (analysisCache.size > MAX_ANALYSIS_CACHE) {
     const oldest = analysisCache.keys().next().value;
@@ -32,66 +33,72 @@ function cacheAnalysis(url: string, promise: ReturnType<typeof analyzeMusicFromU
 
 type ProjectIo = { readOptionalProjectFile: (p: string) => Promise<string> };
 
-/**
- * Resolve the effective beat list for a track: a saved file with real beats
- * wins; otherwise the detected beats are used (and `hasFile` is false so the
- * caller seeds a new file). An empty saved file is ignored so detection retries.
- */
-async function resolveBeats(
-  beatPath: string | null,
-  detected: { times: number[]; strengths: number[] },
-  io: ProjectIo,
-): Promise<{ times: number[]; strengths: number[]; hasFile: boolean }> {
-  if (!beatPath) return { ...detected, hasFile: false };
+type Beats = { times: number[]; strengths: number[] };
+
+/** The track's saved beats file, or null when it is missing, unreadable or holds no beat (detection then retries). */
+async function readSavedBeats(io: ProjectIo, beatPath: string): Promise<Beats | null> {
   try {
     const content = await io.readOptionalProjectFile(beatPath);
     const parsed = content ? parseBeats(content) : null;
-    if (parsed && parsed.times.length > 0) {
-      return { times: parsed.times, strengths: parsed.strengths, hasFile: true };
-    }
-  } catch {
-    /* fall back to detected beats */
-  }
-  return { ...detected, hasFile: false };
-}
-
-/** True when the beats file for a track exists and holds at least one beat. */
-async function readHasSavedBeats(io: ProjectIo, beatPath: string): Promise<boolean> {
-  try {
-    const content = await io.readOptionalProjectFile(beatPath);
-    const parsed = content ? parseBeats(content) : null;
-    return !!(parsed && parsed.times.length > 0);
-  } catch {
-    return false;
-  }
-}
-
-type MusicAnalysis = Awaited<ReturnType<typeof analyzeMusicFromUrl>>;
-
-/**
- * Analyze a track (memoized per URL) and fold in any saved beat edits. Null on
- * decode/analysis failure — the caller then clears state and drops the cache
- * entry (only when the effect is still live).
- */
-async function loadBeatAnalysis(
-  musicSrc: string,
-  beatPath: string,
-  io: ProjectIo,
-): Promise<{ analysis: MusicAnalysis; times: number[]; strengths: number[] } | null> {
-  let promise = analysisCache.get(musicSrc);
-  if (!promise) {
-    promise = analyzeMusicFromUrl(musicSrc, { pause: whenTimelineIdle });
-    cacheAnalysis(musicSrc, promise);
-  }
-  try {
-    const analysis = await promise;
-    const detected = { times: analysis.beatTimes, strengths: analysis.beatStrengths };
-    const { times, strengths } = await resolveBeats(beatPath, detected, io);
-    return { analysis, times, strengths };
+    return parsed && parsed.times.length > 0
+      ? { times: parsed.times, strengths: parsed.strengths }
+      : null;
   } catch {
     return null;
   }
 }
+
+type MusicAnalysis = MusicBeatAnalysis;
+
+type Loaded = { analysis: MusicAnalysis } & Beats;
+
+async function analyzeTrack(url: string): Promise<MusicBeatAnalysis> {
+  await whenTimelineIdle();
+  const rate = await analysisRateOf([url]);
+  const channels = await readPcmChannels(url, rate, (r) => new OfflineAudioContext(1, 1, r));
+  return analyzeMusicFromSignal({ sampleRate: rate, channels }, { pause: whenTimelineIdle });
+}
+
+/** A track's analysis (memoized per URL), or null when decode or analysis fails. */
+async function decodeTrack(musicSrc: string): Promise<MusicAnalysis | null> {
+  let promise = analysisCache.get(musicSrc);
+  if (!promise) {
+    promise = analyzeTrack(musicSrc);
+    cacheAnalysis(musicSrc, promise);
+  }
+  return promise.catch(() => null);
+}
+
+/** What a track shows. A fallback track (audio dropped in with no role) is analysed so the Beat tool works at once; a
+ * marked music track only once the person saved beats for it, so unrelated assets add no beat lines. A file that does
+ * not fit the decode keeps its saved beats, with no strengths measured from the audio. */
+async function loadTrack(
+  musicSrc: string,
+  beatPath: string,
+  io: ProjectIo,
+  isFallbackTrack: boolean,
+  decodable: boolean,
+): Promise<Loaded | null> {
+  const saved = await readSavedBeats(io, beatPath);
+  if (!isFallbackTrack && !saved) return null;
+  if (!decodable) return saved && { analysis: savedOnly(saved), ...saved };
+  const analysis = await decodeTrack(musicSrc);
+  if (!analysis) return null;
+  return {
+    analysis,
+    ...(saved ?? { times: analysis.beatTimes, strengths: analysis.beatStrengths }),
+  };
+}
+
+const savedOnly = ({ times, strengths }: Beats): MusicAnalysis => ({
+  beatTimes: times,
+  beatStrengths: strengths,
+  bpm: null,
+  bpmConfidence: "uncertain",
+  channelData: null,
+  sampleRate: 0,
+  peak: 0,
+});
 
 /** The current beat analysis, remapped onto the composition's edited beat grid. */
 export function useAdjustedBeatAnalysis() {
@@ -123,16 +130,19 @@ export function useMusicBeatAnalysis(): void {
       ? { readOptionalProjectFile, writeProjectFile }
       : null;
 
-  const { musicSrc, isFallbackTrack } = useMemo(() => {
+  const { musicSrc, isFallbackTrack, decodable } = useMemo(() => {
     const resolved = resolveBeatSourceTrack(elements);
     return {
       musicSrc: resolved?.element.src ?? null,
       isFallbackTrack: resolved?.isFallback ?? false,
+      decodable: resolved ? fitsBeatAnalysis(resolved.element) : false,
     };
   }, [elements]);
+  // Read at load, never a reason to load again: a file length arriving for the same track must keep its edits.
+  const decodableRef = useRef(decodable);
+  decodableRef.current = decodable;
 
-  // ── Load: decode for strength data, then use the saved beat file if present,
-  //    otherwise seed it from detection. Resets edits + history on track change. ──
+  // ── Load: the track's beats (loadTrack). Resets edits + history on track change. ──
   useEffect(() => {
     if (!musicSrc) {
       setBeatAnalysis(null);
@@ -150,26 +160,9 @@ export function useMusicBeatAnalysis(): void {
     const beatPath = beatFilePathForSrc(musicSrc);
     const io = ioRef.current;
 
-    // For explicitly tagged/named music tracks: only run expensive audio decode
-    // + beat analysis when the user has an explicit beats file saved. Without
-    // one, skip entirely — no surprise green lines on the timeline after
-    // dragging unrelated assets.
-    //
-    // For fallback tracks (audio dropped from Finder with no role/music-id):
-    // always run analysis so the Beat tool becomes usable immediately.
     (async () => {
       if (!beatPath || !io) return;
-      if (!isFallbackTrack) {
-        const hasSavedBeats = await readHasSavedBeats(io, beatPath);
-        if (cancelled) return;
-        if (!hasSavedBeats) {
-          setBeatAnalysis(null);
-          return;
-        }
-      }
-      if (cancelled) return;
-
-      const result = await loadBeatAnalysis(musicSrc, beatPath, io);
+      const result = await loadTrack(musicSrc, beatPath, io, isFallbackTrack, decodableRef.current);
       if (cancelled) return;
       if (!result) {
         setBeatAnalysis(null);

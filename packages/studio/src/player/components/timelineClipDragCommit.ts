@@ -1,17 +1,14 @@
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { clampToHostStart } from "../store/timelineElement";
 import type { DraggedClipState } from "./useTimelineClipDrag";
 // Type-only: erased at runtime, so the timelineZMirror → timelineClipDragCommit
 // value-import edge stays acyclic.
 import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone } from "./timelineZones";
-import { layoutAfterTrackInsert } from "./timelineDragLanding";
+import { buildTrackInsertEdits } from "./timelineDragLanding";
 import type { TimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
-import {
-  canMoveTimelineElement as canMoveElement,
-  resolveExpandedHostAlias,
-} from "./timelineAuthoredMoveTarget";
+import { resolveExpandedHostAlias } from "./timelineAuthoredMoveTarget";
 import type {
   TimelineMoveOperation,
   TimelineAtomicMoveUpdates,
@@ -27,6 +24,7 @@ import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { resolveGroupMovers } from "./timelineMultiDragPreview";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
 import { batchElementUpdates } from "../store/batchElementUpdates";
+import { resolveMainTrackInsertEdits } from "./timelineMainTrackInsert";
 
 type StartTrack = TimelineAtomicMoveUpdates;
 export interface TimelineMoveEdit extends TimelineAtomicMoveEdit {
@@ -71,7 +69,7 @@ export interface DragCommitDeps {
    * returns the clip's current z-index (from the live DOM inline style / computed;
    * "auto" ⇒ 0).
    */
-  readZIndex?: (element: TimelineElement) => number;
+  readZIndex?: (element: TimelineElement) => number | Promise<number>;
   /**
    * Apply the computed z-index patches. Wiring (in the drag hook, which owns the
    * DOM/persist plumbing) forwards these to the SAME atomic style-patch persist
@@ -81,12 +79,25 @@ export interface DragCommitDeps {
   onStackingPatches?: (patches: StackingPatch[], coalesceKey?: string) => Promise<unknown> | void;
   /** Converge the preview manifest after the complete lane + z transaction. */
   refreshAfterLaneMove?: () => void;
+  /** A drop onto other main-track clips inserts there instead of landing in free space. */
+  insertOnClipDrop?: boolean;
+  /** The drop aimed somewhere else but the clip went back where it was. */
+  onDropRefused?: (element: TimelineElement) => void;
 }
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
+
+/** Where `key` sits now, minus this drag's own shift: an earlier edit's rollback may have moved it since. */
+function startBeforeDrag(key: string, from: number, to: number): number {
+  const now = usePlayerStore.getState().elements.find((e) => keyOf(e) === key)?.start ?? to;
+  return now - (to - from);
+}
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 // One deterministic coalesce key shared by both records in a lane-change gesture.
 let laneChangeGestureSeq = 0;
+let clipInsertGestureSeq = 0;
+// Studio saves starts to the centisecond, so a smaller aim is the clip's own place.
+const REFUSED_DROP_MIN_S = 0.01;
 
 function moveStoreUpdates(edit: TimelineMoveEdit) {
   const writtenTrack =
@@ -183,13 +194,15 @@ export function persistMoveEdits(
       ? e
       : { element: e.element, updates: { ...e.updates, track: e.persistTrack } },
   );
+  const movedTo = new Map(edits.map((e) => [keyOf(e.element), e.updates.start]));
   const restorePrev = () =>
     batchElementUpdates(() => {
       for (const p of prev) {
         const { audioGroup, ...timing } = p.updates;
         const updates: Partial<TimelineElement> = {};
         if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-          Object.assign(updates, timing);
+          const to = movedTo.get(p.key) ?? timing.start;
+          Object.assign(updates, timing, { start: startBeforeDrag(p.key, timing.start, to) });
         }
         if (
           isLatestTimelineOptimisticGesture(updateElement, membershipRevision, p.key, "membership")
@@ -276,8 +289,17 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
 
   // ── Pure time-move (dragged clip keeps its lane, no insert) ─────────────────
   if (!isInsert && !laneChanged) {
+    const insert = deps.insertOnClipDrop && resolveMainTrackInsertEdits(drag, deps, multi?.keys);
+    if (insert) {
+      void persistMoveEdits(insert, deps, `clip-insert:${clipInsertGestureSeq++}`);
+      return;
+    }
     const delta = drag.previewStart - drag.element.start;
-    if (delta === 0) return;
+    if (delta === 0) {
+      const aimedAway = Math.abs((drag.aimStart ?? drag.element.start) - drag.element.start);
+      if (aimedAway >= REFUSED_DROP_MIN_S) deps.onDropRefused?.(drag.element);
+      return;
+    }
     if (multi) {
       const edits: TimelineMoveEdit[] = elements
         .filter((e) => multi.keys.has(keyOf(e)))
@@ -295,7 +317,10 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     updateElement(dragKey, updates);
     Promise.resolve(onMoveElement?.(drag.element, updates)).catch((error) => {
       if (isLatestTimelineOptimisticGesture(updateElement, revision, dragKey)) {
-        updateElement(dragKey, prev);
+        updateElement(dragKey, {
+          ...prev,
+          start: startBeforeDrag(dragKey, prev.start, updates.start),
+        });
       }
       console.error("[Timeline] Failed to persist clip edit", error);
     });
@@ -359,77 +384,6 @@ export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDe
     }),
     deps,
   ).catch(() => undefined);
-}
-
-/** Build the one sanctioned multi-clip write: atomically insert and compact a
- * source-file zone, then let the caller sync the deliberate vertical stacking. */
-// fallow-ignore-next-line complexity
-function buildTrackInsertEdits(
-  element: TimelineElement,
-  previewStart: number,
-  insertRow: number,
-  multi: {
-    keys: ReadonlySet<string>;
-    movedStart: (e: TimelineElement) => number;
-  } | null,
-  deps: DragCommitDeps,
-): { candidate: TimelineElement[]; edits: TimelineMoveEdit[] } | null {
-  const { elements } = deps;
-  const editKey = keyOf(element);
-  const layout = layoutAfterTrackInsert(element, previewStart, insertRow, multi, deps);
-  if (!layout) return null;
-  const { normalized, targetTrack, writable } = layout;
-  const bySrc = new Map(elements.map((e) => [keyOf(e), e]));
-  // A partial zone renumber creates collisions; refuse a shifted locked row.
-  for (const norm of normalized) {
-    const src = bySrc.get(keyOf(norm));
-    if (
-      src &&
-      writable(src) &&
-      !canMoveElement(src) &&
-      norm.track !== (src.authoredTrack ?? src.track)
-    ) {
-      console.warn(
-        `[Timeline] Track insert refused: locked clip ${keyOf(src)} would need renumbering`,
-      );
-      return null;
-    }
-  }
-  const candidate = elements.map((e) => {
-    if (keyOf(e) === editKey) return { ...e, start: previewStart, track: targetTrack };
-    if (multi?.keys.has(keyOf(e))) return { ...e, start: multi.movedStart(e) };
-    return e;
-  });
-  const edits: TimelineMoveEdit[] = [];
-  if (multi) {
-    for (const src of elements) {
-      const srcKey = keyOf(src);
-      if (srcKey !== editKey && multi.keys.has(srcKey) && !writable(src) && canMoveElement(src)) {
-        edits.push({
-          element: src,
-          updates: { start: multi.movedStart(src), track: src.track },
-          persistTrack: src.authoredTrack,
-        });
-      }
-    }
-  }
-  for (const norm of normalized) {
-    const src = bySrc.get(keyOf(norm));
-    if (!src || !canMoveElement(src)) continue;
-    const normKey = keyOf(norm);
-    let start = src.start;
-    if (normKey === editKey) start = previewStart;
-    else if (multi?.keys.has(normKey)) start = multi.movedStart(src);
-    edits.push({
-      element: src,
-      updates: {
-        start,
-        track: norm.track,
-        ...(normKey === editKey && src.audioGroup ? { audioGroup: null } : {}),
-      },
-    });
-  }
-  return { candidate, edits };
 }
 
 function commitTrackInsert(
@@ -550,24 +504,25 @@ function syncStackingForEdit(
   // slips through). Every real lane-realization drop aims at a DIFFERENT lane.
   if (aimedLane === currentLane) return Promise.resolve();
 
-  // Discovery order is DOM order, which breaks equal-z ties.
-  const stackingEls = candidate.map((el, domIndex) => ({
-    key: keyOf(el),
-    start: el.start,
-    duration: el.duration,
-    track: el.track,
-    zIndex: readZIndex(el),
-    isAudio: classifyZone(el) === "audio",
-    sourceFile: el.sourceFile,
-    domIndex,
-    stackingContextId: el.stackingContextId ?? null,
-  }));
-
-  const patches = computeStackingPatches(
-    stackingEls,
-    [dragKey],
-    aimedLane < currentLane ? "up" : "down",
-  );
-  if (patches.length === 0) return Promise.resolve();
-  return Promise.resolve(onStackingPatches(patches, coalesceKey)).then(() => undefined);
+  return Promise.all(candidate.map((el) => readZIndex(el))).then((zIndexes) => {
+    // Discovery order is DOM order, which breaks equal-z ties.
+    const stackingEls = candidate.map((el, domIndex) => ({
+      key: keyOf(el),
+      start: el.start,
+      duration: el.duration,
+      track: el.track,
+      zIndex: zIndexes[domIndex]!,
+      isAudio: classifyZone(el) === "audio",
+      sourceFile: el.sourceFile,
+      domIndex,
+      stackingContextId: el.stackingContextId ?? null,
+    }));
+    const patches = computeStackingPatches(
+      stackingEls,
+      [dragKey],
+      aimedLane < currentLane ? "up" : "down",
+    );
+    if (patches.length === 0) return;
+    return Promise.resolve(onStackingPatches(patches, coalesceKey)).then(() => undefined);
+  });
 }

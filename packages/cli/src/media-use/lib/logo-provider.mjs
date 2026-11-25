@@ -12,9 +12,8 @@ import { fetchMedia, readCappedBody } from "./media-fetch.mjs";
 // falls through to resolve's normal failure path (`no provider could resolve
 // logo`, exit 1).
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
+import { privateOutputPath } from "./private-output.mjs";
 
 // Bump by pointing at a newer glincker/thesvg commit; the manifest and every
 // icon URL resolve against the same pin, so a resolve is reproducible.
@@ -234,7 +233,7 @@ export async function faviconSearch(intent, ctx = {}) {
   // instead of re-downloading, so the size check is authoritative over what
   // gets frozen and the favicon tier costs one network round-trip, not two.
   const bytes = body.byteLength;
-  const tmp = join(mkdtempSync(join(tmpdir(), "media-use-logo-")), `${domain}.ico`);
+  const tmp = privateOutputPath("logo", ".ico");
   writeFileSync(tmp, body);
   return {
     localPath: tmp,

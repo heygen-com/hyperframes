@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { get as httpGet, type IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -24,6 +25,13 @@ beforeAll(() => {
   writeFileSync(join(site, "index.html"), "<h1>home</h1>");
   writeFileSync(join(site, "pages", "about page.html"), "<h1>about</h1>");
   writeFileSync(join(site, "logo.png"), "png-bytes");
+  writeFileSync(join(site, "app.cjs"), "window.cjs = 1;");
+  writeFileSync(join(site, "runner"), "window.runner = 1;");
+  for (const folder of [".git", ".hyperframes", ".aws"]) mkdirSync(join(site, folder));
+  for (const file of [".env", ".env.local", ".git/config", ".hyperframes/x.json", ".npmrc"]) {
+    writeFileSync(join(site, file), "SECRET=1");
+  }
+  writeFileSync(join(site, ".aws", "credentials"), "SECRET=1");
   writeFileSync(join(base, "secret.txt"), "outside the root");
   writeFileSync(join(base, "outside.html"), "<h1>outside</h1>");
   if (process.platform !== "win32") {
@@ -33,6 +41,23 @@ beforeAll(() => {
 });
 
 afterAll(() => rmSync(base, { recursive: true, force: true }));
+
+function getWithHost(
+  url: string,
+  host: string,
+): Promise<{ status: number; headers: IncomingHttpHeaders; body: string }> {
+  return new Promise((resolveGet, rejectGet) => {
+    const request = httpGet(url, { headers: { host } }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => (body += chunk));
+      response.on("end", () =>
+        resolveGet({ status: response.statusCode ?? 0, headers: response.headers, body }),
+      );
+    });
+    request.on("error", rejectGet);
+  });
+}
 
 describe("resolveLocalCaptureTarget", () => {
   it("accepts a path, a file:// URL or a directory, rooted at the file's directory", () => {
@@ -87,6 +112,15 @@ describe("startLocalPageServer", () => {
     expect(await (await fetch(`${server.origin}/logo.png`)).text()).toBe("png-bytes");
   });
 
+  // fails without the fix: a capture page could make a file of the folder its origin's service worker.
+  it("refuses a file asked for as a service worker's script, and serves it otherwise", async () => {
+    const get = (headers: Record<string, string>) =>
+      fetch(`${server.origin}/logo.png`, { headers });
+    expect((await get({ "service-worker": "script" })).status).toBe(403);
+    expect((await get({ "sec-fetch-dest": "serviceworker" })).status).toBe(403);
+    expect((await get({ "sec-fetch-dest": "image" })).status).toBe(200);
+  });
+
   it.each([
     "/%2e%2e/secret.txt",
     "/..%2fsecret.txt",
@@ -98,8 +132,59 @@ describe("startLocalPageServer", () => {
     expect(await response.text()).toBe("");
   });
 
+  it.each([
+    "/.env",
+    "/.ENV",
+    "/.env.local",
+    "/.git/config",
+    "/%2egit/config",
+    "/.hyperframes/x.json",
+    "/.npmrc",
+    "/.aws/credentials",
+  ])("keeps the private file %s from the page and the capture fetchers", async (path) => {
+    const response = await fetch(`${server.origin}${path}`);
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("");
+    const local = await safeFetch(`${server.origin}${path}`);
+    expect(local?.status).toBe(404);
+    expect(await local?.text()).not.toContain("SECRET");
+  });
+
   it.skipIf(process.platform === "win32")("refuses a symlink that leaves the root", async () => {
     expect((await fetch(`${server.origin}/link.txt`)).status).toBe(404);
+  });
+
+  it.each(["capture-fixture.example.com", "127.0.0.1", "127.0.0.1:1", "localhost.example.com"])(
+    "refuses Host %s before reading any file",
+    async (host) => {
+      const { status, headers, body } = await getWithHost(server.url, host);
+      expect(status).toBe(403);
+      expect(headers["x-content-type-options"]).toBe("nosniff");
+      expect(body).not.toContain("about");
+    },
+  );
+
+  it("answers its own port by every loopback name, with nosniff", async () => {
+    const port = new URL(server.origin).port;
+    for (const host of [`127.0.0.1:${port}`, `LOCALHOST:${port}`, `[::1]:${port}`]) {
+      const { status, headers, body } = await getWithHost(server.url, host);
+      expect(status).toBe(200);
+      expect(headers["x-content-type-options"]).toBe("nosniff");
+      expect(body).toBe("<h1>about</h1>");
+    }
+    expect(
+      (await fetch(`${server.origin}/missing.png`)).headers.get("x-content-type-options"),
+    ).toBe("nosniff");
+  });
+
+  it("names script and WebAssembly types, and leaves an unlisted type to the browser's sniffing", async () => {
+    const cjs = await fetch(`${server.origin}/app.cjs`);
+    expect(cjs.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    expect(cjs.headers.get("x-content-type-options")).toBe("nosniff");
+    const bare = await fetch(`${server.origin}/runner`);
+    expect(await bare.text()).toBe("window.runner = 1;");
+    expect(bare.headers.get("content-type")).toBe("application/octet-stream");
+    expect(bare.headers.get("x-content-type-options")).toBeNull();
   });
 
   it("refuses methods other than GET and HEAD", async () => {

@@ -4,8 +4,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   ManifestInvalid,
+  localBaseDigest,
   parseCanonicalManifest,
   parseManifest,
+  parseStoredManifest,
 } from "../src/sources/manifest.mjs";
 import { overLimit, V1_LIMITS } from "../src/sources/limits.mjs";
 import { excludedFolder, skippedSymlink } from "../src/sources/pathPolicy.mjs";
@@ -29,11 +31,11 @@ function refusal(run) {
   return null;
 }
 
-test("the vectors are portable-source-v4's, and there are vectors of every kind", () => {
-  assert.equal(vectors.policy_version, "portable-source-v4");
+test("the vectors are portable-source-v11's, and there are vectors of every kind", () => {
+  assert.equal(vectors.policy_version, "portable-source-v11");
   assert.deepEqual(
     [vectors.valid.length, vectors.invalid.length, vectors.limits.length, vectors.stored.length],
-    [11, 147, 5, 8],
+    [13, 219, 5, 8],
   );
 });
 
@@ -119,6 +121,51 @@ test("a capture skips only folders no included file can be under", () => {
   assert.equal(excludedFolder(".hyperframes/prepared-assets"), false);
   assert.equal(excludedFolder("assets"), false);
   assert.equal(excludedFolder("assets/renders"), false);
+});
+
+function manifestWith(path) {
+  const blob = { sha256: "0".repeat(64), size: 0 };
+  return {
+    format_version: 1,
+    entrypoint: "index.html",
+    files: [
+      { path: "index.html", ...blob },
+      { path, ...blob },
+    ],
+  };
+}
+
+test("a v4 base retains the digest of a path segment containing only a zero-width joiner", () => {
+  const old = manifestWith("assets/\u200d/cover.svg");
+  assert.equal(
+    localBaseDigest(old),
+    "67183e170a22454c5b4847c6774c9efc2912192294173e9c7e58d37c98625d6d",
+  );
+  assert.equal(refusal(() => parseStoredManifest(old))?.code, "path_empty_segment");
+  assert.equal(refusal(() => parseManifest(old))?.code, "path_empty_segment");
+  assert.equal(
+    refusal(() => localBaseDigest(manifestWith("assets//cover.svg")))?.code,
+    "path_empty_segment",
+  );
+});
+
+test("an upload refuses a .hyperframes folder below the root; a stored snapshot still reads one", () => {
+  const error = refusal(() => parseManifest(manifestWith("sub/.hyperframes/agent-runs.jsonl")));
+  assert.equal(error?.code, "excluded_path");
+  assert.equal(error?.violations[0]?.rule, "nested-hyperframes-state");
+  assert.equal(
+    parseManifest(manifestWith(".hyperframes/studio-motion.json")).document.files.length,
+    2,
+  );
+  assert.equal(
+    refusal(() => parseManifest(manifestWith(".hyperframes/agent-runs.jsonl")))?.violations[0]
+      ?.rule,
+    "known-hyperframes-state",
+  );
+  const stored = parseStoredManifest(manifestWith("sub/.hyperframes/agent-runs.jsonl"));
+  assert.equal(stored.document.files.length, 2);
+  assert.equal(excludedFolder("sub/.hyperframes"), true);
+  assert.equal(excludedFolder(".hyperframes/transcripts/x/.hyperframes"), true);
 });
 
 test("only links under assets/podcast/, in any spelling, are skipped", () => {

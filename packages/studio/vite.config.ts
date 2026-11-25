@@ -13,17 +13,25 @@ import { isIP } from "node:net";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { bindNodeRequestSignal } from "./vite.request-signal.js";
-import { watch } from "chokidar";
+import { type FSWatcher, watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
 import type { openProjectHistory } from "@hyperframes/studio-server";
 import { previewChangeOwner } from "./vite.preview-watch";
 import {
+  carriesOAuthReturn,
+  inertRefusal,
+  refuseOAuthReturn,
+} from "../studio-server/src/helpers/inertRefusal";
+import { devServesUrl } from "./vite.private-files";
+import { SAME_ORIGIN_FRAMING_HEADERS } from "../engine/src/utils/loopbackOnly";
+import {
   hostHeaderAllowed,
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "../studio-server/src/helpers/requestIdentity";
+import { TELEMETRY_OPT_OUT_DEFINE } from "./vite.telemetry";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -110,9 +118,10 @@ function viteAllowsHost(host: string, allowedHosts: readonly string[]): boolean 
 
 // ── Vite plugin ──────────────────────────────────────────────────────────────
 
-function devProjectApi(): Plugin {
+export function devProjectApi(): Plugin {
   const dataDir = resolve(__dirname, "data/projects");
   const runtimePath = resolve(__dirname, "../core/dist/hyperframe.runtime.iife.js");
+  let watching: FSWatcher | undefined;
 
   return {
     name: "studio-dev-api",
@@ -138,12 +147,12 @@ function devProjectApi(): Plugin {
         /* dataDir doesn't exist yet */
       }
 
-      const projectWatcher = watch([...watchedProjects.keys()], {
+      const projectWatcher = (watching = watch([...watchedProjects.keys()], {
         ignoreInitial: true,
         // A project write is a whole-file replace; wait for it to settle so a
         // half-written composition is never announced.
         awaitWriteFinish: { stabilityThreshold: 40, pollInterval: 10 },
-      });
+      }));
 
       // This watcher, and not Vite's, is what clears the preview signature.
       // Vite's ignores `data/projects/**`, so subscribing the cache to it left
@@ -210,6 +219,7 @@ function devProjectApi(): Plugin {
           _api = mod.createStudioApi(adapter, {
             allowedHosts: mod.previewAllowedHostsFromEnv(),
             sandboxThumbnailCaptures: true,
+            sandboxDirectOpens: true,
           });
         }
         return _api;
@@ -220,6 +230,19 @@ function devProjectApi(): Plugin {
       const allowedHosts = [...previewAllowedHostsFromEnv()];
       if (typeof server.config.server.host === "string")
         allowedHosts.push(server.config.server.host);
+      // Refuse an OAuth return first, before every route and Vite's own SPA fallback.
+      server.middlewares.use((req, res, next) => {
+        if (!carriesOAuthReturn(req.url ?? "/")) return next();
+        void bridgeHonoResponse(refuseOAuthReturn(), res);
+      });
+      // Plugin middlewares run before Vite's file serving; project files reach the page only through /api, as built.
+      const servedRoots = { studio: __dirname, checkout: resolve(__dirname, "../..") };
+      server.middlewares.use((req, res, next) => {
+        const url = req.url ?? "/";
+        if (url === "/__hyperframes_config" || url.startsWith("/api/")) return next();
+        if (devServesUrl(url, servedRoots)) return next();
+        void bridgeHonoResponse(inertRefusal(404, "Not found."), res);
+      });
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? "";
         if (url !== "/__hyperframes_config" && !url.startsWith("/api/")) return next();
@@ -239,7 +262,7 @@ function devProjectApi(): Plugin {
 
       server.middlewares.use((req, res, next) => {
         if (req.url !== "/__hyperframes_config") return next();
-        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version);
+        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version, req);
         if (!payload) return next();
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify(payload));
@@ -349,8 +372,8 @@ function devProjectApi(): Plugin {
           },
         });
       });
-      server.httpServer?.on("close", () => void projectWatcher.close());
     },
+    closeBundle: () => watching?.close(),
   };
 }
 
@@ -358,6 +381,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), devProjectApi()],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
+    ...TELEMETRY_OPT_OUT_DEFINE,
   },
   resolve: {
     alias: {
@@ -369,6 +393,11 @@ export default defineConfig({
       // openComposition and silently loses its SDK session. See the stub.
       canvas: resolve(__dirname, "src/shims/canvasBrowserStub.js"),
       "@hyperframes/player": resolve(__dirname, "../player/src/hyperframes-player.ts"),
+      // Studio serves the runtime itself, so the player it bundles carries no second copy.
+      "@hyperframes/core/runtime-script": resolve(
+        __dirname,
+        "src/shims/runtimeScriptFromStudio.ts",
+      ),
       "@hyperframes/studio-server/source-mutation": resolve(
         __dirname,
         "../studio-server/src/helpers/sourceMutation.ts",
@@ -387,6 +416,10 @@ export default defineConfig({
   },
   server: {
     port: 5190,
+    // The built Studio answers no other origin; Vite's default would let any loopback page read what it serves.
+    cors: false,
+    // The same framing rule as the CLI Studio's shell, so another site cannot frame this one.
+    headers: { ...SAME_ORIGIN_FRAMING_HEADERS },
     // Vite's defaults (localhost, IP literals) still apply on top of this list.
     allowedHosts: previewAllowedHostsFromEnv(),
     watch: {
@@ -410,7 +443,7 @@ export default defineConfig({
   },
   test: {
     exclude: ["data/**", "node_modules/**"],
-    setupFiles: ["src/test-setup.ts"],
+    setupFiles: ["src/test-setup.ts", "../core/vitest.mediaHeader.ts"],
     environmentOptions: {
       happyDOM: { settings: { enableIframePageLoading: true } },
     },

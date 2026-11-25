@@ -3,32 +3,53 @@
  * to find `examples/aws-lambda/template.yaml` and the handler ZIP build
  * script.
  *
- * Walks up from this file's location until it finds a directory that
- * contains `packages/aws-lambda/`. Undefined outside a checkout (the
- * published CLI), where deploy uses the adapter's prebuilt handler.
+ * Only the checkout this CLI itself sits in counts: `<root>/packages/cli`
+ * must be the running CLI's own package, and `<root>/packages/aws-lambda`
+ * must be the adapter package. Undefined for a published install, where
+ * deploy uses the adapter's prebuilt handler.
  */
 
-import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export function repoRoot(): string | undefined {
+const CLI_PACKAGE = "@hyperframes/cli";
+const LAMBDA_PACKAGE = "@hyperframes/aws-lambda";
+
+export function repoRoot(
+  moduleDir: string = dirname(fileURLToPath(import.meta.url)),
+): string | undefined {
   const override = process.env.HYPERFRAMES_REPO_ROOT;
   if (override) {
-    if (existsSync(resolve(override, "packages", "aws-lambda", "package.json"))) return override;
+    if (packageName(resolve(override, "packages", "aws-lambda")) === LAMBDA_PACKAGE)
+      return override;
     throw new Error(
       "[hyperframes lambda] HYPERFRAMES_REPO_ROOT is not a hyperframes checkout " +
-        "(no packages/aws-lambda/package.json there). Point it at the repo root, or unset it.",
+        `(no ${LAMBDA_PACKAGE} package at packages/aws-lambda there). Point it at the repo root, or unset it.`,
     );
   }
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let depth = 0; depth < 12; depth++) {
-    if (existsSync(resolve(dir, "packages", "aws-lambda", "package.json"))) {
-      return dir;
-    }
+  const cliDir = ownPackageDir(moduleDir);
+  if (!cliDir || packageName(cliDir) !== CLI_PACKAGE) return undefined;
+  const packagesDir = dirname(cliDir);
+  if (basename(packagesDir) !== "packages") return undefined;
+  const root = dirname(packagesDir);
+  return packageName(join(root, "packages", "aws-lambda")) === LAMBDA_PACKAGE ? root : undefined;
+}
+
+/** The nearest folder at or above `dir` holding a package.json: this module's own package. */
+function ownPackageDir(dir: string): string | undefined {
+  for (;;) {
+    if (existsSync(join(dir, "package.json"))) return dir;
     const parent = dirname(dir);
-    if (parent === dir) break;
+    if (parent === dir) return undefined;
     dir = parent;
   }
-  return undefined;
+}
+
+function packageName(dir: string): unknown {
+  try {
+    return (JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { name?: unknown }).name;
+  } catch {
+    return undefined;
+  }
 }

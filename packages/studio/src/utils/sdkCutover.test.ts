@@ -308,6 +308,52 @@ describe("sdkCutoverPersist", () => {
     expect(deps.writeProjectFile).not.toHaveBeenCalled();
   });
 
+  // The SDK's element tree leaves <script>/<style> out, so this layer looks childless and passes the target check.
+  it.each(["script", "style"])(
+    "declines a text edit on a real layer whose only child is an inline <%s>",
+    async (tag) => {
+      const raw = `<${tag}>.raw{}</${tag}>`;
+      const layer = `<div data-hf-id="hf-layer" data-start="0" data-duration="1">${raw}</div>`;
+      const html = `<!DOCTYPE html><html><body><div data-hf-id="hf-stage" data-hf-root>${layer}</div></body></html>`;
+      const live = await openComposition(html, { history: false });
+      const deps = makeDeps();
+      const result = await sdkCutoverPersist(
+        { hfId: "hf-layer" } as never,
+        [textOp("New")],
+        html,
+        "/comp.html",
+        live,
+        deps,
+      );
+      expect(result.status).toBe("declined");
+      expect(deps.writeProjectFile).not.toHaveBeenCalled();
+      expect(live.serialize()).toContain(raw);
+      live.dispose();
+    },
+  );
+
+  it("a text edit of a real layer whose only child is a <textarea> saves no script", async () => {
+    const layer = `<div data-hf-id="hf-layer" data-start="0" data-duration="1"><textarea>old</textarea></div>`;
+    const html = `<!DOCTYPE html><html><body><div data-hf-id="hf-stage" data-hf-root>${layer}</div></body></html>`;
+    const live = await openComposition(html, { history: false });
+    const deps = makeDeps();
+    await sdkCutoverPersist(
+      { hfId: "hf-layer" } as never,
+      [textOp("</textarea><script>window.pwned=1</script>")],
+      html,
+      "/comp.html",
+      live,
+      deps,
+    );
+    // One end tag means the typed "</textarea>" stayed text: nothing after it can parse as markup.
+    const endTags = (html: unknown) => String(html).match(/<\/textarea/gi)?.length ?? 0;
+    expect(deps.writeProjectFile).toHaveBeenCalled();
+    for (const [, written] of vi.mocked(deps.writeProjectFile).mock.calls)
+      expect(endTags(written)).toBe(1);
+    expect(endTags(live.serialize())).toBe(1);
+    live.dispose();
+  });
+
   it("dispatches setAttribute for attribute op with data- prefix", async () => {
     const deps = makeDeps();
     const session = makeSession(true);

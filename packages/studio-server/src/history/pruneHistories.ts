@@ -1,11 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, renameSync, statSync } from "node:fs";
 import { lstat, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isSafePath } from "../helpers/safePath.js";
-import { ID_PATH, isHistoryId, readId, readRecord } from "./historyId.js";
-import { HistoryBusyError, takeHistoryOwnership } from "./ownerLock.js";
+import {
+  ID_PATH,
+  isHistoryId,
+  readId,
+  readIdOffThread,
+  readRecord,
+  statOffThread,
+} from "./historyId.js";
+import {
+  HistoryBusyError,
+  readPlainFile,
+  replaceOwnFile,
+  takeHistoryOwnership,
+} from "./ownerLock.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A gone project's history stays this long after its last use, so a moved project reopened in time keeps it. */
@@ -108,12 +120,12 @@ async function pruneOne(
   run: PruneRun,
 ): Promise<PrunedHistory | null> {
   const home = join(historyRoot, id);
-  if (abandonedProject(home, id, run.now, run.tempDir) === null) return null;
+  if ((await abandonedProject(home, id, run.now, run.tempDir)) === null) return null;
   const release = await takeUnlessBusy(home);
   if (!release) return null;
   let taken: { projectDir: string; trash: string | null } | null;
   try {
-    taken = recheckAndMoveAway(historyRoot, id, run);
+    taken = await recheckAndMoveAway(historyRoot, id, run);
   } catch (error) {
     release();
     throw error;
@@ -140,10 +152,14 @@ async function takeUnlessBusy(home: string): Promise<(() => void) | null> {
   }
 }
 
-function recheckAndMoveAway(historyRoot: string, id: string, { now, dryRun, tempDir }: PruneRun) {
+async function recheckAndMoveAway(
+  historyRoot: string,
+  id: string,
+  { now, dryRun, tempDir }: PruneRun,
+) {
   const home = join(historyRoot, id);
   // Re-read under the lock: an open that recorded this project again meanwhile keeps it.
-  const projectDir = abandonedProject(home, id, now, tempDir);
+  const projectDir = await abandonedProject(home, id, now, tempDir);
   if (projectDir === null) return null;
   if (dryRun) return { projectDir, trash: null };
   // One rename takes the lock along, so an interrupted delete leaves a `.pruned-` folder the next run finishes.
@@ -152,31 +168,41 @@ function recheckAndMoveAway(historyRoot: string, id: string, { now, dryRun, temp
   return { projectDir, trash };
 }
 
-/** The folder a history was recorded for, when that project is gone; null while it may still need its history. */
-function abandonedProject(home: string, id: string, now: number, tempDir: string): string | null {
+/** The folder a history was recorded for, when that project is gone; null while it may still need its history. Its
+ * folder is read off the thread: a project not opened in weeks may sit on a slow, cloud or unmounted disk. */
+async function abandonedProject(
+  home: string,
+  id: string,
+  now: number,
+  tempDir: string,
+): Promise<string | null> {
   const record = readRecord(home);
   const dir = record?.dir;
   if (typeof dir !== "string") return null;
   if (now - lastUsed(home) < KEEP_GONE_PROJECT_HISTORY_MS && !isSafePath(tempDir, dir)) return null;
-  return projectGone(dir, id, record?.dev, tempDir) ? dir : null;
+  return (await projectGone(dir, id, record?.dev, tempDir)) ? dir : null;
 }
 
-function projectGone(dir: string, id: string, dev: unknown, tempDir: string): boolean {
-  if (!statSync(join(dir, ID_PATH), { throwIfNoEntry: false }))
-    return diskStillHere(dir, dev, tempDir);
+async function projectGone(
+  dir: string,
+  id: string,
+  dev: unknown,
+  tempDir: string,
+): Promise<boolean> {
+  if (!(await statOffThread(join(dir, ID_PATH)))) return diskStillHere(dir, dev, tempDir);
   // An id file this version cannot read is refused, never replaced, so its history is still the project's.
-  const there = readId(dir);
+  const there = await readIdOffThread(dir);
   return there !== null && there !== id;
 }
 
 /** A project without its id is gone only if the disk that held it is here: an unmounted drive or share keeps it. */
-function diskStillHere(dir: string, dev: unknown, tempDir: string): boolean {
+async function diskStillHere(dir: string, dev: unknown, tempDir: string): Promise<boolean> {
   let at = dir;
-  let stat = statSync(at, { throwIfNoEntry: false });
+  let stat = await statOffThread(at);
   while (!stat) {
     if (dirname(at) === at) return false;
     at = dirname(at);
-    stat = statSync(at, { throwIfNoEntry: false });
+    stat = await statOffThread(at);
   }
   if (typeof dev === "number") return stat.dev === dev;
   // Recorded before `dev`: a missing folder may sit on an unmounted disk, so only an emptied folder or temp counts.
@@ -200,7 +226,7 @@ async function bytesIn(dir: string): Promise<number> {
 
 function prunedWithinADay(stamp: string, now: number): boolean {
   try {
-    const last = Number(readFileSync(stamp, "utf-8"));
+    const last = Number(readPlainFile(stamp) ?? "");
     return last <= now && now - last < DAY_MS;
   } catch {
     return false;
@@ -220,7 +246,7 @@ export function pruneGoneProjectHistoriesDaily(
   pruning.add(historyRoot);
   setImmediate(() => {
     pruneWithin(historyRoot, { now, onError, budgetMs, measure: false })
-      .then(({ finished }) => finished && writeFileSync(stamp, String(now)))
+      .then(({ finished }) => finished && replaceOwnFile(stamp, String(now)))
       .catch((error) => onError?.(error))
       .finally(() => pruning.delete(historyRoot));
   });

@@ -164,6 +164,32 @@ describe("layoutAudit helpers", () => {
     expect(formatted).toContain("Fix: Increase container padding");
   });
 
+  it("shows control characters in composition text as visible escapes", () => {
+    const formatted = formatLayoutIssue({
+      ...issue("text_box_overflow", "error"),
+      selector: "#h\u001b]0;t\u0007",
+      containerSelector: ".b\u009b2J",
+      text: "Plan\u001b[2K",
+      message: "clipped\u001b[1A",
+      fixHint: "pad \u001b]52;c;Y2xpcA==\u0007",
+    });
+
+    for (const control of ["\u0007", "\u001b", "\u009b"]) expect(formatted).not.toContain(control);
+    expect(formatted).toContain("#h\\x1b]0;t\\x07 inside .b\\x9b2J");
+    expect(formatted).toContain('"Plan\\x1b[2K" — clipped\\x1b[1A');
+    expect(formatted).toContain("\n    Fix: pad \\x1b]52;c;Y2xpcA==\\x07");
+  });
+
+  it("shows control characters in an issue code from the page as visible escapes", () => {
+    const formatted = formatLayoutIssue({
+      ...issue("text_box_overflow", "error"),
+      code: "text_box_overflow\u001b]52;c;Y2xpcA==\u0007" as LayoutIssue["code"],
+    });
+
+    expect(formatted).not.toContain("\u001b");
+    expect(formatted).toContain("text_box_overflow\\x1b]52;c;Y2xpcA==\\x07");
+  });
+
   it("formats collapsed issue time ranges", () => {
     const formatted = formatLayoutIssue({
       ...issue("text_box_overflow", "error"),

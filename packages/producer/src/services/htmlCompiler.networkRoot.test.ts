@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { parseHTML } from "linkedom";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -84,6 +85,50 @@ describe("composition paths on another network root", () => {
     expect(touched.paths.filter(onShare)).toEqual([]);
     expect(touched.paths.some((path) => path.endsWith("local.mp4"))).toBe(true);
   });
+
+  it.each(["\\\\scenes/scene.html", "\\scenes/scene.html", ".\\scenes/scene.html"])(
+    "are never built from a backslash-prefixed scene src (%s)",
+    async (src) => {
+      // On Windows `\\scenes` is the computer `scenes`: probing its siblings sends the user's NTLM login to it.
+      projectDir = mkdtempSync(join(tmpdir(), "hf-network-root-scene-"));
+      mkdirSync(join(projectDir, "scenes"));
+      for (const name of ["img.png", "wide.png", "style.css", "bg.png", "anim.js"]) {
+        writeFileSync(join(projectDir, "scenes", name), "fixture");
+      }
+      writeFileSync(
+        join(projectDir, "scenes", "scene.html"),
+        `<!doctype html><html><body>
+          <div data-composition-id="scene" data-width="320" data-height="180">
+            <link id="sheet" rel="stylesheet" href="style.css">
+            <style>.a { background: url(bg.png); }</style>
+            <img id="pic" src="img.png" srcset="wide.png 2x">
+            <div class="a"></div>
+            <script src="anim.js"></script>
+          </div></body></html>`,
+      );
+      const htmlPath = join(projectDir, "index.html");
+      writeFileSync(
+        htmlPath,
+        `<!doctype html><html><body>
+          <div data-composition-id="root" data-width="320" data-height="180" data-start="0" data-duration="1">
+            <div data-composition-id="scene" data-composition-src="${src}" data-start="0" data-duration="1"></div>
+          </div>
+        </body></html>`,
+      );
+
+      const compiled = await compileForRender(projectDir, htmlPath, join(projectDir, "downloads"));
+
+      expect(touched.paths.filter((path) => path.includes("\\"))).toEqual([]);
+      const scene = (name: string) => join(projectDir as string, "scenes", name);
+      expect(touched.paths).toEqual(
+        expect.arrayContaining(["img.png", "wide.png", "style.css", "bg.png"].map(scene)),
+      );
+      const pic = parseHTML(compiled.html).document.getElementById("pic");
+      expect(pic?.getAttribute("src")).toBe("scenes/img.png");
+      expect(pic?.getAttribute("srcset")).toBe("scenes/wide.png 2x");
+      expect(compiled.html).toContain('src="scenes/anim.js"');
+    },
+  );
 
   it("are never looked at when an image src is resolved", () => {
     projectDir = mkdtempSync(join(tmpdir(), "hf-network-root-img-"));

@@ -3,6 +3,8 @@
 // the upgrade argv and the skills install run for real per install channel;
 // only spawn, the config file, the manifest fetch/disk and the registry are stubbed.
 
+import { homeCliCommand } from "../utils/homeCliCommand.js";
+import { homedir } from "node:os";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -130,6 +132,7 @@ beforeEach(() => {
     }),
   );
   for (const name of [
+    "npm_lifecycle_event",
     "HYPERFRAMES_PLUGIN_VERSION",
     "HYPERFRAMES_SKIP_SKILLS",
     "HYPERFRAMES_AGENT",
@@ -215,7 +218,7 @@ describe("hyperframes update --check", () => {
     ["pnpm", ENTRIES.pnpm, "pnpm add -g hyperframes@0.9.8"],
     ["bun", ENTRIES.bun, "bun add -g hyperframes@0.9.8"],
     ["brew", ENTRIES.brew, "brew upgrade hyperframes"],
-    ["npx", ENTRIES.npx, "npx hyperframes@latest"],
+    ["npx", ENTRIES.npx, homeCliCommand("latest")],
     ["project", ENTRIES.project, "npm install hyperframes@0.9.8"],
   ])("names the %s install and the command that updates it", async (channel, entry, command) => {
     await runUpdate(entry, { check: true, json: true });
@@ -260,7 +263,11 @@ describe("hyperframes update (install)", () => {
       expect(installs()).toHaveLength(1);
       expect(installs()[0]).toMatchObject({ command: bin, args });
       // The child's stdout goes to stderr: a --json stdout stays one parseable object.
-      expect(installs()[0]!.opts).toMatchObject({ shell: false, stdio: ["inherit", 2, 2] });
+      expect(installs()[0]!.opts).toMatchObject({
+        cwd: homedir(),
+        shell: false,
+        stdio: ["inherit", 2, 2],
+      });
       expect(skillsAdds()).toHaveLength(1);
       expect(skillsAdds()[0]!.args).toContain("https://github.com/heygen-com/hyperframes#v0.9.8");
       expect(json().updated).toMatchObject({
@@ -271,7 +278,7 @@ describe("hyperframes update (install)", () => {
   );
 
   it.each([
-    ["npx", ENTRIES.npx, "npx hyperframes@latest"],
+    ["npx", ENTRIES.npx, homeCliCommand("latest")],
     // The project's manager moves its dependency, as `--check` names it.
     ["project", ENTRIES.project, "npm install hyperframes@0.9.8"],
   ])(
@@ -350,5 +357,53 @@ describe("hyperframes update (install)", () => {
     expect(installs()).toEqual([]);
     expect(skillsAdds()).toEqual([]);
     expect(json().updated).toEqual({ cli: { status: "current" }, skills: { status: "current" } });
+  });
+});
+
+describe("hyperframes update lines for people", () => {
+  const ESC = String.fromCharCode(27);
+  const ODD = `od${ESC}[2Jd\x07`;
+  const SHOWN = "od\\x1b[2Jd\\x07";
+  const text = () => stdout.join("\n").replace(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "");
+
+  // fails without the fix: the install path and the skills folder are printed as they are on disk.
+  it("shows control characters in the install path and the skills folder as text", async () => {
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({
+      ...OUTDATED_CHECK,
+      location: `/home/${ODD}/.claude/skills`,
+    } as never);
+    await runUpdate(`/usr/local/${ODD}/lib/node_modules/hyperframes/dist/cli.js`, { check: true });
+    expect(text()).toContain(`/usr/local/${SHOWN}/lib/node_modules/hyperframes/dist/cli.js`);
+    expect(text()).toContain(
+      `2 outdated, 0 core missing at v0.9.5 · /home/${SHOWN}/.claude/skills`,
+    );
+    expect(text()).not.toContain(ESC);
+    expect(text()).not.toContain("\x07");
+  });
+
+  // fails without the fix: the reason the skills check failed is printed as it arrived.
+  it("shows control characters in a failed skills check as text", async () => {
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockRejectedValueOnce(new Error(`no list ${ODD}`));
+    await runUpdate(ENTRIES.npm, { check: true });
+    expect(text()).toContain(`Could not check: no list ${SHOWN}`);
+    expect(text()).not.toContain(ESC);
+    expect(text()).not.toContain("\x07");
+  });
+
+  // fails without the fix: the reason the skills install failed is printed as it arrived.
+  it("shows control characters in a failed skills install as text", async () => {
+    state.registryLatest = "0.9.5";
+    const { spawn } = await import("node:child_process");
+    vi.mocked(spawn).mockImplementationOnce(() => {
+      const child = new EventEmitter();
+      setImmediate(() => child.emit("error", new Error(`no install ${ODD}`)));
+      return child as never;
+    });
+    expect(await runUpdate(ENTRIES.npm, { yes: true })).toBe(1);
+    expect(text()).toContain(`Skills update failed: no install ${SHOWN}`);
+    expect(text()).not.toContain(ESC);
+    expect(text()).not.toContain("\x07");
   });
 });

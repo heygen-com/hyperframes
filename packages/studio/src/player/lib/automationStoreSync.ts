@@ -16,6 +16,8 @@
 
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
+import { HF_AUDIO_CARVE_ATTR } from "@hyperframes/core/audio-carve";
+import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core/color-grading";
 import {
   HF_AUDIO_FADE_IN_ATTR,
   HF_AUDIO_FADE_OUT_ATTR,
@@ -27,9 +29,14 @@ import { groupInfoFor } from "./timelineGroupInfo";
 import {
   getTimelineElementIdentity,
   previewElementFinder,
+  readBadgeFields,
   resolveMediaElement,
 } from "./timelineElementHelpers";
 import { elementVolume, parseStoredVolume } from "./storedVolume";
+import { previewDocumentCopy, previewFrameOpaque } from "./previewChannel";
+
+/** Every sync and saved-value write: a sealed read lands only if none ran after it began. */
+let syncs = 0;
 
 /**
  * Re-read every element's automation, FX-chain, fade and volume attributes from the preview
@@ -45,9 +52,9 @@ import { elementVolume, parseStoredVolume } from "./storedVolume";
  * reverted is only known by looking.
  */
 /**
- * What an element's seven synced fields SHOULD read, given the preview.
+ * What an element's ten synced fields SHOULD read, given the preview.
  *
- * Its own five come off its node; the other two are its copy of what its group
+ * Its own eight come off its node; the other two are its copy of what its group
  * carries. The timeline derives a group's lanes and chain from these mirrors,
  * never from the group element, and automating a group writes `data-automation`
  * on the group node through the ordinary element path, so both halves are re-read.
@@ -63,10 +70,12 @@ function syncedFields(doc: Document, element: TimelineElement, node: Element) {
     volume: elementVolume(node, resolveMediaElement(node) ?? node),
     audioGroupAutomation: group?.automation,
     audioGroupFxChain: group?.fxChain,
+    ...readBadgeFields(node),
   };
 }
 
 export function syncStoredAutomationFromPreview(doc: Document | null | undefined): void {
+  syncs += 1;
   if (!doc) return;
   const findNode = previewElementFinder(doc);
   usePlayerStore.setState((state) => {
@@ -86,12 +95,29 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
   });
 }
 
+/**
+ * `syncStoredAutomationFromPreview` for a preview frame. A sealed one is read off a copy, which lands
+ * only if no other sync or saved write ran and the project is the one read; a frame load drops the read.
+ */
+export function syncStoredAutomationFromFrame(iframe: HTMLIFrameElement | null | undefined): void {
+  if (!iframe) return;
+  if (!previewFrameOpaque(iframe)) return syncStoredAutomationFromPreview(iframe.contentDocument);
+  const read = ++syncs;
+  const project = usePlayerStore.getState().timelineProjectId;
+  void previewDocumentCopy(iframe).then((doc) => {
+    if (read === syncs && usePlayerStore.getState().timelineProjectId === project)
+      syncStoredAutomationFromPreview(doc);
+  });
+}
+
 /** Discovery's rule (applyFadeMetadataFromElement): a fade of 0 is no fade. */
 const storedFade = (seconds: number) => (seconds > 0 ? seconds : undefined);
 
 const STORED_FIELD: Record<string, (value: string | null) => Partial<TimelineElement>> = {
   [HF_AUDIO_AUTOMATION_ATTR]: (value) => ({ automation: value ?? undefined }),
   [HF_AUDIO_FX_ATTR]: (value) => ({ fxChain: value ?? undefined }),
+  [HF_COLOR_GRADING_ATTR]: (value) => ({ colorGrading: value ?? undefined }),
+  [HF_AUDIO_CARVE_ATTR]: (value) => ({ carve: value ?? undefined }),
   [HF_AUDIO_FADE_IN_ATTR]: (value) => ({ fadeIn: storedFade(readFadeSeconds(value)) }),
   [HF_AUDIO_FADE_OUT_ATTR]: (value) => ({ fadeOut: storedFade(readFadeSeconds(value)) }),
   // A quick volume save writes no other field the store keeps: without this, a clip read its last load's volume.
@@ -106,6 +132,7 @@ export function syncStoredElementAttribute(
 ): void {
   const fields = STORED_FIELD[attr]?.(value);
   if (!fields) return;
+  syncs += 1;
   const key = getTimelineElementIdentity(target);
   const same = (element: TimelineElement) =>
     (Object.keys(fields) as (keyof TimelineElement)[]).every((k) => element[k] === fields[k]);

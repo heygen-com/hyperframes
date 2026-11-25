@@ -13,7 +13,7 @@ const server = vi.hoisted(() => ({
 const probe = vi.hoisted(() => ({ fail: false }));
 const terminal = vi.hoisted(() => ({ remote: false }));
 const shadow = vi.hoisted(() => ({
-  install: null as { version: string; updateCommand: string } | null,
+  install: null as { version: string; updateCommand: string | null } | null,
 }));
 const commandRuns = vi.hoisted(() => [] as Record<string, unknown>[]);
 
@@ -189,7 +189,7 @@ describe("reverse start", () => {
         login_command: "npx hyperframes auth login",
         // The reason to sign in comes before the sign-in, as words the agent can say as they are.
         next: expect.stringMatching(
-          /"To rebuild this video.*HeyGen.*"[^]*Run `npx hyperframes auth login` now and wait/,
+          /"To rebuild this video.*HeyGen.*"[^]*Run `auth login` through the same launcher now and wait/,
         ),
       },
     ],
@@ -221,7 +221,7 @@ describe("reverse start", () => {
       signed_in: false,
       login_command: "npx hyperframes auth login --device",
       next: expect.stringMatching(
-        /`npx hyperframes auth login --device` in the background[^]*one message: first why[^]*"To rebuild this video.*HeyGen.*"[^]*Then the link and code/,
+        /`auth login --device` through the same launcher in the background[^]*one message: first why[^]*"To rebuild this video.*HeyGen.*"[^]*Then the link and code/,
       ),
     });
   });
@@ -232,7 +232,7 @@ describe("reverse start", () => {
     expect(output()).toMatchObject({
       reverse: {
         next: expect.stringMatching(
-          /^Their installed HyperFrames \(0\.9\.8\) is out of date[^]*"Your installed HyperFrames is out of date[^]*`npm install -g hyperframes@latest`\."[^]*Not signed in/,
+          /^Their installed HyperFrames \(0\.9\.8\) is out of date[^]*launcher with --cli-version [^ ]+[^]*"Your installed HyperFrames is out of date[^]*`npm install -g hyperframes@latest` from your home directory\."[^]*Not signed in/,
         ),
       },
     });

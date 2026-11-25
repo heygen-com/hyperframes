@@ -274,3 +274,61 @@ describe("inlineComputedTimelines — loops", () => {
     expect(kinds(tweens)).toEqual(["loop", "loop"]);
   });
 });
+
+describe("inlineComputedTimelines — expansion budget", () => {
+  const fresh = (code: string): any => parse(code, { ecmaVersion: "latest" });
+  const literals = (n: number): string => `[${"1,".repeat(n)}]`;
+  const nestedFor = Array.from(
+    { length: 6 },
+    (_, i) => `for (let i${i} = 0; i${i} < 100; i${i}++) {`,
+  );
+  const nestedForEach = Array.from(
+    { length: 4 },
+    (_, i) => `${literals(200)}.forEach((e${i}) => {`,
+  );
+
+  it.each([
+    ["nested literal loops", `${nestedFor.join("")} tl.to("#x", { x: i0 }, 0); ${"}".repeat(6)}`],
+    [
+      "nested forEach over literal arrays",
+      `${nestedForEach.join("")} tl.to("#x", { x: e0 }, 0); ${"});".repeat(4)}`,
+    ],
+    // Empty bodies still allocate a block per iteration: 512 x 512 of them.
+    ["empty loop bodies", "for (let i = 0; i < 512; i++) { for (let j = 0; j < 512; j++) {} }"],
+    // A default is cloned on every call that omits its argument, so it is charged like a body.
+    [
+      "a helper whose large default is cloned on every call",
+      `function f(p = [${"{ x: 1 },".repeat(300)}]) { tl.to("#x", {}, 0); }\n${"f();".repeat(300)}`,
+    ],
+    // 10 self-calls: 10^8 copies at MAX_DEPTH. A handful of calls stays small enough to finish unbudgeted.
+    [
+      "a helper that calls itself",
+      `function f(n) { tl.to("#x", { x: n }, n); ${"f(n + 1); ".repeat(10)}} f(0);`,
+    ],
+  ])("leaves a script whose %s would expand past the budget as written", (_label, body) => {
+    const code = `const tl = gsap.timeline();\n${body}`;
+    const ast = fresh(code);
+    // An abort costs ~1 s of CPU; the unbudgeted run never finishes. The bound only has to tell them apart.
+    const started = performance.now();
+    inlineComputedTimelines(ast, "tl", litResolve);
+    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(ast).toEqual(fresh(code));
+  });
+
+  it("charges a large argument for every place a helper body uses it", () => {
+    // Small body, huge argument used 40 times per call: only the substitution clones add up.
+    const big = `[${"{ x: 1 },".repeat(300)}]`;
+    const code = `const tl = gsap.timeline();\nfunction f(p) { ${"tl.to('#x', { p }, 0); ".repeat(40)} }\n${`f(${big});`.repeat(20)}`;
+    const ast = fresh(code);
+    inlineComputedTimelines(ast, "tl", litResolve);
+    expect(ast).toEqual(fresh(code));
+  });
+
+  it.each([
+    ["for-of", `for (const el of ${literals(513)}) tl.to("#x", { x: el }, 0);`],
+    ["forEach", `${literals(513)}.forEach((el) => tl.to("#x", { x: el }, 0));`],
+  ])("does not unroll %s over more elements than a for loop may run", (_label, body) => {
+    const { tweens } = run(`const tl = gsap.timeline();\n${body}`);
+    expect(tweens).toHaveLength(1);
+  });
+});

@@ -46,8 +46,4 @@ export function setElementGsapSize(element: HTMLElement, width: number, height: 
 }
 
 /** The targets CSSPlugin styles: not plain objects (the runtime's filler) or XML-namespace elements. */
-export function elementTargets(tween: { targets?: () => unknown[] }): Element[] {
-  return (tween.targets?.() ?? []).filter((t): t is Element =>
-    Boolean((t as HTMLElement | null)?.style && (t as Node).nodeType),
-  );
-}
+export { elementTargets } from "@hyperframes/core/runtime/soft-reload";

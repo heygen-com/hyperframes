@@ -389,11 +389,12 @@ mock.module("../../renderOrchestrator.js", () => ({
 mock.module("../../hdrCompositor.js", () => ({
   closeHdrVideoFrameSource: () => {},
   resolveCompositeTransfer: () => "srgb",
+  sanitizeTransitionMeta: (raw: unknown) => (Array.isArray(raw) ? raw : []),
 }));
 
 mock.module("./captureHdrResources.js", () => ({
   cleanupHdrVideoFrameSource: () => {},
-  decodeHdrImageBuffers: () => new Map(),
+  decodeHdrImageBuffers: () => ({ buffers: new Map(), releaseReservation: () => {} }),
   extractHdrVideoFrames: async () => ({
     sources: new Map(),
     estimatedBytes: 0,

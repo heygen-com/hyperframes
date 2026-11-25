@@ -24,7 +24,7 @@ export function loadEnvFile(startDir: string): void {
     for (let i = 0; i < 5; i++) {
       const envPath = resolve(dir, ".env");
       try {
-        applyDotEnv(readFileSync(envPath, "utf-8"), process.env, PROJECT_ENV_KEYS);
+        applyDotEnv(readFileSync(envPath, "utf-8"), process.env, PROJECT_ENV_KEYS, dir);
         break;
       } catch {
         dir = resolve(dir, "..");

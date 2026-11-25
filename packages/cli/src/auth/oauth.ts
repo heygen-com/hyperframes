@@ -1,4 +1,5 @@
 import { failCommand } from "../utils/commandResult.js";
+import { terminalLines, terminalText } from "@hyperframes/core/terminal-text";
 /**
  * OAuth 2.0 + PKCE driver for the HeyGen public OAuth flow.
  *
@@ -128,8 +129,8 @@ export function assertOAuthConfiguredOrExit(): void {
     resolveClientId();
   } catch (err) {
     if (isAuthError(err) && err.code === "OAUTH_NOT_CONFIGURED") {
-      console.error(`Error: ${err.message}`);
-      if (err.hint) console.error(err.hint);
+      console.error(`Error: ${terminalText(err.message)}`);
+      if (err.hint) console.error(terminalLines(err.hint));
       failCommand();
     }
     throw err;

@@ -6,7 +6,7 @@
  * and placed by the composition hosts it sits inside.
  */
 
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   MEDIA_RENDER_ID_ATTR,
   normalizeRateSpec,

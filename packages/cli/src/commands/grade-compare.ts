@@ -4,8 +4,10 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { tmpdir } from "node:os";
@@ -16,21 +18,25 @@ import {
   normalizeHfColorGrading,
   parseCubeLut,
   serializeHfColorGrading,
+  terminalText,
 } from "@hyperframes/core";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
+import { insideProject, recordPathInProject } from "../media-use/lib/record-path.mjs";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { failCaught } from "../utils/jsonError.js";
 import { CliUsageError } from "../utils/commandResult.js";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const COMPOSITION_ID = "grade-compare";
 const COMPOSITION_DURATION = "1";
@@ -40,6 +46,7 @@ const MAX_COLUMNS = 4;
 const GRID_PADDING = 16;
 const LABEL_HEIGHT = 32;
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
+const DEFAULT_RENDER_READY_TIMEOUT_MS = 5_000;
 
 export interface GradeCompareCell {
   label: string;
@@ -145,7 +152,9 @@ export function warnInactiveGradingCells(cells: readonly GradeCompareCell[]): vo
     const normalized = normalizeHfColorGrading(cell.grading);
     if (!isHfColorGradingActive(normalized)) {
       console.error(
-        c.warn(`Warning: grading for "${cell.label}" is inactive/no-op — it will render ungraded`),
+        c.warn(
+          `Warning: grading for "${terminalText(cell.label)}" is inactive/no-op — it will render ungraded`,
+        ),
       );
     }
   }
@@ -289,7 +298,7 @@ export function parseGradeCompareArgs(args: {
       ? { kind: "grades", path: resolveFromBase(projectDir, gradesArg) }
       : { kind: "luts", value: lutsArg ?? "" },
     json: args.json === true,
-    timeoutMs: Number.parseInt(readOptionalString(args.timeout) ?? "", 10) || 5000,
+    timeoutMs: parseTimeoutMs(args.timeout, DEFAULT_RENDER_READY_TIMEOUT_MS),
   };
 }
 
@@ -422,6 +431,19 @@ function frameFileNameForPath(framePath: string): string {
   return "frame.png";
 }
 
+function lutSourcePath(projectDir: string, lutSrc: string, label: string, typed = false): string {
+  const outside = () =>
+    new Error(`LUT for "${label}" must be a file inside the project: ${lutSrc}`);
+  const path = typed
+    ? resolveFromBase(projectDir, lutSrc)
+    : recordPathInProject(projectDir, lutSrc);
+  if (path === null) throw outside();
+  if (!existsSync(path)) throw new Error(`LUT file not found for "${label}": ${path}`);
+  if (!typed && (insideProject(projectDir, path) === null || !statSync(path).isFile()))
+    throw outside();
+  return path;
+}
+
 export async function prepareGradeCompareTempProject(opts: {
   projectDir: string;
   framePath: string;
@@ -430,6 +452,7 @@ export async function prepareGradeCompareTempProject(opts: {
   frameWidth: number;
   frameHeight: number;
   frameFileName?: string;
+  lutPathsTypedWithLutsFlag?: boolean;
 }): Promise<PreparedGradeCompareProject> {
   const tempDir = mkdtempSync(join(tmpdir(), "hf-grade-compare-"));
   try {
@@ -441,10 +464,12 @@ export async function prepareGradeCompareTempProject(opts: {
       const lutSrc = lutSrcFromGrading(cell.grading);
       if (!lutSrc) return cell;
 
-      const sourcePath = resolveFromBase(opts.projectDir, lutSrc);
-      if (!existsSync(sourcePath)) {
-        throw new Error(`LUT file not found for "${cell.label}": ${sourcePath}`);
-      }
+      const sourcePath = lutSourcePath(
+        opts.projectDir,
+        lutSrc,
+        cell.label,
+        opts.lutPathsTypedWithLutsFlag,
+      );
       const lutText = readFileSync(sourcePath, "utf-8");
       try {
         parseCubeLut(lutText);
@@ -494,6 +519,7 @@ async function extractVideoFrameToBuffer(videoPath: string): Promise<Buffer | nu
       "error",
       "-ss",
       "0",
+      ...mediaInputFormatArgs(ffmpegPath, videoPath),
       "-i",
       videoPath,
       "-frames:v",
@@ -612,7 +638,8 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: "Render-ready timeout in ms before capture (default: 5000)",
+      description:
+        "Render-ready timeout before capture: a number of ms, or a duration such as 30s (default: 5000)",
     },
     baseline: {
       type: "boolean",
@@ -650,7 +677,7 @@ export default defineCommand({
 
       if (!parsed.json) {
         console.log(
-          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(basename(parsed.framePath))}`,
+          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(terminalText(basename(parsed.framePath)))}`,
         );
       }
 
@@ -663,6 +690,7 @@ export default defineCommand({
         frameHeight: frame.height,
         frameFileName: frame.stagedName,
         cells,
+        lutPathsTypedWithLutsFlag: parsed.source.kind === "luts",
       });
       preparedDir = prepared.tempDir;
 
@@ -671,7 +699,7 @@ export default defineCommand({
         parsed.timeoutMs,
       );
       makeOutputFolder(dirname(parsed.outPath));
-      copyFileSync(tempSheet, parsed.outPath);
+      replaceFileAtomically(parsed.outPath, readFileSync(tempSheet));
       trackCompareSheet({
         command: "grade-compare",
         cells: prepared.cells.length,
@@ -684,7 +712,7 @@ export default defineCommand({
       if (parsed.json) {
         printJson(buildGradeCompareSuccessPayload(sheet, prepared.cells.length, capResult));
       } else {
-        console.log(`\n${c.success("◇")}  Grade comparison saved to ${sheet}`);
+        console.log(`\n${c.success("◇")}  Grade comparison saved to ${terminalText(sheet)}`);
       }
     } catch (err) {
       failCaught(

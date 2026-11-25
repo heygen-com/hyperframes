@@ -1,4 +1,4 @@
-import type { ChildProcess } from "node:child_process";
+import { ChildProcess } from "node:child_process";
 import {
   inAgentSandbox,
   isOneProcessOverPipe,
@@ -12,14 +12,15 @@ import { explainChromeLaunchFailure } from "@hyperframes/engine/chrome-startup";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
 import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
+import { terminalLines } from "@hyperframes/core/terminal-text";
 import {
   resolveCaptureBrowserGpuMode,
   type BrowserGpuMode,
   type ResolvedBrowserGpuMode,
 } from "./gpuPolicy.js";
-import { normalizeErrorMessage, notePageCrash } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, notePageCrash, stackOrMessage } from "../utils/errorMessage.js";
 import { requestCliExit } from "../utils/commandResult.js";
-import { processIsAlive } from "../utils/processTree.js";
+import { processIsAlive, terminateWindowsProcessTree } from "../utils/processTree.js";
 import { chromeDescendants, reapChromeTree } from "./chromeTree.js";
 import { watchChromeTree, type ChromeWatchdog } from "./windowsChromeWatchdog.js";
 
@@ -55,7 +56,7 @@ function stopForSignal(signal: "SIGINT" | "SIGTERM"): void {
   void shutdown.then(
     () => requestCliExit(signal === "SIGINT" ? 130 : 143),
     (error: unknown) => {
-      console.error("Browser shutdown failed:", error);
+      console.error("Browser shutdown failed:", terminalLines(stackOrMessage(error)));
       requestCliExit(1);
     },
   );
@@ -174,7 +175,6 @@ async function launchOwnedBrowser(
   ownSignals();
   const abort = new AbortController();
   const signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal;
-  const launchedAt = Date.now();
   const launch = untilLaunchOrAbort(
     puppeteer.launch({
       ...options,
@@ -202,13 +202,14 @@ async function launchOwnedBrowser(
     const child = browser.process();
     if (!child) throw new Error("A launched browser has no owned process.");
     browsers.add(browser);
-    const watchdog = watchChromeTree(child, launchedAt);
+    const watchdog = watchChromeTree(child);
     if (watchdog) watchdogs.set(browser, watchdog);
     gracefulClose.set(browser, browser.close.bind(browser));
     browser.close = () => closeManagedBrowser(browser);
     const newPage = browser.newPage;
     browser.newPage = async (...args) => closeOnRendererCrash(await newPage.apply(browser, args));
     child.once("exit", () => {
+      void watchdog?.release(true);
       browsers.delete(browser);
       destroyBrowserPipes(child);
     });
@@ -287,7 +288,7 @@ async function closeBrowser(browser: Browser): Promise<void> {
   try {
     clean = await closedWithoutKill(browser);
   } finally {
-    watchdogs.get(browser)?.release(clean);
+    void watchdogs.get(browser)?.release(clean);
   }
 }
 
@@ -298,6 +299,12 @@ async function descendantsToReap(pid: number | undefined) {
 
 function closeGracefully(browser: Browser): Promise<void> {
   return (gracefulClose.get(browser) ?? (() => browser.close()))();
+}
+
+async function killWithChildren(child: ChildProcess): Promise<void> {
+  const ours = child instanceof ChildProcess && child.pid !== undefined;
+  if (process.platform !== "win32" || !ours) return void child.kill("SIGKILL");
+  await terminateWindowsProcessTree(child.pid).catch(() => child.kill("SIGKILL"));
 }
 
 async function closedWithoutKill(browser: Browser): Promise<boolean> {
@@ -314,12 +321,12 @@ async function closedWithoutKill(browser: Browser): Promise<boolean> {
   try {
     await Promise.race([
       closeGracefully(browser).catch((error: unknown) =>
-        console.warn("Browser close failed:", error),
+        console.warn("Browser close failed:", terminalLines(stackOrMessage(error))),
       ),
       grace,
     ]);
     const clean = child.exitCode !== null || child.signalCode !== null;
-    if (!clean) child.kill("SIGKILL");
+    if (!clean) await killWithChildren(child);
     clearTimeout(timer);
     const exitLimit = new Promise<never>((_, reject) => {
       timer = setTimeout(

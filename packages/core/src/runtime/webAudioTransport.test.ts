@@ -542,6 +542,31 @@ describe("WebAudioTransport", () => {
       expect(mock.startFn).toHaveBeenCalledWith(108, 1.5);
     });
 
+    // fails without the fix: the buffer played a looped clip's source once, from past its end.
+    it("loops a looping element's buffer over [mediaStart, end], from the pass the playhead is in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true, duration: 10 } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // 20 s into a clip whose source loops 2..10 s: two passes and 4 s in, so 6 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 10 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 6, 10);
+    });
+
+    it("loops at the element's length, which media sync wraps at, when the decoded buffer runs longer", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true, duration: 9.5 } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // Passes of 7.5 s (2..9.5): 20 s in is two passes and 5 s, so 7 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 9.5 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 7, 10);
+    });
+
     it("starts clips at exact composition start time immediately", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
@@ -1829,6 +1854,17 @@ describe("WebAudioTransport", () => {
 
     it("leaves a clip that has not loaded to its source", () => {
       expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
+    });
+
+    it("never fetches an hour-long source, too long to decode in the page, on a path that skips the budget", async () => {
+      vi.stubGlobal("mediaHeaderSeconds", () => 3600);
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const t = transport();
+      await expect(t.decodeAudioElement(audio("long.mp4", Number.NaN))).resolves.toBeNull();
+      await expect(t.decodeAudioElement(audio("hour.mp4", 3600))).resolves.toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
     });
   });
 

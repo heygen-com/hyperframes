@@ -1,5 +1,5 @@
 import { quantizePreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 
 const DEFAULT_VIEWPORT = { width: 1920, height: 1080 } as const;
 const MAX_VIEWPORT_DIMENSION = 4096;

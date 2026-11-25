@@ -308,6 +308,13 @@ describe("missing_or_empty_sub_composition", () => {
     expect(finding?.message).toContain("does not exist");
   });
 
+  it("errors on a source longer than any file path, before resolving it", async () => {
+    const src = "a/".repeat(20_000) + "scene.html";
+    const { finding } = await lintSubComp(src);
+    expect(finding?.message).toContain("longer than any file path can be");
+    expect(finding?.message.length).toBeLessThan(400);
+  });
+
   it("errors, instead of crashing, when the referenced sub-composition is a folder", async () => {
     const project = makeProject(htmlWithSubComp("compositions/scene-title"), {});
     mkdirSync(join(project, "compositions", "scene-title"));
@@ -548,6 +555,25 @@ describe("texture_mask_asset_not_found declarations", () => {
       expect(findings[0]?.message).not.toContain("example.png");
     },
   );
+
+  it("reads long runs of unclosed urls in valid and malformed stylesheets in linear time", async () => {
+    // A linear scan lints these stylesheets in about 0.1 s on a laptop. A quadratic one takes
+    // over 10 s, because it reads to the end of broken.css after each unclosed url(. The cap
+    // leaves room for slow shared CI runners.
+    const links =
+      '<link rel="stylesheet" href="nested.css"><link rel="stylesheet" href="broken.css">';
+    const project = makeProject(validHtml().replace("<body>", `<head>${links}</head><body>`));
+    writeFileSync(
+      join(project, "nested.css"),
+      `a{background:${"url(".repeat(40_000)}${")".repeat(40_000)}}`,
+    );
+    writeFileSync(join(project, "broken.css"), `a{${"mask-image:url(".repeat(30_000)}`);
+
+    const started = performance.now();
+    await lintProject(project);
+
+    expect(performance.now() - started).toBeLessThan(4000);
+  }, 60_000);
 });
 
 describe("template shell style sources", () => {
@@ -1307,6 +1333,23 @@ describe("audio-aware project rules", () => {
       expect(codes).toContain("duplicate_audio_track");
     });
 
+    it("says both clips still play, since the track index only picks the Studio lane", async () => {
+      const sfx = (id: string, start: string, duration: string) =>
+        `<audio id="${id}" src="${id}.wav" data-start="${start}" data-duration="${duration}" data-track-index="6"></audio>`;
+      const project = makeProject(
+        composition(sfx("whoosh", "5.13", "0.7") + sfx("land", "5.79", "0.34")),
+      );
+      const { results } = await lintProject(project);
+      const finding = results
+        .flatMap((result) => result.result.findings)
+        .find((f) => f.code === "duplicate_audio_track");
+      expect(finding?.message).toContain("whoosh.wav at 5.13-5.83s and land.wav at 5.79-6.13s");
+      expect(finding?.message).toContain("Both play at once whatever their track");
+      expect(finding?.fixHint).toContain(
+        "give one its own data-track-index; the mix does not change",
+      );
+    });
+
     it("stays quiet when one of the overlapping videos is muted", async () => {
       const codes = await codesFor(
         composition(video('data-has-audio="true"', 0) + video("muted", 2)),
@@ -1641,6 +1684,69 @@ describe("references that leave the project", () => {
       ),
     );
     expect(JSON.stringify(await findingsOf(project))).not.toContain("TOP-SECRET-VALUE");
+  });
+});
+
+describe("linked private project files", () => {
+  const PRIVATE = [".env", ".npmrc", ".git/config", "cert.pem", ".hyperframes/app-history.jsonl"];
+
+  it.each(PRIVATE)("never quotes %s, whatever kind of link names it", async (path) => {
+    const project = makeProject("");
+    mkdirSync(dirname(join(project, path)), { recursive: true });
+    writeFileSync(join(project, path), "TOP-SECRET-VALUE not json {#main{}");
+    writeFileSync(
+      join(project, "index.html"),
+      validHtml().replace(
+        "</body>",
+        `<script type="importmap" src="${path}"></script>\n<link rel="stylesheet" href="${path}">\n` +
+          `<script src="${path}"></script>\n<div data-composition-src="${path}"></div>\n</body>`,
+      ),
+    );
+    expect(JSON.stringify(await lintProject(project))).not.toContain("TOP-SECRET-VALUE");
+  });
+
+  // The kind check alone lets these through: they are JSON, as an import map is.
+  it.each([".git/m.json", ".mcp.json", ".hyperframes/share.json"])(
+    "never reads %s as an import map",
+    async (path) => {
+      const project = makeProject("");
+      mkdirSync(dirname(join(project, path)), { recursive: true });
+      writeFileSync(join(project, path), "TOP-SECRET-VALUE not json");
+      writeFileSync(
+        join(project, "index.html"),
+        validHtml().replace("</body>", `<script type="importmap" src="${path}"></script></body>`),
+      );
+      expect(JSON.stringify(await lintProject(project))).not.toContain("TOP-SECRET-VALUE");
+    },
+  );
+
+  it("lints no composition in a hidden folder, and refuses a private entry", async () => {
+    const project = makeProject(validHtml(), {
+      ".cache/stale.html": "<div>TOP-SECRET-VALUE</div>",
+    });
+    expect(
+      JSON.stringify(await lintProject(project, undefined, {}, { includeUnmounted: true })),
+    ).not.toContain(".cache");
+    await expect(
+      lintProject(project, join(project, "compositions/.cache/stale.html")),
+    ).rejects.toThrow("private project file");
+  });
+
+  it("reads a linked file only when it is the kind its link names", async () => {
+    const project = makeProject("");
+    writeFileSync(join(project, "notes.txt"), "TOP-SECRET-VALUE not json {#main{}");
+    writeFileSync(join(project, "map.json"), "TOP-SECRET-MAP not json");
+    writeFileSync(
+      join(project, "index.html"),
+      validHtml().replace(
+        "</body>",
+        `<link rel="stylesheet" href="notes.txt">\n<script type="importmap" src="notes.txt"></script>\n` +
+          `<script type="importmap" src="map.json"></script>\n</body>`,
+      ),
+    );
+    const linted = JSON.stringify(await lintProject(project));
+    expect(linted).not.toContain("TOP-SECRET-VALUE");
+    expect(linted, "an import map file is still checked").toContain("TOP-SECRET-MAP");
   });
 });
 

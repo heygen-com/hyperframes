@@ -124,9 +124,11 @@ export function watchVersions(dir, files) {
 /** Studio's own history replies in arrival order: each claim's group, each undo or redo's entry and what it reverts. */
 function watchHistory(page) {
   const replies = [];
+  const at = { list: null };
   const read = (response) => {
     const kind = /\/history\/(claim|step|undo)$/.exec(new URL(response.url()).pathname)?.[1];
     if (!kind || response.request().method() !== "POST") return;
+    at.list ??= response.url().replace(/\/(claim|step|undo)$/, "");
     const status = response.status();
     replies.push(
       response
@@ -141,7 +143,20 @@ function watchHistory(page) {
     );
   };
   page.on("response", read);
-  return { replies, stop: () => page.off("response", read) };
+  return { replies, at, stop: () => page.off("response", read) };
+}
+
+/** Whether every group the gestures took is already an entry in the history list, polled for `ms`. */
+async function groupsListed(listUrl, ids, ms = 3000) {
+  if (!listUrl || !ids.length) return null;
+  for (const deadline = Date.now() + ms; ; await sleep(100)) {
+    const view = await fetch(listUrl)
+      .then((r) => r.json())
+      .catch(() => null);
+    const listed = new Set((view?.entries ?? []).map((entry) => entry.id));
+    if (ids.every((id) => listed.has(id))) return true;
+    if (Date.now() > deadline) return false;
+  }
 }
 
 /** The groups left to undo, oldest first: a claim opens one unless it names the newest (one gesture writing
@@ -228,13 +243,23 @@ async function driveStep(ctx, step, state) {
   const { page } = ctx.A;
   if (step.do === "undo") {
     await blurPreview(page);
+    const before = (await measure(ctx.A)).visible;
+    const pressedAt = Date.now();
     await chord(page, "Control+z");
-    // A key's DOM change reaches the CDP quads only after a frame; the next step reads from them.
-    await nextFrame(page);
+    // shownMs: the box first moved, what a person sees. restMs: Studio idle, so the next press lands on the shown box.
+    let shownMs = null;
+    const restMs = await restedFor(
+      async () => {
+        const moved = quadDistance((await measure(ctx.A)).visible, before) >= 0.5;
+        if (moved && shownMs === null) shownMs = Date.now() - pressedAt;
+        return studioBusy(page);
+      },
+      () => nextFrame(page),
+    );
     state.depth -= 1;
     // Undone back to the start, the box belongs where it began; any other undo leaves it unknown here.
     state.intended = state.depth === 0 ? state.start : null;
-    return { do: "undo" };
+    return { do: "undo", shownMs, restMs };
   }
   if (step.do === "nudge") {
     await recording(page, true);
@@ -408,6 +433,13 @@ function rememberBox(step, state, m) {
 }
 
 /** Under auto-record, size keys hold their nearest value before the first and after the last. */
+/** An element that gains keyframes mid-sequence is keyframed from then on: its settles wait out Studio's swap. */
+export function keyedBy(ctx, step, state) {
+  const writesKeys = step.do === "addkey" || (step.do === "drag" && state.autokey);
+  const c = ctx[step.element ?? "A"];
+  if (writesKeys && c && !c.keys) c.keys = true;
+}
+
 export function heldSize(sizeKeys, time) {
   const times = [...sizeKeys.keys()].sort((a, b) => a - b);
   if (!times.length) return undefined;
@@ -416,6 +448,41 @@ export function heldSize(sizeKeys, time) {
 
 const sizeError = (a, b) =>
   a && b ? Math.max(Math.abs(a.width - b.width), Math.abs(a.height - b.height)) : 0;
+
+/**
+ * Resolves once `busy()` has read false `frames` reads in a row, a `frame()` apart, with the ms until the first of
+ * those reads; throws at `timeout` ms.
+ */
+export async function restedFor(
+  busy,
+  frame,
+  { frames = 2, timeout = 20_000, now = Date.now } = {},
+) {
+  const start = now();
+  let [clear, clearSince] = [0, 0];
+  for (const deadline = start + timeout; now() < deadline; await frame()) {
+    const readAt = now();
+    clear = (await busy()) ? 0 : clear + 1;
+    if (clear === 1) clearSince = readAt;
+    if (clear >= frames) return clearSince - start;
+  }
+  throw new Error("an edit was still waiting or saving");
+}
+
+/** The box once Studio says the preview is done, and the ms until it said so: an undo's reload shows only then. */
+export async function shownOnceRested(busy, frame, settle, options) {
+  const shownMs = await restedFor(busy, frame, options);
+  return { box: await settle(), shownMs };
+}
+
+// A sealed press waits for the previous save, then replays, and a sealed undo shows only once the preview applies it.
+const studioBusy = (page) =>
+  page.evaluate(
+    () =>
+      Boolean(document.querySelector("[data-dom-edit-press-waiting]")) ||
+      document.documentElement.hasAttribute("data-studio-edits-saving") ||
+      document.documentElement.hasAttribute("data-preview-changing"),
+  );
 
 async function untilSaved(watcher, owed) {
   for (const deadline = Date.now() + 10_000; Date.now() < deadline; await sleep(50))
@@ -481,6 +548,7 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   for (const step of spec.steps) {
     if (step.do !== "drag") await collect();
     steps.push(await driveStep(ctx, step, state));
+    keyedBy(ctx, step, state);
     if (spec.settle) await settleStep(ctx.A, steps, step, state, watcher);
   }
   // Every saving step saves once (a nudge burst saves once); wait for all of them. An undo may
@@ -494,17 +562,17 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     backSince = back ? (backSince ?? Date.now()) : null;
     if (backSince !== null && Date.now() - backSince >= UNDONE_QUIET_MS) break;
   }
+  // The write count is a floor: one gesture may write twice, so it can be met before the last gesture saves.
+  await restedFor(
+    () => studioBusy(page),
+    () => nextFrame(page),
+  );
   await page.waitForFunction(
-    () => {
-      if (document.querySelector("[data-dom-edit-press-waiting]")) return false;
-      const frames = Array.from(document.querySelectorAll("iframe, hyperframes-player")).flatMap(
-        (host) =>
-          host.shadowRoot ? Array.from(host.shadowRoot.querySelectorAll("iframe")) : [host],
-      );
-      return frames.every(
-        (frame) => !frame.contentDocument?.querySelector("[data-hf-studio-manual-edit-gesture]"),
-      );
-    },
+    // Asked over each preview's editing port: a preview that cannot answer yet is not clear.
+    async () =>
+      !document.querySelector("[data-dom-edit-press-waiting]") &&
+      (await window.__editBenchFrames.matchesInPreviews("[data-hf-studio-manual-edit-gesture]")) ===
+        false,
     { timeout: 20_000 },
   );
   await waitForFiles(ctx.A, { timeout: 5000 });
@@ -523,6 +591,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   const groups = historyGroups(await Promise.all(history.replies));
   const ids = groups.stack.toReversed();
   const groupsOk = !groups.faults.length && groups.stack.length === state.depth;
+  // Each gesture is its own entry in the list once its saves are in, before anything else happens.
+  const listed = await groupsListed(history.at.list, groups.stack);
   // A settled case knows each step's bytes (its saves ended before the next step); a fast one only
   // where all are undone and all redone, since one gesture may write more than once.
   const stack = [];
@@ -546,7 +616,14 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   );
   // The file the steps should have left: the last surviving save's, or the original when all were undone.
   const expected = spec.settle ? (stack.at(-1)?.after ?? versions[0]) : versions.at(-1);
-  const undone = await settled(ctx.A);
+  const rested = () =>
+    shownOnceRested(
+      () => studioBusy(page),
+      () => nextFrame(page),
+      () => settled(ctx.A),
+    );
+  const undoneAt = await rested();
+  const undone = undoneAt.box;
   await shoot("undone");
   const redo = undo.ok
     ? await walk(
@@ -560,7 +637,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
         history,
       )
     : { ok: false, landed: [] };
-  const redone = undo.ok ? await settled(ctx.A) : null;
+  const redoneAt = undo.ok ? await rested() : null;
+  const redone = redoneAt?.box ?? null;
   // A late write must not land under the reload.
   await waitForFiles(ctx.A, { timeout: 15_000 });
 
@@ -619,6 +697,7 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     reloaded: { ...reloaded, time: state.time },
     undo: {
       groups: groupsOk,
+      listed,
       bytes: undo.ok && sameFiles(committedFiles, expected ?? {}),
       box: quadDistance(undone.visible, pre.visible),
       redoBytes: redo.ok,
@@ -626,6 +705,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
       // The slowest write of each walk, judged by the single-case undo rule.
       ms: slowest(undo.writes),
       redoMs: slowest(redo.writes),
+      shownMs: undoneAt.shownMs,
+      redoShownMs: redoneAt?.shownMs ?? null,
     },
     undoTimeout: saveFault([
       ...undo.writes.map((w) => ["undo", w]),

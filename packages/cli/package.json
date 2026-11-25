@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.9.43",
+  "version": "0.9.93",
   "description": "Make videos with code and AI agents: write HTML, render MP4. Open source.",
   "keywords": [
     "ai-agents",
@@ -50,6 +50,7 @@
     "build:copy": "node scripts/build-copy.mjs",
     "typecheck": "tsc --noEmit",
     "gen:skills-manifest": "tsx scripts/gen-skills-manifest.ts",
+    "pin:chrome": "bun scripts/pin-chrome.ts",
     "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts",
     "bench:startup": "node scripts/bench-startup.mjs"
   },
@@ -91,6 +92,7 @@
     "@types/fontkit": "^2.0.9",
     "@types/node": "^25.0.10",
     "ajv": "^8.20.0",
+    "gsap-3.14.2": "npm:gsap@3.14.2",
     "linkedom": "^0.18.12",
     "onnxruntime-node": "1.21.1",
     "picocolors": "^1.1.1",

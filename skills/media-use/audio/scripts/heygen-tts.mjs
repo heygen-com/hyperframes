@@ -10,17 +10,23 @@
 //   node heygen-tts.mjs ./script.txt     -o narration.wav --words narration.words.json
 //   node heygen-tts.mjs "Bonjour"        -o fr.wav --lang fr --voice <id>
 //   node heygen-tts.mjs --list           # list starfish voices and exit
+//   node heygen-tts.mjs -o dash.wav -- "--and then it stopped."
 //
+// A lone `--` ends the flags: the word after it is the text / .txt path, whatever it starts with.
 // Flags: -o/--output (.wav → ffmpeg transcode; .mp3 → raw bytes), --words,
 //   --voice (starfish id), --speed, --lang, --list.
 // Requires: $HEYGEN_API_KEY / OAuth ~/.hyperframes credentials and ffmpeg for .wav output.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { heygenAuthHeaders, heygenJSON, loadEnvFromDir } from "./lib/heygen.mjs";
+import { replaceFile } from "../../scripts/lib/manifest.mjs";
+import { terminalText } from "../../scripts/lib/terminal-text.mjs";
 import { ffprobeDuration, resolveVoiceId, synthesizeOne, withWordIds } from "./lib/tts.mjs";
 
-const argv = process.argv.slice(2);
+const given = process.argv.slice(2);
+const flagsEnd = given.indexOf("--");
+const argv = flagsEnd < 0 ? given : given.slice(0, flagsEnd);
 function flag(name, def) {
   const i = argv.indexOf(`--${name}`);
   if (i < 0) return def;
@@ -29,12 +35,12 @@ function flag(name, def) {
   return v.startsWith("--") ? true : v;
 }
 const die = (m) => {
-  console.error(`✗ heygen-tts: ${m}`);
+  console.error(`✗ heygen-tts: ${m}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 };
 
-// First arg that isn't a flag or the -o value is the text / .txt path.
-const positional = (() => {
+// The first arg before a lone `--` that isn't a flag or a flag's value is the text / .txt path.
+const beforeEnd = (() => {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith("--")) {
@@ -50,6 +56,18 @@ const positional = (() => {
   }
   return null;
 })();
+
+// Flags written after the `--` would be dropped without a word, and so would a second text.
+const afterEnd = flagsEnd < 0 ? [] : given.slice(flagsEnd + 1);
+if (afterEnd.length > 1)
+  die("only the text goes after a lone --. Put every flag, and its value, before the --.");
+if (afterEnd.length === 1 && beforeEnd !== null)
+  die("two texts given, one before the lone -- and one after it. Pass one.");
+const positional = afterEnd.length === 1 ? afterEnd[0] : beforeEnd;
+
+const outputFlag = argv.includes("-o") ? argv.indexOf("-o") : argv.indexOf("--output");
+if (outputFlag >= 0 && outputFlag + 1 >= argv.length)
+  die(`${argv[outputFlag]} needs a path after it.`);
 
 const output = resolve(
   (typeof flag("output") === "string" && flag("output")) ||
@@ -77,13 +95,20 @@ if (listOnly) {
     headers: authHeaders,
   });
   for (const v of payload.data ?? payload.voices ?? []) {
-    console.log(`${v.voice_id}\t${v.name}\t${v.language ?? ""}`);
+    console.log(terminalText(`${v.voice_id}\t${v.name}\t${v.language ?? ""}`));
   }
   process.exit(0);
 }
 
 // ---------- resolve text + voice ----------
-if (!positional) die("no text given. Pass a string or a .txt path, or use --list.");
+// Two leading separators name a network share or a device on Windows; looking one up reaches out
+// to that host, so a .txt path of that form is refused, not looked up and not spoken.
+if (!positional)
+  die(
+    "no text given. Pass a string or a .txt path, or use --list. Text that starts with -- goes after a lone --.",
+  );
+if (/^[\\/]{2}/.test(positional) && /\.txt$/i.test(positional))
+  die("a .txt path on a network share is not read. Copy the file to a local folder.");
 const text =
   positional.endsWith(".txt") && existsSync(resolve(positional))
     ? readFileSync(resolve(positional), "utf8").trim()
@@ -91,7 +116,7 @@ const text =
 if (!text) die("input text is empty");
 
 const voiceId = await resolveVoiceId({ provider: "heygen", userVoice, lang });
-if (!userVoice) console.error(`· using voice ${voiceId}`);
+if (!userVoice) console.error(terminalText(`· using voice ${voiceId}`));
 
 // ---------- synthesize (shared engine code) ----------
 const { ok, words, error } = await synthesizeOne({
@@ -110,7 +135,7 @@ let wordCount = 0;
 if (wordsPath) {
   if (words && words.length) {
     mkdirSync(dirname(wordsPath), { recursive: true });
-    writeFileSync(wordsPath, JSON.stringify(withWordIds(words), null, 2));
+    replaceFile(wordsPath, JSON.stringify(withWordIds(words), null, 2));
     wordCount = words.length;
   } else {
     console.error("⚠ no word_timestamps in response — run `hyperframes transcribe` instead");
@@ -119,4 +144,6 @@ if (wordsPath) {
 
 const dur = ffprobeDuration(output);
 const durStr = isFinite(dur) ? ` (${dur.toFixed(2)}s)` : "";
-console.log(`✓ ${output}${durStr}${wordCount ? ` · ${wordsPath} (${wordCount} words)` : ""}`);
+console.log(
+  terminalText(`✓ ${output}${durStr}${wordCount ? ` · ${wordsPath} (${wordCount} words)` : ""}`),
+);

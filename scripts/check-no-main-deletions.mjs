@@ -986,6 +986,14 @@ export const ALLOWED_DELETIONS = new Map([
     "moved to scripts/rewrite-relative-import-extensions.mjs as plain ESM so packages without tsx can use it; now also rewrites .d.ts",
   ],
   [
+    "packages/studio/src/player/components/timelineLayerDrag.ts",
+    "its only importer was resolveTimelineMove's stacking mode, which no timeline drag reaches",
+  ],
+  [
+    "packages/studio/src/player/components/timelineLayerDrag.test.ts",
+    "tests for the removed timeline stacking-mode move",
+  ],
+  [
     "packages/studio/src/hooks/gsapTargetCache.ts",
     "its only caller was the deleted var-offset move writer; nothing imports isElementGsapTargeted",
   ],
@@ -2135,6 +2143,34 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/cli/src/commands/cloud/render.pageMotionBlur.test.ts",
     "tests for the removed cloud render --page-motion-blur flag; the hosted render API never accepted the field",
   ],
+  [
+    "packages/engine/src/services/pageNetworkPolicy.ts",
+    "replaced by the browser-wide public-only proxy every render browser launches behind on a restricted host",
+  ],
+  [
+    "packages/engine/src/services/pageNetworkPolicy.browser.test.ts",
+    "its cases moved to renderNetwork.browser.test.ts, which drives the browser-wide proxy through a real capture session",
+  ],
+  [
+    "packages/engine/src/services/frameCapture-pageNetwork.test.ts",
+    "pinned the removed per-page filter; browserManager.test.ts pins when a render browser goes behind the proxy",
+  ],
+  [
+    "packages/studio/src/utils/authoredOpacity.ts",
+    "its two authored-opacity helpers moved into core's colorGrading, which the frame's own tween patch now calls; Studio imports them from there",
+  ],
+  [
+    "packages/studio/src/utils/htmlAttrSafety.ts",
+    "Studio's hand-synced copy of core's html-attr-safety rules; Studio imports core's now, one source",
+  ],
+  ...[
+    "packages/cli/src/registry/envProxy.fixture.ts",
+    "packages/cli/src/registry/envProxy.process.test.ts",
+    "packages/cli/src/utils/envProxyFetch.ts",
+  ].map((path) => [
+    path,
+    "held for v0.10.0 with #8311, the change that added it; drop this entry when it re-lands",
+  ]),
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

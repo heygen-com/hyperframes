@@ -50,6 +50,12 @@
       "types": "./dist/hfIds.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./linkedom": {
+      "source": "./src/linkedom.ts",
+      "runtime": "./dist/linkedom.js",
+      "types": "./dist/linkedom.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./gsap-parser-recast": {
       "source": "./src/gsapParser.ts",
       "runtime": "./dist/gsapParser.js",
@@ -67,6 +73,12 @@
       "runtime": "./dist/assets.js",
       "types": "./dist/assets.d.ts",
       "environments": ["bun", "node"]
+    },
+    "./css-url-scans": {
+      "source": "./src/cssUrlScans.ts",
+      "runtime": "./dist/cssUrlScans.js",
+      "types": "./dist/cssUrlScans.d.ts",
+      "environments": ["browser", "bun", "node"]
     },
     "./composition": {
       "source": "./src/composition.ts",
@@ -116,6 +128,12 @@
       "types": "./dist/ffBinaries.d.ts",
       "environments": ["bun", "node"]
     },
+    "./literal-media-input": {
+      "source": "./src/literalMediaInput.ts",
+      "runtime": "./dist/literalMediaInput.js",
+      "types": "./dist/literalMediaInput.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./media-alpha": {
       "source": "./src/mediaAlpha.ts",
       "runtime": "./dist/mediaAlpha.js",
@@ -132,6 +150,12 @@
       "source": "./src/assetResolution.ts",
       "runtime": "./dist/assetResolution.js",
       "types": "./dist/assetResolution.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./private-path": {
+      "source": "./src/privatePath.ts",
+      "runtime": "./dist/privatePath.js",
+      "types": "./dist/privatePath.d.ts",
       "environments": ["bun", "node"]
     },
     "./html-attribute-spans": {

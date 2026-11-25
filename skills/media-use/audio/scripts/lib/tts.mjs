@@ -1,6 +1,7 @@
 import "../../../scripts/lib/windows-exe-search.mjs";
 import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 import { refuseUnderLimit } from "../../../scripts/lib/credit-limit.mjs";
+import { replaceFile } from "../../../scripts/lib/manifest.mjs";
 // tts.mjs — multi-provider TTS for the media audio engine. The provider chain,
 // auto-detected from env, is the one documented in ../SKILL.md:
 //
@@ -19,8 +20,14 @@ import { refuseUnderLimit } from "../../../scripts/lib/credit-limit.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
-import { heygenAuthHeaders, heygenCredential, heygenJSON, heygenMessage } from "./heygen.mjs";
+import { basename, dirname, isAbsolute, join } from "node:path";
+import {
+  heygenAuthHeaders,
+  heygenCredential,
+  heygenJSON,
+  heygenMessage,
+  noteProjectElevenLabsKey,
+} from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 import { synthesizeGemini } from "./gemini-tts.mjs";
 import { geminiConfigured } from "./gemini-auth.mjs";
@@ -51,9 +58,13 @@ export function pickProvider(userProvider) {
     if (userProvider === "heygen" && !heygenAvailable()) heygenAuthHeaders();
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");
+    if (userProvider === "elevenlabs") noteProjectElevenLabsKey();
     return userProvider;
   }
-  return heygenAvailable() ? "heygen" : elevenlabsAvailable() ? "elevenlabs" : "kokoro";
+  if (heygenAvailable()) return "heygen";
+  if (!elevenlabsAvailable()) return "kokoro";
+  noteProjectElevenLabsKey();
+  return "elevenlabs";
 }
 
 // ── voice resolution ──────────────────────────────────────────────────────────
@@ -244,19 +255,26 @@ export function spawnP(
   });
 }
 
-// mp3/whatever bytes → wav 44.1k mono at destWav (ffmpeg detects true format).
+// mp3/whatever bytes → wav 44.1k mono at destWav (ffmpeg detects true format). ffmpeg writes in a
+// private temp folder and the result replaces destWav, so a link at destWav is replaced, not followed.
 function transcodeToWav(bytes, destWav) {
   const td = mkdtempSync(join(tmpdir(), "hf-tts-"));
-  const tmp = join(td, "a.mp3");
-  writeFileSync(tmp, bytes);
-  mkdirSync(dirname(destWav), { recursive: true });
-  const ff = spawnSync(
-    "ffmpeg",
-    ["-y", "-loglevel", "error", "-i", tmp, "-ar", "44100", "-ac", "1", destWav],
-    { stdio: "ignore" },
-  );
-  rmSync(td, { recursive: true, force: true });
-  return ff.status === 0 && existsSync(destWav);
+  try {
+    const tmp = join(td, "a.mp3");
+    const wav = join(td, "a.wav");
+    writeFileSync(tmp, bytes);
+    const ff = spawnSync(
+      "ffmpeg",
+      ["-y", "-loglevel", "error", "-i", tmp, "-ar", "44100", "-ac", "1", wav],
+      { stdio: "ignore" },
+    );
+    if (ff.status !== 0 || !existsSync(wav)) return false;
+    mkdirSync(dirname(destWav), { recursive: true });
+    replaceFile(destWav, readFileSync(wav));
+    return true;
+  } finally {
+    rmSync(td, { recursive: true, force: true });
+  }
 }
 
 const ELEVENLABS_PY = `
@@ -292,32 +310,52 @@ export async function synthesizeOne({
   if (provider === "gemini")
     return synthesizeGemini({ text, voiceId, model, style, speed, wavAbs });
   if (provider === "elevenlabs") {
-    // The Python helper writes straight to wavAbs; unlike heygen (transcodeToWav)
-    // and kokoro (the `hyperframes tts` CLI), it does NOT create the parent dir,
-    // so on a fresh project (no assets/voice/ yet) the save fails and the line is
-    // silently dropped as "TTS failed - omitted". Create it first, like the other
-    // providers do. Guarded so a mkdir failure (EACCES/EROFS) returns
-    // { ok:false } like the rest of this branch rather than throwing (the
-    // function's contract is "never throws; failures return { ok:false }").
+    // The output folder is made before the request, so a folder that cannot be made
+    // (EACCES/EROFS) drops the line before it spends a generation. Guarded so that
+    // failure returns { ok:false } rather than throwing (the function's contract is
+    // "never throws; failures return { ok:false }").
     try {
       mkdirSync(dirname(wavAbs), { recursive: true });
     } catch {
       return { ok: false, words: null };
     }
-    return withTmpText(text, async (textPath) => {
-      const { cmd, args } = pythonInvocation(["-c", ELEVENLABS_PY, textPath, voiceId, wavAbs]);
-      const r = await spawnP(cmd, args, {});
-      return synthResult(r, wavAbs, "elevenlabs (python)");
+    return withStagedWav(text, wavAbs, "elevenlabs (python)", (textPath, staged) => {
+      const { cmd, args } = pythonInvocation(["-c", ELEVENLABS_PY, textPath, voiceId, staged]);
+      return spawnP(cmd, args, {});
     });
   }
-  // kokoro — via the published CLI; --output is relative to the project dir.
-  const wavRel = relTo(hyperframesDir, wavAbs);
-  return withTmpText(text, async (textPath) => {
-    const args = ["hyperframes", "tts", textPath, "--voice", voiceId, "--output", wavRel];
+  // kokoro — via the published CLI, run in the project dir.
+  return withStagedWav(text, wavAbs, "kokoro (npx hyperframes tts)", (textPath, staged) => {
+    const args = [
+      "hyperframes",
+      "tts",
+      "--text-file",
+      textPath,
+      "--voice",
+      voiceId,
+      "--output",
+      staged,
+    ];
     if (lang !== "en") args.push("--lang", lang);
     if (speed !== 1) args.push("--speed", String(speed));
-    const r = await spawnP("npx", args, { cwd: hyperframesDir });
-    return synthResult(r, wavAbs, "kokoro (npx hyperframes tts)");
+    return spawnP("npx", args, { cwd: hyperframesDir });
+  });
+}
+
+// The subprocess writes into the private text folder; its wav then replaces wavAbs, so a link
+// at wavAbs is replaced, not followed.
+function withStagedWav(text, wavAbs, label, run) {
+  return withTmpText(text, async (textPath) => {
+    const staged = join(dirname(textPath), basename(wavAbs));
+    const result = synthResult(await run(textPath, staged), staged, label);
+    if (!result.ok) return result;
+    try {
+      mkdirSync(dirname(wavAbs), { recursive: true });
+      replaceFile(wavAbs, readFileSync(staged));
+    } catch (error) {
+      return { ok: false, words: null, error: `${label}: ${error.message}` };
+    }
+    return result;
   });
 }
 
@@ -338,7 +376,7 @@ export function synthResult(r, wavAbs, label) {
 export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, deps = {}) {
   const requestJSON = deps.heygenJSON ?? heygenJSON;
   const authHeaders = deps.heygenAuthHeaders ?? heygenAuthHeaders;
-  const fetchImpl = deps.fetch ?? fetch;
+  const fetchImpl = deps.fetch;
   const transcode = deps.transcodeToWav ?? transcodeToWav;
   try {
     refuseUnderLimit(deps.projectDir ?? process.cwd(), "a HeyGen voice", "voice");
@@ -370,7 +408,7 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
       }
     } else {
       mkdirSync(dirname(wavAbs), { recursive: true });
-      writeFileSync(wavAbs, bytes);
+      replaceFile(wavAbs, bytes);
     }
     const words = Array.isArray(inner.word_timestamps)
       ? inner.word_timestamps
@@ -420,7 +458,4 @@ async function withTmpText(text, run) {
       rmSync(td, { recursive: true, force: true });
     } catch {}
   }
-}
-function relTo(base, abs) {
-  return abs.startsWith(base + "/") ? abs.slice(base.length + 1) : abs;
 }

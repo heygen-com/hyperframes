@@ -13,7 +13,13 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
-import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
+import {
+  nodeMayRun,
+  nodeOnlyScript,
+  toolTrustedFileKind,
+  type ToolTrustedKind,
+} from "@hyperframes/core/safe-path";
+import { fetchItemFile, DEFAULT_REGISTRY_URL, isPublicRegistry } from "./remote.js";
 import {
   applyVariableDefaults,
   InvalidVariableValuesError,
@@ -25,6 +31,7 @@ export interface InstallOptions {
   destDir: string;
   /** Base URL of the registry. Defaults to the official public registry. */
   baseUrl?: string;
+  publicOnly?: boolean;
   /** Overwrite files the project has changed since they were installed. */
   force?: boolean;
   /**
@@ -136,10 +143,9 @@ function keptByProject(
   return !force && existsSync(destPath) && hasLocalEdits(record, target, readFileSync(destPath));
 }
 
-// Project and tool configuration is never registry content: VCS metadata, package-manager and
-// agent or editor settings are executed or trusted by other tools. Only an example (a fresh `init`)
-// may bring its own package.json and HyperFrames config.
-const PROJECT_FILES = new Set(["package.json", "hyperframes.json", "hyperframes.lock.json"]);
+// Project and tool configuration is never registry content: VCS metadata, package-manager and agent or editor settings
+// are executed or trusted by other tools. Core's `toolTrustedFileKind` names the files other tools run or trust, the same
+// rule Studio's write routes apply. Only an example (a fresh `init`) may bring its own package.json and HyperFrames config.
 const EXAMPLE_DOTFILES = new Set([".gitignore"]);
 
 // A Windows short name such as `CLAUDE~1` or `PACKAG~1.JSO` can open any long name on NTFS.
@@ -151,12 +157,6 @@ const isShortName = (part: string): boolean => /~\d+(\.|$)/.test(part);
 const STANDARD_INSTALL_DIRS = ["compositions", "assets", "models", "lib"];
 // The one file a block may leave at the project root: the catalog's usage note. Any other name could be one a tool loads.
 const ROOT_NOTES = new Set(["template.md"]);
-// Coding agents load these on their own, wherever they sit.
-const AGENT_INSTRUCTIONS =
-  /^(agents?|claude|gemini|qwen|crush|warp|conventions|copilot-instructions)(\.[a-z]+)?\.md$/;
-// Programs and scripts a shell, an OS or another tool runs; a browser composition never needs them.
-const EXECUTABLE =
-  /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|wsf|hta|msi|scr|pif|cpl|lnk|dll|so|dylib|node|sh|bash|zsh|command|jar|appimage|py|rb|pl|php)$/;
 
 function withoutTrailingDotsOrSpaces(part: string): string {
   let end = part.length;
@@ -205,12 +205,16 @@ type TargetRule = [
     file: string,
     example: boolean,
     installDirs: string[][] | null,
+    trusted: ToolTrustedKind | null,
   ) => boolean,
 ];
 
 const CONFIG_TARGET_RULES: TargetRule[] = [
   ["it writes into git metadata", (dirs, file) => [...dirs, file].includes(".git")],
-  ["it uses a Windows short name", (dirs, file) => [...dirs, file].some(isShortName)],
+  [
+    "it uses a Windows short name",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "short-name",
+  ],
   ["it writes into a hidden tool directory", (dirs) => dirs.some((dir) => dir.startsWith("."))],
   [
     "it writes a hidden configuration file",
@@ -218,11 +222,20 @@ const CONFIG_TARGET_RULES: TargetRule[] = [
   ],
   [
     "it would replace project configuration",
-    (_dirs, file, example) => !example && PROJECT_FILES.has(file),
+    (_dirs, _file, example, _installDirs, trusted) =>
+      (trusted === "project-config" && !example) ||
+      trusted === "lock-file" ||
+      trusted === "tool-config",
   ],
   ["it writes into node_modules", (dirs) => dirs.includes("node_modules")],
-  ["it writes an agent instruction file", (_dirs, file) => AGENT_INSTRUCTIONS.test(file)],
-  ["it writes a program or script", (_dirs, file) => EXECUTABLE.test(file)],
+  [
+    "it writes an agent instruction file",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "agent-instructions",
+  ],
+  [
+    "it writes a program or script",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "program",
+  ],
   [
     "it writes outside the project's blocks, components and assets folders",
     (dirs, file, example, installDirs) =>
@@ -242,9 +255,11 @@ function configTargetError(
   const parts = targetSegments(target);
   const file = parts.pop() ?? "";
   const example = type === "hyperframes:example";
+  const trusted = toolTrustedFileKind(target);
   return (
-    CONFIG_TARGET_RULES.find(([, applies]) => applies(parts, file, example, installDirs))?.[0] ??
-    null
+    CONFIG_TARGET_RULES.find(([, applies]) =>
+      applies(parts, file, example, installDirs, trusted),
+    )?.[0] ?? null
   );
 }
 
@@ -259,6 +274,7 @@ function assertSafeTarget(
   target: string,
   type: RegistryItem["type"],
   installDirs: string[][],
+  script: ScriptRule,
 ): void {
   if (isAbsolute(target)) {
     throw new Error(`Unsafe target "${target}": absolute paths are not allowed.`);
@@ -274,8 +290,22 @@ function assertSafeTarget(
   if (rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`Unsafe target "${target}": resolves outside destDir ${destDir}.`);
   }
-  const configError = configTargetError(target, type, installDirs);
+  const configError = configTargetError(target, type, installDirs) ?? script(destDir, target);
   if (configError) throw new Error(`Unsafe target "${target}": ${configError}.`);
+}
+
+/** Which block and component scripts an install refuses: Node-only ones always, and from a registry other than the public one, any the project's Node tooling may run, the rule Studio's writes follow. */
+type ScriptRule = (root: string, target: string) => string | null;
+
+function scriptRule(type: RegistryItem["type"], baseUrl: string): ScriptRule {
+  if (type === "hyperframes:example") return () => null;
+  const refused = isPublicRegistry(baseUrl)
+    ? (_: string, spelled: string) => nodeOnlyScript(spelled)
+    : (root: string, spelled: string) => nodeMayRun(root, spelled, "file");
+  return (root, target) =>
+    refused(root, target.split(/[\\/]/).join("/"))
+      ? "it writes a script Node tooling may run"
+      : null;
 }
 
 /** A component's pasteable markup: the file whose declared defaults `--vars` edits. */
@@ -347,7 +377,7 @@ async function prepareOneFile(
     return { destPath, target: file.target, preserved: true, hash: null, vars: null, bytes: null };
   }
 
-  let bytes = await fetchItemFile(item, file, baseUrl, budget);
+  let bytes = await fetchItemFile(item, file, baseUrl, budget, options.publicOnly);
   if (isInstalledRegistryBlockComposition(item, file)) {
     bytes = Buffer.from(addRegistryItemMarker(bytes.toString("utf8"), item));
   }
@@ -398,12 +428,13 @@ export async function prepareItem(
     ...STANDARD_INSTALL_DIRS,
     ...(options.installDirs ?? []),
   ]);
+  const script = scriptRule(item.type, baseUrl);
   for (const file of item.files) {
-    assertSafeTarget(destDir, file.target, item.type, installDirs);
+    assertSafeTarget(destDir, file.target, item.type, installDirs, script);
   }
 
   const root = registryRoot(destDir);
-  validatePhysicalTargets(root, item.files, item.type);
+  validatePhysicalTargets(root, item.files, item.type, script);
   const record = readInstallRecord(root);
   const budget = { remainingBytes: 512 * 1024 * 1024 };
 
@@ -416,7 +447,10 @@ export async function prepareItem(
 }
 
 /** Write a prepared item and record what landed. */
-export function publishItem({ root, outcomes: prepared, force }: PreparedItem): InstallResult {
+export function publishItem(
+  { root, outcomes: prepared, force }: PreparedItem,
+  guardWrite: (destPath: string, write: () => void) => void = (_, write) => write(),
+): InstallResult {
   // Read now, not at prepare time: another item published in between has recorded its own files.
   const record = readInstallRecord(root);
   // Asked again at write time: a save made while the rest of the plan downloaded is still an edit.
@@ -425,8 +459,8 @@ export function publishItem({ root, outcomes: prepared, force }: PreparedItem): 
       ? { ...o, preserved: true, hash: null, vars: null, bytes: null }
       : o,
   );
-  for (const outcome of outcomes) {
-    if (outcome.bytes) publishRegistryFile(root, outcome.target, outcome.bytes);
+  for (const { bytes, destPath, target } of outcomes) {
+    if (bytes) guardWrite(destPath, () => publishRegistryFile(root, target, bytes));
   }
 
   const written = outcomes.filter((o) => !o.preserved).map((o) => o.destPath);
@@ -459,6 +493,7 @@ function validatePhysicalTargets(
   root: string,
   files: FileTarget[],
   type: RegistryItem["type"],
+  script: ScriptRule,
 ): void {
   const targets = new Set<string>();
   const aliasKey = (path: string): string =>
@@ -469,7 +504,8 @@ function validatePhysicalTargets(
   for (const file of files) {
     const path = registryTargetPath(root, file.target);
     // Where the project's own links lead: still never into node_modules, hidden folders, agent files or programs.
-    const configError = configTargetError(relative(root, path), type, null);
+    const physical = relative(root, path);
+    const configError = configTargetError(physical, type, null) ?? script(root, physical);
     if (configError) throw new Error(`Unsafe target "${file.target}": ${configError}.`);
     const key = aliasKey(path);
     if (targets.has(key) || key === recordKey)

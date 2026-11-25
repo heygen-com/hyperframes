@@ -37,7 +37,28 @@ COPY --from=check /check.txt /hf-media-check.txt
 
 # The video function. /var/task comes from scripts/stage-arm64-image.ts as the `task` build context:
 #   docker buildx build --platform linux/arm64 --target video --build-context task=<out>/task packages/aws-lambda/image
-# Copy only, so any host builds it without emulation.
+# Its Chrome is Chrome for Testing's linux-arm64 chrome-headless-shell, the whole folder: the executable
+# alone finds no ICU data or .pak resources. The base has none of the shared libraries the shell links, so
+# they come from the base's own repository; this RUN needs an arm64 host or emulation. Its fonts are the
+# x86 function's: stage-arm64-image.ts unpacks @sparticuz/chromium's fonts and fonts.conf into /var/task/fonts.
+# Bump the version and the archive's sha256 together, with the rest of the repo's pins.
 FROM ${BASE} AS video
+ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.88
+ARG CHROME_HEADLESS_SHELL_SHA256=9f89b7ef6574e4bbf6ddda9f17f1fab5626e93d6f7d852653232d0d3554df975
+COPY fetch.sh /fetch.sh
+RUN . /fetch.sh && retry microdnf install -y --nodocs --setopt=install_weak_deps=0 --releasever=2023.12.20260914 \
+      alsa-lib at-spi2-atk at-spi2-core atk dbus-libs expat fontconfig libX11 libXcomposite libXdamage \
+      libXext libXfixes libXrandr libxcb libxkbcommon mesa-libgbm nspr nss nss-util \
+      systemd-libs unzip && \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 600 -o /tmp/chs.zip \
+      "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_HEADLESS_SHELL_VERSION}/linux-arm64/chrome-headless-shell-linux-arm64.zip" && \
+    echo "${CHROME_HEADLESS_SHELL_SHA256}  /tmp/chs.zip" | sha256sum -c - && \
+    unzip -q /tmp/chs.zip -d /opt && rm /tmp/chs.zip /fetch.sh && \
+    microdnf remove -y unzip && microdnf clean all && \
+    /opt/chrome-headless-shell-linux-arm64/chrome-headless-shell --version | grep -F "${CHROME_HEADLESS_SHELL_VERSION}"
+# src/chromium.ts launches this executable.
+ENV HYPERFRAMES_LAMBDA_CHROME_SOURCE=chrome-headless-shell \
+    HYPERFRAMES_LAMBDA_CHROME_PATH=/opt/chrome-headless-shell-linux-arm64/chrome-headless-shell \
+    FONTCONFIG_PATH=/var/task/fonts
 COPY --from=task / /var/task/
 CMD ["handler.handler"]

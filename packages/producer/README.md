@@ -8,7 +8,7 @@ Full HTML-to-video rendering pipeline: capture frames with Chrome's BeginFrame A
 npm install @hyperframes/producer
 ```
 
-**Requirements:** Node.js >= 22, Chrome/Chromium (auto-downloaded), FFmpeg
+**Requirements:** Node.js >= 22, FFmpeg, and the pinned `chrome-headless-shell`: run `npx hyperframes browser ensure` once, or name a browser in `PRODUCER_HEADLESS_SHELL_PATH`. A cached browser is used only when its files match the pinned build. HDR capture needs a full Chrome named in `HYPERFRAMES_BROWSER_PATH`.
 
 ## Usage
 
@@ -37,6 +37,31 @@ import { startServer } from "@hyperframes/producer";
 await startServer({ port: 8080 });
 // POST /render or /render/stream with projectDir, html, or previewUrl (public HTTPS only) and render options
 ```
+
+A browser request (one that carries an `Origin` or `Sec-Fetch-Site` header) is accepted
+only under an IP address, `localhost` or a `*.localhost` name, so a page that points its
+own domain at the server cannot start renders or lint. If browsers reach the server
+through a proxy name, list that name in `allowedHosts` or in the comma-separated
+`PRODUCER_ALLOWED_HOSTS` variable. Requests without those headers, such as curl or
+another service, are unaffected.
+
+Every route except `/health` requires `Authorization: Bearer <token>`. Set the token with
+`authToken` or `PRODUCER_AUTH_TOKEN`. If you set none, `startServer` makes one for the run
+and writes it to `~/.hyperframes/producer/<port>.token` (or `authTokenFile`, or
+`PRODUCER_AUTH_TOKEN_FILE`), readable only by the account that runs the server, and logs
+that path. Any local account, container or program can reach a loopback port, so the
+server never listens without a token. It listens on `127.0.0.1` unless you pass
+`hostname` or set `PRODUCER_HOST`, and it refuses any other address unless you set the
+token yourself. `createProducerApp` without `authToken`, and `createRenderHandlers`
+always, check no caller: serve them only behind your own authentication.
+
+A request's `projectDir` must resolve, symlinks included, inside
+`projectsDir` (`PRODUCER_PROJECTS_DIR`, default: the working directory). Its `entryFile`
+must stay inside that project, and `outputPath` must be inside `rendersDir`
+(`PRODUCER_RENDERS_DIR`, default: a new private folder in the OS temp dir). `debug: true` is refused unless you set
+`allowDebug` or `PRODUCER_ALLOW_DEBUG=1`. `createProducerApp` applies these path and
+debug checks by default. `createRenderHandlers`, for mounting the handlers inside your own
+trusted service, applies them only with `confineRequests: true`.
 
 Both HTTP routes accept optional `pageMotionBlur: "off"` to disable authored page
 motion blur. Omit it to preserve the composition's behavior. Other explicit values

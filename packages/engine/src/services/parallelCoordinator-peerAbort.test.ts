@@ -51,10 +51,15 @@ describe("executeParallelCapture peer abort", () => {
         () => null,
       );
 
-      await expect(result).rejects.toMatchObject({
-        name: "CaptureFailure",
-        kind: "authoring",
-      });
+      const failure = await result.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toMatchObject({ name: "CaptureFailure", kind: "authoring" });
+      const message = (failure as Error).message;
+      expect(message).toContain("Worker 0: Composition has zero duration");
+      expect(message).toContain("(1 other worker was stopped after this failure)");
+      expect(message).not.toContain("Worker 1");
       expect(captureFrame).not.toHaveBeenCalled();
       expect(closeCaptureSession).toHaveBeenCalledTimes(2);
     } finally {
@@ -73,7 +78,7 @@ describe("executeParallelCapture peer abort", () => {
         } as unknown as CaptureSession & { workerId: number };
       }),
       initializeSession: vi.fn(async (session: CaptureSession & { workerId: number }) => {
-        if (session.workerId === 0) throw new Error("Composition has zero duration.");
+        if (session.workerId === 1) throw new Error("Composition has zero duration.");
         await Promise.resolve();
       }),
       captureFrame: vi.fn().mockResolvedValue(undefined),

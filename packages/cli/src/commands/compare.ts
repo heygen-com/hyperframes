@@ -1,14 +1,5 @@
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from "node:fs";
+import { terminalLines, terminalText } from "@hyperframes/core";
+import { existsSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
@@ -22,11 +13,12 @@ import {
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { displayPathFromInput, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
+import { parsePositiveIntegerArg } from "../utils/integerArg.js";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
+import { leftOutNotice, stageReferencedFiles } from "../utils/stageReferencedFiles.js";
 import { withMeta } from "../utils/updateCheck.js";
 import type { Example } from "./_examples.js";
-import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { failCaught } from "../utils/jsonError.js";
 import { CliUsageError } from "../utils/commandResult.js";
 
@@ -128,13 +120,10 @@ function parseColumns(value: unknown): number | undefined {
 }
 
 function parseTimeoutMs(value: unknown): number {
-  const raw = readOptionalString(value);
-  if (!raw) return DEFAULT_RENDER_READY_TIMEOUT_MS;
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new CliUsageError("--timeout must be a positive integer number of milliseconds");
-  }
-  return parsed;
+  return (
+    parsePositiveIntegerArg(readOptionalString(value), "--timeout", { unit: "milliseconds" }) ??
+    DEFAULT_RENDER_READY_TIMEOUT_MS
+  );
 }
 
 function defaultCompareCols(cellCount: number): number {
@@ -221,40 +210,16 @@ function inputError(variant: CompareVariantSpec): Error {
   );
 }
 
-function copyVariantSiblings(
-  sourceDir: string,
-  destinationDir: string,
-  stagingPaths: readonly string[],
-): void {
-  mkdirSync(destinationDir, { recursive: true });
-  for (const entry of readdirSync(sourceDir)) {
-    if (entry === "node_modules" || entry === ".git") continue;
-    const src = join(sourceDir, entry);
-    const dest = join(destinationDir, entry);
-    if (stagingPaths.includes(src)) continue;
-    if (stagingPaths.some((path) => isPathInside(path, src))) {
-      copyVariantSiblings(src, dest, stagingPaths);
-      continue;
-    }
-    cpSync(src, dest, {
-      recursive: true,
-      filter: (path) => basename(path) !== "node_modules" && basename(path) !== ".git",
-    });
-  }
-}
-
-function stageHtmlVariant(
-  variant: CompareVariantSpec,
-  existingStagedDirs: readonly string[],
-): PreparedCompareVariant {
+function stageHtmlVariant(variant: CompareVariantSpec): PreparedCompareVariant {
   const stagedDir = mkdtempSync(join(tmpdir(), "hf-compare-variant-"));
   try {
-    // Copy the composition's sibling files but skip heavy/irrelevant trees — a
-    // variant sitting next to node_modules or .git shouldn't drag them into tmp.
-    const sourceDir = realpathSync(dirname(variant.inputPath));
-    const stagingPaths = [stagedDir, ...existingStagedDirs].map((path) => realpathSync(path));
-    copyVariantSiblings(sourceDir, realpathSync(stagedDir), stagingPaths);
-    const sourceName = basename(variant.inputPath);
+    const source = realpathSync(variant.inputPath);
+    const notice = leftOutNotice(
+      `compare ${variant.displayPath}`,
+      stageReferencedFiles(dirname(source), [source], stagedDir),
+    );
+    if (notice) console.warn(c.dim(terminalLines(notice)));
+    const sourceName = basename(source);
     if (sourceName !== "index.html") {
       renameSync(join(stagedDir, sourceName), join(stagedDir, "index.html"));
     }
@@ -287,10 +252,7 @@ export function prepareCompareVariantProjects(
         continue;
       }
       if (stat.isFile() && extname(variant.inputPath).toLowerCase() === ".html") {
-        const stagedDirs = prepared.flatMap((project) =>
-          project.stagedDir ? [project.stagedDir] : [],
-        );
-        prepared.push(stageHtmlVariant(variant, stagedDirs));
+        prepared.push(stageHtmlVariant(variant));
         continue;
       }
       throw inputError(variant);
@@ -449,7 +411,9 @@ export default defineCommand({
       if (parsed.json) {
         printJson(payload);
       } else {
-        console.log(`\n${c.success("◇")}  Comparison sheet saved to ${payload.sheet}`);
+        console.log(
+          `\n${c.success("◇")}  Comparison sheet saved to ${terminalText(payload.sheet)}`,
+        );
       }
     } catch (err) {
       failCaught(err, jsonRequested, (m) => `\n${c.error("✗")} Compare failed: ${m}`, printJson);

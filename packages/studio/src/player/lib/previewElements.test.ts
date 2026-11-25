@@ -1,12 +1,23 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { EditingElementDescription } from "@hyperframes/core/runtime/editing-port";
+import {
+  MAX_ELEMENT_ENTRIES,
+  MAX_ELEMENT_TEXT,
+  MAX_ELEMENT_VALUE,
+  type EditingElementDescription,
+  isStableSelector,
+} from "@hyperframes/core/runtime/editing-port";
+import { buildStableSelector } from "../../../../core/src/runtime/editingElement";
+import { gestureStart } from "../../../../core/src/runtime/editingGestureStart";
+import { handleFor } from "../../../../core/src/runtime/editingHandles";
 import {
   describePreviewElements,
   previewElementSelectorIndex,
   previewElementSourceFile,
   previewElementsAtPoint,
+  previewGestureStart,
+  previewStackingSiblings,
   readPreviewElement,
   type PreviewElement,
 } from "./previewElements";
@@ -17,6 +28,7 @@ import {
   setCompositionSourceMap,
 } from "../../components/editor/domEditingDom";
 import { detachedFakeIframe, serveEditingRequests } from "../hooks/timelinePlayerTestHarness";
+import { previewStackingFamily } from "../../components/editor/previewLayers";
 
 const closers: Array<() => void> = [];
 afterEach(() => {
@@ -50,6 +62,7 @@ function described(n: number, extra: Partial<EditingElementDescription> = {}) {
     handle: h(n),
     parent: null,
     tag: "div",
+    label: "Text",
     id: null,
     selector: null,
     matchesBefore: null,
@@ -68,6 +81,8 @@ function described(n: number, extra: Partial<EditingElementDescription> = {}) {
 describe("readPreviewElement", () => {
   it("takes a description with the wire shape and refuses anything off it", () => {
     expect(readPreviewElement(described(1))).toEqual(described(1));
+    const { label: _label, ...fromAnOlderRuntime } = described(1);
+    expect(readPreviewElement(fromAnOlderRuntime)).toEqual(fromAnOlderRuntime);
     for (const bad of [
       null,
       [],
@@ -77,14 +92,49 @@ describe("readPreviewElement", () => {
       described(1, { handle: `${LOAD.toUpperCase()}:1` }),
       described(1, { parent: "x" }),
       described(1, { tag: 1 as never }),
+      described(1, { label: 1 as never }),
       described(1, { source: { file: 1 } as never }),
       described(1, { locked: "yes" as never }),
+      described(1, { textMarkup: "yes" as never }),
       described(1, { attributes: [["a"]] as never }),
       described(1, { inlineStyles: { left: 4 } as never }),
       described(1, { children: [{ node: {} }] as never }),
       described(1, { matchesBefore: [{ source: NO_SOURCE, count: -1 }] }),
       described(1, { rect: { x: Number.NaN, y: 0, width: 0, height: 0 } }),
       described(1, { truncated: undefined as never }),
+    ]) {
+      expect(readPreviewElement(bad)).toBeNull();
+    }
+  });
+
+  it("refuses a description longer anywhere than the runtime ever sends one", () => {
+    const value = "x".repeat(MAX_ELEMENT_VALUE);
+    const atLimit = described(1, {
+      selector: `.${value.slice(1)}`,
+      attributes: [["src", value]],
+    });
+    expect(readPreviewElement(atLimit)).toEqual(atLimit);
+    const idAtLimit = described(1, { selector: `#${value.slice(1)}`, id: value.slice(1) });
+    expect(readPreviewElement(idAtLimit)).toEqual(idAtLimit);
+    const over = `${value}x`;
+    const text = "y".repeat(MAX_ELEMENT_TEXT + 1);
+    const many = Array.from({ length: MAX_ELEMENT_ENTRIES + 1 }, (_, i) => [`data-${i}`, ""]);
+    for (const bad of [
+      described(1, { selector: `.${value}` }),
+      described(1, { id: over }),
+      described(1, { tag: over }),
+      described(1, { label: over }),
+      described(1, { attributes: [["src", over]] }),
+      described(1, { attributes: [[`data-${over}`, "1"]] }),
+      described(1, { attributes: many as never }),
+      described(1, { inlineStyles: { left: over } }),
+      described(1, { inlineStyles: { [`--${over}`]: "1" } }),
+      described(1, { source: { ...NO_SOURCE, file: over } }),
+      described(1, { source: { ...NO_SOURCE, compositionId: over } }),
+      described(1, { source: { ...NO_SOURCE, originalCompositionId: over } }),
+      described(1, { matchesBefore: [{ source: { ...NO_SOURCE, file: over }, count: 1 }] }),
+      described(1, { text }),
+      described(1, { children: [{ text }] }),
     ]) {
       expect(readPreviewElement(bad)).toBeNull();
     }
@@ -118,6 +168,80 @@ describe("element requests over an opaque frame's port", () => {
     expect(handed).not.toHaveBeenCalled();
   });
 
+  // fails without the fix: the frame's reading of a CSS turn never reached Studio, and its text goes into the source.
+  it("takes a frame's CSS turn only with plain transform text", async () => {
+    document.body.innerHTML = `<div data-composition-id="main"><div id="card" style="rotate: 30deg"></div></div>`;
+    const [start] = gestureStart([handleFor(document.getElementById("card")!)]).elements;
+    let after = "scale(2)";
+    const { iframe } = opaqueFrame(() => ({
+      elements: [
+        {
+          ...start,
+          cssRotation: { ...start!.cssRotation!, target: { ...start!.cssRotation!.target, after } },
+        },
+      ],
+      snap: [],
+    }));
+    const read = async () => (await previewGestureStart(iframe, [h(1)]))!.elements[0]!.cssRotation;
+    expect(await read()).toMatchObject({ target: { after: "scale(2)" } });
+    for (after of [
+      "url(https://example.com/x)",
+      "translate(1px",
+      "scale(2) /* x",
+      "scale(2));color:red",
+    ])
+      expect(await read()).toBeUndefined();
+    after = "translateX(calc(10px + var(--a))) rotate(1deg)";
+    expect(await read()).toMatchObject({ target: { after } });
+  });
+
+  it("reads an element's stacking family, and refuses one that is not a family of it", async () => {
+    const family = [
+      { handle: h(1), zIndex: 1 },
+      { handle: h(2), zIndex: 2 },
+    ];
+    let reply: unknown = { family, locked: false };
+    const { iframe, handed } = opaqueFrame(() => reply);
+    expect(await previewStackingSiblings(iframe, h(1))).toEqual({ family, locked: false });
+    expect(handed).toHaveBeenCalledWith("stacking-family", { handle: h(1) });
+    for (const bad of [
+      { family: {}, locked: false },
+      { family, locked: "no" },
+      { family: [family[0], { handle: h(2), zIndex: Number.NaN }], locked: false },
+      { family: [family[0], { handle: h(2), zIndex: 1.5 }], locked: false },
+      { family: [family[0], { handle: "x", zIndex: 2 }], locked: false },
+      { family: [family[0], family[0]], locked: false },
+      { family: [family[1]], locked: false },
+      { family: Array(2049).fill(family[0]), locked: false },
+    ]) {
+      reply = bad;
+      expect(await previewStackingSiblings(iframe, h(1))).toBeNull();
+    }
+  });
+
+  it("restacks nothing from a malformed family, before describing any sibling", async () => {
+    let reply: unknown = { family: {}, locked: false };
+    const { iframe, handed } = opaqueFrame((kind, params) =>
+      kind === "describe"
+        ? {
+            elements: (params as { handles: string[] }).handles.map((handle) =>
+              described(1, { handle }),
+            ),
+          }
+        : reply,
+    );
+    await expect(previewStackingFamily(iframe, h(1), null)).resolves.toBeNull();
+    reply = {
+      family: [
+        { handle: h(1), zIndex: 1 },
+        { handle: h(2), zIndex: Number.NaN },
+      ],
+      locked: false,
+    };
+    await expect(previewStackingFamily(iframe, h(1), null)).resolves.toBeNull();
+    expect(handed).not.toHaveBeenCalledWith("describe", expect.anything());
+  });
+
   it("gives up after the agent probe when the frame's runtime has no editing agent", async () => {
     const { iframe } = opaqueFrame();
     const started = Date.now();
@@ -128,6 +252,61 @@ describe("element requests over an opaque frame's port", () => {
     ]);
     expect(answers).toEqual([null, null, null]);
     expect(Date.now() - started).toBeLessThan(AGENT_PROBE_MS + 500);
+  });
+});
+
+describe("the selector a description may carry", () => {
+  it("keeps the forms Studio builds for an element itself", () => {
+    for (const kept of [
+      described(1, { selector: "#title", id: "title" }),
+      described(1, { selector: "#\\31 st\\.hero", id: "1st.hero" }),
+      described(1, { selector: ".tile" }),
+      described(1, { selector: ".md\\:w-1\\/2" }),
+      described(1, { selector: '[data-composition-id="card__hf2"]' }),
+      described(1, { selector: '[data-hf-group="a \\"b\\" c"]' }),
+    ]) {
+      expect(readPreviewElement(kept)).toEqual(kept);
+    }
+  });
+
+  it("drops a description whose selector Studio would not have built", () => {
+    for (const forged of [
+      described(1, { selector: "script" }),
+      described(1, { selector: "body > script:nth-of-type(2)" }),
+      described(1, { selector: ".tile script" }),
+      described(1, { selector: ".tile, script" }),
+      described(1, { selector: ".tile.other" }),
+      described(1, { selector: '[data-composition-id="card"] script' }),
+      described(1, { selector: '[data-composition-id="card"], script' }),
+      described(1, { selector: '[src="app.js"]' }),
+      described(1, { selector: "*" }),
+      described(1, { selector: "" }),
+      described(1, { selector: ".1st" }),
+      described(1, { selector: ".-" }),
+      described(1, { selector: '[data-hf-group=""]' }),
+    ]) {
+      expect(readPreviewElement(forged)).toBeNull();
+    }
+  });
+
+  it("drops an id selector that names another element than the described id", () => {
+    expect(readPreviewElement(described(1, { selector: "#boot", id: "title" }))).toBeNull();
+    expect(readPreviewElement(described(1, { selector: "#boot" }))).toBeNull();
+    expect(readPreviewElement(described(1, { selector: "#title script", id: "title" }))).toBeNull();
+    expect(readPreviewElement(described(1, { selector: ".tile", id: "title" }))).toBeNull();
+  });
+});
+
+describe("the selector the runtime builds for an element", () => {
+  it("is always one a description may carry", () => {
+    document.body.innerHTML = `
+      <div id="1st.hero"></div><div id="-"></div><div class="md:w-1/2 clip"></div>
+      <div class="-1x"></div><div class="clip"></div><div data-composition-id='a "b"'></div>
+      <div data-hf-group="g\\1"></div><form class="signup"><input name="id" /></form>`;
+    for (const el of Array.from(document.body.querySelectorAll("div, form"))) {
+      const id = typeof el.id === "string" && el.id ? el.id : null;
+      expect(isStableSelector(buildStableSelector(el) ?? "", id), el.outerHTML).toBe(true);
+    }
   });
 });
 

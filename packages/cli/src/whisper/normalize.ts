@@ -1,8 +1,9 @@
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { extname, join } from "node:path";
 import { parseExpressionAt, tokenizer } from "acorn";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 
 export interface Word {
   /** Stable identifier for referencing this word in overrides and compositions.
@@ -600,7 +601,7 @@ export function patchCaptionHtml(dir: string, words: Word[]): void {
     if (match) {
       const varName = scriptMatch ? "script" : "TRANSCRIPT";
       content = content.replace(match, () => `const ${varName} = ${wordsJson};`);
-      writeFileSync(file, content, "utf-8");
+      replaceFileAtomically(file, content);
     }
   }
 }

@@ -1,5 +1,6 @@
 import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
+import { win32 } from "node:path";
 
 interface SpawnedProcess {
   once(event: "error", listener: (error: Error) => void): unknown;
@@ -58,6 +59,15 @@ export function windowsProcessTreeKillArgs(pid: number): string[] {
   return ["/PID", String(pid), "/T", "/F"];
 }
 
+export function windowsOwnTreeKillArgs(pid: string, image: string): string[] {
+  return ["/F", "/T", "/FI", `PID eq ${pid}`, "/FI", `IMAGENAME eq ${image}`];
+}
+
+export function windowsImageOf(spawnfile: string): string {
+  const name = win32.basename(spawnfile);
+  return win32.extname(name) ? name : `${name}.exe`;
+}
+
 export function terminateWindowsProcessTree(
   pid: number,
   spawnProcess: SpawnProcess = (command, args, options) => spawn(command, [...args], options),
@@ -81,7 +91,36 @@ function signalProcessGroup(pid: number, signal: NodeJS.Signals): void {
   } catch {}
 }
 
+function childrenFromProc(): Map<number, number[]> | undefined {
+  try {
+    const children = new Map<number, number[]>();
+    for (const entry of readdirSync("/proc")) {
+      if (!/^\d+$/.test(entry)) continue;
+      let stat: string;
+      try {
+        stat = readFileSync(`/proc/${entry}/stat`, "utf8");
+      } catch {
+        continue;
+      }
+      const parent = Number(stat.slice(stat.lastIndexOf(") ") + 2).split(/\s+/)[1]);
+      children.set(parent, [...(children.get(parent) ?? []), Number(entry)]);
+    }
+    return children;
+  } catch {
+    return undefined;
+  }
+}
+
+function descendantsIn(tree: Map<number, number[]>, pid: number): number[] {
+  return (tree.get(pid) ?? []).flatMap((child) => [child, ...descendantsIn(tree, child)]);
+}
+
 function getDescendants(pid: number): number[] {
+  const tree = process.platform === "linux" ? childrenFromProc() : undefined;
+  return tree ? descendantsIn(tree, pid) : pgrepDescendants(pid);
+}
+
+function pgrepDescendants(pid: number): number[] {
   let children: number[];
   try {
     const raw = execFileSync("pgrep", ["-P", String(pid)], {
@@ -95,7 +134,7 @@ function getDescendants(pid: number): number[] {
   } catch {
     return [];
   }
-  return children.flatMap((childPid) => [childPid, ...getDescendants(childPid)]);
+  return children.flatMap((childPid) => [childPid, ...pgrepDescendants(childPid)]);
 }
 
 function signalProcesses(pids: readonly number[], signal: NodeJS.Signals): void {

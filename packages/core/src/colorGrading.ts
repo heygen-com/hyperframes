@@ -39,6 +39,17 @@ export const COLOR_GRADING_SOURCE_HIDDEN_ATTR = "data-hf-color-grading-source-hi
  */
 export const COLOR_GRADING_AUTHORED_OPACITY_ATTR = "data-hf-authored-opacity";
 
+export function readStampedAuthoredOpacity(element: {
+  getAttribute(name: string): string | null;
+}): string | null {
+  return element.getAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR);
+}
+
+export function applyAuthoredInlineOpacity(style: CSSStyleDeclaration, authored: string): void {
+  if (authored === "") style.removeProperty("opacity");
+  else style.setProperty("opacity", authored);
+}
+
 export const HF_COLOR_GRADING_CANVAS_ID_PREFIX = "__hf_color_grading_";
 
 export const HF_COLOR_GRADING_COLOR_SPACE = COLOR_GRADING_COLOR_SPACE;
@@ -634,6 +645,10 @@ const PRESETS_BY_ID = new Map<string, HfColorGradingPreset>(
 );
 
 const VARIABLE_REF_RE = /^\$(?:\{([A-Za-z0-9_.:-]+)\}|([A-Za-z0-9_.:-]+))$/;
+
+export function isHfColorGradingVariableRef(value: unknown): boolean {
+  return typeof value === "string" && VARIABLE_REF_RE.test(value.trim());
+}
 
 const ADJUST_LIMITS: Record<HfColorGradingAdjustKey, { min: number; max: number }> = {
   exposure: { min: -2, max: 2 },

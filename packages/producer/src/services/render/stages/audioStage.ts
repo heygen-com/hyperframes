@@ -26,10 +26,12 @@ import {
   processCompositionAudio,
   removeScratch,
   collectScratchLeftovers,
+  withFfmpegProgress,
   type AudioProcessingFailure,
   type MixResult,
 } from "@hyperframes/engine";
-import type { CompositionMetadata } from "../shared.js";
+import { audioWorkDir, type CompositionMetadata } from "../shared.js";
+import { mediaAssetRoots } from "../../assetMediaType.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { limitDeliveryPeaks } from "../audioDeliveryLimit.js";
@@ -40,9 +42,11 @@ export interface AudioStageInput {
   workDir: string;
   /** `join(workDir, "compiled")`; passed through to the audio mixer for asset resolution. */
   compiledDir: string;
-  /** Probed video frame count and exact frame rate define the delivered audio length. */
+  /** The film's frame count and exact frame rate define the mixed audio length. */
   totalFrames: number;
   fps: Fps;
+  /** Deliver only these film frames' audio, cut from the whole mix. */
+  frameWindow?: { startFrame: number; endFrame: number };
   /** Timeout forwarded to ffmpeg subprocesses used by the audio mixer. */
   ffmpegProcessTimeout: number;
   /** Master gain forwarded to the audio mixer. */
@@ -52,12 +56,14 @@ export interface AudioStageInput {
   masterFxChain?: string;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
+  allowOutsideProjectAssets?: boolean;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   /** Where a per-track failure's detail goes. Optional so tests need not pass one. */
   log?: ProducerLogger;
   /** Leave the delivered PCM in `workDir` for the assemble stage; its owner removes the dir. */
   keepDeliverySource?: boolean;
+  onFfmpegProgress?: () => void;
 }
 
 export interface AudioStageResult {
@@ -98,7 +104,8 @@ function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] |
 
 export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
   return collectScratchLeftovers(
-    () => runAudioStageScoped(input),
+    () =>
+      withFfmpegProgress(input.onFfmpegProgress ?? (() => {}), () => runAudioStageScoped(input)),
     (left) => {
       if (left.length > 0) input.log?.warn("[audio] scratch left behind", { count: left.length });
     },
@@ -108,10 +115,15 @@ export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult>
 async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageResult> {
   const stageStart = Date.now();
   const pcmSourcePath = join(input.workDir, "audio-source.wav");
-  const duration = (input.totalFrames * input.fps.den) / input.fps.num;
+  const seconds = (frames: number) => (frames * input.fps.den) / input.fps.num;
+  const duration = seconds(input.totalFrames);
+  const window = input.frameWindow && {
+    startSeconds: seconds(input.frameWindow.startFrame),
+    durationSeconds: seconds(input.frameWindow.endFrame - input.frameWindow.startFrame),
+  };
   let deliverySourcePath: string | undefined;
   try {
-    const result = await mixAudioForDelivery(input, duration, pcmSourcePath);
+    const result = await mixAudioForDelivery(input, duration, pcmSourcePath, window);
     let audioLoweredDb: number | undefined;
     if (result.hasAudio) {
       const guardStart = Date.now();
@@ -119,7 +131,7 @@ async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageRe
         input,
         result.audioOutputPath,
         pcmSourcePath,
-        duration,
+        window?.durationSeconds ?? duration,
       );
       audioLoweredDb = guard.loweredDb;
       input.log?.info("[audio] phases", { ...result.audioPhaseMs, guard: Date.now() - guardStart });
@@ -168,6 +180,7 @@ async function mixAudioForDelivery(
   input: AudioStageInput,
   duration: number,
   pcmSourcePath: string,
+  window: { startSeconds: number; durationSeconds: number } | undefined,
 ): Promise<Omit<AudioStageResult, "audioProcessMs">> {
   const {
     projectDir,
@@ -202,7 +215,7 @@ async function mixAudioForDelivery(
       audioResult = await processCompositionAudio(
         audios,
         projectDir,
-        join(workDir, "audio-work"),
+        audioWorkDir(workDir),
         audioOutputPath,
         duration,
         abortSignal,
@@ -213,6 +226,10 @@ async function mixAudioForDelivery(
           urlByAbsentLocalPath,
           audioSidecarUrlByLocalPath,
           keepEncoderInputAt: pcmSourcePath,
+          window,
+          assetRoots: input.allowOutsideProjectAssets
+            ? undefined
+            : mediaAssetRoots(projectDir, compiledDir),
         },
         compiledDir,
       );

@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
+import { hyperframesConfigDir } from "./configDir.js";
 import { skillsCheckDue } from "./skillsUpdateCheck.js";
 import { updateCheckDue } from "./updateCheck.js";
 
@@ -31,7 +33,11 @@ export function launchBackgroundChecks(): void {
   // Next to the bundled cli.js; from source (dev mode) no check is ever due.
   const worker = join(dirname(fileURLToPath(import.meta.url)), "backgroundChecksWorker.js");
   try {
-    const child = spawn(process.execPath, [worker, ...due], {
+    const cliFolder = hyperframesConfigDir();
+    mkdirSync(cliFolder, { recursive: true, mode: 0o700 });
+    const projectDir = process.cwd();
+    const child = spawn(process.execPath, [worker, projectDir, ...due], {
+      cwd: cliFolder,
       detached: true,
       stdio: "ignore",
       windowsHide: true,

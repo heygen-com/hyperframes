@@ -313,12 +313,16 @@ const previewFrames = (page) =>
 
 /** A hidden preview holding the target is a shadow reload not yet promoted: the visible frame is about to go stale. */
 async function hiddenTarget(page, selector = "#target") {
-  for (const f of page.frames().filter((f) => f.url().includes("/preview"))) {
-    const host = await f.frameElement().catch(() => null);
-    const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
-    if (shown === false && (await f.$(selector).catch(() => null))) return true;
-  }
+  for (const f of page.frames().filter((f) => f.url().includes("/preview")))
+    if (await hiddenIn(f, selector).catch(() => false)) return true;
   return false;
+}
+
+// Async so a frame detached mid-scan rejects: puppeteer throws that synchronously, before any `.catch`.
+async function hiddenIn(frame, selector) {
+  const host = await frame.frameElement();
+  const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
+  return shown === false && Boolean(await frame.$(selector));
 }
 
 // Studio's own word that the preview is about to change: a reload asked for, loading, or an undo or redo in flight.
@@ -387,26 +391,44 @@ const callTool = (page, name, args) =>
  */
 // fallow-ignore-next-line complexity
 export async function seekBound(ctx) {
+  let unmet;
   for (const deadline = Date.now() + 30_000; Date.now() < deadline; await sleep(50)) {
     const look = await callTool(ctx.page, "studio_look", {});
-    if (!(look?.ok && look.duration > 0)) continue;
+    if (!(look?.ok && look.duration > 0)) {
+      unmet = `studio_look duration > 0, last ${JSON.stringify(lookSummary(look))}`;
+      continue;
+    }
     const seek = await callTool(ctx.page, "studio_seek", { time: ctx.playhead });
-    if (
-      seek?.ok &&
-      seek.duration > 0 &&
-      seek.playhead === ctx.playhead &&
-      (await findTarget(ctx.page))
-    )
-      return seek;
+    if (!(seek?.ok && seek.duration > 0 && seek.playhead === ctx.playhead)) {
+      unmet = `studio_seek to ${ctx.playhead}, last ${JSON.stringify(seek)}`;
+      continue;
+    }
+    if (await findTarget(ctx.page)) return seek;
+    unmet = `#target in a shown preview, last frames ${previewFrames(ctx.page) || "none"}`;
   }
-  return null;
+  throw new Error(`studio never reported a seekable composition: ${unmet}`);
 }
 
-/** Ready once Studio's own seek tool reports the composition and the playhead landed. */
+const lookSummary = (look) =>
+  look?.ok ? { duration: look.duration, playhead: look.playhead, scene: look.sceneStatus } : look;
+
+/** Runs in the page: Studio's own word that the composition loaded, a duration from its timeline bind. */
+const compositionLoaded = async () =>
+  Boolean(window.__editBench?.has("studio_look")) &&
+  (await window.__editBench.call("studio_look", {})).duration > 0;
+
+/** Ready once Studio reports the composition loaded and its own seek tool lands the playhead. */
 export async function openStudio(ctx) {
   ctx.handles = null;
-  await ctx.page.waitForFunction(() => window.__editBench?.has("studio_seek"), { timeout: 90_000 });
-  if (!(await seekBound(ctx))) throw new Error("studio never reported a seekable composition");
+  // The whole boot shares one budget: under load the composition alone has taken over 20 s after a reload.
+  await ctx.page
+    .waitForFunction(compositionLoaded, { timeout: 90_000, polling: 100 })
+    .catch(async (error) => {
+      const look = JSON.stringify(lookSummary(await callTool(ctx.page, "studio_look", {})));
+      const message = `studio never reported the composition loaded: last ${look}`;
+      throw new Error(message, { cause: error });
+    });
+  await seekBound(ctx);
   return settled(ctx);
 }
 
@@ -696,10 +718,19 @@ async function waitingQuad(page, map) {
   return quad;
 }
 
+const WAITING_BOX = "[data-dom-edit-press-waiting]";
+const WAITING_ON_SAVE = `${WAITING_BOX}:not([data-dom-edit-press-waiting="frame"])`;
+
 /** The box as the preview shows it: the waiting marker's quad while a press waits for its replay, else the element. */
-export async function measureShown(ctx, gesture, read = measure, quadOf = contentQuad) {
+export async function measureShown(
+  ctx,
+  gesture,
+  read = measure,
+  quadOf = contentQuad,
+  pointerMoved = true,
+) {
   for (;;) {
-    const waiting = await ctx.page.$("[data-dom-edit-press-waiting]");
+    const waiting = await ctx.page.$(pointerMoved ? WAITING_BOX : WAITING_ON_SAVE);
     try {
       const m = await read(ctx);
       if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
@@ -718,8 +749,8 @@ export async function measureShown(ctx, gesture, read = measure, quadOf = conten
   }
 }
 
-export async function sample(ctx, gesture, point, pointerScreen) {
-  const { m, actual } = await measureShown(ctx, gesture);
+export async function sample(ctx, gesture, point, pointerScreen, pointerMoved = true) {
+  const { m, actual } = await measureShown(ctx, gesture, measure, contentQuad, pointerMoved);
   return { m, actual, p: point(m), c: m.map.toComp(pointerScreen) };
 }
 
@@ -907,7 +938,7 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   traceBench("press", { gesture });
   await ctx.page.mouse.down();
   await nextFrame(ctx.page);
-  const s0 = await sample(ctx, gesture, g.point, press);
+  const s0 = await sample(ctx, gesture, g.point, press, false);
   traceBench("pressed", { gesture, jump: pre && quadDistance(s0.m.visible, pre.visible) });
   await recording(ctx.page, true);
   const errors = [];

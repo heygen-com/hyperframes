@@ -94,6 +94,23 @@ describe.each([true, false])("benchmark (json=%s)", (json) => {
     expect(await runBenchmark(json)).toMatchObject({ exitCode: 0, kind: "success" });
   });
 
+  it("reads files outside the project only when no received file rules it out", async () => {
+    await runBenchmark(json);
+    mkdirSync(join(projectDir, ".hyperframes"));
+    writeFileSync(
+      join(projectDir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    await runBenchmark(json);
+
+    const allowed = producer.executeRenderJob.mock.calls.map(
+      ([job]) =>
+        (job as { config: { allowOutsideProjectAssets?: boolean } }).config
+          .allowOutsideProjectAssets,
+    );
+    expect(allowed).toEqual([...Array(5).fill(true), ...Array(5).fill(false)]);
+  });
+
   it("isolates output between invocations and removes temporary renders", async () => {
     producer.executeRenderJob.mockImplementation(async (_job, _projectDir, outputPath) => {
       mkdirSync(dirname(outputPath), { recursive: true });
@@ -112,3 +129,24 @@ describe.each([true, false])("benchmark (json=%s)", (json) => {
     expect(outputDirs.every((dir) => !existsSync(dir))).toBe(true);
   });
 });
+
+// Windows refuses control characters in folder names.
+it.skipIf(process.platform === "win32")(
+  "prints a folder name with control characters as visible escapes",
+  async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const dir = join(projectDir, `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`);
+    mkdirSync(dir);
+    writeFileSync(join(dir, "index.html"), "<div></div>");
+
+    await runCommand(benchmark, { rawArgs: [dir, "--runs", "1"] });
+    const human = vi
+      .mocked(console.log)
+      .mock.calls.map((call) => call.join(" "))
+      .join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J");
+  },
+);

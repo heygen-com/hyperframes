@@ -44,7 +44,7 @@
  * that legitimately happens on a 29.97 fps timeline).
  */
 
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   fpsToNumber,
   normalizeRateSpec,
@@ -87,7 +87,6 @@ export interface VideoFrameCoverageErrorDetails {
 
 export class VideoFrameCoverageError extends Error {
   // Read structurally by isVideoFrameCoverageError and cross-module callers.
-  // fallow-ignore-next-line unused-class-member
   readonly hyperframesVideoFrameCoverageError = true as const;
   readonly threshold: number;
   readonly worst: VideoFrameCoverageReport;

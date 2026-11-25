@@ -1,7 +1,17 @@
 // How big the face is and where, ported from hf-media's face_size: OpenCV's frontal and profile Haar cascades on
 // evenly spaced frames, graded by face height over frame height. A regenerated presenter keeps the likeness from
 // FACE_HOLDS up; below FACE_FLOOR a video model cannot carry one at all (the harness's face-size eval, 2026-10-08).
-import { frameAt, round, runFfmpeg, sumOf, type VideoInfo } from "./media.js";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import {
+  GUARDED_RUN_MS,
+  ffmpegBin,
+  frameAt,
+  guardedLimitReason,
+  round,
+  runFfmpeg,
+  sumOf,
+  type VideoInfo,
+} from "./media.js";
 import { greyMat, loadOpenCv } from "./opencv.js";
 
 const FACE_HOLDS = 0.25;
@@ -45,6 +55,17 @@ export function minWindow(h: number, share: number): number {
   return Math.round(WINDOW_PX * STEP ** steps);
 }
 
+function decode(info: VideoInfo, args: string[]): Buffer {
+  const formats = mediaInputFormatArgs(ffmpegBin(), info.path, { playlists: info.guarded });
+  if (!info.guarded) return runFfmpeg([...formats, ...args]);
+  try {
+    return runFfmpeg([...formats, ...args], undefined, undefined, GUARDED_RUN_MS);
+  } catch (err) {
+    const stopped = guardedLimitReason(err);
+    throw stopped ? new Error(`ffmpeg cannot read ${info.path}: ${stopped}`) : err;
+  }
+}
+
 /** Frames `ks` (indices from the first) as grey bytes at `w` x `h`, keeping the video's aspect. Each run of nearby
  * frames is one ffmpeg pass from its first frame to its last; a variable-rate video, which a seek can't index, is read
  * from its start. */
@@ -65,7 +86,7 @@ export function readSamples(info: VideoInfo, ks: number[], w: number, h: number)
       ...(w !== info.width || h !== info.height ? [`scale=${w}:${h}`] : []),
       "format=gray",
     ];
-    const raw = runFfmpeg([
+    const raw = decode(info, [
       ...seek,
       "-i",
       info.path,
@@ -86,10 +107,6 @@ export function readSamples(info: VideoInfo, ks: number[], w: number, h: number)
   });
 }
 
-/**
- * Each sampled frame's faces as [x, y, w, h] shares of the frame. `minFace` is the smallest face looked for as a
- * share of the frame's height (default FACE_MIN; 0 looks down to the cascades' 20 px, for crowds).
- */
 export async function faceBoxes(
   info: VideoInfo,
   start: number,
@@ -97,8 +114,19 @@ export async function faceBoxes(
   samples: number,
   opts: { minFace?: number } = {},
 ) {
-  const cv = await loadOpenCv((m) => console.error(m));
-  const ks = sampleFrames(info.fps, start, end, samples);
+  return faceBoxesAt(info, sampleFrames(info.fps, start, end, samples), opts);
+}
+
+/**
+ * The faces of frames `ks` (ascending indices) as [x, y, w, h] shares of the frame. `minFace` is the smallest face
+ * looked for as a share of the frame's height (default FACE_MIN; 0 looks down to the cascades' 20 px, for crowds).
+ */
+export async function faceBoxesAt(
+  info: VideoInfo,
+  ks: number[],
+  opts: { minFace?: number; signal?: AbortSignal } = {},
+) {
+  const cv = await loadOpenCv((m) => console.error(m), opts.signal);
   const w = Math.min(WORK_W, info.width);
   const h =
     w === info.width

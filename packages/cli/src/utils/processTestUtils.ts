@@ -1,5 +1,6 @@
 import { execFileSync, type ChildProcess } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
+import { processReadArgs } from "./windowsProcesses.js";
 
 export function testProcessIsAlive(pid: number): boolean {
   if (process.platform === "linux") {
@@ -50,15 +51,7 @@ function processTable(): Map<number, TableEntry> {
   }
   const listing =
     process.platform === "win32"
-      ? execFileSync(
-          "powershell.exe",
-          [
-            "-NoProfile",
-            "-Command",
-            'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CreationDate.Ticks) $($_.Name)" }',
-          ],
-          { encoding: "utf8" },
-        )
+      ? execFileSync("powershell.exe", processReadArgs("table"), { encoding: "utf8" })
       : execFileSync("ps", ["-A", "-o", "pid=,ppid=,comm="], { encoding: "utf8" });
   return parseProcessListing(listing, process.platform === "win32");
 }

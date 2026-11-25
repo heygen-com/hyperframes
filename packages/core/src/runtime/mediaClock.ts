@@ -9,6 +9,10 @@ export function startsSoundOnlyInsideATap(): boolean {
   return /iP(hone|ad|od)/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1);
 }
 
+export function isChromium(): boolean {
+  return /Chrom(e|ium)\/\d/.test(navigator.userAgent);
+}
+
 export function isWebKit(): boolean {
   const { userAgent } = navigator;
   return /AppleWebKit/.test(userAgent) && !/Chrom(e|ium)\/|Edg\/|Android/.test(userAgent);

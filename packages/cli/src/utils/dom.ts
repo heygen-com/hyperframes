@@ -1,4 +1,4 @@
-import { DOMParser } from "linkedom";
+import { DOMParser } from "@hyperframes/parsers/linkedom";
 
 /**
  * Polyfill DOMParser on globalThis so @hyperframes/core's parseHtml works in Node.js.

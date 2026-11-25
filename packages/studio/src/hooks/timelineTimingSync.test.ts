@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../player/store/playerStore";
 import { jsonResponse, requestUrl } from "./fetchStubTestUtils";
 import type { TimelineElement } from "../player/store/playerStore";
+import { captureDurationRollback } from "./previewTimingPatch";
 import {
-  captureDurationRollback,
   finishClipTimingFallback,
   finishGroupTimingGsapFallback,
   finishTimelineTimingFallback,
@@ -778,7 +778,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     expect(reloadPreview).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining("GSAP"),
-      expect.objectContaining({ message: "Failed to restore index.html" }),
+      expect.objectContaining({ message: "Failed to restore index.html (503)" }),
     );
   });
 
