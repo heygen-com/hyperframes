@@ -3,9 +3,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { ID_PATH } from "./historyId";
 import { openProjectHistory } from "./projectHistory";
 
-// Records each synchronous look at the watched project folder or its history id, by call name.
+// Records each synchronous look at the watched project folder or its history id (either case), by call name.
 const watch = vi.hoisted(() => ({ dir: "", calls: [] as string[] }));
 vi.mock("node:fs", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:fs")>();
@@ -14,7 +15,10 @@ vi.mock("node:fs", async (importOriginal) => {
     const real = original[name] as (...args: unknown[]) => unknown;
     (spied as Record<string, unknown>)[name] = (path: unknown, ...rest: unknown[]) => {
       const at = typeof path === "string" ? resolve(path) : "";
-      if (watch.dir && (at === watch.dir || at.startsWith(join(watch.dir, ".hyperframes"))))
+      if (
+        watch.dir &&
+        (at === watch.dir || at.toLowerCase() === join(watch.dir, ID_PATH).toLowerCase())
+      )
         watch.calls.push(name);
       return real(path, ...rest);
     };
