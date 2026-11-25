@@ -135,6 +135,13 @@ export const nextFrame = (page, n = 1) =>
     n,
   );
 
+/** One nudge burst of `count` right-arrow presses, then a frame. Back to back: Studio saves a burst once it has had no
+ * key for CANVAS_NUDGE_COMMIT_DEBOUNCE_MS, and a frame wait between keys made one slow frame that pause. */
+export async function pressNudges(page, count) {
+  for (let i = 0; i < count; i++) await page.keyboard.press("ArrowRight");
+  await nextFrame(page);
+}
+
 export function readFiles(dir, files) {
   return Object.fromEntries(files.map((f) => [f, readFileSync(join(dir, f), "utf8")]));
 }
@@ -868,10 +875,7 @@ async function measureControl(browser, gesture) {
     const read = () => readQuads(ctx);
     if (gesture === "nudge") {
       await recording(page, true);
-      for (let i = 0; i < NUDGES; i++) {
-        await page.keyboard.press("ArrowRight");
-        await nextFrame(page);
-      }
+      await pressNudges(page, NUDGES);
       await nextFrame(page, 2);
       return smoothness(await recording(page, false));
     }
@@ -980,10 +984,7 @@ export async function pointerGesture(ctx, gesture, pre, route) {
 
 async function nudgeGesture(ctx, pre) {
   await recording(ctx.page, true);
-  for (let i = 0; i < NUDGES; i++) {
-    await ctx.page.keyboard.press("ArrowRight");
-    await nextFrame(ctx.page);
-  }
+  await pressNudges(ctx.page, NUDGES);
   await nextFrame(ctx.page, 2);
   const smooth = smoothness(await recording(ctx.page, false));
   const m = await measure(ctx);
