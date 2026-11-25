@@ -87,6 +87,9 @@ export interface PostExtractionResult {
   animationCatalog: CaptureResult["animationCatalog"];
 }
 
+const withoutCompositionMarker = (capturedHtml: string): string =>
+  capturedHtml.replace(/data-composition-id/gi, "data-captured-composition-id");
+
 export async function runPostExtraction(input: PostExtractionInput): Promise<PostExtractionResult> {
   let {
     state,
@@ -289,7 +292,9 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
 
   // Persist a self-contained page recreation under extracted/, with images already inlined.
   try {
-    const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
+    const pageHtml = withoutCompositionMarker(
+      `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`,
+    );
     state.pageHtml = pageHtml;
     if (canWrite())
       writeCaptureFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");

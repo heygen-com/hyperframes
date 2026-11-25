@@ -13,7 +13,7 @@ export const examples: Example[] = [
 ];
 
 import { existsSync, readFileSync } from "node:fs";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { firstTemplateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { join, resolve, relative, sep } from "node:path";
 import {

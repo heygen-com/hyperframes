@@ -24,6 +24,7 @@ import {
   openProjectHistory,
   historyCache,
   originForListeningAddress,
+  RANGE_NOT_RENDERED,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import type { RegistryItem } from "@hyperframes/core/registry";
@@ -329,6 +330,15 @@ export function createViteAdapter(
     rendersDir: () => resolve(dataDir, "../renders"),
 
     startRender(opts): RenderJobState {
+      if (opts.range) {
+        return {
+          id: opts.jobId,
+          status: "failed",
+          progress: 0,
+          outputPath: opts.outputPath,
+          error: RANGE_NOT_RENDERED,
+        };
+      }
       const abortController = new AbortController();
       const state: RenderJobState = {
         id: opts.jobId,

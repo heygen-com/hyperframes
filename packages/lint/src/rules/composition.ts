@@ -1,7 +1,7 @@
 import { emptyStyleBlocks, hasScriptWithSrc, replaceBlockComments } from "../linearScans";
 import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import selectorParser from "postcss-selector-parser";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   findHtmlTag,
   extractTimelineRegistryKeys,

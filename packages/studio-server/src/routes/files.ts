@@ -107,7 +107,7 @@ import {
   type SplitRefusal,
 } from "../helpers/sourceMutation.js";
 import { ensureStudioFontFaceCss, isStudioFontFaceCss } from "../helpers/studioFontFace.js";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   CompositionInsertionError,

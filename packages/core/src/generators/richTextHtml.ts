@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { sanitizeRichTextChildren } from "../utils/richTextSanitize";
 
 function escape(value: string): string {

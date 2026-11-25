@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShaderBlendRequest } from "../../shaderTransitionWorkerPool.js";
 import { type HybridLoopInput, runHybridLayeredFrameLoop } from "./captureHdrHybridLoop.js";
+import {
+  captureTransitionFrameOnWorker,
+  seekInjectAndQueryStacking,
+} from "./captureHdrFrameShared.js";
 
 vi.mock("@hyperframes/engine", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hyperframes/engine")>()),
@@ -47,11 +51,18 @@ vi.mock("../../shaderTransitionWorkerPool.js", () => ({
 function loopInput(overrides: {
   writeFrame?: (frame: number) => boolean;
   assertNotAborted?: () => void;
+  firstFrame?: number;
 }): HybridLoopInput {
+  const first = overrides.firstFrame ?? 0;
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
   let frame = 0;
   const input = {
-    job: { config: { fps: { num: 30, den: 1 } }, totalFrames: 16, framesRendered: 0 },
+    job: {
+      config: { fps: { num: 30, den: 1 } },
+      totalFrames: 16,
+      framesRendered: 0,
+      ...(first && { frameWindow: { startFrame: first, endFrame: first + 16 } }),
+    },
     cfg: {},
     log,
     framesDir: "/tmp/unused",
@@ -78,8 +89,8 @@ function loopInput(overrides: {
         ease: "",
         fromScene: "a",
         toScene: "b",
-        startFrame: 2,
-        endFrame: 13,
+        startFrame: first + 2,
+        endFrame: first + 13,
       },
     ],
     sceneElements: { a: ["a"], b: ["b"] },
@@ -115,6 +126,25 @@ describe("runHybridLayeredFrameLoop failures with 2 workers", () => {
     expect(input.job.framesRendered).toBe(16);
     expect(blendsInFlightAtTerminate).toBe(0);
     expect(escaped).toEqual([]);
+  });
+
+  it("seeks film frames and finds the film's transition inside a window", async () => {
+    vi.mocked(seekInjectAndQueryStacking).mockClear();
+    vi.mocked(captureTransitionFrameOnWorker).mockClear();
+    const input = loopInput({ firstFrame: 100 });
+    await runHybridLayeredFrameLoop(input);
+    expect(input.job.framesRendered).toBe(16);
+    const transitions = vi
+      .mocked(captureTransitionFrameOnWorker)
+      .mock.calls.map(([args]) => args as { frameIdx: number; time: number });
+    const normalTimes = vi.mocked(seekInjectAndQueryStacking).mock.calls.map((call) => call[1]);
+    const seekedFrames = [...normalTimes, ...transitions.map((t) => t.time)]
+      .map((time) => Math.round(Number(time) * 30))
+      .sort((a, b) => a - b);
+    expect(seekedFrames).toEqual(Array.from({ length: 16 }, (_, k) => 100 + k));
+    expect(transitions.map((t) => t.frameIdx).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 12 }, (_, k) => 102 + k),
+    );
   });
 
   let aborts = 0;

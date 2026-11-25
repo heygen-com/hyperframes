@@ -1,7 +1,7 @@
 import { readlinkSync } from "node:fs";
 import { readlink } from "node:fs/promises";
 import { dirname, join, parse, relative, resolve } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
 import { realFilePath } from "./safePath.js";
 import { realFilePathOff } from "./projectDisk.js";
