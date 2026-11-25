@@ -325,8 +325,6 @@ const MAX_PLAYLIST_DEPTH = 8;
 const MAX_WALK_BYTES = 2 * MAX_PLAYLIST_BYTES;
 const MAX_WALK_ENTRIES = 50_000;
 const HTTP_URL = /^https?:\/\//i;
-// ffmpeg reads a scheme up to the first `:` before any `/`, `?` or `#` (a backslash does not end it), and FFmpeg 4.3
-// and earlier copy any name holding `://` as written: either way the name is opened as written, not from the list's folder.
 const OPENED_AS_WRITTEN = /^[^/?#]*:|:\/\//;
 const FOLDER_CUT_AT_QUERY_OR_FRAGMENT = /[?#]/;
 // ffmpeg reads a name with no path before its query or fragment as the list's own path plus that suffix.
