@@ -226,7 +226,7 @@ async function mixAudioForDelivery(
           urlByAbsentLocalPath,
           audioSidecarUrlByLocalPath,
           keepEncoderInputAt: pcmSourcePath,
-          ...(window && { window }),
+          window,
           assetRoots: input.allowOutsideProjectAssets
             ? undefined
             : mediaAssetRoots(projectDir, compiledDir),
