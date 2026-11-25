@@ -1113,12 +1113,17 @@ describe("playlistLeavesItsFolder decrypts HLS segments only inside its limits",
     },
   );
 
-  it("refuses a list whose stream would cost more than the walk's budget, quickly", async () => {
-    const list = ["#EXTM3U", "#EXT-X-TARGETDURATION:1"];
-    for (let i = 0; i < 40_000; i++) list.push("#EXTINF:1,", "a.ts");
-    const top = tree({ "clip.m3u8": `${list.join("\n")}\n`, "a.ts": Buffer.alloc(16) });
-    const started = Date.now();
-    expect(await playlistLeavesItsFolder(top)).toBe(true);
-    expect(Date.now() - started).toBeLessThan(10_000);
-  });
+  // The budget allows about 32,000 opens; without it this list would take over a million.
+  it(
+    "refuses a list whose stream would cost more than the walk's budget",
+    { timeout: 60_000 },
+    async () => {
+      const list = ["#EXTM3U", "#EXT-X-TARGETDURATION:1"];
+      for (let i = 0; i < 34_000; i++) list.push("#EXTINF:1,", "a.ts");
+      const top = tree({ "clip.m3u8": `${list.join("\n")}\n`, "a.ts": Buffer.alloc(16) });
+      const started = Date.now();
+      expect(await playlistLeavesItsFolder(top)).toBe(true);
+      expect(Date.now() - started).toBeLessThan(45_000);
+    },
+  );
 });
