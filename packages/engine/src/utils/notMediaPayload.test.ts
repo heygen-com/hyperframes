@@ -1,9 +1,17 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { createCipheriv } from "node:crypto";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createCipheriv, createDecipheriv } from "node:crypto";
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  truncateSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getFfprobeBinary } from "./ffmpegBinaries.js";
 import {
   assertMediaPayload,
@@ -1021,5 +1029,87 @@ describe("playlistLeavesItsFolder reads an HLS list's segments as the one stream
   ])("keeps %s", async (_name, files) => {
     const top = tree(files);
     expect(await playlistLeavesItsFolder(top)).toBe(false);
+  });
+});
+
+describe("playlistLeavesItsFolder decrypts HLS segments only inside its limits", () => {
+  const key = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+  const keyed = (uri: string, segment: string, count = 1) =>
+    [
+      "#EXTM3U",
+      "#EXT-X-TARGETDURATION:1",
+      `#EXT-X-KEY:METHOD=AES-128,URI="${uri}"`,
+      ...Array.from({ length: count }, () => ["#EXTINF:1,", segment]).flat(),
+      "#EXT-X-ENDLIST",
+      "",
+    ].join("\n");
+
+  function tree(files: Record<string, string | Buffer>): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-hls-key-"));
+    for (const [name, contents] of Object.entries(files)) {
+      mkdirSync(join(dir, name, ".."), { recursive: true });
+      writeFileSync(join(dir, name), contents);
+    }
+    return join(dir, "clip.m3u8");
+  }
+
+  it("refuses a key outside the folder or private in it, as any other entry", async () => {
+    const outside = join(mkdtempSync(join(tmpdir(), "hf-hls-outside-")), "key.bin");
+    writeFileSync(outside, key);
+    for (const uri of [outside, "../key.bin", ".git/key.bin"]) {
+      const top = tree({
+        "clip.m3u8": keyed(uri, "a.ts"),
+        "a.ts": Buffer.alloc(32),
+        ".git/key.bin": key,
+      });
+      expect(await playlistLeavesItsFolder(top), uri).toBe(true);
+    }
+  });
+
+  it("never fetches a key named by a URL", async () => {
+    const fetched = vi.spyOn(globalThis, "fetch");
+    try {
+      const top = tree({
+        "clip.m3u8": keyed("https://keys.example.com/k", "a.ts"),
+        "a.ts": Buffer.alloc(32),
+      });
+      expect(await playlistLeavesItsFolder(top)).toBe(false);
+      expect(fetched).not.toHaveBeenCalled();
+    } finally {
+      fetched.mockRestore();
+    }
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "decrypts only the start of large segments, so hundreds of them stay quick",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-hls-large-"));
+      const size = 1024 ** 3;
+      const segment = join(dir, "big.ts");
+      writeFileSync(segment, "");
+      truncateSync(segment, size);
+      // The last two blocks hold valid padding, so the walk accepts the segment's length as ffmpeg would.
+      const last = Buffer.alloc(16, 7);
+      const decipher = createDecipheriv("aes-128-ecb", key, null).setAutoPadding(false);
+      const plainLast = Buffer.concat([Buffer.alloc(15), Buffer.from([1])]);
+      const before = Buffer.from(decipher.update(last).map((byte, at) => byte ^ plainLast[at]!));
+      const fd = openSync(segment, "r+");
+      writeSync(fd, Buffer.concat([before, last]), 0, 32, size - 32);
+      closeSync(fd);
+      writeFileSync(join(dir, "key.bin"), key);
+      writeFileSync(join(dir, "clip.m3u8"), keyed("key.bin", "big.ts", 300));
+      const started = Date.now();
+      expect(await playlistLeavesItsFolder(join(dir, "clip.m3u8"))).toBe(false);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    },
+  );
+
+  it("refuses a list whose stream would cost more than the walk's budget, quickly", async () => {
+    const list = ["#EXTM3U", "#EXT-X-TARGETDURATION:1"];
+    for (let i = 0; i < 40_000; i++) list.push("#EXTINF:1,", "a.ts");
+    const top = tree({ "clip.m3u8": `${list.join("\n")}\n`, "a.ts": Buffer.alloc(16) });
+    const started = Date.now();
+    expect(await playlistLeavesItsFolder(top)).toBe(true);
+    expect(Date.now() - started).toBeLessThan(10_000);
   });
 });

@@ -626,13 +626,6 @@ function budgetedEntries(text: string, walk: Walk): Entry[] | true {
   return walk.bytes > MAX_WALK_BYTES || walk.entries > MAX_WALK_ENTRIES ? true : entries;
 }
 
-async function checkedEntries(text: string, path: string, walk: Walk): Promise<Entry[] | true> {
-  const entries = budgetedEntries(text, walk);
-  return entries === true || (await streamReadsAsList(listBody(text), dirname(path)))
-    ? true
-    : entries;
-}
-
 /** Every list a list names is read too, against the top list's folder. A nested file that cannot be read is refused. */
 async function listLeaves(
   readPath: string,
@@ -648,12 +641,13 @@ async function listLeaves(
   if (text === true || depth >= MAX_PLAYLIST_DEPTH) return true;
   if (walk.seen.has(path)) return false;
   walk.seen.add(path);
-  const entries = await checkedEntries(text, path, walk);
+  const entries = budgetedEntries(text, walk);
   if (entries === true) return true;
   for (const entry of entries) {
     if (await entryLeaves(entry, dirname(path), walk, depth)) return true;
   }
-  return false;
+  // Only once every name is judged inside the folder: the stream reads those files, keys included.
+  return streamReadsAsList(listBody(text), { base: dirname(path), walk });
 }
 
 async function entryLeaves(
@@ -777,8 +771,27 @@ interface Piece {
   init: boolean;
 }
 
-async function readFileAt(path: string, bytes: number, position: number): Promise<Buffer> {
+interface StreamIo {
+  base: string;
+  walk: Walk;
+}
+
+// Every open costs as much as a short read, so a list of many tiny files is bounded like one of large ones.
+const OPEN_COST = 512;
+
+function charge(io: StreamIo, bytes: number): void {
+  io.walk.bytes += OPEN_COST + bytes;
+  if (io.walk.bytes > MAX_WALK_BYTES) throw new Error("walk budget spent");
+}
+
+async function readFileAt(
+  io: StreamIo,
+  path: string,
+  bytes: number,
+  position: number,
+): Promise<Buffer> {
   if (bytes <= 0) return Buffer.alloc(0);
+  charge(io, bytes);
   const fh = await openRegular(Buffer.from(path, "latin1"));
   if (!fh) throw new Error("not a regular file");
   try {
@@ -791,12 +804,13 @@ async function readFileAt(path: string, bytes: number, position: number): Promis
 /** The one file an entry's names open, with its size; null when none is there; true when several are, or one is no file. */
 async function onlyFile(
   names: string[],
-  base: string,
+  io: StreamIo,
 ): Promise<{ path: string; size: number } | null | true> {
   const found = new Map<string, number>();
   const local = names.filter((name) => !HTTP_URL.test(name));
   for (const path of new Set(local.flatMap((name) => [name, percentDecoded(name)]))) {
-    const resolved = resolve(base, path);
+    const resolved = resolve(io.base, path);
+    charge(io, 0);
     const stats = await stat(Buffer.from(resolved, "latin1")).catch((error: unknown) =>
       isMissing(error) ? null : true,
     );
@@ -818,54 +832,65 @@ async function decryptedPiece(
   path: string,
   size: number,
   key: NonNullable<StreamPart["key"]>,
-  base: string,
+  io: StreamIo,
 ): Promise<Omit<Piece, "init"> | null | true> {
-  const keyFile = await onlyFile([key.uri], base);
+  const keyFile = await onlyFile([key.uri], io);
   if (keyFile === true) return true;
   // ffmpeg skips a segment whose key it cannot read.
   if (!keyFile || keyFile.size !== 16) return null;
   if (size === 0 || size % 16) return true;
-  const secret = await readFileAt(keyFile.path, 16, 0);
-  const before = size >= 32 ? await readFileAt(path, 16, size - 32) : key.iv;
-  const padding = decrypt(secret, before, await readFileAt(path, 16, size - 16))[15]!;
+  const secret = await readFileAt(io, keyFile.path, 16, 0);
+  const before = size >= 32 ? await readFileAt(io, path, 16, size - 32) : key.iv;
+  const padding = decrypt(secret, before, await readFileAt(io, path, 16, size - 16))[15]!;
   if (padding < 1 || padding > 16) return true;
   const plain = size - padding;
   const read: Read = async (bytes, position) => {
     const end = Math.min(position + bytes, plain);
     if (end <= position) return Buffer.alloc(0);
     const from = position - (position % 16);
-    const iv = from === 0 ? key.iv : await readFileAt(path, 16, from - 16);
-    const blocks = await readFileAt(path, Math.ceil(end / 16) * 16 - from, from);
+    const iv = from === 0 ? key.iv : await readFileAt(io, path, 16, from - 16);
+    const blocks = await readFileAt(io, path, Math.ceil(end / 16) * 16 - from, from);
     return decrypt(secret, iv, blocks).subarray(position - from, end - from);
   };
   return { size: plain, read };
 }
 
-async function streamPiece(part: StreamPart, base: string): Promise<Piece | null | true> {
-  const file = await onlyFile(part.names, base);
+async function streamPiece(part: StreamPart, io: StreamIo): Promise<Piece | null | true> {
+  const file = await onlyFile(part.names, io);
   if (file === null || file === true) return file;
   const piece = part.key
-    ? await decryptedPiece(file.path, file.size, part.key, base)
+    ? await decryptedPiece(file.path, file.size, part.key, io)
     : {
         size: file.size,
         read: (bytes: number, position: number) =>
-          readFileAt(file.path, Math.min(bytes, file.size - position), position),
+          readFileAt(io, file.path, Math.min(bytes, file.size - position), position),
       };
   return piece === null || piece === true ? piece : { ...piece, init: part.init };
 }
 
 /** Each stream ffmpeg may start reading: from any segment, behind the init section in force there. */
-function startingStreams(pieces: Piece[]): Piece[][] {
-  const streams: Piece[][] = [];
+function* startingStreams(pieces: Piece[]): Generator<Iterable<Piece>> {
   let init: Piece | undefined;
-  pieces.forEach((piece, at) => {
+  let segments = 0;
+  for (const [at, piece] of pieces.entries()) {
     if (piece.init) init = piece;
-    else streams.push([...(init ? [init] : []), ...pieces.slice(at)]);
-  });
-  return streams.length > 0 ? streams : [pieces];
+    else {
+      segments++;
+      yield streamFrom(pieces, at, init);
+    }
+  }
+  if (segments === 0) yield pieces;
 }
 
-function joined(pieces: Piece[]): Read {
+const streamFrom = (pieces: Piece[], from: number, init: Piece | undefined): Iterable<Piece> => ({
+  *[Symbol.iterator]() {
+    if (init) yield init;
+    for (let at = from; at < pieces.length; at++) yield pieces[at]!;
+  },
+});
+
+/** The stream's bytes, reading only the pieces a read reaches. */
+function joined(pieces: Iterable<Piece>): Read {
   return async (bytes, position) => {
     const chunks: Buffer[] = [];
     let at = position;
@@ -895,10 +920,10 @@ async function readsAsList(read: Read): Promise<boolean> {
   return false;
 }
 
-async function streamPieces(parts: StreamPart[], base: string): Promise<Piece[] | true> {
+async function streamPieces(parts: StreamPart[], io: StreamIo): Promise<Piece[] | true> {
   const pieces: Piece[] = [];
   for (const part of parts) {
-    const piece = await streamPiece(part, base);
+    const piece = await streamPiece(part, io);
     if (piece === true) return true;
     if (piece) pieces.push(piece);
   }
@@ -909,11 +934,11 @@ async function streamPieces(parts: StreamPart[], base: string): Promise<Piece[] 
  * ffmpeg's hls demuxer reads a playlist's init sections and segments as one stream, so a list
  * that any of them is, or that they form together, would be read too. True for such a playlist.
  */
-async function streamReadsAsList(body: string, base: string): Promise<boolean> {
+async function streamReadsAsList(body: string, io: StreamIo): Promise<boolean> {
   if (!body.startsWith("#EXTM3U")) return false;
   try {
     const parts = hlsStream(body);
-    const pieces = parts === true ? true : await streamPieces(parts, base);
+    const pieces = parts === true ? true : await streamPieces(parts, io);
     if (pieces === true) return true;
     for (const stream of startingStreams(pieces)) {
       if (await readsAsList(joined(stream))) return true;
