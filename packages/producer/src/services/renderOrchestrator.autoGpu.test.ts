@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig, type EngineConfig } from "@hyperframes/engine";
@@ -18,6 +18,7 @@ const { state, CAPTURE_REACHED } = vi.hoisted(() => ({
     sizedWith: [] as (number | undefined)[],
     hardwareP95Ms: 1678,
     softwareP95Ms: 90,
+    gpu: "AMD Radeon 840M | AMD 32.0" as string | undefined,
   },
   CAPTURE_REACHED: "capture reached",
 }));
@@ -31,6 +32,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hyperframes/engine")>()),
   assertConfiguredFfmpegBinariesExist: () => {},
   resolveBrowserGpuMode: async (mode: string) => (mode === "software" ? "software" : "hardware"),
+  probedHardwareGpu: async () => state.gpu,
   resolveHeadlessShellPath: () => "/opt/chrome-headless-shell",
   createCaptureSession: async () => ({ browserConsoleBuffer: [], options: {} }),
   initializeSession: async () => {},
@@ -139,6 +141,7 @@ beforeEach(() => {
   state.sizedWith = [];
   state.hardwareP95Ms = 1678;
   state.softwareP95Ms = 90;
+  state.gpu = "AMD Radeon 840M | AMD 32.0";
   vi.stubEnv("HF_SEGMENTED_CAPTURE", "false");
 });
 afterEach(() => {
@@ -146,15 +149,20 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function render(browserGpuMode: EngineConfig["browserGpuMode"]): Promise<void> {
+function render(
+  browserGpuMode: EngineConfig["browserGpuMode"],
+  opts: { workers?: number; gpuChoiceFile?: string; hyperframesVersion?: string } = {},
+): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "hf-auto-gpu-"));
   dirs.push(root);
   writeFileSync(join(root, "index.html"), "<div></div>");
+  const { workers, ...store } = opts;
   const job = createRenderJob({
     fps: 30,
     quality: "standard",
     hdrMode: "force-sdr",
-    producerConfig: resolveConfig({ browserGpuMode, lowMemoryMode: false }),
+    ...(workers !== undefined && { workers }),
+    producerConfig: resolveConfig({ browserGpuMode, lowMemoryMode: false, ...store }),
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   });
   return executeRenderJob(job, root, join(root, "output.mp4"));
@@ -180,4 +188,81 @@ it("never times software for an explicit hardware request", async () => {
   expect(state.calibratedModes).toEqual(["hardware"]);
   expect(state.sizedWith).toEqual([1678]);
   expect(state.captureGpuModes).toEqual(["hardware"]);
+});
+
+describe("with a GPU choice file", () => {
+  const choiceFile = () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-gpu-choice-"));
+    dirs.push(dir);
+    return join(dir, "gpu-choice.json");
+  };
+  const reset = () => {
+    state.calibratedModes = [];
+    state.captureGpuModes = [];
+    state.sizedWith = [];
+  };
+
+  it("measures once with a given worker count, then reuses the choice without calibrating", async () => {
+    const gpuChoiceFile = choiceFile();
+    const opts = { workers: 3, gpuChoiceFile, hyperframesVersion: "1.2.3" };
+    await expect(render("auto", opts)).rejects.toThrow(CAPTURE_REACHED);
+    expect(state.calibratedModes).toEqual(["auto", "software"]);
+    expect(state.sizedWith).toEqual([undefined]);
+    expect(state.captureGpuModes).toEqual(["software"]);
+    expect(JSON.parse(readFileSync(gpuChoiceFile, "utf8"))).toMatchObject({ mode: "software" });
+
+    reset();
+    await expect(render("auto", opts)).rejects.toThrow(CAPTURE_REACHED);
+    expect(state.calibratedModes).toEqual([]);
+    expect(state.captureGpuModes).toEqual(["software"]);
+  });
+
+  it("keeps a stored hardware choice without timing software", async () => {
+    const gpuChoiceFile = choiceFile();
+    const opts = { gpuChoiceFile, hyperframesVersion: "1.2.3" };
+    state.softwareP95Ms = 2400;
+    await expect(render("auto", opts)).rejects.toThrow(CAPTURE_REACHED);
+    expect(JSON.parse(readFileSync(gpuChoiceFile, "utf8"))).toMatchObject({ mode: "hardware" });
+
+    reset();
+    state.softwareP95Ms = 90;
+    await expect(render("auto", opts)).rejects.toThrow(CAPTURE_REACHED);
+    expect(state.calibratedModes).toEqual(["auto"]);
+    expect(state.captureGpuModes).toEqual(["auto"]);
+  });
+
+  it("measures again when the GPU or the version changed", async () => {
+    const gpuChoiceFile = choiceFile();
+    await expect(
+      render("auto", { workers: 3, gpuChoiceFile, hyperframesVersion: "1.2.3" }),
+    ).rejects.toThrow(CAPTURE_REACHED);
+
+    reset();
+    state.gpu = "AMD Radeon 840M | AMD 33.0";
+    await expect(
+      render("auto", { workers: 3, gpuChoiceFile, hyperframesVersion: "1.2.3" }),
+    ).rejects.toThrow(CAPTURE_REACHED);
+    expect(state.calibratedModes).toEqual(["auto", "software"]);
+
+    reset();
+    await expect(
+      render("auto", { workers: 3, gpuChoiceFile, hyperframesVersion: "1.2.4" }),
+    ).rejects.toThrow(CAPTURE_REACHED);
+    expect(state.calibratedModes).toEqual(["auto", "software"]);
+  });
+
+  it("neither measures nor stores without a file, so a given worker count stays uncalibrated", async () => {
+    await expect(render("auto", { workers: 3 })).rejects.toThrow(CAPTURE_REACHED);
+    expect(state.calibratedModes).toEqual([]);
+    expect(state.captureGpuModes).toEqual(["auto"]);
+  });
+
+  it("neither measures nor stores for an explicit GPU request", async () => {
+    const gpuChoiceFile = choiceFile();
+    await expect(
+      render("hardware", { workers: 3, gpuChoiceFile, hyperframesVersion: "1.2.3" }),
+    ).rejects.toThrow(CAPTURE_REACHED);
+    expect(state.calibratedModes).toEqual([]);
+    expect(existsSync(gpuChoiceFile)).toBe(false);
+  });
 });

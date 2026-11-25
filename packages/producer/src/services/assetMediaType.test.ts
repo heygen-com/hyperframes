@@ -373,6 +373,25 @@ describe("dropMediaOutsideProject", () => {
     },
   );
 
+  it("drops a private project file named by a path spelled outside the project", () => {
+    for (const rel of [".git/clip.mp4", "media/clip.mp4"]) {
+      mkdirSync(dirname(join(projectDir, rel)), { recursive: true });
+      writeFileSync(join(projectDir, rel), "x");
+    }
+    const alias = join(root, "alias");
+    rmSync(alias, { force: true });
+    symlinkSync(projectDir, alias);
+    const srcs: Record<string, string> = {
+      link: join(alias, ".git", "clip.mp4"),
+      local: join(alias, "media", "clip.mp4"),
+    };
+    // Another letter case names the same folder only where the volume folds case.
+    const upper = join(root, "PROJECT");
+    if (existsSync(upper)) srcs.letterCase = join(upper, ".git", "clip.mp4");
+    expect(keptVideos(srcs, true)).toEqual(["local"]);
+    expect(keptVideos(srcs)).toEqual([]);
+  });
+
   it("drops a URL scheme followed by parent folders, in any letter case", () => {
     const schemes = ["data:", "DATA:", "blob:", "Blob:", "about:", "https:", "HTTP:"];
     const srcs = Object.fromEntries(
@@ -390,5 +409,11 @@ describe("dropMediaOutsideProject", () => {
       local: "clip.mp4",
     };
     expect(keptVideos(srcs)).toEqual(Object.keys(srcs));
+  });
+
+  it("keeps long inline media when outside files are allowed, without walking its text as folders", () => {
+    // A regression test: each `/` in the base64 text was walked as a folder, and thousands of them overflowed the stack.
+    const srcs = { long: `data:video/mp4;base64,${"A/".repeat(20_000)}`, local: "clip.mp4" };
+    expect(keptVideos(srcs, true)).toEqual(Object.keys(srcs));
   });
 });

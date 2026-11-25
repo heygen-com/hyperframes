@@ -8,8 +8,8 @@ import { escapeCssIdentifier } from "@hyperframes/core/compiler/selector-id-toke
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import {
-  EXCLUDED_TAGS,
   ensureHfIds,
+  isNonContentElement,
   mintHfId,
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
@@ -200,7 +200,7 @@ export function removeElementsFromHtml(
   let removed = false;
   for (const target of targets) {
     const element = findTargetElement(document, target);
-    if (!element) continue;
+    if (!element || isNotALayerToRestructure(element)) continue;
     const id = element.getAttribute("id");
     removeElementWithGsapCascade(document, element);
     if (id && !document.getElementById(id)) dropCssRulesForId(document, id);
@@ -300,13 +300,15 @@ function stampNewChildIds(parent: Element): void {
   });
   for (const el of parent.querySelectorAll("*")) {
     if (el.getAttribute("data-hf-id")) continue;
-    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    if (isNonContentElement(el)) continue;
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
   }
 }
 
-function isNonContentElement(el: Element): boolean {
-  return EXCLUDED_TAGS.has(el.tagName.toLowerCase());
+const PAGE_SHELL_TAGS = new Set(["html", "head", "body", "title"]);
+
+function isNotALayerToRestructure(el: Element): boolean {
+  return isNonContentElement(el) || PAGE_SHELL_TAGS.has(el.tagName.toLowerCase());
 }
 
 // fallow-ignore-next-line complexity
@@ -501,7 +503,8 @@ export function splitElementInHtml(
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
-  if (!el || !isHTMLElement(el)) return refused(source, "target-not-found");
+  if (!el || !isHTMLElement(el) || isNotALayerToRestructure(el))
+    return refused(source, "target-not-found");
 
   // An untimed wrapper whose row is its timed media's own window is a view of that
   // media: cut the media and leave the wrappers untimed. A GSAP scene keeps its own window.
@@ -714,7 +717,7 @@ export function wrapElementsInHtml(
   const seen = new Set<Element>();
   for (const target of targets) {
     const el = findTargetElement(document, target);
-    if (!el || !isHTMLElement(el) || seen.has(el)) continue;
+    if (!el || !isHTMLElement(el) || isNotALayerToRestructure(el) || seen.has(el)) continue;
     seen.add(el);
     els.push(el);
   }
@@ -846,7 +849,8 @@ export function unwrapElementsFromHtml(
 ): UnwrapElementsResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const group = findTargetElement(document, groupTarget);
-  if (!group || !isHTMLElement(group)) return { html: source, unwrapped: false };
+  if (!group || !isHTMLElement(group) || isNotALayerToRestructure(group))
+    return { html: source, unwrapped: false };
   // Shape guard mirroring the wrap-side contract: only ever dissolve an actual
   // group wrapper. A stale/desynced selection that resolves to a plain <div>
   // would otherwise be unwrapped — rebasing its children by the parent's origin
