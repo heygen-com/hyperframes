@@ -8,9 +8,11 @@ import { resolveProjectSignature } from "../helpers/projectSignature.js";
 const WHOLE_SCAN_LIMIT_MS = 30_000;
 const PAGE_IN_PROGRESS_GRACE_MS = 5_000;
 
-type Scan = Promise<string[] | undefined>;
+type OneReadingOfAProject = Promise<{ files: string[]; compositions: string[] | undefined }>;
 
-async function scan(projectDir: string, htmlFiles: string[]): Scan {
+async function scan(projectDir: string, files: string[]): OneReadingOfAProject {
+  const htmlFiles = files.filter(isCompositionPath);
+  if (htmlFiles.length === 0) return { files, compositions: [] };
   const job = {
     kind: "compositions" as const,
     projectDir,
@@ -21,36 +23,37 @@ async function scan(projectDir: string, htmlFiles: string[]): Scan {
   const listing = `[hyperframes] listing ${projectDir}: the compositions are left out of this answer,`;
   try {
     const { compositions, unchecked } = await runOffThread(job, deadline, projectDir);
-    if (unchecked === 0) return compositions;
+    if (unchecked === 0) return { files, compositions };
     console.warn(`${listing} ${unchecked} of ${htmlFiles.length} HTML files were not read in time`);
   } catch (error) {
     console.warn(`${listing} the scan did not end:`, error);
   }
-  return undefined;
+  return { files, compositions: undefined };
 }
 
-const scans = new Map<string, { last: Scan; waiting?: { files: string[]; answer: Scan } }>();
+const scans = new Map<
+  string,
+  { last: OneReadingOfAProject; waiting?: { files: string[]; answer: OneReadingOfAProject } }
+>();
 
-/** A project folder has one scan with the worker and at most one waiting behind it, which every listing that
- * arrives meanwhile shares; it reads the files the latest of them named. */
-function compositionFiles(projectDir: string, files: string[]): Scan {
-  const htmlFiles = files.filter(isCompositionPath);
-  if (htmlFiles.length === 0) return Promise.resolve([]);
+/** A project folder has one scan with the worker and at most one waiting behind it. Every listing that arrives
+ * meanwhile shares the waiting one and its answer: the files the latest of them saw, and the compositions among those. */
+function listingOf(projectDir: string, files: string[]): OneReadingOfAProject {
   const now = scans.get(projectDir);
   if (now?.waiting) {
-    now.waiting.files = htmlFiles;
+    now.waiting.files = files;
     return now.waiting.answer;
   }
-  const start = (named: string[]): Scan => {
-    const answer = scan(projectDir, named).finally(() => {
+  const start = (seen: string[]): OneReadingOfAProject => {
+    const answer = scan(projectDir, seen).finally(() => {
       if (scans.get(projectDir)?.last === answer) scans.delete(projectDir);
     });
     scans.set(projectDir, { last: answer });
     return answer;
   };
-  if (!now) return start(htmlFiles);
-  const waiting: { files: string[]; answer: Scan } = {
-    files: htmlFiles,
+  if (!now) return start(files);
+  const waiting: { files: string[]; answer: OneReadingOfAProject } = {
+    files,
     answer: now.last.then(() => start(waiting.files)),
   };
   now.waiting = waiting;
@@ -86,8 +89,8 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
   api.get("/projects/:id", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
-    const files = walkDir(project.dir).filter((file) => !isPrivateProjectPath(file));
-    const compositions = await compositionFiles(project.dir, files);
+    const seen = walkDir(project.dir).filter((file) => !isPrivateProjectPath(file));
+    const { files, compositions } = await listingOf(project.dir, seen);
     return c.json({ id: project.id, dir: project.dir, title: project.title, files, compositions });
   });
 }

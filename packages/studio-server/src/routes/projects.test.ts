@@ -7,12 +7,14 @@ import { runPreviewJob } from "../helpers/previewJobs";
 import { registerProjectRoutes } from "./projects";
 import type { StudioApiAdapter } from "../types";
 
-const scan = vi.hoisted(() => ({ result: undefined as (() => Promise<unknown>) | undefined }));
+const scan = vi.hoisted(() => ({
+  result: undefined as ((files: string[]) => Promise<unknown>) | undefined,
+}));
 vi.mock("../helpers/subCompositionBuild", async (original) => {
   const actual = await original<typeof import("../helpers/subCompositionBuild")>();
   const runOffThread: typeof actual.runOffThread = (job, ...rest) =>
     scan.result && job.kind === "compositions"
-      ? (scan.result() as ReturnType<typeof actual.runOffThread>)
+      ? (scan.result(job.files) as ReturnType<typeof actual.runOffThread>)
       : actual.runOffThread(job, ...rest);
   return { ...actual, runOffThread };
 });
@@ -297,6 +299,37 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
     for (const listing of await Promise.all(listings))
       expect(listing).toMatchObject({ compositions: ["index.html"] });
     expect(scansAsked).toBe(2);
+  });
+
+  // fails without the fix: a listing sent the files it saw itself with the compositions of the scan it shared, which
+  // read a later file list.
+  it("sends files and compositions from one reading when a page is added between two listings that share a scan", async () => {
+    const ends: Array<() => void> = [];
+    scan.result = (files) =>
+      new Promise((resolve) => ends.push(() => resolve({ compositions: files, unchecked: 0 })));
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(projectDir));
+    const ask = () => app.request("http://localhost/projects/demo").then((r) => r.json());
+
+    const first = ask();
+    await vi.waitFor(() => expect(ends).toHaveLength(1));
+    const before = ask();
+    // the listing reads its files a turn after it is asked: the page is added once it has
+    await new Promise((resolve) => setImmediate(resolve));
+    writeFileSync(join(projectDir, "added.html"), COMPOSITION_HTML);
+    const after = ask();
+    ends[0]?.();
+    await vi.waitFor(() => expect(ends).toHaveLength(2));
+    ends[1]?.();
+
+    for (const listing of await Promise.all([first, before, after])) {
+      const { files, compositions } = listing as { files: string[]; compositions: string[] };
+      expect(files).toEqual(expect.arrayContaining(compositions));
+    }
+    expect(await first).not.toMatchObject({ files: expect.arrayContaining(["added.html"]) });
+    expect(await before).toEqual(await after);
+    expect(await after).toMatchObject({ compositions: expect.arrayContaining(["added.html"]) });
   });
 
   it("lists no hidden file but Studio's own and the media folder's, nothing under .hyperframes/ that isn't Studio's", async () => {
