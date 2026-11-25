@@ -9,6 +9,7 @@ import {
   type HfHueCurvePoint,
 } from "@hyperframes/core/color-grading";
 import { findSystemBrowser } from "../browser/manager.js";
+import { seekInPage } from "./captureCompositionFrame.js";
 
 interface GradingTestApi {
   setGrading(target: string, grading: HfColorGrading): boolean;
@@ -193,6 +194,33 @@ describe.skipIf(!runsChromium)("color grading curves in Chromium", () => {
       },
     });
     expect(actual).toEqual([128, 0, 0, 255]);
+    expect(browserErrors).toEqual([]);
+  });
+
+  // fails without the fix: every no-draw seek re-uploaded the image, a GPU copy each until check's batch ended.
+  it("uploads no source frame during check's no-draw seeks, and one on the next drawn seek", async () => {
+    const uploads = await page.evaluate(`(() => {
+      const proto = WebGLRenderingContext.prototype;
+      const upload = proto.texImage2D;
+      let count = 0;
+      proto.texImage2D = function (...args) {
+        if (args.length === 6) count += 1;
+        return Reflect.apply(upload, this, args);
+      };
+      window.__timelines = { main: { pause() {}, seek() { window.__gradingTestRuntime.redraw(); } } };
+      const seek = ${seekInPage};
+      try {
+        for (let time = 1; time <= 8; time++) seek(time, true, false, true);
+        const gated = count;
+        count = 0;
+        seek(9, true, false, false);
+        return [gated, count];
+      } finally {
+        proto.texImage2D = upload;
+        delete window.__timelines;
+      }
+    })()`);
+    expect(uploads).toEqual([0, 1]);
     expect(browserErrors).toEqual([]);
   });
 });

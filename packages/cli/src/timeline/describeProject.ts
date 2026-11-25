@@ -1,4 +1,5 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
+import { fromEmptyFolder } from "@hyperframes/parsers/ff-binaries";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import {
   HF_AUDIO_AUTOMATION_ATTR,
@@ -10,7 +11,10 @@ import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import { byStart, type ClipFact, type ClipLane } from "@hyperframes/core/clip-facts";
 import { fpsToNumber, parseFpsWithDefault, parseNumeric } from "@hyperframes/core";
 import { findSyncPartner, readLinkTiming, syncOffsetFrames } from "@hyperframes/core/media-link";
-import { resolveAuthoredAssetFile } from "@hyperframes/parsers/asset-resolution";
+import {
+  namesAnotherNetworkRoot,
+  resolveAuthoredAssetFile,
+} from "@hyperframes/parsers/asset-resolution";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import {
   readMediaOffsetSeconds,
@@ -25,6 +29,7 @@ import {
   trackKindOf,
   type TrackKind,
 } from "@hyperframes/parsers";
+import { firstTemplateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { toDomNode, type DomNode } from "./domStructure.js";
 import {
   compositionOriginSeconds,
@@ -362,8 +367,7 @@ async function readSubComposition(
   const relativeFile = relative(parent.projectDir, authored).split(sep).join("/");
   const source = parent.sourceOverrides.get(relativeFile) ?? readFileSync(file, "utf-8");
   const doc = new DOMParser().parseFromString(source, "text/html");
-  const template = doc.querySelector("template");
-  const root = (template?.content ?? doc).querySelector("[data-composition-id]");
+  const root = (firstTemplateContent(doc) ?? doc).querySelector("[data-composition-id]");
   if (!root) return [];
   const scope: DocScope = {
     doc,
@@ -394,6 +398,7 @@ function cutRow(row: ClipDraft, slots: readonly HostSlot[]): ClipDraft[] {
 
 /** The file's real path when it is a regular file inside the project (symlinks resolved), else null. */
 function realFileInside(projectDir: string, path: string): string | null {
+  if (namesAnotherNetworkRoot(projectDir, path)) return null;
   try {
     const real = realpathSync(path);
     const inside = relative(realpathSync(projectDir), real);
@@ -484,10 +489,18 @@ function projectFps(source: string): number {
 }
 
 /** Needs a global DOMParser (`ensureDOMParser`). Reads `index.html` and one level of sub-compositions. */
-export async function describeProject(
+export function describeProject(
   indexPath: string,
   measure: MeasureMedia = measureWithFfprobe,
   sourceOverrides: ReadonlyMap<string, string> = new Map(),
+): Promise<ProjectTimeline> {
+  return fromEmptyFolder(() => describeProjectAt(resolve(indexPath), measure, sourceOverrides));
+}
+
+async function describeProjectAt(
+  indexPath: string,
+  measure: MeasureMedia,
+  sourceOverrides: ReadonlyMap<string, string>,
 ): Promise<ProjectTimeline> {
   const projectDir = dirname(indexPath);
   const source = sourceOverrides.get(basename(indexPath)) ?? readFileSync(indexPath, "utf-8");

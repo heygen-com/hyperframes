@@ -7,6 +7,8 @@ metadata:
 
 # Changelog → Branded Video
 
+<!-- skill-scripts: relative-ok, runs from the HyperFrames repo root -->
+
 Input: a changelog .md (themes + items, like the weekly HyperFrames digest).
 Output: a lint-clean, seam-gate-green HyperFrames project in
 `projects/active/weekly-changelog-<range>/`. Render only when asked.
@@ -155,7 +157,7 @@ scaffold.
    truth for the composition contract this skill produces against.
 2. `seam-gate.mjs verify` — 0 fail.
 3. Restart the preview server (it caches the bundle), spot-check 3-4 beats
-   via `__player.seek` on the raw comp page.
+   via `await __player.seek(t)` on the raw comp page (it resolves async).
 4. Do NOT render unless the user asks. After a requested render, verify
    frames from the MP4 (`ffmpeg -ss <t> … -frames:v 1`): captions present,
    background video not black, no tiny/frozen frames.

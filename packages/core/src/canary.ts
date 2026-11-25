@@ -90,7 +90,7 @@ export interface CanaryInput {
  * to a UTF-8 encoding here first, which is not free in the browser bundle
  * (`TextEncoder` is fine; `Buffer` is not).
  */
-function fnv1a32(input: string): number {
+export function fnv1a32(input: string): number {
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {
     hash ^= input.charCodeAt(i);

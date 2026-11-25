@@ -5,6 +5,7 @@
  * experiment-framework to regenerate.
  */
 import type {
+  AbortAssetUploadResponse,
   BackgroundRemovalJob,
   CompleteAssetUploadRequest,
   CompleteAssetUploadResponse,
@@ -25,6 +26,9 @@ import type {
   ImageCreateRequest,
   LipsyncCreateResponse,
   LipsyncDetail,
+  ListUploadedPartsResponse,
+  MintPartUrlsRequest,
+  MintPartUrlsResponse,
   ModelVideoResponse,
   MusicCreateRequest,
   MusicResponse,
@@ -267,6 +271,51 @@ export class HyperframesCloudClient {
       method: "POST",
       path: `/v3/assets/${encodeURIComponent(args.asset_id)}/complete`,
       body: args.body,
+      signal: args.signal,
+    });
+  }
+
+  async getAssetUploadPartUrls(args: {
+    asset_id: string;
+    body: MintPartUrlsRequest;
+    signal?: AbortSignal;
+  }): Promise<MintPartUrlsResponse> {
+    return await this.request<MintPartUrlsResponse>({
+      method: "POST",
+      path: `/v3/assets/${encodeURIComponent(args.asset_id)}/parts`,
+      body: args.body,
+      signal: args.signal,
+    });
+  }
+
+  async listAssetUploadParts(args: {
+    asset_id: string;
+    multipart_upload_id: string;
+    signal?: AbortSignal;
+  }): Promise<ListUploadedPartsResponse> {
+    const query: Record<string, string | number | undefined> = {
+      multipart_upload_id: args.multipart_upload_id,
+    };
+    return await this.request<ListUploadedPartsResponse>({
+      method: "GET",
+      path: `/v3/assets/${encodeURIComponent(args.asset_id)}/parts`,
+      query,
+      signal: args.signal,
+    });
+  }
+
+  async abortAssetUploadParts(args: {
+    asset_id: string;
+    multipart_upload_id: string;
+    signal?: AbortSignal;
+  }): Promise<AbortAssetUploadResponse> {
+    const query: Record<string, string | number | undefined> = {
+      multipart_upload_id: args.multipart_upload_id,
+    };
+    return await this.request<AbortAssetUploadResponse>({
+      method: "DELETE",
+      path: `/v3/assets/${encodeURIComponent(args.asset_id)}/parts`,
+      query,
       signal: args.signal,
     });
   }

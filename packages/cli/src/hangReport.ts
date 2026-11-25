@@ -1,4 +1,5 @@
 import "./utils/hideChildConsoles.js";
+import "./utils/windowsExeSearch.js";
 import { writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 

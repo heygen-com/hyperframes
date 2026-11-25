@@ -8,9 +8,10 @@
  * it lives here once instead of being re-derived inline.
  */
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import { readFileSync } from "fs";
-import { freemem, platform, totalmem } from "os";
+import { availableParallelism, cpus, freemem, platform, totalmem } from "os";
 
 const BYTES_PER_MIB = 1024 * 1024;
 const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
@@ -21,6 +22,7 @@ const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
 // slice (e.g. /sys/fs/cgroup/user.slice/.../memory.max) that these root paths
 // don't see, and that's acceptable — bare hosts are covered by total-RAM
 // detection, and chasing nested slices adds fragility for no container gain.
+const CGROUP_V2_CONTROLLERS_PATH = "/sys/fs/cgroup/cgroup.controllers";
 const CGROUP_V2_MEMORY_MAX_PATH = "/sys/fs/cgroup/memory.max";
 const CGROUP_V1_MEMORY_LIMIT_PATH = "/sys/fs/cgroup/memory/memory.limit_in_bytes";
 // Kernel no-limit sentinel is page-rounded 2^63-1 (~9223372036854771712); >= 2^60 is implausible as a real limit.
@@ -110,15 +112,13 @@ export function _resetCgroupLimitCacheForTests(): void {
 export function getCgroupCpuLimit(): number | null {
   if (_cachedCgroupCpus !== undefined) return _cachedCgroupCpus;
   if (process.platform !== "linux") return (_cachedCgroupCpus = null);
-  const v2 = readCgroupFile(CGROUP_V2_CPU_MAX_PATH);
-  _cachedCgroupCpus =
-    v2 !== null
-      ? parseCgroupCpus(v2, null, null)
-      : parseCgroupCpus(
-          null,
-          readCgroupFile(CGROUP_V1_CPU_QUOTA_PATH),
-          readCgroupFile(CGROUP_V1_CPU_PERIOD_PATH),
-        );
+  _cachedCgroupCpus = isCgroupV2()
+    ? parseCgroupCpus(readCgroupFile(CGROUP_V2_CPU_MAX_PATH), null, null)
+    : parseCgroupCpus(
+        null,
+        readCgroupFile(CGROUP_V1_CPU_QUOTA_PATH),
+        readCgroupFile(CGROUP_V1_CPU_PERIOD_PATH),
+      );
   return _cachedCgroupCpus;
 }
 
@@ -134,10 +134,9 @@ export function getCgroupMemoryLimitMb(): number | null {
     return null;
   }
 
-  const v2Content = readCgroupFile(CGROUP_V2_MEMORY_MAX_PATH);
-  const v1Content = v2Content === null ? readCgroupFile(CGROUP_V1_MEMORY_LIMIT_PATH) : null;
-
-  _cachedCgroupLimitMb = parseCgroupLimitMb(v2Content, v1Content);
+  _cachedCgroupLimitMb = isCgroupV2()
+    ? parseCgroupLimitMb(readCgroupFile(CGROUP_V2_MEMORY_MAX_PATH), null)
+    : parseCgroupLimitMb(null, readCgroupFile(CGROUP_V1_MEMORY_LIMIT_PATH));
   if (_cachedCgroupLimitMb !== null) {
     // stderr, not stdout: this is a diagnostic notice, and commands like `check --json`
     // write their machine-readable payload to stdout. A banner on stdout corrupts that
@@ -148,6 +147,10 @@ export function getCgroupMemoryLimitMb(): number | null {
     );
   }
   return _cachedCgroupLimitMb;
+}
+
+function isCgroupV2(): boolean {
+  return readCgroupFile(CGROUP_V2_CONTROLLERS_PATH) !== null;
 }
 
 function readCgroupFile(path: string): string | null {
@@ -180,8 +183,8 @@ function warnCgroupReadFailure(path: string, error: unknown): void {
   if (_warnedCgroupReadFailure) return;
   _warnedCgroupReadFailure = true;
   console.warn(
-    `[SystemMemory] Unable to read cgroup memory limit at ${path} ` +
-      `(${formatCgroupReadError(error)}); falling back to host RAM.`,
+    `[SystemMemory] Unable to read ${path} ` +
+      `(${formatCgroupReadError(error)}); using the host's values instead.`,
   );
 }
 
@@ -234,7 +237,9 @@ export function getAvailableMemoryMb(): number {
 
   if (platform() === "darwin") {
     try {
-      const raw = execSync("vm_stat", { encoding: "utf-8", timeout: 5000 });
+      const vmStat = findTrustedExecutable("vm_stat");
+      if (!vmStat) return fallback;
+      const raw = execFileSync(vmStat, [], { encoding: "utf-8", timeout: 5000 });
       const pageSize = parseInt(raw.match(/page size of (\d+)/)?.[1] ?? "0", 10);
       if (!pageSize) return fallback;
 
@@ -268,4 +273,33 @@ export function getAvailableMemoryMb(): number {
   }
 
   return fallback;
+}
+
+/** CPUs this process may run on: a cpuset (taskset, --cpuset-cpus) lowers it, a CPU quota does not. */
+export function usableCpuCount(): number {
+  // libuv clamps availableParallelism() to a cgroup v2 quota; getCgroupCpuLimit owns the quota, so count the affinity.
+  if (getCgroupCpuLimit() === null) return availableParallelism();
+  const affinity = countCpuList(readCgroupFile("/proc/self/status"));
+  // The affinity mask can name offline CPUs; cpus() lists only online ones.
+  return affinity === null ? availableParallelism() : Math.min(affinity, cpus().length);
+}
+
+/** Whole CPUs of time this process gets: the usable CPUs, lowered by a CPU quota. */
+export function cpuBudget(): number {
+  const quota = getCgroupCpuLimit();
+  return Math.max(1, Math.min(usableCpuCount(), quota === null ? Infinity : Math.floor(quota)));
+}
+
+function countCpuList(status: string | null): number | null {
+  const list = status?.match(/^Cpus_allowed_list:\s*(\S+)/m)?.[1];
+  if (!list) return null;
+  const count = list.split(",").reduce((sum, range) => {
+    const [first, last = first] = range.split("-").map(Number);
+    return sum + last! - first! + 1;
+  }, 0);
+  return count > 0 ? count : null;
+}
+
+export function hostCpuCount(): number {
+  return cpus().length;
 }

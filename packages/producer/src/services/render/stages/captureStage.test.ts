@@ -15,8 +15,11 @@ const initializeSession = vi.fn(async () => {});
 const captureFrame = vi.fn();
 const closeCaptureSession = vi.fn(async () => {});
 const verifyDiskDrawElementSamples = vi.fn(async () => {});
+const completeDeferredDrawElementInit = vi.fn(async () => {});
 const getCapturePerfSummary = vi.fn(() => ({}));
 const executeParallelCapture = vi.fn();
+const captureFrameToBufferPipelined = vi.fn();
+const writeCapturedFrame = vi.fn();
 
 vi.mock("@hyperframes/engine", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@hyperframes/engine")>();
@@ -27,8 +30,12 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
     captureFrame: (...args: unknown[]) => captureFrame(...args),
     closeCaptureSession: (...args: unknown[]) => closeCaptureSession(...args),
     verifyDiskDrawElementSamples: (...args: unknown[]) => verifyDiskDrawElementSamples(...args),
+    completeDeferredDrawElementInit: (...args: unknown[]) =>
+      completeDeferredDrawElementInit(...args),
     getCapturePerfSummary: (...args: unknown[]) => getCapturePerfSummary(...args),
     executeParallelCapture: (...args: unknown[]) => executeParallelCapture(...args),
+    captureFrameToBufferPipelined: (...args: unknown[]) => captureFrameToBufferPipelined(...args),
+    writeCapturedFrame: (...args: unknown[]) => writeCapturedFrame(...args),
     mergeWorkerFrames: async () => {},
   };
 });
@@ -265,6 +272,52 @@ describe("runCaptureStage measured disk projection (both branches)", () => {
     closeCaptureSession.mockReset().mockResolvedValue(undefined);
   });
 
+  it("sequential: gives up on a deferred drawElement init that never finishes, within the session-init budget", async () => {
+    const { workDir, framesDir } = makeDirs();
+    freeBytes.mockReturnValue({ bavail: 10_000_000_000, bsize: 1 });
+    completeDeferredDrawElementInit.mockImplementation(() => new Promise<void>(() => {}));
+    const probeSession = {
+      isInitialized: true,
+      browserConsoleBuffer: [],
+      options: { captureBeyondViewport: false, format: "jpeg" },
+      workerEncodeEnabled: false,
+      outputDir: framesDir,
+    };
+    const prevOptIn = process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
+    process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = "true";
+    vi.useFakeTimers();
+    try {
+      const state = { done: false, error: undefined as unknown, elapsedMs: 0 };
+      runCaptureStage({
+        ...makeInput(1, workDir, framesDir),
+        probeSession: probeSession as never,
+      }).then(
+        () => (state.done = true),
+        (error: unknown) => Object.assign(state, { done: true, error }),
+      );
+      const flush = async () => {
+        for (let i = 0; i < 200; i++) await Promise.resolve();
+      };
+      await flush();
+      while (!state.done && state.elapsedMs < 30 * 60_000) {
+        vi.advanceTimersByTime(1_000);
+        state.elapsedMs += 1_000;
+        await flush();
+      }
+      expect(state.done).toBe(true);
+      expect(state.elapsedMs).toBeLessThanOrEqual(305_000);
+      expect((state.error as Error).message).toContain(
+        "no frame progress for 300000ms (stuck at frame 0/20)",
+      );
+      expect(closeCaptureSession).toHaveBeenCalledWith(probeSession);
+    } finally {
+      vi.useRealTimers();
+      completeDeferredDrawElementInit.mockReset().mockResolvedValue(undefined);
+      if (prevOptIn === undefined) delete process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
+      else process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = prevOptIn;
+    }
+  });
+
   it("sequential: stops after ten frames when the measured remainder cannot fit", async () => {
     const { workDir, framesDir } = makeDirs();
     // 8 MB free: passes the static jpeg estimate, fails the 10 MB measured remainder.
@@ -469,6 +522,65 @@ describe("runCaptureStage — sequential path transient Target-closed single ret
     }
   });
 
+  it("pipelined: hands the engine film frames inside a frameRange and names files from 0", async () => {
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-seq-pipelined-range-"));
+    createCaptureSession.mockResolvedValue({
+      isInitialized: false,
+      browserConsoleBuffer: [],
+      options: { captureBeyondViewport: false, format: "jpeg" },
+      workerEncodeEnabled: true,
+      outputDir: framesDir,
+    });
+    const captured: [number, number][] = [];
+    captureFrameToBufferPipelined.mockImplementation(
+      async (_s: unknown, frameIndex: number, time: number) => {
+        captured.push([frameIndex, time]);
+        return { encodeResult: Promise.resolve(Buffer.from("frame")), captureTimeMs: 1 };
+      },
+    );
+    const written: number[] = [];
+    writeCapturedFrame.mockImplementation((_s: unknown, fileIndex: number) => {
+      written.push(fileIndex);
+      writeFileSync(join(framesDir, formatCaptureFrameName(fileIndex, "jpg")), "captured-frame");
+    });
+    try {
+      await runCaptureStage({
+        fileServer: { url: "http://localhost:0" } as never,
+        workDir: framesDir,
+        framesDir,
+        job: createRenderJob({ fps: { num: 10, den: 1 }, quality: "draft" }),
+        totalFrames: 4,
+        cfg: DEFAULT_CONFIG,
+        plan: { workerCount: 1, forceScreenshot: false },
+        log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+        probeSession: null,
+        captureAttempts: [],
+        dedupPerfs: [],
+        buildCaptureOptions: () => ({
+          width: 64,
+          height: 64,
+          fps: { num: 10, den: 1 },
+          format: "jpeg",
+        }),
+        createRenderVideoFrameInjector: () => null,
+        abortSignal: undefined,
+        assertNotAborted: () => {},
+        frameRange: { startFrame: 10, endFrame: 14 },
+      });
+      expect(captured).toEqual([
+        [10, 1.0],
+        [11, 1.1],
+        [12, 1.2],
+        [13, 1.3],
+      ]);
+      expect(written).toEqual([0, 1, 2, 3]);
+    } finally {
+      captureFrameToBufferPipelined.mockReset();
+      writeCapturedFrame.mockReset();
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+
   it("resumes from the first missing frame inside a frameRange and fails on a second death", async () => {
     const framesDir = mkdtempSync(join(tmpdir(), "hf-seq-transient-range-"));
     let sessionCount = 0;
@@ -483,16 +595,20 @@ describe("runCaptureStage — sequential path transient Target-closed single ret
       };
     });
     const times: number[] = [];
-    captureFrame.mockImplementation(async (_s: unknown, frameIndex: number, time: number) => {
-      times.push(time);
-      if (sessionCount === 1 && frameIndex === 2) {
-        throw new Error("Protocol error (Runtime.callFunctionOn): Target closed");
-      }
-      if (sessionCount === 2 && frameIndex === 3) {
-        throw new Error("Protocol error (Runtime.callFunctionOn): Target closed");
-      }
-      writeFileSync(join(framesDir, formatCaptureFrameName(frameIndex, "jpg")), "captured-frame");
-    });
+    const indexes: [number, number][] = [];
+    captureFrame.mockImplementation(
+      async (_s: unknown, frameIndex: number, time: number, fileIndex: number) => {
+        times.push(time);
+        indexes.push([frameIndex, fileIndex]);
+        if (sessionCount === 1 && frameIndex === 12) {
+          throw new Error("Protocol error (Runtime.callFunctionOn): Target closed");
+        }
+        if (sessionCount === 2 && frameIndex === 13) {
+          throw new Error("Protocol error (Runtime.callFunctionOn): Target closed");
+        }
+        writeFileSync(join(framesDir, formatCaptureFrameName(fileIndex, "jpg")), "captured-frame");
+      },
+    );
     const log = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
     const job = createRenderJob({ fps: { num: 10, den: 1 }, quality: "draft" });
 
@@ -527,6 +643,15 @@ describe("runCaptureStage — sequential path transient Target-closed single ret
       // frame 2 ok, 3 dies; no third session.
       expect(createCaptureSession).toHaveBeenCalledTimes(2);
       expect(times).toEqual([1.0, 1.1, 1.2, 1.2, 1.3]);
+      // The engine gets the film frame (its dedup, risk and boundary sets are keyed by it); the
+      // file is named from 0 so the encoder reads the window as a whole video.
+      expect(indexes).toEqual([
+        [10, 0],
+        [11, 1],
+        [12, 2],
+        [12, 2],
+        [13, 3],
+      ]);
       expect(log.warn).toHaveBeenCalledTimes(1);
       expect(closeCaptureSession).toHaveBeenCalledTimes(2);
     } finally {

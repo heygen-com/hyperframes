@@ -193,7 +193,7 @@ export async function studioInspect(
   }
 
   const resolved = await resolveLiveHandleSelection(
-    deps.getPreviewDocument,
+    deps.preview,
     input.handle,
     deps.buildSelection,
   );

@@ -1,6 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it, afterEach, beforeEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runTokensImport } from "./tokens.js";
@@ -83,5 +93,38 @@ describe("runTokensImport", () => {
       /429/,
     );
     expect(existsSync(join(dir, "figma-tokens.json"))).toBe(false);
+  });
+});
+
+describe("runTokensImport with links in the project", () => {
+  const posixOnly = it.skipIf(process.platform === "win32");
+  let outside = "";
+  beforeEach(() => {
+    outside = mkdtempSync(join(tmpdir(), "hf-figma-outside-"));
+    writeFileSync(join(outside, "outside.txt"), "keep me\n");
+  });
+  afterEach(() => rmSync(outside, { recursive: true, force: true }));
+
+  posixOnly("replaces a linked figma-tokens.json instead of writing through it", async () => {
+    symlinkSync(join(outside, "outside.txt"), join(dir, "figma-tokens.json"));
+    await runTokensImport("FILEKEY", { projectDir: dir, client: client({}) });
+    expect(readFileSync(join(outside, "outside.txt"), "utf8")).toBe("keep me\n");
+    expect(lstatSync(join(dir, "figma-tokens.json")).isFile()).toBe(true);
+  });
+
+  posixOnly("replaces a linked figma-bindings.jsonl instead of writing through it", async () => {
+    mkdirSync(join(dir, ".media"));
+    symlinkSync(join(outside, "outside.txt"), join(dir, ".media", "figma-bindings.jsonl"));
+    await runTokensImport("FILEKEY", { projectDir: dir, client: client({}) });
+    expect(readFileSync(join(outside, "outside.txt"), "utf8")).toBe("keep me\n");
+    expect(lstatSync(join(dir, ".media", "figma-bindings.jsonl")).isFile()).toBe(true);
+  });
+
+  posixOnly("refuses a .media folder that is a link", async () => {
+    symlinkSync(outside, join(dir, ".media"));
+    await expect(
+      runTokensImport("FILEKEY", { projectDir: dir, client: client({}) }),
+    ).rejects.toThrow(/outside the project/);
+    expect(readdirSync(outside)).toEqual(["outside.txt"]);
   });
 });

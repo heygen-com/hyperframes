@@ -1,23 +1,30 @@
 import { spawn } from "node:child_process";
 import { Agent, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
+import { expect, it, vi } from "vitest";
 import { createInspectorServer } from "../src/server";
 
 const project = mkdtempSync(join(tmpdir(), "hf-inspector-"));
+const STARTUP_TIMEOUT_MS = 10_000;
+vi.setConfig({ testTimeout: 2 * STARTUP_TIMEOUT_MS + 10_000 });
 
 function start(env?: NodeJS.ProcessEnv) {
   const server = spawn("bun", ["src/server.ts", project, "0"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     stdio: ["ignore", "pipe", "pipe"],
     env,
   });
   const lines = createInterface({ input: server.stdout! });
   const ready = new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("service startup timeout")), 10000);
+    const timer = setTimeout(
+      () => reject(new Error("service startup timeout")),
+      STARTUP_TIMEOUT_MS,
+    );
     lines.once("line", (line) => {
       clearTimeout(timer);
       resolve(JSON.parse(line).url as string);
@@ -122,15 +129,18 @@ it("importing the server does not listen", () => {
 it("starts when the entry path is a symlink", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-bin-"));
   const link = join(dir, "hyperframes-inspector");
-  symlinkSync(new URL("../src/server.ts", import.meta.url).pathname, link);
+  symlinkSync(fileURLToPath(new URL("../src/server.ts", import.meta.url)), link);
   const child = spawn("bun", [link, project, "0"], {
-    cwd: new URL("..", import.meta.url).pathname,
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
     stdio: ["ignore", "pipe", "pipe"],
   });
   const lines = createInterface({ input: child.stdout! });
   try {
     const url = await new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("symlink entry did not listen")), 10000);
+      const timer = setTimeout(
+        () => reject(new Error("symlink entry did not listen")),
+        STARTUP_TIMEOUT_MS,
+      );
       lines.once("line", (line) => {
         clearTimeout(timer);
         resolve(JSON.parse(line).url as string);
@@ -149,20 +159,26 @@ it("a project with no browser answers 503 browser_unavailable", async () => {
   const home = mkdtempSync(join(tmpdir(), "hf-home-"));
   writeFileSync(join(project, "index.html"), "<!doctype html><html><body></body></html>");
   for (const env of [
-    { ...process.env, HOME: home, HF_INSPECT_CHROME: "" },
-    { ...process.env, HF_INSPECT_CHROME: join(home, "missing-chrome") },
+    { HOME: home, HYPERFRAMES_CACHE_DIR: "", HF_INSPECT_CHROME: "" },
+    { HF_INSPECT_CHROME: join(home, "missing-chrome") },
   ]) {
-    const server = start(env);
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    const { server } = createInspectorServer(project);
     try {
-      const url = await server.url;
-      const map = await fetch(url + "/element-map", { method: "POST", body: "{}" });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const { port } = server.address() as AddressInfo;
+      const map = await fetch(`http://127.0.0.1:${port}/element-map`, {
+        method: "POST",
+        body: "{}",
+      });
       expect(map.status).toBe(503);
       expect(await map.json()).toEqual({
         error: "browser_unavailable",
         code: "browser_unavailable",
       });
     } finally {
-      await server.stop();
+      server.close();
+      vi.unstubAllEnvs();
     }
   }
 });

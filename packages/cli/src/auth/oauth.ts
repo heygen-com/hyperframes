@@ -1,4 +1,5 @@
 import { failCommand } from "../utils/commandResult.js";
+import { terminalLines, terminalText } from "@hyperframes/core/terminal-text";
 /**
  * OAuth 2.0 + PKCE driver for the HeyGen public OAuth flow.
  *
@@ -42,6 +43,8 @@ import { generatePkcePair, generateState } from "./pkce.js";
 import { startLoopback } from "./loopback.js";
 import { openBrowser } from "./browser.js";
 import { scrubCredentials } from "./scrub.js";
+import { ACCOUNT_REQUEST_TIMEOUT_MS } from "./client.js";
+import { explainNetworkFailure } from "../utils/networkFailure.js";
 import {
   isHeaderSafe,
   readStore,
@@ -126,8 +129,8 @@ export function assertOAuthConfiguredOrExit(): void {
     resolveClientId();
   } catch (err) {
     if (isAuthError(err) && err.code === "OAUTH_NOT_CONFIGURED") {
-      console.error(`Error: ${err.message}`);
-      if (err.hint) console.error(err.hint);
+      console.error(`Error: ${terminalText(err.message)}`);
+      if (err.hint) console.error(terminalLines(err.hint));
       failCommand();
     }
     throw err;
@@ -369,6 +372,20 @@ export function refreshTokens(
   return request;
 }
 
+async function postToTokenEndpoint(fetchImpl: typeof fetch, body: URLSearchParams) {
+  return await fetchImpl(tokenEndpoint(), {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      accept: "application/json",
+    },
+    body: body.toString(),
+    signal: AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS),
+  }).catch((error: unknown) => {
+    throw explainNetworkFailure(error, tokenEndpoint());
+  });
+}
+
 async function refreshOnce(refresh_token: string, opts: RefreshOptions): Promise<OAuthTokens> {
   const { credentials } = await readStore();
   if (credentials.oauth?.refresh_token !== refresh_token) throw ErrLoginChanged();
@@ -381,14 +398,7 @@ async function refreshOnce(refresh_token: string, opts: RefreshOptions): Promise
     client_id: clientId,
   });
 
-  const res = await fetchImpl(tokenEndpoint(), {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      accept: "application/json",
-    },
-    body: body.toString(),
-  });
+  const res = await postToTokenEndpoint(fetchImpl, body);
 
   if (res.status === 400 || res.status === 401) {
     throw ErrRefreshFailed(await safeText(res), { refused: true });
@@ -503,14 +513,7 @@ async function exchangeCodeForTokens(args: {
     client_id: args.clientId,
     code_verifier: args.verifier,
   });
-  const res = await fetchImpl(tokenEndpoint(), {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-      accept: "application/json",
-    },
-    body: body.toString(),
-  });
+  const res = await postToTokenEndpoint(fetchImpl, body);
   if (res.status === 400 || res.status === 401) {
     // The authorization code is single-use and short-lived. A 400/401
     // here almost always means it expired during the loopback wait or

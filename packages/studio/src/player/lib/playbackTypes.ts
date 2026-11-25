@@ -4,12 +4,16 @@
  * from here without creating circular dependencies.
  */
 
-import type { RuntimeTimelineClipIdentity } from "@hyperframes/core";
+import type {
+  RuntimeTimelineClipIdentity,
+  PausedVideoFrameProvider,
+  PreviewSourceFacts,
+} from "@hyperframes/core";
 
 export interface PlaybackAdapter {
   play: () => void;
   pause: () => void;
-  seek: (time: number, options?: { keepPlaying?: boolean }) => void;
+  seek: (time: number, options?: { keepPlaying?: boolean; settled?: boolean }) => void;
   getTime: () => number;
   getDuration: () => number;
   isPlaying: () => boolean;
@@ -37,11 +41,14 @@ export interface TimelineLike {
 }
 
 export interface ClipManifestClip extends RuntimeTimelineClipIdentity {
+  text?: unknown;
   zIndex?: number;
   stackingContextId?: string | null;
   compositionAncestors?: string[];
   playbackStart?: number;
   playbackRate?: number;
+  transitionLabel?: string;
+  timelineDuration?: number | null;
 }
 
 export interface ClipManifest {
@@ -58,6 +65,7 @@ export interface ClipManifest {
 }
 
 export type IframeWindow = Window & {
+  __HF_MEDIA_SOURCE_FACTS__?: Record<string, PreviewSourceFacts>;
   __player?: RuntimePlaybackAdapter;
   __playerReady?: boolean;
   __timeline?: TimelineLike;
@@ -68,8 +76,7 @@ export type IframeWindow = Window & {
    *  Every member stays optional and is optional-called, so a runtime that
    *  predates the hook degrades to a no-op instead of throwing. */
   __hf?: {
-    leasePausedMedia?: (el: HTMLMediaElement) => void;
-    releasePausedMedia?: (el: HTMLMediaElement) => void;
+    setPausedVideoFrameProvider?: (provider: PausedVideoFrameProvider | null) => void;
     setLoopStart?: (seconds: number | null) => void;
   };
 };

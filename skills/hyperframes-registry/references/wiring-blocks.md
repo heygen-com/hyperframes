@@ -10,7 +10,7 @@ After `hyperframes add data-chart`, wire it into your `index.html`:
 <div id="stage" data-composition-id="main" data-width="1920" data-height="1080" data-duration="20">
   <video id="a-roll" src="video.mp4" data-start="0" data-duration="20" data-track-index="0"></video>
 
-  <!-- Block: appears at 2s, plays for 15s, on layer 1 -->
+  <!-- Block: appears at 2s, plays for 15s, on the lane after the video -->
   <div
     data-composition-id="data-chart"
     data-composition-src="compositions/data-chart.html"
@@ -31,7 +31,7 @@ After `hyperframes add data-chart`, wire it into your `index.html`:
 | `data-composition-id`  | Unique ID matching the block's internal composition ID               |
 | `data-start`           | When the block appears in the host timeline (seconds)                |
 | `data-duration`        | How long the block plays (seconds, at most the block's own duration) |
-| `data-track-index`     | Layer ordering — higher numbers render in front                      |
+| `data-track-index`     | Studio lane only; paint order is CSS `z-index`                       |
 | `data-width`           | Block canvas width (match the block's dimensions)                    |
 | `data-height`          | Block canvas height (match the block's dimensions)                   |
 

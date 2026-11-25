@@ -52,6 +52,7 @@ export type {
   CaptureWarning,
   CaptureWarningCode,
   SubTimelineWaitMemo,
+  StaticDedupMemo,
   SubTimelineWaitOutcome,
 } from "./types.js";
 
@@ -59,6 +60,7 @@ export type {
 export {
   resolveConfig,
   resolvePageNavigationTimeout,
+  resolveRestrictPageNetwork,
   validateEngineConfigSnapshot,
   DEFAULT_CONFIG,
   scaleProtocolTimeoutForComposition,
@@ -84,6 +86,9 @@ export {
 export {
   getCgroupMemoryLimitMb,
   getSystemTotalMb,
+  hostCpuCount,
+  usableCpuCount,
+  cpuBudget,
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
 } from "./services/systemMemory.js";
@@ -98,6 +103,7 @@ export {
   closeBrowserPool,
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
+  probedHardwareGpu,
   buildChromeArgs,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
@@ -155,6 +161,7 @@ export {
   type DiscardWarmupInnerCapture,
   type StaticVerificationOutcome,
   VfxFailureError,
+  ImageMissingFromFrameError,
   waitForImagesReady,
   evaluateHfDiagnostic,
   buildZeroDurationDiagnostic,
@@ -193,10 +200,12 @@ export {
 } from "./services/screenshotService.js";
 
 // ── Encoding ───────────────────────────────────────────────────────────────────
+export { concatListInputArgs, concatListText } from "@hyperframes/parsers/ff-binaries";
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
   buildConcatArgs,
+  writeVideoConcatList,
   concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,
@@ -215,6 +224,7 @@ export {
   HLS_MASTER_PLAYLIST,
   HLS_VIDEO_PLAYLIST,
   HLS_AUDIO_PLAYLIST,
+  type ChromaSubsampling,
   type GpuEncoder,
   type PackageHlsOptions,
 } from "./services/chunkEncoder.js";
@@ -295,7 +305,11 @@ export {
 } from "./services/videoFrameExtractor.js";
 export { qualifyVideoLayer } from "./services/videoLayerPassthrough.js";
 export { isSelfOrAncestorHidden } from "./services/mediaHidden.js";
-export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
+export {
+  directorySizeBytes,
+  gcExtractionCache,
+  privateCacheRoot,
+} from "./services/extractionCache.js";
 
 export {
   resolveReferencedStart,
@@ -315,6 +329,7 @@ export {
 } from "./services/audioMixer.js";
 export { audioFailureDiagnostics } from "./services/audioFailureDiagnostic.js";
 export { cloneCaptureWarning, cloneCaptureWarnings } from "./services/captureWarning.js";
+export { retainCapturePerf } from "./services/pageTextBounds.js";
 export type {
   AudioElement,
   AudioFailureReason,
@@ -362,7 +377,7 @@ export { frameFileExtension } from "./services/frameCapture.js";
 export { appendSoftwareEncoderThreadsArg } from "./services/softwareEncoderThreads.js";
 export { frameSequencePath } from "./services/extractedFrameIndex.js";
 export type { MotionBlurOptions, MotionBlurBlendSpace } from "./services/motionBlur.js";
-export type { PageMotionBlurOff } from "./types.js";
+export type { PageMotionBlurOff, PageMotionBlurSummary } from "./types.js";
 
 export {
   assertSwiftShader,
@@ -377,10 +392,18 @@ export {
   settleOnBrowserSafePort,
 } from "./utils/browserSafePort.js";
 
+export {
+  answerOwnLoopbackHostOnly,
+  isOwnLoopbackHost,
+  SAME_ORIGIN_FRAMING_HEADERS,
+} from "./utils/loopbackOnly.js";
+
 export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCanvas.js";
+export { createConcurrencyLimit } from "./utils/concurrencyLimit.js";
 
 export {
   extractMediaMetadata,
+  displaySize,
   extractVideoMetadata,
   extractFinalVideoFrameTimestamp,
   extractAudioMetadata,
@@ -389,6 +412,7 @@ export {
   PROBE_FACTS_VERSION,
   buildProbeFactsText,
   probeMediaProfile,
+  isStructurallyIncompletePngError,
   runFfprobe,
   analyzeKeyframeIntervals,
   type VideoMetadata,
@@ -397,11 +421,17 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
+export { urlInputArgs, withPublicOnlyProxy } from "./utils/urlInput.js";
+
+export { mediaIdPathSegment } from "./utils/mediaPathSegment.js";
+
 export {
   NOT_MEDIA_PAYLOAD,
   NotMediaPayloadError,
   assertMediaPayload,
+  playlistLeavesItsFolder,
   fingerprintElementId,
+  isNotImagePayload,
   isNotMediaPayload,
 } from "./utils/notMediaPayload.js";
 
@@ -409,9 +439,11 @@ export {
   _setDownloadFetchForTests,
   assertPublicHttpsUrl,
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
+  isUrlNotPermittedError,
   writeUrlDownloadTelemetry,
   type SafeDownloadUrlIdentity,
   type UrlDownloadOptions,
@@ -420,7 +452,15 @@ export {
 } from "./utils/urlDownloader.js";
 export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
 export {
+  assetRootsRefusal,
+  isInsideAssetRoots,
+  isPrivateUnderAssetRoots,
+} from "./utils/assetRoots.js";
+export { onRenderRefusal } from "./services/publicNetwork/captureProxy.js";
+export type { RefusedHostClass } from "./services/publicNetwork/publicNetwork.js";
+export {
   runFfmpeg,
+  withFfmpegProgress,
   formatFfmpegError,
   describeFfmpegFailure,
   isExternalFfmpegInterruption,
@@ -443,7 +483,11 @@ export {
   FFPROBE_PATH_ENV,
 } from "./utils/ffmpegBinaries.js";
 
-export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
+export {
+  trackChildProcess,
+  killTrackedProcesses,
+  onTrackedChildProcess,
+} from "./utils/processTracker.js";
 export { renameWithRetry, renameWithRetryAsync } from "@hyperframes/core/rename-retry";
 export { removeScratch, collectScratchLeftovers } from "@hyperframes/core/remove-scratch";
 
@@ -504,7 +548,9 @@ export {
   queryVideoElementBounds,
   queryElementStacking,
   measureVideoShownBoxes,
+  measureVideoShownBoxRanges,
   type ShownBox,
+  type ShownBoxRange,
   type VideoElementBounds,
   type ElementStackingInfo,
 } from "./services/videoFrameInjector.js";
@@ -551,3 +597,14 @@ export {
   pipeLaunchClosedOnMac,
   sandboxDeniedRemediation,
 } from "./services/sandboxLaunch.js";
+export {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+  type ChromeSandboxHost,
+} from "@hyperframes/core/chrome-sandbox";
+export {
+  VariablesInvalidError,
+  type VariablesIssue,
+  type VariablesInvalidMetadata,
+} from "./services/variablesCheck.js";

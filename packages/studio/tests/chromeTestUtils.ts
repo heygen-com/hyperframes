@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { inspect } from "node:util";
 import puppeteer, { TimeoutError, type Browser, type Page } from "puppeteer-core";
+import type { Plugin } from "esbuild";
 import { browserVersion, findSystemChrome } from "../vite.browser";
 
 const require = createRequire(import.meta.url);
@@ -28,20 +30,25 @@ export async function launchTestChrome(
     console.info(
       `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS}: ${executablePath} (${version})`,
     );
+    const killStuckLaunch = new AbortController();
+    const deadline = setTimeout(() => killStuckLaunch.abort(), LAUNCH_TIMEOUT_MS);
     try {
-      const browser = await launch(options);
+      const browser = await launch({ ...options, signal: killStuckLaunch.signal });
       console.info(
         `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS} ready after ${Date.now() - startedAt} ms`,
       );
       return browser;
     } catch (error) {
       const elapsed = Date.now() - startedAt;
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason =
+        error instanceof Error ? error.message : inspect(error, { breakLength: Infinity });
       console.error(
         `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS} failed after ${elapsed} ms: ${reason}`,
       );
       const stuck = error instanceof TimeoutError || elapsed >= LAUNCH_TIMEOUT_MS;
       if (!stuck || attempt === LAUNCH_ATTEMPTS) throw error;
+    } finally {
+      clearTimeout(deadline);
     }
   }
   throw new Error("Chrome launch attempts exhausted");
@@ -80,3 +87,13 @@ export async function showWithRuntime(page: Page, html: string): Promise<void> {
   await page.evaluate(readFileSync(require.resolve("@hyperframes/core/runtime"), "utf8"));
   await page.waitForFunction(() => "__player" in window);
 }
+
+// recast imports these, and its code that uses them is dropped from the bundle. A new
+// built-in fails the build instead of turning into an empty module the way Vite makes it.
+export const emptyNodeBuiltins: Plugin = {
+  name: "empty-node-builtins",
+  setup(build) {
+    build.onResolve({ filter: /^(node:)?(fs|os)$/ }, ({ path }) => ({ path, namespace: "empty" }));
+    build.onLoad({ filter: /.*/, namespace: "empty" }, () => ({ contents: "module.exports = {}" }));
+  },
+};

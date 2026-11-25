@@ -436,6 +436,23 @@ describe("POST /projects/:id/render — crf", () => {
     expect(res.status).toBe(400);
     expect(opts).toBeUndefined();
   });
+
+  it("forwards 4:4:4 chroma for mp4 and omits it when not requested", async () => {
+    const chroma = await post({ format: "mp4", chromaSubsampling: "444" });
+    expect(chroma.res.status).toBe(200);
+    expect(chroma.opts.chromaSubsampling).toBe("444");
+    expect((await post({ format: "mp4" })).opts).not.toHaveProperty("chromaSubsampling");
+  });
+
+  it.each([
+    { format: "webm", chromaSubsampling: "444" },
+    { format: "mp4", chromaSubsampling: "444", gpu: true },
+    { format: "mp4", chromaSubsampling: "422" },
+  ])("rejects chroma request %j with 400 and does not start a render", async (body) => {
+    const { res, opts } = await post(body);
+    expect(res.status).toBe(400);
+    expect(opts).toBeUndefined();
+  });
 });
 
 describe("POST /projects/:id/render — composition path safety", () => {
@@ -734,6 +751,34 @@ describe("POST /render/:jobId/cancel", () => {
       // SSE progress for a cancelled job must terminate (status is terminal).
       const progress = await app.request(`http://localhost/render/${jobId}/progress`);
       expect(progress.status).toBe(200);
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replies only once the adapter's stop has settled", async () => {
+    const { adapter, rendersDir } = createAdapter(vi.fn());
+    const baseStartRender = adapter.startRender.bind(adapter);
+    let settled = false;
+    adapter.startRender = (opts) => {
+      const state = baseStartRender(opts);
+      state.cancel = () =>
+        new Promise<void>((done) =>
+          setTimeout(() => {
+            settled = true;
+            state.status = "failed";
+            done();
+          }, 30),
+        );
+      return state;
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    try {
+      const jobId = await startJob(app);
+      const res = await app.request(`http://localhost/render/${jobId}/cancel`, { method: "POST" });
+      expect(settled).toBe(true);
+      expect(((await res.json()) as { status: string }).status).toBe("failed");
     } finally {
       rmSync(rendersDir, { recursive: true, force: true });
     }
@@ -1216,5 +1261,51 @@ describe("Studio GIF frame-rate cap", () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+describe("POST /projects/:id/render — range", () => {
+  async function post(body: Record<string, unknown>) {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fps: 30, format: "mp4", ...body }),
+      });
+      return { res, opts: spy.mock.calls[0]?.[0] };
+    } finally {
+      cleanup();
+    }
+  }
+
+  it("forwards a start and an end to the adapter as the range", async () => {
+    const { res, opts } = await post({ start: 2.3, end: 6.7 });
+    expect(res.status).toBe(200);
+    expect(opts.range).toEqual({ startSeconds: 2.3, endSeconds: 6.7 });
+  });
+
+  it("starts at 0 without a start and runs to the film's end without an end", async () => {
+    expect((await post({ end: 4 })).opts.range).toEqual({ startSeconds: 0, endSeconds: 4 });
+    expect((await post({ start: 4 })).opts.range).toEqual({ startSeconds: 4 });
+  });
+
+  it("asks for the whole film when neither is sent", async () => {
+    const { opts } = await post({});
+    expect(opts).not.toHaveProperty("range");
+  });
+
+  it.each([
+    [{ start: -1 }],
+    [{ start: "2" }],
+    [{ end: "4" }],
+    [{ start: null }],
+    [{ start: 5, end: 5 }],
+    [{ start: 5, end: 2 }],
+  ])("refuses %j with 400 and starts no render", async (range) => {
+    const { res, opts } = await post(range);
+    expect(res.status).toBe(400);
+    expect(opts).toBeUndefined();
   });
 });

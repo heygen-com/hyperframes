@@ -113,12 +113,10 @@ async function stubHostProjectDisk(
   return { read, fetchMock };
 }
 
-type TimelineEditingHandle = {
-  handleTimelineElementMove: (
-    element: TimelineElement,
-    updates: { start: number; track: number },
-  ) => Promise<void>;
-};
+type TimelineEditingHandle = Pick<
+  ReturnType<typeof useTimelineEditing>,
+  "handleTimelineElementMove"
+>;
 
 function mountHost(
   clip: TimelineElement,
@@ -213,7 +211,11 @@ describe("public export surface: a host mounting hand editing outside EditorShel
 
     const { timelineEditing, undo } = mountHost(clip, iframe);
     await act(async () => {
-      await timelineEditing.handleTimelineElementMove(clip, { start: 5, track: 0 });
+      await timelineEditing.handleTimelineElementMove(clip, {
+        start: 5,
+        track: 0,
+        stackingReorder: null,
+      });
     });
     expect(disk.read("index.html")).toContain('data-start="5"');
 

@@ -23,7 +23,9 @@
         "./skills/hyperframes",
         "./skills/hyperframes-cli",
         "./skills/hyperframes-registry",
-        "./skills/media-use"
+        "./skills/media-use",
+        "./skills/reverse-any-video",
+        "./skills/style-sampling"
       ]
     }
   ],

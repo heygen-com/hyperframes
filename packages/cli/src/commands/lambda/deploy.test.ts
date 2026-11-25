@@ -20,6 +20,7 @@ vi.mock("./state.js", () => ({
 }));
 vi.mock("./videoImage.js", () => ({
   pushVideoImage: vi.fn(async () => ({ imageUri: "repo@sha256:a", repositoryName: "hf-video" })),
+  videoRepositoryName: (stackName: string) => `${stackName}-video`,
 }));
 
 const { runDeploy } = await import("./deploy.js");
@@ -29,6 +30,10 @@ const { pushVideoImage } = await import("./videoImage.js");
 
 let dir: string | undefined;
 let quiet: { mockRestore(): void };
+
+const ESC = String.fromCharCode(27);
+const ODD = `od${ESC}[2Jd\x07`;
+const SHOWN = "od\\x1b[2Jd\\x07";
 
 beforeEach(() => {
   vi.mocked(samDeploy).mockClear();
@@ -53,13 +58,6 @@ describe("runDeploy", () => {
     expect(samDeploy).not.toHaveBeenCalled();
   });
 
-  it("outside a checkout, refuses a Chrome source the prebuilt handler does not bundle", async () => {
-    await expect(
-      runDeploy({ videoArch: "x86_64", chromeSource: "chrome-headless-shell" }),
-    ).rejects.toThrow(/needs a hyperframes checkout/);
-    expect(samDeploy).not.toHaveBeenCalled();
-  });
-
   it("with --video-arch x86_64, deploys the checkout's template with no video function", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-deploy-checkout-"));
     const samDir = join(dir, "examples", "aws-lambda");
@@ -71,6 +69,9 @@ describe("runDeploy", () => {
 
     await runDeploy({ skipBuild: true, videoArch: "x86_64" });
     expect(vi.mocked(samDeploy).mock.calls[0]?.[0]).toMatchObject({ samDir });
+    expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain(
+      `Using the source checkout at ${dir}`,
+    );
     expect(vi.mocked(samDeploy).mock.calls[0]?.[0].videoImageUri).toBeUndefined();
     expect(pushVideoImage).not.toHaveBeenCalled();
   });
@@ -125,6 +126,27 @@ describe("runDeploy", () => {
       expect(written).toHaveLength(1);
     });
 
+    // fails without the fix: the stack outputs and the warm-up failure are printed as they arrived.
+    it("shows control characters in the stack outputs and a warm-up failure as text", async () => {
+      checkout();
+      vi.mocked(fetchStackOutputs).mockReset();
+      vi.mocked(fetchStackOutputs).mockReturnValueOnce({
+        bucketName: `b-${ODD}`,
+        functionName: `f-${ODD}`,
+        stateMachineArn: `s-${ODD}`,
+        videoFunctionName: `v-${ODD}`,
+      });
+      vi.mocked(warmFunction).mockImplementation(() => {
+        throw new Error(`Task ${ODD}\ntimed out`);
+      });
+      await runDeploy({ skipBuild: true, stackName: `hf${ODD}`, region: "eu-west-1" });
+      const printed = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(printed).toContain(`sam deploy (stack=hf${SHOWN} region=eu-west-1)`);
+      for (const shown of ["b-", "f-", "s-", "v-"]) expect(printed).toContain(`${shown}${SHOWN}`);
+      expect(printed).toContain(`the deploy is fine: Task ${SHOWN}\ntimed out`);
+      expect(printed).not.toContain(ESC);
+    });
+
     it("does not warm with warm: false", async () => {
       checkout();
       await runDeploy({ skipBuild: true, stackName: "hf", warm: false });
@@ -143,13 +165,14 @@ describe("runDeploy", () => {
     });
   });
 
-  it.each([undefined, "arm64" as const])(
-    "refuses arm64 (--video-arch %s) with a Chrome source the video image does not bundle, naming x86_64",
+  it.each([undefined, "arm64" as const, "x86_64" as const])(
+    "refuses chrome-headless-shell (--video-arch %s) before building, since it cannot fit a ZIP function",
     async (videoArch) => {
       await expect(runDeploy({ videoArch, chromeSource: "chrome-headless-shell" })).rejects.toThrow(
-        /sparticuz Chrome only[\s\S]*--video-arch x86_64/,
+        /does not fit a Lambda ZIP function[\s\S]*arm64 video image/,
       );
       expect(pushVideoImage).not.toHaveBeenCalled();
+      expect(samDeploy).not.toHaveBeenCalled();
     },
   );
 });

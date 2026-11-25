@@ -12,11 +12,12 @@ export const examples: Example[] = [
 import { join } from "node:path";
 import { resolveProject } from "../utils/project.js";
 import { loadProducer } from "../utils/producer.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import * as clack from "../ui/prompts.js";
 import { withMeta } from "../utils/updateCheck.js";
-import { fpsToFfmpegArg } from "@hyperframes/core";
+import { fpsToFfmpegArg, terminalText } from "@hyperframes/core";
 
 interface BenchmarkConfig {
   label: string;
@@ -99,13 +100,16 @@ export default defineCommand({
       console.log(
         c.accent("\u25C6") +
           "  Benchmarking " +
-          c.accent(project.name) +
+          c.accent(terminalText(project.name)) +
           c.dim(` (${runsPerConfig} runs each)`),
       );
       console.log("");
     }
 
     // ── Run benchmarks ───────────────────────────────────────────────────
+    const allowOutsideProjectAssets = outsideAssetsAllowed(project.dir, undefined, (line) =>
+      console.warn(c.warn(`  ${line}`)),
+    );
     const results: ConfigResult[] = [];
 
     for (const config of DEFAULT_CONFIGS) {
@@ -128,6 +132,7 @@ export default defineCommand({
             fps: config.fps,
             quality: config.quality,
             workers: config.workers,
+            allowOutsideProjectAssets,
           });
           await producer.executeRenderJob(job, project.dir, outputPath);
           const elapsedMs = Date.now() - startTime;

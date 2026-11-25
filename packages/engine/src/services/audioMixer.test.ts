@@ -309,6 +309,37 @@ describe("processCompositionAudio", () => {
     ]);
   });
 
+  it.each([".git/music.mp3", ".hyperframes/music.mp3", ".claude/music.mp3", "keys/id_rsa"])(
+    "never opens the private project file %s as an audio source",
+    async (src) => {
+      const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-private-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+      tempDirs.push(baseDir, workDir);
+      mkdirSync(join(baseDir, src, ".."), { recursive: true });
+      writeFileSync(join(baseDir, src), "not for the render");
+
+      const result = await processCompositionAudio(
+        [{ id: "bed", src, start: 0, end: 2, mediaStart: 0, layer: 0, volume: 1, type: "audio" }],
+        baseDir,
+        workDir,
+        join(workDir, "out.m4a"),
+        2,
+        undefined,
+        { assetRoots: [baseDir] },
+      );
+
+      expect(result.failures).toEqual([
+        expect.objectContaining({
+          reason: "source_not_found",
+          elementId: "bed",
+          detail: "Audio element bed source is a private project file",
+        }),
+      ]);
+      expect(extractAudioMetadataMock).not.toHaveBeenCalled();
+      expect(runFfmpegMock.mock.calls.flat(2)).not.toContain(join(baseDir, src));
+    },
+  );
+
   it.each([
     {
       message: "AbortError: ffprobe operation aborted",

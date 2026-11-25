@@ -13,7 +13,13 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
-import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
+import {
+  nodeMayRun,
+  nodeOnlyScript,
+  toolTrustedFileKind,
+  type ToolTrustedKind,
+} from "@hyperframes/core/safe-path";
+import { fetchItemFile, DEFAULT_REGISTRY_URL, isPublicRegistry } from "./remote.js";
 import {
   applyVariableDefaults,
   InvalidVariableValuesError,
@@ -25,6 +31,7 @@ export interface InstallOptions {
   destDir: string;
   /** Base URL of the registry. Defaults to the official public registry. */
   baseUrl?: string;
+  publicOnly?: boolean;
   /** Overwrite files the project has changed since they were installed. */
   force?: boolean;
   /**
@@ -33,6 +40,11 @@ export interface InstallOptions {
    * per-mount values are strictly better when a mount exists.
    */
   variableValues?: Record<string, unknown> | null;
+  /**
+   * Project folders a block or component may write into, on top of the standard layout: the project's configured
+   * `paths` from hyperframes.json.
+   */
+  installDirs?: string[];
 }
 
 export interface InstallResult {
@@ -131,13 +143,139 @@ function keptByProject(
   return !force && existsSync(destPath) && hasLocalEdits(record, target, readFileSync(destPath));
 }
 
+// Project and tool configuration is never registry content: VCS metadata, package-manager and agent or editor settings
+// are executed or trusted by other tools. Core's `toolTrustedFileKind` names the files other tools run or trust, the same
+// rule Studio's write routes apply. Only an example (a fresh `init`) may bring its own package.json and HyperFrames config.
+const EXAMPLE_DOTFILES = new Set([".gitignore"]);
+
+// A Windows short name such as `CLAUDE~1` or `PACKAG~1.JSO` can open any long name on NTFS.
+const isShortName = (part: string): boolean => /~\d+(\.|$)/.test(part);
+
+// Where a block or component may write: the standard project layout (the official catalog's 3D models and vendored
+// browser scripts sit in `models/` and `lib/`), plus the project's configured folders. Anything else in a project is
+// someone else's: installed packages, tool settings, scripts other programs run.
+const STANDARD_INSTALL_DIRS = ["compositions", "assets", "models", "lib"];
+// The one file a block may leave at the project root: the catalog's usage note. Any other name could be one a tool loads.
+const ROOT_NOTES = new Set(["template.md"]);
+
+function withoutTrailingDotsOrSpaces(part: string): string {
+  let end = part.length;
+  while (end > 0 && (part[end - 1] === "." || part[end - 1] === " ")) end--;
+  return part.slice(0, end);
+}
+
+/** Path segments as a case-insensitive file system compares them, either separator, no trailing dots or spaces. */
+function targetSegments(path: string): string[] {
+  return path
+    .normalize("NFC")
+    .toLowerCase()
+    .split(/[\\/]/)
+    .map(withoutTrailingDotsOrSpaces)
+    .filter((part, at, parts) => part !== "" || at === parts.length - 1);
+}
+
+/** Configured folders as segment lists; one that names the root, a hidden folder or node_modules opens nothing. */
+function installDirSegments(dirs: string[]): string[][] {
+  return dirs
+    .map((dir) => targetSegments(dir).filter((part) => part !== ""))
+    .filter(
+      (parts) =>
+        parts.length > 0 &&
+        parts.every(
+          (part) => !part.startsWith(".") && part !== "node_modules" && !isShortName(part),
+        ),
+    );
+}
+
+function inInstallDir(dirs: string[], installDirs: string[][]): boolean {
+  return installDirs.some(
+    (allowed) => allowed.length <= dirs.length && allowed.every((part, at) => dirs[at] === part),
+  );
+}
+
+function isHiddenConfigFile(file: string, example: boolean): boolean {
+  if (file === ".gitkeep" || (example && EXAMPLE_DOTFILES.has(file))) return false;
+  return file.startsWith(".");
+}
+
+type TargetRule = [
+  reason: string,
+  applies: (
+    dirs: string[],
+    file: string,
+    example: boolean,
+    installDirs: string[][] | null,
+    trusted: ToolTrustedKind | null,
+  ) => boolean,
+];
+
+const CONFIG_TARGET_RULES: TargetRule[] = [
+  ["it writes into git metadata", (dirs, file) => [...dirs, file].includes(".git")],
+  [
+    "it uses a Windows short name",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "short-name",
+  ],
+  ["it writes into a hidden tool directory", (dirs) => dirs.some((dir) => dir.startsWith("."))],
+  [
+    "it writes a hidden configuration file",
+    (_dirs, file, example) => isHiddenConfigFile(file, example),
+  ],
+  [
+    "it would replace project configuration",
+    (_dirs, _file, example, _installDirs, trusted) =>
+      (trusted === "project-config" && !example) ||
+      trusted === "lock-file" ||
+      trusted === "tool-config",
+  ],
+  ["it writes into node_modules", (dirs) => dirs.includes("node_modules")],
+  [
+    "it writes an agent instruction file",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "agent-instructions",
+  ],
+  [
+    "it writes a program or script",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "program",
+  ],
+  [
+    "it writes outside the project's blocks, components and assets folders",
+    (dirs, file, example, installDirs) =>
+      !example &&
+      installDirs !== null &&
+      !inInstallDir(dirs, installDirs) &&
+      !(dirs.length === 0 && ROOT_NOTES.has(file)),
+  ],
+];
+
+/** Why a target is refused, or null. `installDirs` null skips the folder allowlist, for a path links already moved. */
+function configTargetError(
+  target: string,
+  type: RegistryItem["type"],
+  installDirs: string[][] | null,
+): string | null {
+  const parts = targetSegments(target);
+  const file = parts.pop() ?? "";
+  const example = type === "hyperframes:example";
+  const trusted = toolTrustedFileKind(target);
+  return (
+    CONFIG_TARGET_RULES.find(([, applies]) =>
+      applies(parts, file, example, installDirs, trusted),
+    )?.[0] ?? null
+  );
+}
+
 /**
  * Reject target paths that would escape `destDir`. Mirrors the pattern check
  * in `packages/core/schemas/registry-item.json#files.items.target`, but runs at
  * install time so a registry that bypasses schema validation still can't write
  * outside the project.
  */
-function assertSafeTarget(destDir: string, target: string): void {
+function assertSafeTarget(
+  destDir: string,
+  target: string,
+  type: RegistryItem["type"],
+  installDirs: string[][],
+  script: ScriptRule,
+): void {
   if (isAbsolute(target)) {
     throw new Error(`Unsafe target "${target}": absolute paths are not allowed.`);
   }
@@ -152,6 +290,22 @@ function assertSafeTarget(destDir: string, target: string): void {
   if (rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`Unsafe target "${target}": resolves outside destDir ${destDir}.`);
   }
+  const configError = configTargetError(target, type, installDirs) ?? script(destDir, target);
+  if (configError) throw new Error(`Unsafe target "${target}": ${configError}.`);
+}
+
+/** Which block and component scripts an install refuses: Node-only ones always, and from a registry other than the public one, any the project's Node tooling may run, the rule Studio's writes follow. */
+type ScriptRule = (root: string, target: string) => string | null;
+
+function scriptRule(type: RegistryItem["type"], baseUrl: string): ScriptRule {
+  if (type === "hyperframes:example") return () => null;
+  const refused = isPublicRegistry(baseUrl)
+    ? (_: string, spelled: string) => nodeOnlyScript(spelled)
+    : (root: string, spelled: string) => nodeMayRun(root, spelled, "file");
+  return (root, target) =>
+    refused(root, target.split(/[\\/]/).join("/"))
+      ? "it writes a script Node tooling may run"
+      : null;
 }
 
 /** A component's pasteable markup: the file whose declared defaults `--vars` edits. */
@@ -223,7 +377,7 @@ async function prepareOneFile(
     return { destPath, target: file.target, preserved: true, hash: null, vars: null, bytes: null };
   }
 
-  let bytes = await fetchItemFile(item, file, baseUrl, budget);
+  let bytes = await fetchItemFile(item, file, baseUrl, budget, options.publicOnly);
   if (isInstalledRegistryBlockComposition(item, file)) {
     bytes = Buffer.from(addRegistryItemMarker(bytes.toString("utf8"), item));
   }
@@ -270,12 +424,17 @@ export async function prepareItem(
   const destDir = resolve(options.destDir);
 
   // Validate all targets up-front so a malformed item fails before any write.
+  const installDirs = installDirSegments([
+    ...STANDARD_INSTALL_DIRS,
+    ...(options.installDirs ?? []),
+  ]);
+  const script = scriptRule(item.type, baseUrl);
   for (const file of item.files) {
-    assertSafeTarget(destDir, file.target);
+    assertSafeTarget(destDir, file.target, item.type, installDirs, script);
   }
 
   const root = registryRoot(destDir);
-  validatePhysicalTargets(root, item.files);
+  validatePhysicalTargets(root, item.files, item.type, script);
   const record = readInstallRecord(root);
   const budget = { remainingBytes: 512 * 1024 * 1024 };
 
@@ -288,7 +447,10 @@ export async function prepareItem(
 }
 
 /** Write a prepared item and record what landed. */
-export function publishItem({ root, outcomes: prepared, force }: PreparedItem): InstallResult {
+export function publishItem(
+  { root, outcomes: prepared, force }: PreparedItem,
+  guardWrite: (destPath: string, write: () => void) => void = (_, write) => write(),
+): InstallResult {
   // Read now, not at prepare time: another item published in between has recorded its own files.
   const record = readInstallRecord(root);
   // Asked again at write time: a save made while the rest of the plan downloaded is still an edit.
@@ -297,8 +459,8 @@ export function publishItem({ root, outcomes: prepared, force }: PreparedItem): 
       ? { ...o, preserved: true, hash: null, vars: null, bytes: null }
       : o,
   );
-  for (const outcome of outcomes) {
-    if (outcome.bytes) publishRegistryFile(root, outcome.target, outcome.bytes);
+  for (const { bytes, destPath, target } of outcomes) {
+    if (bytes) guardWrite(destPath, () => publishRegistryFile(root, target, bytes));
   }
 
   const written = outcomes.filter((o) => !o.preserved).map((o) => o.destPath);
@@ -327,7 +489,12 @@ export function publishItem({ root, outcomes: prepared, force }: PreparedItem): 
   };
 }
 
-function validatePhysicalTargets(root: string, files: FileTarget[]): void {
+function validatePhysicalTargets(
+  root: string,
+  files: FileTarget[],
+  type: RegistryItem["type"],
+  script: ScriptRule,
+): void {
   const targets = new Set<string>();
   const aliasKey = (path: string): string =>
     process.platform === "win32" || process.platform === "darwin"
@@ -336,6 +503,10 @@ function validatePhysicalTargets(root: string, files: FileTarget[]): void {
   const recordKey = aliasKey(registryTargetPath(root, INSTALL_RECORD));
   for (const file of files) {
     const path = registryTargetPath(root, file.target);
+    // Where the project's own links lead: still never into node_modules, hidden folders, agent files or programs.
+    const physical = relative(root, path);
+    const configError = configTargetError(physical, type, null) ?? script(root, physical);
+    if (configError) throw new Error(`Unsafe target "${file.target}": ${configError}.`);
     const key = aliasKey(path);
     if (targets.has(key) || key === recordKey)
       throw new Error("Unsafe target: duplicate or reserved install record");

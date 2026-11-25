@@ -188,6 +188,28 @@ window.__contrastAuditPrepare = function () {
     return [p[0], p[1], p[2], p[3] != null ? p[3] : 1];
   }
 
+  // The colours a url(#id) fill paints (gradient stops, through href); [] when it names no gradient.
+  function gradientStops(fill) {
+    var ref = /^url\("?[^"#)]*#([^")]+)"?\)/.exec(fill || "");
+    if (!ref) return null;
+    var grad = document.getElementById(ref[1]);
+    for (var hops = 0; grad && hops < 8; hops++) {
+      if (!/^(linear|radial)Gradient$/.test(grad.localName)) return [];
+      var stops = grad.querySelectorAll(":scope > stop");
+      if (stops.length) return Array.prototype.map.call(stops, stopColor).filter(Boolean);
+      var href = grad.getAttribute("href") || grad.getAttribute("xlink:href") || "";
+      grad = href.charAt(0) === "#" ? document.getElementById(href.slice(1)) : null;
+    }
+    return [];
+  }
+
+  function stopColor(stop) {
+    var stopStyle = getComputedStyle(stop);
+    var color = parseColor(stopStyle.stopColor);
+    if (color) color[3] *= parseFloat(stopStyle.stopOpacity);
+    return color && color[3] > 0.01 ? color : null;
+  }
+
   function selectorOf(el) {
     if (el.id) return "#" + el.id;
     var cls = Array.from(el.classList).slice(0, 2).join(".");
@@ -369,14 +391,16 @@ window.__contrastAuditPrepare = function () {
     // is actually covered; the same copy is audited normally when visible.
     if (isIntentionallyOccluded(el, rect)) continue;
 
-    // For SVG text, `fill` is the paint that's actually rendered; `color` is
-    // frequently just the inherited/initial value and unrelated to what's on
-    // screen. Only trust `fill` when it resolves to a solid color — "none",
-    // "context-fill", and gradient/pattern refs (url(#...)) fall back to
-    // `color` rather than crashing parseColor or reporting a fabricated
-    // black.
+    // SVG text paints `fill`, not `color`. A gradient fill is judged by its weakest stop; a pattern
+    // or a missing reference has no colour to judge, so the text is skipped.
     var isSvgText = isSvgTextElement(el);
-    var fg = isSvgText ? parseColor(cs.fill) || parseColor(cs.color) : parseColor(cs.color);
+    var fgStops = isSvgText ? gradientStops(cs.fill) : null;
+    if (fgStops && !fgStops.length) continue;
+    var fg = fgStops
+      ? fgStops[0]
+      : isSvgText
+        ? parseColor(cs.fill) || parseColor(cs.color)
+        : parseColor(cs.color);
     if (!fg) continue;
     if (fg[3] <= 0.01) continue;
     var strokeWidth = parseFloat(cs.webkitTextStrokeWidth || "0");
@@ -448,6 +472,7 @@ window.__contrastAuditPrepare = function () {
       selector: selectorOf(el),
       text: (el.textContent || "").trim().slice(0, 50),
       fg: fg,
+      fgStops: fgStops,
       stroke: stroke,
       fontSize: fontSize,
       fontWeight: fontWeight,
@@ -603,13 +628,24 @@ window.__contrastAuditFinish = async function (imgBase64, time, candidates, regi
       bgB = median(bb);
     }
 
-    // Composite foreground alpha over the measured background
-    var fg = c.fg;
-    var compR = Math.round(fg[0] * fg[3] + bgR * (1 - fg[3]));
-    var compG = Math.round(fg[1] * fg[3] + bgG * (1 - fg[3]));
-    var compB = Math.round(fg[2] * fg[3] + bgB * (1 - fg[3]));
-
-    var ratio = +wcagRatio(compR, compG, compB, bgR, bgG, bgB).toFixed(2);
+    // Composite foreground alpha over the measured background; a gradient's weakest stop sets the ratio.
+    var compR = 0,
+      compG = 0,
+      compB = 0,
+      ratio = Infinity;
+    var fills = c.fgStops || [c.fg];
+    for (var pi = 0; pi < fills.length; pi++) {
+      var fg = fills[pi];
+      var paintR = Math.round(fg[0] * fg[3] + bgR * (1 - fg[3]));
+      var paintG = Math.round(fg[1] * fg[3] + bgG * (1 - fg[3]));
+      var paintB = Math.round(fg[2] * fg[3] + bgB * (1 - fg[3]));
+      var paintRatio = +wcagRatio(paintR, paintG, paintB, bgR, bgG, bgB).toFixed(2);
+      if (paintRatio >= ratio) continue;
+      compR = paintR;
+      compG = paintG;
+      compB = paintB;
+      ratio = paintRatio;
+    }
 
     // A solid text stroke is part of the visible glyph paint. Use whichever
     // of fill or stroke provides the stronger edge contrast, rather than

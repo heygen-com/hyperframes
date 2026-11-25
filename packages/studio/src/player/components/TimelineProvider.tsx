@@ -16,7 +16,7 @@ import type { TimelineEmptyState } from "./TimelineEmptyState";
 import type { TimelineProps } from "./TimelineTypes";
 import type { TimelineRangeSelection } from "./timelineEditing";
 import type { TimelineDropPlacement } from "./timelineCallbacks";
-import type { Rect } from "../../utils/marqueeGeometry";
+import type { MarqueeBand } from "../../utils/marqueeGeometry";
 import type { ResizingClipState } from "./useTimelineClipDrag";
 import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 import type { TimelineLaneGapStrips } from "./useTimelineGapHighlights";
@@ -30,10 +30,14 @@ import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineProviderState } from "./useTimelineProviderState";
 import { TimelineReadOnlyContext } from "./timelineReadOnly";
+import type { MenuAnchor } from "../../components/ui/menuPosition";
+import { LANE_OVERLAP_NOTICE, LANE_OVERLAP_TONE } from "./timelineCollision";
 import {
   TimelineEditProvider,
+  useTimelineEditContextOptional,
   useTimelineEditContextValue,
 } from "../../contexts/TimelineEditContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 
 export type TimelineCanvasState = Omit<
   TimelineLaneBaseProps,
@@ -50,7 +54,7 @@ export type TimelineCanvasState = Omit<
   majorTickInterval: number;
   tickFrameRate: number | undefined;
   rangeSelection: TimelineRangeSelection | null;
-  marqueeRect: Rect | null;
+  marqueeRect: MarqueeBand | null;
   resizingClip: ResizingClipState | null;
   isScrubbing: boolean;
   playheadRef: React.RefObject<HTMLDivElement | null>;
@@ -73,8 +77,7 @@ export type TimelineCanvasState = Omit<
 };
 
 export interface ClipContextMenuState {
-  x: number;
-  y: number;
+  anchor: MenuAnchor;
   element: TimelineElement;
   sessionEpoch: number;
 }
@@ -212,7 +215,11 @@ export function TimelineProvider({
 }
 
 function TimelineProviderState({ children, ...props }: TimelineProps & { children: ReactNode }) {
-  const value = useTimelineProviderState(props);
+  const shell = useStudioShellContextOptional();
+  const { onNotice } = useTimelineEditContextOptional();
+  const notice = shell?.showToast ?? onNotice;
+  const onDropRefused = notice && (() => notice(LANE_OVERLAP_NOTICE, LANE_OVERLAP_TONE));
+  const value = useTimelineProviderState({ ...props, onDropRefused });
   return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;
 }
 

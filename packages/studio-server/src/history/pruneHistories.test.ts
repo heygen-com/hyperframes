@@ -3,11 +3,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  lstatSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -18,6 +21,7 @@ import {
   KEEP_GONE_PROJECT_HISTORY_MS,
   listProjectHistories,
   pruneGoneProjectHistories,
+  pruneGoneProjectHistoriesDaily,
 } from "./pruneHistories.js";
 
 vi.mock("./ownerLock.js", async (importOriginal) => {
@@ -40,7 +44,8 @@ async function projectWithHistory(
   {
     at = Date.now(),
     projectDir = tempDir("hf-prune-project-"),
-    pruneGoneProjectsBudgetMs = undefined as number | undefined,
+    // The open's own background prune starts no history unless asked, so it cannot race the test's prune.
+    pruneGoneProjectsBudgetMs = 0,
   } = {},
 ) {
   mkdirSync(projectDir, { recursive: true });
@@ -51,8 +56,6 @@ async function projectWithHistory(
     now: () => at,
     pruneGoneProjectsBudgetMs,
   });
-  // Lets the open's own daily prune scan first, so it cannot race the test's.
-  await new Promise((settle) => setImmediate(settle));
   return { projectDir, history, id: readId(projectDir)! };
 }
 
@@ -132,7 +135,11 @@ describe("pruneGoneProjectHistories", () => {
   it("prunes when a history opens a day after the last full prune", async () => {
     const historyRoot = tempDir("hf-prune-root-");
     const start = Date.now();
-    const gone = await projectWithHistory(historyRoot, { at: start });
+    const gone = await projectWithHistory(historyRoot, {
+      at: start,
+      pruneGoneProjectsBudgetMs: Infinity,
+    });
+    await vi.waitFor(() => expect(existsSync(join(historyRoot, ".last-prune"))).toBe(true));
     await gone.history.close();
     rmSync(gone.projectDir, { recursive: true, force: true });
 
@@ -142,7 +149,10 @@ describe("pruneGoneProjectHistories", () => {
     });
     expect(existsSync(join(historyRoot, gone.id))).toBe(true);
     await cli.history.close();
-    const next = await projectWithHistory(historyRoot, { at: start + DAY_MS });
+    const next = await projectWithHistory(historyRoot, {
+      at: start + DAY_MS,
+      pruneGoneProjectsBudgetMs: Infinity,
+    });
     await vi.waitFor(() => expect(existsSync(join(historyRoot, gone.id))).toBe(false));
     await next.history.close();
   });
@@ -325,5 +335,39 @@ describe("listProjectHistories", () => {
 
   it("lists nothing for a history root that does not exist", () => {
     expect(listProjectHistories(join(tmpdir(), "hf-no-such-history-root"))).toEqual([]);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("pruneGoneProjectHistoriesDaily", () => {
+  it("replaces a symlink at the last-prune stamp instead of writing through it", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const sentinel = join(tempDir("hf-prune-outside-"), "sentinel");
+    writeFileSync(sentinel, "unchanged");
+    const stamp = join(historyRoot, ".last-prune");
+    symlinkSync(sentinel, stamp);
+    pruneGoneProjectHistoriesDaily(historyRoot, Date.now());
+    await vi.waitFor(() => expect(lstatSync(stamp).isFile()).toBe(true));
+    expect(readFileSync(sentinel, "utf-8")).toBe("unchanged");
+  });
+});
+
+describe.skipIf(process.platform === "win32")("pruneGoneProjectHistoriesDaily with a FIFO", () => {
+  it("reads a FIFO at the last-prune stamp as no stamp instead of waiting for a writer", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const stamp = join(historyRoot, ".last-prune");
+    execFileSync("mkfifo", [stamp]);
+    const writer = spawn("sh", ["-c", 'sleep 3; while :; do printf x > "$0"; done', stamp], {
+      stdio: "ignore",
+    });
+    let elapsed: number;
+    try {
+      const began = Date.now();
+      pruneGoneProjectHistoriesDaily(historyRoot, Date.now());
+      elapsed = Date.now() - began;
+    } finally {
+      writer.kill("SIGKILL");
+    }
+    expect(elapsed).toBeLessThan(2_000);
+    await vi.waitFor(() => expect(lstatSync(stamp).isFile()).toBe(true));
   });
 });

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { extname, isAbsolute, join, relative } from "node:path";
 import { rankMediaRows } from "./media-search.mjs";
 
 const LIB_DIR =
@@ -27,7 +27,7 @@ export const BUNDLED_SFX_RECOVERY_COMMAND = "npx hyperframes skills update media
 export class BundledSfxAssetsError extends Error {
   constructor(health) {
     super(
-      `bundled SFX assets are missing or incomplete (${health.detail}). Repair the installed media-use skill: ${health.fix}`,
+      `bundled SFX assets are missing or incomplete (${health.detail}). For the user: \`${health.fix}\` repairs the installed media-use skill.`,
     );
     this.name = "BundledSfxAssetsError";
     this.code = health.code;
@@ -78,6 +78,31 @@ export function inspectBundledSfxAssets(libraryDir = LIB_DIR) {
 
 export function extensionForBundledSfxFile(filename) {
   return extname(filename) || ".mp3";
+}
+
+const INDEX_FILE_PREFIX = "skills/media-use/audio/assets/sfx/";
+const AUDIO_FILE_NAME =
+  /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*\.(?:mp3|wav|ogg|m4a|aac|flac)$/i;
+
+/**
+ * Map a media index row's `file` to an audio file inside the bundled SFX folder, or null.
+ * The only accepted form is `skills/media-use/audio/assets/sfx/<name>` with a plain audio
+ * file name; the result must still be a regular file inside the folder after realpath.
+ */
+export function bundledSfxAssetPath(file, libraryDir = LIB_DIR) {
+  if (typeof file !== "string" || !file.startsWith(INDEX_FILE_PREFIX)) return null;
+  const name = file.slice(INDEX_FILE_PREFIX.length);
+  if (!AUDIO_FILE_NAME.test(name)) return null;
+  try {
+    const root = realpathSync(libraryDir);
+    const asset = realpathSync(join(root, name));
+    const inside = relative(root, asset);
+    if (!inside || inside.startsWith("..") || isAbsolute(inside)) return null;
+    if (!AUDIO_FILE_NAME.test(inside) || !statSync(asset).isFile()) return null;
+    return asset;
+  } catch {
+    return null;
+  }
 }
 
 export const bundledSfxProvider = {

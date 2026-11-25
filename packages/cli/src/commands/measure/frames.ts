@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { readdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
@@ -28,6 +28,8 @@ import {
   type Roi,
   type VideoInfo,
 } from "../../measure/media.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 
 export const examples: Example[] = [
   ["An overview sheet, one frame a second", "hyperframes measure frames ref.mp4 --every 1"],
@@ -84,7 +86,7 @@ function writeFrames(
   prefix: string,
 ): string[] {
   // Beside the output, so the move below stays on one filesystem (a container's /tmp often is not the project's).
-  const work = mkdtempSync(join(dir, ".frames-"));
+  const work = createStagingDir(dir, ".frames-");
   try {
     const raw = Buffer.concat(
       f.frames
@@ -180,9 +182,14 @@ export default defineCommand({
       description: "One strip of consecutive frames per window from measure events --map",
       default: false,
     },
-    start: { type: "string", description: "With --events or --every: first second (default 0)" },
+    start: {
+      type: "string",
+      alias: ["from"],
+      description: "With --events or --every: first second (default 0)",
+    },
     end: {
       type: "string",
+      alias: ["to"],
       description: "With --events or --every: last second (default: the end)",
     },
     max: {
@@ -210,6 +217,7 @@ export default defineCommand({
         );
       const { info, roi } = videoAndRoi(args.video, args.roi);
       const dir = outDir(args.out, "measure/frames");
+      assertLiteralMediaOutput(dir);
       const width = num(args.width, "--width", TILE_W);
       const max = num(args.max, "--max", STRIP_MAX);
       const last = info.frames - 1;

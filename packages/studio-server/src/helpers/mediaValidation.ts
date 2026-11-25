@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { FFPROBE_PATH_ENV, findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
+import { mediaInputArgs } from "./mediaExtensions.js";
 
 const VIDEO_EXT = /\.(mp4|webm|mov|mkv|avi|m4v|mxf|mts|m2ts|ts)$/i;
 const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
@@ -39,7 +40,17 @@ export function validateUploadedMedia(
   if (!ffprobe) return { ok: true, unchecked: FFPROBE_MISSING };
   const result = runner(
     ffprobe,
-    ["-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "json", "--", filePath],
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "stream=codec_type,codec_name",
+      "-of",
+      "json",
+      ...mediaInputArgs(filePath),
+      "--",
+      filePath,
+    ],
     { windowsHide: true },
   );
 

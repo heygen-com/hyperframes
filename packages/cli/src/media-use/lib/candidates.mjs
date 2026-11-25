@@ -8,10 +8,12 @@
 import { currentRecords } from "./manifest.mjs";
 import { readGlobalManifest } from "./cache.mjs";
 import { tokenOverlap, typesMatch } from "./match.mjs";
+import { terminalText } from "./terminal-text.mjs";
+import { recordPathInProject } from "./record-path.mjs";
 
 export const CANDIDATE_CAP = 8;
 
-function shape(record, scope, intent) {
+function shape(record, scope, intent, projectDir) {
   const description = record.description || record.provenance?.prompt || "";
   const prompt = record.provenance?.prompt || null;
   return {
@@ -28,18 +30,19 @@ function shape(record, scope, intent) {
     // for `resolve --reuse <sha>`. Project assets are reused by referencing
     // their path directly, so they need no handle.
     sha: scope === "global" ? record.sha || null : null,
-    path: scope === "project" ? record.path : null,
+    // A sender wrote the manifest: a path outside the project is not handed on for a later command to open.
+    path: scope === "project" && recordPathInProject(projectDir, record.path) ? record.path : null,
     score: intent ? tokenOverlap(intent, `${description} ${prompt || ""}`) : 0,
   };
 }
 
 // Rank one scope: type-matched (icon<->image aware), newest-first within equal
 // overlap, ordered by overlap desc. Returns the full ranked list (uncapped).
-function rankScope(records, scope, type, intent) {
+function rankScope(records, scope, type, intent, projectDir) {
   return records
     .filter((r) => typesMatch(r.type, type))
     .reverse() // manifest is append-order (oldest first); newest-first at equal score
-    .map((r) => shape(r, scope, intent))
+    .map((r) => shape(r, scope, intent, projectDir))
     .sort((a, b) => b.score - a.score); // Array.sort is stable → recency preserved
 }
 
@@ -49,7 +52,7 @@ function rankScope(records, scope, type, intent) {
 //   total:      { project, global } counts before the cap (machine-readable)
 //   similar:    count of candidates with lexical overlap > 0 (drives the nudge)
 export function listCandidates({ projectDir, type, intent = "", cap = CANDIDATE_CAP }) {
-  const project = rankScope(currentRecords(projectDir), "project", type, intent);
+  const project = rankScope(currentRecords(projectDir), "project", type, intent, projectDir);
   const global = rankScope(readGlobalManifest(), "global", type, intent);
   const candidates = [...project.slice(0, cap), ...global.slice(0, cap)];
   return {
@@ -78,8 +81,8 @@ export function formatCandidates(candidates, { truncated, total } = {}) {
     const handle =
       c.scope === "global" ? `--reuse ${String(c.sha).slice(0, 16)}` : c.path || `manifest:${c.id}`;
     const m = meta(c);
-    lines.push(`  [${c.scope}] ${c.description}${m ? ` (${m})` : ""}`);
-    lines.push(`          ${handle}`);
+    lines.push(terminalText(`  [${c.scope}] ${c.description}${m ? ` (${m})` : ""}`));
+    lines.push(terminalText(`          ${handle}`));
   }
   if (truncated && total) {
     lines.push("");

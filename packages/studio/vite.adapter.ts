@@ -23,6 +23,8 @@ import {
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   historyCache,
+  originForListeningAddress,
+  RANGE_NOT_RENDERED,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import type { RegistryItem } from "@hyperframes/core/registry";
@@ -162,6 +164,19 @@ export function createViteAdapter(
       }
     }
     return _bundler;
+  };
+
+  // The CLI's received-project rule, loaded from source: this adapter only runs in a source checkout.
+  const outsideAssetsAllowed = async (projectDir: string, entryFile: string | undefined) => {
+    const mod = await server.ssrLoadModule(
+      resolve(__dirname, "../cli/src/utils/receivedRender.ts"),
+    );
+    const decide: unknown = mod.outsideAssetsAllowed;
+    if (typeof decide !== "function")
+      throw new Error("receivedRender.ts has no outsideAssetsAllowed");
+    return (
+      decide(projectDir, entryFile, (line: string) => console.warn(`[studio] ${line}`)) === true
+    );
   };
 
   const getProducerModule = async () => {
@@ -306,10 +321,24 @@ export function createViteAdapter(
     },
 
     runtimeUrl: "/api/runtime.js",
+    serverOrigin: () =>
+      originForListeningAddress(
+        server.httpServer?.address(),
+        server.config.server.https ? "https" : "http",
+      ),
 
     rendersDir: () => resolve(dataDir, "../renders"),
 
     startRender(opts): RenderJobState {
+      if (opts.range) {
+        return {
+          id: opts.jobId,
+          status: "failed",
+          progress: 0,
+          outputPath: opts.outputPath,
+          error: RANGE_NOT_RENDERED,
+        };
+      }
       const abortController = new AbortController();
       const state: RenderJobState = {
         id: opts.jobId,
@@ -343,6 +372,10 @@ export function createViteAdapter(
             if (systemChrome) process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChrome;
           }
           const { createRenderJob, executeRenderJob } = await getProducerModule();
+          const allowOutsideProjectAssets = await outsideAssetsAllowed(
+            opts.project.dir,
+            opts.composition,
+          );
           const renderBodyScripts = createStudioDevRenderBodyScripts(opts.project.dir);
           const job = createRenderJob({
             fps: opts.fps,
@@ -356,6 +389,7 @@ export function createViteAdapter(
             ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
+            allowOutsideProjectAssets,
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;

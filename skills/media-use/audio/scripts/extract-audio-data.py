@@ -17,10 +17,14 @@ Requirements:
 
 import argparse
 import json
+import os
+import secrets
 import subprocess
 import sys
 
 import numpy as np
+
+from trusted_program import find_program
 
 # Windows sizes stdio to the ANSI code page (cp1252). These scripts emit UTF-8 on
 # every platform; say so rather than depending on the console's code page. Carry
@@ -51,7 +55,7 @@ MAX_FREQ = 16000.0
 def decode_audio(path: str) -> np.ndarray:
     """Decode audio to mono float32 samples via ffmpeg."""
     cmd = [
-        "ffmpeg", "-i", path,
+        find_program("ffmpeg"), "-i", path,
         "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE),
         "-f", "s16le", "-acodec", "pcm_s16le",
         "-loglevel", "error",
@@ -174,6 +178,19 @@ def extract(path: str, fps: int, n_bands: int) -> dict:
     }
 
 
+def replace_file(path, text):
+    """Write `text` to a new temp file beside `path`, then rename it over: a link at `path` is replaced, not followed."""
+    temp = f"{path}.hf{secrets.token_hex(3)}.tmp"  # core's atomicTempPath shape, which Studio's project history skips
+    f = open(temp, "x", encoding="utf-8")  # created exclusively: never a file someone else already put there
+    try:
+        with f:
+            f.write(text)
+        os.replace(temp, path)
+    except BaseException:
+        os.unlink(temp)
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description="Extract per-frame audio visualization data")
     parser.add_argument("input", help="Audio or video file")
@@ -189,8 +206,7 @@ def main():
 
     data = extract(args.input, args.fps, args.bands)
 
-    with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+    replace_file(args.output, json.dumps(data))
 
     print(f"Wrote {args.output} ({data['totalFrames']} frames, {data['bands']} bands)", file=sys.stderr)
 

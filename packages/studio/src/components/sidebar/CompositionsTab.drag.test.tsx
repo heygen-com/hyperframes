@@ -3,7 +3,11 @@
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
-import { mountCompositionsTab } from "./compositionsTabTestUtils";
+import {
+  mountCompositionsTab,
+  settleFrameToken,
+  stubFrameTokenFetch,
+} from "./compositionsTabTestUtils";
 
 function mount(onSelect = vi.fn(), onAddToTimeline = vi.fn()) {
   const host = mountCompositionsTab({ onSelect, onAddToTimeline });
@@ -13,15 +17,17 @@ function mount(onSelect = vi.fn(), onAddToTimeline = vi.fn()) {
 }
 
 describe("composition card drag", () => {
-  it("mounts one live preview only after sustained hover and removes it on leave", () => {
+  it("mounts one live preview only after sustained hover and removes it on leave", async () => {
     vi.useFakeTimers();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const tokenFetch = stubFrameTokenFetch();
     try {
       const { host, card } = mount();
       act(() => {
         card.dispatchEvent(new Event("pointerover", { bubbles: true }));
         vi.advanceTimersByTime(300);
       });
+      await settleFrameToken();
       expect(host.querySelectorAll("iframe")).toHaveLength(1);
 
       act(() => {
@@ -30,6 +36,7 @@ describe("composition card drag", () => {
       expect(host.querySelector("iframe")).toBeNull();
       expect(vi.getTimerCount()).toBe(0);
     } finally {
+      tokenFetch.mockRestore();
       consoleError.mockRestore();
       vi.useRealTimers();
     }

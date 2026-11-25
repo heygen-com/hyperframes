@@ -10,9 +10,7 @@ import {
   readNestedFiles,
   settleNestedReads,
 } from "../utils/gsapSoftReload";
-import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
 import type { RecordEditInput } from "../utils/studioFileHistory";
-import { patchDocumentRootDuration } from "./timelineEditingGsap";
 import {
   GsapOwnershipProtocolError,
   GsapPreviewConvergenceError,
@@ -30,6 +28,7 @@ import {
   type StudioProjectFileWriter,
 } from "../utils/studioFileMutationCoordinator";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { moveLiveTweens } from "../utils/gsapLiveRetime";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
@@ -40,41 +39,15 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
     `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(targetPath)}`,
   );
   if (!response.ok) {
-    throw new Error(`Failed to read ${targetPath}`);
+    throw await createStudioSaveHttpError(response, `Failed to read ${targetPath}`, {
+      path: targetPath,
+    });
   }
   const data = (await response.json()) as { content?: string };
   if (typeof data.content !== "string") {
     throw new Error(`Missing file contents for ${targetPath}`);
   }
   return data.content;
-}
-
-/** Best-effort live-iframe wrapper for patchDocumentRootDuration (see timelineEditingGsap). */
-function patchIframeRootDuration(iframe: HTMLIFrameElement | null, contentEnd: number): void {
-  try {
-    patchDocumentRootDuration(iframe?.contentDocument ?? null, contentEnd);
-  } catch {
-    // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
-  }
-}
-
-/** Keep the duration readout and live root aligned with optimistically patched clips. */
-export function syncPreviewContentDuration(iframe: HTMLIFrameElement | null): void {
-  const end = furthestClipEndFromDocument(iframe?.contentDocument ?? null);
-  if (end > 0) {
-    usePlayerStore.getState().setDuration(end);
-    patchIframeRootDuration(iframe, end);
-  }
-}
-
-/** Restore both store and live-root duration when a timing persist fails. */
-export function captureDurationRollback(iframe: HTMLIFrameElement | null): () => void {
-  const previousDuration = usePlayerStore.getState().duration;
-  return () => {
-    if (usePlayerStore.getState().duration === previousDuration) return;
-    usePlayerStore.getState().setDuration(previousDuration);
-    patchIframeRootDuration(iframe, previousDuration);
-  };
 }
 
 /** Re-derive live timing windows without re-executing composition scripts.
@@ -134,7 +107,7 @@ async function syncTimingEditPreview(
     reloadPreview();
     return;
   }
-  if (moveLiveTweens(iframe, scriptText, currentTime(), reloadPreview)) return;
+  if (await moveLiveTweens(iframe, scriptText, currentTime(), reloadPreview, outcome)) return;
   const nestedFiles = await settleNestedReads(
     projectId
       ? readNestedFiles(iframe, scriptText, (path) => readFileContent(projectId, path))
@@ -144,7 +117,10 @@ async function syncTimingEditPreview(
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime(),
     authoredHtml: outcome.after,
+    previousHtml: outcome.before,
+    timingEdit: true,
     nestedFiles,
+    version: outcome.revision,
   });
   if (result === "cannot-soft-reload") reloadPreview();
 }

@@ -1,5 +1,5 @@
 import { postRuntimeMessage } from "./bridge";
-import type { RuntimePreviewHealthMessage } from "./types";
+import type { PlaybackHeldBy, RuntimePreviewHealthMessage } from "./types";
 
 /** What counts as a choppy preview; every number of the rule lives here. */
 export const PLAYBACK_HEALTH = {
@@ -18,13 +18,21 @@ export type PlaybackHealthInput = {
   hidden: boolean;
   /** A playing video is waiting for data. */
   waiting: boolean;
+  heldBy?: PlaybackHeldBy | null;
   frozen?: boolean;
   clock: "audio" | "webaudio" | "monotonic";
   /** Anything that changes how heavy a frame is to draw (window size, zoom). */
   layoutKey: string;
 };
 
-type Sample = { atMs: number; gapMs: number; drawn: boolean; waiting: boolean; frozen: boolean };
+type Sample = {
+  atMs: number;
+  gapMs: number;
+  drawn: boolean;
+  waiting: boolean;
+  frozen: boolean;
+  heldBy: PlaybackHeldBy | null;
+};
 type Last = { ms: number; film: number; frame: number };
 
 const FORWARD_JUMP_SECONDS = 0.5;
@@ -35,6 +43,28 @@ let key = "";
 let posted = false;
 let postedAtMs = 0;
 let clockSource: PlaybackHealthInput["clock"] = "monotonic";
+const fetchStartedAt = new WeakMap<EventTarget, number>();
+
+export function watchMediaFetches(doc: Document): () => void {
+  const onStart = (event: Event) => {
+    if (event.target) fetchStartedAt.set(event.target, performance.now());
+  };
+  doc.addEventListener("loadstart", onStart, true);
+  return () => doc.removeEventListener("loadstart", onStart, true);
+}
+
+const resourceFetchStart = (src: string) => performance.getEntriesByName(src).at(-1)?.startTime;
+
+export function heldByMedia(el: HTMLMediaElement, nowMs: number): PlaybackHeldBy {
+  const started =
+    fetchStartedAt.get(el) ?? (el.currentSrc ? resourceFetchStart(el.currentSrc) : undefined);
+  return {
+    kind: el.tagName === "VIDEO" ? "video" : "audio",
+    readyState: el.readyState,
+    networkState: el.networkState,
+    fetchMs: started === undefined ? null : Math.round(nowMs - started),
+  };
+}
 
 function post(health: RuntimePreviewHealthMessage["health"]): void {
   postRuntimeMessage({ source: "hf-preview", type: "preview-health", health });
@@ -75,6 +105,8 @@ function measure(nowMs: number, fps: number, rate: number): void {
   const waitingMs = samples.reduce((sum, s) => sum + (s.waiting ? s.gapMs : 0), 0);
   const frozenMs = samples.reduce((sum, s) => sum + (s.frozen ? s.gapMs : 0), 0);
   const droppedShare = Math.max(skipped, waitingMs / spanMs);
+  let heldBy: PlaybackHeldBy | null = null;
+  for (const sample of samples) heldBy = sample.heldBy ?? heldBy;
   const gaps = samples.map((sample) => sample.gapMs).sort((a, b) => a - b);
   const gapAt = (share: number) => Math.round(gaps[Math.ceil(share * gaps.length) - 1] ?? 0);
   posted = true;
@@ -91,6 +123,7 @@ function measure(nowMs: number, fps: number, rate: number): void {
     gapP50Ms: gapAt(0.5),
     gapP95Ms: gapAt(0.95),
     clockSource,
+    heldBy,
     mode: "play",
   });
 }
@@ -130,6 +163,7 @@ export function notePlaybackFrame(input: PlaybackHealthInput): void {
     drawn: frame !== previous.frame,
     waiting: input.waiting,
     frozen: input.frozen === true,
+    heldBy: input.heldBy ?? null,
   });
   measure(nowMs, fps, rate);
 }

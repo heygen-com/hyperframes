@@ -309,6 +309,31 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(await auditCodes(stage(sharedMask))).toContain("text_occluded");
   });
 
+  // fails without the fix: black and other opaque colours ending in ", 0)" read as transparent covers.
+  it.each([
+    { cover: "background:#000", occluded: true },
+    { cover: "background:rgb(200 30 0)", occluded: true },
+    { cover: "background:oklch(0 0 0 / 0)", occluded: false },
+    {
+      cover:
+        "background:repeating-linear-gradient(0deg, oklch(1 0 0 / .04) 0 1px, transparent 1px 4px)",
+      occluded: false,
+    },
+    {
+      cover: "background:radial-gradient(lab(100 0 0 / .9) 1px, transparent 1px) 0 0 / 38px 38px",
+      occluded: false,
+    },
+    {
+      cover: "background:#123;mask-image:linear-gradient(oklch(0 0 0 / 0), oklch(0 0 0 / 0))",
+      occluded: false,
+    },
+  ])("judges a cover with $cover by its paint", async ({ cover, occluded }) => {
+    const covering = `<div style="position:absolute;inset:0;${cover}"></div>`;
+    expect(
+      (await auditCodes(stage(heading(300, "Caption") + covering))).includes("text_occluded"),
+    ).toBe(occluded);
+  });
+
   it("reports text positioned outside the ancestor background", async () => {
     const codes = await auditCodes(
       gradientHeading('<span style="position:relative;top:150px">Gradient text</span>'),
@@ -427,6 +452,75 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(codes.includes("content_overlap")).toBe(overlap);
   });
 
+  // The upper heading paints 100-220 px; the lower one sits at 150-270 px, so only its top 60% can touch it.
+  const upper = heading(100, "Upper");
+  const lower = (style: string) => heading(150, "Lower", style);
+  it.each([
+    { name: "unmasked, the control", html: upper + lower(""), overlap: true },
+    {
+      name: "masked transparent where it meets the other text",
+      html: upper + lower("mask-image:linear-gradient(to bottom, transparent 62%, #000 62%)"),
+      overlap: false,
+    },
+    {
+      name: "masked by a wrapper whose mask fades out the top",
+      html:
+        upper +
+        '<div style="position:absolute;left:0;top:150px;width:1920px;height:120px;mask-image:linear-gradient(#0000 0 62%, #000 62%)">' +
+        '<h1 style="position:absolute;left:100px;top:0;margin:0;font:120px/1 Arial">Lower</h1></div>',
+      overlap: false,
+    },
+    {
+      name: "masked by a radial mask that paints only its bottom",
+      html:
+        upper +
+        lower(
+          "mask-image:radial-gradient(400px 30px at 50% 100%, #000 0%, #000 90%, transparent 100%)",
+        ),
+      overlap: false,
+    },
+    {
+      name: "masked, but still painted where it meets the other text",
+      html: upper + lower("mask-image:linear-gradient(to bottom, #000 62%, transparent 62%)"),
+      overlap: true,
+    },
+    {
+      name: "masked by a mask moved up onto the other text",
+      html:
+        upper +
+        lower(
+          "mask-image:linear-gradient(transparent 62%, #000 62%);mask-repeat:no-repeat;mask-position:0 -75px",
+        ),
+      overlap: true,
+    },
+    {
+      name: "masked from the content box, which this check does not read",
+      html:
+        upper +
+        lower(
+          "mask-image:linear-gradient(transparent 62%, #000 62%);mask-origin:content-box;padding:1px",
+        ),
+      overlap: true,
+    },
+    {
+      name: "clipped by an inset clip-path to its bottom",
+      html: upper + lower("clip-path:inset(62% 0 0 0)"),
+      overlap: false,
+    },
+    {
+      name: "clipped by an overflow-hidden wrapper to its bottom",
+      html:
+        upper +
+        '<div style="position:absolute;left:0;top:225px;width:1920px;height:60px;overflow:hidden">' +
+        '<h1 style="position:absolute;left:100px;top:-75px;margin:0;font:120px/1 Arial">Lower</h1></div>',
+      overlap: false,
+    },
+  ])("judges text overlap on what is painted: $name", async ({ html, overlap }) => {
+    const codes = await auditCodes(`
+        <div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px">${html}</div>`);
+    expect(codes.includes("content_overlap")).toBe(overlap);
+  });
+
   it.each([
     { name: "closed", open: "", overlap: false },
     { name: "open", open: " open", overlap: true },
@@ -470,6 +564,47 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
   );
 
   it.each([
+    { name: "transparent modern oklch fill", style: "color:oklch(1 0 0 / 0)", flagged: true },
+    { name: "faint modern oklab fill", style: "color:oklab(1 0 0 / .02)", flagged: true },
+    { name: "transparent modern lab fill", style: "color:lab(100 0 0 / 0)", flagged: true },
+    { name: "transparent modern lch fill", style: "color:lch(100 0 0 / 0)", flagged: true },
+    {
+      name: "transparent modern display-p3 fill",
+      style: "color:color(display-p3 1 1 1 / 0)",
+      flagged: true,
+    },
+    {
+      name: "modern fill at the paint threshold",
+      style: "color:oklch(1 0 0 / .05)",
+      flagged: true,
+    },
+    {
+      name: "modern fill above the paint threshold",
+      style: "color:oklch(1 0 0 / .051)",
+      flagged: false,
+    },
+    { name: "opaque modern fill", style: "color:oklch(1 0 0 / 1)", flagged: false },
+    { name: "modern fill with omitted alpha", style: "color:oklch(1 0 0)", flagged: false },
+    {
+      name: "transparent modern stroke",
+      style: "color:transparent;-webkit-text-stroke:4px color(display-p3 1 1 1 / 0)",
+      flagged: true,
+    },
+    {
+      name: "faint modern stroke",
+      style: "color:transparent;-webkit-text-stroke:4px oklch(1 0 0 / .02)",
+      flagged: true,
+    },
+    {
+      name: "opaque modern stroke",
+      style: "color:transparent;-webkit-text-stroke:4px color(display-p3 1 1 1 / 1)",
+      flagged: false,
+    },
+    {
+      name: "modern stroke with omitted alpha",
+      style: "color:transparent;-webkit-text-stroke:4px oklch(1 0 0)",
+      flagged: false,
+    },
     {
       name: "outline text (transparent fill, visible stroke)",
       style: "color:transparent;-webkit-text-stroke:4px #fff",
@@ -493,6 +628,30 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       </div>`);
     expect(codes.includes("text_not_painted")).toBe(flagged);
   });
+
+  it.each([
+    { name: "transparent", color: "oklch(.5 0 0 / 0)", occluded: false },
+    { name: "faint", color: "color(display-p3 .5 .5 .5 / .02)", occluded: false },
+    { name: "at the occlusion threshold", color: "oklch(.5 0 0 / .6)", occluded: false },
+    { name: "above the occlusion threshold", color: "oklch(.5 0 0 / .61)", occluded: true },
+    { name: "opaque", color: "oklch(.5 0 0 / 1)", occluded: true },
+    { name: "with omitted alpha", color: "color(display-p3 .5 .5 .5)", occluded: true },
+  ])("judges a modern background $name by its alpha", async ({ color, occluded }) => {
+    const text = heading(300, "Caption");
+    const cover = `<div style="position:absolute;inset:0;background:${color}"></div>`;
+    expect((await auditCodes(stage(text + cover))).includes("text_occluded")).toBe(occluded);
+  });
+
+  it.each([
+    { name: "below", color: "oklch(1 0 0 / .34)", overlap: false },
+    { name: "at", color: "color(display-p3 1 1 1 / .35)", overlap: true },
+  ])(
+    "judges modern overlapping text $name the solid-text threshold",
+    async ({ color, overlap }) => {
+      const text = heading(100, "Upper", `color:${color}`) + heading(150, "Lower");
+      expect((await auditCodes(stage(text))).includes("content_overlap")).toBe(overlap);
+    },
+  );
 
   describe("craft sampling", () => {
     async function sample(body: string) {

@@ -771,7 +771,7 @@ describe("motion-signature.browser counter channel", () => {
   it("ignores a display:none decoy counter owner in a frozen composition", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <div id="decoy"></div>
+        <div id="decoy" style="display: none"></div>
         <span id="countdown"></span>
       </div>
     `;
@@ -799,7 +799,7 @@ describe("motion-signature.browser counter channel", () => {
   it("ignores a decoy counter owner nested inside a display:none subtree", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
-        <div id="hidden-parent"><div id="decoy"></div></div>
+        <div id="hidden-parent" style="display: none"><div id="decoy"></div></div>
         <span id="countdown"></span>
       </div>
     `;

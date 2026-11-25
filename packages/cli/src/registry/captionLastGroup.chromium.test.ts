@@ -69,3 +69,42 @@ describe.runIf(executablePath)("caption-highlight last group in Chromium", () =>
     expect(await lastGroupVisibleAt(LAST_WORD_END_S - 0.05)).toBe(true);
   });
 });
+
+describe.runIf(executablePath)("caption-highlight short word in Chromium", () => {
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await puppeteer.launch({ executablePath, args: ["--no-sandbox"] });
+  });
+
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  function componentWithShortWord(): string {
+    const demoWord = '{ text: "great", start: 0.3, end: 0.55 }';
+    if (!componentHtml.includes(demoWord)) throw new Error("the demo's second word changed");
+    return componentHtml
+      .replace(demoWord, '{ text: "great", start: 0.3, end: 0.34 }')
+      .replace(/<script src="https:[^"]*gsap[^"]*"><\/script>/, `<script>${gsapScript}</script>`);
+  }
+
+  // fails without the fix: a frame inside the 0.01 s tail relit the pill until the phrase ended.
+  it("clears a 0.04 s word's highlight once the word is over", async () => {
+    const page = await browser.newPage();
+    try {
+      await page.setContent(componentWithShortWord());
+      const opacity = await page.evaluate(() => {
+        const timeline = (
+          window as unknown as { __timelines: Record<string, { seek(t: number): void }> }
+        ).__timelines["caption-highlight"];
+        for (const time of [0, 0.3, 0.333, 0.367, 0.4, 0.433, 0.445, 0.467, 0.5])
+          timeline!.seek(time);
+        return Number(getComputedStyle(document.getElementById("hl-bg-1")!).opacity);
+      });
+      expect(opacity).toBe(0);
+    } finally {
+      await page.close();
+    }
+  });
+});

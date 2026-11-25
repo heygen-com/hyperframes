@@ -1,3 +1,4 @@
+import { refuseUnderLimit } from "./credit-limit.mjs";
 import { HEYGEN_CLIENT_SOURCE_ARGV, runHeygenJson } from "./heygen-cli.mjs";
 
 // Voice / TTS generation via the HeyGen CLI — the only external CLI media-use
@@ -37,6 +38,7 @@ function defaultVoiceId() {
 }
 
 export async function heygenTtsGenerate(intent, ctx) {
+  refuseUnderLimit(ctx?.projectDir ?? process.cwd(), "a HeyGen voice", "voice");
   const voiceId = ctx?.voiceId || defaultVoiceId();
   if (!voiceId) return null;
   const p = runHeygenJson(

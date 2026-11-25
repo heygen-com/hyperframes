@@ -35,6 +35,7 @@ export interface CaptureCostEstimate {
   multiplier: number;
   reasons: string[];
   p95Ms?: number;
+  medianMs?: number;
 }
 
 export interface CaptureCalibrationSample {
@@ -100,12 +101,14 @@ function combineCaptureCostEstimates(
       multiplier: staticCost.multiplier,
       reasons: [...staticCost.reasons, ...measuredCost.reasons],
       p95Ms: measuredCost.p95Ms,
+      medianMs: measuredCost.medianMs,
     };
   }
   return {
     multiplier: measuredCost.multiplier,
     reasons: [...measuredCost.reasons, ...staticCost.reasons],
     p95Ms: measuredCost.p95Ms,
+    medianMs: measuredCost.medianMs,
   };
 }
 
@@ -228,6 +231,12 @@ export function estimateMeasuredCaptureCostMultiplier(
     return { multiplier: 1, reasons: [] };
   }
   const p95Ms = Math.round(p95Sample.captureTimeMs);
+  const mid = sorted.length / 2;
+  const medianMs = Math.round(
+    sorted.length % 2 === 1
+      ? sorted[Math.floor(mid)]!.captureTimeMs
+      : (sorted[mid - 1]!.captureTimeMs + sorted[mid]!.captureTimeMs) / 2,
+  );
   const multiplier = Math.min(
     MAX_MEASURED_CAPTURE_COST_MULTIPLIER,
     Math.max(1, Math.round((p95Ms / CAPTURE_CALIBRATION_TARGET_MS) * 100) / 100),
@@ -237,7 +246,41 @@ export function estimateMeasuredCaptureCostMultiplier(
     multiplier,
     reasons: multiplier > 1 ? [`calibration-p95=${p95Ms}ms`] : [],
     p95Ms,
+    medianMs,
   };
+}
+
+/** Auto mode chose the hardware GPU and calibration measured it slow: worth timing software too. */
+export function shouldCalibrateSoftwareGpu(
+  requestedMode: EngineConfig["browserGpuMode"],
+  resolvedMode: "software" | "hardware",
+  hardware: CaptureCostEstimate | undefined,
+): boolean {
+  return (
+    requestedMode === "auto" &&
+    resolvedMode === "hardware" &&
+    hardware !== undefined &&
+    hardware.multiplier > 1 &&
+    hardware.p95Ms !== undefined
+  );
+}
+
+export function settleAutoGpuChoice(
+  hardware: CaptureCostEstimate | undefined,
+  software: CaptureCostEstimate | undefined,
+): "software" | "hardware" | undefined {
+  if (hardware?.p95Ms === undefined) return undefined;
+  if (hardware.multiplier <= 1) return "hardware";
+  if (software?.p95Ms === undefined) return undefined;
+  return software.p95Ms < hardware.p95Ms ? "software" : "hardware";
+}
+
+/** Auto mode keeps the hardware GPU unless software measured strictly faster. */
+export function pickAutoGpuModeFromCalibration(
+  hardware: CaptureCostEstimate,
+  software: CaptureCostEstimate | undefined,
+): "software" | "hardware" {
+  return settleAutoGpuChoice(hardware, software) ?? "hardware";
 }
 
 export function selectCaptureCalibrationFrames(totalFrames: number): number[] {
@@ -260,8 +303,10 @@ export async function measureCaptureCostFromSession(
   totalFrames: number,
   fps: number,
   log?: ProducerLogger,
+  /** The film frame a range render starts at; samples are taken inside its window. */
+  firstFrame = 0,
 ): Promise<{ estimate: CaptureCostEstimate; samples: CaptureCalibrationSample[] }> {
-  const sampledFrames = selectCaptureCalibrationFrames(totalFrames);
+  const sampledFrames = selectCaptureCalibrationFrames(totalFrames).map((i) => firstFrame + i);
   const samples: CaptureCalibrationSample[] = [];
   const totalSamples = sampledFrames.length;
 
@@ -343,6 +388,8 @@ export interface CaptureCalibrationOutcome {
   probeSession: CaptureSession | null;
   /** Buffer of whichever session was active last; the sequencer uses it for the error-path tail. */
   lastBrowserConsole: string[];
+  /** The final calibration failure was a `Runtime.evaluate` timeout: the page never answered. */
+  calibrationEvaluateTimedOut: boolean;
 }
 
 /**
@@ -381,6 +428,7 @@ export async function runCaptureCalibration(input: {
   let probeSession = input.probeSession;
   let forceScreenshot = input.forceScreenshot;
   let lastBrowserConsole: string[] = [];
+  let calibrationEvaluateTimedOut = false;
 
   const fps = fpsToNumber(job.config.fps);
   // Holds whichever calibration session is currently open. The closure
@@ -417,7 +465,13 @@ export async function runCaptureCalibration(input: {
     }
     assertNotAborted();
     log.info("Calibration session ready, capturing test frames...");
-    const result = await measureCaptureCostFromSession(session, totalFrames, fps, log);
+    const result = await measureCaptureCostFromSession(
+      session,
+      totalFrames,
+      fps,
+      log,
+      job.frameWindow?.startFrame,
+    );
     logCaptureCalibrationResult(result, log);
     return result;
   };
@@ -440,6 +494,7 @@ export async function runCaptureCalibration(input: {
       !forceScreenshot && shouldFallbackToScreenshotAfterCalibrationError(error);
     if (!shouldFallback) {
       calibration = createFailedCaptureCalibrationEstimate("calibration-failed");
+      calibrationEvaluateTimedOut = isEvaluateTimeout(error);
       log.warn("[Render] Auto-worker calibration failed; using conservative worker budget.", {
         protocolTimeout: calibrationCfg.protocolTimeout,
         error: error instanceof Error ? error.message : String(error),
@@ -481,6 +536,7 @@ export async function runCaptureCalibration(input: {
         );
       } catch (fallbackError) {
         calibration = createFailedCaptureCalibrationEstimate("calibration-screenshot-failed");
+        calibrationEvaluateTimedOut = isEvaluateTimeout(fallbackError);
         log.warn(
           "[Render] Screenshot auto-worker calibration failed after BeginFrame fallback; using conservative worker budget.",
           {
@@ -497,7 +553,17 @@ export async function runCaptureCalibration(input: {
     }
   }
 
-  return { calibration, forceScreenshot, probeSession, lastBrowserConsole };
+  return {
+    calibration,
+    forceScreenshot,
+    probeSession,
+    lastBrowserConsole,
+    calibrationEvaluateTimedOut,
+  };
+}
+
+export function isEvaluateTimeout(error: unknown): boolean {
+  return /Runtime\.evaluate timed out/i.test(normalizeErrorMessage(error));
 }
 
 /**

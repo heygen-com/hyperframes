@@ -1,16 +1,25 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
+import { resolve } from "node:path";
+import { ffmpegCwd, findFfBinary, mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
+import { assertLiteralMediaInput } from "@hyperframes/parsers/literal-media-input";
+import {
+  decodableAudioStream,
+  misstatesPcmByteRate,
+  type FfprobePcmFields,
+} from "@hyperframes/parsers/media-streams";
 import type { AudioSignal } from "@hyperframes/core/audio-analysis";
 
 const run = promisify(execFile);
+const absoluteLocal = (file: string): string =>
+  /^(?:[a-z][a-z0-9+.-]+:|subfile,)/i.test(file) ? file : resolve(file);
 
 export interface AudioStreamInfo {
   audioStream: number;
   sampleRate: number;
   channels: number;
   duration: number;
+  misstatedByteRate?: boolean;
 }
 
 function requiredBinary(name: "ffmpeg" | "ffprobe"): string {
@@ -19,10 +28,21 @@ function requiredBinary(name: "ffmpeg" | "ffprobe"): string {
   return path;
 }
 
+function literalInputArgs(binary: string, file: string, inputArgs: readonly string[]) {
+  if (inputArgs.length === 0) return mediaInputArgs(binary, file);
+  assertLiteralMediaInput(file);
+  return inputArgs;
+}
+
 /** The format of the audio track ffmpeg can decode, or `null` when the file has none. */
-export async function probeAudio(file: string): Promise<AudioStreamInfo | null> {
+export async function probeAudio(
+  file: string,
+  inputArgs: readonly string[] = [],
+): Promise<AudioStreamInfo | null> {
+  file = absoluteLocal(file);
+  const ffprobe = requiredBinary("ffprobe");
   const { stdout } = await run(
-    requiredBinary("ffprobe"),
+    ffprobe,
     [
       "-v",
       "error",
@@ -32,17 +52,14 @@ export async function probeAudio(file: string): Promise<AudioStreamInfo | null> 
       "-show_format",
       "-of",
       "json",
+      ...literalInputArgs(ffprobe, file, inputArgs),
       "--",
       file,
     ],
-    { maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+    { maxBuffer: 8 * 1024 * 1024, windowsHide: true, cwd: ffmpegCwd() },
   );
   const parsed = JSON.parse(stdout) as {
-    streams?: (FfprobeStreamCodec & {
-      sample_rate?: string;
-      channels?: number;
-      duration?: string;
-    })[];
+    streams?: (FfprobePcmFields & { duration?: string })[];
     format?: { duration?: string };
   };
   const index = decodableAudioStream(parsed.streams ?? []);
@@ -53,6 +70,7 @@ export async function probeAudio(file: string): Promise<AudioStreamInfo | null> 
     sampleRate: Number(stream.sample_rate),
     channels: stream.channels ?? 1,
     duration: Number(stream.duration ?? parsed.format?.duration ?? 0),
+    misstatedByteRate: misstatesPcmByteRate(stream),
   };
 }
 
@@ -66,6 +84,7 @@ export interface DecodeWindow {
 export interface DecodeFormat {
   sampleRate?: number;
   mono?: boolean;
+  inputArgs?: readonly string[];
 }
 
 export interface Decoded {
@@ -80,7 +99,9 @@ export async function decodeAudio(
   probed?: AudioStreamInfo,
   format: DecodeFormat = {},
 ): Promise<Decoded | null> {
-  const probedInfo = probed ?? (await probeAudio(file));
+  file = absoluteLocal(file);
+  const inputArgs = format.inputArgs ?? [];
+  const probedInfo = probed ?? (await probeAudio(file, inputArgs));
   if (!probedInfo) return null;
   const info = {
     ...probedInfo,
@@ -88,15 +109,19 @@ export async function decodeAudio(
     channels: format.mono ? 1 : probedInfo.channels,
   };
   const seek = window.from ? ["-ss", String(window.from)] : [];
+  const [inputSeek, decodedSeek] = probedInfo.misstatedByteRate ? [[], seek] : [seek, []];
   const length = window.seconds === undefined ? [] : ["-t", String(window.seconds)];
+  const ffmpeg = requiredBinary("ffmpeg");
   const { stdout } = await run(
-    requiredBinary("ffmpeg"),
+    ffmpeg,
     [
       "-v",
       "error",
-      ...seek,
+      ...inputSeek,
+      ...literalInputArgs(ffmpeg, file, inputArgs),
       "-i",
       file,
+      ...decodedSeek,
       ...length,
       "-map",
       `0:a:${probedInfo.audioStream}`,
@@ -108,7 +133,12 @@ export async function decodeAudio(
       "pcm_f32le",
       "-",
     ],
-    { encoding: "buffer", maxBuffer: 2 * 1024 * 1024 * 1024, windowsHide: true },
+    {
+      encoding: "buffer",
+      maxBuffer: 2 * 1024 * 1024 * 1024,
+      windowsHide: true,
+      cwd: ffmpegCwd(),
+    },
   );
   const bytes = stdout.byteLength - (stdout.byteLength % 4);
   const interleaved = new Float32Array(

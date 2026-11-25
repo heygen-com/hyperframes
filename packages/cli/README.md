@@ -67,8 +67,9 @@ npx hyperframes normalize-audio --reference target-audio --target user-audio
 npx hyperframes normalize-audio --reference target-audio --target user-audio --write
 ```
 
-It updates only the target element's `data-volume` and refuses unsafe boosts
-that exceed Studio's +12 dB ceiling or would clip.
+It updates only the target element's `data-volume`. Where a full match would pass
+Studio's +12 dB ceiling or -1.5 dBTP, it applies the most that fits and says how far
+under the reference that leaves the target.
 
 ### `render`
 
@@ -99,31 +100,36 @@ interruption path. Probe failures retain their existing stage/reason but do not
 gain subprocess evidence here; browser/FX failures remain classified as internal.
 Desktop ingestion and live report delivery are separate changes.
 
-### `publish`
+Piped, non-quiet renders also emit a single `@hf-result ` JSON line after a local
+render succeeds, never after a failure. Version 1 has `operation: "render"` and
+`reference_background`, the background the render measured from the composition's
+root and body: `{"kind":"solid","rgb":[r,g,b]}`, `{"kind":"none"}`,
+`{"kind":"unsupported_non_solid"}` or `{"kind":"unknown"}`. A render that applied
+motion blur also carries `motion_blur`: `tier` (`"capture"` or `"filter"`, absent
+when none ran), `movers`, `failed_frames` and a `fingerprint` of 14 snake_case
+counts (absent when the page produced none); it is absent when the render has no
+blur summary. Consumers must ignore unknown versions and fields. A `--docker` render prints no result line from the
+launcher. In batch mode each manifest row carries the same `reference_background` value (`null` until the row completes, and for a
+row that failed).
 
-Upload a project directory and get a hosted URL that keeps working after the CLI exits.
-Published projects are private by default:
+### `share`
+
+To share a rendered video for review, sign in and run `share` from your project
+directory. Choose who can open the review when prompted.
 
 ```bash
-npx hyperframes publish
-npx hyperframes publish ./my-video
-npx hyperframes publish --public
-npx hyperframes publish --yes
+npx hyperframes auth login
+npx hyperframes share
 ```
 
-Signed-out publishing returns an authentication-required claim URL; opening it
-lets someone sign in and claim the project. Sign in first with
-`npx hyperframes auth login` to publish an owned project you can update. Use
-`--public` to make the claimed project visible to anyone. `--yes` only skips the
-confirmation prompt and does not change visibility.
+In scripts, pass an explicit audience. See the [share reference](https://hyperframes.heygen.com/packages/cli#share) for the options.
 
-Signed-in publishers can use `--update <url-or-id>` to target an existing project
-or `--space <space-id>` to publish into a shared team space. If the requested
-project is missing or inaccessible, publishing can create a new project instead;
-check the printed URL and status.
+### `publish`
 
-See the [publish reference](https://hyperframes.heygen.com/packages/cli#publish)
-for all options, including video proxy settings.
+`publish` is deprecated for new projects. Existing published URLs still work.
+To update one, sign in and run `npx hyperframes publish --update <url-or-id>`.
+If the target is missing or inaccessible, check the printed URL and status:
+the service can create a new project. See the [legacy publish options](https://hyperframes.heygen.com/packages/cli#publish).
 
 ### `lint`
 
@@ -192,6 +198,15 @@ Check for updates and show upgrade instructions:
 ```bash
 npx hyperframes upgrade
 npx hyperframes upgrade --check --json  # machine-readable for agents
+```
+
+### `update`
+
+Check the CLI and the installed skills for updates in one call, or install both:
+
+```bash
+npx hyperframes update --check --json  # report only, machine-readable for agents
+npx hyperframes update --yes           # upgrade the CLI, then refresh the skills
 ```
 
 ## Documentation

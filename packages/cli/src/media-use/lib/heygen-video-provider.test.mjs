@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -12,13 +13,23 @@ import {
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { HEYGEN_NOT_AUTHENTICATED_MESSAGE } from "./heygen-cli.mjs";
 import { AVATAR_VIDEO_SIGNIN_MESSAGE } from "./heygen-video-provider.mjs";
+import { discardPrivateOutput } from "./private-output.mjs";
+import { mediaTransport } from "./media-fetch.mjs";
+// These tests stub globalThis.fetch; media downloads reach the same stub.
+const transportFetch = mediaTransport.fetch;
+beforeEach(() => {
+  mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);
+});
+afterEach(() => {
+  mediaTransport.fetch = transportFetch;
+});
 
 function cleanupDownload(localPath) {
   if (
-    basename(localPath) === "video.mp4" &&
+    basename(localPath) === "output.mp4" &&
     basename(dirname(localPath)).startsWith("media-use-heygen-video-")
   ) {
     rmSync(dirname(localPath), { recursive: true, force: true });
@@ -178,7 +189,7 @@ test("downloads a generated avatar video and returns the generated MP4 result", 
         });
         assert.ok(result);
         assert.equal(join(tmpdir(), result.localPath.slice(tmpdir().length + 1)), result.localPath);
-        assert.match(result.localPath, /media-use-heygen-video-[^/\\]+[/\\]video\.mp4$/);
+        assert.match(result.localPath, /media-use-heygen-video-[^/\\]+[/\\]output\.mp4$/);
         if (process.platform !== "win32") {
           assert.equal(statSync(dirname(result.localPath)).mode & 0o777, 0o700);
         }
@@ -193,6 +204,8 @@ test("downloads a generated avatar video and returns the generated MP4 result", 
           },
         });
         assert.deepEqual(readFileSync(result.localPath), VIDEO_FIXTURE);
+        discardPrivateOutput(result.localPath);
+        assert.equal(existsSync(dirname(result.localPath)), false);
       },
     );
   } finally {
@@ -432,4 +445,27 @@ test("removes private download staging on failure while returning null", async (
     else process.env.TMPDIR = previousTmpdir;
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("a download failure prints its message with control characters escaped", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("download failed \x1b]0;title\x07 here");
+  });
+  const errors = [];
+  t.mock.method(console, "error", (message) => errors.push(message));
+
+  await withFakeHeygen(
+    { response: JSON.stringify({ data: { video_url: "https://example.invalid/video.mp4" } }) },
+    async () => {
+      const generate = await freshGenerate();
+      assert.equal(await generate("Failure", { avatarId: "a", voiceId: "v" }), null);
+    },
+  );
+
+  assert.ok(
+    errors.includes(
+      "media-use: heygen video download failed: download failed \\x1b]0;title\\x07 here",
+    ),
+    errors.join("\n"),
+  );
 });

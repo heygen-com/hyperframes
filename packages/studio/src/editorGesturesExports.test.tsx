@@ -98,10 +98,16 @@ describe("marquee package export, driven by a host", () => {
     act(() => marquee().begin(at(1, 1)));
     expect(overlay.setPointerCapture).toHaveBeenCalledWith(7);
     act(() => marquee().onPointerMove(at(20, 20)));
-    expect(marquee().marqueeRect).toEqual({ left: 1, top: 1, width: 19, height: 19 });
+    expect(marquee().marqueeRect).toEqual({
+      left: 1,
+      top: 1,
+      width: 19,
+      height: 19,
+      mode: "replace",
+    });
     expect(marquee().candidateRects).toEqual([rects.get("a")]);
     await act(async () => marquee().onPointerUp(at(20, 20, true)));
-    expect(onSelect).toHaveBeenCalledWith(["a"], true);
+    expect(onSelect).toHaveBeenCalledWith(["a"], "add");
     expect(overlay.releasePointerCapture).toHaveBeenCalledWith(7);
     expect(marquee().marqueeRect).toBeNull();
   });
@@ -120,7 +126,7 @@ describe("marquee package export, driven by a host", () => {
     const { onSelect, at, marquee } = mountMarquee<string>({ resolveHits });
     act(() => marquee().begin(at(1, 1)));
     await act(async () => marquee().onPointerUp(at(2, 2)));
-    expect(onSelect).toHaveBeenCalledWith([], false);
+    expect(onSelect).toHaveBeenCalledWith([], "replace");
     expect(resolveHits).not.toHaveBeenCalled();
   });
 
@@ -167,7 +173,7 @@ describe("marquee package export, driven by a host", () => {
       document.getElementById("a"),
       expect.objectContaining({ skipSourceProbe: true }),
     );
-    expect(onSelect).toHaveBeenCalledWith([{ id: "a" }], false);
+    expect(onSelect).toHaveBeenCalledWith([{ id: "a" }], "replace");
   });
 
   it("passes pointer events that are not a marquee to Studio's gestures, and needs none", () => {

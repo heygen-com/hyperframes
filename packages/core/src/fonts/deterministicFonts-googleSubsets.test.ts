@@ -563,21 +563,21 @@ describe("authored Google font stylesheet", () => {
     expect(urls.filter((url) => url.startsWith("https://fonts.googleapis.com/"))).toEqual([href]);
   });
 
-  it("does not append page text when the character set does not fit on the font URL", async () => {
+  it("splits page text that does not fit one font URL across several authored requests", async () => {
     const href = "https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400";
-    const file = "https://fonts.gstatic.com/s/notoserifjp/full.woff2";
+    const file = "https://fonts.gstatic.com/s/notoserifjp/subset.woff2";
     const many = Array.from({ length: 600 }, (_, i) => String.fromCodePoint(0x4e00 + i)).join("");
     const urls: string[] = [];
     const fetchImpl = (async (input: unknown) => {
       const url = String(input);
       urls.push(url);
-      if (url === href) {
+      if (url.startsWith(`${href}&text=`)) {
         return new Response(
-          `@font-face { font-family: 'Noto Serif JP'; font-style: normal; font-weight: 400; src: url(${file}) format('woff2'); unicode-range: U+3000-30FF; }`,
+          `@font-face { font-family: 'Noto Serif JP'; font-style: normal; font-weight: 400; src: url(${file}) format('woff2'); }`,
           { status: 200 },
         );
       }
-      if (url === file) return new Response("NOTO_FULL", { status: 200 });
+      if (url === file) return new Response("NOTO_SUBSET", { status: 200 });
       return new Response("", { status: 404 });
     }) as unknown as typeof fetch;
 
@@ -586,7 +586,13 @@ describe("authored Google font stylesheet", () => {
       { fetchImpl, allowSystemFontCapture: false },
     );
 
-    expect(urls.filter((url) => url.startsWith("https://fonts.googleapis.com/"))).toEqual([href]);
+    const css = urls.filter((url) => url.startsWith("https://fonts.googleapis.com/"));
+    expect(css.length).toBeGreaterThan(1);
+    for (const url of css) {
+      expect(url.startsWith(`${href}&text=`)).toBe(true);
+      const text = new URL(url).searchParams.get("text")!;
+      expect(encodeURIComponent(text).length).toBeLessThanOrEqual(1_700);
+    }
   });
 
   it("does not embed a local file when the page's link failed", async () => {
@@ -618,6 +624,7 @@ describe("authored Google font stylesheet", () => {
     expect(result).toContain(b64(LOCAL_FONT_BYTES));
     expect(systemFontLocator.locateSystemFontVariants).toHaveBeenCalledWith(
       "Hf Authored Fail Test",
+      { byInnerName: false },
     );
   });
 });

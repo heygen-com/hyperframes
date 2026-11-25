@@ -49,11 +49,13 @@ Parameters:
   ChromeSource:
     Type: String
     Default: sparticuz
-    AllowedValues: [sparticuz, chrome-headless-shell]
+    AllowedValues: [sparticuz]
     Description: >-
       Which Chrome runtime the bundled ZIP was built with. Must match the
       `--source=` flag passed to `build-zip.ts`. The handler reads this
-      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot.
+      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot. Only
+      sparticuz: a chrome-headless-shell ZIP is over Lambda's unzipped
+      limit, and the arm64 video image runs its own chrome-headless-shell.
 
   ChunkInvocationAlarmThreshold:
     Type: Number
@@ -214,7 +216,6 @@ Resources:
         MemorySize: !Ref LambdaMemoryMb
         Timeout: !Ref LambdaTimeoutSec
         ReservedConcurrency: !Ref ReservedConcurrency
-        ChromeSource: !Ref ChromeSource
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -460,6 +461,7 @@ Resources:
                                 - PlanV2IntegrityError
                                 - PLAN_ARTIFACT_DIGEST_MISMATCH
                                 - ChromeBinaryUnavailableError
+                                - ImageMissingFromFrameError
                               MaxAttempts: 0
                             - ErrorEquals: [Lambda.TooManyRequestsException]
                               IntervalSeconds: 5

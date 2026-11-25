@@ -14,8 +14,11 @@ import { Readable } from "node:stream";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps, fpsToNumber } from "@hyperframes/core";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { RENDER_VARIABLES_FILE } from "@hyperframes/core/project-folders";
 import {
   folderGone,
+  isLinkFreeWithinProject,
   isPrivateProjectFile,
   mkdirWithinProject,
   resolveWithinProject,
@@ -23,6 +26,8 @@ import {
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { parseEncoderOptions, type EncoderOptionsBody } from "../helpers/encoderOptions.js";
+import { parseRenderRange } from "../helpers/renderRange.js";
+import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 const RENDER_MIME: Record<string, string> = {
@@ -56,7 +61,8 @@ function contentDispositionHeader(disposition: "inline" | "attachment", filename
 
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
-  const renderJobs = new Map<string, RenderJobState & { createdAt: number }>();
+  const renderJobs = new Map<string, RenderJobState>();
+  const CANCEL_SETTLE_MS = 45_000;
 
   const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
     let jobId = baseId;
@@ -66,7 +72,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return jobId;
   };
 
-  // TTL cleanup for completed jobs (5 minutes)
+  // A finished job stays readable for 5 minutes after it finishes
   const TTL_MS = 300_000;
   const CLEANUP_INTERVAL_MS = 60_000;
   let cleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -77,12 +83,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     !process.argv.includes("build");
 
   const cleanupFinishedJobs = () => {
-    const now = Date.now();
-    for (const [key, job] of renderJobs) {
-      if (job.status !== "rendering" && now - job.createdAt > TTL_MS) {
-        renderJobs.delete(key);
-      }
-    }
+    forgetJobsFinishedLongerThan(TTL_MS, renderJobs, (job) => job.status !== "rendering");
     if (renderJobs.size === 0 && cleanupTimer) {
       clearInterval(cleanupTimer);
       cleanupTimer = null;
@@ -128,6 +129,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       gpu?: boolean;
       previewMotionBlur?: boolean;
       pageMotionBlur?: unknown;
+      start?: unknown;
+      end?: unknown;
     };
     const VALID_FORMATS = ["mp4", "webm", "mov", "gif"] as const;
     const FORMAT_EXT: Record<string, string> = {
@@ -176,6 +179,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
 
     const encoder = parseEncoderOptions(body, format);
     if (!encoder.ok) return c.json({ error: encoder.error }, 400);
+    const range = parseRenderRange(body);
+    if (!range.ok) return c.json({ error: range.error }, 400);
 
     const requestedPageMotionBlur = body.pageMotionBlur;
     if (requestedPageMotionBlur !== undefined && requestedPageMotionBlur !== "off") {
@@ -212,13 +217,30 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,
       ...(pageMotionBlur === undefined ? {} : { pageMotionBlur }),
+      ...(range.range ? { range: range.range } : {}),
     });
-    (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
-    renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
+    renderJobs.set(jobId, jobState);
 
     ensureCleanupTimer();
 
     return c.json({ jobId, status: "rendering" });
+  });
+
+  api.put("/projects/:id/render-variables", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    const values: unknown = await c.req.json().catch(() => undefined);
+    if (!isVariablesPayload(values)) return c.json({ error: VARIABLES_PAYLOAD_ERROR }, 400);
+    if (folderGone(project.dir)) return projectDirMissing(c);
+    // The variable ids are the composition's, so a write through a link could put chosen JSON in package.json. A link
+    // on the way is refused; a link in the file's place is replaced by the rename, not written through.
+    const path = join(project.dir, RENDER_VARIABLES_FILE);
+    if (!isLinkFreeWithinProject(project.dir, dirname(path))) {
+      return c.json({ error: "forbidden", why: "link" }, 403);
+    }
+    mkdirWithinProject(project.dir, dirname(path));
+    replaceFileAtomically(path, JSON.stringify(values, null, 2) + "\n", 0o644);
+    return c.json({ path: RENDER_VARIABLES_FILE });
   });
 
   // SSE progress stream
@@ -251,13 +273,19 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
 
   // Cancel an in-flight render. Marks the job cancelled immediately (so the
   // SSE stream terminates) and invokes the adapter's abort hook when present.
-  api.post("/render/:jobId/cancel", (c) => {
+  api.post("/render/:jobId/cancel", async (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
     if (!job) return c.json({ error: "not found" }, 404);
     if (job.status === "rendering") {
       job.status = "cancelled";
-      job.cancel?.();
+      let giveUp: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise((done) => (giveUp = setTimeout(done, CANCEL_SETTLE_MS)));
+      try {
+        await Promise.race([job.cancel?.(), late]);
+      } finally {
+        clearTimeout(giveUp);
+      }
     }
     return c.json({ status: job.status });
   });
@@ -410,8 +438,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
           status: file.status,
           progress: 100,
           outputPath: file.path,
-          createdAt: file.createdAt,
-        } as RenderJobState & { createdAt: number });
+        });
       }
     }
     return c.json({ renders: files.map(({ path: _path, ...render }) => render) });

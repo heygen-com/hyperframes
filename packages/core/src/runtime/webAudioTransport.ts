@@ -1,3 +1,4 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   attachElementFxChain,
   readElementAutomation,
@@ -23,7 +24,9 @@ import { rateAt, sourceTimeAt, timeAtSourceTime } from "../speedRamp.js";
 import { classifyWebAudioMediaRoute, reportWebAudioMediaRoute } from "./webAudioRoute.js";
 import { assetUrl } from "./assetUrl.js";
 import { mediaElementTime } from "./mediaClock.js";
+import { sourceLengthOf } from "./sourceLength.js";
 import { clampFadesToDuration, fadeGain, readElementFades } from "../audioFade.js";
+import { AudioTooLong, assertDecodeFits, unreadFits } from "../audioDecode.js";
 
 const MASTER_FX_ATTRS: FxAttributes = { automation: null };
 
@@ -91,8 +94,11 @@ function startBoundedSource(
   const remaining = (clipDuration - from) * mediaRate;
   if (hasBound && remaining <= 0) return false;
   const when = from > elapsed ? scheduledAt + (from - elapsed) / globalRate : 0;
-  if (hasBound) node.start(when, from * mediaRate + mediaStart, remaining);
-  else node.start(when, from * mediaRate + mediaStart);
+  let offset = from * mediaRate + mediaStart;
+  if (node.loop)
+    offset = node.loopStart + ((offset - node.loopStart) % (node.loopEnd - node.loopStart));
+  if (hasBound) node.start(when, offset, remaining);
+  else node.start(when, offset);
   return true;
 }
 
@@ -213,7 +219,9 @@ const decodeKey = (el: HTMLMediaElement): string | null => {
   const src = el.currentSrc || el.getAttribute("src");
   if (!src) return null;
   try {
-    return assetUrl(src);
+    const url = new URL(assetUrl(src));
+    url.hash = "";
+    return url.href;
   } catch {
     return src;
   }
@@ -229,14 +237,18 @@ const FOLLOWED_EVENTS = ["playing", "seeked", "ratechange"] as const;
 // A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
 const IDLE_SUSPEND_MS = 10000;
 const SHORT_DECODE_SECONDS = 0.25;
+const DECODE_BUDGET_BYTES = 256 * 1024 * 1024;
+const ASSUMED_CHANNELS = 2;
+const BYTES_PER_SAMPLE = 4;
 
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
+  private _pendingDecodeBytes = new Map<string, number>();
   private _failedSrcs = new Set<string>();
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
-  private _handedOver = new WeakSet<HTMLMediaElement>();
+  private _handedOver = new Set<HTMLMediaElement>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
   /** Where the master bus chain lands; the program meter taps here. */
@@ -290,6 +302,12 @@ export class WebAudioTransport {
   private _restTimer: ReturnType<typeof setTimeout> | null = null;
 
   async init(): Promise<boolean> {
+    return this.open();
+  }
+
+  /** Builds the context on the calling thread: on Windows that opens the audio device and can block seconds. */
+  open(): boolean {
+    if (this._ctx) return true;
     try {
       this._ctx = new AudioContext();
       this._ctx.onstatechange = () => this.rest();
@@ -314,10 +332,10 @@ export class WebAudioTransport {
   }
 
   private rest(): void {
-    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    if (this._restTimer !== null) wallClearTimeout(this._restTimer);
     this._restTimer = null;
     if (!this._ctx || this._ctx.state !== "running" || this._suspendPending) return;
-    this._restTimer = setTimeout(() => {
+    this._restTimer = wallSetTimeout(() => {
       this._restTimer = null;
       this.suspendIfIdle();
     }, IDLE_SUSPEND_MS);
@@ -358,22 +376,54 @@ export class WebAudioTransport {
     if (!src) return Promise.resolve(null);
     const pending = this._decoding.get(src);
     if (pending) return pending;
-    const decoding = this.fetchAndDecode(src, el).finally(() => this._decoding.delete(src));
+    this._pendingDecodeBytes.set(src, this.estimateDecodedBytes(el.duration));
+    const decoding = this.fetchAndDecode(src, el).finally(() => {
+      this._decoding.delete(src);
+      this._pendingDecodeBytes.delete(src);
+    });
     this._decoding.set(src, decoding);
     return decoding;
   }
 
-  private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
-    if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
-    if (this._failedSrcs.has(src)) return null;
-    if (!this._ctx) return null;
+  fitsDecodeBudget(el: HTMLMediaElement): boolean {
+    const src = decodeKey(el);
+    if (!src) return false;
+    if (this._bufferCache.has(src) || this._decoding.has(src)) return true;
+    if (!Number.isFinite(el.duration)) return false;
+    return this.decodedBytes() + this.estimateDecodedBytes(el.duration) <= DECODE_BUDGET_BYTES;
+  }
 
-    // Fetch the bytes. A network error or non-OK status (e.g. a 404 for an
-    // asset that simply has not been uploaded yet) is TRANSIENT — return null
-    // WITHOUT blacklisting, so the next play/seek generation retries once the
-    // asset becomes available. (Previously these were added to `_failedSrcs`,
-    // which is never cleared, permanently silencing a merely-late track.)
-    let arrayBuffer: ArrayBuffer;
+  private estimateDecodedBytes(seconds: number): number {
+    const rate = this._ctx?.sampleRate ?? 48000;
+    if (!Number.isFinite(seconds)) return 0;
+    return seconds * rate * ASSUMED_CHANNELS * BYTES_PER_SAMPLE;
+  }
+
+  private decodedBytes(): number {
+    let bytes = 0;
+    for (const buffer of this._bufferCache.values())
+      bytes += buffer.length * buffer.numberOfChannels * BYTES_PER_SAMPLE;
+    for (const pending of this._pendingDecodeBytes.values()) bytes += pending;
+    return bytes;
+  }
+
+  /** Whether its length was read, for a source that has not failed for good and is not too long to decode. */
+  private async mayDecode(src: string, el: HTMLMediaElement): Promise<"read" | "unread" | null> {
+    if (this._failedSrcs.has(src)) return null;
+    try {
+      return await assertDecodeFits(src, el.duration);
+    } catch (err) {
+      if (!(err instanceof AudioTooLong)) throw err;
+      this._failedSrcs.add(src);
+      return null;
+    }
+  }
+
+  // Fetch the bytes. A network error or non-OK status (e.g. a 404 for an
+  // asset that simply has not been uploaded yet) is TRANSIENT — return null
+  // WITHOUT blacklisting, so the next play/seek generation retries once the
+  // asset becomes available.
+  private async fetchBytes(src: string, el: HTMLMediaElement): Promise<ArrayBuffer | null> {
     try {
       // `no-store`: a retry must actually re-request the asset — not replay a
       // cached 404/stale response from the failed attempt that we chose not to
@@ -384,16 +434,40 @@ export class WebAudioTransport {
         reportMediaLoadFailure(el, "fetch", response.status);
         return null;
       }
-      arrayBuffer = await response.arrayBuffer();
+      return await response.arrayBuffer();
     } catch (err) {
       swallow("webAudioTransport.fetch", err);
       reportMediaLoadFailure(el, "fetch", null);
       return null;
     }
+  }
 
-    // A decode failure means the bytes themselves are unusable (corrupt or an
-    // unsupported codec) — that IS permanent, so blacklist to avoid re-decoding
-    // the same bad payload on every generation.
+  private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
+    if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
+    if (!this._ctx) return null;
+    const length = await this.mayDecode(src, el);
+    if (!length) return null;
+
+    const arrayBuffer = await this.fetchBytes(src, el);
+    if (!arrayBuffer) return null;
+
+    // A source whose length can't be read and whose bytes could pass the budget plays through its element.
+    if (length === "unread" && !unreadFits(arrayBuffer.byteLength)) {
+      this._failedSrcs.add(src);
+      return null;
+    }
+    return this.decode(src, el, arrayBuffer);
+  }
+
+  // A decode failure means the bytes themselves are unusable (corrupt or an
+  // unsupported codec) — that IS permanent, so blacklist to avoid re-decoding
+  // the same bad payload on every generation.
+  private async decode(
+    src: string,
+    el: HTMLMediaElement,
+    arrayBuffer: ArrayBuffer,
+  ): Promise<AudioBuffer | null> {
+    if (!this._ctx) return null;
     try {
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
       // A file whose container timescale disagrees with its stream decodes short; its element plays it whole.
@@ -644,7 +718,7 @@ export class WebAudioTransport {
       ramp(1);
     };
     ramp(0);
-    setTimeout(() => {
+    wallSetTimeout(() => {
       // A stop or a new pass in the meantime owns the element now.
       if (!this._activeSources.includes(source)) return;
       for (const type of DIP_END_EVENTS) el.addEventListener(type, rise);
@@ -937,6 +1011,13 @@ export class WebAudioTransport {
       const sourceNode = this._ctx.createBufferSource();
       sourceNode.buffer = buffer;
       sourceNode.playbackRate.value = sourceRate;
+      const sourceLength = sourceLengthOf(el);
+      const loopEnd = Number.isFinite(sourceLength) ? sourceLength : buffer.duration;
+      if (el.loop && loopEnd > mediaStart) {
+        sourceNode.loop = true;
+        sourceNode.loopStart = mediaStart;
+        sourceNode.loopEnd = loopEnd;
+      }
 
       const gainNode = this._ctx.createGain();
       gainNode.gain.value = volume;
@@ -1022,12 +1103,12 @@ export class WebAudioTransport {
     }
   }
 
-  /** Drops the routed element's source once a decoded buffer plays in its place; the element then sounds natively. */
+  /** Drops the routed element's source once a decoded buffer plays in its place; it stays silent until a stop. */
   releaseRouted(el: HTMLMediaElement): void {
     const routed = this._activeSources.find((s) => s.el === el && s.sourceKind === "media-element");
     if (!routed) return;
     this._activeSources.splice(this._activeSources.indexOf(routed), 1);
-    this.dispose(routed);
+    this.dispose(routed, false);
     this._handedOver.add(el);
   }
 
@@ -1102,9 +1183,21 @@ export class WebAudioTransport {
   stopAll(): void {
     for (const source of this._activeSources) this.dispose(source);
     this._activeSources = [];
+    this.reconnectHandedOver();
     this._paused = true;
     this._playGeneration += 1;
     this.rest();
+  }
+
+  private reconnectHandedOver(): void {
+    for (const el of this._handedOver) {
+      try {
+        if (this._ctx) this._mediaElementSources.get(el)?.connect(this._ctx.destination);
+      } catch (err) {
+        swallow("webAudioTransport.reconnectHandedOver", err);
+      }
+    }
+    this._handedOver.clear();
   }
 
   /** Stops what plays from media gone from the page, without sending it to the destination as a stop does. */
@@ -1209,7 +1302,7 @@ export class WebAudioTransport {
     this._mediaElementSources = new WeakMap();
     this._playingCaptured.clear();
     this._suspendPending = false;
-    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    if (this._restTimer !== null) wallClearTimeout(this._restTimer);
     this._restTimer = null;
     if (this._ctx) {
       try {

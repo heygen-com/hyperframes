@@ -19,6 +19,7 @@ import {
   closeSync,
 } from "node:fs";
 import { basename, join } from "node:path";
+import type { GoogleGenAIOptions } from "@google/genai";
 import type sharpType from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
@@ -27,6 +28,7 @@ import {
   loadSharp,
   type OptionalPackageModules,
 } from "../utils/optionalPackages.js";
+import { noteProjectProviderKey, visionCredential } from "../utils/dotEnv.js";
 
 const DEFAULT_VISION_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -73,6 +75,80 @@ class VisionRequestTimeoutError extends Error {
     super(`Vision request timed out after ${timeoutMs}ms`);
     this.name = "VisionRequestTimeoutError";
   }
+}
+
+const GOOGLE_TOKEN_URIS = new Set([
+  "https://oauth2.googleapis.com/token",
+  "https://accounts.google.com/o/oauth2/token",
+]);
+const CREDENTIAL_SOURCE_FIELDS = [
+  "credential_source",
+  "service_account_impersonation_url",
+  "source_credentials",
+  "executable",
+];
+
+// Only a plain service-account key is accepted. Other credential types (external_account,
+// impersonated_service_account) make Google's auth library read files or URLs named in the
+// JSON and send the result to the token endpoint the JSON names.
+function isServiceAccountKey(credentials: Record<string, unknown>): boolean {
+  if (!credentials || typeof credentials !== "object" || credentials.type !== "service_account")
+    return false;
+  const tokenUri = credentials.token_uri;
+  if (tokenUri !== undefined && !GOOGLE_TOKEN_URIS.has(String(tokenUri))) return false;
+  return !CREDENTIAL_SOURCE_FIELDS.some((field) => Object.hasOwn(credentials, field));
+}
+
+function vertexCredentials(raw: string): Record<string, unknown> | string {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not valid JSON; skipped vision captioning.";
+  }
+  return isServiceAccountKey(parsed)
+    ? parsed
+    : "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not a service-account key; skipped vision captioning.";
+}
+
+type VertexAuthClient = NonNullable<
+  NonNullable<GoogleGenAIOptions["googleAuthOptions"]>["authClient"]
+>;
+
+// Visible ASCII only: a token is sent as a header value, so no whitespace or line breaks.
+const BEARER_TOKEN = /^[\x21-\x7e]+$/;
+
+// A caller that mints a short-lived token passes it instead of a key file. Google's auth library
+// asks a supplied client only for request headers, so the token is used as given and never refreshed.
+function vertexAccessTokenAuth(token: string): { authClient: VertexAuthClient } | string {
+  if (!BEARER_TOKEN.test(token)) {
+    return "HYPERFRAMES_VERTEX_ACCESS_TOKEN is not an access token; skipped vision captioning.";
+  }
+  const client = {
+    getRequestHeaders: async () => new Headers({ authorization: `Bearer ${token}` }),
+  };
+  return { authClient: client as unknown as VertexAuthClient };
+}
+
+// The SDK builds the request host from the location and the request path from the model id.
+// `:` stays legal inside a segment for endpoint paths in domain-scoped projects (`example.com:proj`).
+const VERTEX_LOCATION = /^[a-z][a-z0-9-]*$/;
+const GOOGLE_MODEL_ID = /^[A-Za-z0-9][\w.:@-]*(?:\/[A-Za-z0-9][\w.:@-]*)*$/;
+
+function googleClientSettingsProblem(
+  provider: "vertex" | "gemini",
+  model: string,
+  location: string,
+): string | undefined {
+  if (provider === "vertex" && !VERTEX_LOCATION.test(location)) {
+    return "HYPERFRAMES_VERTEX_LOCATION is not a Google Cloud region; skipped vision captioning.";
+  }
+  if (!GOOGLE_MODEL_ID.test(model)) {
+    const variable =
+      provider === "vertex" ? "HYPERFRAMES_VERTEX_MODEL" : "HYPERFRAMES_GEMINI_MODEL";
+    return `${variable} is not a model id; skipped vision captioning.`;
+  }
+  return undefined;
 }
 
 function resolveVisionRequestTimeoutMs(): number {
@@ -279,13 +355,14 @@ export async function captionImagesWithGemini(
   }
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  // Vertex authenticates with a service account and a project instead of an API key. Server
-  // deployments have those; they often do not have a working Gemini API key, and a rejected
-  // key is indistinguishable from an unset one in the output — every request simply returns
-  // nothing and the capture reports "0 images captioned".
+  // Vertex authenticates with a project plus a service account or a short-lived access token,
+  // instead of an API key. Server deployments have those; they often do not have a working
+  // Gemini API key, and a rejected key is indistinguishable from an unset one in the output —
+  // every request simply returns nothing and the capture reports "0 images captioned".
   const vertexProject = process.env.HYPERFRAMES_VERTEX_PROJECT_ID;
+  const vertexAccessToken = process.env.HYPERFRAMES_VERTEX_ACCESS_TOKEN;
   const vertexServiceAccount = process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT;
-  const useVertex = Boolean(vertexProject && vertexServiceAccount);
+  const useVertex = Boolean(vertexProject && (vertexAccessToken || vertexServiceAccount));
   if (!openRouterKey && !useVertex && !geminiKey) {
     reportOutcome();
     return geminiCaptions;
@@ -312,6 +389,9 @@ export async function captionImagesWithGemini(
     gemini: process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview",
   }[provider];
   const requestTimeoutMs = resolveVisionRequestTimeoutMs();
+  for (const name of visionCredential() ?? []) {
+    await noteProjectProviderKey(name, `images go to that key's ${providerName} account`);
+  }
 
   progress("design", `Captioning images with ${providerName} vision...`);
   try {
@@ -364,6 +444,14 @@ export async function captionImagesWithGemini(
         }, timeoutMs);
       };
     } else {
+      const vertexLocation = process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1";
+      const settingsProblem = googleClientSettingsProblem(provider, model, vertexLocation);
+      if (settingsProblem) {
+        warnings.push(settingsProblem);
+        internalError = true;
+        reportOutcome();
+        return geminiCaptions;
+      }
       let GoogleGenAI: OptionalPackageModules["@google/genai"]["GoogleGenAI"];
       try {
         ({ GoogleGenAI } = await loadOptionalPackage("@google/genai", "vision captioning"));
@@ -375,24 +463,35 @@ export async function captionImagesWithGemini(
       }
       let ai: InstanceType<typeof GoogleGenAI>;
       if (provider === "vertex") {
-        // Re-narrow for TS; `useVertex` already guaranteed both are set.
-        if (!vertexProject || !vertexServiceAccount) return geminiCaptions;
-        let credentials: Record<string, unknown>;
-        try {
-          credentials = JSON.parse(vertexServiceAccount) as Record<string, unknown>;
-        } catch {
-          warnings.push(
-            "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not valid JSON; skipped vision captioning.",
-          );
-          internalError = true;
-          reportOutcome();
-          return geminiCaptions;
+        // Re-narrow for TS; `useVertex` already guaranteed a project and one credential.
+        if (!vertexProject) return geminiCaptions;
+        // The token wins when both are set: it is the narrower credential.
+        let googleAuthOptions: { authClient: VertexAuthClient } | { credentials: object };
+        if (vertexAccessToken) {
+          const auth = vertexAccessTokenAuth(vertexAccessToken);
+          if (typeof auth === "string") {
+            warnings.push(auth);
+            internalError = true;
+            reportOutcome();
+            return geminiCaptions;
+          }
+          googleAuthOptions = auth;
+        } else {
+          if (!vertexServiceAccount) return geminiCaptions;
+          const credentials = vertexCredentials(vertexServiceAccount);
+          if (typeof credentials === "string") {
+            warnings.push(credentials);
+            internalError = true;
+            reportOutcome();
+            return geminiCaptions;
+          }
+          googleAuthOptions = { credentials };
         }
         ai = new GoogleGenAI({
           vertexai: true,
           project: vertexProject,
-          location: process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1",
-          googleAuthOptions: { credentials },
+          location: vertexLocation,
+          googleAuthOptions,
         });
       } else {
         // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.
@@ -412,11 +511,8 @@ export async function captionImagesWithGemini(
               ],
               config: {
                 maxOutputTokens: maxTokens,
-                // A one-line factual caption needs no reasoning, and leaving thinking on is
-                // not merely wasteful: thinking tokens are drawn from maxOutputTokens, so the
-                // model can spend the whole budget and return empty text. That surfaces as a
-                // successful request with no caption — the capture then logs "Captioned N/N
-                // images" followed by "0 images captioned", which is what production shows.
+                // Thinking tokens are drawn from maxOutputTokens, so the model can spend the
+                // whole budget and return a successful request with no caption text.
                 thinkingConfig: { thinkingBudget: 0 },
                 abortSignal: signal,
                 httpOptions: { timeout: timeoutMs },

@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { refuseUnderLimit } from "./credit-limit.mjs";
 import { freezeUrl } from "./freeze.mjs";
+import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
 import {
   classifyHeygenErrorCode,
   HEYGEN_AUTH_COMMAND,
@@ -10,6 +9,7 @@ import {
   reportHeygenFailure,
   runHeygenJson,
 } from "./heygen-cli.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
 export const AVATAR_VIDEO_SIGNIN_MESSAGE = `media-use: avatar video is free for new API users — sign in: ${HEYGEN_AUTH_COMMAND}`;
 
@@ -44,6 +44,7 @@ function defaultStarfishVoiceId(onError) {
 }
 
 export async function heygenVideoGenerate(intent, ctx) {
+  refuseUnderLimit(ctx?.projectDir ?? process.cwd(), "a HeyGen avatar video", "avatar");
   let discoveryFailureReason = null;
   const captureReason = (reason) => {
     discoveryFailureReason ??= reason;
@@ -107,21 +108,13 @@ export async function heygenVideoGenerate(intent, ctx) {
     return null;
   }
 
-  let tmpDir;
   let tmpPath;
   try {
-    tmpDir = mkdtempSync(join(tmpdir(), "media-use-heygen-video-"));
-    tmpPath = join(tmpDir, "video.mp4");
+    tmpPath = privateOutputPath("heygen-video", ".mp4");
     await freezeUrl(videoUrl, tmpPath);
   } catch (err) {
-    if (tmpDir) {
-      try {
-        rmSync(tmpDir, { recursive: true, force: true });
-      } catch {
-        // Preserve the download failure if temporary-directory cleanup fails.
-      }
-    }
-    console.error(`media-use: heygen video download failed: ${err.message}`);
+    if (tmpPath) discardPrivateOutput(tmpPath);
+    console.error(terminalText(`media-use: heygen video download failed: ${err.message}`));
     return null;
   }
 

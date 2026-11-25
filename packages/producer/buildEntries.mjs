@@ -1,5 +1,5 @@
-// Workers sit beside the bundles because healthWorker.ts and shaderTransitionWorkerPool.ts
-// look for them in their own module's directory.
+// Workers sit beside the bundles because healthWorker.ts, hyperframeLint.ts and
+// shaderTransitionWorkerPool.ts look for them in their own module's directory.
 export const BUNDLES = [
   { entry: "src/index.ts", outfile: "dist/index.js" },
   { entry: "src/server.ts", outfile: "dist/public-server.js" },
@@ -8,4 +8,6 @@ export const BUNDLES = [
 export const WORKERS = [
   { entry: "src/services/shaderTransitionWorker.ts", outfile: "dist/shaderTransitionWorker.js" },
   { entry: "src/services/healthWorkerThread.ts", outfile: "dist/healthWorkerThread.js" },
+  { entry: "src/services/hyperframeLintWorker.ts", outfile: "dist/hyperframeLintWorker.js" },
+  { entry: "src/services/compileWorker.ts", outfile: "dist/compileWorker.js" },
 ];

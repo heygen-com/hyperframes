@@ -1,49 +1,14 @@
 import type { GestureState } from "./domEditOverlayGestures";
-import { resolveResizeCenterAnchorOffset } from "./domEditOverlayGestures";
 import type { OverlayRect } from "./domEditOverlayGeometry";
-import {
-  cornerEdgeLength,
-  elementCornerOverlayPoints,
-  overlayCornersCentroid,
-} from "./domEditOverlayGeometry";
-import { computeNextResizeAnchor, resizeRemainderShift } from "./domEditResizeLocal";
+import { cornerEdgeLength, elementCornerOverlayPoints } from "./domEditOverlayGeometry";
+import { resizeRemainderShift } from "./domEditResizeLocal";
 import type { ResizeDraftSizes } from "./domEditResizeLocal";
 import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
+import { endStudioManualEditGesture, isStudioManualEditGestureCurrent } from "./manualEdits";
+import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 type Corners = ReturnType<typeof elementCornerOverlayPoints>;
-
-/**
- * The residual center-pin offset for this frame. With measurable corners and a
- * fixed-center start, accumulate `fixedStart + shift - centerNow` onto the previous
- * anchor so it CONVERGES rather than oscillating: `applyManualOffsetDragDraft`
- * treats its argument as the absolute offset, and `centerNow` (measured on the
- * live element) already carries the previous frame's offset, so the difference
- * is only the residual correction. Using it absolutely would drop the offset
- * every other frame and un-pin the center (fa4f39168). Memberless/unmeasurable
- * geometry falls back to the AABB half-delta.
- */
-function resolveResizeAnchor(
-  g: GestureState,
-  corners: Corners | null,
-  measureOrientedRect: () => OverlayRect | null,
-  sizes: ResizeDraftSizes,
-): { dx: number; dy: number } {
-  const fixedStart = g.resizeFixedCenterStart;
-  if (corners && fixedStart) {
-    const press = g.resizePressFromCorner ?? { x: 0, y: 0 };
-    const grab = { x: g.startX - press.x - g.centerX, y: g.startY - press.y - g.centerY };
-    const shift = resizeRemainderShift(corners, grab, sizes);
-    const target = { x: fixedStart.x + shift.x, y: fixedStart.y + shift.y };
-    return computeNextResizeAnchor(g.lastResizeAnchor, target, overlayCornersCentroid(corners));
-  }
-  const fallbackRect = measureOrientedRect();
-  return resolveResizeCenterAnchorOffset({
-    originWidth: g.originWidth,
-    originHeight: g.originHeight,
-    overlayWidth: fallbackRect ? fallbackRect.width : g.originWidth,
-    overlayHeight: fallbackRect ? fallbackRect.height : g.originHeight,
-  });
-}
 
 /**
  * Center-pinned draft rect: translate the element through the manual-offset
@@ -60,13 +25,12 @@ function resolveAnchoredResizeDraft(
   measureOrientedRect: () => OverlayRect | null,
   sizes: ResizeDraftSizes,
 ): OverlayRect {
-  // Measure real corners ONCE — reused for the anchor and the fallback size.
-  const corners =
-    overlayEl && iframe ? elementCornerOverlayPoints(overlayEl, iframe, element) : null;
-  const anchor = resolveResizeAnchor(g, corners, measureOrientedRect, sizes);
+  const anchor = resizeAnchor(g, sizes.written, sizes.wanted);
   g.lastResizeAnchor = anchor;
   applyManualOffsetDragDraft(member, anchor.dx, anchor.dy);
-  // Re-measure AFTER the anchor translate so it hugs the element every frame.
+  // Measured after the anchor translate so it hugs the element every frame.
+  const corners =
+    overlayEl && iframe ? elementCornerOverlayPoints(overlayEl, iframe, element) : null;
   return (
     measureOrientedRect() ?? {
       left: g.originLeft + anchor.dx,
@@ -80,6 +44,72 @@ function resolveAnchoredResizeDraft(
   );
 }
 
+function grabOf(g: GestureState): { x: number; y: number } {
+  const press = g.resizePressFromCorner ?? { x: 0, y: 0 };
+  return { x: g.startX - press.x - g.centerX, y: g.startY - press.y - g.centerY };
+}
+
+/** The box's corners at the written size from the gesture's own geometry, for a frame Studio cannot measure. */
+function gestureCorners(
+  g: GestureState,
+  written: { width: number; height: number },
+): NonNullable<Corners> {
+  const rad = (g.actualRotation * Math.PI) / 180;
+  const [sx, sy] = [g.editScaleX * g.contentScaleX, g.editScaleY * g.contentScaleY];
+  const [w, h] = [(written.width * sx) / 2, (written.height * sy) / 2];
+  const at = (u: number, v: number) => ({
+    x: g.centerX + u * Math.cos(rad) - v * Math.sin(rad),
+    y: g.centerY + u * Math.sin(rad) + v * Math.cos(rad),
+  });
+  return { nw: at(-w, -h), ne: at(w, -h), sw: at(-w, h), se: at(w, h) };
+}
+
+/** The pin that keeps a resize's centre still: back by what the frame measured the drawn size moving it. */
+export function resizeAnchor(
+  g: GestureState,
+  written: { width: number; height: number },
+  wanted = written,
+): { dx: number; dy: number } {
+  const [w, h] = [g.actualWidth - written.width, g.actualHeight - written.height];
+  const grow = g.resizeGrow;
+  const shift = resizeRemainderShift(gestureCorners(g, written), grabOf(g), { wanted, written });
+  if (!grow) return { dx: (w / 2) * g.editScaleX + shift.x, dy: (h / 2) * g.editScaleY + shift.y };
+  return { dx: grow.a * w + grow.c * h + shift.x, dy: grow.b * w + grow.d * h + shift.y };
+}
+
+function resolveUnmeasuredResizeDraft(
+  g: GestureState,
+  element: HTMLElement,
+  sizes: ResizeDraftSizes,
+): OverlayRect {
+  const { written } = sizes;
+  const width = (g.originWidth * written.width) / g.actualWidth;
+  const height = (g.originHeight * written.height) / g.actualHeight;
+  let shift = { x: 0, y: 0 };
+  if (g.pathOffsetMember) {
+    const anchor = resizeAnchor(g, written, sizes.wanted);
+    shift = resizeRemainderShift(gestureCorners(g, written), grabOf(g), sizes);
+    g.lastResizeAnchor = anchor;
+    applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
+  }
+  drawPreviewDraft(element, { size: written });
+  return {
+    left: g.originLeft + (g.originWidth - width) / 2 + shift.x,
+    top: g.originTop + (g.originHeight - height) / 2 + shift.y,
+    width,
+    height,
+    editScaleX: g.editScaleX,
+    editScaleY: g.editScaleY,
+    angle: g.actualRotation,
+  };
+}
+
+/** Ends a settled resize that has no offset member; a frame it drew on keeps the new size. */
+export function endResizeWithoutMember(element: HTMLElement, token: string | undefined): void {
+  if (!token || isStudioManualEditGestureCurrent(element, token)) endPreviewDraft(element, "keep");
+  endStudioManualEditGesture(element, token);
+}
+
 /** The overlay rect to paint for the current resize pointer-move frame. */
 export function resolveResizeDraftRect(
   g: GestureState,
@@ -89,6 +119,7 @@ export function resolveResizeDraftRect(
   measureOrientedRect: () => OverlayRect | null,
   sizes: ResizeDraftSizes,
 ): OverlayRect {
+  if (iframe && previewFrameOpaque(iframe)) return resolveUnmeasuredResizeDraft(g, element, sizes);
   if (g.pathOffsetMember) {
     return resolveAnchoredResizeDraft(
       g,

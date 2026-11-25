@@ -1,4 +1,5 @@
 import { readBoundedRegistryFile } from "./boundedFile.js";
+import { describeCauseChain } from "../utils/networkFailure.js";
 import { publishRegistryFile, registryRoot } from "./publication.js";
 import { fetchRegistryHttps, registryHttpsUrl, registryPathUrl } from "./transport.js";
 import { readBoundedResponse, type DownloadByteBudget } from "../capture/readBoundedResponse.js";
@@ -19,7 +20,9 @@ import { validRegistryName, validRegistryManifest, validRegistryItem } from "./v
 
 import { join, basename } from "node:path";
 import { mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
+import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import {
   ITEM_TYPE_DIRS,
   type FileTarget,
@@ -31,6 +34,20 @@ import {
 export const DEFAULT_REGISTRY_URL =
   "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
 
+/** Whether `registry` is the public registry or a folder in it, read the way a fetch reads it. */
+export function isPublicRegistry(registry: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(registry);
+  } catch {
+    return false;
+  }
+  const leavesFolderOnHost = url.pathname.includes("%");
+  if (url.username || url.password || url.search || url.hash || leavesFolderOnHost) return false;
+  const href = url.href.replace(/\/+$/, "");
+  return href === DEFAULT_REGISTRY_URL || href.startsWith(`${DEFAULT_REGISTRY_URL}/`);
+}
+
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_MANIFEST_BYTES = 10 * 1024 * 1024;
 
@@ -38,17 +55,20 @@ const MAX_MANIFEST_BYTES = 10 * 1024 * 1024;
 // 24h TTL on manifest fetches so the interactive picker stays snappy offline.
 // Item files aren't cached — they're written straight to destDir on install.
 
-const CACHE_DIR = join(homedir(), ".hyperframes", "cache");
+const cacheDir = () => namedCacheDir("registry") ?? join(homedir(), ".hyperframes", "cache");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface CacheEntry<T> {
   fetchedAt: number;
+  source?: string;
   data: T;
 }
 
+// The slug alone maps different URLs to one name; the digest and recorded source keep registries apart.
 function cachePath(baseUrl: string, key: string): string {
   const slug = baseUrl.replace(/[^a-zA-Z0-9]/g, "_");
-  return join(CACHE_DIR, `${slug}__${key}.json`);
+  const digest = createHash("sha256").update(baseUrl).digest("hex").slice(0, 16);
+  return join(cacheDir(), `${slug}-${digest}__${key}.json`);
 }
 
 /**
@@ -62,6 +82,7 @@ function cachePath(baseUrl: string, key: string): string {
  */
 function readCacheEntry<T>(
   path: string,
+  source: string,
   validate: (value: unknown) => value is T,
 ): CacheEntry<T> | undefined {
   try {
@@ -70,6 +91,7 @@ function readCacheEntry<T>(
     ) as CacheEntry<unknown>;
     if (!entry || typeof entry.fetchedAt !== "number" || !Number.isFinite(entry.fetchedAt))
       return undefined;
+    if (entry.source !== source) return undefined;
     // The callers now test the entry rather than the payload, so an empty
     // payload would satisfy them: `null` data would short-circuit the fetch
     // and be handed back as a RegistryItem. Rejecting it here keeps the miss
@@ -87,11 +109,11 @@ function isFresh<T>(entry: CacheEntry<T>): boolean {
   return Date.now() - entry.fetchedAt <= CACHE_TTL_MS;
 }
 
-function writeCache<T>(path: string, data: T): void {
+function writeCache<T>(path: string, source: string, data: T): void {
   try {
-    mkdirSync(CACHE_DIR, { recursive: true });
-    const root = registryRoot(CACHE_DIR);
-    const entry: CacheEntry<T> = { fetchedAt: Date.now(), data };
+    mkdirSync(cacheDir(), { recursive: true });
+    const root = registryRoot(cacheDir());
+    const entry: CacheEntry<T> = { fetchedAt: Date.now(), source, data };
     publishRegistryFile(root, basename(path), JSON.stringify(entry));
   } catch {
     // Cache writes are opportunistic. A read-only home directory or sandboxed
@@ -101,8 +123,12 @@ function writeCache<T>(path: string, data: T): void {
 
 // ── Fetchers ────────────────────────────────────────────────────────────────
 
-async function fetchJson<T>(url: string, validate: (value: unknown) => value is T): Promise<T> {
-  const res = await fetchRegistryHttps(url, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+async function fetchJson<T>(
+  url: string,
+  validate: (value: unknown) => value is T,
+  publicOnly = false,
+): Promise<T> {
+  const res = await fetchRegistryHttps(url, AbortSignal.timeout(FETCH_TIMEOUT_MS), publicOnly);
   if (!res.ok) {
     throw new Error(`Registry fetch failed: ${url} — HTTP ${res.status}`);
   }
@@ -125,23 +151,23 @@ async function fetchJson<T>(url: string, validate: (value: unknown) => value is 
  */
 export const fetchRegistryManifest = (
   baseUrl: string = DEFAULT_REGISTRY_URL,
-  options?: { skipCache?: boolean },
+  options?: { skipCache?: boolean; publicOnly?: boolean },
 ): Promise<RegistryManifest | undefined> =>
   readRegistryManifest(baseUrl, options).catch(() => undefined);
 
 /** The manifest as fetchRegistryManifest gives it, but unreachable and never cached throws why, never undefined. */
 export async function readRegistryManifest(
   baseUrl: string = DEFAULT_REGISTRY_URL,
-  options?: { skipCache?: boolean },
+  options?: { skipCache?: boolean; publicOnly?: boolean },
 ): Promise<RegistryManifest> {
   const url = registryPathUrl(baseUrl, "registry.json");
   const cacheFile = cachePath(baseUrl, "registry");
-  const cached = readCacheEntry(cacheFile, validRegistryManifest);
+  const cached = readCacheEntry(cacheFile, baseUrl, validRegistryManifest);
   if (!options?.skipCache && cached && isFresh(cached)) return cached.data;
 
   try {
-    const manifest = await fetchJson(url, validRegistryManifest);
-    writeCache(cacheFile, manifest);
+    const manifest = await fetchJson(url, validRegistryManifest, options?.publicOnly);
+    writeCache(cacheFile, baseUrl, manifest);
     return manifest;
   } catch (err) {
     if (cached) return cached.data;
@@ -159,7 +185,7 @@ export async function fetchItemManifest(
   name: string,
   type: ItemType,
   baseUrl: string = DEFAULT_REGISTRY_URL,
-  options?: { skipCache?: boolean; cacheOnly?: boolean },
+  options?: { skipCache?: boolean; cacheOnly?: boolean; publicOnly?: boolean },
 ): Promise<RegistryItem> {
   if (!validRegistryName(name) || !Object.hasOwn(ITEM_TYPE_DIRS, type))
     throw new Error("Invalid registry item name or type");
@@ -167,45 +193,19 @@ export async function fetchItemManifest(
   const validate = (value: unknown): value is RegistryItem => validRegistryItem(value, name, type);
   const url = registryPathUrl(baseUrl, dir, name, "registry-item.json");
   const cacheFile = cachePath(baseUrl, `${dir}__${name}`);
-  const cached = readCacheEntry(cacheFile, validate);
+  const cached = readCacheEntry(cacheFile, baseUrl, validate);
   if (cached && (options?.cacheOnly || (!options?.skipCache && isFresh(cached))))
     return cached.data;
   if (options?.cacheOnly) throw new Error("not fetched after an earlier registry timeout");
 
   try {
-    const item = await fetchJson(url, validate);
-    writeCache(cacheFile, item);
+    const item = await fetchJson(url, validate, options?.publicOnly);
+    writeCache(cacheFile, baseUrl, item);
     return item;
   } catch (err) {
     if (cached) return cached.data;
     throw err;
   }
-}
-
-/**
- * Flatten an error and its `cause` chain into one readable line.
- *
- * `fetch failed` on its own is useless. `fetch failed (self-signed certificate
- * in certificate chain)` tells the reader exactly which knob to turn, and that
- * string only exists one or two levels down the chain.
- */
-export function describeCauseChain(err: unknown): string {
-  const parts: string[] = [];
-  let current: unknown = err;
-  const seen = new Set<unknown>();
-  while (current instanceof Error && !seen.has(current)) {
-    seen.add(current);
-    const code = (current as { code?: unknown }).code;
-    const text =
-      code && !current.message.includes(String(code))
-        ? `${current.message} [${String(code)}]`
-        : current.message;
-    if (text && !parts.includes(text)) parts.push(text);
-    current = current.cause;
-  }
-  if (parts.length === 0) return String(err);
-  const [head, ...rest] = parts;
-  return rest.length ? `${head} (${rest.join("; ")})` : head!;
 }
 
 /**
@@ -232,12 +232,12 @@ function isRetryableTransport(err: unknown): boolean {
  * the whole command, which is a bad trade for two extra attempts costing under
  * a second when the network is healthy.
  */
-async function fetchWithRetry(url: string, attempts = 3): Promise<Response> {
+async function fetchWithRetry(url: string, publicOnly: boolean, attempts = 3): Promise<Response> {
   let lastErr: unknown;
   const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      return await fetchRegistryHttps(url, signal);
+      return await fetchRegistryHttps(url, signal, publicOnly);
     } catch (err) {
       lastErr = err;
       if (attempt === attempts || !isRetryableTransport(err)) break;
@@ -286,6 +286,7 @@ export async function fetchItemFile(
   file: FileTarget,
   baseUrl: string = DEFAULT_REGISTRY_URL,
   budget: DownloadByteBudget = { remainingBytes: 512 * 1024 * 1024 },
+  publicOnly = false,
 ): Promise<Buffer> {
   // Reject path-traversal in file.path (mirrors assertSafeTarget for file.target).
   if (/(^|[/\\])\.\.([/\\]|$)/.test(file.path)) {
@@ -294,7 +295,7 @@ export async function fetchItemFile(
   const url = assetSourceUrl(item, file, baseUrl);
   let res: Response;
   try {
-    res = await fetchWithRetry(url);
+    res = await fetchWithRetry(url, publicOnly);
   } catch (err) {
     // undici throws a bare "fetch failed" and buries the real reason in
     // `cause`, sometimes a level deeper again. That is where the diagnosis

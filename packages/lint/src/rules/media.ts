@@ -17,8 +17,9 @@ import {
   validateColorGradingContract,
 } from "@hyperframes/parsers/color-grading-contract";
 import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { findLinkedClipFindings } from "./linkedClips";
+import { findUnreadableAudioAttributeFindings } from "./audioAttributes";
 
 /**
  * Does the GSAP call that names `#id` also set `volume` in the same call?
@@ -444,7 +445,7 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ]);
 
-const closeTag = (name: string) => new RegExp(`</${name}>`, "gi");
+const literalCloseTag = (name: string) => new RegExp(`</${escapeRegExp(name)}>`, "gi");
 
 function innermostTimedWrapper(
   source: string,
@@ -464,9 +465,9 @@ function innermostTimedWrapper(
       ...tags
         .filter((t) => t.name === parent.name && t.index > parent.index && t.index < media.index)
         .map((t): [number, 1] => [t.index, 1]),
-      ...[...source.substring(parent.index, media.index).matchAll(closeTag(parent.name))].map(
-        (m): [number, -1] => [parent.index + m.index, -1],
-      ),
+      ...[
+        ...source.substring(parent.index, media.index).matchAll(literalCloseTag(parent.name)),
+      ].map((m): [number, -1] => [parent.index + m.index, -1]),
     ];
     let depth = 1;
     for (const [, delta] of events.sort((x, y) => x[0] - y[0])) {
@@ -646,7 +647,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
         message: `<video> with data-start is nested inside <${parent.name}${parent.id ? ` id="${parent.id}"` : ""}> which also has data-start. The frame extractor resolves the video's start from its own data-start without the wrapper's offset, while visibility uses the wrapper's window, so the two disagree: the clip shows the wrong source frames and then disappears partway through its slot.`,
         elementId: readAttr(tag.raw, "id") || undefined,
         fixHint:
-          "Time the wrapper OR the video, never both: remove data-start from the wrapper (use it as a non-timed visual container), or move the <video> up to be a direct child of the stage.",
+          "A <video> takes no timing from its wrapper: time the <video> and leave the wrapper untimed (remove its data-start; it only places or animates), or move the <video> up to be a direct child of the stage.",
         snippet: truncateSnippet(tag.raw),
       });
     }
@@ -739,7 +740,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
           message: `<${tag.name}${hasId ? ` id="${hasId}"` : ""}> has src but no data-start. HyperFrames cannot own playback for untimed media, so preview and render behavior can diverge.`,
           elementId: hasId || undefined,
           fixHint: wrapper
-            ? `This <${tag.name}> sits inside the timed <${wrapper.name}${wrapper.id ? ` id="${wrapper.id}"` : ""}> (data-start="${wrapper.start}"), and the wrapper's data-start would then clash. Move the <${tag.name}> out as a direct child of the stage and give it that wrapper's data-start="${wrapper.start}"${wrapper.duration ? ` and data-duration="${wrapper.duration}"` : ""}.`
+            ? `This <${tag.name}> sits inside the timed <${wrapper.name}${wrapper.id ? ` id="${wrapper.id}"` : ""}> (data-start="${wrapper.start}") and takes no timing from it, so without its own data-start it plays from composition time 0, and a data-start on it would clash with the wrapper's. Move the <${tag.name}> out as a direct child of the stage and give it that wrapper's data-start="${wrapper.start}"${wrapper.duration ? ` and data-duration="${wrapper.duration}"` : ""}.`
             : `Add data-start="0" (or the intended start time) and data-duration if the clip should stop before the source ends.`,
           snippet: truncateSnippet(tag.raw),
         });
@@ -886,6 +887,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
   // audio_group_holds_elements
   findAudioGroupHoldsElementsFindings,
   findLinkedClipFindings,
+  findUnreadableAudioAttributeFindings,
 ];
 
 /**
@@ -925,7 +927,10 @@ function findVolumeTweenOverridesGainFindings(ctx: LintContext): HyperframeLintF
       message: `#${id} has data-volume="${volume}" (${db}) and a GSAP tween on \`volume\`. Tween values are absolute: they REPLACE this gain rather than scale it, so wherever the tween names a value the clip plays at that value, not at ${db}.`,
       elementId: id,
       fixHint:
-        "Write the tween's targets in the same absolute gain (e.g. `volume: 1.95`, not `volume: 1`), or reset data-volume to 1 and let the tween carry the level on its own.",
+        (volume === 0
+          ? 'This clip is authored silent (`data-volume="0"`). To keep it silent, drop the volume tween; to let the tween carry the level, set `data-volume="1"` and choose its absolute volume targets deliberately. '
+          : `Keep the level you set: use an absolute gain for each level the tween should reach. Use \`volume: ${volume}\` where it should reach this clip's authored level; keep \`volume: 0\` at endpoints intended to be silent. `) +
+        "If the level is in doubt, measure the rendered file with `hyperframes audio render.mp4` (replace render.mp4 with your output file) before changing it.",
       snippet: truncateSnippet(tag.raw),
     });
   }

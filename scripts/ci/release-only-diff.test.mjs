@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 import { classify } from "./release-only-diff.mjs";
 
 const SCRIPT = new URL("./release-only-diff.mjs", import.meta.url).pathname;
@@ -14,7 +15,7 @@ const CHANGELOG = (v, body = "Faster renders.") =>
   `<Update\n  label="HyperFrames v${v}"\n>\n${body}\n</Update>\n`;
 
 /** A repo whose HEAD~1 is the base: `change` edits the worktree, then it is committed as the "release". */
-function repo(change) {
+function repo(change, between) {
   const root = mkdtempSync(join(tmpdir(), "release-only-"));
   const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
   const write = (path, text) => {
@@ -31,6 +32,7 @@ function repo(change) {
   write("docs/changelog.mdx", CHANGELOG("0.8.1"));
   git("add", "-A");
   git("commit", "-qm", "base");
+  if (between) between(write, git);
   change(write);
   git("add", "-A");
   git("commit", "-qm", "release", "--allow-empty");
@@ -134,6 +136,189 @@ test("--verify refuses mixed versions, a missing note, an unreviewed note and a 
   assert.match(run(noEntry, "--verify").stderr, /no entry for v0\.8\.2/);
 });
 
+/** A release v0.8.1 commit, then one feature commit on main; returns the repo and the feature commit's sha. */
+function repoWithLateCommit(notesFor) {
+  let sha = "";
+  const root = repo(
+    (write) => {
+      bump("0.8.2")(write);
+      write("releases/v0.8.2.md", notesFor(sha));
+    },
+    (write, git) => {
+      git("commit", "-q", "--allow-empty", "-m", "chore: release v0.8.1 (#1)");
+      write("packages/core/src/late.ts", "export const late = 1;\n");
+      git("add", "-A");
+      git("commit", "-qm", "fix(core): a change merged after the notes were drafted (#2)");
+      sha = git("rev-parse", "HEAD").trim();
+    },
+  );
+  return { root, sha: () => sha };
+}
+
+test("--verify fails a release whose notes miss a commit merged since the last release", () => {
+  const { root, sha } = repoWithLateCommit(() => NOTES("0.8.2", "Nothing listed."));
+  const result = run(root, "--verify");
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /misses 1 commit\(s\)/);
+  assert.ok(result.stderr.includes(sha().slice(0, 9)));
+});
+
+test("--verify passes once the notes link that commit", () => {
+  const { root } = repoWithLateCommit((sha) => NOTES("0.8.2", `- late ([x](/commit/${sha})).`));
+  assert.equal(run(root, "--verify").code, 0);
+});
+
+test("commits that release notes leave out never count as missing", () => {
+  const root = repo(bump("0.8.2"), (write, git) => {
+    git("commit", "-q", "--allow-empty", "-m", "chore: release v0.8.1 (#1)");
+    git("commit", "-q", "--allow-empty", "-m", "chore: bump version to 0.8.1-x");
+    git("commit", "-q", "--allow-empty", "-m", "docs: x [skip changelog]");
+  });
+  assert.equal(run(root, "--verify").code, 0);
+});
+
+test("the last release is found by its subject, not by a line in another commit's body", () => {
+  const { root } = (() => {
+    let sha = "";
+    const r = repo(
+      (write) => {
+        bump("0.8.2")(write);
+        write("releases/v0.8.2.md", NOTES("0.8.2", "Nothing listed."));
+      },
+      (write, git) => {
+        git("commit", "-q", "--allow-empty", "-m", "chore(release): cut v0.8.1 (#1)");
+        write("packages/core/src/early.ts", "export const early = 1;\n");
+        git("add", "-A");
+        git("commit", "-qm", "fix(core): before the body line (#2)");
+        git(
+          "commit",
+          "-q",
+          "--allow-empty",
+          "-m",
+          "fix(core): squash body (#3)",
+          "-m",
+          "chore: release v9.9.9",
+        );
+        sha = git("rev-parse", "HEAD~1").trim();
+      },
+    );
+    return { root: r, sha };
+  })();
+  const result = run(root, "--verify");
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /misses 2 commit\(s\)/);
+});
+
+/** A release v0.8.1 commit, a breaking change on main, then `later` commits; the release moves to `version`. */
+function repoWithBreakingChange(version, later = () => {}) {
+  const shas = [];
+  return repo(
+    (write) => {
+      bump(version)(write);
+      const links = shas.map((sha) => `- ([x](/commit/${sha}))`).join("\n");
+      write(`releases/v${version}.md`, NOTES(version, links));
+    },
+    (write, git) => {
+      git("commit", "-q", "--allow-empty", "-m", "chore: release v0.8.1 (#1)");
+      write("packages/cli/src/floor.ts", "export const node = 22;\n");
+      git("add", "-A");
+      git("commit", "-qm", "fix(cli)!: needs Node 22 (#2)");
+      shas.push(git("rev-parse", "HEAD").trim());
+      later(shas[0], (...message) => {
+        git("commit", "-q", "--allow-empty", ...message.flatMap((m) => ["-m", m]));
+        shas.push(git("rev-parse", "HEAD").trim());
+        return shas.at(-1);
+      });
+    },
+  );
+}
+
+// fails without the fix: a patch release carrying a "fix(cli)!:" commit passed the release checks.
+test("--verify refuses a patch release that carries a breaking change", () => {
+  const result = run(repoWithBreakingChange("0.8.2"), "--verify");
+  assert.equal(result.code, 1);
+  assert.match(
+    result.stderr,
+    /v0\.8\.2 is too small a bump for a breaking change: [0-9a-f]{9} fix\(cli\)!: needs Node 22 \(#2\)/,
+  );
+  assert.match(result.stderr, /Release it as v0\.9\.0/);
+});
+
+test("--verify passes a breaking change released as the next minor below 1.0", () => {
+  assert.equal(run(repoWithBreakingChange("0.9.0"), "--verify").code, 0);
+});
+
+test("--verify passes a patch release once the breaking change is reverted", () => {
+  const reverted = repoWithBreakingChange("0.8.2", (breaking, commit) => {
+    commit(
+      "revert(cli): hold the Node floor (#3)",
+      `This reverts commit ${breaking.slice(0, 10)}.`,
+    );
+  });
+  assert.equal(run(reverted, "--verify").code, 0);
+});
+
+test("--verify refuses again once the revert is itself reverted", () => {
+  const relanded = repoWithBreakingChange("0.8.2", (breaking, commit) => {
+    const revert = commit(
+      "revert(cli): hold the Node floor (#3)",
+      `This reverts commit ${breaking}.`,
+    );
+    commit("feat(cli): bring back the Node floor (#4)", `This reverts commit ${revert}.`);
+  });
+  assert.match(run(relanded, "--verify").stderr, /too small a bump for a breaking change/);
+});
+
+test("--verify refuses manifests that move from different versions", () => {
+  const root = repo(
+    (write) => {
+      bump("0.8.2")(write);
+    },
+    (write, git) => {
+      write("plugin.json", manifest("0.8.0"));
+      git("add", "-A");
+      git("commit", "-qm", "chore: plugin.json was behind");
+    },
+  );
+  assert.match(run(root, "--verify").stderr, /move from different versions: 0\.8\.1, 0\.8\.0/);
+});
+
+// fails without the fix: Release checks is not a required check, so the queue merged v0.9.82 and v0.9.83 while it
+// failed on notes that missed a PR merged after the cut.
+test("a release whose checks fail cannot merge: the required Build fails with them", () => {
+  const ci = parse(
+    readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  );
+  const build = ci.jobs.build;
+  assert.equal(build.name, "Build");
+  assert.ok([build.needs].flat().includes("release-checks"), "Build waits for the release checks");
+  const gate = build.steps.find((step) =>
+    /needs\.release-checks\.result != 'success'/.test(step.if ?? ""),
+  );
+  assert.ok(gate, "Build has a step that fails when the release checks did not succeed");
+  assert.match(gate.if, /needs\.changes\.outputs\.release_diff == 'true'/);
+  assert.match(gate.run, /exit 1/);
+  assert.equal(build.steps.indexOf(gate), 1, "it fails before Build spends time building");
+});
+
+test("the merge queue runs the release checks on a release diff", () => {
+  const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(ci, /release-checks:[\s\S]*merge_group[\s\S]*release_diff/);
+});
+
+// fails without the fix: a fix to an earlier release's notes counted as a release, so its checks wanted a bump.
+test("a diff of only release notes and the changelog is a notes fix, not a release", () => {
+  const files = { "releases/v1.2.3.md": "# old", "docs/changelog.mdx": "old" };
+  const after = { "releases/v1.2.3.md": "# new", "docs/changelog.mdx": "new" };
+  const result = classify(
+    Object.keys(files),
+    (p) => files[p] ?? null,
+    (p) => after[p] ?? null,
+  );
+  assert.equal(result.releaseOnly, false);
+  assert.equal(result.versions.size, 0);
+});
+
 test("classify works on plain data", () => {
   const files = { "a/package.json": manifest("1"), "plugin.json": manifest("1") };
   const after = { "a/package.json": manifest("2"), "plugin.json": manifest("2") };
@@ -157,6 +342,7 @@ test("every heavy workflow asks the release-only action, and the decision is use
     "player-perf",
     "player-safari",
     "lambda-arm64-image",
+    "lambda-handler-zip",
   ])
     assert.match(read(name), /uses: \.\/\.github\/actions\/release-only-diff/, name);
   const ci = read("ci");

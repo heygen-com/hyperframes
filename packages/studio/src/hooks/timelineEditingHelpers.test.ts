@@ -2,17 +2,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyTimelineMoveAttributes,
-  applyTimelineStackingReorder,
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
   deleteSelectedKeyframes,
   extendRootDurationIfNeeded,
-  patchIframeDomTiming,
   persistElementAttribute,
   persistTimelineBatchEdit,
   persistTimelineEdit,
+  readTargetAttribute,
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
+import { patchIframeDomTiming } from "./previewTimingPatch";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { parseTimelineFromDOM } from "../player/lib/timelineDOM";
 import type { TimelineElement } from "../player/store/playerStore";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { usePlayerStore } from "../player/store/playerStore";
@@ -44,108 +46,6 @@ function el(input: Partial<TimelineElement> & { id: string; tag: string }): Time
     ...input,
   };
 }
-
-describe("applyTimelineStackingReorder", () => {
-  it("commits via the change's own locator even when the element is not in timelineElements", () => {
-    // Sub-comp children live in the preview iframe but NOT in the top-level
-    // timelineElements list — the intent must be self-contained.
-    const iframe = makeIframeWith(`
-      <div data-composition-id="scene" data-composition-file="scenes/scene.html">
-        <div id="chip" style="z-index: 1"></div>
-      </div>
-    `);
-    const commit = vi.fn<(entries: unknown[]) => void>();
-
-    applyTimelineStackingReorder({
-      element: el({ id: "chip", tag: "div" }),
-      stackingReorder: {
-        contextKey: "scene",
-        placement: { type: "above", layerId: "layer:scene:x" },
-        zIndexChanges: [
-          {
-            key: "scenes/scene.html#chip",
-            zIndex: 5,
-            domId: "chip",
-            sourceFile: "scenes/scene.html",
-          },
-        ],
-      },
-      timelineElements: [], // element intentionally absent from the top-level list
-      iframe,
-      activeCompPath: "index.html",
-      commit,
-    });
-
-    expect(commit).toHaveBeenCalledTimes(1);
-    const entries = commit.mock.calls[0]![0] as Array<{
-      zIndex: number;
-      id?: string;
-      sourceFile: string;
-    }>;
-    expect(entries).toHaveLength(1);
-    expect(entries[0]!.zIndex).toBe(5);
-    expect(entries[0]!.id).toBe("chip");
-    expect(entries[0]!.sourceFile).toBe("scenes/scene.html");
-  });
-
-  it("never commits when the dragged clip is audio", () => {
-    const iframe = makeIframeWith(`<audio id="track"></audio>`);
-    const commit = vi.fn<(entries: unknown[]) => void>();
-
-    applyTimelineStackingReorder({
-      element: el({ id: "track", tag: "audio" }),
-      stackingReorder: {
-        contextKey: "main",
-        placement: { type: "above", layerId: "layer:main:x" },
-        zIndexChanges: [{ key: "track", zIndex: 5, domId: "track" }],
-      },
-      timelineElements: [],
-      iframe,
-      activeCompPath: "index.html",
-      commit,
-    });
-
-    expect(commit).not.toHaveBeenCalled();
-  });
-
-  it("resolves selectorIndex within the change's source file", () => {
-    const iframe = makeIframeWith(`
-      <div data-composition-id="root">
-        <div class="chip">root</div>
-        <div data-composition-id="scene" data-composition-file="scenes/scene.html">
-          <div class="chip">scene zero</div>
-          <div class="chip" style="z-index: 1">scene one</div>
-        </div>
-      </div>
-    `);
-    const sceneOne = iframe.contentDocument?.querySelectorAll(".chip")[2];
-    const commit = vi.fn<(entries: unknown[]) => void>();
-
-    applyTimelineStackingReorder({
-      element: el({ id: "scene-one", tag: "div" }),
-      stackingReorder: {
-        contextKey: "scene",
-        placement: { type: "above", layerId: "layer:scene:x" },
-        zIndexChanges: [
-          {
-            key: "scenes/scene.html#.chip:1",
-            zIndex: 5,
-            selector: ".chip",
-            selectorIndex: 1,
-            sourceFile: "scenes/scene.html",
-          },
-        ],
-      },
-      timelineElements: [],
-      iframe,
-      activeCompPath: "index.html",
-      commit,
-    });
-
-    const entries = commit.mock.calls[0]![0] as Array<{ element: Element }>;
-    expect(entries[0]!.element).toBe(sceneOne);
-  });
-});
 
 describe("patchIframeDomTiming", () => {
   it("patches a top-level composition host in its parent source file", () => {
@@ -380,6 +280,23 @@ describe("persistTimelineBatchEdit", () => {
     expect(perMember).toContain('data-duration="9"');
   });
 
+  it("files the move under every clip it moved, by identity and by the name the clip wears", async () => {
+    stubReadFileContent(SOURCE);
+    const recordEdit = vi.fn(async () => {});
+    await persistTimelineBatchEdit({
+      ...batchInput([moveMember("a", 3, 0, 0), moveMember("b", 4, 1, 1)], []),
+      recordEdit,
+    });
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targets: [
+          { file: "index.html", id: "a", name: "a" },
+          { file: "index.html", id: "b", name: "b" },
+        ],
+      }),
+    );
+  });
+
   it("skips no-op members instead of aborting the batch (track-insert renumber)", async () => {
     // A track-insert renumber can include a member whose attributes already
     // hold the target values — its patch is string-identical. The batch must
@@ -490,6 +407,28 @@ describe("persistTimelineEdit", () => {
     expect(writes).toHaveLength(1);
     expect(writes[0]![1]).toContain('data-start="2"');
     expect([...pending]).toEqual(["index.html"]);
+  });
+
+  it("files the edit under the clip it changed, by identity and by the name the clip wears", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ content: SOURCE }) })),
+    );
+    const recordEdit = vi.fn(async () => {});
+    const element = el({ id: "a", tag: "video", domId: "a", start: 1, duration: 3 });
+    await persistTimelineEdit({
+      projectId: "p1",
+      element,
+      activeCompPath: "index.html",
+      label: "Move timeline clip",
+      buildPatches: (original, target) => buildTimelineMoveTimingPatch(original, target, 2, 3, 0),
+      writeProjectFile: async () => {},
+      recordEdit,
+      pendingTimelineEditPathRef: { current: new Set<string>() },
+    });
+    expect(recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ targets: [{ file: "index.html", id: "a", name: "a" }] }),
+    );
   });
 
   it("still throws for a clip the file does not hold", async () => {
@@ -642,6 +581,51 @@ describe("persistElementAttribute", () => {
     expect(patchLive).not.toHaveBeenCalled();
     expect(writeProjectFile).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+});
+
+describe("a clip whose file has no ids yet", () => {
+  // Added outside Studio: no id, no class, and nothing has stamped the file since. The preview mints its hf-id.
+  const ON_DISK = `<div data-composition-id="main" data-start="0" data-duration="10"><img src="a.png" data-start="1" data-duration="3" data-volume="0.5"></div>`;
+  const served = () => {
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML = ensureHfIds(ON_DISK);
+    const [clip] = parseTimelineFromDOM(doc, 10);
+    if (!clip?.hfId) throw new Error("expected the served clip to carry an hf-id");
+    return { hfId: clip.hfId };
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("saves an attribute on it by the id the preview served it with", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ content: ON_DISK }))),
+    );
+    const target = served();
+    const writes: string[] = [];
+
+    await persistElementAttribute({
+      projectId: "p",
+      targetPath: "index.html",
+      patchTarget: target,
+      attr: "data-volume",
+      value: "0.9",
+      label: "Set volume",
+      writeProjectFile: async (_path, content) => void writes.push(content),
+      recordEdit: vi.fn(async () => {}),
+      pendingTimelineEditPathRef: { current: new Set() },
+      onFileRead: vi.fn(),
+      patchLive: vi.fn(),
+    });
+
+    expect(readTargetAttribute(writes[0] ?? "", target, "data-volume")).toBe("0.9");
+  });
+
+  it("reads its attribute by that id", () => {
+    expect(readTargetAttribute(ON_DISK, served(), "data-volume")).toBe("0.5");
   });
 });
 

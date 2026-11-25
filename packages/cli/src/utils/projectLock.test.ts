@@ -94,7 +94,59 @@ describe("withProjectLock", () => {
     );
     expect(Date.now() - started).toBeGreaterThanOrEqual(300);
     await expect(withProjectLock(dir, "snapshot", async () => "ran", locked(0))).rejects.toThrow(
-      `hyperframes check (pid ${process.pid}) is still using this project`,
+      `hyperframes check (pid ${process.pid}) is still using this project after 0s. Run this command again when it finishes.`,
+    );
+  });
+
+  it("says who it is waiting for after a few seconds, so a queued command does not read as hung", async () => {
+    const dir = project();
+    hold(dir, process.pid);
+    const said = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const base = Date.now();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(base)
+      .mockReturnValue(base + 6_000);
+    await expect(withProjectLock(dir, "check", async () => "ran", locked(300))).rejects.toThrow(
+      ProjectLockTimeout,
+    );
+    clock.mockRestore();
+    expect(said).toHaveBeenCalledTimes(1);
+    expect(said.mock.calls[0]?.[0]).toContain(`waiting for check (pid ${process.pid}, running `);
+    said.mockRestore();
+  });
+
+  // fails without the fix: the command named in the project's lock file reached stderr raw
+  it("prints the holder a project's lock file names with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const dir = project();
+    const lock = projectLockPath(dir);
+    mkdirSync(dirname(lock), { recursive: true });
+    writeFileSync(
+      lock,
+      JSON.stringify({
+        pid: process.pid,
+        command: `render${esc}]0;owned${String.fromCharCode(7)}${esc}[2K${String.fromCharCode(13)}`,
+        startedAt: Date.now(),
+      }),
+    );
+    const said = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const base = Date.now();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(base)
+      .mockReturnValue(base + 6_000);
+    await expect(withProjectLock(dir, "check", async () => "ran", locked(300))).rejects.toThrow(
+      ProjectLockTimeout,
+    );
+    clock.mockRestore();
+    const line = String(said.mock.calls[0]?.[0]);
+    said.mockRestore();
+    expect(line).not.toContain(esc);
+    expect(line).not.toContain(String.fromCharCode(13));
+    expect(line).toContain(
+      `waiting for render\\x1b]0;owned\\x07\\x1b[2K\\x0d (pid ${process.pid}, running `,
     );
   });
 

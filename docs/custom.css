@@ -347,6 +347,11 @@ samp {
   border-radius: 0;
   border-color: var(--hf-ui-border) !important;
   color: var(--hf-heading) !important;
+  /* The whole command stays on screen. A page's link can add values to it, and
+     a reader should see everything they are about to paste, not the start of a
+     line that scrolls. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /*
@@ -503,11 +508,11 @@ samp {
     color: var(--hf-heading);
   }
 
-  #navbar .nav-tabs-item[aria-current] {
-    background: var(--hf-brand-soft);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hf-brand) 55%, transparent);
+  /* Mintlify marks the current tab with aria-current, except the Docs dropdown, which gets .text-primary instead */
+  #navbar .nav-tabs-item[aria-current],
+  #navbar .nav-tabs-item.text-primary {
+    background: color-mix(in srgb, var(--hf-heading) 9%, transparent);
     color: var(--hf-heading) !important;
-    font-weight: 600;
   }
 
   #navbar .nav-tabs-item:focus:not(:focus-visible) {
@@ -529,9 +534,15 @@ samp {
     grid-row: 1;
   }
 
+  /* The site banner (docs.json "banner") sits above the header; Mintlify publishes its height as --banner-height
+     and drops it to 0 once the banner is dismissed. */
   #sidebar-content {
-    top: 3rem !important;
-    height: calc(100vh - 3rem) !important;
+    top: calc(3rem + var(--banner-height, 0px)) !important;
+    height: calc(100vh - 3rem - var(--banner-height, 0px)) !important;
+  }
+
+  #content-container {
+    padding-top: calc(2.5rem + var(--banner-height, 0px));
   }
 
   /* Keep the repository compact, but retain its useful live star count. */
@@ -544,6 +555,11 @@ samp {
   }
 
   #navbar a[title="heygen-com/hyperframes"] > span.truncate {
+    display: none;
+  }
+
+  /* Discord: the icon and the live "online" count say enough; the server name only repeats the logo. */
+  #navbar a[href^="https://discord.gg/"] > span.truncate {
     display: none;
   }
 
@@ -1374,6 +1390,8 @@ header.is-frame ~ #body-content #content-area {
   header.is-frame ~ #body-content #content-area {
     padding-left: 5.5rem;
     padding-right: 2.5rem;
+    /* Below the site banner while it shows (0 once dismissed). */
+    margin-top: var(--banner-height, 0px);
   }
 }
 
@@ -1419,12 +1437,6 @@ h2 { clear: both; }
   background: var(--hf-glass) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-}
-
-@media (min-width: 1024px) {
-  #navbar .nav-tabs-item.text-primary {
-    background: var(--hf-chip);
-  }
 }
 
 /* Headlines: hyperframes.dev's heavy, tight TT Norms. */
@@ -1853,3 +1865,31 @@ html.dark .hf-ve-static-head p { color: #b8b6b4; }
 /* The Docs tab's text sits after the component and shows only while that tab is open, as the tab's own slot did. */
 [data-static-slot] { display: none; }
 body:has(.hf-ve-slots[data-tab="docs"]) [data-static-slot="docs"] { display: block; }
+
+/* Site banner: a quiet bar in the page's own colours, with a brand-gradient "New" pill.
+   Mintlify paints the banner text with a layered !important white, so the colour is set
+   through --color-white rather than color. */
+#banner {
+  background: #e9e7e1 !important;
+  --color-white: #1c1b1a;
+  border-bottom: 1px solid rgb(0 0 0 / 0.06);
+}
+html.dark #banner {
+  background: #24221f !important;
+  --color-white: #f1efea;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+#banner span.font-semibold {
+  background: linear-gradient(90deg, #4fdb5e, #06e3fa);
+  color: #0e0e0d !important;
+  --color-white: #0e0e0d;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  margin-right: 6px;
+  letter-spacing: 0.02em;
+}
+#banner a {
+  text-decoration-color: #06e3fa !important;
+  text-decoration-thickness: 2px;
+}

@@ -53,6 +53,10 @@ bun run format:check    # Check formatting without writing
 
 Git hooks (via [lefthook](https://github.com/evilmartians/lefthook)) run automatically after `bun install` and enforce linting + formatting on staged files before each commit.
 
+#### Printing a value in the CLI
+
+When a CLI line for people repeats a value the CLI did not write (a name from a project file, a path, another program's output), pass it through `terminalText` or `terminalLines` from `@hyperframes/core`, so a control character in it shows as visible text. A test counts, per file, the print calls whose value is not plainly the CLI's own text (`packages/cli/src/printedFailureText.wiring.test.ts`). If it fails on your change, it says which file and what to do: wrap the value, or, when the CLI wrote the value itself, change that file's number in `packages/cli/src/printedValues.baseline.json` in the same PR. Output meant for another program (`--json`, a path printed as a command's whole answer) is not wrapped; such a print call is named in the list at the top of that test.
+
 #### Type-safety conventions
 
 We aim for honest types — code that lies to the compiler eventually lies to users. The underlying convention is:
@@ -142,7 +146,7 @@ before merge, listed at the end.
 1. Create `registry/<blocks|components>/<name>/registry-item.json` following the [schema](packages/core/schemas/registry-item.json)
 2. For components: include a `demo.html`
 3. Run `npx hyperframes lint` and `npx hyperframes validate` on your HTML
-4. Test the install flow: `hyperframes add <name> --dir /tmp/test-project`
+4. Test the install flow: `hyperframes init /tmp/test-project`, then `hyperframes add <name> --dir /tmp/test-project`
 5. Generate and validate the catalog: `bun run check:catalog-drift`
 
 ### Generated catalog files

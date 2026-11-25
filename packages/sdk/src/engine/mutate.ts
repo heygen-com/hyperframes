@@ -56,7 +56,7 @@ import {
   patchRemove,
 } from "./patches.js";
 import { upsertCssRule } from "./cssWriter.js";
-import { mintHfId, EXCLUDED_TAGS } from "@hyperframes/core/hf-ids";
+import { mintHfId, EXCLUDED_TAGS, isNonContentElement } from "@hyperframes/core/hf-ids";
 import { EDIT_BASE_X_ATTR, EDIT_BASE_Y_ATTR } from "@hyperframes/core/runtime/position-edits";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
@@ -169,6 +169,11 @@ export class UnsupportedOpError extends Error {
 
 function targets(target: HfId | HfId[]): HfId[] {
   return Array.isArray(target) ? target : [target];
+}
+
+function resolveEditable(document: Document, id: HfId): Element | null {
+  const el = resolveScoped(document, id);
+  return el && !isNonContentElement(el) ? el : null;
 }
 
 // ─── Op dispatch ────────────────────────────────────────────────────────────
@@ -447,7 +452,7 @@ function handleSetStyle(
 ): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
-    const el = resolveScoped(parsed.document, id);
+    const el = resolveEditable(parsed.document, id);
     if (!el) continue;
     const old = getElementStyles(el);
     setElementStyles(el, styles);
@@ -489,7 +494,7 @@ function handleMoveElement(
   // GSAP-animated transforms instead of being overwritten per-axis.
   const parts: MutationResult[] = [];
   for (const id of ids) {
-    const el = resolveScoped(parsed.document, id);
+    const el = resolveEditable(parsed.document, id);
     if (!el) continue;
     if (el.getAttribute(EDIT_BASE_X_ATTR) === null) {
       parts.push(
@@ -516,10 +521,10 @@ function handleMoveElement(
 function handleSetText(parsed: ParsedDocument, ids: HfId[], value: string): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
-    const el = resolveScoped(parsed.document, id);
+    const el = resolveEditable(parsed.document, id);
     if (!el) continue;
     const oldText = getOwnText(el);
-    setOwnText(el, value);
+    if (!setOwnText(el, value)) continue;
     const path = textPath(id);
     // getOwnText always returns string ("" for empty) — use it directly so
     // the forward patch is always op:'replace', not op:'add'. An op:'add' on
@@ -541,7 +546,7 @@ function handleSetAttribute(
   validateSetAttribute(name, value);
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
-    const el = resolveScoped(parsed.document, id);
+    const el = resolveEditable(parsed.document, id);
     if (!el) continue;
     const oldValue = el.getAttribute(name);
     const path = attrPath(id, name);
@@ -585,7 +590,7 @@ function handleSetTiming(
   let currentScript = origScript;
 
   for (const id of ids) {
-    const el = resolveScoped(parsed.document, id);
+    const el = resolveEditable(parsed.document, id);
     if (!el) continue;
 
     const beforeAttributes = {
@@ -740,7 +745,7 @@ function handleSetHold(
 ): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
   for (const id of ids) {
-    const el = resolveScoped(parsed.document, id);
+    const el = resolveEditable(parsed.document, id);
     if (!el) continue;
 
     const fields: Array<["start" | "end" | "fill", string]> = [
@@ -871,7 +876,7 @@ function handleAddElement(
   const parentEl =
     parent === null
       ? ((parsed.document as Document & { body?: Element | null }).body ?? null)
-      : resolveScoped(parsed.document, parent);
+      : resolveEditable(parsed.document, parent);
   if (!parentEl) return EMPTY;
 
   const node = parseInsertableFragment(parsed.document, html);

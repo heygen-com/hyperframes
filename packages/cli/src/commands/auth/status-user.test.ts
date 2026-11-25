@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { writeStore } from "../../auth/store.js";
@@ -12,8 +13,15 @@ import { consumeCommandResult } from "../../utils/commandResult.js";
 //   - user:      the live identity returned on success
 const probeState = vi.hoisted(
   () =>
-    ({ apiReject: false, user: { email: "live@example.com" } }) as {
+    ({
+      apiReject: false,
+      apiDetail: "service unavailable",
+      offline: false,
+      user: { email: "live@example.com" },
+    }) as {
       apiReject: boolean;
+      apiDetail: string;
+      offline: boolean;
       user: Record<string, unknown>;
     },
 );
@@ -22,9 +30,19 @@ vi.mock("../../auth/index.js", async (orig) => {
   const actual = await orig<typeof import("../../auth/index.js")>();
   class MockAuthClient {
     async getCurrentUser(): Promise<Record<string, unknown>> {
+      if (probeState.offline) {
+        const { explainNetworkFailure } = await import("../../utils/networkFailure.js");
+        const lookup = Object.assign(new Error("getaddrinfo ENOTFOUND api.heygen.com"), {
+          code: "ENOTFOUND",
+        });
+        throw explainNetworkFailure(
+          new TypeError("fetch failed", { cause: lookup }),
+          "https://api.heygen.com/v3/users/me",
+        );
+      }
       if (probeState.apiReject) {
         const { ErrApi } = await import("../../auth/errors.js");
-        throw ErrApi(503, "service unavailable");
+        throw ErrApi(503, probeState.apiDetail);
       }
       return probeState.user;
     }
@@ -39,6 +57,8 @@ describe("auth status — persisted user block surface", () => {
   beforeEach(async () => {
     envFixture = await setupTempAuthEnv("hf-status-99-");
     probeState.apiReject = false;
+    probeState.apiDetail = "service unavailable";
+    probeState.offline = false;
     probeState.user = { email: "live@example.com" };
     stdout = [];
     consumeCommandResult();
@@ -132,7 +152,7 @@ describe("auth status — persisted user block surface", () => {
     }
   });
 
-  it("gives no 'balance unavailable' notice when the HyperFrames plan is shown", async () => {
+  it("names `hyperframes` as the plan, not the HeyGen app's, when the HyperFrames plan is shown", async () => {
     vi.stubGlobal(
       "fetch",
       async () =>
@@ -149,12 +169,14 @@ describe("auth status — persisted user block surface", () => {
     expect(await runStatus(true)).toBe(0);
     const payload = lastJson();
     expect(payload["hyperframes"]).toEqual({ plan: "pro", credits: 25000 });
-    expect(payload).not.toHaveProperty("billing_notice");
+    expect(payload["billing_notice"]).toContain("`hyperframes` is the HyperFrames plan");
+    expect(payload["billing_notice"]).not.toContain("unavailable");
     stdout = [];
     expect(await runStatus(false)).toBe(0);
     const text = stdout.join("\n");
     expect(text).toContain("pro plan, 25,000 credits");
     expect(text).not.toContain("balance unavailable");
+    expect(text).toMatch(/^Manage or cancel your plan: https:\/\/hyperframes\.studio\/billing\?/m);
   });
 
   it("surfaces the persisted user block (with resolved display_name) for a file credential", async () => {
@@ -210,5 +232,123 @@ describe("auth status — persisted user block surface", () => {
     expect(text).toContain("API check failed");
     expect(text).toContain("cached@example.com");
     expect(text).toContain("cached");
+  });
+
+  it("reports an unreachable API as such, with the host and a next step, instead of a bare fetch failure", async () => {
+    await writeStore({ api_key: "hg_x", user: { email: "cached@example.com" } });
+    probeState.offline = true;
+
+    expect(await runStatus(true)).toBe(1);
+    expect(String(lastJson()["api_error"])).toMatch(
+      /^Could not reach api\.heygen\.com: .*offline\. Check the internet connection/,
+    );
+    expect(await runStatus(false)).toBe(1);
+    expect(stdout.join("\n")).toContain("cached@example.com");
+  });
+
+  describe("rows printed for people", () => {
+    const ESC = String.fromCharCode(27);
+    const ODD = `od${ESC}[2Jd\x07`;
+    const SHOWN = "od\\x1b[2Jd\\x07";
+    const expectNoRawCodes = (text: string): void => {
+      expect(text.replace(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "")).not.toContain(ESC);
+      expect(text).not.toContain("\x07");
+    };
+
+    // fails without the fix: the account and billing values are printed as they arrived.
+    it("shows control characters in the account and billing rows as text", async () => {
+      probeState.user = {
+        email: `${ODD}@example.com`,
+        billing_type: `type ${ODD}`,
+        wallet: { remaining_balance: 5, currency: `cur ${ODD}` },
+        subscription: {
+          plan: `plan ${ODD}`,
+          credits: { premium_credits: { remaining: 3, resets_at: `${ODD}-01` } },
+        },
+        usage_based: { spending_current_usd: 1, spending_cap_usd: `cap ${ODD}` },
+      };
+      await writeStore({ api_key: "hg_x" });
+      expect(await runStatus(false)).toBe(0);
+      const text = stdout.join("\n");
+      for (const row of [
+        `Account: ${SHOWN}@example.com`,
+        `Billing: type ${SHOWN}`,
+        `5 cur ${SHOWN}`,
+        `plan ${SHOWN}`,
+        `3 (resets ${SHOWN}`,
+        `$1 / $cap ${SHOWN}`,
+      ])
+        expect(text).toContain(row);
+      expectNoRawCodes(text);
+    });
+
+    // fails without the fix: the scope and the plan name are printed as they arrived.
+    it("shows control characters in the scope and plan rows as text", async () => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: {
+                subscription: { plan_name: `pro ${ODD}`, status: "active" },
+                usage: { remaining_units: 7 },
+              },
+            }),
+          ),
+      );
+      await persistFreshOAuth({ access_token: "at", refresh_token: "rt", scope: `openid ${ODD}` });
+      expect(await runStatus(false)).toBe(0);
+      const text = stdout.join("\n");
+      expect(text).toContain(`openid ${SHOWN}`);
+      expect(text).toContain(`pro ${SHOWN} plan, 7 credits`);
+      expectNoRawCodes(text);
+    });
+
+    // fails without the fix: the failure reason and the cached name are printed as they arrived.
+    it("shows control characters in a failed check and the cached account as text", async () => {
+      await writeStore({ api_key: "hg_x", user: { email: `${ODD}@example.com` } });
+      probeState.apiReject = true;
+      probeState.apiDetail = `down ${ODD}`;
+      expect(await runStatus(false)).toBe(1);
+      const text = stdout.join("\n");
+      expect(text).toContain(`HeyGen API error (503): down ${SHOWN}`);
+      expect(text).toContain(`${SHOWN}@example.com`);
+      expectNoRawCodes(text);
+    });
+
+    // fails without the fix: the folder name is printed as it is on disk.
+    it.skipIf(process.platform === "win32")(
+      "shows control characters in the credential file's path as text",
+      async () => {
+        const odd = join(envFixture.dir, `cfg ${ODD}`);
+        process.env["HYPERFRAMES_CONFIG_DIR"] = odd;
+        await writeStore({ api_key: "hg_x" });
+        expect(await runStatus(false)).toBe(0);
+        expect(stdout.join("\n")).toContain(`cfg ${SHOWN}`);
+        expectNoRawCodes(stdout.join("\n"));
+      },
+    );
+
+    // fails without the fix: the unreadable file's path is printed as it is on disk.
+    it.skipIf(process.platform === "win32")(
+      "shows control characters in an unreadable credential file's message as text",
+      async () => {
+        const odd = join(envFixture.dir, `cfg ${ODD}`);
+        process.env["HYPERFRAMES_CONFIG_DIR"] = odd;
+        await mkdir(join(odd, "credentials"), { recursive: true });
+        const stderr: string[] = [];
+        vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+          stderr.push(args.join(" "));
+        });
+        const cmd = (await import("./status.js")).default;
+        await expect(
+          (cmd.run as (ctx: { args: Record<string, unknown> }) => Promise<void>)({
+            args: { json: false },
+          }),
+        ).rejects.toThrow();
+        expect(stderr.join("\n")).toContain(`cfg ${SHOWN}`);
+        expectNoRawCodes(stderr.join("\n"));
+      },
+    );
   });
 });

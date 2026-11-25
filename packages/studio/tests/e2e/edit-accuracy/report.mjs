@@ -96,6 +96,7 @@ export function score(spec, r) {
     undo:
       !r.undoTimeout &&
       r.undo.groups !== false &&
+      r.undo.listed !== false &&
       r.undo.bytes &&
       r.undo.redoBytes &&
       Math.max(r.undo.box, r.undo.redoBox) <= LIMIT_PX &&

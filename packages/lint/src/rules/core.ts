@@ -1,11 +1,20 @@
+import {
+  blockComments,
+  hasInvalidScriptClose,
+  htmlTagTracker,
+  protectedBlockRanges,
+  styleTagTokens,
+} from "../linearScans";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
+import { styleRoot } from "../styleRoots";
 import selectorParser from "postcss-selector-parser";
 import { GLSL_SCRIPT_TYPES } from "../shaderDomains";
+import { MAX_EXPANDED_COMPOSITION_BYTES } from "../sizeLimits";
 import {
-  HTML_BODY_CSS_WIDTH_FIRST_RE,
-  HTML_BODY_CSS_HEIGHT_FIRST_RE,
-  VIEWPORT_META_SIZE_RE,
+  matchHtmlBodyCssWidthFirst,
+  matchHtmlBodyCssHeightFirst,
+  matchViewportMetaSize,
 } from "@hyperframes/parsers/composition";
 import {
   readAttr,
@@ -21,7 +30,6 @@ import {
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
   TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
-  INVALID_SCRIPT_CLOSE_PATTERN,
 } from "../utils";
 
 const SCRIPT_SYNTAX_EXEMPT_TYPES = new Set([
@@ -116,7 +124,7 @@ function digitIdsTargetedBySelectors(
   const ids = new Set<string>();
   for (const style of styles) {
     try {
-      postcss.parse(style.content).walkRules((rule) => {
+      styleRoot(style).walkRules((rule) => {
         for (const selector of rule.selectors) addUnescapedDigitIds(selector, ids);
       });
     } catch {
@@ -353,55 +361,15 @@ function describeStudioElement(tag: { raw: string; name: string }): string {
   return parts.join("");
 }
 
-const VISIBLE_MARKUP_COMMENT_PATTERN = /\/\*[\s\S]*?\*\//g;
-const VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN =
-  /<(style|script|template|title|noscript|pre|code|textarea|text)\b[^>]*>[\s\S]*?<\/\1(?:\s[^>]*)?>/gi;
-
-interface SourceRange {
-  start: number;
-  end: number;
-}
-
-function findProtectedVisibleMarkupRanges(source: string): SourceRange[] {
-  const ranges: SourceRange[] = [];
-  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PROTECTED_BLOCK_PATTERN)) {
-    ranges.push({ start: match.index, end: match.index + match[0].length });
-  }
-  return ranges;
-}
-
-function isInsideSourceRange(index: number, ranges: SourceRange[]): boolean {
-  return ranges.some((range) => range.start <= index && index < range.end);
-}
-
-function isInsideHtmlTag(source: string, index: number): boolean {
-  let inTag = false;
-  let quote: '"' | "'" | null = null;
-  for (let i = 0; i < index; i++) {
-    const char = source[i];
-    if (!inTag) {
-      if (char === "<") inTag = true;
-      continue;
-    }
-    if (quote) {
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-    } else if (char === ">") {
-      inTag = false;
-    }
-  }
-  return inTag;
-}
-
 function findVisibleMarkupCommentLeak(source: string): string | null {
-  const protectedRanges = findProtectedVisibleMarkupRanges(source);
-  for (const match of source.matchAll(VISIBLE_MARKUP_COMMENT_PATTERN)) {
-    if (isInsideHtmlTag(source, match.index)) continue;
-    if (isInsideSourceRange(match.index, protectedRanges)) continue;
-    return match[0];
+  const protectedRanges = protectedBlockRanges(source);
+  const insideHtmlTag = htmlTagTracker(source);
+  let range = 0;
+  for (const comment of blockComments(source)) {
+    if (insideHtmlTag(comment.index)) continue;
+    while (protectedRanges[range] && protectedRanges[range]!.end <= comment.index) range++;
+    if ((protectedRanges[range]?.start ?? Infinity) <= comment.index) continue;
+    return comment.text;
   }
   return null;
 }
@@ -411,12 +379,12 @@ type ScaffoldSize = { width: string; height: string };
 // Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
 // replace; lint only reads the digit groups (2 and 4).
 function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
-  const widthFirst = source.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
+  const widthFirst = matchHtmlBodyCssWidthFirst(source);
   if (widthFirst) {
     const [, , width = "", , height = ""] = widthFirst;
     return { width, height };
   }
-  const heightFirst = source.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  const heightFirst = matchHtmlBodyCssHeightFirst(source);
   if (heightFirst) {
     const [, , height = "", , width = ""] = heightFirst;
     return { width, height };
@@ -425,7 +393,7 @@ function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
 }
 
 function readViewportMetaSize(source: string): ScaffoldSize | null {
-  const match = source.match(VIEWPORT_META_SIZE_RE);
+  const match = matchViewportMetaSize(source);
   if (!match) return null;
   const [, , width = "", , height = ""] = match;
   return { width, height };
@@ -576,14 +544,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     let opens = 0;
     let closes = 0;
     let firstTag = "";
-    for (const match of source.matchAll(
-      /<script\b[\s\S]*?<\/script[^>]*>|<style\b|<\/style\s*>/gi,
-    )) {
-      const token = match[0].toLowerCase();
-      if (token.startsWith("<script")) continue;
-      if (token.startsWith("</style")) closes += 1;
+    for (const tag of styleTagTokens(source)) {
+      if (tag.toLowerCase().startsWith("</style")) closes += 1;
       else opens += 1;
-      if (!firstTag) firstTag = match[0];
+      if (!firstTag) firstTag = tag;
     }
     if (opens === closes) return [];
     return [
@@ -625,6 +589,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       return [];
     }
     if (/(?:^|\s)data-no-timeline(?=[\s=/]|$)/i.test(rootTag?.attrs || "")) return [];
+    if (options.scriptsOutsideProjectUnread?.length) return [];
+    if (options.linkedFilesOverLimit?.some((file) => file.kind === "script")) return [];
     const findings: HyperframeLintFinding[] = [];
     const registered = [source, ...(options.externalScripts ?? []).map((script) => script.content)];
     if (
@@ -656,6 +622,23 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
+  // linked_files_not_checked
+  ({ options }) => {
+    const unread = options.linkedFilesOverLimit ?? [];
+    if (unread.length === 0) return [];
+    const limitMb = MAX_EXPANDED_COMPOSITION_BYTES / (1024 * 1024);
+    return [
+      {
+        code: "linked_files_not_checked",
+        severity: "warning",
+        message:
+          `${unread.length} linked stylesheet or script file(s) were not checked, starting at "${unread[0]!.href}": ` +
+          `the files linked before them already add up to the ${limitMb} MB one page may hold.`,
+        fixHint: "Link each file once, and keep large data out of linked stylesheets and scripts.",
+      },
+    ];
+  },
+
   // timeline_id_mismatch
   ({ source, compositionIds }) => {
     const findings: HyperframeLintFinding[] = [];
@@ -685,7 +668,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       if (!/transition/i.test(style.content)) continue;
       let root: postcss.Root;
       try {
-        root = postcss.parse(style.content);
+        root = styleRoot(style);
       } catch {
         // The CSS syntax rule reports malformed style blocks separately.
         continue;
@@ -736,7 +719,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     for (const style of styles) {
       let root: postcss.Root;
       try {
-        root = postcss.parse(style.content);
+        root = styleRoot(style);
       } catch (error) {
         findings.push({
           ...locate(
@@ -828,7 +811,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
 
   // invalid_inline_script_syntax (malformed close tag)
   ({ source }) => {
-    if (!INVALID_SCRIPT_CLOSE_PATTERN.test(source)) return [];
+    if (!hasInvalidScriptClose(source)) return [];
     return [
       {
         code: "invalid_inline_script_syntax",
@@ -962,6 +945,11 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       {
         pattern: /crypto\.getRandomValues\s*\(/,
         label: "crypto.getRandomValues()",
+        hint: "Use a seeded PRNG (e.g. a simple mulberry32) so renders are deterministic across frames.",
+      },
+      {
+        pattern: /crypto\.randomUUID\s*\(/,
+        label: "crypto.randomUUID()",
         hint: "Use a seeded PRNG (e.g. a simple mulberry32) so renders are deterministic across frames.",
       },
       {

@@ -1,12 +1,14 @@
-import { mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { createFileAtomically } from "@hyperframes/core/atomic-file";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { recordFolder } from "./projectRecords.js";
 import { readToolContext, type ToolContext } from "./toolContext.js";
 
 export class ProjectLockTimeout extends Error {}
 
-interface Holder {
+export interface Holder {
   pid: number;
   command: string;
   startedAt: number;
@@ -17,15 +19,15 @@ const POLL_MS = 250;
 export const projectLockPath = (projectDir: string) =>
   join(projectDir, ".hyperframes", "project.lock");
 
-function readHolder(path: string): Holder | null {
+export function readHolder<T extends Holder = Holder>(path: string): T | null {
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as Holder;
+    return JSON.parse(readFileSync(path, "utf8")) as T;
   } catch {
     return null;
   }
 }
 
-function alive(pid: number): boolean {
+export function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -71,6 +73,19 @@ function tryAcquire(path: string, holder: Holder): boolean {
   return false;
 }
 
+const FIRST_NOTICE_MS = 5_000;
+const NOTICE_EVERY_MS = 30_000;
+
+function sayWaiting(current: Holder | null, waitMs: number): void {
+  if (!current) return;
+  const running = Math.round((Date.now() - current.startedAt) / 1000);
+  console.error(
+    terminalText(
+      `[hyperframes] waiting for ${current.command} (pid ${current.pid}, running ${running}s) to finish with this project; waiting up to ${Math.round(waitMs / 1000)}s`,
+    ),
+  );
+}
+
 export async function withProjectLock<T>(
   projectDir: string,
   command: string,
@@ -79,10 +94,18 @@ export async function withProjectLock<T>(
 ): Promise<T> {
   if (!context.projectLock) return run();
   const path = projectLockPath(projectDir);
-  mkdirSync(dirname(path), { recursive: true });
+  if (!recordFolder(projectDir, ""))
+    throw new Error(
+      `${join(projectDir, ".hyperframes")} is a link or not a folder; remove it and run again`,
+    );
   const holder: Holder = { pid: process.pid, command, startedAt: Date.now() };
   const deadline = holder.startedAt + context.projectLock.waitMs;
+  let nextNoticeAt = holder.startedAt + FIRST_NOTICE_MS;
   while (!tryAcquire(path, holder)) {
+    if (Date.now() >= nextNoticeAt) {
+      nextNoticeAt = Date.now() + NOTICE_EVERY_MS;
+      sayWaiting(readHolder(path), context.projectLock.waitMs);
+    }
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
       const current = readHolder(path);
@@ -95,7 +118,7 @@ export async function withProjectLock<T>(
       }
       throw new ProjectLockTimeout(
         `hyperframes ${current?.command ?? "another command"} (pid ${current?.pid ?? "unknown"}) ` +
-          `is still using this project after ${Math.round(context.projectLock.waitMs / 1000)}s`,
+          `is still using this project after ${Math.round(context.projectLock.waitMs / 1000)}s. Run this command again when it finishes.`,
       );
     }
     await sleep(Math.min(POLL_MS, remaining));
@@ -103,6 +126,10 @@ export async function withProjectLock<T>(
   try {
     return await run();
   } finally {
-    if (sameHolder(readHolder(path), holder)) unlinkSync(path);
+    release(path, holder);
   }
+}
+
+export function release(path: string, holder: Holder): void {
+  if (sameHolder(readHolder(path), holder)) unlinkSync(path);
 }

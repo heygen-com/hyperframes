@@ -1,5 +1,5 @@
 import { runCommand } from "citty";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,15 +11,35 @@ const server = vi.hoisted(() => ({
   resumed: [] as (string | undefined)[],
 }));
 const probe = vi.hoisted(() => ({ fail: false }));
+const terminal = vi.hoisted(() => ({ remote: false }));
+const shadow = vi.hoisted(() => ({
+  install: null as { version: string; updateCommand: string | null } | null,
+}));
+const commandRuns = vi.hoisted(() => [] as Record<string, unknown>[]);
 
-vi.mock("../../heygen/reverse.js", () => ({
-  reverseUpgradeUrl: (session?: { sessionId: string; upgradeUrl?: string }) =>
-    session?.upgradeUrl ??
-    `https://plans.test/?feature=reverse${session ? `&rs=${session.sessionId}` : ""}`,
+vi.mock("../../heygen/plan.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../heygen/plan.js")>()),
+  pageUrl: (_kind: string, fields: { feature?: string; rs?: string } = {}) =>
+    `https://plans.test/?feature=${fields.feature}${fields.rs ? `&rs=${fields.rs}` : ""}`,
+}));
+vi.mock("../../heygen/reverse.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../heygen/reverse.js")>()),
   startReverseSession: async (opts: { resumeSessionId?: string } = {}) => {
     server.resumed.push(opts.resumeSessionId);
     return server.answer;
   },
+}));
+vi.mock("../../telemetry/events.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../telemetry/events.js")>()),
+  trackSkillCommandRan: (run: Record<string, unknown>) => void commandRuns.push(run),
+}));
+vi.mock("../../utils/attendedTerminal.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/attendedTerminal.js")>()),
+  isRemoteOrHeadless: () => terminal.remote,
+}));
+vi.mock("../../utils/installerDetection.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/installerDetection.js")>()),
+  shadowingInstall: () => shadow.install,
 }));
 vi.mock("../measure/probe.js", () => ({
   probeReport: (video: string) => {
@@ -33,11 +53,11 @@ const { default: start } = await import("./start.js");
 const SESSION = "rvs_0f8fad5b-d9cb-469f-a165-70867728950e";
 const recorded = (
   plan: "free" | "pro" | "unknown" = "pro",
-  upgradeUrl?: string,
+  upgradeUrl?: string | null,
   gate: "record" | "block" = "record",
 ): ReverseStart => ({
   recorded: true,
-  session: { sessionId: SESSION, plan, gate, ...(upgradeUrl ? { upgradeUrl } : {}) },
+  session: { sessionId: SESSION, plan, gate, ...(upgradeUrl !== undefined ? { upgradeUrl } : {}) },
 });
 
 let root: string;
@@ -50,8 +70,11 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation((line: unknown) => void printed.push(String(line)));
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   server.answer = { recorded: false, reason: "not_signed_in" };
+  terminal.remote = false;
+  shadow.install = null;
   server.resumed = [];
   probe.fail = false;
+  commandRuns.length = 0;
 });
 
 afterEach(() => {
@@ -114,7 +137,7 @@ describe("reverse start", () => {
     expect(config(dir)).toMatchObject({ reverseSessionId: SESSION });
   });
 
-  it.each<[string, ReverseStart, string]>([
+  it.each<[string, ReverseStart, string | null]>([
     [
       "the server's link",
       recorded("free", "https://u.test/p?feature=reverse&rs=1"),
@@ -130,6 +153,7 @@ describe("reverse start", () => {
       { recorded: false, reason: "unavailable", plan: "free" },
       "https://plans.test/?feature=reverse",
     ],
+    ["no link when the server withholds it", recorded("free", null), null],
   ])("prints the upgrade link for Free: %s", async (_label, answer, link) => {
     server.answer = answer;
     await run();
@@ -158,19 +182,77 @@ describe("reverse start", () => {
     [
       "not signed in",
       { recorded: false, reason: "not_signed_in" },
-      { signed_in: false, plan: null, recorded: false },
+      {
+        signed_in: false,
+        plan: null,
+        recorded: false,
+        login_command: "npx hyperframes auth login",
+        // The reason to sign in comes before the sign-in, as words the agent can say as they are.
+        next: expect.stringMatching(
+          /"To rebuild this video.*HeyGen.*"[^]*Run `auth login` through the same launcher now and wait/,
+        ),
+      },
     ],
     [
       "the server cannot answer",
       { recorded: false, reason: "unavailable", plan: "free" },
       { signed_in: true, plan: "free", recorded: false },
     ],
-  ])("never stops the run when %s", async (_label, answer, reverse) => {
-    server.answer = answer;
+  ])(
+    "never stops the run when %s, and still makes the --dir project",
+    async (_label, answer, reverse) => {
+      server.answer = answer;
+      const dir = join(root, "rebuild");
+      await run("--dir", dir);
+      expect(output()).toMatchObject({
+        ok: true,
+        width: 1080,
+        reverse: { ...reverse, saved_to: join(dir, "hyperframes.json") },
+      });
+      expect(config(dir)).toMatchObject({ authoringSkill: "reverse-any-video" });
+      expect(config(dir)).not.toHaveProperty("reverseSessionId");
+    },
+  );
+
+  it("sends a remote terminal straight to the device route, with the reason, link and code in one message", async () => {
+    terminal.remote = true;
+    await run();
+    expect(output().reverse).toMatchObject({
+      signed_in: false,
+      login_command: "npx hyperframes auth login --device",
+      next: expect.stringMatching(
+        /`auth login --device` through the same launcher in the background[^]*one message: first why[^]*"To rebuild this video.*HeyGen.*"[^]*Then the link and code/,
+      ),
+    });
+  });
+
+  it("opens the next message with how to update an older global install that plain npx runs", async () => {
+    shadow.install = { version: "0.9.8", updateCommand: "npm install -g hyperframes@latest" };
+    await run();
+    expect(output()).toMatchObject({
+      reverse: {
+        next: expect.stringMatching(
+          /^Their installed HyperFrames \(0\.9\.8\) is out of date[^]*launcher with --cli-version [^ ]+[^]*"Your installed HyperFrames is out of date[^]*`npm install -g hyperframes@latest` from your home directory\."[^]*Not signed in/,
+        ),
+      },
+    });
+
+    server.answer = recorded();
+    printed = [];
+    await run();
+    expect(output().reverse).toMatchObject({
+      recorded: true,
+      next: expect.stringContaining("`npm install -g hyperframes@latest`"),
+    });
+  });
+
+  it("names no saved_to when the --dir project's config is broken, and leaves it as it was", async () => {
     const dir = join(root, "rebuild");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "hyperframes.json"), "{ not json");
     await run("--dir", dir);
-    expect(output()).toMatchObject({ ok: true, width: 1080, reverse });
-    expect(() => readFileSync(join(dir, "hyperframes.json"))).toThrow();
+    expect(output()).toMatchObject({ ok: true, reverse: { recorded: false, saved_to: null } });
+    expect(readFileSync(join(dir, "hyperframes.json"), "utf-8")).toBe("{ not json");
   });
 
   it("stops a Free account the server blocks, with the subscribe command as the fix, after saving the session", async () => {
@@ -181,7 +263,7 @@ describe("reverse start", () => {
     );
     const dir = join(root, "rebuild");
     await expect(run("--dir", dir)).rejects.toThrow(CliRuntimeError);
-    const command = `npx hyperframes billing subscribe --feature reverse --session ${SESSION}`;
+    const command = `npx hyperframes billing subscribe --feature reverse --skill reverse-any-video --session ${SESSION}`;
     expect(output()).toMatchObject({
       ok: false,
       error: expect.stringContaining(command),
@@ -194,8 +276,27 @@ describe("reverse start", () => {
     server.answer = recorded("free");
     await run();
     expect(output().reverse).toMatchObject({
-      subscribe_command: `npx hyperframes billing subscribe --feature reverse --session ${SESSION}`,
+      subscribe_command: `npx hyperframes billing subscribe --feature reverse --skill reverse-any-video --session ${SESSION}`,
     });
+  });
+
+  it("names no subscribe command when the server withholds the link", async () => {
+    server.answer = recorded("free", null);
+    await run();
+    expect(output().reverse).toMatchObject({ upgrade_url: null, subscribe_command: null });
+  });
+
+  it("names no link when the server blocks Free and withholds the link: no plan can be bought now", async () => {
+    server.answer = recorded("free", null, "block");
+    const dir = join(root, "rebuild");
+    await expect(run("--dir", dir)).rejects.toThrow(CliRuntimeError);
+    expect(output()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("can't be purchased right now"),
+    });
+    expect(printed.at(-1)).not.toContain("http");
+    expect(printed.at(-1)).not.toContain("billing subscribe");
+    expect(config(dir)).toMatchObject({ reverseSessionId: SESSION });
   });
 
   it.each<[string, ReverseStart]>([
@@ -206,6 +307,34 @@ describe("reverse start", () => {
     server.answer = answer;
     await run();
     expect(output()).toMatchObject({ ok: true, width: 1080, reverse: { recorded: true } });
+  });
+
+  it("names no sign-in step to an account that is signed in", async () => {
+    server.answer = { recorded: false, reason: "unavailable", plan: "free" };
+    await run();
+    expect(output().reverse).not.toHaveProperty("login_command");
+    expect(output().reverse).not.toHaveProperty("next");
+  });
+
+  it("reports a signed-out run, then the signed-in retry with the session that keys it", async () => {
+    await run();
+    server.answer = recorded();
+    await run();
+    expect(commandRuns).toEqual([
+      {
+        skill: "reverse-any-video",
+        command: "reverse start",
+        signedIn: false,
+        sessionId: undefined,
+      },
+      { skill: "reverse-any-video", command: "reverse start", signedIn: true, sessionId: SESSION },
+    ]);
+  });
+
+  it("reports no run for a video it cannot probe", async () => {
+    probe.fail = true;
+    await expect(run()).rejects.toThrow(CliRuntimeError);
+    expect(commandRuns).toEqual([]);
   });
 
   it("fails like measure probe when the video cannot be probed, before asking the server", async () => {

@@ -1,3 +1,4 @@
+import { createGestureReadout } from "./domEditGestureReadoutState";
 /**
  * Gesture-begin functions: startGroupDrag and startGesture.
  * These are pure "start a new gesture" operations — no draft rect updates.
@@ -22,9 +23,7 @@ import {
 } from "./manualEdits";
 import {
   type OverlayRect,
-  elementCornerOverlayPoints,
   filterNestedDomEditGroupItems,
-  overlayCornersCentroid,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
 import {
@@ -33,7 +32,10 @@ import {
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
-import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
+import { collectSnapContext, buildExcludeElements, type SnapContext } from "./snapTargetCollection";
+import { measureLiveGrow, type PreviewGestureStart } from "./previewGestureStartRead";
+import { endPreviewDraft } from "./previewDrafts";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
 import { logDrag, readDragPositions, resetDragMoveLog } from "../../utils/dragDebug";
@@ -51,6 +53,7 @@ export function startGroupDrag(
   e: React.PointerEvent<HTMLElement>,
   opts: UseDomEditOverlayGesturesOptions,
   at?: EditMoment,
+  snap?: SnapContext,
 ): boolean {
   const items = opts.groupOverlayItemsRef.current;
   if (items.length <= 1) return false;
@@ -64,7 +67,6 @@ export function startGroupDrag(
     notifyBlockedPress(e, opts, blockedSelection);
     return false;
   }
-
   opts.onManualDragStartRef.current?.();
   const dragItems = filterNestedDomEditGroupItems(items);
   const members: ManualOffsetDragMember[] = [];
@@ -76,6 +78,7 @@ export function startGroupDrag(
       rect: item.rect,
       gesture: "drag",
       at,
+      start: item.start,
     });
     if (!result.ok) {
       restoreManualOffsetDragMembers(members);
@@ -107,7 +110,8 @@ export function startGroupDrag(
     const overlayEl = opts.overlayRef.current;
     const iframe = opts.iframeRef.current;
     const snapContext =
-      overlayEl && iframe
+      snap ??
+      (overlayEl && iframe
         ? collectSnapContext({
             overlayEl,
             iframe,
@@ -116,7 +120,7 @@ export function startGroupDrag(
               groupSelections: items.map((i) => i.selection),
             }),
           })
-        : undefined;
+        : undefined);
 
     e.preventDefault();
     e.stopPropagation();
@@ -149,9 +153,13 @@ export function startGesture(
     resizeHandle?: ResizeHandle;
     resizeCorner?: { x: number; y: number };
     at?: EditMoment;
+    /** Read off a frame Studio cannot script at the press: the element's start and the snap targets. */
+    start?: PreviewGestureStart;
+    snap?: SnapContext;
   },
 ): boolean {
   const at = options?.at;
+  const start = options?.start;
   const sel = options?.selection ?? opts.selectionRef.current;
   const rect = options?.rect ?? opts.overlayRectRef.current;
   const box = opts.boxRef.current;
@@ -166,13 +174,19 @@ export function startGesture(
   if (kind === "resize" && (!Number.isFinite(rect.width) || !Number.isFinite(rect.height)))
     return false;
 
+  // A frame Studio scripts measures its own box here, with the same probe the sealed frame runs.
+  const liveFrame = opts.iframeRef.current;
+  const liveGrow =
+    kind === "resize" && !start && overlayEl && liveFrame && !previewFrameOpaque(liveFrame)
+      ? measureLiveGrow(overlayEl, liveFrame, sel.element)
+      : null;
   const size = readStudioBoxSize(sel.element);
   // The draft writes CSS width/height, so the resize base must be the CSS
   // layout size. offsetWidth/Height are transform-free; the overlay-rect
   // fallback (rect / editScale) includes the element's own GSAP scale and
   // would make a rescaled element's draft grow from the RENDERED size.
-  const layoutWidth = sel.element.offsetWidth;
-  const layoutHeight = sel.element.offsetHeight;
+  const layoutWidth = start?.layout.width ?? sel.element.offsetWidth;
+  const layoutHeight = start?.layout.height ?? sel.element.offsetHeight;
   const actualWidth =
     size.width > 0 ? size.width : layoutWidth > 0 ? layoutWidth : rect.width / rect.editScaleX;
   const actualHeight =
@@ -203,6 +217,7 @@ export function startGesture(
       rect,
       gesture: "drag",
       at,
+      start,
     });
     if (!result.ok) {
       opts.onBlockedMoveRef.current(result.selection, result.reason);
@@ -225,6 +240,7 @@ export function startGesture(
         rect,
         gesture: "resize",
         at,
+        start,
       });
       if (result.ok) {
         pathOffsetMember = result.member;
@@ -241,6 +257,7 @@ export function startGesture(
         kind === "rotate" ? "rotate" : "resize",
         at,
       );
+      endPreviewDraft(sel.element, "keep");
     }
   }
 
@@ -248,29 +265,30 @@ export function startGesture(
   try {
     // Rotation base: the angle the element shows. An element GSAP does not turn, or a plain-translate
     // move, never asks GSAP: reading a property makes it bake the CSS into its transform.
-    const plain = !!pathOffsetMember?.plainTranslate || editsPlainCss(sel.element, "rotate");
-    const plainRotation = plain && kind === "rotate" ? readCssRotationTarget(sel.element) : null;
-    const rotation = { angle: readRotationBase(sel.element, plain) };
+    const frameRotation = start?.gsapRotation;
+    const plain =
+      !!pathOffsetMember?.plainTranslate ||
+      (frameRotation !== undefined ? frameRotation === null : editsPlainCss(sel.element, "rotate"));
+    const frameCss = plain ? start?.cssRotation : undefined;
+    const plainRotation =
+      plain && kind === "rotate" ? (frameCss?.target ?? readCssRotationTarget(sel.element)) : null;
+    const rotation = {
+      angle: frameCss?.angle ?? readRotationBase(sel.element, plain, frameRotation ?? undefined),
+    };
     const overlayBounds = overlayEl?.getBoundingClientRect();
     const centerX = (overlayBounds?.left ?? 0) + rect.left + rect.width / 2;
     const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;
 
     const iframe = opts.iframeRef.current;
 
-    // A corner resize pins the centroid of the four rotation-aware corners: an axis-aligned
-    // size delta only holds the centre still for a symmetric, unrotated growth.
-    let resizeFixedCenterStart: { x: number; y: number } | undefined;
-    if (kind === "resize" && pathOffsetMember && overlayEl && iframe) {
-      const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
-      if (corners) resizeFixedCenterStart = overlayCornersCentroid(corners);
-    }
     const snapContext =
       (kind === "drag" || kind === "resize") && overlayEl && iframe
-        ? collectSnapContext({
+        ? (options?.snap ??
+          collectSnapContext({
             overlayEl,
             iframe,
             excludeElements: buildExcludeElements({ iframe, selection: sel }),
-          })
+          }))
         : undefined;
     e.preventDefault();
     e.stopPropagation();
@@ -278,6 +296,7 @@ export function startGesture(
     opts.rafPausedRef.current = true;
     opts.gestureRef.current = {
       kind,
+      readout: createGestureReadout(overlayEl, iframe, rect),
       mode,
       selection: sel,
       pointerId: e.pointerId,
@@ -309,7 +328,7 @@ export function startGesture(
         kind === "resize" && options?.resizeCorner
           ? { x: e.clientX - options.resizeCorner.x, y: e.clientY - options.resizeCorner.y }
           : undefined,
-      resizeFixedCenterStart,
+      resizeGrow: kind === "resize" ? ((start ? start.grow : liveGrow) ?? undefined) : undefined,
     };
     if (kind === "resize") {
       resetResizeMoveLog();
@@ -322,8 +341,9 @@ export function startGesture(
         editScale: { x: rect.editScaleX, y: rect.editScaleY },
         contentScale: { x: contentScaleX, y: contentScaleY },
         rotation: rotation.angle,
+        grow: opts.gestureRef.current?.resizeGrow ?? null,
+        pressFromCorner: opts.gestureRef.current?.resizePressFromCorner ?? null,
         hasOffsetMember: !!pathOffsetMember,
-        fixedCenterStart: resizeFixedCenterStart ?? null,
         initialBoxSize: opts.gestureRef.current?.initialBoxSize ?? null,
         initialInlineStyle: sel.element.getAttribute("style"),
       });

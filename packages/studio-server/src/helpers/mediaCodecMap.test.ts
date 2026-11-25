@@ -231,9 +231,12 @@ describe("BROWSER_HOSTILE_CODECS representative mimes", () => {
     expect(typeof BROWSER_HOSTILE_CODECS[codecName]?.representativeMime).toBe("string");
   });
 
-  it("has no representative mime for prores, which is never decodable", () => {
-    expect(BROWSER_HOSTILE_CODECS.prores?.representativeMime).toBeNull();
-  });
+  it.each(["prores", "mpeg4", "mjpeg", "mpeg2video", "dnxhd"])(
+    "has no representative mime for %s, which is never decodable",
+    (codecName) => {
+      expect(BROWSER_HOSTILE_CODECS[codecName]?.representativeMime).toBeNull();
+    },
+  );
 });
 
 describe("shouldPrewarmProxy", () => {
@@ -241,7 +244,7 @@ describe("shouldPrewarmProxy", () => {
     return { codecName, browserHostile: true, representativeMime: null, hasAlpha: false };
   }
 
-  it.each(["hevc", "prores", "theora"])(
+  it.each(["hevc", "prores", "theora", "mpeg4", "mjpeg", "mpeg2video", "dnxhd"])(
     "pre-warms %s, which has no cross-platform browser decode",
     (codecName) => {
       expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
@@ -266,24 +269,43 @@ describe("shouldPrewarmProxy", () => {
     ).toBe(false);
   });
 
-  // `shouldPrewarmProxy` alone cannot catch a missing `Object.hasOwn` guard —
-  // `.prewarm === true` is already strict against `Object.prototype.constructor`.
-  // The input that misbehaves goes through `codecFactsFor`, which would report
-  // an ordinary asset as browser-hostile.
-  it("does not treat a codec named after an Object.prototype key as hostile", async () => {
+  it("treats a codec nobody listed as browser-hostile, so its file gets a playable copy", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "wmv3" }));
+
+    expect(facts).toEqual({
+      codecName: "wmv3",
+      browserHostile: true,
+      representativeMime: null,
+      hasAlpha: false,
+    });
+    expect(shouldPrewarmProxy(facts!)).toBe(true);
+    expect(decideMediaProxyEligibility(facts)).toEqual({ eligible: true });
+  });
+
+  it.each(["h264", "vp8", "vp9", "av1"])("does not pre-warm %s", async (codecName) => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: codecName }));
+
+    expect(shouldPrewarmProxy(facts!)).toBe(false);
+  });
+
+  // A codec named after an Object.prototype key must not resolve against it: it is an unlisted codec like any other.
+  it("reads a codec named after an Object.prototype key as an unlisted codec", async () => {
     const project = tmpProject();
     const videoPath = join(project, "clip.mp4");
     writeFileSync(videoPath, "fake video bytes");
 
     const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "constructor" }));
 
-    expect(facts).toEqual({
-      codecName: "constructor",
-      browserHostile: false,
-      representativeMime: null,
-      hasAlpha: false,
-    });
-    expect(shouldPrewarmProxy(facts!)).toBe(false);
+    expect(facts?.browserHostile).toBe(true);
+    expect(facts?.representativeMime).toBeNull();
   });
 });
 
@@ -403,6 +425,28 @@ describe("a lighter copy of a file Chrome can play", () => {
     expect(Object.keys(scan.sourceFacts).sort()).toEqual(["/broll.mov", "/cam.mp4"]);
     expect(scan.sourceFacts["/cam.mp4"]?.codec).toBe("h264");
     expect(scan.sourceFacts["/broll.mov"]?.codec).toBe("hevc");
+  });
+
+  // fails without the fix: a page knew a file was see-through only from the codec map, which lists the files a browser
+  // cannot play, so a playable alpha WebM looked opaque and a capture swapped it for an opaque JPEG.
+  it("says which playable videos carry alpha", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project, "cam.mp4"), "fake video bytes");
+    writeFileSync(join(project, "glass.webm"), "fake video bytes");
+
+    const scan = await scanProjectMedia(project, [{ html: videoHtml("cam.mp4", "glass.webm") }], {
+      runner: makeRunner({
+        [join(project, "cam.mp4")]: { codecName: "h264", size: [3840, 2160] },
+        [join(project, "glass.webm")]: {
+          codecName: "vp9",
+          size: [3840, 2160],
+          tags: { ALPHA_MODE: "1" },
+        },
+      }),
+    });
+
+    expect(scan.sourceFacts["/glass.webm"]?.hasAlpha).toBe(true);
+    expect(scan.sourceFacts["/cam.mp4"]?.hasAlpha).toBeUndefined();
   });
 });
 

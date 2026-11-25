@@ -51,11 +51,21 @@ describe("requestFreezeFrame", () => {
     });
   });
 
-  it("surfaces the server's error", async () => {
+  // fails without the fix: the server's words came through without its status, so the failure could not be named.
+  it("surfaces the server's error with its status", async () => {
     stubFetch({ status: 400, body: { error: "Move the playhead inside a video clip to freeze" } });
     await expect(
       requestFreezeFrame({ projectId: "p", path: "index.html", element, playhead: 7 }),
-    ).rejects.toThrow("Move the playhead inside a video clip to freeze");
+    ).rejects.toThrow("Move the playhead inside a video clip to freeze (400)");
+  });
+
+  it("names the file and why when the file is read-only", async () => {
+    stubFetch({ status: 403, body: { error: "permission denied", why: "permission" } });
+    await expect(
+      requestFreezeFrame({ projectId: "p", path: "scenes/intro.html", element, playhead: 7 }),
+    ).rejects.toThrow(
+      "intro.html can't be changed: it is read-only or protected. Check its permissions, then try again.",
+    );
   });
 });
 

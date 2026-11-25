@@ -22,6 +22,7 @@
  * `HOME` cache.
  */
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -31,11 +32,33 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep, win32 } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { managedChromeVersion } from "./manager.js";
 
 const CHROME_VERSION = managedChromeVersion();
+
+// The browsers here are stand-in files: a non-empty one counts as the pinned build unless a case refuses it. Mocked
+// before each case so it reads the case's own (possibly mocked) node:fs.
+const pinCheck = { refuse: false };
+beforeEach(() => {
+  vi.doMock("@hyperframes/engine/chrome-host-ceiling", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@hyperframes/engine/chrome-host-ceiling")>();
+    const { statSync } = await import("node:fs");
+    const standIn = (path: string) => {
+      try {
+        const stat = statSync(path, { throwIfNoEntry: false });
+        return stat?.isFile() === true && stat.size > 0;
+      } catch {
+        return false;
+      }
+    };
+    return {
+      ...actual,
+      isPinnedHeadlessShell: (path: string) => !pinCheck.refuse && standIn(path),
+    };
+  });
+});
 
 // Use `path.join` so the fake paths line up with whatever separator Node's
 // real `path.join` produces in `manager.ts` on the host running the test
@@ -104,6 +127,8 @@ interface FsMockOptions {
   osHost?: { platform: string; release: string };
   /** paths whose stat reports 0 bytes */
   emptyFiles?: ReadonlySet<string>;
+  /** paths whose stat reports another account as owner */
+  otherAccounts?: ReadonlySet<string>;
 }
 
 function installFsMocks({
@@ -113,6 +138,7 @@ function installFsMocks({
   initialMtimeMs = 0,
   osHost = { platform: "linux", release: "24.0.0" },
   emptyFiles,
+  otherAccounts,
 }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
@@ -120,10 +146,22 @@ function installFsMocks({
   mockedPaths = paths;
   const mtimes = new Map([...existing].map((p) => [p, initialMtimeMs]));
   const contents = new Map<string, string>();
+  const directories = new Set([CACHE_ROOT, HF_CACHE]);
+  for (const path of paths) {
+    for (let parent = dirname(path); parent !== dirname(parent); parent = dirname(parent))
+      directories.add(parent);
+  }
+  for (const directory of directories) {
+    if ([...paths].some((path) => path.startsWith(directory + sep))) paths.add(directory);
+  }
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
-      const entries = dirs?.[p];
+      const entries =
+        dirs?.[p] ??
+        (directories.has(p)
+          ? [...paths].filter((path) => dirname(path) === p).map((path) => basename(path))
+          : undefined);
       if (!entries) {
         const err = new Error(`ENOENT: readdirSync mock had no entry for ${p}`);
         (err as NodeJS.ErrnoException).code = "ENOENT";
@@ -138,6 +176,7 @@ function installFsMocks({
         throw err;
       }
       paths.add(p);
+      directories.add(p);
       mtimes.set(p, Date.now());
     },
     rmSync: (p: string) => {
@@ -171,8 +210,25 @@ function installFsMocks({
         (err as NodeJS.ErrnoException).code = "ENOENT";
         throw err;
       }
-      return { mtimeMs: mtimes.get(p) ?? 0, size: emptyFiles?.has(p) ? 0 : 1, isFile: () => true };
+      return {
+        mtimeMs: mtimes.get(p) ?? 0,
+        size: emptyFiles?.has(p) ? 0 : 1,
+        isFile: () => true,
+        uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
+        mode: 0o755,
+      };
     },
+    lstatSync: (p: string) =>
+      paths.has(p)
+        ? {
+            uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
+            mode: 0o755,
+            isSymbolicLink: () => false,
+            isDirectory: () => directories.has(p),
+          }
+        : undefined,
+    realpathSync: (p: string) => p,
+    chmodSync: () => {},
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
       if (!paths.has(p)) {
@@ -314,6 +370,7 @@ describe("findBrowser — cache resolution", () => {
     });
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -328,6 +385,7 @@ describe("findBrowser — cache resolution", () => {
       configurable: true,
     });
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     vi.doUnmock("node:fs");
     vi.doUnmock("node:os");
     vi.doUnmock("node:child_process");
@@ -355,29 +413,25 @@ describe("findBrowser — cache resolution", () => {
     expect(result).toEqual({ executablePath: HF_BINARY, source: "cache" });
   });
 
-  it("hides the Windows console used by the where lookup", async () => {
+  it("on Windows, skips a google-chrome.exe in the working directory and takes the PATH copy", async () => {
     Object.defineProperty(process, "platform", {
       value: "win32",
       configurable: true,
     });
-    installFsMocks({ existing: new Set() });
+    const project = join("/", "projects", "shared");
+    const tools = join("/", "tools", "chrome");
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+    vi.stubEnv("PATH", [project, tools].join(win32.delimiter));
+    const existing = installFsMocks({ existing: new Set([join(project, "google-chrome.exe")]) });
     installPuppeteerBrowsersMock();
-    const execSync = vi.fn((command: string) =>
-      command === "where google-chrome" ? "C:\\Chrome\\chrome.exe\n" : "",
-    );
-    vi.doMock("node:child_process", () => ({ execSync, spawnSync: vi.fn() }));
+    const { findSystemBrowser } = await import("./manager.js");
 
-    const { findBrowser } = await import("./manager.js");
-    const result = await findBrowser();
-
-    expect(result).toEqual({
-      executablePath: "C:\\Chrome\\chrome.exe",
+    expect(findSystemBrowser()).toBeUndefined();
+    existing.add(join(tools, "google-chrome.exe"));
+    expect(findSystemBrowser()).toEqual({
+      executablePath: join(tools, "google-chrome.exe"),
       source: "system",
     });
-    expect(execSync).toHaveBeenCalledWith(
-      "where google-chrome",
-      expect.objectContaining({ windowsHide: true }),
-    );
   });
 
   it("finds Chrome in the standard Windows Program Files location", async () => {
@@ -505,12 +559,73 @@ describe("findBrowser — cache resolution", () => {
       executablePath: redownloadedBinary,
       source: "download",
     });
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary unusable"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Cached binary missing, not the pinned build"),
+    );
     // The partial extract is replaced wholesale, not merged into (install() would
     // otherwise throw "folder exists but exe missing", the bug both feedback reports hit).
     expect(paths.has(staleLeftover)).toBe(false);
     expect(paths.has(redownloadedBinary)).toBe(true);
   });
+
+  it.skipIf(!process.getuid).each([["the binary", HF_BINARY]])(
+    "re-downloads instead of launching a cached build when another account owns %s",
+    async (_what, foreign) => {
+      const redownloadedBinary = join(HF_CACHE, "chrome-headless-shell", "redownloaded");
+      installFsMocks({
+        existing: new Set([HF_CACHE, HF_BINARY]),
+        otherAccounts: new Set([foreign]),
+      });
+      installPuppeteerBrowsersMock({
+        installedInHfCache: [
+          {
+            browser: "chrome-headless-shell",
+            executablePath: HF_BINARY,
+            buildId: CHROME_VERSION,
+          },
+        ],
+        installResult: { executablePath: redownloadedBinary },
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { findBrowser } = await import("./manager.js");
+
+      expect(await findBrowser()).toEqual({
+        executablePath: redownloadedBinary,
+        source: "download",
+      });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`writable by another account at ${HF_BINARY}`),
+      );
+    },
+  );
+
+  it.skipIf(!process.getuid)(
+    "neither launches nor installs into a chrome folder another account owns",
+    async () => {
+      installFsMocks({
+        existing: new Set([HF_CACHE, HF_BINARY]),
+        otherAccounts: new Set([HF_CACHE]),
+      });
+      installPuppeteerBrowsersMock({
+        installedInHfCache: [
+          {
+            browser: "chrome-headless-shell",
+            executablePath: HF_BINARY,
+            buildId: CHROME_VERSION,
+          },
+        ],
+        installResult: { executablePath: join(HF_CACHE, "chrome-headless-shell", "redownloaded") },
+      });
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { findBrowser } = await import("./manager.js");
+
+      await expect(findBrowser()).rejects.toThrow(
+        `${HF_CACHE} can be changed by another user account`,
+      );
+    },
+  );
 
   it("ensureBrowser({force: true}) re-downloads without purging the cache, bypassing any cache/system shortcut", async () => {
     const staleInstallDir = stagedVersionDir(HF_CACHE, "131.0.6778.85");
@@ -575,6 +690,24 @@ describe("findBrowser — cache resolution", () => {
     }
   });
 
+  it("refuses a download that is not the pinned build", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId }) =>
+        writeStagedInstall(cacheDir, buildId, "other build"),
+    });
+    pinCheck.refuse = true;
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+      await expect(ensureBrowser({ force: true })).rejects.toThrow(
+        /not the build this version pins/,
+      );
+    } finally {
+      pinCheck.refuse = false;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("installs again instead of reusing an empty cached executable", async () => {
     const home = useRealCacheHome();
     installPuppeteerBrowsersMock({
@@ -603,6 +736,37 @@ describe("findBrowser — cache resolution", () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform === "win32")(
+    "replaces a cached browser with a writable sibling library",
+    async () => {
+      const home = useRealCacheHome();
+      installPuppeteerBrowsersMock({
+        installImpl: async ({ cacheDir, buildId }) =>
+          writeStagedInstall(cacheDir, buildId, "fresh"),
+      });
+      try {
+        const { ensureBrowser } = await import("./manager.js");
+        const cached = await ensureBrowser({ force: true });
+        const library = join(dirname(cached.executablePath), "libEGL.so");
+        writeFileSync(library, "library");
+        chmodSync(library, 0o666);
+        const { getInstalledBrowsers } = await import("@puppeteer/browsers");
+        vi.mocked(getInstalledBrowsers).mockResolvedValue([
+          {
+            browser: "chrome-headless-shell",
+            buildId: CHROME_VERSION,
+            platform: "linux",
+            executablePath: cached.executablePath,
+          } as never,
+        ]);
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        expect((await ensureBrowser({ preferManagedChrome: true })).source).toBe("download");
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("restores the previous version when the staged install cannot be moved in", async () => {
     const home = useRealCacheHome();
@@ -973,6 +1137,27 @@ describe("findBrowser — cache resolution", () => {
     expect(warnSpy.mock.calls[0]?.[0]).toContain("Falling back to system Chrome");
   });
 
+  // fails without the fix: the error's code and message were printed as they arrived.
+  it("shows control characters in a cache read failure as text", async () => {
+    installFsMocks({ existing: new Set([HF_CACHE, SYSTEM_CHROME]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCacheError: Object.assign(new Error("scandir '/c/od\u001b[2Jd\u0007'\nsecond"), {
+        code: "E\u001b]0;t\u0007",
+      }),
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { findBrowser, _resetSystemFallbackWarnForTests } = await import("./manager.js");
+    _resetSystemFallbackWarnForTests();
+    await findBrowser();
+
+    const said = warnSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(said).toContain("Browser cache read failed (E\\x1b]0;t\\x07)");
+    expect(said).toContain("scandir '/c/od\\x1b[2Jd\\x07'");
+    expect(said).not.toContain("\u001b");
+    expect(said).not.toContain("\u0007");
+  });
+
   it("falls back to the puppeteer-managed cache when hyperframes cache is empty", async () => {
     // Empty hyperframes cache, populated puppeteer cache — the regression
     // scenario from the hf#677 spike.
@@ -1294,6 +1479,78 @@ describe("findBrowser — cache resolution", () => {
     }
   });
 
+  describe("retryWhileLocked", () => {
+    const lock = (code: string) =>
+      Object.assign(new Error(`${code}: operation not permitted, rename 'a' -> 'b'`), { code });
+    const quickly = async (): Promise<void> => {};
+    const onWindows = async (run: () => Promise<void>) => {
+      const real = Object.getOwnPropertyDescriptor(process, "platform");
+      Object.defineProperty(process, "platform", { value: "win32" });
+      try {
+        await run();
+      } finally {
+        if (real) Object.defineProperty(process, "platform", real);
+      }
+    };
+
+    // fails without the fix: a file a virus scanner held for a moment failed the whole install with EPERM.
+    it.each(["EBUSY", "EPERM", "EACCES"])(
+      "on Windows, goes on after a %s that clears, waiting longer each time",
+      async (code) => {
+        await onWindows(async () => {
+          const { retryWhileLocked } = await import("./manager.js");
+          const waits: number[] = [];
+          const run = vi
+            .fn<() => Promise<string>>()
+            .mockRejectedValueOnce(lock(code))
+            .mockRejectedValueOnce(lock(code))
+            .mockResolvedValue("moved");
+          const cleared = vi.fn();
+          await expect(
+            retryWhileLocked(run, cleared, 5, async (ms) => void waits.push(ms)),
+          ).resolves.toBe("moved");
+          expect(run).toHaveBeenCalledTimes(3);
+          expect(cleared).toHaveBeenCalledTimes(2);
+          expect(waits).toEqual([250, 500]);
+        });
+      },
+    );
+
+    it("on Windows, gives the lock's error after the last attempt", async () => {
+      await onWindows(async () => {
+        const { retryWhileLocked } = await import("./manager.js");
+        const run = vi.fn<() => Promise<string>>().mockRejectedValue(lock("EPERM"));
+        await expect(retryWhileLocked(run, undefined, 3, quickly)).rejects.toThrow("EPERM");
+        expect(run).toHaveBeenCalledTimes(3);
+      });
+    });
+
+    it("on Windows, reads the lock from the message when a child process carried it without a code", async () => {
+      await onWindows(async () => {
+        const { retryWhileLocked } = await import("./manager.js");
+        const run = vi
+          .fn<() => Promise<string>>()
+          .mockRejectedValueOnce(new Error("EBUSY: resource busy or locked, unlink 'x'"))
+          .mockResolvedValue("ok");
+        await expect(retryWhileLocked(run, undefined, 3, quickly)).resolves.toBe("ok");
+      });
+    });
+
+    it("does not retry any other error, or a lock error off Windows", async () => {
+      const { retryWhileLocked } = await import("./manager.js");
+      const missing = vi.fn(async () => {
+        throw lock("ENOENT");
+      });
+      await expect(retryWhileLocked(missing, undefined, 3, quickly)).rejects.toThrow();
+      expect(missing).toHaveBeenCalledTimes(1);
+      const here = vi.fn(async () => {
+        throw lock("EPERM");
+      });
+      await expect(retryWhileLocked(here, undefined, 3, quickly)).rejects.toThrow();
+      expect(here).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("withBrowserWaitNotice speaks every 15 s while the task runs and stops when it ends", async () => {
     vi.useFakeTimers();
     try {
@@ -1462,6 +1719,7 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -1551,6 +1809,7 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
       expect(caught.message).toContain(rawMsg);
       expect(caught.message).toContain("HYPERFRAMES_BROWSER_PATH");
       expect(caught.message).toContain("No Chrome or Chromium was found on this machine");
+      expect(caught.message).toContain("hyperframes doctor");
       expect(caught.message).not.toContain('export HYPERFRAMES_BROWSER_PATH="');
       expect(caught.message).not.toContain("set HYPERFRAMES_BROWSER_PATH=");
       expect(caught.cause).toBe(originalError);
@@ -1563,6 +1822,7 @@ describe("downloadBrowser — too little disk for the browser", () => {
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -1739,6 +1999,7 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
     Object.defineProperty(process, "platform", {
       value: "darwin",
@@ -1768,7 +2029,7 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
 
   it.each([
     { host: MAC_12, expected: OLD_BUILD },
-    { host: MAC_13, expected: "152.0.7977.30" },
+    { host: MAC_13, expected: "158.0.8127.88" },
   ])("downloads $expected on $host.release", async ({ host, expected }) => {
     installFsMocks({ existing: new Set(), osHost: host });
     const install = vi.fn(async () => ({ executablePath: MAC_HF_BINARY }));
@@ -1794,7 +2055,7 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
         {
           browser: "chrome-headless-shell",
           executablePath: MAC_HF_BINARY,
-          buildId: "152.0.7977.30",
+          buildId: "158.0.8127.88",
         },
       ],
     });
@@ -1830,10 +2091,10 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
     installFsMocks({
       existing: new Set([
         PUPPETEER_CACHE,
-        macPuppeteerBinary("mac-152.0.7977.30"),
+        macPuppeteerBinary("mac-158.0.8127.88"),
         macPuppeteerBinary("mac-150.0.7871.124"),
       ]),
-      dirs: { [PUPPETEER_CACHE]: ["mac-152.0.7977.30", "mac-150.0.7871.124"] },
+      dirs: { [PUPPETEER_CACHE]: ["mac-158.0.8127.88", "mac-150.0.7871.124"] },
       osHost: MAC_12,
     });
     installPuppeteerBrowsersMock({ browserPlatform: "mac" });
@@ -1849,17 +2110,17 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
     installFsMocks({
       existing: new Set([
         PUPPETEER_CACHE,
-        macPuppeteerBinary("mac-152.0.7977.30"),
+        macPuppeteerBinary("mac-158.0.8127.88"),
         macPuppeteerBinary("mac-150.0.7871.124"),
       ]),
-      dirs: { [PUPPETEER_CACHE]: ["mac-152.0.7977.30", "mac-150.0.7871.124"] },
+      dirs: { [PUPPETEER_CACHE]: ["mac-158.0.8127.88", "mac-150.0.7871.124"] },
       osHost: MAC_13,
     });
     installPuppeteerBrowsersMock({ browserPlatform: "mac" });
     const { findBrowser } = await import("./manager.js");
 
     await expect(findBrowser()).resolves.toEqual({
-      executablePath: macPuppeteerBinary("mac-152.0.7977.30"),
+      executablePath: macPuppeteerBinary("mac-158.0.8127.88"),
       source: "cache",
     });
   });

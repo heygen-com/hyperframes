@@ -61,10 +61,28 @@ async function scanChunk(page: Page, times: number[]): Promise<number[]> {
   }, times);
 }
 
+/** The chunk's frames, or null once `ms` pass first: a wedged page answers only at the protocol timeout. */
+function withinBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise<T | null>((resolve, reject) => {
+    const timer = setTimeout(() => resolve(null), Math.max(0, ms));
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 interface ScanOptions {
   budgetMs?: number;
   now?: () => number;
   onProgress?: (scannedFrames: number, totalFrames: number) => void;
+  onEnd?: () => void;
 }
 
 /**
@@ -76,7 +94,28 @@ export async function scanCssEffectLiveFrames(
   fps: number,
   totalFrames: number,
   maxFrames: number,
-  { budgetMs = SCAN_BUDGET_MS, now = () => performance.now(), onProgress }: ScanOptions = {},
+  {
+    budgetMs = SCAN_BUDGET_MS,
+    now = () => performance.now(),
+    onProgress = () => {},
+    onEnd,
+  }: ScanOptions = {},
+): Promise<Set<number> | null> {
+  try {
+    return await scanLiveFrames(page, fps, totalFrames, maxFrames, budgetMs, now, onProgress);
+  } finally {
+    onEnd?.();
+  }
+}
+
+async function scanLiveFrames(
+  page: Page,
+  fps: number,
+  totalFrames: number,
+  maxFrames: number,
+  budgetMs: number,
+  now: () => number,
+  onProgress: NonNullable<ScanOptions["onProgress"]>,
 ): Promise<Set<number> | null> {
   const live = new Set<number>();
   const started = now();
@@ -84,8 +123,16 @@ export async function scanCssEffectLiveFrames(
     const to = Math.min(totalFrames, from + SCAN_CHUNK_FRAMES);
     const times: number[] = [];
     for (let f = from; f < to; f++) times.push(quantizeTimeToFrame(f / fps, fps));
-    for (const i of await scanChunk(page, times)) live.add(from + i);
-    onProgress?.(to, totalFrames);
+    const shown = await withinBudget(scanChunk(page, times), budgetMs - (now() - started));
+    if (!shown) {
+      console.error(
+        `[engine] fast capture: the effect scan got no answer from the page within its ` +
+          `${budgetMs / 1000} s budget (frames ${from}-${to - 1})`,
+      );
+      return null;
+    }
+    for (const i of shown) live.add(from + i);
+    onProgress(to, totalFrames);
     const projectedMs = ((now() - started) / to) * totalFrames;
     if (to < totalFrames && projectedMs > budgetMs) {
       console.error(

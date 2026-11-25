@@ -52,12 +52,12 @@ function serve(get: Response | null, post?: unknown) {
   );
 }
 
-async function mount(): Promise<HTMLElement> {
+async function mount(placement?: "storyboard"): Promise<HTMLElement> {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   mounted = { root, host };
-  await act(async () => root.render(<OpenInDesktopButton />));
+  await act(async () => root.render(<OpenInDesktopButton placement={placement} />));
   return host;
 }
 
@@ -86,7 +86,7 @@ beforeEach(() => {
 
 const events = (name: string) =>
   track.mock.calls.filter(([event]) => event === name).map(([, props]) => props);
-const MAC = { os: "darwin", app_installed: true, download_available: true };
+const MAC = { os: "darwin", app_installed: true, download_available: true, placement: "header" };
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -140,7 +140,7 @@ const stepState = (n: number) =>
   guide()?.querySelector<HTMLElement>(`[data-step="${n}"]`)?.dataset.state ?? null;
 const cardButton = (text: string) =>
   [...(guide()?.querySelectorAll("button") ?? [])].find((b) => b.textContent === text) ?? null;
-const noApp = { os: "darwin", app_installed: false, download_available: true };
+const noApp = { os: "darwin", app_installed: false, download_available: true, placement: "header" };
 const routeBody = (over: Record<string, unknown> = {}) => ({
   ...noApp,
   available: true,
@@ -244,7 +244,13 @@ it("finds the install only from the preview server, asking only while the card i
       (e) => (e as { step: string }).step === "install_detected",
     );
     expect(detected).toEqual([
-      { step: "install_detected", os: "darwin", app_installed: true, download_available: true },
+      {
+        step: "install_detected",
+        os: "darwin",
+        app_installed: true,
+        download_available: true,
+        placement: "header",
+      },
     ]);
     const settled = gets;
     await act(async () => vi.advanceTimersByTime(10_000));
@@ -360,7 +366,7 @@ it("a hand-off that finds the app gone goes back to the download step", async ()
 });
 
 it("where the app is installed but cannot take a project (Linux), step 3 shows the folder to drop in", async () => {
-  const linux = { os: "linux", app_installed: true, download_available: true };
+  const linux = { os: "linux", app_installed: true, download_available: true, placement: "header" };
   serve(
     Response.json({
       ...linux,
@@ -399,7 +405,13 @@ it("on Windows, step 1 names the Windows download and opens it tagged", async ()
   await act(async () => cardButton("Download for Windows")!.click());
   expect(opened).toEqual([tagged(`${DOWNLOAD}?os=windows`)]);
   expect(events("desktop_cta_eligibility")).toEqual([
-    { eligibility: "download", os: "win32", app_installed: false, download_available: true },
+    {
+      eligibility: "download",
+      os: "win32",
+      app_installed: false,
+      download_available: true,
+      placement: "header",
+    },
   ]);
 });
 
@@ -436,9 +448,48 @@ it("counts where the button can show, the app here, and platforms with no app", 
       os: "freebsd",
       app_installed: false,
       download_available: false,
+      placement: "header",
     },
   ]);
   expect(events("desktop_cta_impression")).toEqual([]);
+});
+
+it("tells the storyboard's button from the header's in every funnel event", async () => {
+  serve(
+    Response.json({
+      ...MAC,
+      available: true,
+      handoff: true,
+      downloadUrl: DOWNLOAD,
+      installed: true,
+    }),
+    { opened: true },
+  );
+  await mount("storyboard");
+  const storyboardButton = document.querySelector<HTMLButtonElement>(
+    '[data-testid="storyboard-open-in-desktop"]',
+  );
+  expect(storyboardButton).not.toBeNull();
+  await act(async () => storyboardButton!.click());
+  const placements = track.mock.calls
+    .filter(([event]) => String(event).startsWith("desktop_cta"))
+    .map(([, props]) => (props as { placement?: string }).placement);
+  expect(placements.length).toBeGreaterThan(0);
+  expect(new Set(placements)).toEqual(new Set(["storyboard"]));
+  expect(postBodies).toEqual([{ cta: resolveTabId(), doc: "storyboard" }]);
+});
+
+it("asks the storyboard's visitor to comment on the board in the app, not to edit the video", async () => {
+  serve(Response.json({ ...MAC, available: true, handoff: false, downloadUrl: DOWNLOAD }));
+  await mount("storyboard");
+  await act(async () =>
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="storyboard-open-in-desktop"]')!
+      .click(),
+  );
+  expect(guide()!.textContent).toContain("Comment on this storyboard in the desktop app");
+  expect(guide()!.textContent).toContain("then press Build");
+  expect(guide()!.textContent).not.toContain("Edit this video");
 });
 
 it("records one impression, only once the button is on screen", async () => {
@@ -512,7 +563,12 @@ it("records a press the preview server never answered as failed", async () => {
 });
 
 it("records the download press as sent to the download, never as an install", async () => {
-  const linux = { os: "linux", app_installed: false, download_available: true };
+  const linux = {
+    os: "linux",
+    app_installed: false,
+    download_available: true,
+    placement: "header",
+  };
   vi.stubGlobal("open", () => ({ opener: null }));
   serve(
     Response.json({

@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const readConfig = vi.fn();
@@ -74,6 +76,19 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.clearAllMocks());
+
+describe("where the model is kept", () => {
+  it("is under HYPERFRAMES_CACHE_DIR when it is set", () => {
+    const cache = join(tmpdir(), "hf-cache-elsewhere");
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    try {
+      expect(localModelPath().startsWith(join(cache, "models"))).toBe(true);
+      expect(localTokenizerPath().startsWith(join(cache, "models"))).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
 
 describe("consent state", () => {
   it("reports never-asked as undefined", () => {

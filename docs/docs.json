@@ -196,6 +196,7 @@
                 "pages": [
                   "developers/cli",
                   "packages/cli",
+                  "developers/share-source",
                   "developers/catalog-search",
                   "developers/harness-tool-context",
                   "packages/lint"
@@ -323,16 +324,28 @@
             "href": "https://hyperframes.heygen.com/lessons"
           },
           {
+            "item": "Blog",
+            "icon": "newspaper",
+            "description": "Guides, comparisons and how we build",
+            "href": "https://hyperframes.studio/blog?src=docs-navbar"
+          },
+          {
+            "item": "Tools",
+            "icon": "wand-magic-sparkles",
+            "description": "Captions, motion graphics, HTML to video and more",
+            "href": "https://hyperframes.studio/tools?src=docs-navbar"
+          },
+          {
             "item": "Community",
             "icon": "users",
             "description": "Videos people made",
-            "href": "https://hyperframes.studio/?view=community"
+            "href": "https://hyperframes.studio/?view=community&src=docs-navbar"
           },
           {
             "item": "App changelog",
             "icon": "sparkles",
             "description": "What's new in the app",
-            "href": "https://hyperframes.studio/changelog"
+            "href": "https://hyperframes.studio/changelog?src=docs-navbar"
           }
         ]
       },
@@ -1011,8 +1024,8 @@
   "footer": {
     "socials": {
       "github": "https://github.com/heygen-com/hyperframes",
-      "x": "https://x.com/HeyGen",
-      "instagram": "https://www.instagram.com/heygen_official/"
+      "discord": "https://discord.gg/7uMDe3PwQn",
+      "x": "https://x.com/HyperFrames_"
     },
     "links": [
       {
@@ -1057,28 +1070,53 @@
             "href": "/product-updates"
           },
           {
-            "label": "Download the Studio app",
+            "label": "Download the app",
             "href": "https://hyperframes.studio/studio/download?src=docs-footer"
+          },
+          {
+            "label": "Blog",
+            "href": "https://hyperframes.studio/blog?src=docs-footer"
+          },
+          {
+            "label": "Tools",
+            "href": "https://hyperframes.studio/tools?src=docs-footer"
           },
           {
             "label": "GitHub",
             "href": "https://github.com/heygen-com/hyperframes"
           }
         ]
+      },
+      {
+        "header": "Made by HeyGen",
+        "items": [
+          {
+            "label": "heygen.com",
+            "href": "https://www.heygen.com"
+          }
+        ]
       }
     ]
+  },
+  "banner": {
+    "content": "**New** HyperFrames Studio is here: the free AI video editor, right in your browser. [Try it free →](https://hyperframes.studio/agent?src=docs-banner)",
+    "dismissible": true
   },
   "navbar": {
     "links": [
       {
         "type": "github",
         "href": "https://github.com/heygen-com/hyperframes"
+      },
+      {
+        "type": "discord",
+        "href": "https://discord.gg/7uMDe3PwQn"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Download",
-      "href": "https://hyperframes.studio/studio/download?src=docs-navbar"
+      "label": "Open Studio",
+      "href": "https://hyperframes.studio/agent?src=docs-navbar"
     }
   },
   "redirects": [

@@ -1,4 +1,8 @@
 // fallow-ignore-file code-duplication complexity
+import { rememberSourceLength, sourceLengthOf } from "./sourceLength";
+import { restSceneAt, sceneRestingAt, takeSceneRedrawDue } from "./sceneRest";
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { runtimeLoad } from "./runtimeLoad";
 import { setPreviewRasterScale } from "./previewRasterHints";
 import { createFarSceneSkip } from "./farScenes";
 import {
@@ -19,18 +23,30 @@ import { clipsFirstRenderedIn } from "./firstRenderReveal";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import {
+  giveBackWhenDue,
+  isLongSource,
   preloadMedia,
+  prefetchMedia,
   prepareUpcomingMedia,
   releaseMedia,
   lengthIsAuthored,
   stopMediaDownload,
 } from "./preloadMedia";
-import { notePlaybackFrame, noteDisplayScale } from "./playbackHealth";
+import {
+  heldByMedia,
+  notePlaybackFrame,
+  noteDisplayScale,
+  watchMediaFetches,
+} from "./playbackHealth";
 import { hasFrozenPicture } from "./frozenPicture";
+import { createPreviewSeek } from "./previewSeek";
+import { createPausedVideoFrames, releasePausedVideoFrame } from "./pausedVideoFrames";
 import { copiesReady } from "./previewCopies";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
+import { createScrubAudio } from "./scrubAudio";
+import { installEditingAgent } from "./editingAgent";
 import { instantTolerance } from "../clipFacts";
-import { isInClipWindow } from "./clipWindow";
+import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime } from "./mediaClock";
 import {
   CLIP_HIDDEN_ATTR,
@@ -42,7 +58,9 @@ import {
   skipsHiddenImages,
 } from "./timedClipHide";
 import {
+  capturePageIn,
   inPlayerFrame,
+  STUDIO_PREVIEW_MARK_META,
   PREVIEW_ONLY_ATTRS,
   RUNTIME_STAMPED_ATTR,
   STUDIO_PREVIEW_FAR_SCENE_ATTR as FAR_SCENE_ATTR,
@@ -56,10 +74,13 @@ import { createCssAdapter } from "./adapters/css";
 import {
   createGsapAdapter,
   holdFrameMarks,
-  rerenderGsapTimelineAt,
+  muteDiscreteCallbacks,
+  redrawGsapTimelineAt,
+  gsapTimelineOf,
   seekGsapTimeline,
   type GsapStructureKey,
 } from "./adapters/gsap";
+import { stampAuthoredOrder } from "./adapters/gsapAuthoredOrder";
 import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
@@ -73,6 +94,8 @@ import { createFrameSourceAdapter } from "./frameSources";
 import {
   patchVideoTextureCompat,
   patchWebGLVideoTextureCompat,
+  patchCanvasVideoFrameCompat,
+  patchExternalVideoTextureCompat,
 } from "./adapters/video-texture-compat";
 import {
   forceDispatchSeekEvent,
@@ -99,11 +122,14 @@ import {
   MEDIA_PRESEEK_SECONDS,
   type RuntimeMediaClip,
 } from "./media";
+import { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "../previewProxyBox";
 import {
   handleErrorForProxy,
   handleMetadataForProxy,
   isRenderMode,
   maybeProxyProactively,
+  standInCaptureStill,
+  decideFileTurn,
   describeVideoSources,
   levelsWithLighterCopies,
   retryPreviewCopies,
@@ -128,6 +154,7 @@ import {
 } from "./timeline";
 import { findRootCompositionElement, parseLayoutDimension } from "./compositionDimension";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
+import { sceneCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import {
   LOOP_INFLATED_TIMELINE_SECONDS,
   MIN_VALID_TIMELINE_DURATION_SECONDS,
@@ -140,7 +167,7 @@ import {
 } from "./compositionLength";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
-import { loadCompositions } from "./compositionLoader";
+import { inlineMountTemplate, loadCompositions } from "./compositionLoader";
 import { runScriptsAfterFonts, waitForFonts } from "./afterFonts";
 import {
   applyCaptionOverrides,
@@ -170,8 +197,11 @@ import { watchSceneWebglContexts } from "./webglContextRecovery";
 import {
   captureMotionBlurBusy,
   initCaptureMotionBlur,
+  motionBlurLighterLevels,
   paintCaptureMotionBlur,
   releaseCaptureMotionBlurFrame,
+  setMotionBlurPreviewQuality,
+  teardownCaptureMotionBlur,
 } from "./captureMotionBlur";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -203,7 +233,12 @@ import type {
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { parseFps } from "../fps";
-import { recordStartupError, SCENE_CALLBACK_ERROR_PREFIX, swallow } from "./diagnostics";
+import {
+  recordBuildReadyRejection,
+  recordStartupError,
+  SCENE_CALLBACK_ERROR_PREFIX,
+  swallow,
+} from "./diagnostics";
 import { readTimelineDurationSeconds } from "./timelineDuration";
 import {
   CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS,
@@ -217,7 +252,7 @@ import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } fro
 import { cutToHostSlots, MEDIA_START_BASIS_ATTR } from "../mediaTiming";
 import { settleFirstFrameCompositionReadiness } from "../compositionReadiness";
 import { AUTHORED_DURATION_ATTR, AUTHORED_END_ATTR } from "./authoredTiming";
-import { createTimingRecordFilter } from "./mutationRecords";
+import { createRecordFilter, createTimingRecordFilter } from "./mutationRecords";
 import {
   clearRuntimeData,
   setRuntimeData,
@@ -234,7 +269,8 @@ import {
   isVideoElement,
   type StylableElement,
 } from "./domRealm";
-import { audibleVideoNeedsWebAudio, isAudibleVideoElement } from "../audibleVideo";
+import { audibleVideoNeedsWebAudio, isAudibleVideoElement, parentCopyOf } from "../audibleVideo";
+import { setRuntimePreload } from "./runtimeAttributes";
 
 /**
  * A `window.__timelines` entry is authored content and may be a PARTIAL
@@ -301,6 +337,13 @@ function resolveExportRenderFps(): ExportRenderFpsResolution {
   };
 }
 
+/** Levels below Full that make the preview lighter: a heavy video's copy, or blur's fewer copies. */
+function lighterLevels(): PreviewQuality[] {
+  const videos = levelsWithLighterCopies();
+  const blur = motionBlurLighterLevels();
+  return PREVIEW_QUALITY_LEVELS.filter((level) => videos.includes(level) || blur.includes(level));
+}
+
 function compositionFps(): number | null {
   const declared = parseFps(findRootCompositionElement()?.getAttribute("data-fps") ?? "");
   return declared.ok ? declared.value.num / declared.value.den : null;
@@ -308,6 +351,15 @@ function compositionFps(): number | null {
 
 function samePromiseSet(a: PromiseLike<unknown>[], b: PromiseLike<unknown>[] | null): boolean {
   return b !== null && a.length === b.length && a.every((p, i) => p === b[i]);
+}
+
+class BuildReadyRejection extends Error {
+  constructor(
+    readonly key: string,
+    readonly reason: unknown,
+  ) {
+    super(`window.__hf.buildReady[${JSON.stringify(key)}] rejected`);
+  }
 }
 
 // `Promise.all` allocates a fresh promise every call, so comparing ITS
@@ -432,10 +484,13 @@ export function installAuthoredMediaCapture(): void {
 }
 
 // Mid-tween, GSAP's default force3D writes translate3d, and Chrome snaps a crop edge on it to whole pixels.
-// Runs at script evaluation: GSAP is configured as its bundle assigns window.gsap, before a composition's
-// set() or from() parses an element. Chains to an accessor already there (the producer's early stub).
+// Runs at script evaluation, as GSAP's bundle assigns window.gsap and before a composition's set() or from() parses
+// an element: force3D off, and tweens numbered by write order. Chains to an accessor already there (the early stub).
 export function installFlatGsapTransforms(): void {
-  const flatten = (g: Window["gsap"]) => g?.config?.({ force3D: false });
+  const flatten = (g: Window["gsap"]) => {
+    g?.config?.({ force3D: false });
+    stampAuthoredOrder(g);
+  };
   const prior = Object.getOwnPropertyDescriptor(window, "gsap");
   let loaded = window.gsap;
   flatten(loaded);
@@ -484,15 +539,19 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
       masterChain: readMasterFxChain(el.ownerDocument),
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
-const DECODE_FIRST_MAX_SECONDS = 300;
+
+const parentCopies = () =>
+  Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).flatMap((el) =>
+    isMediaElement(el) ? (parentCopyOf(el) ?? []) : [],
+  );
 
 /** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
-function decodesFirst(el: HTMLMediaElement): boolean {
+function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
   return (
     isWebKit() &&
     isAudioElement(el) &&
-    !el.loop &&
-    el.duration <= DECODE_FIRST_MAX_SECONDS &&
+    !isLongSource(el) &&
+    webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
   );
@@ -512,6 +571,11 @@ function loadPreviewImagesIn(root: Element): void {
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  let previewSeek: ReturnType<typeof createPreviewSeek> | undefined;
+  const pausedFrames = createPausedVideoFrames();
+  let nativePlayGeneration = 0;
+  let nativePlayTime: number | undefined;
+  let nativeWarmTimer: ReturnType<typeof wallSetTimeout> | undefined;
   const stampsForStudio = window.parent !== window;
   // Studio's discovery stamps time a clip for the timeline only; nothing hides it at their end.
   const isDiscoveryStamped = (el: Element) =>
@@ -616,10 +680,8 @@ export function initSandboxRuntimeModular(): void {
   const clock = new TransportClock();
   state.transportClock = clock;
   const webAudio = new WebAudioTransport();
-  let webAudioReady = false;
-  void webAudio.init().then((ok) => {
-    webAudioReady = ok;
-  });
+  let webAudioOpened: boolean | null = null;
+  const openWebAudio = () => (webAudioOpened ??= webAudio.open());
   window.__hf = window.__hf || {};
   /** Hidden by an ancestor, or by the BUS this clip belongs to. The bus is
    *  never an ancestor — membership is on the member's `data-audio-group` — so
@@ -722,6 +784,13 @@ export function initSandboxRuntimeModular(): void {
   const registerRuntimeCleanup = (callback: () => void) => {
     runtimeCleanupCallbacks.push(callback);
   };
+  registerRuntimeCleanup(() => {
+    nativePlayGeneration++;
+    nativePlayTime = undefined;
+    wallClearTimeout(nativeWarmTimer);
+    pausedFrames.destroy();
+    delete window.__hf?.setPausedVideoFrameProvider;
+  });
   const postRuntimeDiagnosticOnce = (
     code: string,
     details: Record<string, RuntimeJson>,
@@ -743,7 +812,7 @@ export function initSandboxRuntimeModular(): void {
     _timeline: RuntimeTimelineLike | null;
     play: () => void;
     pause: () => void;
-    seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => HeldSeek;
+    seek: (timeSeconds: number, options?: { keepPlaying?: boolean; settled?: boolean }) => HeldSeek;
     getTime: () => number;
     getDuration: () => number;
     isPlaying: () => boolean;
@@ -1027,6 +1096,7 @@ export function initSandboxRuntimeModular(): void {
         el.style.position = "absolute";
       }
       if (tag !== "audio") {
+        const sizedByItsFile = tag === "img" || tag === "video";
         const forcedWidth = parseDimensionPx(el.getAttribute("data-width"));
         const forcedHeight = parseDimensionPx(el.getAttribute("data-height"));
         const hasMeaningfulComputedWidth = computed.width !== "0px" && computed.width !== "auto";
@@ -1035,14 +1105,14 @@ export function initSandboxRuntimeModular(): void {
           if (!el.style.width && !hasMeaningfulComputedWidth) {
             el.style.width = forcedWidth;
           }
-        } else if (!el.style.width && computed.width === "0px") {
+        } else if (!sizedByItsFile && !el.style.width && computed.width === "0px") {
           el.style.width = "100%";
         }
         if (forcedHeight) {
           if (!el.style.height && !hasMeaningfulComputedHeight) {
             el.style.height = forcedHeight;
           }
-        } else if (!el.style.height && computed.height === "0px") {
+        } else if (!sizedByItsFile && !el.style.height && computed.height === "0px") {
           el.style.height = "100%";
         }
       }
@@ -1152,11 +1222,7 @@ export function initSandboxRuntimeModular(): void {
     );
     for (const el of candidates) {
       const cid = el.getAttribute("data-composition-id");
-      if (
-        cid &&
-        el.children.length === 0 &&
-        document.querySelector(`template#${CSS.escape(cid)}-template`)
-      ) {
+      if (cid && el.children.length === 0 && inlineMountTemplate(document, cid)) {
         hasInlineTemplateCompositions = true;
         break;
       }
@@ -1270,7 +1336,7 @@ export function initSandboxRuntimeModular(): void {
       ? {
           from: "media",
           tag: media.tagName.toLowerCase(),
-          src: media.getAttribute("src") ?? media.currentSrc ?? "",
+          src: unproxiedSrc(media) ?? media.currentSrc ?? "",
           trimmed: media.hasAttribute("data-duration") || media.hasAttribute("data-end"),
         }
       : { from };
@@ -1424,6 +1490,10 @@ export function initSandboxRuntimeModular(): void {
     "data-height",
   ];
   const recordsMoveTiming = createTimingRecordFilter(COMPOSITION_TIMING_ATTRIBUTES);
+  const MEMBERSHIP_ATTRIBUTES = ["data-hidden"];
+  const recordsMoveMembership = createRecordFilter(
+    MEMBERSHIP_ATTRIBUTES.map((name) => `[${name}]`).join(","),
+  );
   const COMPOSITION_TIMING_MEDIA_EVENTS = ["loadedmetadata", "durationchange", "emptied"] as const;
   let durationFloorsCache: DurationFloors | null = null;
   let durationFloorsRevision = -1;
@@ -1438,16 +1508,15 @@ export function initSandboxRuntimeModular(): void {
   // second cache checking for itself would be told nothing changed.
   let compositionTimingRevision = 0;
 
-  const queryCache = new Map<string, { revision: number; nodes: Element[] }>();
+  const queryCache = new Map<string, Element[]>();
   const queryForTransport = (selector: string): Element[] => {
     if (!compositionTimingObserver || renderCaptureSeekStarted)
       return Array.from(document.querySelectorAll(selector));
-    if (recordsMoveTiming(compositionTimingObserver.takeRecords()))
-      invalidateCompositionTimingCaches();
+    takeTimingRecords(compositionTimingObserver.takeRecords());
     const cached = queryCache.get(selector);
-    if (cached?.revision === compositionTimingRevision) return cached.nodes;
+    if (cached) return cached;
     const nodes = Array.from(document.querySelectorAll(selector));
-    queryCache.set(selector, { revision: compositionTimingRevision, nodes });
+    queryCache.set(selector, nodes);
     return nodes;
   };
 
@@ -1460,10 +1529,20 @@ export function initSandboxRuntimeModular(): void {
 
   const invalidateCompositionTimingCaches = () => {
     compositionTimingRevision += 1;
+    queryCache.clear();
     // The same records that stale the duration caches are what a parked
     // transport is waiting for: a timing attribute edited, a sub-composition
     // mounted, media metadata arriving. One signal, two readers.
     wakeTransport();
+  };
+
+  const takeTimingRecords = (records: readonly MutationRecord[]) => {
+    const timing = records.filter(
+      (record) =>
+        record.type !== "attributes" || !MEMBERSHIP_ATTRIBUTES.includes(record.attributeName ?? ""),
+    );
+    if (recordsMoveTiming(timing)) invalidateCompositionTimingCaches();
+    else if (recordsMoveMembership(records)) queryCache.clear();
   };
 
   const deriveDurationFloors = (): DurationFloors => {
@@ -1488,6 +1567,7 @@ export function initSandboxRuntimeModular(): void {
 
   const invalidateOnMediaTimingEvent = (event: Event) => {
     const target = event.target;
+    if (isMediaElement(target)) rememberSourceLength(target);
     if (isMediaElement(target) && lengthIsAuthored(target)) return;
     invalidateCompositionTimingCaches();
   };
@@ -1496,30 +1576,24 @@ export function initSandboxRuntimeModular(): void {
     const pending = compositionTimingObserver?.takeRecords() ?? [];
     write();
     const ours = compositionTimingObserver?.takeRecords() ?? [];
-    if (
-      recordsMoveTiming(pending) ||
-      recordsMoveTiming(ours.filter((record) => record.target !== el))
-    )
-      invalidateCompositionTimingCaches();
+    takeTimingRecords([...pending, ...ours.filter((record) => record.target !== el)]);
   };
 
   const withoutOwnCompositionRecords = (write: () => void) => {
     const pending = compositionTimingObserver?.takeRecords() ?? [];
     write();
     compositionTimingObserver?.takeRecords();
-    if (recordsMoveTiming(pending)) invalidateCompositionTimingCaches();
+    takeTimingRecords(pending);
   };
 
   const watchCompositionTimingInputs = () => {
     if (compositionTimingObserver || typeof MutationObserver === "undefined") return;
-    compositionTimingObserver = new MutationObserver((records) => {
-      if (recordsMoveTiming(records)) invalidateCompositionTimingCaches();
-    });
+    compositionTimingObserver = new MutationObserver(takeTimingRecords);
     compositionTimingObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: COMPOSITION_TIMING_ATTRIBUTES,
+      attributeFilter: [...COMPOSITION_TIMING_ATTRIBUTES, ...MEMBERSHIP_ATTRIBUTES],
     });
     // Media duration changes are published as events, not DOM mutations, and
     // they do not bubble — so listen in the capture phase, which reaches every
@@ -1551,9 +1625,7 @@ export function initSandboxRuntimeModular(): void {
     // here makes the caches correct within a task, not just across tasks.
     // Taking the records suppresses the callback for them, which is exactly
     // equivalent since the callback only bumps the revision.
-    if (compositionTimingObserver && recordsMoveTiming(compositionTimingObserver.takeRecords())) {
-      invalidateCompositionTimingCaches();
-    }
+    if (compositionTimingObserver) takeTimingRecords(compositionTimingObserver.takeRecords());
     // `window.__timelines` is a plain object: no MutationObserver and no event
     // can see a composition script registering into it or lengthening what it
     // already registered, so its shape is polled like everything else no
@@ -1625,9 +1697,6 @@ export function initSandboxRuntimeModular(): void {
 
   // Sub-composition timelines the runtime nested into the root: the host composition id, and where.
   const autoNested = new WeakMap<object, { hostId: string; parent: unknown; at: number }>();
-  // The producer's GSAP stub registers stand-ins; GSAP's tree holds the timelines behind them.
-  const gsapTimelineOf = (timeline: object): object =>
-    (timeline as { __hfReal?: object }).__hfReal ?? timeline;
   // The composite that holds the children of a root with no timeline, and how many it holds.
   let missingRootComposite: { timeline: RuntimeTimelineLike; size: number } | null = null;
   // Roots the runtime built. One it no longer holds would stay on GSAP's global timeline with all it last held.
@@ -2274,6 +2343,8 @@ export function initSandboxRuntimeModular(): void {
       // group's automation lanes and FX rack with it.
       const isAudioGroupBus = (el: Element): boolean =>
         el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG;
+      const isRuntimeOwned = (el: Element): boolean =>
+        el.closest("[data-hf-ignore], [data-hyperframes-ignore]") !== null;
       const authoredTimed = new Set<Element>(document.querySelectorAll("[data-start]"));
       const hasAuthoredTimedAncestor = (element: HTMLElement): boolean => {
         let node = element.parentElement;
@@ -2293,6 +2364,7 @@ export function initSandboxRuntimeModular(): void {
               if (!isHtmlElement(target)) continue;
               if (target === rootComp) continue;
               if (isAudioGroupBus(target)) continue;
+              if (isRuntimeOwned(target)) continue;
               if (target.hasAttribute("data-start")) continue;
               if (hasAuthoredTimedAncestor(target)) continue;
               if (seen.has(target)) continue;
@@ -2321,6 +2393,7 @@ export function initSandboxRuntimeModular(): void {
           if (seen.has(el)) continue;
           if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") continue;
           if (isAudioGroupBus(el)) continue;
+          if (isRuntimeOwned(el)) continue;
           seen.add(el);
           el.setAttribute("data-start", "0");
           el.setAttribute("data-duration", dur);
@@ -2341,6 +2414,17 @@ export function initSandboxRuntimeModular(): void {
     return true;
   };
 
+  const renderRootBackAtPlayheadAfterRenest = () => {
+    const root = state.capturedTimeline;
+    if (
+      typeof root?.time !== "function" ||
+      typeof root.totalTime !== "function" ||
+      typeof root.duration !== "function"
+    )
+      return;
+    const target = Math.min(Math.max(0, state.currentTime || 0), root.duration());
+    if (Math.abs(root.time() - target) > 1e-3) root.totalTime(target, true);
+  };
   const reconcileTimeline = () => {
     if (state.tornDown) return;
     const resolution = resolveRootTimelineFromDocument();
@@ -2365,6 +2449,7 @@ export function initSandboxRuntimeModular(): void {
         clock.setDuration(length);
         postTimeline();
       }
+      renderRootBackAtPlayheadAfterRenest();
     }
     syncTimedElementVisibility(state.currentTime);
   };
@@ -2488,10 +2573,7 @@ export function initSandboxRuntimeModular(): void {
         }
         const tagName = node.tagName.toLowerCase();
         const assetUrl =
-          node.getAttribute("src") ??
-          node.getAttribute("href") ??
-          node.getAttribute("poster") ??
-          null;
+          unproxiedSrc(node) ?? node.getAttribute("href") ?? node.getAttribute("poster") ?? null;
         const diagnosticCode =
           tagName === "link" ? "runtime_stylesheet_load_failed" : "runtime_asset_load_failed";
         postRuntimeDiagnosticOnce(
@@ -2585,7 +2667,7 @@ export function initSandboxRuntimeModular(): void {
     return true;
   };
 
-  let metadataRebindDebounceTimerId: number | null = null;
+  let metadataRebindDebounceTimerId: ReturnType<typeof wallSetTimeout> | null = null;
   let metadataRebindApplied = false;
   const metadataBoundMedia = new Set<HTMLMediaElement>();
   const volumeKeyframeCache = new WeakMap<HTMLMediaElement, VolumeKeyframe[]>();
@@ -2597,9 +2679,9 @@ export function initSandboxRuntimeModular(): void {
   const scheduleMetadataDurationHydration = () => {
     if (state.tornDown) return;
     if (metadataRebindDebounceTimerId != null) {
-      window.clearTimeout(metadataRebindDebounceTimerId);
+      wallClearTimeout(metadataRebindDebounceTimerId);
     }
-    metadataRebindDebounceTimerId = window.setTimeout(() => {
+    metadataRebindDebounceTimerId = wallSetTimeout(() => {
       if (state.tornDown) return;
       metadataRebindDebounceTimerId = null;
       // The render/producer capture protocol drives frames deterministically
@@ -2672,10 +2754,52 @@ export function initSandboxRuntimeModular(): void {
   };
   const onMediaLoadedMetadataForPlayhead = (event: Event) => {
     const el = event.currentTarget;
-    if (state.tornDown || clock.isPlaying() || !isMediaElement(el) || isRenderMode(el)) return;
-    lastSyncedMediaTimeSeconds = null;
-    state.mediaForceSyncNextTick = true;
-    syncMediaForCurrentState();
+    if (
+      state.tornDown ||
+      previewSeek?.time !== undefined ||
+      clock.isPlaying() ||
+      !isMediaElement(el) ||
+      isRenderMode(el)
+    )
+      return;
+    syncMediaForCurrentState(undefined, el);
+  };
+  // Chromium's software decoders cost threads per loaded video; WebKit's reload of a shared file stalls audio.
+  const freesBufferedVideo = (el: unknown): el is HTMLVideoElement =>
+    isVideoElement(el) && !isWebKit();
+  // A preview's video with no set length loads its length first; once known, the window decides it.
+  const learnsLength = (el: unknown): el is HTMLVideoElement =>
+    mediaDeferred &&
+    loadsAhead &&
+    freesBufferedVideo(el) &&
+    el.hasAttribute("data-start") &&
+    !lengthIsAuthored(el);
+  // The src each clip loaded its length for; the document's timing listener (sourceLength.ts) keeps it, and runs first.
+  const learned = new WeakMap<HTMLMediaElement, string>();
+  const knowsLength = (el: HTMLMediaElement) => learned.get(el) === el.src;
+  const armLength = (el: HTMLMediaElement) => {
+    if (
+      learnsLength(el) &&
+      resolveAbsoluteMediaStartSeconds(el) > state.currentTime + LOOKAHEAD_SECONDS
+    ) {
+      setRuntimePreload(el, "metadata");
+      el.load();
+    } else preloadMedia(el);
+  };
+  const swappedAfterLearning = (el: HTMLMediaElement) =>
+    learnsLength(el) && learned.has(el) && !knowsLength(el) && el.preload === "none";
+  // A far clip can finish a load the parser started before its window was decided.
+  const onMediaLoadedWhileFar = (event: Event) => {
+    const el = event.currentTarget;
+    if (learnsLength(el) && !knowsLength(el)) {
+      learned.set(el, el.src);
+      syncTimedElementVisibility(state.currentTime, [el]);
+      return;
+    }
+    if (!freesBufferedVideo(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0)
+      return;
+    setRuntimePreload(el, "none");
+    withoutOwnTimingRecords(el, () => releaseMedia(el, true));
   };
   const onMediaErrorForProxy = (event: Event) => {
     if (isMediaElement(event.currentTarget)) {
@@ -2707,6 +2831,7 @@ export function initSandboxRuntimeModular(): void {
     mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
     mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
     mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForPlayhead);
+    mediaEl.removeEventListener("loadedmetadata", onMediaLoadedWhileFar);
     mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
     mediaEl.removeEventListener("error", onMediaErrorForProxy);
     metadataBoundMedia.delete(mediaEl);
@@ -2764,6 +2889,7 @@ export function initSandboxRuntimeModular(): void {
       // for <audio> — all guarded inside mediaProxy.ts itself.
       mediaEl.addEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
       mediaEl.addEventListener("loadedmetadata", onMediaLoadedMetadataForPlayhead);
+      mediaEl.addEventListener("loadedmetadata", onMediaLoadedWhileFar);
       mediaEl.addEventListener("error", onMediaErrorForProxy);
 
       // Proactive proxy-fallback trigger: consult the codec map and swap
@@ -2774,7 +2900,7 @@ export function initSandboxRuntimeModular(): void {
 
       // Studio's preview loads a timed clip only near the playhead; the visibility pass decides.
       if (inPreloadWindow(mediaEl)) nearPlayheadPending.push(mediaEl);
-      else preloadMedia(mediaEl);
+      else armLength(mediaEl);
 
       // Probe volume automation from the GSAP timeline — same approach as the
       // renderer (see discoverAudioVolumeAutomationFromTimeline / audioMixer).
@@ -2865,7 +2991,7 @@ export function initSandboxRuntimeModular(): void {
     if (before.value) el.style.setProperty("display", before.value, before.priority);
     else el.style.removeProperty("display");
   };
-  const dataHiddenDisplayNodes = new WeakSet<StylableElement>();
+  const dataHiddenDisplayNodes = new Set<StylableElement>();
   // A data-hidden toggle on (or affecting) an audio element must re-schedule
   // WebAudio playback so the hidden clip's source is dropped/restored mid-
   // playback. Batched to one call per syncTimedElementVisibility pass, not
@@ -2924,7 +3050,6 @@ export function initSandboxRuntimeModular(): void {
         currentTime: time,
         compositionDuration,
         canonicalFps: state.canonicalFps,
-        exportRenderSeek: Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
         timelineRegistry: window.__timelines ?? {},
         resolver: timingResolverFor(true),
       });
@@ -2955,6 +3080,8 @@ export function initSandboxRuntimeModular(): void {
   });
   const hiddenImagesSkipped = skipsHiddenImages();
   const mediaDeferred = defersMedia();
+  const studioPreview = document.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
+  const loadsAhead = !capturePageIn(document);
   const skipFarScenes = createFarSceneSkip((host) =>
     runtimeElementWindow(host, {
       timelineRegistry: window.__timelines ?? {},
@@ -2964,10 +3091,10 @@ export function initSandboxRuntimeModular(): void {
   // A clip's first visible style pass is slow; playing, each hidden clip gets it once just before its start.
   const clipsNeverStyledVisible = new Set<StylableElement>();
   const clipsStyledVisible = new WeakSet<Element>();
-  let neverStyledStarts = { revision: -1, starts: new Map<StylableElement, number>() };
+  let neverStyledStarts = { revision: -1, starts: new WeakMap<StylableElement, number>() };
   const neverStyledStart = (el: StylableElement, revision: number): number => {
     if (neverStyledStarts.revision !== revision)
-      neverStyledStarts = { revision, starts: new Map() };
+      neverStyledStarts = { revision, starts: new WeakMap() };
     let start = neverStyledStarts.starts.get(el);
     if (start === undefined) {
       start = resolveStartForElement(el, Number.NaN);
@@ -3003,7 +3130,7 @@ export function initSandboxRuntimeModular(): void {
   const NEXT_TAKE_SPAN_SECONDS = 0.5;
   let nextTakes: { t: number; bound: number; clips: Set<HTMLMediaElement> } | null = null;
   const fileOf = (el: HTMLMediaElement) =>
-    el.getAttribute("src") ?? el.querySelector("source")?.getAttribute("src") ?? "";
+    unproxiedSrc(el) ?? el.querySelector("source")?.getAttribute("src") ?? "";
   const nextTakeClips = (t: number): Set<HTMLMediaElement> => {
     if (nextTakes?.t === t && nextTakes.bound === metadataBoundMedia.size) return nextTakes.clips;
     const byFile = new Map<string, { el: HTMLMediaElement; start: number }[]>();
@@ -3041,10 +3168,14 @@ export function initSandboxRuntimeModular(): void {
   };
   // Where Studio's loop wraps to (window.__hf.setLoopStart); null when it does not loop.
   let loopStartSeconds: number | null = null;
-  // A clip with no authored length loads as in a render: a reload would drop the duration it is
-  // timed by.
+  // An unauthored length stays loaded (a reload drops it); on a capture page an unloaded one waits
+  // until due, or a thousand such clips run the renderer out of memory.
   const inPreloadWindow = (el: HTMLMediaElement) =>
-    mediaDeferred && el.hasAttribute("data-start") && lengthIsAuthored(el);
+    mediaDeferred &&
+    el.hasAttribute("data-start") &&
+    (lengthIsAuthored(el) ||
+      (learnsLength(el) && knowsLength(el) && Number.isFinite(sourceLengthOf(el))) ||
+      (!loadsAhead && el.readyState === HTMLMediaElement.HAVE_NOTHING));
 
   // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
   // the origin that also serves Studio's thumbnails.
@@ -3140,7 +3271,7 @@ export function initSandboxRuntimeModular(): void {
     compactWaitingForSlot();
   };
   const startPrefetch = (el: HTMLMediaElement) => {
-    preloadMedia(el);
+    prefetchMedia(el);
     prepareInWindow(el);
     if (prefetching.has(el) || el.readyState >= 3) return;
     prefetching.add(el);
@@ -3172,7 +3303,45 @@ export function initSandboxRuntimeModular(): void {
     }
   };
   let bufferingFor: HTMLMediaElement[] = [];
+  const playingOrHeldForData = () => clock.isPlaying() || bufferingFor.length > 0;
   let keepLateMedia = false;
+  // A sealed player copies only the clips this list names. ponytail: once blocked, every watched
+  // change re-reads all media; scope the observer to media records if that shows in a profile.
+  const postParentCopiesWhileTheyChange = () => {
+    let posted = "";
+    const post = () => {
+      const media = parentCopies();
+      const next = JSON.stringify(media);
+      if (next === posted || state.tornDown) return;
+      posted = next;
+      postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked", media });
+    };
+    post();
+    if (typeof MutationObserver === "undefined") return;
+    let queued = false;
+    const observer = new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        post();
+      });
+    });
+    observer.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: [
+        ...DURATION_FLOOR_INPUT_ATTRIBUTES,
+        "src",
+        "preload",
+        "muted",
+        "data-has-audio",
+        "data-playback-start",
+      ],
+    });
+    runtimeCleanupCallbacks.push(() => observer.disconnect());
+  };
   const preloadNearPlayhead = (
     el: HTMLMediaElement,
     visible: boolean,
@@ -3203,6 +3372,8 @@ export function initSandboxRuntimeModular(): void {
       resolveAbsoluteMediaStartSeconds(el) + (resolveDurationForElement(el) ?? Number.NaN) <= time;
     const spent = passed && (decided !== true || (el.networkState === 2 && el.readyState < 4));
     const near = visible || armed || (upcoming && !unslotted && !spent);
+    decideFileTurn(el, visible);
+    if (near) giveBackWhenDue(el);
     if ((visible || !near) && endPrefetch(el)) queueMicrotask(fillPrefetchSlots);
     const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
     const wasApproaching = approachingMedia.has(el);
@@ -3214,20 +3385,32 @@ export function initSandboxRuntimeModular(): void {
     }
     mediaNearPlayhead.set(el, near);
     if (!near) {
-      if (el.preload !== "none") {
-        el.preload = "none";
-        // Frees a clip the window armed; on one the parser started, it would only restart the fetch.
-        if (decided)
-          withoutOwnTimingRecords(el, () =>
-            releaseMedia(el, window.__HF_RELEASE_PASSED_MEDIA === true),
-          );
-      }
+      const wasPreloading = el.preload !== "none";
+      setRuntimePreload(el, "none");
+      const video = freesBufferedVideo(el);
+      const holdsPipeline = video
+        ? decided || el.readyState > 0 || el.networkState === 2
+        : wasPreloading && decided;
+      if (holdsPipeline) withoutOwnTimingRecords(el, () => releaseMedia(el, video || !loadsAhead));
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.
       if (visible) preloadMedia(el);
       else startPrefetch(el);
     }
   };
+  const moveMediaWindow = (time: number, clips: RuntimeMediaClip[]) =>
+    withTimingResolver(() => {
+      const visibleAt = timedVisibilityAt();
+      for (const el of metadataBoundMedia) armedFrom.delete(el);
+      for (const el of metadataBoundMedia) {
+        if (mediaNearPlayhead.get(el) !== true || clips.some((clip) => clip.el === el)) continue;
+        if (visibleAt(el, time) || dueSoon(el, visibleAt, time, RELEASE_LOOKAHEAD_SECONDS))
+          continue;
+        preloadNearPlayhead(el, false, false, time, false);
+      }
+      for (const { el } of clips)
+        if (mediaNearPlayhead.get(el) === false) mediaNearPlayhead.set(el, true);
+    });
   // Held past the look-ahead so a scrub across its edge does not refetch, and while playing when
   // due at the loop start.
   const dueAtLoopStart = (el: HTMLMediaElement, visibleAt: ReturnType<typeof timedVisibilityAt>) =>
@@ -3347,6 +3530,7 @@ export function initSandboxRuntimeModular(): void {
     if (timingRevision !== undefined) refreshWaitingForSlotOrder(timingRevision);
     // While the scene the playhead landed in mounts, the page keeps what it last drew.
     if (moveSceneWindow(currentTime)) return;
+    const seekOwnsMedia = previewSeek?.targetTime !== undefined && !previewSeek.committing;
     const rootComp = resolveRootCompositionElement();
     let decidedTimedClip = false;
     const visibleAt = timedVisibilityAt(timingRevision);
@@ -3354,6 +3538,12 @@ export function initSandboxRuntimeModular(): void {
       playedFromSeconds === undefined || timingRevision === undefined
         ? null
         : unchangedSincePlayedFrom(playedFromSeconds, currentTime, rootComp, timingRevision);
+    for (const node of dataHiddenDisplayNodes) {
+      if (node.isConnected && node.hasAttribute("data-hidden")) continue;
+      restoreDisplay(node);
+      dataHiddenDisplayNodes.delete(node);
+      if (nodeAffectsAudio(node)) hiddenAudioDirty = true;
+    }
     for (const rawNode of visibilityNodes) {
       if (!isStylableElement(rawNode)) continue;
 
@@ -3367,12 +3557,6 @@ export function initSandboxRuntimeModular(): void {
           colorGradingRuntime?.setSourceVisibility(rawNode, false);
         }
         continue;
-      }
-
-      if (dataHiddenDisplayNodes.has(rawNode)) {
-        restoreDisplay(rawNode);
-        dataHiddenDisplayNodes.delete(rawNode);
-        if (nodeAffectsAudio(rawNode)) hiddenAudioDirty = true;
       }
 
       const hasClipWindow = rawNode.hasAttribute("data-start");
@@ -3406,7 +3590,12 @@ export function initSandboxRuntimeModular(): void {
         style.setProperty("visibility", shown, isVisibleNow ? "" : "important");
       }
       rawNode.toggleAttribute(CLIP_HIDDEN_ATTR, !isRuntimeStamped && !isVisibleNow);
-      if (!isRuntimeStamped && !isVisibleNow && !clipsStyledVisible.has(rawNode))
+      if (
+        !isRuntimeStamped &&
+        !isVisibleNow &&
+        !clipsStyledVisible.has(rawNode) &&
+        rawNode.isConnected
+      )
         clipsNeverStyledVisible.add(rawNode);
       const upcoming =
         (hiddenImagesSkipped || mediaDeferred) &&
@@ -3415,16 +3604,22 @@ export function initSandboxRuntimeModular(): void {
       if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
         loadPreviewImagesIn(rawNode);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
-      if (isMediaElement(rawNode) && metadataBoundMedia.has(rawNode) && inPreloadWindow(rawNode))
+      const managed = !seekOwnsMedia && isMediaElement(rawNode) && metadataBoundMedia.has(rawNode);
+      if (managed && swappedAfterLearning(rawNode)) {
+        mediaNearPlayhead.delete(rawNode);
+        armLength(rawNode);
+      } else if (managed && inPreloadWindow(rawNode))
         preloadNearPlayhead(
           rawNode,
           isVisibleNow,
-          playerFrame
-            ? nextTakeClips(currentTime).has(rawNode)
-            : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime),
+          loadsAhead &&
+            (playerFrame
+              ? nextTakeClips(currentTime).has(rawNode)
+              : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime)),
           currentTime,
-          dueAtLoopStart(rawNode, visibleAt),
+          loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );
+      if (isMediaElement(rawNode)) standInCaptureStill(rawNode, isVisibleNow);
       if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
@@ -3541,8 +3736,8 @@ export function initSandboxRuntimeModular(): void {
           context.inheritedDuration > 0
             ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
             : null;
-        const sourceDuration = Number.isFinite(element.duration)
-          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+        const sourceDuration = Number.isFinite(sourceLengthOf(element))
+          ? resolveNaturalMediaTimelineDuration(element, sourceLengthOf(element))
           : null;
         // The element's own data-duration is an explicit clip-length trim
         // (the studio writes it when you drag the clip edge). It must bound
@@ -3553,6 +3748,7 @@ export function initSandboxRuntimeModular(): void {
         const explicitDuration = ownDuration != null && ownDuration > 0 ? ownDuration : null;
         return resolveRuntimeMediaClipDuration({
           isVideo: element.tagName === "VIDEO",
+          loops: element.loop,
           sourceDuration,
           hostRemaining,
           explicitDuration,
@@ -3659,6 +3855,7 @@ export function initSandboxRuntimeModular(): void {
    *  exists for. On `window.__hf` because the Studio is across the iframe boundary. */
   const pausedMediaLeases = new WeakSet<HTMLMediaElement>();
   const leasePausedMedia = (el: HTMLMediaElement): void => {
+    if (isVideoElement(el)) releasePausedVideoFrame(el);
     pausedMediaLeases.add(el);
   };
   const releasePausedMedia = (el: HTMLMediaElement): void => {
@@ -3667,10 +3864,33 @@ export function initSandboxRuntimeModular(): void {
   };
   window.__hf.leasePausedMedia = leasePausedMedia;
   window.__hf.releasePausedMedia = releasePausedMedia;
+  window.__hf.setPausedVideoFrameProvider = (provider) => {
+    const resumePlay = nativePlayTime !== undefined;
+    const destination =
+      previewSeek?.targetTime ?? (pausedFrames.active ? state.currentTime : undefined);
+    nativePlayGeneration++;
+    nativePlayTime = undefined;
+    wallClearTimeout(nativeWarmTimer);
+    previewSeek?.cancel(true);
+    pausedFrames.setProvider(provider);
+    if (!provider) pausedFrames.prepareNative();
+    if (destination !== undefined) {
+      const landed = seekWhenReady(destination);
+      const generation = nativePlayGeneration;
+      if (resumePlay)
+        void Promise.resolve(landed).then(() => {
+          if (!state.tornDown && generation === nativePlayGeneration) transport.play();
+        });
+    }
+  };
   // Clips the transport may move now (not a paused lease); null while the host drives media.
   const transportMovableClips = (clips: RuntimeMediaClip[]): RuntimeMediaClip[] | null => {
     if (state.nativeMediaSyncDisabled) return null;
-    return state.isPlaying ? clips : clips.filter((clip) => !pausedMediaLeases.has(clip.el));
+    return state.isPlaying
+      ? clips
+      : clips.filter(
+          (clip) => !pausedMediaLeases.has(clip.el) && !previewSeek?.ownsRecovery(clip.el),
+        );
   };
   window.__hf.setLoopStart = (seconds) => {
     loopStartSeconds = seconds != null && Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
@@ -3753,9 +3973,11 @@ export function initSandboxRuntimeModular(): void {
     document.removeEventListener("play", onMediaPlayWakeTransport, true);
   });
   runtimeCleanupCallbacks.push(watchAudioLoadErrors(document));
+  runtimeCleanupCallbacks.push(watchMediaFetches(document));
 
   let lastVisibilityPassSeconds: number | null = null;
-  const syncMediaForCurrentState = (timingRevision?: number) => {
+  const syncMediaForCurrentState = (timingRevision?: number, onlyReloaded?: HTMLMediaElement) => {
+    if (previewSeek?.time !== undefined && !previewSeek.committing) return;
     // Scope 1 of 3 (see `withTimingResolver`). Closes before `syncRuntimeMedia`,
     // which may call `el.load()` and invalidate every cached duration.
     //
@@ -3772,6 +3994,7 @@ export function initSandboxRuntimeModular(): void {
           )
         : 0;
     const mediaClips = withTimingResolver(() => {
+      if (onlyReloaded) return buildRuntimeMediaCache([onlyReloaded]).mediaClips;
       if (!indexed) return buildRuntimeMediaCache().mediaClips;
       const index = resolveMediaClipIndex(timingRevision);
       // Windows come from the index, but every field handed to `syncRuntimeMedia`
@@ -3793,8 +4016,8 @@ export function initSandboxRuntimeModular(): void {
     // below still records a leased clip and the pass after its release visits it.
     const syncedClips = transportMovableClips(mediaClips);
 
-    const forceSync = state.mediaForceSyncNextTick;
-    if (forceSync) state.mediaForceSyncNextTick = false;
+    const forceSync = onlyReloaded !== undefined || state.mediaForceSyncNextTick;
+    if (!onlyReloaded) state.mediaForceSyncNextTick = false;
     if (syncedClips) {
       syncRuntimeMedia({
         clips: syncedClips,
@@ -3807,6 +4030,7 @@ export function initSandboxRuntimeModular(): void {
         forceSync,
         keepLateMedia,
         cueAheadSeconds,
+        clockAhead: (el) => clock.aheadOf(el),
         clockAdvancing:
           clock.getSource() !== "audio" ||
           lastSyncedMediaTimeSeconds === null ||
@@ -3821,20 +4045,24 @@ export function initSandboxRuntimeModular(): void {
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
-          postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked" });
+          postParentCopiesWhileTheyChange();
         },
       });
-      if (indexed) {
-        lastSyncedMediaTimeSeconds = state.currentTime;
-        // Every clip not visited was out of window at both ends of this seek, so
-        // the visited ones are the only possible members.
-        mediaClipsInWindow = mediaClips.filter((clip) =>
-          isInClipWindow(state.currentTime, clip.start - MEDIA_SYNC_TOLERANCE_SECONDS, clip.end),
-        );
-      } else {
-        lastSyncedMediaTimeSeconds = null;
-        mediaClipsInWindow = [];
-      }
+    }
+    // A reload moves no clip window, so the sweep's cursor and in-window set still hold.
+    if (onlyReloaded) {
+      syncTimedElementVisibility(state.currentTime, [onlyReloaded]);
+      return;
+    }
+    if (syncedClips && indexed) {
+      lastSyncedMediaTimeSeconds = state.currentTime;
+      // Unvisited clips were out of window at both ends of this seek: only visited ones can be in.
+      mediaClipsInWindow = mediaClips.filter((clip) =>
+        isInClipWindow(state.currentTime, clip.start - MEDIA_SYNC_TOLERANCE_SECONDS, clip.end),
+      );
+    } else if (syncedClips) {
+      lastSyncedMediaTimeSeconds = null;
+      mediaClipsInWindow = [];
     }
     const playedFrom =
       indexed && state.isPlaying && !forceSync && lastVisibilityPassSeconds !== null
@@ -3851,7 +4079,8 @@ export function initSandboxRuntimeModular(): void {
     // wake call bolted onto each mutator (and forgotten on the next one).
     if (force) wakeTransport();
     if (force && timelinePostHeld && !clock.isPlaying()) postTimeline();
-    const frame = Math.max(0, Math.round((state.currentTime || 0) * state.canonicalFps));
+    const currentTime = previewSeek?.time ?? state.currentTime ?? 0;
+    const frame = Math.max(0, Math.round(currentTime * state.canonicalFps));
     const now = Date.now();
     const shouldPost =
       force ||
@@ -3868,7 +4097,7 @@ export function initSandboxRuntimeModular(): void {
       source: "hf-preview",
       type: "state",
       frame,
-      currentTime: state.currentTime || 0,
+      currentTime,
       ended: clock.reachedEnd(),
       isPlaying: state.bridgeLastPostedPlaying,
       buffering: bufferingFor.length > 0,
@@ -3886,6 +4115,14 @@ export function initSandboxRuntimeModular(): void {
   let assetsSettled = false;
   let liveRootDurationOverrideSeconds = 0;
   let lastPostedManifest = "";
+  let lastTimeline: ReturnType<typeof collectRuntimeTimelinePayload> | null = null;
+  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
+  const scenesSwappable = readSceneParts(document) !== null;
+  const timelineMessage = (payload: ReturnType<typeof collectRuntimeTimelinePayload>) => ({
+    ...payload,
+    assetsReady: assetsSettled,
+    sceneSwap: scenesSwappable,
+  });
   const computeClipTreeSignature = (): string => {
     let sig = "";
     for (const el of document.querySelectorAll("[data-start]")) {
@@ -3903,7 +4140,7 @@ export function initSandboxRuntimeModular(): void {
     timelinePostAfterSeek = true;
     void seekCompletionsSettled().then(() =>
       window.requestAnimationFrame(() =>
-        setTimeout(() => {
+        wallSetTimeout(() => {
           timelinePostAfterSeek = false;
           jumpLanding = false;
           if (!state.tornDown) postTimeline();
@@ -3911,18 +4148,29 @@ export function initSandboxRuntimeModular(): void {
       ),
     );
   };
+  let measuredRootObserver: ResizeObserver | null = null;
+  const postStageSize = () => {
+    const root = resolveRootCompositionElement();
+    if (!root) return;
+    const { width, height } = readCompositionSize(root);
+    if (width !== null && height !== null) {
+      postRuntimeMessage({ source: "hf-preview", type: "stage-size", width, height });
+      return;
+    }
+    if (!measuredRootObserver && typeof ResizeObserver !== "undefined") {
+      measuredRootObserver = new ResizeObserver(postStageSize);
+      measuredRootObserver.observe(root);
+    }
+    const measuredSize = { width: root.offsetWidth, height: root.offsetHeight };
+    if (measuredSize.width > 0 && measuredSize.height > 0)
+      postRuntimeMessage({ source: "hf-preview", type: "stage-size", measuredSize });
+  };
   const postTimeline = () => {
     sanitizeCompositionDurationAttributes();
     applyCompositionSizing();
     applyClipLayout();
     // Post resolved stage size so the parent can scale the iframe container
-    const stageSizeRootEl = resolveRootCompositionElement();
-    if (stageSizeRootEl) {
-      const { width, height } = readCompositionSize(stageSizeRootEl);
-      if (width !== null && height !== null) {
-        postRuntimeMessage({ source: "hf-preview", type: "stage-size", width, height });
-      }
-    }
+    postStageSize();
     bindRootTimelineIfAvailable();
     timelinePostHeld = clock.isPlaying();
     if (timelinePostHeld) {
@@ -3957,7 +4205,8 @@ export function initSandboxRuntimeModular(): void {
       clipTreeSignature = currentSignature;
     }
 
-    postRuntimeMessage({ ...payload, assetsReady: assetsSettled });
+    lastTimeline = payload;
+    postRuntimeMessage(timelineMessage(payload));
     if (!assetsReadyStarted) {
       assetsReadyStarted = true;
       settleFirstFrameCompositionReadiness(document, ({ timedOut }) => {
@@ -4059,17 +4308,37 @@ export function initSandboxRuntimeModular(): void {
   // window.__hf.buildReady[key]: a piece registers a promise for setup no
   // adapter can observe (mesh building, shader compiles). Waited the same
   // way as adapter readiness, so render and preview both hold on it.
+  // A rejection still releases the hold, but it is recorded as a startup error (with the key that
+  // failed) so render, snapshot and check fail instead of capturing a scene that was never built.
+  // Each entry is wrapped once and cached so the tracker sees the same promise set on every poll.
+  const keyedBuildReadyPromises = new WeakMap<object, PromiseLike<unknown>>();
+  let buildReadyRejectionMessage: string | null = null;
   const isBuildReadinessSettled = createSettledTracker(
     () => {
       const registry = window.__hf?.buildReady;
       if (!registry) return [];
-      return Object.values(registry).filter(
-        (p): p is PromiseLike<unknown> =>
-          p != null && typeof (p as PromiseLike<unknown>).then === "function",
-      );
+      const promises: PromiseLike<unknown>[] = [];
+      for (const [key, p] of Object.entries(registry)) {
+        if (p == null || typeof (p as PromiseLike<unknown>).then !== "function") continue;
+        let keyed = keyedBuildReadyPromises.get(p);
+        if (!keyed) {
+          keyed = Promise.resolve(p).then(undefined, (reason: unknown) => {
+            throw new BuildReadyRejection(key, reason);
+          });
+          keyedBuildReadyPromises.set(p, keyed);
+        }
+        promises.push(keyed);
+      }
+      return promises;
     },
     () => maybePublishRenderReady(),
-    (err) => swallow("runtime.init.buildReady", err),
+    (err) => {
+      if (err instanceof BuildReadyRejection) {
+        buildReadyRejectionMessage = recordBuildReadyRejection(err.key, err.reason);
+        return;
+      }
+      swallow("runtime.init.buildReady", err);
+    },
   );
 
   // Passes that must see scene DOM, which arrives after init: when scenes mount, or when one is
@@ -4104,6 +4373,11 @@ export function initSandboxRuntimeModular(): void {
             seekRootChildrenAndAdapters(state.capturedTimeline, t, { suppressEvents: true }),
           );
       },
+      muteCallbacks: () =>
+        muteDiscreteCallbacks([
+          ...sceneTimelines().map(([, timeline]) => timeline),
+          ...(state.capturedTimeline ? [state.capturedTimeline] : []),
+        ]),
       ignoreMutations: withoutOwnCompositionRecords,
     });
   }
@@ -4152,8 +4426,7 @@ export function initSandboxRuntimeModular(): void {
   const sceneUrls = (parts: Element[]): Set<string> => {
     const urls = new Set<string>();
     const addCssUrls = (css: string | null) => {
-      for (const m of (css ?? "").matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)|@import\s+(['"])(.*?)\3/gi))
-        urls.add(m[2] ?? m[4]!);
+      for (const { parts: m } of sceneCssUrlMatches(css ?? "")) urls.add(m[2] ?? m[4]!);
       for (const set of (css ?? "").matchAll(/image-set\((?:[^()]|\([^()]*\))*\)/gi))
         for (const m of set[0].matchAll(/(['"])(.*?)\1/g)) urls.add(m[2]!);
     };
@@ -4280,9 +4553,48 @@ export function initSandboxRuntimeModular(): void {
       }
     }
   };
+  // GSAP reads the transform of an element it cannot lay out by moving it out and back before its next
+  // element, past the text between; a host the visibility pass hid by display is laid out, unseen and inert, meanwhile.
+  const layOutHiddenHosts = (hosts: Element[]): (() => void) => {
+    const hidden = hosts.filter((host): host is StylableElement =>
+      displayBeforeHide.has(host as StylableElement),
+    );
+    const opacities = hidden.map((host) => {
+      const before = displayBeforeHide.get(host)!;
+      if (before.value) host.style.setProperty("display", before.value, before.priority);
+      else host.style.removeProperty("display");
+      const opacity = {
+        value: host.style.getPropertyValue("opacity"),
+        priority: host.style.getPropertyPriority("opacity"),
+        inert: host.hasAttribute("inert"),
+      };
+      host.style.setProperty("opacity", "0", "important");
+      host.setAttribute("inert", "");
+      return opacity;
+    });
+    return () =>
+      hidden.forEach((host, i) => {
+        const ours =
+          host.style.getPropertyValue("opacity") === "0" &&
+          host.style.getPropertyPriority("opacity") === "important";
+        const { value, priority, inert } = opacities[i]!;
+        if (ours && value) host.style.setProperty("opacity", value, priority);
+        else if (ours) host.style.removeProperty("opacity");
+        if (!inert) host.removeAttribute("inert");
+        if (displayBeforeHide.has(host)) host.style.display = "none";
+      });
+  };
+  const runSceneScripts = async (hosts: Element[], scripts: Element[]) => {
+    const putHidesBack = layOutHiddenHosts(hosts);
+    try {
+      await runSceneScriptsLaidOut(hosts, scripts);
+    } finally {
+      putHidesBack();
+    }
+  };
   // Runs a scene's scripts, then records what they started after returning: a script resumed by a font
   // wait builds there, past the recorder that wraps it. With several scenes, a late animation's scene is unknown.
-  const runSceneScripts = async (hosts: Element[], scripts: Element[]) => {
+  const runSceneScriptsLaidOut = async (hosts: Element[], scripts: Element[]) => {
     const globalTimeline = window.gsap?.globalTimeline;
     const before = new Set<unknown>(globalTimeline?.getChildren?.(false, true, true));
     await runScriptsAfterFonts(scripts);
@@ -4291,7 +4603,7 @@ export function initSandboxRuntimeModular(): void {
     if (!recorded || !id || !globalTimeline?.getChildren) return;
     // The gate lets a scene's script wait on fonts only, so their settling ends it.
     await waitForFonts();
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await new Promise((resolve) => wallSetTimeout(resolve, 0));
     // The runtime rebuilds its root while the scene settles; that root, and other scenes' records, are not its.
     const known = new Set<unknown>([...Object.values(recorded).flat(), ...ownedElsewhere([id])]);
     const late = globalTimeline
@@ -4353,8 +4665,10 @@ export function initSandboxRuntimeModular(): void {
     const pageAnimations = seekTimelineAndAdapters(state.currentTime);
     runAdapters("pause", 0, pageAnimations);
     runAdapters("play");
-    if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled)
-      scheduleWebAudioFor(hosts.flatMap(webAudioMediaIn), webAudio.currentGeneration());
+    const clips = hosts.flatMap(webAudioMediaIn);
+    const mayRoute =
+      clips.length > 0 && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled;
+    if (mayRoute && openWebAudio()) scheduleWebAudioFor(clips, webAudio.currentGeneration());
   };
   // What a load does after scene markup changed: bindings, media, captions, the root timeline, then a redraw.
   const settleChangedScenes = (
@@ -4398,8 +4712,9 @@ export function initSandboxRuntimeModular(): void {
     // Redraw the current frame as a seek does; a playing film cut to end at or before it stops there, as at its end.
     const cutShort = clock.isPlaying() && duration > 0 && state.currentTime >= duration;
     if (joining && clock.isPlaying() && !cutShort) joinPlayback(swappedHosts);
+    else if (previewSeek?.targetTime !== undefined) previewSeek.refresh();
     else transport.seek(cutShort ? duration : state.currentTime, { keepPlaying: !cutShort });
-    syncTimedElementVisibility(state.currentTime);
+    if (previewSeek?.time === undefined) syncTimedElementVisibility(state.currentTime);
     postTimeline();
   };
   // Only the rules not here yet: rewriting a loaded rule's style would load its font again.
@@ -4627,7 +4942,7 @@ export function initSandboxRuntimeModular(): void {
   );
   let windowWork: Promise<void> | null = null;
   let windowNear = "";
-  const nextTask = () => new Promise((resolve) => window.setTimeout(resolve, 0));
+  const nextTask = () => new Promise((resolve) => wallSetTimeout(resolve, 0));
   // A host and its stand-in trade style, a display:none the visibility pass wrote included; the way back goes along.
   const moveDisplayHide = (from: Element, to: Element) => {
     const hidden = displayBeforeHide.get(from as StylableElement);
@@ -4671,6 +4986,8 @@ export function initSandboxRuntimeModular(): void {
     stopSceneAnimations([host]);
     const placeholder = parkScene(name);
     if (placeholder) moveDisplayHide(host, placeholder);
+    for (const clip of clipsNeverStyledVisible)
+      if (!clip.isConnected) clipsNeverStyledVisible.delete(clip);
     parkedNames.add(name);
     releaseDetachedMedia();
     webAudio.releaseDecodedExcept(webAudioMediaIn(document));
@@ -4704,16 +5021,21 @@ export function initSandboxRuntimeModular(): void {
       .filter(({ name }) => near.has(name) && parked(name))
       .sort((a, b) => Math.abs(a.start - time) - Math.abs(b.start - time))[0];
     const toMount = landed ?? neighbour;
-    const toRetire = toMount
-      ? []
-      : windowScenes.filter(({ name }) => !near.has(name) && !parked(name));
+    const toRetire =
+      toMount || previewSeek?.targetTime !== undefined
+        ? []
+        : windowScenes.filter(({ name }) => !near.has(name) && !parked(name));
     if (!toMount && toRetire.length === 0) {
       windowNear = key;
       return false;
     }
     const wantedNow = (name: string) =>
       heldScenes.has(name) ||
-      scenesWanted(windowScenes, state.currentTime, clock.isPlaying()).has(name);
+      scenesWanted(
+        windowScenes,
+        previewSeek?.targetTime ?? state.currentTime,
+        clock.isPlaying(),
+      ).has(name);
     const parkedBeforeStep = parkedNames.size;
     windowWork = (async () => {
       if (landed) await mountScene(landed.name);
@@ -4726,7 +5048,7 @@ export function initSandboxRuntimeModular(): void {
       windowWork = null;
       const stuckStepKeepsItsPlan = parkedNames.size === parkedBeforeStep;
       windowNear = stuckStepKeepsItsPlan ? key : "";
-      moveSceneWindow(state.currentTime);
+      moveSceneWindow(previewSeek?.targetTime ?? state.currentTime);
     });
     // A seek is not done until the scene it lands in is mounted.
     if (landed) registerSeekCompletion(windowWork, "scene-window");
@@ -4746,8 +5068,7 @@ export function initSandboxRuntimeModular(): void {
       await (windowWork ?? Promise.resolve());
     }
   };
-  // Only a preview served with a scene manifest can swap; elsewhere the caller reloads directly.
-  if (readSceneParts(document)) {
+  if (scenesSwappable) {
     window.__hfSwapScenes = swapScenes;
     window.__hfHoldScenes = holdScenes;
     window.__hfParkedSceneMarkup = parkedSceneMarkup;
@@ -4812,17 +5133,17 @@ export function initSandboxRuntimeModular(): void {
   // A paused seek that would reveal undecoded images holds the previous picture until they decode.
   // Capped: a request that never settles must not freeze the preview; measured jumps settle in ~200 ms.
   const SEEK_HOLD_CAP_MS = 1000;
-  let heldSeek: { time: number; apply: () => void } | null = null;
+  let heldSeek: { time: number; apply: () => HeldSeek } | null = null;
   const flushHeldSeek = () => {
     const held = heldSeek;
     heldSeek = null;
-    held?.apply();
+    return held?.apply();
   };
   const applySeek = (quantized: number, options?: { keepPlaying?: boolean }) => {
     webAudio.stopAll();
     clock.detachAudioSource();
-    const wasPlaying = clock.isPlaying();
-    if (wasPlaying) clock.pause();
+    const wasPlaying = playingOrHeldForData();
+    if (clock.isPlaying()) clock.pause();
     clock.seek(quantized);
     state.currentTime = clock.now();
     state.isPlaying = false;
@@ -4833,6 +5154,7 @@ export function initSandboxRuntimeModular(): void {
     if (!keepPlaying) syncMediaForCurrentState();
     const tl = state.capturedTimeline;
     pauseTimelineIfPossible(tl);
+    pausedFrames.notify();
     const pageAnimations = seekTimelineAndAdapters(state.currentTime);
     if (!keepPlaying) decideClipsUnderScriptHidden(state.currentTime);
     runAdapters("pause", 0, pageAnimations);
@@ -4840,6 +5162,7 @@ export function initSandboxRuntimeModular(): void {
       transport.play();
       return;
     }
+    colorGrading.holdSeekUntilDrawn();
     colorGrading.redraw();
     paintVfx(state.currentTime);
     const blurred = paintCaptureMotionBlur(state.currentTime);
@@ -4867,9 +5190,190 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
+  const previewVideoClipsAt = (time: number) =>
+    withTimingResolver(() => {
+      const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+      const visibleAt = timedVisibilityAt();
+      const root = resolveRootCompositionElement();
+      return (transportMovableClips(buildRuntimeMediaCache().mediaClips) ?? []).filter(
+        (clip) =>
+          isVideoElement(clip.el) &&
+          !(clip.el.readyState >= 1 && clip.el.videoWidth === 0) &&
+          !isSilencedByHidden(clip.el) &&
+          (clip.el.hasAttribute("src") || clip.el.querySelector("source[src]") !== null) &&
+          isClipVisibleAt(time, clip.start, clip.end, duration) &&
+          clipChainVisibleAt(clip.el.parentElement, time, visibleAt, root),
+      );
+    });
+
+  previewSeek = createPreviewSeek({
+    frames: {
+      available: pausedFrames.available,
+      active: () => pausedFrames.active,
+      skipped: pausedFrames.skipped,
+      hold: (videos) => {
+        if (pausedFrames.available()) return pausedFrames.holdNative(videos);
+      },
+      prepare: (clips, time, signal, settled) => {
+        moveSceneWindow(time);
+        moveMediaWindow(time, clips);
+        for (const { el } of clips) {
+          if (!isVideoElement(el) || el.videoWidth > 0) continue;
+          if (el.preload === "none") setRuntimePreload(el, "metadata");
+          if (el.networkState !== 2) runtimeLoad(el);
+        }
+        const requests = clips.flatMap((clip) =>
+          isVideoElement(clip.el)
+            ? [
+                {
+                  video: clip.el,
+                  source: clip.el.src || clip.el.currentSrc,
+                  time: mediaSourceTimeAt(clip, time),
+                  settled,
+                },
+              ]
+            : [],
+        );
+        return pausedFrames.prepare(requests, signal);
+      },
+      suspend: pausedFrames.suspendProvider,
+      prepareNative: pausedFrames.prepareNative,
+      clear: (keep) => {
+        const corrected = new WeakSet<HTMLVideoElement>();
+        pausedFrames.clear(keep, (video, presented) => {
+          const playing = clock.isPlaying();
+          if (playing && !presented) return false;
+          const time = clock.now();
+          const clip = previewVideoClipsAt(time).find(({ el }) => el === video);
+          if (!clip) return true;
+          const expected = mediaSourceTimeAt(clip, time);
+          if (playing && corrected.has(video)) return true;
+          if (Math.abs(video.currentTime - expected) < (playing ? 0.5 : 0.02)) return true;
+          if (playing) corrected.add(video);
+          video.currentTime = mediaElementTime(expected);
+          return false;
+        });
+      },
+    },
+    videosToHold: () =>
+      withTimingResolver(() =>
+        (transportMovableClips(buildRuntimeMediaCache().mediaClips) ?? [])
+          .map(({ el }) => el)
+          .filter(isVideoElement),
+      ),
+    scenesReadyAt: (time) =>
+      !windowScenes.some(
+        ({ name, start, end }) => start <= time && time <= end && parkedNames.has(name),
+      ) &&
+      previewVideoClipsAt(time).every(
+        ({ el }) => !isVideoElement(el) || el.videoWidth > 0 || isUnplayable(el),
+      ),
+    clipsAt: previewVideoClipsAt,
+    prepare: (clips, time) => {
+      moveSceneWindow(time);
+      moveMediaWindow(time, clips);
+      for (const clip of clips) {
+        const { el } = clip;
+        if (el.preload !== "auto") setRuntimePreload(el, "auto");
+        if (el.readyState === 1 && !el.seeking)
+          el.currentTime = mediaElementTime(mediaSourceTimeAt(clip, time));
+      }
+      syncRuntimeMedia({
+        clips,
+        timeSeconds: time,
+        playing: false,
+        playbackRate: state.playbackRate,
+        forceSync: true,
+        getCompositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
+      });
+    },
+    commit: (time) => {
+      applySeek(time);
+      wallClearTimeout(nativeWarmTimer);
+      const refined = previewSeek?.refining;
+      if (pausedFrames.active)
+        nativeWarmTimer = wallSetTimeout(() => {
+          if (state.tornDown || clock.isPlaying() || previewSeek?.time !== undefined) return;
+          if (!refined) {
+            const landed = previewSeek?.refine(time);
+            if (landed) registerSeekCompletion(landed, "video-frame");
+            return;
+          }
+          pausedFrames.prepareNative();
+          state.mediaForceSyncNextTick = true;
+          syncMediaForCurrentState();
+        }, 120);
+    },
+  });
+
+  const seekWhenReady = (time: number, options?: { keepPlaying?: boolean; settled?: boolean }) => {
+    if (nativePlayTime !== undefined && Math.abs(time - nativePlayTime) < 1e-5) return;
+    nativePlayGeneration++;
+    nativePlayTime = undefined;
+    wallClearTimeout(nativeWarmTimer);
+    if (
+      !(studioPreview || (playerFrame && isWebKit())) ||
+      state.nativeMediaSyncDisabled ||
+      isExportRenderDrivingFrames() ||
+      window.__HF_EXPORT_RENDER_SEEK_CONFIG ||
+      (options?.keepPlaying && playingOrHeldForData())
+    ) {
+      previewSeek?.cancel();
+      pausedFrames.clear();
+      applySeek(time, options);
+      return;
+    }
+    webAudio.stopAll();
+    clock.detachAudioSource();
+    clock.pause();
+    state.isPlaying = false;
+    bufferingFor = [];
+    pauseTimelineIfPossible(state.capturedTimeline);
+    runAdapters("pause");
+    const clips = withTimingResolver(() => buildRuntimeMediaCache().mediaClips);
+    for (const { el } of transportMovableClips(clips) ?? []) {
+      if (!el.paused) el.pause();
+    }
+    const landed = options?.settled ? previewSeek?.refine(time) : previewSeek?.seek(time);
+    if (landed) registerSeekCompletion(landed, "video-frame");
+    postState(true);
+    return landed;
+  };
+
   const transport: RuntimePlayerTransport = {
     play: () => {
       flushHeldSeek();
+      if (
+        (pausedFrames.active ||
+          ((pausedFrames.available() || studioPreview) && previewSeek?.time !== undefined)) &&
+        !clock.isPlaying()
+      ) {
+        wallClearTimeout(nativeWarmTimer);
+        const generation = ++nativePlayGeneration;
+        const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+        if (duration > 0) clock.setDuration(duration);
+        nativePlayTime =
+          previewSeek?.targetTime ??
+          (clock.reachedEnd() ? clock.getPlayStart() : state.currentTime);
+        const landed = previewSeek?.handoff(nativePlayTime);
+        if (landed) {
+          bufferingFor = withTimingResolver(() =>
+            (transportMovableClips(buildRuntimeMediaCache().mediaClips) ?? []).map(({ el }) => el),
+          );
+          postState(true);
+          void landed.then(() => {
+            if (state.tornDown || generation !== nativePlayGeneration) return;
+            bufferingFor = [];
+            nativePlayTime = undefined;
+            transport.play();
+          });
+          return;
+        }
+        nativePlayTime = undefined;
+      }
+      const destination = previewSeek?.time;
+      previewSeek?.cancel();
+      if (destination !== undefined) applySeek(destination);
       const resumingStarved = bufferingFor.length > 0;
       bufferingFor = [];
       const tl = state.capturedTimeline;
@@ -4893,7 +5397,12 @@ export function initSandboxRuntimeModular(): void {
       // Schedule audio through WebAudio for sample-accurate timing.
       // Falls back to HTMLMediaElement playback if WebAudio isn't ready
       // or decoding fails (the syncRuntimeMedia path handles that).
-      if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
+      if (
+        !state.nativeMediaSyncDisabled &&
+        !state.webAudioMediaDisabled &&
+        webAudioMediaIn(document).length > 0 &&
+        openWebAudio()
+      ) {
         scheduleWebAudioForActiveClips();
       }
       runAdapters("play");
@@ -4904,9 +5413,22 @@ export function initSandboxRuntimeModular(): void {
       postState(true);
     },
     pause: () => {
+      const destination = previewSeek?.targetTime ?? nativePlayTime;
+      nativePlayGeneration++;
+      nativePlayTime = undefined;
+      previewSeek?.cancel(true);
       const wasBuffering = bufferingFor.length > 0;
       bufferingFor = [];
-      if (clock.isPlaying()) haltPlayback();
+      if (clock.isPlaying()) {
+        if (
+          mediaDeferred &&
+          pausedFrames.available() &&
+          !state.nativeMediaSyncDisabled &&
+          !isExportRenderDrivingFrames()
+        )
+          void seekWhenReady(clock.now());
+        else haltPlayback();
+      } else if (destination !== undefined) void seekWhenReady(destination);
       else if (wasBuffering) postState(true);
     },
     seek: (timeSeconds, options) => {
@@ -4914,22 +5436,25 @@ export function initSandboxRuntimeModular(): void {
         Math.max(0, Number(timeSeconds) || 0),
         state.canonicalFps,
       );
+      if (nativePlayTime !== undefined && Math.abs(quantized - nativePlayTime) < 1e-5) return;
+      nativePlayGeneration++;
+      nativePlayTime = undefined;
+      wallClearTimeout(nativeWarmTimer);
       heldSeek = null;
       const undecoded = clock.isPlaying() ? [] : undecodedImagesShownAt(quantized);
       if (undecoded.length === 0) {
-        applySeek(quantized, options);
-        return;
+        return seekWhenReady(quantized, options);
       }
-      const held = { time: quantized, apply: () => applySeek(quantized, options) };
+      const held = { time: quantized, apply: () => seekWhenReady(quantized, options) };
       heldSeek = held;
       for (const img of undecoded) {
         loadPreviewImagesIn(img);
         for (let clip = img.closest(SKIPPED_CLIP); clip; clip = img.closest(SKIPPED_CLIP))
           clip.setAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, "");
       }
-      let capTimer = 0;
+      let capTimer: ReturnType<typeof wallSetTimeout> | undefined;
       const capped = new Promise<void>((resolve) => {
-        capTimer = window.setTimeout(() => {
+        capTimer = wallSetTimeout(() => {
           if (heldSeek === held) swallow("runtime.init.seekHoldCap", undecoded);
           resolve();
         }, SEEK_HOLD_CAP_MS);
@@ -4938,14 +5463,19 @@ export function initSandboxRuntimeModular(): void {
         undecoded.map((img) => (img.decode ? img.decode().catch(() => {}) : undefined)),
       );
       const landed = Promise.race([decoded, capped]).then(() => {
-        window.clearTimeout(capTimer);
-        if (heldSeek === held) flushHeldSeek();
+        wallClearTimeout(capTimer);
+        if (heldSeek === held) return flushHeldSeek();
       });
       registerSeekCompletion(landed, "image-decode");
       return landed;
     },
     renderSeek: (timeSeconds, options) => {
+      nativePlayGeneration++;
+      nativePlayTime = undefined;
+      wallClearTimeout(nativeWarmTimer);
+      pausedFrames.clear();
       heldSeek = null;
+      previewSeek?.cancel();
       renderCaptureSeekStarted = true;
       const seekTime = resolveRenderSeekTime(
         Math.max(0, Number(timeSeconds) || 0),
@@ -4970,7 +5500,8 @@ export function initSandboxRuntimeModular(): void {
       if (blurred) registerSeekCompletion(blurred, "motion-blur");
       postState(true);
     },
-    getTime: () => heldSeek?.time ?? clock.now(),
+    getTime: () =>
+      previewSeek?.committing ? clock.now() : (heldSeek?.time ?? previewSeek?.time ?? clock.now()),
     getDuration: () => {
       const dur = clock.getDuration();
       return Number.isFinite(dur) ? dur : 0;
@@ -5047,7 +5578,6 @@ export function initSandboxRuntimeModular(): void {
       duration: (element) => resolveDurationForElement(element),
       compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
       canonicalFps: () => state.canonicalFps,
-      exportRenderSeek: () => Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
     }),
     createWaapiAdapter(),
     createCssAdapter({
@@ -5068,6 +5598,8 @@ export function initSandboxRuntimeModular(): void {
   ] as RuntimeDeterministicAdapter[];
   patchVideoTextureCompat();
   patchWebGLVideoTextureCompat();
+  patchCanvasVideoFrameCompat();
+  patchExternalVideoTextureCompat();
   // Lets the engine re-render GPU compositions after it injects decoded video
   // frames, so video-textured WebGL/WebGPU scenes sample the correct frame.
   window.__hfReseekGpu = (time: number) => {
@@ -5208,7 +5740,7 @@ export function initSandboxRuntimeModular(): void {
   // timelines in __timelines haven't executed yet (they run in the browser's next
   // microtask). Defer a rebinding attempt to catch them.
   if (externalCompositionsReady) {
-    setTimeout(() => {
+    wallSetTimeout(() => {
       maybePublishRenderReady();
     }, 0);
   }
@@ -5221,7 +5753,7 @@ export function initSandboxRuntimeModular(): void {
   let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
   let pausedSeekDeferredByManualGesture = false;
   // Set while the transport is parked (see scheduleNextTransportFrame).
-  let transportParkTimerId: number | null = null;
+  let transportParkTimerId: ReturnType<typeof wallSetTimeout> | null = null;
   let slowIdleHeartbeat = false;
   let transportWakeRequested = false;
   let parkedPollWitness = "";
@@ -5247,12 +5779,15 @@ export function initSandboxRuntimeModular(): void {
     timeline: RuntimeTimelineLike,
     timeSeconds: number,
     options?: RuntimeSeekOptions,
+    redrawDue = false,
   ) => {
     try {
       const suppressEvents = options?.suppressEvents === true;
       // Guarded: a partial timeline without pause() must still get its seek.
       pauseTimelineIfPossible(timeline);
-      seekGsapTimeline(timeline, timeSeconds, suppressEvents, gsapStructureOf(timeline), renderFps);
+      const structure = gsapStructureOf(timeline);
+      const redrawn = seekGsapTimeline(timeline, timeSeconds, suppressEvents, structure, renderFps);
+      if (redrawDue && !redrawn) redrawGsapTimelineAt(timeline, timeSeconds, structure);
     } catch (err) {
       // The scene's own callback threw. A warning, not a script error: it must not turn a
       // timed-out timeline wait into a script failure.
@@ -5314,9 +5849,8 @@ export function initSandboxRuntimeModular(): void {
     sceneClocks.set(timeline, clock);
     return clock;
   };
-  const restingAt = new WeakMap<object, number>();
   const restsAt = (timeline: RuntimeTimelineLike, time: number): boolean => {
-    if (restingAt.get(timeline) !== time) return false;
+    if (sceneRestingAt(timeline) !== time) return false;
     try {
       return (
         (timeline.paused as () => unknown)() === true && Number(timeline.totalTime?.()) === time
@@ -5359,9 +5893,10 @@ export function initSandboxRuntimeModular(): void {
           : sourceTime,
       );
       // A scene before or after its clip rests where the last frame left it: no redraw.
-      if (!renderCaptureSeekStarted && restsAt(timeline, localTime)) continue;
-      seekSceneTimeline(compositionId, timeline, localTime, options);
-      restingAt.set(timeline, localTime);
+      const redrawDue = takeSceneRedrawDue(timeline);
+      if (!redrawDue && !renderCaptureSeekStarted && restsAt(timeline, localTime)) continue;
+      seekSceneTimeline(compositionId, timeline, localTime, options, redrawDue);
+      restSceneAt(timeline, localTime);
     }
   };
 
@@ -5490,15 +6025,7 @@ export function initSandboxRuntimeModular(): void {
           const redrawn = seekGsapTimeline(tl, tlSeekTime, suppressEvents, structure, renderFps);
           if (!redrawn && !suppressEvents && !hasZeroDurationCallbackTween(tl, structure)) {
             // The first seek is the only eventful one; the re-render only refreshes styles.
-            rerenderGsapTimelineAt(
-              {
-                totalTime: tl.totalTime.bind(tl),
-                totalDuration: tl.totalDuration?.bind(tl),
-                getChildren: tl.getChildren?.bind(tl),
-              },
-              tlSeekTime,
-              structure,
-            );
+            redrawGsapTimelineAt(tl, tlSeekTime, structure);
           }
         } else {
           tl.seek(tlSeekTime, suppressEvents);
@@ -5518,6 +6045,8 @@ export function initSandboxRuntimeModular(): void {
         swallow("runtime.init.transport.adapter", err);
       }
     }
+    window.__hf = window.__hf || {};
+    window.__hf.redraws = (window.__hf.redraws ?? 0) + 1;
     return pageAnimations;
   }
 
@@ -5602,7 +6131,7 @@ export function initSandboxRuntimeModular(): void {
     `${readCompositionTimingRevision()}|${resolveAdapterDurationFloorSeconds() ?? ""}`;
 
   const armParkTimer = () => {
-    transportParkTimerId = window.setTimeout(
+    transportParkTimerId = wallSetTimeout(
       parkedTransportHeartbeat,
       slowIdleHeartbeat && state.capturedTimeline && childrenBound
         ? SLOW_IDLE_HEARTBEAT_MS
@@ -5631,11 +6160,11 @@ export function initSandboxRuntimeModular(): void {
 
   // Hidden documents run no animation frames but their media plays on, so tick on a timer.
   // Chromium clamps it to ~1 s unless audio is audible: a clip may end up to 1 s late.
-  let transportTickTimerId: number | null = null;
+  let transportTickTimerId: ReturnType<typeof wallSetTimeout> | null = null;
   const transportTickPending = () => state.transportRafId != null || transportTickTimerId != null;
   const requestTransportTick = () => {
     if (document.visibilityState === "hidden") {
-      transportTickTimerId = window.setTimeout(() => {
+      transportTickTimerId = wallSetTimeout(() => {
         transportTickTimerId = null;
         transportTick();
       }, HIDDEN_TRANSPORT_TICK_MS);
@@ -5649,7 +6178,7 @@ export function initSandboxRuntimeModular(): void {
       state.transportRafId = null;
     }
     if (transportTickTimerId != null) {
-      window.clearTimeout(transportTickTimerId);
+      wallClearTimeout(transportTickTimerId);
       transportTickTimerId = null;
     }
   };
@@ -5685,12 +6214,47 @@ export function initSandboxRuntimeModular(): void {
     transportWakeRequested = true;
     if (inTransportTick || transportTickPending()) return;
     if (transportParkTimerId != null) {
-      window.clearTimeout(transportParkTimerId);
+      wallClearTimeout(transportParkTimerId);
       transportParkTimerId = null;
     }
     transportWakeRequested = false;
     requestTransportTick();
   };
+
+  // A held film plays nothing, yet a clip that has played keeps its response open once it has buffered
+  // enough, and the bytes it has not read count against the connection every file shares: the clip the
+  // hold waits for then gets none. Each such clip reloads at preload metadata, which the browser ends
+  // once the clip can play, and the hold waits for it too. WebKit keeps its own hold-back.
+  const reloadPlayedClipsForHold = (
+    time: number,
+    waitingFor: HTMLMediaElement[],
+  ): HTMLMediaElement[] =>
+    mediaClipsInWindow
+      .filter(
+        ({ el, start, end }) =>
+          !isWebKit() &&
+          !waitingFor.includes(el) &&
+          isInClipWindow(time, start, end) &&
+          isPlayableTrack(el) &&
+          el.played.length > 0 &&
+          !webAudio.ownsElement(el),
+      )
+      .map((clip) => {
+        const { el } = clip;
+        setRuntimePreload(el, "metadata");
+        withoutOwnTimingRecords(el, () => releaseMedia(el));
+        if (el.readyState === 0)
+          el.addEventListener(
+            "loadedmetadata",
+            () => {
+              const sameHold =
+                bufferingFor.includes(el) && Math.abs(state.currentTime - time) < 1e-3;
+              if (sameHold) el.currentTime = mediaElementTime(mediaSourceTimeAt(clip, time));
+            },
+            { once: true },
+          );
+        return el;
+      });
 
   const isPlayableTrack = (el: HTMLMediaElement): boolean =>
     el.isConnected &&
@@ -5788,6 +6352,33 @@ export function initSandboxRuntimeModular(): void {
     return false;
   };
 
+  const STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS = 8000;
+  type HoldWithoutData = { src: string; buffered: number; sinceMs: number; checkedTick: number };
+  const holdsWithoutData = new WeakMap<HTMLMediaElement, HoldWithoutData>();
+  const stoppedReceivingData = (el: HTMLMediaElement): boolean => {
+    const now = performance.now();
+    let buffered = 0;
+    for (let i = 0; i < el.buffered.length; i++)
+      buffered += el.buffered.end(i) - el.buffered.start(i);
+    const hold = holdsWithoutData.get(el);
+    const heldLastTick =
+      hold !== undefined &&
+      hold.src === el.currentSrc &&
+      buffered <= hold.buffered &&
+      hold.checkedTick >= transportTickCount - 1;
+    if (!heldLastTick) {
+      holdsWithoutData.set(el, {
+        src: el.currentSrc,
+        buffered,
+        sinceMs: now,
+        checkedTick: transportTickCount,
+      });
+      return false;
+    }
+    hold.checkedTick = transportTickCount;
+    return now - hold.sinceMs > STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS;
+  };
+
   const mediaNotReadyAt = (t: number, ready = hasDataAhead): HTMLMediaElement[] =>
     state.nativeMediaSyncDisabled
       ? []
@@ -5796,8 +6387,10 @@ export function initSandboxRuntimeModular(): void {
             ({ el, start, end }) =>
               isInClipWindow(t, start, end) &&
               !ready(el) &&
+              !stoppedReceivingData(el) &&
               isPlayableTrack(el) &&
               !stillStandsIn(el) &&
+              !pausedFrames.retained(el) &&
               !webAudio.ownsElement(el),
           )
           .map(({ el }) => el);
@@ -5806,6 +6399,10 @@ export function initSandboxRuntimeModular(): void {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
     try {
+      if (previewSeek?.time !== undefined) {
+        postState(false);
+        return;
+      }
       transportTickCount += 1;
 
       // The jobs below run when the composition revision moves (rate-limited). What no
@@ -5894,18 +6491,21 @@ export function initSandboxRuntimeModular(): void {
       const t = clock.now();
       state.currentTime = t;
       if (!window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
+        const nowMs = performance.now();
+        const holder =
+          bufferingFor[0] ??
+          mediaClipsInWindow.find(
+            ({ el }) => el.tagName === "VIDEO" && !el.paused && el.readyState < 3,
+          )?.el;
         notePlaybackFrame({
-          nowMs: performance.now(),
+          nowMs,
           filmTime: t,
           fps: state.canonicalFps,
           rate: state.playbackRate,
           playing: playing || bufferingFor.length > 0,
           hidden: document.visibilityState === "hidden",
-          waiting:
-            bufferingFor.length > 0 ||
-            mediaClipsInWindow.some(
-              ({ el }) => el.tagName === "VIDEO" && !el.paused && el.readyState < 3,
-            ),
+          waiting: holder !== undefined,
+          heldBy: holder ? heldByMedia(holder, nowMs) : null,
           frozen: hasFrozenPicture(mediaClipsInWindow, t),
           clock: clock.followedClock(),
           layoutKey: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
@@ -5977,6 +6577,7 @@ export function initSandboxRuntimeModular(): void {
       if (clock.isPlaying() && notReady.length > 0) {
         bufferingFor = notReady;
         haltPlayback(true);
+        bufferingFor = [...notReady, ...reloadPlayedClipsForHold(state.currentTime, notReady)];
       } else if (
         bufferingFor.length > 0 &&
         !mediaNotReadyAt(state.currentTime, canResumeFrom).some((el) => bufferingFor.includes(el))
@@ -6099,7 +6700,7 @@ export function initSandboxRuntimeModular(): void {
           : Promise.resolve(null);
       void capture.then((scheduled) => {
         const replacedByNewerPass = gen !== webAudio.currentGeneration();
-        if (scheduled && state.playbackRate === 1 && decodesFirst(rawEl)) {
+        if (scheduled && state.playbackRate === 1 && decodesFirst(rawEl, webAudio)) {
           void webAudio.decodeAudioElement(rawEl).then(async (buffer) => {
             if (!buffer || !clock.isPlaying() || gen !== webAudio.currentGeneration()) return;
             const played = await webAudio.schedulePlayback(
@@ -6175,7 +6776,7 @@ export function initSandboxRuntimeModular(): void {
       changed &&
       !state.nativeMediaSyncDisabled &&
       !state.webAudioMediaDisabled &&
-      webAudioReady &&
+      webAudioOpened === true &&
       clock.isPlaying() &&
       (webAudio.hasBoundedActiveSources() || webAudio.hasHandedOverSources())
     ) {
@@ -6203,6 +6804,8 @@ export function initSandboxRuntimeModular(): void {
   // The runtime's external control surface only goes live once all of its
   // dependencies exist, so a load-time seek / set-playback-rate can never reach
   // a not-yet-initialized helper (the 'before initialization' TDZ this fixes).
+  const scrubAudio = createScrubAudio({ lease: leasePausedMedia, release: releasePausedMedia });
+  registerRuntimeCleanup(scrubAudio.stop);
   state.controlBridgeHandler = installRuntimeControlBridge({
     onPlay: () => {
       player.play();
@@ -6213,6 +6816,11 @@ export function initSandboxRuntimeModular(): void {
       emitAnalyticsEvent("composition_paused", { time: player.getTime() });
     },
     onStopMedia: () => {
+      nativePlayGeneration++;
+      nativePlayTime = undefined;
+      wallClearTimeout(nativeWarmTimer);
+      previewSeek?.cancel();
+      bufferingFor = [];
       webAudio.stopAll();
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
@@ -6264,6 +6872,14 @@ export function initSandboxRuntimeModular(): void {
       }
     },
     onSetNativeMediaSyncDisabled: (disabled) => {
+      if (disabled) {
+        nativePlayGeneration++;
+        nativePlayTime = undefined;
+        wallClearTimeout(nativeWarmTimer);
+        previewSeek?.cancel();
+        pausedFrames.clear();
+        bufferingFor = [];
+      }
       if (state.nativeMediaSyncDisabled === disabled) return;
       state.nativeMediaSyncDisabled = disabled;
       state.mediaForceSyncNextTick = true;
@@ -6296,6 +6912,10 @@ export function initSandboxRuntimeModular(): void {
       setPreviewRasterScale(scale);
       noteDisplayScale(scale);
     },
+    onScrubAudio: scrubAudio.scrub,
+    onAnnounceTimeline: () => {
+      if (lastTimeline) postRuntimeMessage(timelineMessage(lastTimeline));
+    },
     onRequestPreviewFacts: () =>
       postRuntimeMessage({
         source: "hf-preview",
@@ -6305,11 +6925,14 @@ export function initSandboxRuntimeModular(): void {
           mountedElementCount: document.body.querySelectorAll("*").length,
           durationSeconds: clock.getDuration(),
           videos: describeVideoSources(),
-          lighterAt: levelsWithLighterCopies(),
+          lighterAt: lighterLevels(),
           copiesReady: copiesReady(),
         },
       }),
-    onSetPreviewQuality: setPreviewQuality,
+    onSetPreviewQuality: (level) => {
+      setPreviewQuality(level);
+      setMotionBlurPreviewQuality(level);
+    },
     onSetCopiesAhead: (on) => setCopiesAhead(on, () => clock.isPlaying()),
     onRetryPreviewCopies: retryPreviewCopies,
     onSetIdleHeartbeat: (slow) => {
@@ -6362,20 +6985,24 @@ export function initSandboxRuntimeModular(): void {
     onClearRuntimeData: clearRuntimeData,
     getCanonicalFps: () => state.canonicalFps,
   });
+  runtimeCleanupCallbacks.push(installEditingAgent().dispose);
 
   const teardown = () => {
     if (state.tornDown) return;
     state.tornDown = true;
+    measuredRootObserver?.disconnect();
+    measuredRootObserver = null;
+    previewSeek?.cancel();
     cancelTransportTick();
     document.removeEventListener("visibilitychange", onTransportVisibilityChange);
     if (transportParkTimerId != null) {
-      window.clearTimeout(transportParkTimerId);
+      wallClearTimeout(transportParkTimerId);
       transportParkTimerId = null;
     }
     state.transportClock = null;
     webAudio.destroy();
     if (metadataRebindDebounceTimerId != null) {
-      window.clearTimeout(metadataRebindDebounceTimerId);
+      wallClearTimeout(metadataRebindDebounceTimerId);
       metadataRebindDebounceTimerId = null;
     }
     if (rootStageDiagnosticRafId != null) {
@@ -6400,6 +7027,11 @@ export function initSandboxRuntimeModular(): void {
       state.beforeUnloadHandler = null;
     }
     picker.disablePickMode();
+    try {
+      teardownCaptureMotionBlur();
+    } catch (err) {
+      swallow("runtime.init.site17", err);
+    }
     for (const adapter of state.deterministicAdapters) {
       if (!adapter || typeof adapter.revert !== "function") continue;
       try {
@@ -6414,6 +7046,14 @@ export function initSandboxRuntimeModular(): void {
     // would otherwise permanently block render-ready for whatever loads next
     // into this window, since window.__hf itself is never reset.
     if (window.__hf?.buildReady) window.__hf.buildReady = {};
+    // Likewise its rejected build must not fail the next composition's readiness waits.
+    if (
+      buildReadyRejectionMessage !== null &&
+      window.__hfStartupError === buildReadyRejectionMessage
+    ) {
+      delete window.__hfStartupError;
+    }
+    buildReadyRejectionMessage = null;
     for (const cleanup of runtimeCleanupCallbacks.splice(0)) {
       try {
         cleanup();

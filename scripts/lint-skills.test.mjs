@@ -8,10 +8,18 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { headingSlugs, lintDocRefs, lintFrontmatter, lintRegistryItemRefs } from "./lint-skills.ts";
+import {
+  headingSlugs,
+  lintDocRefs,
+  lintFrontmatter,
+  lintProjectCliRoutes,
+  lintRegistryItemRefs,
+  lintRelativeScriptRuns,
+  lintVersionedCliRuns,
+} from "./lint-skills.ts";
 
 const wrap = (frontmatter) => `---\n${frontmatter}\n---\n\n# body\n`;
 
@@ -66,6 +74,27 @@ test("valid: description with a colon inside a quoted string", () => {
 
 const has = (violations, needle) =>
   violations.some((v) => v.message.toLowerCase().includes(needle.toLowerCase()));
+
+test("invalid: a description that a pasted link alone triggers (#8530)", () => {
+  for (const said of [
+    "Bring Figma into a video. Use when the person pastes a figma.com link or asks to use a Figma design.",
+    "Turn a site into a video. Use when the user shares a URL.",
+    "Capture a website. Use when someone drops a link to a page.",
+    "Capture a website. Use when the user has pasted a link.",
+    "Capture a website. Use when a link is pasted with no other request.",
+    "Capture a website. Use when given a URL.",
+    "Capture a website. Use for pasted links.",
+  ]) {
+    const violations = lintFrontmatter(wrap(`name: foo\ndescription: ${said}`));
+    assert.ok(has(violations, "a pasted link alone"), said);
+  }
+});
+
+test("valid: a description that names the task a link comes with", () => {
+  const said =
+    "Bring Figma into a video. Use when the person asks to use a Figma design, frame or logo in a video; a link with no task is not that ask.";
+  assert.deepEqual(lintFrontmatter(wrap(`name: foo\ndescription: ${said}`)), []);
+});
 
 test("invalid: missing frontmatter block", () => {
   const violations = lintFrontmatter("# just a body, no dashes\n");
@@ -336,4 +365,110 @@ test("heading slugs: GitHub-style lowercasing, punctuation strip, dedupe", () =>
     "# Hello, World!\n## `code` & Stuff\n## Hello, World!\n```\n# not a heading\n```\n",
   );
   assert.deepEqual([...slugs], ["hello-world", "code--stuff", "hello-world-1"]);
+});
+
+// ---------------------------------------------------------------------------
+// Helper scripts run by a working-directory-relative path
+// ---------------------------------------------------------------------------
+
+const fenced = (body) => "# Doc\n\n```bash\n" + body + "\n```\n";
+
+test("relative scripts: a cwd-relative helper path in a code block is flagged", () => {
+  const violations = lintRelativeScriptRuns(
+    fenced("node skills/media-use/audio/scripts/heygen-tts.mjs a.txt -o a.wav"),
+  );
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 4);
+  assert.match(violations[0].message, /skills\/media-use\/audio\/scripts\/heygen-tts\.mjs/);
+});
+
+test("relative scripts: other interpreters, bare names and ./ paths are flagged", () => {
+  for (const body of [
+    "python3 scripts/lint_source.py ./src",
+    "bash ./scripts/run.sh",
+    "npx tsx scripts/generate.ts",
+    "cd out && node locate.mjs overlay",
+  ]) {
+    assert.equal(lintRelativeScriptRuns(fenced(body)).length, 1, body);
+  }
+});
+
+test("relative scripts: an inline code span in prose is checked too", () => {
+  const violations = lintRelativeScriptRuns("Run `python3 tools/voice.py --silent` first.\n");
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 1);
+});
+
+test("relative scripts: skill-anchored, variable and absolute paths pass", () => {
+  for (const body of [
+    "node <SKILL_DIR>/audio/scripts/heygen-tts.mjs a.txt",
+    'node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" list',
+    'node "$SKILL_DIR/scripts/x.mjs"',
+    "node /opt/tools/x.mjs",
+    "node ~/tools/x.mjs",
+    "node -e 'console.log(1)'",
+    "npx hyperframes render",
+  ]) {
+    assert.deepEqual(lintRelativeScriptRuns(fenced(body)), [], body);
+  }
+});
+
+test("relative scripts: a script named in prose without an interpreter is not flagged", () => {
+  assert.deepEqual(lintRelativeScriptRuns("`scripts/locate.mjs` narrows it with a grid.\n"), []);
+});
+
+test("relative scripts: a marker with a reason opts the doc out", () => {
+  const body = fenced("npx tsx scripts/generate.ts");
+  const marked = "<!-- skill-scripts: relative-ok, runs inside a HyperFrames checkout -->\n" + body;
+  assert.deepEqual(lintRelativeScriptRuns(marked), []);
+  const noReason = "<!-- skill-scripts: relative-ok -->\n" + body;
+  assert.equal(lintRelativeScriptRuns(noReason).length, 1);
+});
+
+test("versioned CLI examples use the installed launcher", () => {
+  for (const prefix of ["npx", "npx -y", "npx --yes", "npm exec --", "bunx"]) {
+    assert.equal(lintVersionedCliRuns(`Run \`${prefix} hyperframes@latest --version\`.`).length, 1);
+  }
+  assert.deepEqual(
+    lintVersionedCliRuns(
+      'Run `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version latest --version`.',
+    ),
+    [],
+  );
+});
+
+test("project CLI routes: a project's scripts or a CLI installed into it are flagged", () => {
+  for (const text of [
+    "or the project's pinned `npm run` scripts",
+    "run `npm run render` in the project",
+    "`npm i hyperframes@0.9.0` then run it",
+    "`npm install --save-dev hyperframes`",
+    "then `node_modules/.bin/hyperframes render`",
+  ]) {
+    assert.equal(lintProjectCliRoutes(`intro\n${text}\n`)[0]?.line, 2, text);
+  }
+});
+
+test("project CLI routes: the launcher and plain prose pass", () => {
+  const ok = [
+    'node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version 1.2.3 render',
+    "never a project's own scripts or wrapper unless the person names that command",
+    "`npx skills add heygen-com/hyperframes`",
+  ].join("\n");
+  assert.deepEqual(lintProjectCliRoutes(ok), []);
+});
+
+test("project CLI routes: no shipped SKILL.md offers a route through a project's files", () => {
+  const skillsDir = join(import.meta.dirname, "..", "skills");
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const path = join(skillsDir, entry.name, "SKILL.md");
+    let content;
+    try {
+      content = readFileSync(path, "utf-8");
+    } catch {
+      continue;
+    }
+    assert.deepEqual(lintProjectCliRoutes(content), [], path);
+  }
 });

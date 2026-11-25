@@ -25,8 +25,9 @@ Work as `people.md` does, one generated shot per original shot, with these chang
      --aspect <the source's> --seconds <n> --prompt "<the painting style, what moves, the camera>" --out <shot>.mp4
    ```
 
-   `--first-frame` does not combine with `--motion`, so the plate goes in `--reference`. Name the style in the prompt, and blank drawn text in the guide with `--mask`.
+   `--first-frame` does not combine with `--motion`, so the plate goes in `--reference`. Name the style in the prompt, and blank drawn text in the guide with `--mask`. Trim the guide to the shot's own frames: leave out the blended frames of a dissolve at either end, or it comes back as the neighbouring shot.
 
 4. **Frame it** by comparing a stable shape at the shot's start and end with `npx hyperframes diff <video> . --at t,t,…`, then set scale and position by hand. `measure face` is for real faces.
+5. **Retime it.** HeyGen performs the camera's moves late, so a generated shot rarely lines up as it comes back. Match its moves to the original's frames and set the clip's `data-media-start` and `data-playback-rate` to fit, shot by shot.
 
 `REVERSE.md` lists which shots are generated and which layers are code.

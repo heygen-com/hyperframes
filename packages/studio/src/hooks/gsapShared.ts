@@ -14,6 +14,8 @@ import {
   resolveTweenDuration,
 } from "../utils/globalTimeCompiler";
 import { toCompositionTime } from "../player/store/timelineElement";
+import { previewDocumentCopy, previewFrameOpaque } from "../player/lib/previewChannel";
+import { frameGsap, frameQuery } from "./gsapFrameSnapshot";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,6 +134,17 @@ const WHOLE_SELECTOR_ID = /^(#[\w-]+|\[id="(?:\\.|[^"\\])*"\])$/;
 function wholeSelectorElementId(selector: string): string | null {
   const trimmed = selector.trim();
   return WHOLE_SELECTOR_ID.test(trimmed) ? idFromSelector(trimmed) : null;
+}
+
+/**
+ * The document {@link resolveSelectorElementIds} matches tween selectors against: the frame's own, or a
+ * sealed frame's full markup, so a class or descendant tween attributes the same in both.
+ */
+export async function tweenTargetDocument(
+  iframe: HTMLIFrameElement | null | undefined,
+): Promise<Document | null> {
+  if (!iframe) return null;
+  return previewFrameOpaque(iframe) ? previewDocumentCopy(iframe) : iframe.contentDocument;
 }
 
 /**
@@ -361,6 +374,7 @@ export function computeElementPercentage(
 
 /** Safely retrieve the GSAP runtime from the preview iframe. */
 export function getIframeGsap(iframe: HTMLIFrameElement | null): IframeGsap | null {
+  if (iframe && previewFrameOpaque(iframe)) return frameGsap(iframe);
   if (!iframe?.contentWindow) return null;
   try {
     const gsap = (iframe.contentWindow as unknown as { gsap?: IframeGsap }).gsap;
@@ -375,6 +389,7 @@ export function queryIframeElement(
   iframe: HTMLIFrameElement | null,
   selector: string,
 ): Element | null {
+  if (iframe && previewFrameOpaque(iframe)) return frameQuery(iframe, selector);
   try {
     return iframe?.contentDocument?.querySelector(selector) ?? null;
   } catch {

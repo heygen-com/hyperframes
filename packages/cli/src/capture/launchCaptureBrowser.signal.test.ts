@@ -5,7 +5,8 @@ import { afterEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ launch: vi.fn(), proxyClose: vi.fn(), exit: vi.fn() }));
 vi.mock("puppeteer-core", () => ({ default: { launch: mocks.launch } }));
-vi.mock("./captureProxy.js", () => ({
+vi.mock("@hyperframes/engine/public-network", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine/public-network")>()),
   startCaptureProxy: async () => ({ url: "http://127.0.0.1:4567", close: mocks.proxyClose }),
 }));
 vi.mock("../utils/commandResult.js", () => ({ requestCliExit: mocks.exit }));

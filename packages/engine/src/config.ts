@@ -41,6 +41,10 @@ export interface EngineConfig {
 
   // ── Browser ──────────────────────────────────────────────────────────
   chromePath?: string;
+  /** Where auto GPU mode keeps the GPU-or-software choice it measured on this machine; unset measures per render. */
+  gpuChoiceFile?: string;
+  /** The HyperFrames version; a stored GPU choice is reused only by the version that measured it. */
+  hyperframesVersion?: string;
   disableGpu: boolean;
   /**
    * Chrome/WebGL rendering backend.
@@ -351,6 +355,8 @@ const OPTIONAL_ENGINE_CONFIG_FIELDS = [
   "streamingEncodeAutoDisabledOnWin32Compound",
   "runtimeManifestPath",
   "extractCacheDir",
+  "gpuChoiceFile",
+  "hyperframesVersion",
 ] as const;
 
 const BOOLEAN_ENGINE_CONFIG_FIELDS = [
@@ -516,7 +522,13 @@ function validateEngineConfigHdr(config: Record<string, unknown>): void {
 }
 
 function validateOptionalEngineConfigFields(config: Record<string, unknown>): void {
-  for (const field of ["chromePath", "runtimeManifestPath", "extractCacheDir"] as const) {
+  for (const field of [
+    "chromePath",
+    "runtimeManifestPath",
+    "extractCacheDir",
+    "gpuChoiceFile",
+    "hyperframesVersion",
+  ] as const) {
     if (
       config[field] !== undefined &&
       (typeof config[field] !== "string" || config[field].length === 0)
@@ -817,6 +829,30 @@ export function resolvePageNavigationTimeout(): number {
   const raw = process.env.PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS;
   const parsed = raw === undefined || raw === "" ? NaN : Number(raw);
   return Number.isFinite(parsed) ? parsed : DEFAULT_CONFIG.pageNavigationTimeout;
+}
+
+const RESTRICT_PAGE_NETWORK_ON = new Set(["true", "1", "yes", "on"]);
+const RESTRICT_PAGE_NETWORK_OFF = new Set(["false", "0", "no", "off"]);
+let warnedRestrictPageNetworkValue: string | undefined;
+
+/**
+ * `PRODUCER_RESTRICT_PAGE_NETWORK=true`: the render page may reach only its own server and public addresses.
+ * Unset or blank is off. `true`, `1`, `yes` and `on` turn it on and `false`, `0`, `no` and `off` turn it off,
+ * in any letter case and with surrounding whitespace. Any other value restricts and logs a warning once.
+ * A property of the host (a shared render service), not of one render, so it stays out of EngineConfig snapshots.
+ */
+export function resolveRestrictPageNetwork(): boolean {
+  const raw = process.env.PRODUCER_RESTRICT_PAGE_NETWORK ?? "";
+  const value = raw.trim().toLowerCase();
+  if (value === "" || RESTRICT_PAGE_NETWORK_OFF.has(value)) return false;
+  if (RESTRICT_PAGE_NETWORK_ON.has(value)) return true;
+  if (warnedRestrictPageNetworkValue !== raw) {
+    warnedRestrictPageNetworkValue = raw;
+    console.warn(
+      `[hyperframes] PRODUCER_RESTRICT_PAGE_NETWORK=${JSON.stringify(raw)} is neither true nor false; the render network stays restricted.`,
+    );
+  }
+  return true;
 }
 
 export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {

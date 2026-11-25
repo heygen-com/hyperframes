@@ -1,17 +1,22 @@
 import {
   readFileSync,
-  appendFileSync,
   mkdirSync,
   existsSync,
   readdirSync,
   openSync,
   closeSync,
   writeFileSync,
+  writeSync,
   rmSync,
-  statSync,
+  lstatSync,
+  realpathSync,
+  constants,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
+import { ownFolder, replaceFile, sleepMs, writeTempBeside } from "./link-safe-write.mjs";
+
+export { ownFolder, replaceFile, writeTempBeside };
 
 const MANIFEST_FILE = "manifest.jsonl";
 const INDEX_FILE = "index.md";
@@ -69,15 +74,49 @@ export function readManifest(projectDir) {
   return records;
 }
 
-export function appendRecord(projectDir, record) {
+/**
+ * The project's `.media` folder, made if missing. Throws when it is a link or resolves outside the project, since
+ * a project from someone else could carry such a link to send manifest and index writes elsewhere.
+ */
+export function ownMediaDir(projectDir) {
   const dir = mediaDir(projectDir);
   mkdirSync(dir, { recursive: true });
-  const typeDir = typeDirPath(projectDir, record.type);
-  mkdirSync(typeDir, { recursive: true });
+  if (
+    lstatSync(dir).isSymbolicLink() ||
+    realpathSync(dir) !== join(realpathSync(projectDir), ".media")
+  ) {
+    throw new Error(`${dir} leads outside the project folder; nothing was written there`);
+  }
+  return dir;
+}
+
+/** The project's own folder for `type` under `.media`, made if missing; throws when any folder on the way is a link. */
+export function ownTypeDir(projectDir, type) {
+  return ownFolder(ownMediaDir(projectDir), typeSubdir(type));
+}
+
+/** Throws when `path` is a link. */
+export function refuseLink(path) {
+  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new Error(`${path} is a link; nothing was written through it`);
+  }
+}
+
+export function appendRecord(projectDir, record) {
+  ownTypeDir(projectDir, record.type);
 
   const p = manifestPath(projectDir);
-  const line = JSON.stringify(record) + "\n";
-  appendFileSync(p, line);
+  refuseLink(p);
+  const fd = openSync(
+    p,
+    constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0),
+    0o666,
+  );
+  try {
+    writeSync(fd, JSON.stringify(record) + "\n");
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** Sources that mean the agent made or fetched the file; any other file is the person's own. */
@@ -159,11 +198,6 @@ export function nextId(projectDir, type) {
   return `${prefix}_${String(max + 1).padStart(3, "0")}`;
 }
 
-// Sync sleep (no busy-spin) for the allocation lock retry.
-function sleepMs(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
 // Coarse per-project lock so concurrent resolves don't race on id allocation.
 // ponytail: one lock file with a 15s stale-steal (a crashed holder can't wedge
 // the project); fine for agent-scale concurrency — revisit if throughput needs
@@ -181,13 +215,12 @@ function withLock(dir, fn) {
       break;
     } catch (err) {
       if (err.code !== "EEXIST") throw err;
-      try {
-        if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) {
-          rmSync(lock, { force: true }); // steal a stale lock from a dead holder
-          continue;
-        }
-      } catch {
-        continue; // lock vanished between check and stat — retry the acquire
+      const held = lstatSync(lock, { throwIfNoEntry: false });
+      if (!held) continue; // released between the open and the look: retry the acquire
+      if (!held.isFile()) throw new Error(`${lock} is not a lock file; remove it and try again`);
+      if (Date.now() - held.mtimeMs > LOCK_STALE_MS) {
+        rmSync(lock, { force: true }); // steal a stale lock from a dead holder
+        continue;
       }
       if (Date.now() - start > LOCK_TIMEOUT_MS) {
         throw new Error("media-use: timed out acquiring .media/.lock");
@@ -204,8 +237,7 @@ function withLock(dir, fn) {
 
 /** Runs `fn` holding the project's `.media/.lock`, so concurrent resolves take turns on what it guards. */
 export function withMediaLock(projectDir, fn) {
-  mkdirSync(mediaDir(projectDir), { recursive: true });
-  return withLock(mediaDir(projectDir), fn);
+  return withLock(ownMediaDir(projectDir), fn);
 }
 
 // Atomically allocate the next free id for `type` AND reserve it on disk, so a
@@ -215,9 +247,9 @@ export function withMediaLock(projectDir, fn) {
 // O_EXCL-create an empty marker under core's atomic temp name, which Studio's
 // project history skips. Returns { id, localPath, markerPath }.
 export function allocateId(projectDir, type, ext) {
-  mkdirSync(typeDirPath(projectDir, type), { recursive: true });
+  ownTypeDir(projectDir, type);
   return withMediaLock(projectDir, () => {
-    const id = nextFreeId(projectDir, type);
+    const id = nextFreeId(projectDir, type, ext);
     const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
     // Same shape as core atomicTempPath: an empty file at the final name would be committed.
     const markerPath = `${join(projectDir, localPath)}.hf${randomBytes(3).toString("hex")}.tmp`;
@@ -226,9 +258,10 @@ export function allocateId(projectDir, type, ext) {
   });
 }
 
-// Call under the lock: counts recorded ids and ids reserved by a file not yet recorded.
-function nextFreeId(projectDir, type) {
-  const re = new RegExp(`^${type}_(\\d+)`);
+// Call under the lock: counts recorded ids and ids reserved by a file not yet recorded. Ids past nine digits are
+// ignored, so a planted huge id can't push the count past exact integers, and a name already taken is skipped.
+function nextFreeId(projectDir, type, ext) {
+  const re = new RegExp(`^${type}_(\\d{1,9})(?!\\d)`);
   let max = 0;
   for (const r of readManifest(projectDir)) {
     if (r.type !== type) continue;
@@ -240,7 +273,10 @@ function nextFreeId(projectDir, type) {
     const m = f.match(re);
     if (m) max = Math.max(max, parseInt(m[1], 10));
   }
-  return `${type}_${String(max + 1).padStart(3, "0")}`;
+  const idFor = (n) => `${type}_${String(n).padStart(3, "0")}`;
+  let next = max + 1;
+  while (lstatSync(join(typeDir, `${idFor(next)}${ext}`), { throwIfNoEntry: false })) next += 1;
+  return idFor(next);
 }
 
 function reservedFile(projectDir, type, ext) {

@@ -8,15 +8,19 @@
  */
 
 import type { DomEditSelection } from "../../components/editor/domEditingTypes";
-import { elementHandleMatchesProject, resolveLiveHandleSelection } from "../handles";
+import type { PreviewElement } from "../../player/lib/previewElements";
+import {
+  elementHandleMatchesProject,
+  resolveLiveHandleSelection,
+  type PreviewTargets,
+} from "../handles";
 import { toolFailure, toolOk, type ToolResult } from "../toolResult";
 
 export interface SelectionToolDeps {
-  /** The preview iframe's document, or null before it mounts. */
-  getPreviewDocument: () => Document | null;
+  preview: PreviewTargets;
   getCompositionPath: () => string | null;
   getProjectId: () => string | null;
-  buildSelection: (element: HTMLElement) => Promise<DomEditSelection | null>;
+  buildSelection: (target: HTMLElement | PreviewElement) => Promise<DomEditSelection | null>;
   applySelection: (selection: DomEditSelection) => void;
   /** Out-of-loop seek. `requestSeek`, not `setCurrentTime`. */
   requestSeek: (time: number) => void;
@@ -49,11 +53,7 @@ export async function studioSelect(
   // yet" is a wait, "no such element" is a stale handle, and "could not build a
   // selection" is an element Studio cannot drive. The agent's next move differs
   // for each.
-  const resolved = await resolveLiveHandleSelection(
-    deps.getPreviewDocument,
-    handle,
-    deps.buildSelection,
-  );
+  const resolved = await resolveLiveHandleSelection(deps.preview, handle, deps.buildSelection);
   if (resolved.status === "preview-unavailable") {
     return toolFailure(
       "blocked",

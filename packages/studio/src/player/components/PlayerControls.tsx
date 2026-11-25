@@ -161,7 +161,7 @@ const FullscreenButton = memo(function FullscreenButton({
 
 interface PlayerControlsProps {
   onTogglePlay: () => void;
-  onSeek: (time: number) => void;
+  onSeek: (time: number, options?: { settled?: boolean }) => void;
   disabled?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;

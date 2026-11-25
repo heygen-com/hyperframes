@@ -1,3 +1,6 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { registerSeekCompletion } from "./adapters/seek-dispatch";
+import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import {
   HF_COLOR_GRADING_ADJUST_KEYS,
   HF_COLOR_GRADING_ANIMATABLE_PROPERTIES,
@@ -47,6 +50,7 @@ import { mediaElementTime } from "./mediaClock";
 import { swallow } from "./diagnostics";
 import { createRecordFilter } from "./mutationRecords";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
+import { getPausedVideoFrame } from "./pausedVideoFrames";
 import {
   isCanvasElement,
   isElementNode,
@@ -229,12 +233,11 @@ interface ColorGradingEntry extends ColorGradingRenderer {
   touchedParent: HTMLElement | null;
   parentInlinePosition: string | null;
   sourceHidden: boolean;
-  borderlessFrame: HTMLElement | null;
-  sourceInlineOpacity: string | null;
-  sourceInlineOpacityPriority: string;
+  hiddenFrame: HTMLElement | null;
   sourceOpacityForCanvas: string;
   sourceVisibleForCanvas: boolean;
   hasDrawn: boolean;
+  seeksAwaitingDraw: Array<() => void>;
   contextLost: boolean;
   grainSeed: number;
   destroyed: boolean;
@@ -259,6 +262,7 @@ export interface RuntimeColorGradingApi {
   refresh: () => number;
   redraw: () => number;
   redrawAnimated: () => number;
+  holdSeekUntilDrawn: () => void;
   waitForActiveLuts: () => Promise<number>;
   setGrading: (
     target: HfColorGradingTarget | string | null | undefined,
@@ -2210,36 +2214,51 @@ function adoptContext(
   else drawEntry(entry);
 }
 
-function hideFrameBorder(entry: ColorGradingEntry, frame: HTMLElement): void {
-  if (entry.borderlessFrame !== frame) restoreFrameBorder(entry);
-  entry.borderlessFrame = frame;
-  frame.style.borderStyle = "none";
+const HIDE_STYLE_ATTR = "data-hf-color-grading-hide";
+
+// A hidden source keeps its own opacity, which the canvas copies, and its hit area, so a click still picks it.
+function hideFromView(element: HTMLElement): void {
+  const doc = element.ownerDocument;
+  if (!doc.querySelector(`style[${HIDE_STYLE_ATTR}]`)) {
+    const style = doc.createElement("style");
+    style.setAttribute(HIDE_STYLE_ATTR, "");
+    style.textContent = `[${COLOR_GRADING_SOURCE_HIDDEN_ATTR}] { filter: opacity(0) !important; }`;
+    (doc.head ?? doc.documentElement).appendChild(style);
+  }
+  element.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "true");
 }
 
-function restoreFrameBorder(entry: ColorGradingEntry): void {
-  const frame = entry.borderlessFrame;
-  if (!frame) return;
-  entry.borderlessFrame = null;
-  frame.style.borderStyle = window.getComputedStyle(entry.element).borderStyle;
+/** The filter the page gives `element`, read with grading's hide lifted for that one synchronous read. */
+function ownFilter(element: HTMLElement): string {
+  const sheet = element.ownerDocument.querySelector<HTMLStyleElement>(
+    `style[${HIDE_STYLE_ATTR}]`,
+  )?.sheet;
+  if (!sheet || !element.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)) {
+    return window.getComputedStyle(element).filter;
+  }
+  sheet.disabled = true;
+  try {
+    return window.getComputedStyle(element).filter;
+  } finally {
+    sheet.disabled = false;
+  }
+}
+
+function hideFrame(entry: ColorGradingEntry, frame: HTMLElement): void {
+  if (entry.hiddenFrame !== frame) restoreFrame(entry);
+  entry.hiddenFrame = frame;
+  hideFromView(frame);
+}
+
+function restoreFrame(entry: ColorGradingEntry): void {
+  entry.hiddenFrame?.removeAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR);
+  entry.hiddenFrame = null;
 }
 
 function restoreSourceElement(entry: ColorGradingEntry): void {
-  restoreFrameBorder(entry);
+  restoreFrame(entry);
   if (!entry.sourceHidden) return;
   entry.element.removeAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR);
-  const opacity = entry.element.style.getPropertyValue("opacity");
-  const priority = entry.element.style.getPropertyPriority("opacity");
-  if (opacity === "0" && priority === "important") {
-    if (entry.sourceInlineOpacity === null) {
-      entry.element.style.removeProperty("opacity");
-    } else {
-      entry.element.style.setProperty(
-        "opacity",
-        entry.sourceInlineOpacity,
-        entry.sourceInlineOpacityPriority,
-      );
-    }
-  }
   entry.sourceHidden = false;
 }
 
@@ -2805,6 +2824,8 @@ function getDrawableSource(element: ColorGradingMediaElement): TexImageSource | 
   if (isVideoElement(element)) {
     const renderFrame = findRenderFrameImage(element);
     if (renderFrame) return renderFrame;
+    const previewFrame = getPausedVideoFrame(element);
+    if (previewFrame) return previewFrame;
   }
   return isDrawableSource(element) ? element : null;
 }
@@ -2929,6 +2950,7 @@ function updateCanvasLayout(
 
   const computed = window.getComputedStyle(styleSource);
   copyMediaVisualStyles(canvas.style, computed);
+  canvas.style.filter = ownFilter(element);
   canvas.style.borderStyle = "none";
   canvas.style.pointerEvents = "none";
   canvas.style.position = "absolute";
@@ -3239,24 +3261,7 @@ function applyUniforms(
 }
 
 function hideSourceElement(entry: ColorGradingEntry): void {
-  if (!entry.sourceHidden) {
-    // Prefer the parse-time authored capture: by the time the first hide runs,
-    // the inline opacity is usually an animation-engine transient (a from()
-    // tween's 0 at playhead 0), and restoring THAT when grading is removed
-    // would leave the element invisible. Fall back to the live inline value
-    // for documents loaded without the capture installed.
-    // `null` = never captured; "" = captured, authored none (store as null).
-    const authored = entry.element.getAttribute(COLOR_GRADING_AUTHORED_OPACITY_ATTR);
-    if (authored !== null) {
-      entry.sourceInlineOpacity = authored === "" ? null : authored;
-      entry.sourceInlineOpacityPriority = "";
-    } else {
-      entry.sourceInlineOpacity = entry.element.style.getPropertyValue("opacity") || null;
-      entry.sourceInlineOpacityPriority = entry.element.style.getPropertyPriority("opacity");
-    }
-  }
-  entry.element.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "true");
-  entry.element.style.setProperty("opacity", "0", "important");
+  hideFromView(entry.element);
   entry.sourceHidden = true;
 }
 
@@ -3347,11 +3352,19 @@ function readAnimatedGrading(entry: ColorGradingEntry): ResolvedHfColorGrading {
   return animated;
 }
 
+const CLI_SEEK_DRAW_GATE = Symbol.for("hyperframes.webglDrawGate");
+
+function drawsGated(): boolean {
+  const gate: unknown = Reflect.get(window, CLI_SEEK_DRAW_GATE);
+  return typeof gate === "object" && gate !== null && Reflect.get(gate, "skip") === true;
+}
+
 function uploadSourceTexture(
   gl: WebGLRenderingContext,
   texture: WebGLTexture,
   source: TexImageSource,
 ): void {
+  if (drawsGated()) return;
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -3410,6 +3423,7 @@ type DrawableFrame = {
 };
 
 function drawableFrame(entry: ColorGradingEntry): DrawableFrame | null {
+  if (document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)) return null;
   const source = getDrawableSource(entry.element);
   const pixels = source && readablePixels(source, entry);
   if (!source || !pixels) {
@@ -3420,50 +3434,18 @@ function drawableFrame(entry: ColorGradingEntry): DrawableFrame | null {
   return size ? { source, pixels, size } : null;
 }
 
-function restoreAuthoredOpacity(entry: ColorGradingEntry): void {
-  if (entry.sourceInlineOpacity === null) {
-    entry.element.style.removeProperty("opacity");
-    return;
-  }
-  entry.element.style.setProperty(
-    "opacity",
-    entry.sourceInlineOpacity,
-    entry.sourceInlineOpacityPriority || "",
-  );
-}
-
-function isHiddenByColorGrading(entry: ColorGradingEntry): boolean {
-  const { style } = entry.element;
-  return (
-    entry.sourceHidden &&
-    style.getPropertyValue("opacity") === "0" &&
-    style.getPropertyPriority("opacity") === "important"
-  );
-}
-
 function syncSourceAppearance(
   entry: ColorGradingEntry,
   source: TexImageSource,
   injectedFrameSource: boolean,
 ): void {
-  const hiddenByColorGrading = isHiddenByColorGrading(entry);
   const sourceVisibility = entry.element.style.getPropertyValue("visibility");
-  // When color grading hid the source (opacity:0 !important), temporarily
-  // restore the authored inline opacity so getComputedStyle reflects the CSS
-  // animation's current value instead of our own hide. Without this, a CSS
-  // entrance animation (opacity: 0→1) freezes at its first-frame value for
-  // the entire render because the !important blocks all animation effects on
-  // the property (#3329). The restore–read–rehide is synchronous, so no
-  // repaint occurs between the style writes.
-  const restoresOpacity = hiddenByColorGrading && !injectedFrameSource;
-  if (restoresOpacity) restoreAuthoredOpacity(entry);
   const computed = window.getComputedStyle(
     injectedFrameSource ? (source as HTMLImageElement) : entry.element,
   );
   // Grading never writes `visibility`, so the source's computed visibility
   // always tracks the clip window and has to be re-read every frame.
   entry.sourceOpacityForCanvas = computed.opacity || "1";
-  if (restoresOpacity) entry.element.style.setProperty("opacity", "0", "important");
   entry.sourceVisibleForCanvas =
     (injectedFrameSource || sourceVisibility !== "hidden") && computed.visibility !== "hidden";
 }
@@ -3531,7 +3513,7 @@ function placeCanvas(
   layout: { width: number; height: number };
   uv: ReturnType<typeof calculateObjectFitUv>;
 } | null {
-  const styleSource = isHtmlElement(source) ? source : entry.element;
+  const styleSource = isRenderFrameImage(source) ? source : entry.element;
   const layout = updateCanvasLayout(entry, styleSource);
   if (!layout) return null;
   const style = window.getComputedStyle(styleSource);
@@ -3544,6 +3526,12 @@ function placeCanvas(
     style.objectPosition,
   );
   return { layout, uv };
+}
+
+function markDrawn(entry: ColorGradingEntry): void {
+  entry.hasDrawn = true;
+  entry.drawError = null;
+  releaseSeeks(entry);
 }
 
 function drawEntry(entry: ColorGradingEntry): boolean {
@@ -3560,12 +3548,13 @@ function drawEntry(entry: ColorGradingEntry): boolean {
   try {
     renderGradedFrame(entry, pixels, layout, uv);
     hideSourceElement(entry);
-    if (injectedFrameSource) hideFrameBorder(entry, source);
-    entry.hasDrawn = true;
-    entry.drawError = null;
+    if (injectedFrameSource) hideFrame(entry, source);
+    markDrawn(entry);
     return true;
   } catch (err) {
     entry.drawError = err instanceof Error ? err.message : "Shader draw failed";
+    entry.canvas.style.display = "none";
+    restoreSourceElement(entry);
     swallow("runtime.colorGrading.drawEntry", err);
     return false;
   }
@@ -3803,6 +3792,8 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   addListener(entry, entry.element, "loadedmetadata", redraw);
   addListener(entry, entry.element, "loadeddata", redrawOnPresentedFrame);
   addListener(entry, entry.element, "seeked", redrawOnPresentedFrame);
+  addListener(entry, entry.element, "error", () => releaseSeeks(entry));
+  addListener(entry, entry.element, "emptied", () => releaseSeeks(entry));
   addListener(entry, entry.element, "timeupdate", redraw);
   addListener(entry, window, "resize", redraw);
   if (isVideoElement(entry.element)) {
@@ -3841,9 +3832,32 @@ function installEntryListeners(entry: ColorGradingEntry): void {
   }
 }
 
+const SEEK_DRAW_LIMIT_MS = 2_000;
+
+function nextDraw(entry: ColorGradingEntry): Promise<void> {
+  return new Promise((resolve) => {
+    const release = () => {
+      wallClearTimeout(timer);
+      const at = entry.seeksAwaitingDraw.indexOf(release);
+      if (at >= 0) entry.seeksAwaitingDraw.splice(at, 1);
+      resolve();
+    };
+    const timer = wallSetTimeout(release, SEEK_DRAW_LIMIT_MS);
+    entry.seeksAwaitingDraw.push(release);
+  });
+}
+
+const releaseSeeks = (entry: ColorGradingEntry) => {
+  for (const release of entry.seeksAwaitingDraw.splice(0)) release();
+};
+
+const canDraw = (video: HTMLVideoElement) =>
+  !video.error && video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0;
+
 function detachEntry(entry: ColorGradingEntry): ColorGradingRenderer | null {
   if (entry.destroyed) return null;
   entry.destroyed = true;
+  releaseSeeks(entry);
   cancelScheduledFrame(entry);
   entry.resizeObserver?.disconnect();
   for (const cleanup of entry.cleanup) cleanup();
@@ -3931,7 +3945,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     });
     canvas.addEventListener("webglcontextrestored", () => {
       if (shared?.canvas !== canvas) return;
-      clearTimeout(rebuildTimer);
+      wallClearTimeout(rebuildTimer);
       for (const entry of trackedEntries()) {
         entry.contextLost = !replaceProgramResources(entry);
         entry.drawError = entry.contextLost ? "WebGL context restore failed" : null;
@@ -3945,8 +3959,8 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   };
 
   const watchForRestore = (canvas: HTMLCanvasElement, gl: WebGLRenderingContext): void => {
-    clearTimeout(rebuildTimer);
-    rebuildTimer = setTimeout(() => rebuildLostContext(canvas, gl), CONTEXT_RESTORE_GRACE_MS);
+    wallClearTimeout(rebuildTimer);
+    rebuildTimer = wallSetTimeout(() => rebuildLostContext(canvas, gl), CONTEXT_RESTORE_GRACE_MS);
   };
 
   const rebuildLostContext = (canvas: HTMLCanvasElement, gl: WebGLRenderingContext): void => {
@@ -4020,12 +4034,11 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       touchedParent: null,
       parentInlinePosition: null,
       sourceHidden: false,
-      borderlessFrame: null,
-      sourceInlineOpacity: null,
-      sourceInlineOpacityPriority: "",
+      hiddenFrame: null,
       sourceOpacityForCanvas: window.getComputedStyle(element).opacity || "1",
       sourceVisibleForCanvas: window.getComputedStyle(element).visibility !== "hidden",
       hasDrawn: false,
+      seeksAwaitingDraw: [],
       contextLost: false,
       grainSeed: seedForElement(element),
       destroyed: false,
@@ -4132,6 +4145,13 @@ export function createColorGradingRuntime(pausedMediaLease?: {
       if (drawEntry(entry)) drawn += 1;
     }
     return drawn;
+  };
+
+  const holdSeekUntilDrawn = (): void => {
+    const videos = trackedEntries().filter(
+      (entry) => isVideoElement(entry.element) && canDraw(entry.element),
+    );
+    if (videos.length) registerSeekCompletion(Promise.all(videos.map(nextDraw)), "video-frame");
   };
 
   const waitForActiveLuts = async (): Promise<number> => {
@@ -4289,7 +4309,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   const destroy = (): void => {
     if (destroyed) return;
     destroyed = true;
-    clearTimeout(rebuildTimer);
+    wallClearTimeout(rebuildTimer);
     observer?.disconnect();
     observer = null;
     for (const element of trackedElements) removeElement(element);
@@ -4325,6 +4345,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     refresh,
     redraw,
     redrawAnimated,
+    holdSeekUntilDrawn,
     waitForActiveLuts,
     setGrading,
     setCompare,

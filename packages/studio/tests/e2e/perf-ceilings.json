@@ -1,11 +1,15 @@
 {
   "studio-open": {
-    "browser": "155",
+    "browser": "156",
     "counts": {
-      "thumbnailRenders": 13,
+      "thumbnailRenders": 14,
       "total.frameNavigations": 7,
       "total.requests.document": 2,
-      "total.requests.thumbnail": 14
+      "total.requests.thumbnail": 15
+    },
+    "raised": {
+      "thumbnailRenders": "The journey's window grew from 900 to 1400 px so every composition card, the root's too, asks for its thumbnail on any runner image. Studio does no new work.",
+      "total.requests.thumbnail": "The journey's window grew from 900 to 1400 px so every composition card, the root's too, asks for its thumbnail on any runner image. Studio does no new work."
     }
   }
 }

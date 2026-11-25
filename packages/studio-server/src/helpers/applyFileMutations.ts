@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { backupPathForResponse, snapshotBeforeWrite } from "./backupJournal.js";
+import { isSafePath } from "./safePath.js";
 import {
   clearFileWriteReceipt,
   createWriteToken,
@@ -34,6 +35,9 @@ export function applyFileMutations(
   writeFile: WriteFile = (path, content) =>
     replaceFileAtomically(path, content, statSync(path).mode),
 ): AppliedFileMutation[] {
+  for (const mutation of mutations)
+    if (!isSafePath(projectDir, mutation.absPath))
+      throw new FileOutsideProjectError(mutation.sourceFile);
   const prepared = mutations.map((mutation) => ({
     ...mutation,
     before: mutation.before ?? readFileSync(mutation.absPath, "utf-8"),
@@ -125,6 +129,12 @@ function applyOneMutation(
     version,
     writeToken,
   };
+}
+
+export class FileOutsideProjectError extends Error {
+  constructor(readonly sourceFile: string) {
+    super("file is outside the project");
+  }
 }
 
 export class FileChangedError extends Error {

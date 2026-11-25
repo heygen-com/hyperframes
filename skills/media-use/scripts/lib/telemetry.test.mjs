@@ -11,6 +11,7 @@ import { optedOut } from "./telemetry.mjs";
 const ENV_KEYS = [
   "HOME",
   "USERPROFILE",
+  "HYPERFRAMES_CONFIG_DIR",
   "HYPERFRAMES_NO_TELEMETRY",
   "DO_NOT_TRACK",
   "CI",
@@ -69,5 +70,47 @@ test("optedOut still honors the env opt-outs", () => {
     assert.equal(optedOut(), true);
   } finally {
     delete process.env.DO_NOT_TRACK;
+  }
+});
+
+// fails without the fix: the skill took only "1", so DO_NOT_TRACK=true silenced the CLI and not it.
+for (const [name, value] of [
+  ["DO_NOT_TRACK", "true"],
+  ["DO_NOT_TRACK", "yes"],
+  ["DO_NOT_TRACK", " ON "],
+  ["HYPERFRAMES_NO_TELEMETRY", "TRUE"],
+]) {
+  test(`optedOut respects ${name}=${JSON.stringify(value)}, as the CLI does`, () => {
+    writeConfig(null);
+    process.env[name] = value;
+    try {
+      assert.equal(optedOut(), true);
+    } finally {
+      delete process.env[name];
+    }
+  });
+}
+
+test("optedOut reads the shared config from HYPERFRAMES_CONFIG_DIR when it is set", () => {
+  writeConfig(null);
+  const configDir = join(home, "elsewhere");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, "config.json"), JSON.stringify({ telemetryEnabled: false }));
+  process.env.HYPERFRAMES_CONFIG_DIR = configDir;
+  try {
+    assert.equal(optedOut(), true);
+  } finally {
+    delete process.env.HYPERFRAMES_CONFIG_DIR;
+  }
+});
+
+test("an opt-out in ~/.hyperframes holds until HYPERFRAMES_CONFIG_DIR has its own config", () => {
+  writeConfig(JSON.stringify({ telemetryEnabled: false }));
+  process.env.HYPERFRAMES_CONFIG_DIR = join(home, "moved");
+  try {
+    assert.equal(optedOut(), true);
+  } finally {
+    delete process.env.HYPERFRAMES_CONFIG_DIR;
+    writeConfig(null);
   }
 });

@@ -9,7 +9,7 @@ vi.mock("../utils/studioSaveDiagnostics", async (importOriginal) => ({
   trackStudioSaveFailure,
 }));
 
-import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
+import { StudioFileConflictError, createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { useEditorSave, type EditorSaveHandle } from "./useEditorSave";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -147,6 +147,27 @@ describe("useEditorSave pending work", () => {
 
     expect(trackStudioSaveFailure).toHaveBeenCalledOnce();
     expect(mounted.showToast).toHaveBeenCalledOnce();
+    await mounted.unmount();
+  });
+
+  // fails without the fix: the toast told the person to check the preview server for a file another program holds open.
+  it("toasts a held file in its own words, not the generic preview-server advice", async () => {
+    const held = await createStudioSaveHttpError(
+      new Response(JSON.stringify({ why: "busy" }), { status: 423 }),
+      "Failed to save index.html",
+      { path: "index.html" },
+    );
+    const mounted = await mountEditorSave(async () => {
+      throw held;
+    });
+
+    act(() => mounted.handle.handleContentChange("edit"));
+    await mounted.handle.flushPendingSave();
+
+    expect(mounted.showToast).toHaveBeenCalledWith(
+      "index.html is open in another program. Close it there, then try again.",
+      "error",
+    );
     await mounted.unmount();
   });
 

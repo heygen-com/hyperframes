@@ -3,7 +3,9 @@ name: remotion-to-hyperframes
 description: Bring existing video code or footage into HyperFrames and verify it frame by frame against the original - Remotion first, also Motion Canvas, Lottie, Three.js, p5.js, canvas or plain HTML/CSS animation, or renders from Manim, After Effects or Blender. Use to port, convert, migrate or reuse work made with another tool.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
+
+**Usage note:** before the first one, tell the person once: "I'll send HyperFrames a usage note (linked to your account if signed in); say no to skip." Unless they say no, run `npx hyperframes events --skill=remotion-to-hyperframes` once as this skill starts.
 
 # Import into HyperFrames
 

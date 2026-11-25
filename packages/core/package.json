@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.8",
+  "version": "0.9.94",
   "description": "",
   "repository": {
     "type": "git",
@@ -68,17 +68,41 @@
       "import": "./src/safePath.ts",
       "types": "./src/safePath.ts"
     },
+    "./safe-areas": {
+      "bun": "./src/safeAreas.ts",
+      "node": "./dist/safeAreas.js",
+      "import": "./src/safeAreas.ts",
+      "types": "./src/safeAreas.ts"
+    },
     "./browser-marker": {
       "bun": "./src/browserMarker.ts",
       "node": "./dist/browserMarker.js",
       "import": "./src/browserMarker.ts",
       "types": "./src/browserMarker.ts"
     },
+    "./chrome-env": {
+      "bun": "./src/chromeEnv.ts",
+      "node": "./dist/chromeEnv.js",
+      "import": "./src/chromeEnv.ts",
+      "types": "./src/chromeEnv.ts"
+    },
+    "./chrome-sandbox": {
+      "bun": "./src/chromeSandbox.ts",
+      "node": "./dist/chromeSandbox.js",
+      "import": "./src/chromeSandbox.ts",
+      "types": "./src/chromeSandbox.ts"
+    },
     "./atomic-file": {
       "bun": "./src/atomicFile.ts",
       "node": "./dist/atomicFile.js",
       "import": "./src/atomicFile.ts",
       "types": "./src/atomicFile.ts"
+    },
+    "./preview-proof": {
+      "bun": "./src/previewProof.ts",
+      "node": "./dist/previewProof.js",
+      "import": "./src/previewProof.ts",
+      "types": "./src/previewProof.ts"
     },
     "./cache-dir": {
       "bun": "./src/cacheDir.ts",
@@ -97,6 +121,18 @@
       "node": "./dist/envProxy.js",
       "import": "./src/envProxy.ts",
       "types": "./src/envProxy.ts"
+    },
+    "./missing-path": {
+      "bun": "./src/missingPath.ts",
+      "node": "./dist/missingPath.js",
+      "import": "./src/missingPath.ts",
+      "types": "./src/missingPath.ts"
+    },
+    "./terminal-text": {
+      "bun": "./src/terminalText.ts",
+      "node": "./dist/terminalText.js",
+      "import": "./src/terminalText.ts",
+      "types": "./src/terminalText.ts"
     },
     "./rename-retry": {
       "bun": "./src/renameWithRetry.ts",
@@ -134,11 +170,35 @@
       "import": "./src/utils/richTextSanitize.ts",
       "types": "./src/utils/richTextSanitize.ts"
     },
+    "./drawn-box": {
+      "bun": "./src/runtime/drawnBox.ts",
+      "node": "./dist/runtime/drawnBox.js",
+      "import": "./src/runtime/drawnBox.ts",
+      "types": "./src/runtime/drawnBox.ts"
+    },
+    "./inline-text-style": {
+      "bun": "./src/utils/inlineTextStyleRead.ts",
+      "node": "./dist/utils/inlineTextStyleRead.js",
+      "import": "./src/utils/inlineTextStyleRead.ts",
+      "types": "./src/utils/inlineTextStyleRead.ts"
+    },
     "./composition-contract": {
       "bun": "./src/compositionContract.ts",
       "node": "./dist/compositionContract.js",
       "import": "./src/compositionContract.ts",
       "types": "./src/compositionContract.ts"
+    },
+    "./key-combo": {
+      "bun": "./src/keyCombo.ts",
+      "node": "./dist/keyCombo.js",
+      "import": "./src/keyCombo.ts",
+      "types": "./src/keyCombo.ts"
+    },
+    "./typing-target": {
+      "bun": "./src/typingTarget.ts",
+      "node": "./dist/typingTarget.js",
+      "import": "./src/typingTarget.ts",
+      "types": "./src/typingTarget.ts"
     },
     "./studio-preview-mark": {
       "bun": "./src/studioPreviewMark.ts",
@@ -350,6 +410,12 @@
       "import": "./src/audioFade.ts",
       "types": "./src/audioFade.ts"
     },
+    "./audio-decode": {
+      "bun": "./src/audioDecode.ts",
+      "node": "./dist/audioDecode.js",
+      "import": "./src/audioDecode.ts",
+      "types": "./src/audioDecode.ts"
+    },
     "./speed-ramp": {
       "bun": "./src/speedRamp.ts",
       "node": "./dist/speedRamp.js",
@@ -423,6 +489,42 @@
       "import": "./src/runtime/protocol.ts",
       "types": "./src/runtime/protocol.ts"
     },
+    "./runtime/editing-port": {
+      "bun": "./src/runtime/editingPort.ts",
+      "node": "./dist/runtime/editingPort.js",
+      "import": "./src/runtime/editingPort.ts",
+      "types": "./src/runtime/editingPort.ts"
+    },
+    "./runtime/css-rotation": {
+      "bun": "./src/runtime/editing/cssRotation.ts",
+      "node": "./dist/runtime/editing/cssRotation.js",
+      "import": "./src/runtime/editing/cssRotation.ts",
+      "types": "./src/runtime/editing/cssRotation.ts"
+    },
+    "./runtime/patch-tween": {
+      "bun": "./src/runtime/editing/patchTween.ts",
+      "node": "./dist/runtime/editing/patchTween.js",
+      "import": "./src/runtime/editing/patchTween.ts",
+      "types": "./src/runtime/editing/patchTween.ts"
+    },
+    "./runtime/soft-reload": {
+      "bun": "./src/runtime/editing/softReload.ts",
+      "node": "./dist/runtime/editing/softReload.js",
+      "import": "./src/runtime/editing/softReload.ts",
+      "types": "./src/runtime/editing/softReload.ts"
+    },
+    "./runtime/scenes": {
+      "bun": "./src/runtime/editing/scenes.ts",
+      "node": "./dist/runtime/editing/scenes.js",
+      "import": "./src/runtime/editing/scenes.ts",
+      "types": "./src/runtime/editing/scenes.ts"
+    },
+    "./runtime/live-retime": {
+      "bun": "./src/runtime/editing/liveRetime.ts",
+      "node": "./dist/runtime/editing/liveRetime.js",
+      "import": "./src/runtime/editing/liveRetime.ts",
+      "types": "./src/runtime/editing/liveRetime.ts"
+    },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
       "node": "./dist/runtime/clipWindow.js",
@@ -465,11 +567,29 @@
       "import": "./src/runtime/levelTap.ts",
       "types": "./src/runtime/levelTap.ts"
     },
+    "./compiler/composition-size-limit": {
+      "bun": "./src/compiler/compositionSizeLimit.ts",
+      "node": "./dist/compiler/compositionSizeLimit.js",
+      "import": "./src/compiler/compositionSizeLimit.ts",
+      "types": "./src/compiler/compositionSizeLimit.ts"
+    },
+    "./compiler/html-tokens": {
+      "bun": "./src/compiler/htmlTokens.ts",
+      "node": "./dist/compiler/htmlTokens.js",
+      "import": "./src/compiler/htmlTokens.ts",
+      "types": "./src/compiler/htmlTokens.ts"
+    },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
       "node": "./dist/compiler/htmlDocument.js",
       "import": "./src/compiler/htmlDocument.ts",
       "types": "./src/compiler/htmlDocument.ts"
+    },
+    "./compiler/selector-id-tokens": {
+      "bun": "./src/compiler/selectorIdTokens.ts",
+      "node": "./dist/compiler/selectorIdTokens.js",
+      "import": "./src/compiler/selectorIdTokens.ts",
+      "types": "./src/compiler/selectorIdTokens.ts"
     },
     "./compiler/png-colour-tags": {
       "bun": "./src/compiler/pngColourTags.ts",
@@ -666,13 +786,29 @@
         "import": "./dist/safePath.js",
         "types": "./dist/safePath.d.ts"
       },
+      "./safe-areas": {
+        "import": "./dist/safeAreas.js",
+        "types": "./dist/safeAreas.d.ts"
+      },
       "./browser-marker": {
         "import": "./dist/browserMarker.js",
         "types": "./dist/browserMarker.d.ts"
       },
+      "./chrome-env": {
+        "import": "./dist/chromeEnv.js",
+        "types": "./dist/chromeEnv.d.ts"
+      },
+      "./chrome-sandbox": {
+        "import": "./dist/chromeSandbox.js",
+        "types": "./dist/chromeSandbox.d.ts"
+      },
       "./atomic-file": {
         "import": "./dist/atomicFile.js",
         "types": "./dist/atomicFile.d.ts"
+      },
+      "./preview-proof": {
+        "import": "./dist/previewProof.js",
+        "types": "./dist/previewProof.d.ts"
       },
       "./cache-dir": {
         "import": "./dist/cacheDir.js",
@@ -685,6 +821,14 @@
       "./env-proxy": {
         "import": "./dist/envProxy.js",
         "types": "./dist/envProxy.d.ts"
+      },
+      "./missing-path": {
+        "import": "./dist/missingPath.js",
+        "types": "./dist/missingPath.d.ts"
+      },
+      "./terminal-text": {
+        "import": "./dist/terminalText.js",
+        "types": "./dist/terminalText.d.ts"
       },
       "./rename-retry": {
         "import": "./dist/renameWithRetry.js",
@@ -710,9 +854,25 @@
         "import": "./dist/utils/richTextSanitize.js",
         "types": "./dist/utils/richTextSanitize.d.ts"
       },
+      "./drawn-box": {
+        "import": "./dist/runtime/drawnBox.js",
+        "types": "./dist/runtime/drawnBox.d.ts"
+      },
+      "./inline-text-style": {
+        "import": "./dist/utils/inlineTextStyleRead.js",
+        "types": "./dist/utils/inlineTextStyleRead.d.ts"
+      },
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
+      },
+      "./key-combo": {
+        "import": "./dist/keyCombo.js",
+        "types": "./dist/keyCombo.d.ts"
+      },
+      "./typing-target": {
+        "import": "./dist/typingTarget.js",
+        "types": "./dist/typingTarget.d.ts"
       },
       "./studio-preview-mark": {
         "import": "./dist/studioPreviewMark.js",
@@ -854,6 +1014,10 @@
         "import": "./dist/audioFade.js",
         "types": "./dist/audioFade.d.ts"
       },
+      "./audio-decode": {
+        "import": "./dist/audioDecode.js",
+        "types": "./dist/audioDecode.d.ts"
+      },
       "./speed-ramp": {
         "import": "./dist/speedRamp.js",
         "types": "./dist/speedRamp.d.ts"
@@ -903,6 +1067,30 @@
         "import": "./dist/runtime/protocol.js",
         "types": "./dist/runtime/protocol.d.ts"
       },
+      "./runtime/editing-port": {
+        "import": "./dist/runtime/editingPort.js",
+        "types": "./dist/runtime/editingPort.d.ts"
+      },
+      "./runtime/css-rotation": {
+        "import": "./dist/runtime/editing/cssRotation.js",
+        "types": "./dist/runtime/editing/cssRotation.d.ts"
+      },
+      "./runtime/patch-tween": {
+        "import": "./dist/runtime/editing/patchTween.js",
+        "types": "./dist/runtime/editing/patchTween.d.ts"
+      },
+      "./runtime/soft-reload": {
+        "import": "./dist/runtime/editing/softReload.js",
+        "types": "./dist/runtime/editing/softReload.d.ts"
+      },
+      "./runtime/scenes": {
+        "import": "./dist/runtime/editing/scenes.js",
+        "types": "./dist/runtime/editing/scenes.d.ts"
+      },
+      "./runtime/live-retime": {
+        "import": "./dist/runtime/editing/liveRetime.js",
+        "types": "./dist/runtime/editing/liveRetime.d.ts"
+      },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",
         "types": "./dist/runtime/clipWindow.d.ts"
@@ -931,9 +1119,21 @@
         "import": "./dist/runtime/levelTap.js",
         "types": "./dist/runtime/levelTap.d.ts"
       },
+      "./compiler/composition-size-limit": {
+        "import": "./dist/compiler/compositionSizeLimit.js",
+        "types": "./dist/compiler/compositionSizeLimit.d.ts"
+      },
+      "./compiler/html-tokens": {
+        "import": "./dist/compiler/htmlTokens.js",
+        "types": "./dist/compiler/htmlTokens.d.ts"
+      },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",
         "types": "./dist/compiler/htmlDocument.d.ts"
+      },
+      "./compiler/selector-id-tokens": {
+        "import": "./dist/compiler/selectorIdTokens.js",
+        "types": "./dist/compiler/selectorIdTokens.d.ts"
       },
       "./compiler/png-colour-tags": {
         "import": "./dist/compiler/pngColourTags.js",
@@ -1106,12 +1306,12 @@
     "@fontsource/space-mono": "^5.2.9",
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.0.10",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
     "gsap": "^3.15.0",
     "jsdom": "^29.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "optionalDependencies": {
     "esbuild": "^0.28.2"

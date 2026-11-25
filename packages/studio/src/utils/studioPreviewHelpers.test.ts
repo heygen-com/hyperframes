@@ -90,6 +90,29 @@ describe("pauseStudioPreviewPlayback", () => {
     expect(siblingPause).not.toHaveBeenCalled();
   });
 
+  it("pauses a sealed preview by message, since its window refuses every other read", () => {
+    const postMessage = vi.fn();
+    // A cross-origin window: postMessage is allowed, any other property read throws.
+    const sealedWindow = new Proxy(
+      { postMessage },
+      {
+        get(target, key) {
+          if (key === "postMessage") return target.postMessage;
+          throw new DOMException(
+            "Blocked a frame from accessing a cross-origin frame.",
+            "SecurityError",
+          );
+        },
+      },
+    );
+    const iframe = { contentWindow: sealedWindow } as unknown as HTMLIFrameElement;
+
+    pauseStudioPreviewPlayback(iframe);
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage.mock.calls[0]?.[0]).toMatchObject({ action: "pause" });
+  });
+
   it("falls back to pausing timelines directly when __player is unavailable", () => {
     const timelinePause = vi.fn();
     const siblingPause = vi.fn();
@@ -138,7 +161,7 @@ describe("getPreviewTargetFromPointer", () => {
     stubRect(headline, domRect(44, 44, 220, 48));
     doc.elementsFromPoint = () => [headline, mask, block, scene];
 
-    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+    expect(getPreviewTargetFromPointer(iframe, 80, 64)).toBe(headline);
     iframe.remove();
   });
 
@@ -156,12 +179,12 @@ describe("getPreviewTargetFromPointer", () => {
       return [headline, scene];
     };
     // First call runs the once-per-document inheritance probe, a body mutation.
-    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+    expect(getPreviewTargetFromPointer(iframe, 80, 64)).toBe(headline);
     const observer = new MutationObserver(() => {});
     observer.observe(doc, { subtree: true, childList: true, attributes: true });
 
-    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
-    expect(getAllPreviewTargetsFromPointer(iframe, 80, 64, "index.html")).toEqual([headline]);
+    expect(getPreviewTargetFromPointer(iframe, 80, 64)).toBe(headline);
+    expect(getAllPreviewTargetsFromPointer(iframe, 80, 64)).toEqual([headline]);
     const mutations = observer.takeRecords();
     observer.disconnect();
 
@@ -197,7 +220,7 @@ describe("getPreviewTargetFromPointer", () => {
     stubRect(overlay, domRect(0, 0, 360, 260));
     doc.elementsFromPoint = () => [overlay, overlayParent, headline, scene];
 
-    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+    expect(getPreviewTargetFromPointer(iframe, 80, 64)).toBe(headline);
 
     iframe.remove();
   });
@@ -227,7 +250,7 @@ describe("getPreviewTargetFromPointer", () => {
     stubRect(clickableChild, domRect(40, 40, 80, 24));
     doc.elementsFromPoint = () => [clickableChild, overlayParent, scene];
 
-    expect(getPreviewTargetFromPointer(iframe, 60, 50, "index.html")).toBe(clickableChild);
+    expect(getPreviewTargetFromPointer(iframe, 60, 50)).toBe(clickableChild);
 
     iframe.remove();
   });
@@ -256,7 +279,7 @@ describe("getPreviewTargetFromPointer", () => {
 
     // Before the fix the video was full-bleed-excluded and the picker fell through
     // to the backdrop (or null). It must now return the video itself.
-    expect(getPreviewTargetFromPointer(iframe, 200, 150, "index.html")).toBe(hero);
+    expect(getPreviewTargetFromPointer(iframe, 200, 150)).toBe(hero);
 
     iframe.remove();
   });
@@ -281,7 +304,7 @@ describe("getPreviewTargetFromPointer", () => {
     stubRect(headline, domRect(40, 40, 160, 48));
     doc.elementsFromPoint = () => [headline, wrapper, scene];
 
-    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+    expect(getPreviewTargetFromPointer(iframe, 80, 64)).toBe(headline);
 
     iframe.remove();
   });

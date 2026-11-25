@@ -1,10 +1,11 @@
 // Transcription on HeyGen (`transcribe --engine heygen`): word times from its speech model, with speakers when asked.
 // The route runs inside the POST and takes an API key; the Idempotency-Key makes a re-run free.
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { TranscriptionCreateRequest } from "../cloud/_gen/types.js";
-import { runFfmpeg } from "../measure/media.js";
+import { ffmpegInput, projectOf, runFfmpeg } from "../measure/media.js";
 import { idempotencyKey, runJob, type JobRoute } from "./v3.js";
 
 const ROUTE: JobRoute = {
@@ -53,7 +54,7 @@ export function wordsOf(job: Record<string, unknown>) {
 export async function transcribeWithHeygen(
   inputPath: string,
   transcriptPath: string,
-  opts: { diarize?: boolean; projectDir?: string; onStatus?: (message: string) => void } = {},
+  opts: { diarize?: boolean; onStatus?: (message: string) => void } = {},
 ): Promise<HeygenTranscript> {
   const work = mkdtempSync(join(tmpdir(), "hf-heygen-asr-"));
   try {
@@ -61,8 +62,7 @@ export async function transcribeWithHeygen(
     const mp3 = join(work, "audio.mp3");
     runFfmpeg([
       "-y",
-      "-i",
-      inputPath,
+      ...ffmpegInput(inputPath),
       "-vn",
       "-ac",
       "1",
@@ -86,12 +86,15 @@ export async function transcribeWithHeygen(
       },
       idempotencyKey(ROUTE.path, [audio, String(diarize)]),
       {
-        log: { projectDir: opts.projectDir, what: `transcribe ${inputPath}` },
+        log: {
+          projectDir: projectOf(dirname(transcriptPath)) ?? process.cwd(),
+          what: `transcribe ${inputPath}`,
+        },
         timeoutMs: 10 * 60_000,
       },
     );
     const words = wordsOf(job);
-    writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
+    replaceFileAtomically(transcriptPath, JSON.stringify(words, null, 2));
     return {
       transcriptPath,
       model: typeof job.model === "string" ? job.model : MODEL,

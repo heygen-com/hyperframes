@@ -360,7 +360,7 @@ describe("sampling", () => {
     // A via point pulled out to (5, -3) clamps to (0.999, 0.001) — exactly on the
     // steady region's edge, where `edge - viaX` is 0 and the conic's weight used
     // to divide out to Infinity, then NaN a few steps later. NaN reaching
-    // setValueCurveAtTime silences the node for the rest of the render.
+    // the AudioParam silences the node for the rest of the render.
     for (const x of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) {
       const y = shapeProgress(x, { viaX: 5, viaY: -3 });
       expect(Number.isFinite(y)).toBe(true);
@@ -459,7 +459,7 @@ describe("sampling", () => {
   });
 
   it("stays monotone for every via point, so a render never sags mid-segment", () => {
-    // Not cosmetic: a segment is baked into setValueCurveAtTime, and progress
+    // Not cosmetic: a segment is baked into the AudioParam's ramps, and progress
     // that dipped backwards is a rising fader audibly dropping. This is the
     // property the Fritsch-Carlson tangent limit is there to guarantee, so it is
     // swept rather than spot-checked.

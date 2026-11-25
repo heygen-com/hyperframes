@@ -10,6 +10,8 @@ import {
   readPlaybackStartAttributes,
 } from "../../player/lib/timelineElementHelpers";
 import { editsPlainCss, GSAP_TRANSFORM_KEYS } from "../../hooks/gsapRuntimeKeyframes";
+import { getIframeGsap } from "../../hooks/gsapShared";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 export type {
   BackgroundRemovalProgress,
@@ -485,16 +487,12 @@ export function readGsapRuntimeValuesForPanel(
 ): Record<string, number> | null {
   if (!gsapAnimId || gsapAnimations.length === 0) return null;
   const iframe = previewIframeRef?.current;
-  if (!iframe?.contentWindow) return null;
+  if (!iframe) return null;
   try {
-    const gsap = (
-      iframe.contentWindow as unknown as {
-        gsap?: { getProperty: (el: Element, prop: string) => number | string };
-      }
-    ).gsap;
-    if (!gsap?.getProperty) return null;
-    const el = findPreviewNode(iframe.contentDocument, element);
-    if (!el) return null;
+    const gsap = getIframeGsap(iframe);
+    const sealed = previewFrameOpaque(iframe);
+    const el = sealed ? element.element : findPreviewNode(iframe.contentDocument, element);
+    if (!gsap || !el) return null;
     const propKeys = collectPanelPropKeys(gsapAnimations);
     const readsTransform = !editsPlainCss(el, "move");
     const result: Record<string, number> = {};
@@ -507,89 +505,4 @@ export function readGsapRuntimeValuesForPanel(
   } catch {
     return null;
   }
-}
-
-export function readGsapBorderRadiusForPanel(
-  gsapRuntimeValues: Record<string, number> | null,
-  gsapAnimations: GsapAnimation[],
-  element: DomEditSelection,
-  previewIframeRef: React.RefObject<HTMLIFrameElement | null>,
-): { tl: number; tr: number; br: number; bl: number } | null {
-  if (!gsapRuntimeValues || !("borderRadius" in gsapRuntimeValues)) {
-    const hasBRProp = gsapAnimations.some(
-      (a) =>
-        "borderRadius" in a.properties ||
-        a.keyframes?.keyframes.some((kf) => "borderRadius" in kf.properties),
-    );
-    if (!hasBRProp) return null;
-  }
-  const iframe = previewIframeRef?.current;
-  if (!iframe?.contentDocument) return null;
-  try {
-    const el = findPreviewNode(iframe.contentDocument, element);
-    if (!el || !iframe.contentWindow) return null;
-    const cs = iframe.contentWindow.getComputedStyle(el);
-    const parse = (v: string) => Number.parseFloat(v) || 0;
-    return {
-      tl: parse(cs.borderTopLeftRadius),
-      tr: parse(cs.borderTopRightRadius),
-      br: parse(cs.borderBottomRightRadius),
-      bl: parse(cs.borderBottomLeftRadius),
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Builds the multi-line "element info" text copied to the clipboard for an AI
- * agent. Shared by both the legacy and flat inspector headers (the flat split
- * needs the same string), so it lives here rather than as a PropertyPanel
- * closure. Pure — the caller owns the clipboard write, toast, and copied state.
- */
-// fallow-ignore-next-line complexity
-export function buildElementInfoText(
-  element: DomEditSelection,
-  sourceLabel: string,
-  gsapAnimations: GsapAnimation[],
-  previewIframeRef?: React.RefObject<HTMLIFrameElement | null>,
-): string {
-  const file = element.sourceFile ?? "index.html";
-  let lineNum: number | null = null;
-  try {
-    const src = previewIframeRef?.current?.contentDocument?.documentElement?.outerHTML ?? "";
-    if (src && element.id) {
-      const idx = src.indexOf(`id="${element.id}"`);
-      if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-    }
-    if (!lineNum && element.selector) {
-      const tag = element.tagName.toLowerCase();
-      const cls = element.selector.startsWith(".") ? element.selector.slice(1).split(".")[0] : null;
-      const search = cls ? `class="${cls}` : `<${tag}`;
-      const idx = src.indexOf(search);
-      if (idx > -1) lineNum = src.slice(0, idx).split("\n").length;
-    }
-  } catch {}
-  const fileLoc = lineNum ? `${file}:${lineNum}` : file;
-  const lines = [
-    `Element: ${element.label} (${sourceLabel})`,
-    `File: ${fileLoc}`,
-    `Position: x=${Math.round(element.boundingBox.x)}, y=${Math.round(element.boundingBox.y)}`,
-    `Size: ${Math.round(element.boundingBox.width)}×${Math.round(element.boundingBox.height)}`,
-    `Tag: <${element.tagName}>`,
-  ];
-  if (element.computedStyles["z-index"] && element.computedStyles["z-index"] !== "auto") {
-    lines.push(`Z-index: ${element.computedStyles["z-index"]}`);
-  }
-  if (gsapAnimations.length > 0) {
-    const anim = gsapAnimations[0];
-    lines.push(
-      `Animation: ${anim.method}() ${anim.duration}s at ${anim.position}s, ease: ${anim.ease ?? "default"}`,
-    );
-    const props = Object.entries(anim.properties)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join(", ");
-    if (props) lines.push(`Properties: ${props}`);
-  }
-  return lines.join("\n");
 }

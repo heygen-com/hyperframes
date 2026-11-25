@@ -50,6 +50,7 @@ import {
   completeDeferredDrawElementInit,
   createCaptureSession,
   getCapturePerfSummary,
+  retainCapturePerf,
   initializeSession,
   prepareCaptureSessionForReuse,
 } from "@hyperframes/engine";
@@ -71,6 +72,7 @@ import { reportFrameProgress, reportWorkerStartup } from "../shared.js";
 import { withWorkerPageErrors } from "../perfSummary.js";
 import type { SdrDiskCapturePlan } from "../capturePlan.js";
 import type { OpenStallAttempt } from "../observability.js";
+import { createSessionInitBudget } from "./captureStreamingStage.js";
 
 export interface CaptureStageInput {
   fileServer: FileServerHandle;
@@ -498,10 +500,14 @@ async function runSequentialDiskCapture(
       // Reuse preparation can fail on the output dir (permissions, read-only, disk full);
       // keep it inside try/finally so the borrowed probe browser is still closed.
       if (probeSession) {
-        prepareCaptureSessionForReuse(session, framesDir, videoInjector);
+        await prepareCaptureSessionForReuse(session, framesDir, videoInjector);
         probeSession = null;
       }
-      await ensureSessionReady(session);
+      await ensureSessionReady(session, {
+        frameIndex: resumeFrom,
+        totalFrames,
+        abortSignal: input.abortSignal,
+      });
       assertAttemptActive();
       lastBrowserConsole = session.browserConsoleBuffer;
 
@@ -576,7 +582,10 @@ function planTransientResume(
     : null;
 }
 
-async function ensureSessionReady(session: CaptureSession): Promise<void> {
+async function ensureSessionReady(
+  session: CaptureSession,
+  budget: Parameters<typeof createSessionInitBudget>[0],
+): Promise<void> {
   if (!session.isInitialized) {
     await initializeSession(session);
     return;
@@ -584,7 +593,7 @@ async function ensureSessionReady(session: CaptureSession): Promise<void> {
   // Deferred drawElement init (probe-initialized video comps). The disk path has no
   // drain-time self-verification, so only the explicit fast-capture opt-in completes it.
   if (process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true") {
-    await completeDeferredDrawElementInit(session);
+    await createSessionInitBudget(budget)(completeDeferredDrawElementInit(session), session);
   }
 }
 
@@ -633,7 +642,7 @@ async function captureSessionFrames(
       assertNotAborted();
       const absoluteIdx = rangeStart + i;
       const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
-      const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
+      const { encodeResult } = await captureFrameToBufferPipelined(session, absoluteIdx, time);
       await drainPrev();
       prev = { fileIndex: i, encodeResult };
     }
@@ -643,7 +652,7 @@ async function captureSessionFrames(
       assertNotAborted();
       const absoluteIdx = rangeStart + i;
       const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
-      await captureFrame(session, i, time);
+      await captureFrame(session, absoluteIdx, time, i);
       reportFrame(i);
     }
   }
@@ -662,5 +671,5 @@ async function captureSessionFrames(
   );
   // Capture the sequential session's static-dedup perf before close (the
   // counters are valid only while the session is live).
-  dedupPerfs.push(getCapturePerfSummary(session));
+  retainCapturePerf(dedupPerfs, getCapturePerfSummary(session));
 }

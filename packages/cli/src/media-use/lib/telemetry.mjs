@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { withFileLock } from "./config-lock.mjs";
 import { globalMediaDir } from "./media-home.mjs";
+import { telemetryOptOutVariable } from "./telemetry-opt-out.mjs";
 
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
 const POSTHOG_HOST = "https://us.i.posthog.com";
@@ -41,8 +42,7 @@ export function optedOut() {
     // `hyperframes telemetry disable` writes telemetryEnabled: false to the
     // shared config; one opt-out must cover the CLI and the media-use scripts.
     readSharedConfig().telemetryEnabled === false ||
-    process.env.HYPERFRAMES_NO_TELEMETRY === "1" ||
-    process.env.DO_NOT_TRACK === "1" ||
+    telemetryOptOutVariable(process.env) !== null ||
     process.env.CI === "true" ||
     process.env.CI === "1" ||
     process.env.NODE_ENV === "development"
@@ -50,8 +50,13 @@ export function optedOut() {
 }
 
 // Read and write the shared config so media-use keeps one identity per install.
+// Until the CLI seeds HYPERFRAMES_CONFIG_DIR's copy, ~/.hyperframes' own still holds the opt-out.
 function sharedConfigPath() {
-  return join(homedir(), ".hyperframes", "config.json");
+  const home = join(homedir(), ".hyperframes", "config.json");
+  const dir = process.env.HYPERFRAMES_CONFIG_DIR;
+  if (!dir) return home;
+  const file = join(dir, "config.json");
+  return existsSync(file) || !existsSync(home) ? file : home;
 }
 
 function readSharedConfig() {

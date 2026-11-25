@@ -16,6 +16,7 @@ import {
 import { canvasNudgeKeysClaimed } from "../../utils/canvasNudgeGate";
 import { usePlayerStore } from "../store/playerStore";
 import { matchesKey, type StudioKeyAction } from "../components/studioShortcuts";
+import { previewFrameOpaque } from "../lib/previewChannel";
 import { resolveCanvasNudgeDelta } from "../../components/editor/domEditNudge";
 import { stepFrameTime } from "../lib/time";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
@@ -30,7 +31,7 @@ interface UsePlaybackKeyboardParams {
   play: () => void;
   playBackward: (rate: number) => void;
   pause: () => void;
-  seek: (time: number, options?: { keepPlaying?: boolean }) => void;
+  seek: (time: number, options?: { keepPlaying?: boolean; settled?: boolean }) => void;
 }
 
 const FRAME_STEPS = {
@@ -112,6 +113,7 @@ export function usePlaybackKeyboard({
       const currentTime = adapter?.getTime() ?? usePlayerStore.getState().currentTime;
       seek(
         stepFrameTime(currentTime, deltaFrames, useLinkedClipPreferences.getState().compositionFps),
+        { settled: true },
       );
     },
     [getAdapter, seek],
@@ -197,6 +199,8 @@ export function usePlaybackKeyboard({
   const attachIframeShortcutListeners = useCallback(() => {
     iframeShortcutCleanupRef.current?.();
     iframeShortcutCleanupRef.current = null;
+    const iframe = iframeRef.current;
+    if (iframe && previewFrameOpaque(iframe)) return;
 
     let iframeWin: Window | null = null;
     let iframeDoc: Document | null = null;

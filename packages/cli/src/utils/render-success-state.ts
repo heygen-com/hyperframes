@@ -22,6 +22,7 @@
  * still exited 1 after the terminal "artifact validated" checkpoint.
  */
 
+import { terminalLines } from "@hyperframes/core";
 import { sanitizeSuccessfulExitCode } from "./commandResult.js";
 
 let renderSucceeded = false;
@@ -69,10 +70,10 @@ const defaultErrorSink: PostRenderErrorSink = (message) => {
 
 /**
  * Run a post-artifact-validated cleanup step so a throw cannot flip the CLI
- * exit code. `markRenderSucceeded()` MUST have been called first — this
- * helper is only safe on the success path where the artifact is already
- * committed to disk. Logs a compact warning to stderr, asks the root CLI to
- * clear a stray exit code, and swallows the error.
+ * exit code. Use only after the artifact is committed to disk. Logs a compact
+ * warning and swallows the error. Only a top-level render that called
+ * `markRenderSucceeded()` may ask the root CLI to clear a stray exit code;
+ * an embedded render does not own the surrounding command’s outcome.
  */
 export function runPostRenderStep(
   label: string,
@@ -100,8 +101,10 @@ export async function runPostRenderStepAsync(
 
 function reportPostRenderStepFailure(label: string, err: unknown, sink: PostRenderErrorSink): void {
   const message = err instanceof Error ? err.message : String(err);
-  sink(`  [hyperframes] Post-render step '${label}' failed (render already succeeded): ${message}`);
+  sink(
+    `  [hyperframes] Post-render step '${label}' failed (render already succeeded): ${terminalLines(message)}`,
+  );
   // The failing step (or something it triggered) may have set a non-zero
   // exitCode. The render succeeded, so ask the root CLI owner to clear it.
-  sanitizeSuccessfulExitCode();
+  if (isRenderSucceeded()) sanitizeSuccessfulExitCode();
 }

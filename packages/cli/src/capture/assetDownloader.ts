@@ -6,7 +6,7 @@
  */
 
 import { isBlockedNetworkHost } from "@hyperframes/engine";
-import { publicRequest } from "./publicNetwork.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
 import { fetchLocalPageUrl } from "./localPage.js";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
@@ -22,7 +22,7 @@ import {
   type DownloadByteBudget,
 } from "./readBoundedResponse.js";
 import { captureFontExtension, captureFontFilename } from "./captureFontValidation.js";
-import { captureImageExtension } from "./captureImageValidation.js";
+import { captureImageExtension, passiveInlineSvg } from "./captureImageValidation.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 
 interface DownloadBudgetOptions {
@@ -350,6 +350,10 @@ export async function downloadAssets(
     const svgFile = toStandaloneSvg(svg.outerHTML);
     if (Buffer.byteLength(svgFile, "utf-8") > MAX_INLINE_SVG_BYTES) {
       drops["size-ceiling"]++;
+      continue;
+    }
+    if (!passiveInlineSvg(svgFile)) {
+      drops.unavailable++;
       continue;
     }
     const slug = svgContentHashSlug(svgFile, !!svg.isLogo);

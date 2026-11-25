@@ -24,7 +24,11 @@ import {
   tweenTargetsElement,
 } from "./gsapShared";
 import { useStableHandlers } from "./useStableHandlers";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { previewGestureBase } from "../player/lib/previewElements";
+import type { EditingGestureBase } from "@hyperframes/core/runtime/editing-port";
 import { progressAtTime, runEaseOf, timeAtProgress, warpsTime } from "../utils/gsapKeyframeEases";
+import { countOf } from "../utils/countOf";
 
 type RecordedKeyframe = {
   percentage: number;
@@ -131,6 +135,7 @@ export function useGestureCommit({
   const recordingMethodRef = useRef<"button" | "keyboard">("button");
   const recordingStartTimeRef = useRef(0);
   const commitInFlightRef = useRef(false);
+  const pendingStartRef = useRef(0);
   // Capture selection at recording start so commit always targets the recorded element,
   // even if the user's selection changes mid-recording.
   const capturedSelectionRef = useRef<DomEditSelection | null>(null);
@@ -150,8 +155,17 @@ export function useGestureCommit({
   }, [gestureRecording, isGestureRecordingRef]);
 
   useEffect(() => {
-    if (readOnlyPreview && gestureStateRef.current === "recording") cancelRecording();
+    if (!readOnlyPreview) return;
+    pendingStartRef.current++;
+    if (gestureStateRef.current === "recording") cancelRecording();
   }, [cancelRecording, readOnlyPreview]);
+
+  useEffect(
+    () => () => {
+      pendingStartRef.current++;
+    },
+    [],
+  );
 
   // fallow-ignore-next-line complexity
   const stopAndCommitRecording = useCallback(async () => {
@@ -375,7 +389,7 @@ export function useGestureCommit({
         }
         trackPreviewEditResult("gesture_recording", recordingMethodRef.current, outcome.finish());
       }
-      showToast(`Recorded ${sortedPcts.length} keyframes`, "info");
+      showToast(`Recorded ${countOf(sortedPcts.length, "keyframe")}`, "info");
     } catch (err) {
       console.error("[GR:error]", err);
       showToast(`Gesture commit failed: ${err}`, "error");
@@ -416,18 +430,34 @@ export function useGestureCommit({
         return;
       }
 
-      const store = usePlayerStore.getState();
-      recordingMethodRef.current = method;
-      recordingStartTimeRef.current = store.currentTime;
-      const elementEnd = recordingEnd(sel);
-      capturedSelectionRef.current = sel;
-      capturedAnimationsRef.current = domEditSessionRef.current.selectedGsapAnimations ?? [];
-      gestureRecording.startRecording(sel.element, iframe, elementEnd);
-      gestureStateRef.current = "recording";
-      isGestureRecordingRef.current = true;
-      setGestureState("recording");
-
-      armAutoStop(elementEnd);
+      const begin = (sealedBase?: EditingGestureBase | null) => {
+        if (isGestureRecordingRef.current) return;
+        const elementEnd = recordingEnd(sel);
+        const startTime = usePlayerStore.getState().currentTime;
+        if (!gestureRecording.startRecording(sel.element, iframe, elementEnd, sealedBase)) {
+          showToast("Preview not ready. Try again", "error");
+          return;
+        }
+        recordingMethodRef.current = method;
+        recordingStartTimeRef.current = startTime;
+        capturedSelectionRef.current = sel;
+        capturedAnimationsRef.current = domEditSessionRef.current.selectedGsapAnimations ?? [];
+        gestureStateRef.current = "recording";
+        isGestureRecordingRef.current = true;
+        setGestureState("recording");
+        armAutoStop(elementEnd);
+      };
+      const pending = ++pendingStartRef.current;
+      const stillAimed = () =>
+        pending === pendingStartRef.current &&
+        previewIframeRef.current === iframe &&
+        domEditSessionRef.current.domEditSelection?.element === sel.element;
+      if (!previewFrameOpaque(iframe)) begin();
+      else if (!sel.handle) begin(null);
+      else
+        void previewGestureBase(iframe, [sel.handle]).then((bases) => {
+          if (stillAimed()) begin(bases?.[0] ?? null);
+        });
     },
     [
       gestureRecording,

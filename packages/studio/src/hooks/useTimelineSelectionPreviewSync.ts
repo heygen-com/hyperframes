@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 import { resolveTimelineIdForSelection } from "../utils/studioHelpers";
 import { logSelect } from "../utils/selectDebug";
 import { recordRetryAttempt, type RetryBudgetState } from "../utils/retryBudget";
@@ -24,7 +25,7 @@ interface UseTimelineSelectionPreviewSyncParams {
       announce?: boolean;
     },
   ) => void;
-  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
+  applyMarqueeSelection: (selections: DomEditSelection[], mode: MarqueeSelectionMode) => void;
   onSelectionNotFound: () => void;
 }
 
@@ -96,7 +97,7 @@ function applyResolvedSelections(
   } else if (selections.length === 1) {
     applyDomSelection(selections[0]);
   } else {
-    applyMarqueeSelection(selections, false);
+    applyMarqueeSelection(selections, "replace");
   }
 }
 
@@ -138,11 +139,16 @@ export function useTimelineSelectionPreviewSync({
           : [];
     const currentIds = currentSelections
       .map((selection) =>
-        resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
+        resolveTimelineIdForSelection(selection, timelineElements, activeCompPath, true),
       )
       .filter((id): id is string => Boolean(id));
     const currentAnchor = currentDomEditSelection
-      ? resolveTimelineIdForSelection(currentDomEditSelection, timelineElements, activeCompPath)
+      ? resolveTimelineIdForSelection(
+          currentDomEditSelection,
+          timelineElements,
+          activeCompPath,
+          true,
+        )
       : null;
 
     if (selectedIds.length === 0) {

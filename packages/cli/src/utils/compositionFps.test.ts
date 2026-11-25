@@ -114,6 +114,15 @@ describe("defaultCloudFps", () => {
     expect(String(warn.mock.calls[0]?.[0])).toContain(`data-fps="${fps}"`);
   });
 
+  // fails without the fix: the declared value was printed as written in the file
+  it("shows control characters in an unsupported data-fps as text", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(defaultCloudFps(root("48\u0007"))).toBe(30);
+    const printed = String(warn.mock.calls[0]?.[0]);
+    expect(printed).toContain('data-fps="48\\x07"');
+    expect(printed).not.toContain("\u0007");
+  });
+
   it("reads mixed-case HTML attributes before validating the cloud fps", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const dir = makeProject(

@@ -17,6 +17,7 @@
  *   - `perfStages.audioProcessMs` is set whether or not the call ran.
  */
 
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Fps } from "@hyperframes/core";
 import {
@@ -25,10 +26,12 @@ import {
   processCompositionAudio,
   removeScratch,
   collectScratchLeftovers,
+  withFfmpegProgress,
   type AudioProcessingFailure,
   type MixResult,
 } from "@hyperframes/engine";
-import type { CompositionMetadata } from "../shared.js";
+import { audioWorkDir, type CompositionMetadata } from "../shared.js";
+import { mediaAssetRoots } from "../../assetMediaType.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { limitDeliveryPeaks } from "../audioDeliveryLimit.js";
@@ -39,9 +42,11 @@ export interface AudioStageInput {
   workDir: string;
   /** `join(workDir, "compiled")`; passed through to the audio mixer for asset resolution. */
   compiledDir: string;
-  /** Probed video frame count and exact frame rate define the delivered audio length. */
+  /** The film's frame count and exact frame rate define the mixed audio length. */
   totalFrames: number;
   fps: Fps;
+  /** Deliver only these film frames' audio, cut from the whole mix. */
+  frameWindow?: { startFrame: number; endFrame: number };
   /** Timeout forwarded to ffmpeg subprocesses used by the audio mixer. */
   ffmpegProcessTimeout: number;
   /** Master gain forwarded to the audio mixer. */
@@ -51,10 +56,14 @@ export interface AudioStageInput {
   masterFxChain?: string;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
+  allowOutsideProjectAssets?: boolean;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   /** Where a per-track failure's detail goes. Optional so tests need not pass one. */
   log?: ProducerLogger;
+  /** Leave the delivered PCM in `workDir` for the assemble stage; its owner removes the dir. */
+  keepDeliverySource?: boolean;
+  onFfmpegProgress?: () => void;
 }
 
 export interface AudioStageResult {
@@ -62,6 +71,8 @@ export interface AudioStageResult {
   audioLoweredDb?: number;
   /** Always `join(workDir, MIXED_AUDIO_FILENAME)`. */
   audioOutputPath: string;
+  /** The PCM `audioOutputPath` encodes, when `keepDeliverySource` asked for it. */
+  deliverySourcePath?: string;
   /** True iff the audio mix actually produced a file. False when there are no audio elements. */
   hasAudio: boolean;
   /** Wall-clock ms for the audio mix phase. Zero-elements path is near-zero but always set. */
@@ -93,7 +104,8 @@ function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] |
 
 export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
   return collectScratchLeftovers(
-    () => runAudioStageScoped(input),
+    () =>
+      withFfmpegProgress(input.onFfmpegProgress ?? (() => {}), () => runAudioStageScoped(input)),
     (left) => {
       if (left.length > 0) input.log?.warn("[audio] scratch left behind", { count: left.length });
     },
@@ -103,42 +115,72 @@ export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult>
 async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageResult> {
   const stageStart = Date.now();
   const pcmSourcePath = join(input.workDir, "audio-source.wav");
-  const duration = (input.totalFrames * input.fps.den) / input.fps.num;
+  const seconds = (frames: number) => (frames * input.fps.den) / input.fps.num;
+  const duration = seconds(input.totalFrames);
+  const window = input.frameWindow && {
+    startSeconds: seconds(input.frameWindow.startFrame),
+    durationSeconds: seconds(input.frameWindow.endFrame - input.frameWindow.startFrame),
+  };
+  let deliverySourcePath: string | undefined;
   try {
-    const result = await mixAudioForDelivery(input, duration, pcmSourcePath);
+    const result = await mixAudioForDelivery(input, duration, pcmSourcePath, window);
     let audioLoweredDb: number | undefined;
     if (result.hasAudio) {
       const guardStart = Date.now();
-      const limited = await limitDeliveryPeaks({
-        audioPath: result.audioOutputPath,
-        sourcePath: pcmSourcePath,
-        targetDurationSeconds: duration,
-        signal: input.abortSignal,
-        timeoutMs: input.ffmpegProcessTimeout,
-        warn: (message, details) => input.log?.warn?.(message, details),
-      });
-      if (!limited.success) throw encoderFailureError("Audio true-peak limit failed", limited);
-      const peak = await constrainAacTruePeak({
-        audioPath: result.audioOutputPath,
-        sourcePath: pcmSourcePath,
-        targetDurationSeconds: duration,
-        signal: input.abortSignal,
-        timeoutMs: input.ffmpegProcessTimeout,
-      });
-      if (!peak.success) throw encoderFailureError("Audio true-peak check failed", peak);
-      audioLoweredDb = peak.loweredDb;
+      const guard = await guardDeliveryPeaks(
+        input,
+        result.audioOutputPath,
+        pcmSourcePath,
+        window?.durationSeconds ?? duration,
+      );
+      audioLoweredDb = guard.loweredDb;
       input.log?.info("[audio] phases", { ...result.audioPhaseMs, guard: Date.now() - guardStart });
+      if (input.keepDeliverySource && !guard.sourceStale && existsSync(pcmSourcePath)) {
+        deliverySourcePath = pcmSourcePath;
+      }
     }
-    return { ...result, audioLoweredDb, audioProcessMs: Date.now() - stageStart };
+    return {
+      ...result,
+      audioLoweredDb,
+      deliverySourcePath,
+      audioProcessMs: Date.now() - stageStart,
+    };
   } finally {
-    removeScratch(pcmSourcePath);
+    if (!deliverySourcePath) removeScratch(pcmSourcePath);
   }
+}
+
+async function guardDeliveryPeaks(
+  input: AudioStageInput,
+  audioPath: string,
+  sourcePath: string,
+  duration: number,
+): Promise<{ loweredDb?: number; sourceStale?: true }> {
+  const limited = await limitDeliveryPeaks({
+    audioPath,
+    sourcePath,
+    targetDurationSeconds: duration,
+    signal: input.abortSignal,
+    timeoutMs: input.ffmpegProcessTimeout,
+    warn: (message, details) => input.log?.warn?.(message, details),
+  });
+  if (!limited.success) throw encoderFailureError("Audio true-peak limit failed", limited);
+  const peak = await constrainAacTruePeak({
+    audioPath,
+    sourcePath,
+    targetDurationSeconds: duration,
+    signal: input.abortSignal,
+    timeoutMs: input.ffmpegProcessTimeout,
+  });
+  if (!peak.success) throw encoderFailureError("Audio true-peak check failed", peak);
+  return { loweredDb: peak.loweredDb, sourceStale: peak.sourceStale };
 }
 
 async function mixAudioForDelivery(
   input: AudioStageInput,
   duration: number,
   pcmSourcePath: string,
+  window: { startSeconds: number; durationSeconds: number } | undefined,
 ): Promise<Omit<AudioStageResult, "audioProcessMs">> {
   const {
     projectDir,
@@ -173,7 +215,7 @@ async function mixAudioForDelivery(
       audioResult = await processCompositionAudio(
         audios,
         projectDir,
-        join(workDir, "audio-work"),
+        audioWorkDir(workDir),
         audioOutputPath,
         duration,
         abortSignal,
@@ -184,6 +226,10 @@ async function mixAudioForDelivery(
           urlByAbsentLocalPath,
           audioSidecarUrlByLocalPath,
           keepEncoderInputAt: pcmSourcePath,
+          window,
+          assetRoots: input.allowOutsideProjectAssets
+            ? undefined
+            : mediaAssetRoots(projectDir, compiledDir),
         },
         compiledDir,
       );

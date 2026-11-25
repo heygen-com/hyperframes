@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix, win32 } from "node:path";
+import { isAbsolute, join, posix, resolve, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   collectSubCompositionSrcs,
@@ -11,6 +11,8 @@ import {
   maskNonScannableRanges,
   readProjectFile,
   readTextFile,
+  resolveCompositionSrc,
+  resolveExistingLocalAsset,
   resolveProjectRelativeSrc,
 } from "./assetResolution.js";
 
@@ -141,6 +143,21 @@ describe("collectSubCompositionSrcs", () => {
 
 // The browser clamps `..` at the origin root; path.join does not. One resolver must serve lint and render.
 describe("resolveProjectRelativeSrc — the one src resolver for lint and render", () => {
+  // fails without the fix: with "." as the base the join stayed relative, so a src such as concat:a.wav|b.wav led
+  // the path ffmpeg was handed, and ffmpeg read it as its concat protocol instead of a project file.
+  it("returns an absolute path whatever base the caller passed", () => {
+    for (const base of [".", "./", ""])
+      for (const src of [
+        "concat:a.wav|b.wav",
+        "subfile,,start,0,end,1,,:clip.mp4",
+        "assets/clip.mp4",
+      ]) {
+        const path = resolveProjectRelativeSrc(src, base, base && `${base}/compiled`);
+        expect(isAbsolute(path)).toBe(true);
+        expect(path.startsWith(resolve(base))).toBe(true);
+      }
+  });
+
   let tmp: string;
 
   beforeAll(() => {
@@ -270,6 +287,48 @@ describe("resolveProjectRelativeSrc — the one src resolver for lint and render
   });
 });
 
+describe("resolveExistingLocalAsset stays inside the project", () => {
+  let dir: string;
+  let project: string;
+  let outside: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-asset-confine-"));
+    project = join(dir, "project");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", "a.css"), "a{}");
+    outside = join(dir, "secret.env");
+    writeFileSync(outside, "TOKEN=1");
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it.each([
+    (path: string) => `/%2F${path.slice(1)}`,
+    (path: string) => `%2F${path}`,
+    (path: string) => `/${encodeURIComponent(path)}`,
+  ])("finds no file outside the project for an encoded absolute path (%#)", (encode) => {
+    expect(resolveExistingLocalAsset(project, encode(outside))).toBeNull();
+  });
+
+  it("still finds a project file by its root-absolute URL or a clamped ../", () => {
+    expect(resolveExistingLocalAsset(project, "/assets/a.css")?.rootRelativePath).toBe(
+      join("assets", "a.css"),
+    );
+    expect(resolveExistingLocalAsset(project, "../assets/a.css")?.rootRelativePath).toBe(
+      join("assets", "a.css"),
+    );
+  });
+
+  it("resolves a sub-composition src like the render, and refuses one that leaves", () => {
+    expect(resolveCompositionSrc(project, "/assets/a.css")).toBe(join(project, "assets", "a.css"));
+    expect(resolveCompositionSrc(project, "../secret.env")).toBeNull();
+    expect(resolveCompositionSrc(project, "%2E%2E/secret.env")).toBeNull();
+    const driveLetterPathLeavesProject = process.platform === "win32";
+    expect(resolveCompositionSrc(project, outside)).toBe(
+      driveLetterPathLeavesProject ? null : join(project, outside),
+    );
+  });
+});
+
 // A CI runner is one OS. Injecting path.win32/path.posix exercises both
 // platforms' separator and drive-letter rules from here, so a regression in
 // either fails this suite regardless of which OS actually runs it.
@@ -290,6 +349,13 @@ describe("isWithinProjectRoot", () => {
     const root = "C:\\project";
     const candidate = "D:\\secret.txt";
     expect(isWithinProjectRoot(root, candidate, win32)).toBe(false);
+  });
+
+  it.each([
+    ["path.posix", posix, "/project"],
+    ["path.win32", win32, "C:\\project"],
+  ] as const)("allows a root file whose name starts with two dots under %s", (_, path, root) => {
+    expect(isWithinProjectRoot(root, path.join(root, "..intro.mp4"), path)).toBe(true);
   });
 
   it("allows a nested asset under path.win32", () => {

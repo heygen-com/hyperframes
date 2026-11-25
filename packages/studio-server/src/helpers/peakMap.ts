@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { requireFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeAudioTrack } from "./mediaMetadata.js";
+import { mediaInputArgs } from "./mediaExtensions.js";
 
 export const PEAK_BIN_SECONDS = 0.05;
 const PEAK_SAMPLE_RATE = 48_000;
@@ -60,16 +61,19 @@ export function finishPeaks(acc: PeakAccumulator): number[] {
   return acc.bins.map((peak) => Number(peak.toFixed(4)));
 }
 
-export async function decodePeakMap(mediaPath: string): Promise<number[]> {
+export async function decodePeakMap(mediaPath: string, signal?: AbortSignal): Promise<number[]> {
   const track = await probeAudioTrack(mediaPath);
   if (!track || track.channels < 1) throw new Error("no audio stream");
+  signal?.throwIfAborted();
   const { stream, channels } = track;
+  const ffmpeg = requireFfBinary("ffmpeg");
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
-      findFfBinary("ffmpeg") ?? "ffmpeg",
+      ffmpeg,
       [
         "-v",
         "error",
+        ...mediaInputArgs(mediaPath),
         "-i",
         mediaPath,
         "-map",
@@ -81,7 +85,7 @@ export async function decodePeakMap(mediaPath: string): Promise<number[]> {
         "f32le",
         "pipe:1",
       ],
-      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
+      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true, signal },
     );
     const acc = createPeakAccumulator(PEAK_SAMPLE_RATE, PEAK_BIN_SECONDS, channels);
     proc.stdout?.on("data", (chunk: Buffer) => accumulatePeaks(acc, chunk));

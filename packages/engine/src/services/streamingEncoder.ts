@@ -13,6 +13,7 @@
  *      exposes an async `writeFrame(buffer)` + `close()` API.
  */
 
+import { ffmpegCwd } from "@hyperframes/parsers/ff-binaries";
 import { jpegInputError } from "../utils/jpegInput.js";
 import { spawn, type ChildProcess } from "child_process";
 import { once } from "events";
@@ -186,6 +187,7 @@ export interface StreamingEncoderOptions {
   lockGopForChunkConcat?: boolean;
   /** Required when `lockGopForChunkConcat` is `true`. Frames per GOP. */
   gopSize?: number;
+  softwareEncoderThreads?: number;
 }
 
 export interface StreamingEncoderResult {
@@ -364,7 +366,7 @@ export function buildStreamingArgs(
     } else {
       const encoderName = codec === "h264" ? "libx264" : "libx265";
       args.push("-c:v", encoderName, "-preset", preset);
-      appendSoftwareEncoderThreadsArg(args, encoderName);
+      appendSoftwareEncoderThreadsArg(args, encoderName, options.softwareEncoderThreads);
       if (bitrate) args.push("-b:v", bitrate);
       else args.push("-crf", String(quality));
 
@@ -553,6 +555,7 @@ export function spawnFfmpegStream(
 
   const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args, {
     stdio: ["pipe", "pipe", "pipe"],
+    cwd: ffmpegCwd(),
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,
   });

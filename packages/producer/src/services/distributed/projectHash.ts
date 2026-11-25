@@ -11,47 +11,105 @@
 
 import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { join, sep } from "node:path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "./plan.js";
 
 // Bump when the hashed set changes so uploads cached under an older scheme are never reused.
 const SITE_ID_SCHEME = "site-v2\0";
 const READ_CHUNK_BYTES = 256 * 1024;
 
+/** Whether a site's `/`-separated project path is one no upload ships: env, Git, credentials, tool state, app records. */
+export const isPrivateSitePath = (relPath: string): boolean => isStudioPrivatePath(relPath);
+
+function statEntry(full: string, relPath: string) {
+  try {
+    return statSync(full);
+  } catch (err) {
+    throw new Error(`[listSiteFiles] cannot read ${relPath} (dangling symlink?)`, { cause: err });
+  }
+}
+
 /**
  * The files a site upload ships, as `/`-separated paths under `projectDir`. Symlinks are followed
- * (root included), top-level {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage
- * does, and a dangling symlink throws.
+ * (root included), out of the project only with `onOutside` `"include"`; top-level
+ * {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage does, and a dangling link
+ * throws. Private files (env, Git, credentials, tool and agent state, app records) are left out at
+ * every depth, by name or by link target. `onPrivate` and `onOutside` hear each, a folder once.
  */
-export function listSiteFiles(projectDir: string): string[] {
+export function listSiteFiles(
+  projectDir: string,
+  onPrivate?: (relPath: string) => void,
+  onOutside: ((relPath: string) => void) | "include" = () => {},
+): string[] {
   const files: string[] = [];
-  const ancestors = new Set([realpathSync(projectDir)]);
+  const root = realpathSync(projectDir);
+  const ancestors = new Set([root]);
+  function visit(full: string, relPath: string): void {
+    if (isPrivateFileUnder(projectDir, full, isStudioPrivatePath)) return void onPrivate?.(relPath);
+    const stat = statEntry(full, relPath);
+    if (!stat.isFile() && !stat.isDirectory()) return;
+    if (onOutside !== "include" && outsideFolder(root, realpathSync(full))) {
+      return void onOutside(relPath);
+    }
+    if (stat.isFile()) return void files.push(relPath);
+    const real = realpathSync(full);
+    // A folder linking back to an ancestor is skipped rather than walked forever.
+    if (ancestors.has(real)) return;
+    ancestors.add(real);
+    walk(full, relPath);
+    ancestors.delete(real);
+  }
   function walk(dir: string, rel: string): void {
     for (const name of readdirSync(dir).sort()) {
       if (rel === "" && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(name)) continue;
-      const full = join(dir, name);
-      const relPath = rel === "" ? name : `${rel}/${name}`;
-      let stat;
-      try {
-        stat = statSync(full);
-      } catch (err) {
-        throw new Error(`[listSiteFiles] cannot read ${relPath} (dangling symlink?)`, {
-          cause: err,
-        });
-      }
-      if (stat.isFile()) {
-        files.push(relPath);
-      } else if (stat.isDirectory()) {
-        const real = realpathSync(full);
-        // A folder linking back to an ancestor is skipped rather than walked forever.
-        if (ancestors.has(real)) continue;
-        ancestors.add(real);
-        walk(full, relPath);
-        ancestors.delete(real);
-      }
+      visit(join(dir, name), rel === "" ? name : `${rel}/${name}`);
     }
   }
   walk(projectDir, "");
+  return files;
+}
+
+const outsideFolder = (root: string, real: string): boolean =>
+  real !== root && !real.startsWith(root + sep);
+
+const printablePath = (path: string): string =>
+  [...path]
+    .map((ch) => {
+      const code = ch.charCodeAt(0);
+      const control = (code < 0x20 && code !== 0x09) || (code >= 0x7f && code <= 0x9f);
+      return control ? `\\x${code.toString(16).padStart(2, "0")}` : ch;
+    })
+    .join("");
+
+/**
+ * {@link listSiteFiles} for an upload: one line to `onNotice` names the private files left out.
+ * Files linked in from outside ship only with `includeOutsideFiles`, else a second line names them.
+ * The upload reads each path again after this check, so a link swapped in meanwhile still ships.
+ */
+export function listSiteFilesForUpload(
+  projectDir: string,
+  onNotice: (message: string) => void = (message) => console.warn(message),
+  includeOutsideFiles = false,
+): string[] {
+  const leftOut: string[] = [];
+  const outside: string[] = [];
+  const files = listSiteFiles(
+    projectDir,
+    (path) => leftOut.push(path),
+    includeOutsideFiles ? "include" : (path) => outside.push(path),
+  );
+  if (leftOut.length > 0) {
+    const more = leftOut.length > 5 ? ` and ${leftOut.length - 5} more` : "";
+    onNotice(
+      `[deploySite] left out private files no composition loads (env, Git, credentials, tool state): ${leftOut.slice(0, 5).map(printablePath).join(", ")}${more}`,
+    );
+  }
+  if (outside.length > 0) {
+    onNotice(
+      `[deploySite] left out files linked in from outside the project: ${outside.map(printablePath).join(", ")}. Pass --include-outside-files (includeOutsideFiles in the SDK) to upload them.`,
+    );
+  }
   return files;
 }
 

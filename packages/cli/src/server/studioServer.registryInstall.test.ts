@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, type AddressInfo } from "node:net";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
 
@@ -37,6 +38,7 @@ const block = (name: string, dependencies?: string[]) => ({
 });
 const ITEMS = [
   block("studio-drop-block"),
+  { ...block("studio-drop-retired"), deprecated: "use \u001b]0;t\u0007other" },
   block("studio-drop-other"),
   block("studio-drop-parent", ["studio-drop-part"]),
   {
@@ -125,6 +127,19 @@ function installer(link: string) {
 }
 
 describe("Studio catalog install", () => {
+  it("writes a registry warning to stderr with control characters escaped", async () => {
+    const { link } = projectWithRegistry();
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await installer(link)("studio-drop-retired");
+      const line = write.mock.calls.map(([chunk]) => String(chunk)).join("");
+      expect(line).toContain("use \\x1b]0;t\\x07other");
+      for (const control of ["\u001b", "\u0007"]) expect(line).not.toContain(control);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it("answers that the project folder is gone when it is renamed while the item downloads", async () => {
     let real = "";
     ({ real } = projectWithRegistry(() => renameSync(real, `${real}-renamed`)));
@@ -184,6 +199,31 @@ describe("Studio catalog install", () => {
     expect(items.map((item) => item.name).sort()).toEqual(ITEMS.map((item) => item.name).sort());
     expect(fetched.length).toBeGreaterThan(0);
     expect(fetched.every((url) => url.startsWith(registry))).toBe(true);
+  });
+
+  // fails without the fix: the panel listed a received project's registry from any host
+  it("lists nothing from a received project's registry on a private address, and connects to none", async () => {
+    let connections = 0;
+    const listener = createServer((socket) => {
+      connections += 1;
+      socket.destroy();
+    });
+    await new Promise<void>((done) => listener.listen(0, "127.0.0.1", done));
+    const { real, fetched } = projectWithRegistry();
+    const registry = `https://127.0.0.1:${(listener.address() as AddressInfo).port}/r`;
+    writeFileSync(join(real, "hyperframes.json"), JSON.stringify({ registry }));
+    mkdirSync(join(real, ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(real, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["hyperframes.json"] }),
+    );
+    try {
+      expect(await server!.adapter.listRegistryCatalog!()).toEqual([]);
+      expect(connections).toBe(0);
+      expect(fetched.filter((url) => url.startsWith(registry))).toEqual([]);
+    } finally {
+      listener.close();
+    }
   });
 
   it("installs a block sized unlike the project twice, and leaves a real edit alone", async () => {

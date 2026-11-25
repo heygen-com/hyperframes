@@ -6,12 +6,21 @@
  */
 import type { ReferenceBackground } from "./services/referenceBackground.js";
 import type { AudioFailureDiagnostic } from "./services/audioMixer.types.js";
-import type { Fps } from "@hyperframes/core";
+import type { Fps, MotionBlurFingerprint } from "@hyperframes/core";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
 import type { ChromeMemoryStats } from "./services/chromeMemorySampler.js";
 import type { MotionBlurOptions } from "./services/motionBlur.js";
 
 export type PageMotionBlurOff = "off" | "hdr-render" | "layered-composite" | "distributed-render";
+
+export interface PageMotionBlurSummary {
+  tier: "capture" | "filter" | null;
+  reasonCode: string | null;
+  movers: number;
+  failedFrames: number;
+  readEvents: boolean;
+  fingerprint: MotionBlurFingerprint | null;
+}
 
 /**
  * Outcome of waiting for a sub-composition's GSAP timelines to register.
@@ -29,9 +38,18 @@ export interface SubTimelineWaitMemo {
   loggedSceneCallbackErrors?: string[];
 }
 
+/**
+ * Shared by every capture session of one render: per key, the first session's static-frame dedup check,
+ * which later sessions with that key wait for. It resolves to the verified frames, or null for none.
+ */
+export interface StaticDedupMemo {
+  checks?: Map<string, Promise<readonly number[] | null>>;
+}
+
 export type CaptureWarningCode =
   | "media_readiness_timeout"
   | "media_load_failed"
+  | "image_missing_from_frame"
   | "audio_processing_failed"
   | "sub_timeline_readiness_timeout"
   | "sub_timeline_script_failure"
@@ -216,6 +234,14 @@ export interface CaptureOptions {
   skipReadinessVideoIds?: readonly string[];
   /** Pass one object to every session of a render; see `SubTimelineWaitMemo`. */
   subTimelineWaitMemo?: SubTimelineWaitMemo;
+  /** Pass one object to every session of a render, with `compositionHash`; see `StaticDedupMemo`. */
+  staticDedupMemo?: StaticDedupMemo;
+  /** Hash of the composition HTML this session loads; part of the static dedup sharing key. */
+  compositionHash?: string;
+  /** The frames of this session's task, [start, end); an interleaved task captures only some of them. */
+  staticDedupFrameRange?: { start: number; end: number };
+  deferStaticDedup?: boolean;
+  onStaticDedupActivity?: () => void;
   /**
    * Render-time variable overrides for the composition. The engine injects
    * these as `window.__hfVariables` via `evaluateOnNewDocument` before any
@@ -227,6 +253,11 @@ export interface CaptureOptions {
    * `--variables-file <path>`. Must be a JSON-serializable plain object.
    */
   variables?: Record<string, unknown>;
+  /**
+   * Check `variables` against the page's `data-composition-variables` once it is ready, before any frame;
+   * a mismatch or unreadable declarations end the session with `VariablesInvalidError`. Off by default.
+   */
+  strictVariables?: boolean;
   /**
    * When `true`, the BeginFrame warmup loop driven during page navigation
    * runs exactly `LOCKED_WARMUP_TICKS` (60) iterations regardless of how
@@ -253,6 +284,7 @@ export interface CaptureOptions {
   deVerifySamples?: number;
   deFrameFallback?: boolean;
   onEffectScanProgress?: (scannedFrames: number, totalFrames: number) => void;
+  onEffectScanEnd?: () => void;
 }
 
 export interface CaptureVideoMetadataHint {
@@ -374,6 +406,7 @@ export interface CapturePerfSummary {
    * `|`-join distinct reasons when parallel workers diverge.)
    */
   staticDedupSkipReason?: string;
+  staticDedupIneligibleCause?: string;
   // ── BeginFrame no-damage reuse (Linux/Docker lastFrameCache visibility) ──
   /**
    * BeginFrame frames where Chrome reported `hasDamage=false` and the previous
@@ -405,11 +438,12 @@ export interface CapturePerfSummary {
   chromeMemorySamples?: number;
   /**
    * Low-cardinality init-time gate that routed a drawElement-eligible session
-   * to the baseline: `swiftshader` | `css_effect:<fx>` | `at_risk_timeline` |
-   * `3d_init_failed` | `supersampling` | `render_mode_hint`. Undefined when
-   * drawElement ran or was never attempted.
+   * to the baseline: `swiftshader` | `webgl_unavailable` | `beginframe_no_self_verify` |
+   * `css_effect:<fx>` | `at_risk_timeline` | `3d_init_failed` | `supersampling` |
+   * `render_mode_hint`. Undefined when drawElement ran or was never attempted.
    */
   deGateReason?: string;
+  motionBlur?: PageMotionBlurSummary;
   /**
    * Full-fidelity fallback trigger — the specific reason (CSS FX + property,
    * e.g. `filter:blur`, `filter:drop-shadow`, `backdrop-filter`, `clip-path`,
@@ -447,5 +481,6 @@ export interface CapturePerfSummary {
 declare global {
   interface Window {
     __hf?: HfProtocol;
+    __HF_VIRTUAL_TIME__?: { originalSetTimeout?: typeof setTimeout };
   }
 }

@@ -1,4 +1,10 @@
+import {
+  newPreviewNonce,
+  PREVIEW_NONCE_HEADER,
+  provesPreviewOwner,
+} from "@hyperframes/core/preview-proof";
 import { existsSync, realpathSync } from "node:fs";
+import { connect } from "node:net";
 import { resolve } from "node:path";
 import { scanActiveServers, type ActiveServer } from "../server/portUtils.js";
 import type {
@@ -59,17 +65,46 @@ function normalizePath(path: string): string {
   return resolved.replace(/\\/g, "/").toLowerCase();
 }
 
+// A Studio on loopback accepts a connection in milliseconds.
+const LOOPBACK_CONNECT_TIMEOUT_MS = 1000;
+
+/**
+ * Fetches from a loopback Studio only once a bounded connect succeeds. Some
+ * hosts drop a connection to a closed port instead of refusing it (WSL
+ * mirrored networking, a firewall in stealth mode): fetch then waits for its
+ * 10 s connect timeout, and aborting it does not close the socket, so the
+ * command's process stays alive that long anyway. A destroyed socket does not.
+ */
+export async function fetchLoopback(url: string, init?: RequestInit): Promise<Response> {
+  const { hostname, port } = new URL(url);
+  const host = hostname.replace(/^\[|\]$/g, "");
+  await new Promise<void>((accept, refuse) => {
+    const socket = connect({ host, port: Number(port) });
+    const close = (error?: Error) => {
+      socket.destroy();
+      if (error) refuse(error);
+      else accept();
+    };
+    socket.setTimeout(LOOPBACK_CONNECT_TIMEOUT_MS, () =>
+      close(new Error(`connect to ${host}:${port} timed out`)),
+    );
+    socket.once("connect", () => close());
+    socket.once("error", close);
+  });
+  return fetch(url, init);
+}
+
 export async function findPreviewServerForProject(
   projectDir: string,
   startPort = 3002,
   scan: (startPort?: number) => Promise<ActiveServer[]> = scanActiveServers,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = fetchLoopback,
   options: FindPreviewServerOptions = {},
 ): Promise<ActiveServer | null> {
   const normalizedProjectDir = normalizePath(projectDir);
   const servers = await scan(startPort);
   const embeddedServers = servers.filter(
-    (server) => normalizePath(server.projectDir) === normalizedProjectDir,
+    (server) => server.proven && normalizePath(server.projectDir) === normalizedProjectDir,
   );
   if (options.preferredPort !== undefined) {
     const preferred = embeddedServers.find((server) => server.port === options.preferredPort);
@@ -102,9 +137,23 @@ export function studioApiUrl(server: ActiveServer, route: string): string {
 // is exactly why `--selection`/`--context` failed against a local-studio preview.
 const LOOPBACK_HOSTS = ["127.0.0.1", "[::1]"] as const;
 
+async function provesOwnerAt(
+  host: string,
+  port: number,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response>,
+): Promise<boolean> {
+  const nonce = newPreviewNonce();
+  const response = await fetchImpl(`http://${host}:${port}/__hyperframes_config`, {
+    headers: { [PREVIEW_NONCE_HEADER]: nonce },
+  });
+  if (!response.ok) return false;
+  const config = (await response.json()) as Record<string, unknown>;
+  return provesPreviewOwner(nonce, { address: host, port }, config);
+}
+
 async function findViteStudioServerForProject(
   normalizedProjectDir: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response>,
   ports: readonly number[] = VITE_STUDIO_DISCOVERY_PORTS,
 ): Promise<ActiveServer | null> {
   for (const port of ports) {
@@ -116,7 +165,7 @@ async function findViteStudioServerForProject(
         const project = payload.projects?.find(
           (candidate) => normalizePath(candidate.dir) === normalizedProjectDir,
         );
-        if (!project) continue;
+        if (!project || !(await provesOwnerAt(host, port, fetchImpl))) continue;
         return {
           port,
           host,
@@ -124,6 +173,7 @@ async function findViteStudioServerForProject(
           projectDir: project.dir,
           version: "studio-dev",
           pid: null,
+          proven: true,
         };
       } catch {
         // Not a Vite-served Studio on this host/port, or unreachable. Try next.

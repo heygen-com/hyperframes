@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity
 // fallow-ignore-file unused-class-member
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   copyFileSync,
@@ -13,8 +13,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { parseHTML } from "linkedom";
-import { renameWithRetry, runFfmpeg, runFfprobe } from "@hyperframes/engine";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
+import { renameWithRetry, runFfmpeg, runFfprobe, urlInputArgs } from "@hyperframes/engine";
 import { readHeifPrimaryRotation } from "./heifRotation.js";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
 import {
@@ -63,6 +63,15 @@ export class HeifToolUnavailableError extends Error {
   }
 }
 
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+const FFMPEG_SELF_CPU_SECONDS_CAP = 300;
+const FFMPEG_SELF_OUTPUT_BYTES_CAP = 256 * 1024 * 1024;
+
 const TOOL_FAILURE_RE =
   /(?:ffmpeg|ffprobe) not found|ENOENT|Option not found|Unrecognized option|Unknown decoder|Decoder \S+ not found/i;
 
@@ -70,6 +79,7 @@ export interface HeifTranscodeRequest {
   inputPath: string;
   outputPath: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface PrepareHeifImageInputsOptions {
@@ -80,7 +90,9 @@ export interface PrepareHeifImageInputsOptions {
   cacheDir?: string;
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
+  signal?: AbortSignal;
   transcode?: (input: HeifTranscodeRequest) => Promise<void>;
+  allowOutsideFiles?: boolean;
   /** Leaves an image whose conversion failed as authored and reports it, instead of throwing. */
   onFailure?: (error: HeifImageConversionError | HeifToolUnavailableError) => void;
 }
@@ -195,6 +207,9 @@ export async function convertHeifToJpeg(request: HeifTranscodeRequest): Promise<
       "-hide_banner",
       "-loglevel",
       "error",
+      "-timelimit",
+      String(FFMPEG_SELF_CPU_SECONDS_CAP),
+      ...urlInputArgs(request.inputPath),
       "-i",
       request.inputPath,
       ...mapArgs,
@@ -202,14 +217,17 @@ export async function convertHeifToJpeg(request: HeifTranscodeRequest): Promise<
       "1",
       "-q:v",
       "2",
+      "-fs",
+      String(FFMPEG_SELF_OUTPUT_BYTES_CAP),
       "-f",
       "mjpeg",
       "-y",
       request.outputPath,
     ],
-    { timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS },
+    { timeout: request.timeoutMs ?? DEFAULT_TIMEOUT_MS, signal: request.signal },
   );
   if (!result.success) {
+    if (request.signal?.aborted) throw abortError();
     throw (
       result.error ?? new Error(`ffmpeg exited ${result.exitCode}: ${result.stderr.slice(-300)}`)
     );
@@ -267,7 +285,7 @@ async function ensurePreparedJpeg(
   mkdirSync(dirname(outputPath), { recursive: true });
 
   if (!isUsableFile(cachePath)) {
-    const tmpPath = `${cachePath}.tmp-${process.pid}-${Date.now()}`;
+    const tmpPath = `${cachePath}.tmp-${process.pid}-${randomUUID()}`;
     const inlinePath = `${tmpPath}.heic`;
     const inputPath = source.path ?? inlinePath;
     try {
@@ -276,8 +294,12 @@ async function ensurePreparedJpeg(
         inputPath,
         outputPath: tmpPath,
         timeoutMs: options.timeoutMs,
+        signal: options.signal,
       });
       if (!isUsableFile(tmpPath)) throw new Error("conversion produced an empty file");
+      if (statSync(tmpPath).size >= FFMPEG_SELF_OUTPUT_BYTES_CAP) {
+        throw new Error("conversion reached its output size limit");
+      }
       renameWithRetry(tmpPath, cachePath);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

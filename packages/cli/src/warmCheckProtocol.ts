@@ -5,9 +5,23 @@ import { join } from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { hyperframesOwnerArgs, withoutHyperframesOwner } from "@hyperframes/core/browser-marker";
 
-export const WARM_IDLE_MS = 5 * 60_000;
+const WARM_IDLE_MS = 5 * 60_000;
 export const HANDSHAKE_TIMEOUT_MS = 2_000;
+
+export const warmServerArgs = (
+  checkArgs: readonly string[],
+  source: NodeJS.ProcessEnv,
+): string[] => [String(WARM_IDLE_MS), ...hyperframesOwnerArgs(source), ...checkArgs];
+
+export function parseWarmServerArgs(argv: readonly string[]): {
+  idleMs: number;
+  checkArgs: string[];
+} {
+  const [idleMs = "0", ...checkArgs] = withoutHyperframesOwner(argv);
+  return { idleMs: Number(idleMs), checkArgs };
+}
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 export const Frame = {

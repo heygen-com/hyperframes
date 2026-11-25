@@ -195,6 +195,33 @@ describe("WebAudioTransport", () => {
       expect([transport.routesElement(gone), transport.routesElement(kept)]).toEqual([false, true]);
     });
 
+    it("keeps a routed element silent once a decoded buffer plays in its place", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      node.connect.mockClear();
+      node.disconnect.mockClear();
+
+      transport.releaseRouted(mockEl);
+
+      expect(node.disconnect).toHaveBeenCalled();
+      expect(node.connect).not.toHaveBeenCalled();
+    });
+
+    it("sounds a handed-over element through the output again once playback stops", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.releaseRouted(mockEl);
+      node.connect.mockClear();
+
+      transport.stopAll();
+
+      expect(node.connect).toHaveBeenCalledWith(mock.ctx.destination);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 
@@ -513,6 +540,31 @@ describe("WebAudioTransport", () => {
       await transport.schedulePlayback(mockEl, mockBuffer, 10, 1.5, () => 2, 1, gen);
 
       expect(mock.startFn).toHaveBeenCalledWith(108, 1.5);
+    });
+
+    // fails without the fix: the buffer played a looped clip's source once, from past its end.
+    it("loops a looping element's buffer over [mediaStart, end], from the pass the playhead is in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true, duration: 10 } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // 20 s into a clip whose source loops 2..10 s: two passes and 4 s in, so 6 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 10 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 6, 10);
+    });
+
+    it("loops at the element's length, which media sync wraps at, when the decoded buffer runs longer", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true, duration: 9.5 } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // Passes of 7.5 s (2..9.5): 20 s in is two passes and 5 s, so 7 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 9.5 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 7, 10);
     });
 
     it("starts clips at exact composition start time immediately", async () => {
@@ -1767,6 +1819,55 @@ describe("WebAudioTransport", () => {
     });
   });
 
+  describe("decode budget", () => {
+    const audio = (src: string, duration: number) =>
+      ({
+        tagName: "AUDIO",
+        getAttribute: (name: string) => (name === "src" ? src : null),
+        currentSrc: "",
+        duration,
+      }) as unknown as HTMLMediaElement;
+    const transport = () => {
+      const t = new WebAudioTransport();
+      (t as unknown as { _ctx: unknown })._ctx = { sampleRate: 48000, decodeAudioData: vi.fn() };
+      return t;
+    };
+
+    it("takes a ten minute source and refuses a one hour one", () => {
+      const t = transport();
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 3600))).toBe(false);
+    });
+
+    it("counts a source that is decoding against the next one", async () => {
+      const t = transport();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise(() => {})),
+      );
+      void t.decodeAudioElement(audio("a.mp4", 600));
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 100))).toBe(false);
+      expect(t.fitsDecodeBudget(audio("c.mp4", 10))).toBe(true);
+      vi.unstubAllGlobals();
+    });
+
+    it("leaves a clip that has not loaded to its source", () => {
+      expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
+    });
+
+    it("never fetches an hour-long source, too long to decode in the page, on a path that skips the budget", async () => {
+      vi.stubGlobal("mediaHeaderSeconds", () => 3600);
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const t = transport();
+      await expect(t.decodeAudioElement(audio("long.mp4", Number.NaN))).resolves.toBeNull();
+      await expect(t.decodeAudioElement(audio("hour.mp4", 3600))).resolves.toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+  });
+
   describe("decodeAudioElement retry policy (late-asset self-heal)", () => {
     function transportWithDecode(decodeImpl: () => Promise<AudioBuffer>) {
       const transport = new WebAudioTransport();
@@ -1800,6 +1901,22 @@ describe("WebAudioTransport", () => {
       const second = await transport.decodeAudioElement(el("tts.wav"));
       expect(second).not.toBeNull(); // self-heals once the asset is available
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      vi.unstubAllGlobals();
+    });
+
+    it("decodes a file once for clips that open at different in-points of it", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      await Promise.all([
+        transport.decodeAudioElement(el("take.wav#t=10")),
+        transport.decodeAudioElement(el("take.wav#t=90")),
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]![0]).toBe(key("take.wav"));
       vi.unstubAllGlobals();
     });
 

@@ -39,8 +39,8 @@ export default defineCommand({
   },
   args: {
     video: videoArg,
-    start: { type: "string", description: "Window start in seconds (default 0)" },
-    end: { type: "string", description: "Window end in seconds (default: the end)" },
+    start: { type: "string", alias: ["from"], description: "Window start in seconds (default 0)" },
+    end: { type: "string", alias: ["to"], description: "Window end in seconds (default: the end)" },
     roi: {
       ...roiArg,
       description: "Region holding the whole move, overshoot included, and nothing else that moves",

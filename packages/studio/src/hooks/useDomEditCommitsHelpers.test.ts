@@ -82,6 +82,22 @@ describe("assignGsapTargetAutoIdIfNeeded", () => {
     expect(showToast).toHaveBeenCalledWith("Couldn't save edit: target not found", "error");
   });
 
+  it("names the file and why when the file is read-only", async () => {
+    stubPatch(
+      new Response(JSON.stringify({ error: "permission denied", why: "permission" }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const { result, showToast } = assign();
+
+    await expect(result).resolves.toBeNull();
+    expect(showToast).toHaveBeenCalledWith(
+      "index.html can't be changed: it is read-only or protected. Check its permissions, then try again.",
+      "error",
+    );
+  });
+
   it("is null with a plain toast when the refusal has no JSON reason", async () => {
     stubPatch(new Response("boom", { status: 500, headers: { "content-type": "text/plain" } }));
     const { result, showToast } = assign();

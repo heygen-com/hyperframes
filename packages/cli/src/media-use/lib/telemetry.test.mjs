@@ -59,6 +59,25 @@ test("optedOut respects DO_NOT_TRACK / HYPERFRAMES_NO_TELEMETRY / CI", () => {
   }
 });
 
+// fails without the fix: the media-use scripts took only "1", so DO_NOT_TRACK=true silenced the CLI and not them.
+for (const [name, value] of [
+  ["DO_NOT_TRACK", "true"],
+  ["DO_NOT_TRACK", "yes"],
+  ["DO_NOT_TRACK", " ON "],
+  ["HYPERFRAMES_NO_TELEMETRY", "TRUE"],
+]) {
+  test(`optedOut respects ${name}=${JSON.stringify(value)}, as the CLI does`, () => {
+    const saved = { ...process.env };
+    try {
+      withoutTelemetryOptOut();
+      process.env[name] = value;
+      assert.equal(optedOut(), true);
+    } finally {
+      restoreEnv(saved);
+    }
+  });
+}
+
 test("optedOut honors telemetryEnabled: false from the shared config", () => {
   const savedEnv = { ...process.env };
   const { root, home } = sandbox();
@@ -73,6 +92,40 @@ test("optedOut honors telemetryEnabled: false from the shared config", () => {
     assert.equal(optedOut(), false, "telemetryEnabled: true allows tracking");
     writeFileSync(configPath, "{not json");
     assert.equal(optedOut(), false, "unreadable config: tracking allowed");
+  } finally {
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the shared config is read from HYPERFRAMES_CONFIG_DIR when it is set", () => {
+  const savedEnv = { ...process.env };
+  const { root } = sandbox();
+  try {
+    withoutTelemetryOptOut();
+    const configDir = join(root, "config");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.json"), JSON.stringify({ telemetryEnabled: false }));
+    process.env.HYPERFRAMES_CONFIG_DIR = configDir;
+    assert.equal(optedOut(), true);
+  } finally {
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an opt-out in ~/.hyperframes holds until HYPERFRAMES_CONFIG_DIR has its own config", () => {
+  const savedEnv = { ...process.env };
+  const { root, home } = sandbox();
+  try {
+    withoutTelemetryOptOut();
+    mkdirSync(join(home, ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(home, ".hyperframes", "config.json"),
+      JSON.stringify({ telemetryEnabled: false }),
+    );
+    process.env.HYPERFRAMES_CONFIG_DIR = join(root, "moved");
+    assert.equal(optedOut(), true);
   } finally {
     restoreEnv(savedEnv);
     rmSync(root, { recursive: true, force: true });

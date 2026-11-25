@@ -13,7 +13,11 @@ vi.mock("../fft", async (importOriginal) => {
 
 import { signalProvider, type AudioSignal } from "../audioAnalysis";
 import { STEADY_BEAT_CONFIDENCE, rhythm } from "../audioRhythm";
-import { analyzeMusicFromBuffer, analyzeMusicFromSignal } from "./beatDetection";
+import {
+  analyzeMusicFromBuffer,
+  analyzeMusicFromSignal,
+  analyzeMusicFromUrl,
+} from "./beatDetection";
 
 const RATE = 22_050;
 
@@ -220,5 +224,25 @@ describe("analyzeMusicFromBuffer", () => {
     expect(nearBpm(analysis.bpm, 120)).toBe(true);
     expect(recall(analysis.beatTimes, beats.slice(1, -1))).toBeGreaterThan(0.95);
     expect(Math.min(...analysis.beatStrengths)).toBeGreaterThan(0.5);
+  });
+});
+
+describe("analyzeMusicFromUrl", () => {
+  it("never fetches an hour-long song, too long to decode in the page, and closes its context", async () => {
+    const close = vi.fn(async () => {});
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        close = close;
+        decodeAudioData = vi.fn();
+      },
+    );
+    vi.stubGlobal("mediaHeaderSeconds", () => 3600);
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(analyzeMusicFromUrl("/song.mp3")).rejects.toMatchObject({ name: "AudioTooLong" });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

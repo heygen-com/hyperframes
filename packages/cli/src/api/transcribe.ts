@@ -1,4 +1,5 @@
-import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, rmSync, statSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { transcribeWithHeygen } from "../heygen/transcribe.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -34,6 +35,7 @@ import {
   transcribe as transcribeWithWhisper,
   type TranscribeProgress,
 } from "../whisper/transcribe.js";
+import { PLAYLIST_LEAVES_FOLDER, playlistLeavingItsFolder } from "../utils/playlistInput.js";
 
 // Smallest accepted whisper timeout. Below it the whisper spawn has no realistic chance of
 // finishing even on the fastest hardware for the shortest clip.
@@ -177,6 +179,9 @@ export async function runTranscribe(options: TranscribeRequest): Promise<Transcr
   if (!existsSync(inputPath)) {
     throw new TranscribeError("input_not_found", `File not found: ${options.input}`);
   }
+  if (await playlistLeavingItsFolder([inputPath])) {
+    throw new TranscribeError("failed", `${options.input} ${PLAYLIST_LEAVES_FOLDER}`);
+  }
 
   // Default to the directory containing the input file so transcript.json
   // lands next to narration.wav regardless of where the command is run from.
@@ -279,7 +284,7 @@ function importTranscript(inputPath: string, dir: string): TranscribeResult {
   const { words, format } = readTranscript(inputPath);
 
   const transcriptPath = join(dir, TRANSCRIPT_FILE);
-  writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
+  replaceFileAtomically(transcriptPath, JSON.stringify(words, null, 2));
   patchCaptionHtml(dir, words);
   return { kind: "imported", format, wordCount: words.length, transcriptPath };
 }
@@ -318,7 +323,7 @@ function writeCaptionSidecar(
   const preGrouped = preserveCues || phraseLevelSource;
   const content =
     to === "srt" ? formatSrt(words, { preGrouped }) : formatVtt(words, { preGrouped });
-  writeFileSync(outPath, content);
+  replaceFileAtomically(outPath, content);
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +392,7 @@ function finishTranscript(
 ): TranscribeResult {
   const { words } = loadTranscript(result.transcriptPath);
 
-  writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
+  replaceFileAtomically(result.transcriptPath, JSON.stringify(words, null, 2));
   patchCaptionHtml(dir, words);
   if (sidecar) {
     try {
@@ -423,7 +428,6 @@ async function transcribeOnHeygen(
   try {
     const result = await transcribeWithHeygen(inputPath, join(dir, TRANSCRIPT_FILE), {
       diarize: options.speakers,
-      projectDir: dir,
       onStatus: options.onStatus,
     });
     return finishTranscript(result, "heygen", dir, sidecar);

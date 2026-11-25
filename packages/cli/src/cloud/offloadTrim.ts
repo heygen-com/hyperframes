@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   readAuthoredDurationSeconds,
   readMediaOffsetSeconds,

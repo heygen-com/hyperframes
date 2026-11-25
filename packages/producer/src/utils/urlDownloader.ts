@@ -4,6 +4,7 @@
  */
 export {
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,

@@ -1,11 +1,19 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   collectSubCompositionDomChildren,
   collectSubCompositionHostState,
+  hydrateTimelineFromPreview,
+  reseekPreviewAtTime,
 } from "./timelineSyncHydration";
-import type { ClipManifestClip } from "../lib/playbackTypes";
+import type { ClipManifestClip, PlaybackAdapter } from "../lib/playbackTypes";
+
+const { sealedFrames } = vi.hoisted(() => ({ sealedFrames: new WeakSet<HTMLIFrameElement>() }));
+vi.mock("../lib/previewChannel", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/previewChannel")>()),
+  previewFrameOpaque: (iframe: HTMLIFrameElement) => sealedFrames.has(iframe),
+}));
 
 const clip = (over: Partial<ClipManifestClip>): ClipManifestClip => ({
   id: "x",
@@ -136,5 +144,48 @@ describe("collectSubCompositionHostState", () => {
     const state = collectSubCompositionHostState(doc, [clip({ id: "scene-2-slot" })]);
 
     expect(state.size).toBe(0);
+  });
+});
+
+describe("hydrateTimelineFromPreview", () => {
+  it("attaches the shortcut listeners to a frame whose document it cannot read", () => {
+    const frame = {};
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentWindow", { value: frame });
+    Object.defineProperty(iframe, "contentDocument", { value: null });
+    const attachIframeShortcutListeners = vi.fn();
+    hydrateTimelineFromPreview({
+      iframe,
+      adapter: { getDuration: () => 1 } as unknown as PlaybackAdapter,
+      processTimelineMessage: vi.fn(),
+      readSealedTimeline: vi.fn(),
+      enrichMissingCompositions: vi.fn(),
+      applyPreviewAudioState: vi.fn(),
+      attachIframeShortcutListeners,
+      syncTimelineElements: vi.fn(),
+    });
+    expect(attachIframeShortcutListeners).toHaveBeenCalledOnce();
+  });
+});
+
+describe("reseekPreviewAtTime", () => {
+  // Each seek message is its own task in a sealed frame, so a guard seek paints: at 1 s it showed frame 29.
+  it.each([0, 0.5, 1, 3.5])("seeks a sealed frame once, to %s", (t) => {
+    const iframe = document.createElement("iframe");
+    sealedFrames.add(iframe);
+    const seek = vi.fn();
+    reseekPreviewAtTime({ seek }, t, iframe);
+    expect(seek.mock.calls).toEqual([[t]]);
+  });
+
+  it("seeks a frame Studio can script to a guard time first, so an unchanged time still renders", () => {
+    const seek = vi.fn();
+    reseekPreviewAtTime({ seek }, 1, document.createElement("iframe"));
+    expect(seek.mock.calls).toEqual([[0.999], [1]]);
   });
 });

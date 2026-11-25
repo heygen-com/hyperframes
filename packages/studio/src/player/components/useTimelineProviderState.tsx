@@ -6,7 +6,7 @@ import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
-import { useTimelineClipDrag } from "./useTimelineClipDrag";
+import { useTimelineClipDrag, type ClipDropOptions } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
 import { buildTimelineShellMeta } from "./timelineShellMeta";
 import { useTimelineDragPreviewState } from "./useTimelineDragPreviewState";
@@ -80,7 +80,9 @@ export function useTimelineProviderState({
   sessionEpoch: sessionEpochProp,
   previewIframeRef,
   onZIndexReorder,
-}: TimelineProps = {}): TimelineContextValue {
+  insertOnClipDrop,
+  onDropRefused,
+}: TimelineProps & ClipDropOptions = {}): TimelineContextValue {
   const {
     onMoveElement,
     onMoveElements,
@@ -138,7 +140,7 @@ export function useTimelineProviderState({
   const activeTool = usePlayerStore((s) => s.activeTool);
   const [hoveredClip, setHoveredClip] = useState<string | null>(null);
   const isDragging = useRef(false);
-  const shiftHeld = useTimelineShiftModifier();
+  useTimelineShiftModifier(containerRef);
   const [showPopover, setShowPopover] = useState(false);
   const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
   const [clipContextMenu, setClipContextMenu] = useState<ClipContextMenuState | null>(null);
@@ -229,6 +231,8 @@ export function useTimelineProviderState({
     onStackingPatches: zSyncEnabled ? applyStackingPatches : undefined,
     refreshAfterLaneMove,
     sessionEpoch,
+    insertOnClipDrop,
+    onDropRefused,
   });
   const assetDrop = useTimelineAssetDrop({
     scrollRef,
@@ -564,7 +568,6 @@ export function useTimelineProviderState({
     focusProps: timelineFocus.timelineFocusProps,
     elementCount: timelineElements.length,
     activeTool,
-    shiftHeld,
     labelMode,
     contentOrigin,
     zoomMode,

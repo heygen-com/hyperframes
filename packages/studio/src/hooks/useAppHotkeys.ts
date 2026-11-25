@@ -15,6 +15,8 @@ import {
   type UseEditHistoryActionsOptions,
 } from "./useEditHistoryActions";
 import { useStableHandlers } from "./useStableHandlers";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { keepKeyboardOutOfSealedFrame } from "../player/lib/sealedFrameKeyboard";
 
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   try {
@@ -247,6 +249,10 @@ export function useAppHotkeys({
     (iframe: HTMLIFrameElement | null) => {
       previewHistoryCleanupRef.current?.();
       previewHistoryCleanupRef.current = null;
+      if (iframe && previewFrameOpaque(iframe)) {
+        previewHistoryCleanupRef.current = keepKeyboardOutOfSealedFrame(iframe);
+        return;
+      }
       const win = iframeContentWindow(iframe);
       if (!win) return;
       const appHandler = handleAppKeyDown as EventListener;

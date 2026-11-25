@@ -2,10 +2,14 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
-import { isHyperframesProject } from "@hyperframes/core";
-import { addCatchUpNote, markSeen, readSeen, seenPath } from "./appHistory.js";
+import { isHyperframesProject, terminalText } from "@hyperframes/core";
+import { addCatchUpNote, noteHandoff, seenPath } from "./appHistory.js";
 import { createProjectConfig } from "./projectConfig.js";
-import { writeRecord } from "./projectRecords.js";
+import { isCI } from "./attendedTerminal.js";
+import { isAgentDriven } from "../telemetry/agent_runtime.js";
+import { readRecord, removeRecord, writeRecord } from "./projectRecords.js";
+import { shellArg } from "./shellArg.js";
+import { projectEnvDir } from "./dotEnv.js";
 
 // The HyperFrames desktop app, then builds named in HYPERFRAMES_DESKTOP_BUNDLE_IDS / _APP_NAMES (comma-separated).
 const list = (name: string): string[] =>
@@ -75,10 +79,19 @@ export type DesktopOpenResult =
 const openWithBundle = (bundleId: string, dir: string): boolean =>
   spawnSync("open", ["-b", bundleId, dir], { stdio: "ignore" }).status === 0;
 
-/** Single-instance app: a running copy is forwarded the folder. Only a refused spawn counts as failed. */
+const withoutProjectEnv = (): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(process.env).filter(([name]) => !projectEnvDir(name)));
+
+/** Starts in home, not the caller's folder; a running copy gets the folder. Only a refused spawn counts as failed. */
 function launchApp(executable: string, dir: string): boolean {
   try {
-    const child = spawn(executable, [dir], { detached: true, stdio: "ignore", windowsHide: false });
+    const child = spawn(executable, [dir], {
+      cwd: homedir(),
+      env: withoutProjectEnv(),
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    });
     child.on("error", () => {});
     child.unref();
     return true;
@@ -146,10 +159,9 @@ function desktopApps({
 /** The app reads the hand-off at its first chat send, so a project it cannot be written to just opens without it. */
 function leaveHandoff(dir: string, session: AgentSession | null): AgentSession | null {
   if (!session || !writeRecord(dir, "agent-handoff.json", JSON.stringify(session))) return null;
-  const now = Date.now();
-  if (!readSeen(dir).at && !markSeen(dir, { at: now, checked: now }))
+  if (!noteHandoff(dir))
     console.warn(
-      `◇  Couldn't note the hand-off in ${seenPath(dir)}, so \`catch-up\` won't see it.`,
+      `◇  Couldn't note the hand-off in ${terminalText(seenPath(dir))}, so \`catch-up\` won't see it.`,
     );
   addCatchUpNote(dir);
   return session;
@@ -161,7 +173,7 @@ function markBareIndexAsProject(dir: string): void {
       createProjectConfig(dir);
   } catch (error) {
     console.warn(
-      `◇  Couldn't add hyperframes.json to ${dir}, so the app may not open it: ${error}`,
+      `◇  Couldn't add hyperframes.json to ${terminalText(dir)}, so the app may not open it: ${terminalText(String(error))}`,
     );
   }
 }
@@ -178,10 +190,12 @@ export function openInDesktop(
     installed = () => desktopInstalled({ platform }),
     env = process.env,
     cta,
+    doc,
     src = "cli",
     ...where
   }: AppLookup & {
     cta?: string;
+    doc?: "storyboard";
     src?: DownloadSource;
     ready?: boolean;
     open?: (bundleId: string, dir: string) => boolean;
@@ -196,32 +210,74 @@ export function openInDesktop(
     reason,
     downloadUrl: desktopDownloadUrl(platform, src) ?? STUDIO_PAGE,
   });
-  const opened = (app: string): DesktopOpenResult => {
-    if (cta) writeRecord(dir, DESKTOP_CTA_RECORD, JSON.stringify({ cta, at: Date.now() }));
-    return {
-      opened: true,
-      app,
-      handedOver: leaveHandoff(dir, agentSession(env)),
-    };
+  const opened = (app: string): DesktopOpenResult => ({
+    opened: true,
+    app,
+    handedOver: leaveHandoff(dir, agentSession(env)),
+  });
+  const dispatch = (): DesktopOpenResult => {
+    if (platform === "darwin") {
+      const bundleId = bundleIds().find((id) => open(id, dir));
+      if (!bundleId) return notOpened(installed() ? "open-failed" : "not-installed");
+      return opened(bundleId === bundleIds()[0] ? DEFAULT_APP : bundleId);
+    }
+    const apps = desktopApps({ platform, env, ...where });
+    if (!apps) return notOpened("unsupported-platform");
+    if (!apps.length) return notOpened("not-installed");
+    const app = apps.find(({ executable }) => launch(executable, dir));
+    return app ? opened(app.name) : notOpened("open-failed");
   };
   if (!ready) return notOpened("handoff-unavailable");
   markBareIndexAsProject(dir);
-  if (platform === "darwin") {
-    const bundleId = bundleIds().find((id) => open(id, dir));
-    if (!bundleId) return notOpened(installed() ? "open-failed" : "not-installed");
-    return opened(bundleId === bundleIds()[0] ? DEFAULT_APP : bundleId);
-  }
-  const apps = desktopApps({ platform, env, ...where });
-  if (!apps) return notOpened("unsupported-platform");
-  if (!apps.length) return notOpened("not-installed");
-  const app = apps.find(({ executable }) => launch(executable, dir));
-  return app ? opened(app.name) : notOpened("open-failed");
+  const undoIntent = leaveIntent(dir, cta, doc);
+  const result = dispatch();
+  if (!result.opened) undoIntent();
+  return result;
+}
+
+/** Written before the folder is sent, since a running app reads it on arrival; the undo puts back what was there. */
+function leaveIntent(dir: string, cta?: string, doc?: "storyboard"): () => void {
+  const before = readRecord(dir, DESKTOP_CTA_RECORD, 4096);
+  const earlier = ((): { doc?: unknown } | null => {
+    try {
+      return JSON.parse(before);
+    } catch {
+      return null;
+    }
+  })();
+  if (cta || doc)
+    writeRecord(dir, DESKTOP_CTA_RECORD, JSON.stringify({ cta, at: Date.now(), doc }));
+  else if (earlier?.doc !== undefined)
+    writeRecord(dir, DESKTOP_CTA_RECORD, JSON.stringify({ ...earlier, doc: undefined }));
+  else return () => {};
+  return () => {
+    if (!before) removeRecord(dir, DESKTOP_CTA_RECORD);
+    else writeRecord(dir, DESKTOP_CTA_RECORD, before);
+  };
+}
+
+function shownDir(dir: string, cwd: string, platform: NodeJS.Platform): string | null {
+  return shellArg(relative(cwd, dir) || ".", platform);
 }
 
 /** The `hyperframes open` line for a project, relative to where the person is. */
-export function openCommandFor(dir: string, cwd = process.cwd()): string {
-  const shown = relative(cwd, dir) || ".";
-  return `hyperframes open ${/\s/.test(shown) ? JSON.stringify(shown) : shown}`;
+export function openCommandFor(
+  dir: string,
+  cwd = process.cwd(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const shown = shownDir(dir, cwd, platform);
+  return shown === null ? "hyperframes open from the project folder" : `hyperframes open ${shown}`;
+}
+
+export function previewStopCommandFor(
+  dir: string,
+  port: number,
+  cwd = process.cwd(),
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const shown = shownDir(dir, cwd, platform);
+  return shown === null ? null : `hyperframes preview ${shown} --stop --port ${port}`;
 }
 
 /** Spotlight's copies of an app with this bundle id; an updater's hidden leftover (`.X.app.installing-…`) is none. */
@@ -247,7 +303,12 @@ export function insideHostApp(env: NodeJS.ProcessEnv = process.env): boolean {
   return Boolean(env.HYPERFRAMES_DESKTOP_PROJECT);
 }
 
-/** The app line render and preview print; null inside the app, or with nothing here to open or download. */
+function someoneToTell(env: NodeJS.ProcessEnv, tty: boolean): boolean {
+  if (isCI(env)) return false;
+  return tty || env["HYPERFRAMES_AGENT"] === "1" || isAgentDriven(env);
+}
+
+/** The app line render and preview print (skills/hyperframes/SKILL.md), saying how a preview stops; null inside the app, under CI or a pipe, or with nothing to open or download. */
 export function desktopHint(
   dir: string,
   {
@@ -255,16 +316,28 @@ export function desktopHint(
     ready = HANDOFF_READY,
     installed,
     platform = process.platform,
+    tty = process.stdout.isTTY === true,
+    preview,
   }: {
     env?: NodeJS.ProcessEnv;
     ready?: boolean;
     installed?: boolean;
     platform?: NodeJS.Platform;
+    tty?: boolean;
+    preview?: "background" | "foreground";
   } = {},
 ): string | null {
-  if (insideHostApp(env)) return null;
-  if (ready && (installed ?? desktopInstalled({ platform, env })))
-    return `Keep editing by chatting with Framey in the desktop app: ${openCommandFor(dir)}`;
+  if (insideHostApp(env) || !someoneToTell(env, tty)) return null;
+  if (ready && (installed ?? desktopInstalled({ platform, env }))) {
+    const open = openCommandFor(dir, process.cwd(), platform);
+    const how =
+      preview === "background"
+        ? `${open} (this stops the background preview)`
+        : preview === "foreground"
+          ? `stop this preview, then run ${open}`
+          : open;
+    return `Keep editing by chatting with Framey in the desktop app: ${how}`;
+  }
   const url = desktopDownloadUrl(platform);
   return url ? downloadHint(url) : null;
 }

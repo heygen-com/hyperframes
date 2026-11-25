@@ -6,7 +6,14 @@ import { writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { mintElementHandle } from "./handles";
 import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgentTools";
 import type { ModelContext, ModelContextRegisterToolOptions, ModelContextTool } from "./types";
-import { lookSnapshot, previewDoc, selectionFor, studioAgentToolsDeps } from "./webmcpTestUtils";
+import {
+  documentPreview,
+  liveTarget,
+  lookSnapshot,
+  previewDoc,
+  selectionFor,
+  studioAgentToolsDeps,
+} from "./webmcpTestUtils";
 
 const trackEvent = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/client", () => ({ trackEvent }));
@@ -26,7 +33,7 @@ async function executeRegistered<T>(
   return (await tool.execute(input, { signal })) as T;
 }
 
-/** The call shape `@mcp-b/global` uses: the input and nothing else. */
+/** The call shape `@mcp-b/global` used before 6.0: the input and nothing else. */
 async function executeRegisteredWithoutOptions<T>(
   registered: ModelContextTool[],
   name: string,
@@ -53,8 +60,8 @@ function mountedTargetDeps(overrides: Partial<StudioAgentToolsDeps> = {}) {
     agentHandle,
     currentSelection: selectionFor(human),
     deps: studioAgentToolsDeps({
-      getPreviewDocument: () => doc,
-      buildSelection: async (element) => selectionFor(element),
+      preview: documentPreview(() => doc),
+      buildSelection: async (element) => selectionFor(liveTarget(element)),
       ...overrides,
     }),
   };
@@ -338,7 +345,8 @@ describe("useStudioAgentTools", () => {
     const { registered } = installModelContext();
     const setText = vi.fn();
     const targeted = mountedTargetDeps({
-      buildSelection: async (element) => selectionFor(element, { isInsideLockedComposition: true }),
+      buildSelection: async (element) =>
+        selectionFor(liveTarget(element), { isInsideLockedComposition: true }),
     });
     await act(async () => mountTools({ ...targeted.deps, setText }));
 
@@ -362,7 +370,7 @@ describe("useStudioAgentTools", () => {
   });
 
   it("runs every write tool when execute is called with the input alone", async () => {
-    // `@mcp-b/global` invokes `execute(input)` with no options object, both from
+    // `@mcp-b/global` before 6.0 invoked `execute(input)` with no options object, both from
     // its in-page server and from the descriptor it mirrors into a native
     // `document.modelContext`. Handlers that destructured `{ signal }` threw a
     // TypeError before running, which `runToolBody` reports as `internal`.
@@ -424,7 +432,7 @@ describe("useStudioAgentTools", () => {
           },
         }),
         addAnimation: async () => true,
-        readBox: () => ({ ...box }),
+        readNow: async () => ({ box: { ...box }, text: null }),
         resizeTo: async (_selection, next) => {
           Object.assign(box, next);
           return {

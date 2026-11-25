@@ -1,5 +1,5 @@
 import { findStartTags } from "@hyperframes/core/compiler/html-document";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { STUDIO_PREVIEW_LAZY_ATTR } from "@hyperframes/core/studio-preview-mark";
 
 // A start that is not a plain number (a reference) counts as unknown and keeps the image eager.
@@ -15,9 +15,10 @@ const hasLoading = (img: Element) =>
 
 export function lazyPreviewImages(html: string): string {
   if (!/<!doctype|<html[\s>]/i.test(html)) return html;
-  const images = [...parseHTML(html).document.querySelectorAll("img")];
   // The scanner skips comments and raw text, so its `<img` offsets line up with the DOM's images.
   const tags = findStartTags(html, "img");
+  if (tags.length === 0) return html;
+  const images = [...parseHTML(html).document.querySelectorAll("img")];
   if (tags.length !== images.length) return html;
   const parts: string[] = [];
   let from = 0;

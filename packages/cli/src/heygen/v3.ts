@@ -10,7 +10,12 @@ import { resolveCredential } from "../auth/resolver.js";
 import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/client.js";
 import { Fix } from "../measure/media.js";
-import { pageUrl } from "./plan.js";
+import { appendRecord } from "../utils/projectRecords.js";
+import { creditLimit } from "../media-use/lib/credit-limit.mjs";
+import { goneNote, ledgerScope, noteOwn, spentIn } from "./jobLedger.js";
+import { cliCheckoutLink, pageUrl } from "./plan.js";
+
+const MEDIA_USE_SKILL = "media-use";
 
 export interface Job {
   id: string;
@@ -23,6 +28,24 @@ export interface Job {
 const RUNNING = new Set(["pending", "processing", "queued", "running", "waiting", "in_progress"]);
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+const VENDOR_HEADROOM = 1.1;
+
+export const chargedCredits = (job: Job): number | undefined =>
+  isRecord(job.charged) &&
+  job.charged.pool === "hyperframes_credits" &&
+  typeof job.charged.amount === "number"
+    ? job.charged.amount
+    : undefined;
+
+export function limitCheck(credits: number, vendorPriced = false) {
+  const checked = vendorPriced ? Math.ceil(credits * VENDOR_HEADROOM - 1e-9) : credits;
+  return {
+    checked,
+    about: vendorPriced
+      ? `about ${credits} credits, ${checked} with 10% headroom because it is charged on the vendor's bill`
+      : `about ${credits} credits`,
+  };
+}
 
 /** The same request always gets the same key: a re-run is a resume, never a second charge. */
 export function idempotencyKey(route: string, parts: readonly (string | Buffer)[]): string {
@@ -66,23 +89,24 @@ async function jobSender(): Promise<Sender> {
   return { auth: buildAuthHeaders(credential), scope };
 }
 
-function failedKeys(scope: string): Set<string> {
-  const file = failedKeysFile();
+function scopedKeys(file: string, scope: string): Set<string> {
   const lines = existsSync(file) ? readFileSync(file, "utf8").split("\n") : [];
   return new Set(
     lines.filter((l) => l.startsWith(`${scope} `)).map((l) => l.slice(scope.length + 1)),
   );
 }
 
-function markFailed(key: string, scope: string | null): void {
+function noteKey(file: string, key: string, scope: string | null): void {
   if (!scope) return;
-  mkdirSync(configDir(), { recursive: true });
-  appendFileSync(failedKeysFile(), `${scope} ${key}\n`);
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  appendFileSync(file, `${scope} ${key}\n`, { mode: 0o600 });
 }
+
+const markFailed = (key: string, scope: string | null) => noteKey(failedKeysFile(), key, scope);
 
 /** The key to send: `key` itself, or past every key whose job failed or was refused, so a retry is a new job. */
 function liveKey(key: string, scope: string | null): string {
-  const failed = scope ? failedKeys(scope) : new Set<string>();
+  const failed = scope ? scopedKeys(failedKeysFile(), scope) : new Set<string>();
   let sent = key;
   for (let n = 1; failed.has(sent); n++) sent = `${key}-${n}`;
   return sent;
@@ -91,26 +115,47 @@ function liveKey(key: string, scope: string | null): string {
 /** A refused call says what to do: sign in, subscribe, add credits, or change the request. `estimate` is the
  *  caller's own price for the call (what `--plan` prints), named when HeyGen does not say what the step needs. */
 // fallow-ignore-next-line complexity
-function refusal(status: number, body: unknown, estimate?: number): Refused {
+async function refusal(status: number, body: unknown, estimate?: number): Promise<Refused> {
   const err = isRecord(body) && isRecord(body.error) ? body.error : isRecord(body) ? body : {};
   const code = String(err.code ?? err.failure_code ?? "");
   const message = String(err.message ?? err.failure_message ?? "").slice(0, 300);
   const url = typeof err.url === "string" ? err.url : undefined;
+  const purchaseClosed = err.url === null;
   const given = Number(err.needed_credits) || undefined;
   const needed = given ?? (estimate || undefined);
   const needs = given ? `${given} in total` : needed ? `about ${needed} in total` : "more";
   const balance = err.balance === undefined ? "" : `, balance ${String(err.balance)}`;
   // The fix is the one line the agent relays as printed; the problem says how to wait for the person.
-  if (/hf_subscription_required/i.test(code))
+  if (/hf_subscription_required/i.test(code)) {
+    if (purchaseClosed)
+      return new Refused(
+        "this is a HyperFrames Pro feature, and a plan can't be purchased right now; nothing was charged",
+        "tell the person a plan can't be purchased right now, and give no link",
+      );
+    const link = url
+      ? cliCheckoutLink(url, MEDIA_USE_SKILL)
+      : await pageUrl("plans", { needed, skill: MEDIA_USE_SKILL });
     return new Refused(
-      `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe\`: it opens the page and waits`,
-      `Subscribe: ${url ?? pageUrl("plans", { needed })}`,
+      `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe --skill ${MEDIA_USE_SKILL}\`: it opens the page and waits`,
+      `Subscribe: ${link}`,
+      link,
     );
-  if (/hf_usage_exhausted/i.test(code))
+  }
+  if (/hf_usage_exhausted/i.test(code)) {
+    if (purchaseClosed)
+      return new Refused(
+        `out of HyperFrames credits (this step needs ${needs}${balance}), and credits can't be purchased right now; nothing was charged`,
+        "tell the person credits can't be purchased right now, and give no link",
+      );
+    const link = url
+      ? cliCheckoutLink(url, MEDIA_USE_SKILL)
+      : await pageUrl("credits", { needed, skill: MEDIA_USE_SKILL });
     return new Refused(
-      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing top-up${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
-      `Add credits: ${url ?? pageUrl("credits", { needed })}`,
+      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing add-credits${needed ? ` --needed ${needed}` : ""} --skill ${MEDIA_USE_SKILL}\`: it opens the page and waits`,
+      `Buy add-on credits: ${link}`,
+      link,
     );
+  }
   if (/api_key_required/i.test(code))
     return new Refused(
       "this HeyGen feature is not available with this sign-in yet; nothing was charged",
@@ -124,7 +169,7 @@ function refusal(status: number, body: unknown, estimate?: number): Refused {
   if (status === 402 || /insufficient|credit|usage_exhausted|quota/i.test(code))
     return new Refused(
       `HeyGen says there is not enough credit (${code || status})`,
-      "top up at https://app.heygen.com, or sign in with npx hyperframes auth login to use the plan's allowance",
+      "buy add-on credits at https://app.heygen.com/?utm_source=cli, or sign in with npx hyperframes auth login to use the plan's allowance",
     );
   if (/content_policy/i.test(code))
     return new Refused(
@@ -173,14 +218,14 @@ async function call(
       );
     if (err.status >= 500 || err.status < 300 || err.raw == null)
       throw new Fix(`HeyGen ${err.status} for ${route} with no readable answer`, resume);
-    const refused = refusal(err.status, err.raw, estimate);
+    const refused = await refusal(err.status, err.raw, estimate);
     refused.status = err.status;
     throw refused;
   }
   if (data == null) throw new Fix(`HeyGen answered ${route} with no readable answer`, resume);
   if (!isRecord(data))
     throw new Fix(`HeyGen answered ${route} with no job`, "run the same command again");
-  const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id;
+  const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id ?? data.lipsync_id;
   return {
     ...data,
     id: typeof id === "string" ? id : "",
@@ -195,14 +240,27 @@ export interface JobLog {
   what: string;
 }
 
-function log(entry: JobLog, record: Record<string, unknown>) {
+const JOB_LOG = "heygen-jobs.jsonl";
+
+function appendJobLog(projectDir: string, line: Record<string, unknown>): void {
+  if (
+    !appendRecord(
+      projectDir,
+      JOB_LOG,
+      `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`,
+    )
+  )
+    throw new Fix(
+      `${join(projectDir, ".hyperframes", JOB_LOG)} could not be added to; a link or anything but a plain file there, or in place of .hyperframes, is never written through`,
+      "remove that link or file and run the same command again",
+    );
+}
+
+function log(entry: JobLog, record: Record<string, unknown>, at: string | null) {
   if (!entry.projectDir) return;
-  const dir = join(entry.projectDir, ".hyperframes");
-  mkdirSync(dir, { recursive: true });
-  appendFileSync(
-    join(dir, "heygen-jobs.jsonl"),
-    `${JSON.stringify({ at: new Date().toISOString(), what: entry.what, ...record })}\n`,
-  );
+  appendJobLog(entry.projectDir, { what: entry.what, ...record });
+  if (typeof record.key === "string" && typeof record.credits === "number")
+    noteOwn(at, record.key, record.credits);
 }
 
 export interface RunOptions {
@@ -213,9 +271,44 @@ export interface RunOptions {
   log?: JobLog;
   /** What the call is priced at in credits, named in an out-of-credits refusal that does not say. */
   credits?: number;
+  vendorPriced?: boolean;
+}
+
+/** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits. A vendor-priced
+ *  image is checked and held at its estimate plus 10%, which its charge can pass, until HeyGen says what it charged.
+ *  A key resumes unchecked only if this account's ledger holds credits for it, else is priced as new. True when reserved. */
+function withinLimit(
+  limitLog: JobLog | undefined,
+  sent: string,
+  at: string | null,
+  credits: number | undefined,
+  vendorPriced?: boolean,
+): boolean {
+  if (!limitLog?.projectDir) return false;
+  const limit = creditLimit(limitLog.projectDir);
+  if (limit === undefined) return false;
+  const spent = spentIn(limitLog.projectDir, at);
+  if ((spent.own.get(sent) ?? 0) > 0) return false;
+  const left = limit - spent.total + (spent.others.get(sent) ?? 0);
+  const fix =
+    "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
+  if (credits === undefined)
+    throw new Fix(
+      `this call cannot be priced ahead, so it cannot be kept under the run's credit limit of ${limit}; nothing was made`,
+      fix,
+    );
+  const { checked, about } = limitCheck(credits, vendorPriced);
+  if (checked > left)
+    throw new Fix(
+      `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged${goneNote(spent)}`,
+      fix,
+    );
+  log(limitLog, { key: sent, status: "reserved", credits: checked }, at);
+  return true;
 }
 
 /** Starts a job (or picks up the one this key already started) and polls its status until it ends. */
+// fallow-ignore-next-line complexity
 export async function runJob(
   jobRoute: JobRoute,
   body: unknown,
@@ -226,6 +319,10 @@ export async function runJob(
   const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
+  const at = ledgerScope(scope, opts.log?.projectDir);
+  const reserved = withinLimit(opts.log, sent, at, opts.credits, opts.vendorPriced);
+  const held =
+    opts.credits === undefined ? undefined : limitCheck(opts.credits, opts.vendorPriced).checked;
   let job: Job;
   try {
     job = await call(
@@ -236,10 +333,15 @@ export async function runJob(
       auth,
     );
   } catch (err) {
-    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
+    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) {
+      markFailed(sent, scope);
+      if (reserved && opts.log) log(opts.log, { key: sent, status: "refused", credits: 0 }, at);
+    }
     throw err;
   }
-  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
+  const waits = RUNNING.has(job.status.toLowerCase());
+  if (opts.log && waits)
+    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: held }, at);
   const status = jobRoute.status;
   while (status && RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))
@@ -256,10 +358,21 @@ export async function runJob(
       30_000,
     );
   }
-  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
+  if (opts.log)
+    log(
+      opts.log,
+      {
+        route,
+        id: job.id,
+        key: sent,
+        status: job.status,
+        credits: chargedCredits(job) ?? opts.credits,
+      },
+      at,
+    );
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
     markFailed(sent, scope);
-    throw refusal(422, {
+    throw await refusal(422, {
       error: { code: job.failure_code ?? job.status, message: job.failure_message ?? "" },
     });
   }
@@ -276,14 +389,18 @@ export interface Voice {
 const isVoice = (v: unknown): v is Voice =>
   isRecord(v) && typeof v.voice_id === "string" && typeof v.name === "string";
 
-/** HeyGen's public voices for a language, best first; a language it does not know gets multilingual ones. */
-export async function publicVoices(language: string, limit: number): Promise<Voice[]> {
+async function listVoices(query: { type: "public" | "private"; language?: string }, limit: number) {
   const client = clientFor(await resolveCloudAuthHeaders().catch(noSignIn));
   const value = await client
-    .listVoicesV3({ type: "public", language, limit, signal: AbortSignal.timeout(30_000) })
+    .listVoicesV3({ ...query, limit, signal: AbortSignal.timeout(30_000) })
     .catch((err: unknown) => {
       if (err instanceof HyperframesApiError)
-        throw new Fix(`HeyGen ${err.status} listing its voices`, "run the same command again");
+        throw new Fix(
+          `HeyGen ${err.status} listing its voices`,
+          err.status === 401 || err.status === 403
+            ? "npx hyperframes auth login"
+            : "run the same command again",
+        );
       throw new Fix(
         `no answer from HeyGen for its voices (${err instanceof Error ? err.message : String(err)})`,
         "run the same command again",
@@ -295,6 +412,13 @@ export async function publicVoices(language: string, limit: number): Promise<Voi
     .filter(isVoice)
     .map(({ voice_id, name, language, gender }) => ({ voice_id, name, language, gender }));
 }
+
+/** HeyGen's public voices for a language, best first; a language it does not know gets multilingual ones. */
+export const publicVoices = (language: string, limit: number): Promise<Voice[]> =>
+  listVoices({ type: "public", language }, limit);
+
+export const ownVoices = (limit: number): Promise<Voice[]> =>
+  listVoices({ type: "private" }, limit);
 
 /** Who a paid job bills: the same scope a job's failures and keys belong to. */
 export async function senderScope(): Promise<string | null> {
@@ -318,6 +442,7 @@ export function keptVoice(projectDir: string | null, request: string): Voice | u
 }
 
 export function keepVoice(projectDir: string | null, request: string, voice: Voice): void {
+  if (projectDir) return appendJobLog(projectDir, { voice_pick: request, voice });
   const file = picksFile(projectDir);
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(

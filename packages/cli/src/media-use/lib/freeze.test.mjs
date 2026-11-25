@@ -1,9 +1,18 @@
 import { strict as assert } from "node:assert";
-import { test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDirectMediaUrl, freezeUrl, freezeLocalFile } from "./freeze.mjs";
+import { mediaTransport } from "./media-fetch.mjs";
+// These tests stub globalThis.fetch; media downloads reach the same stub.
+const transportFetch = mediaTransport.fetch;
+beforeEach(() => {
+  mediaTransport.fetch = (url, init) => globalThis.fetch(url, init);
+});
+afterEach(() => {
+  mediaTransport.fetch = transportFetch;
+});
 
 const HOSTILE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script>' +

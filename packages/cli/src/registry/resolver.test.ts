@@ -131,6 +131,19 @@ describe("registry resolver", () => {
       expect(warnings.length).toBeGreaterThan(0);
       expect(warnings.some((w) => w.includes("beta"))).toBe(true);
     });
+
+    it("writes a skipped item's name to stderr with control characters escaped", async () => {
+      const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      try {
+        const entries = [{ name: "be\u001b]0;t\u0007ta", type: "hyperframes:example" as const }];
+        await loadAllItems(entries, { baseUrl: uniqueBaseUrl() });
+        const line = write.mock.calls.map(([chunk]) => String(chunk)).join("");
+        expect(line).toContain("be\\x1b]0;t\\x07ta");
+        for (const control of ["\u001b", "\u0007"]) expect(line).not.toContain(control);
+      } finally {
+        write.mockRestore();
+      }
+    });
   });
 
   describe("loadAllItems on a slow registry", () => {
@@ -220,6 +233,20 @@ describe("registry resolver", () => {
       );
       const baseUrl = uniqueBaseUrl();
       await expect(resolveItem("alpha", { baseUrl })).rejects.toThrow(/unreachable/);
+    });
+
+    // fails without the fix: the reason was dropped and the message said it contacted a host it never reached
+    it("says why a registry on a private address was not read", async () => {
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const resolved = resolveItemWithDependencies("alpha", {
+        baseUrl: "https://127.0.0.1:9/registry",
+        publicOnly: true,
+      });
+      await expect(resolved).rejects.toThrow("127.0.0.1:9 is not a public address");
+      await expect(resolved).rejects.not.toThrow(/contacted/i);
+      await expect(resolved).rejects.not.toThrow(/capture/i);
+      expect(fetch).not.toHaveBeenCalled();
     });
 
     it("refuses an item that declares registryDependencies", async () => {

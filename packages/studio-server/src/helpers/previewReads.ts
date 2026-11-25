@@ -1,8 +1,10 @@
 import { readlinkSync } from "node:fs";
+import { readlink } from "node:fs/promises";
 import { dirname, join, parse, relative, resolve } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
 import { realFilePath } from "./safePath.js";
+import { realFilePathOff } from "./projectDisk.js";
 
 const ALWAYS_AFFECTS = ["hyperframes.json", ...STUDIO_SIGNATURE_MANIFEST_PATHS];
 // A malformed inline URL must not turn ancestor tracking into an image-sized path walk.
@@ -21,8 +23,10 @@ const pathKey =
 const readsByProject = new Map<string, Set<string>>();
 const builtProjects = new Set<string>();
 const projectKey = (projectDir: string) => pathKey(realFilePath(resolve(projectDir)));
+const inReal = (realProject: string, projectDir: string, path: string) =>
+  join(realProject, relative(resolve(projectDir), resolve(projectDir, path)));
 const inRealProject = (projectDir: string, path: string) =>
-  join(realFilePath(resolve(projectDir)), relative(resolve(projectDir), resolve(projectDir, path)));
+  inReal(realFilePath(resolve(projectDir)), projectDir, path);
 
 const readLink = (path: string): string | null => {
   try {
@@ -31,9 +35,13 @@ const readLink = (path: string): string | null => {
     return null;
   }
 };
+const readLinkOff = (path: string): Promise<string | null> => readlink(path).catch(() => null);
 
-// Walks `path` as the OS does, returning every link it passes and where it ends up.
-function linksOnTheWay(path: string): string[] {
+type LinkWalk = Generator<string, string[], string | null>;
+
+// Walks `path` as the OS does, returning every link it passes and where it ends up. It yields each path whose link
+// target it needs, so one walk serves both a blocking and an off-loop reader.
+function* linksOnTheWay(path: string): LinkWalk {
   const passed: string[] = [];
   let at = parse(path).root;
   let rest = path.slice(at.length).split(/[\\/]+/);
@@ -46,7 +54,7 @@ function linksOnTheWay(path: string): string[] {
     }
     const next = join(at, part);
     if (next.length > MAX_PREVIEW_PATH_LENGTH) return passed;
-    const target = hops < 40 ? readLink(next) : null;
+    const target = hops < 40 ? yield next : null;
     if (target === null) {
       at = next;
       continue;
@@ -61,20 +69,68 @@ function linksOnTheWay(path: string): string[] {
   return passed;
 }
 
-// A link's target can be created or retargeted later, so every read resolves it again.
-export function recordPreviewRead(projectDir: string, filePath: string): void {
-  if (filePath.length > MAX_PREVIEW_PATH_LENGTH) return;
-  const key = projectKey(projectDir);
+function walkNow(walk: LinkWalk): string[] {
+  let step = walk.next();
+  while (!step.done) step = walk.next(readLink(step.value));
+  return step.value;
+}
+
+async function walkOff(
+  walk: LinkWalk,
+  readLink: (path: string) => Promise<string | null>,
+): Promise<string[]> {
+  let step = walk.next();
+  while (!step.done) step = walk.next(await readLink(step.value));
+  return step.value;
+}
+
+function remember(realProject: string, read: string, links: string[]): void {
+  const key = pathKey(realProject);
   let reads = readsByProject.get(key);
   if (!reads) readsByProject.set(key, (reads = new Set()));
-  const read = inRealProject(projectDir, filePath);
-  if (read.length > MAX_PREVIEW_PATH_LENGTH) return;
-  for (const found of [read, ...linksOnTheWay(read)]) {
+  for (const found of [read, ...links]) {
     for (let path = pathKey(found); !reads.has(path); path = dirname(path)) reads.add(path);
   }
 }
 
-export function recordPreviewReferences(projectDir: string, html: string): void {
+// A link's target can be created or retargeted later, so every read resolves it again.
+export function recordPreviewRead(projectDir: string, filePath: string): void {
+  if (filePath.length > MAX_PREVIEW_PATH_LENGTH) return;
+  const realProject = realFilePath(resolve(projectDir));
+  const read = inReal(realProject, projectDir, filePath);
+  if (read.length > MAX_PREVIEW_PATH_LENGTH) return;
+  remember(realProject, read, walkNow(linksOnTheWay(read)));
+}
+
+/** `recordPreviewRead` for each of `filePaths`, off the event loop; a folder they share is read once per call. */
+export async function recordPreviewReadsOff(
+  projectDir: string,
+  filePaths: Iterable<string>,
+): Promise<void> {
+  const realProject = await realFilePathOff(resolve(projectDir)).catch(() =>
+    realFilePath(resolve(projectDir)),
+  );
+  const links = new Map<string, Promise<string | null>>();
+  const readLinkOnce = (path: string) => {
+    let target = links.get(path);
+    if (!target) links.set(path, (target = readLinkOff(path)));
+    return target;
+  };
+  const pending = filePaths[Symbol.iterator]();
+  const recordNext = async () => {
+    for (let next = pending.next(); !next.done; next = pending.next()) {
+      const filePath = next.value;
+      if (filePath.length > MAX_PREVIEW_PATH_LENGTH) continue;
+      const read = inReal(realProject, projectDir, filePath);
+      if (read.length > MAX_PREVIEW_PATH_LENGTH) continue;
+      remember(realProject, read, await walkOff(linksOnTheWay(read), readLinkOnce));
+    }
+  };
+  // Enough walks in flight to keep the fs thread pool (4 threads by default) busy.
+  await Promise.all(Array.from({ length: 16 }, recordNext));
+}
+
+export function previewReferences(html: string): Set<string> {
   const named = new Set<string>();
   const add = (reference: string) => {
     const url = reference.trim();
@@ -112,7 +168,7 @@ export function recordPreviewReferences(projectDir: string, html: string): void 
       if (isElement(node)) scanElement(node);
     }
   }
-  for (const path of named) recordPreviewRead(projectDir, path);
+  return named;
 }
 
 export function recordPreviewBuilt(projectDir: string): void {

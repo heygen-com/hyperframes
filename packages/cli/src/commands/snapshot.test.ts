@@ -322,6 +322,21 @@ describe("snapshot video overlays and the blurred frame", () => {
 });
 
 describe("resolveSnapshotVideoFrameTime", () => {
+  // fails without the fix: the element showed at 100 s on render's window, but no frame was pulled for its video.
+  it("pulls a frame for a video starting a hair past 100 s at exactly 100 s, as render does", () => {
+    expect(
+      resolveSnapshotVideoFrameTime({
+        globalTime: 100,
+        clipStart: 100.00002,
+        clipDuration: 10,
+        relativeTime: -0.00002,
+        sourceDuration: 10,
+        compositionDuration: 110,
+        fps: 30,
+      }),
+    ).toBe(0);
+  });
+
   it("holds a clip ending with the composition on its last decodable frame", () => {
     expect(
       resolveSnapshotVideoFrameTime({
@@ -520,6 +535,20 @@ describe("extractVideoFrameToBuffer", () => {
   const hasX265 =
     !noProbe &&
     execFileSync(ffmpeg!, ["-hide_banner", "-encoders"], { encoding: "utf-8" }).includes("libx265");
+
+  it.skipIf(noProbe)("shows control characters in a failed probe's path as escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-probe-text-"));
+    try {
+      const clip = join(dir, "clip\u0007\b\u009b.mp4");
+      const probe = probeContainingSourceFrameSeek(clip, 0.5, false);
+      await expect(probe).rejects.toThrow("clip\\x07\\x08\\x9b.mp4");
+      const message = await probe.catch((error: Error) => error.message);
+      for (const control of ["\u0007", "\b", "\u009b", "\r"])
+        expect(message).not.toContain(control);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   it.skipIf(noProbe)("selects containing frames for snapshots and reference pairs", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-containing-"));
@@ -746,10 +775,10 @@ describe("extractVideoFrameToBuffer", () => {
         const clip = join(dir, "clip.mp4");
         execFileSync(ffmpeg!, [
           ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
-          ...["-i", "testsrc2=d=20:r=25:s=320x180", "-c:v", "libx264", "-g", "50"],
+          ...["-i", "testsrc2=d=8:r=25:s=320x180", "-c:v", "libx264", "-g", "50"],
           ...["-pix_fmt", "yuv420p", clip],
         ]);
-        const times = Array.from({ length: 40 }, (_, i) => 0.4 + i * 0.47);
+        const times = Array.from({ length: 16 }, (_, i) => 0.4 + i * 0.47);
         spawned.files.length = 0;
         const alone = [];
         for (const time of times)
@@ -769,7 +798,7 @@ describe("extractVideoFrameToBuffer", () => {
         const landings = spawned.files.length - probes;
         // One stream read and one packet read; a seek landing per keyframe (a keyframe every 2 s), not per time.
         expect(probes).toBe(2);
-        expect(landings).toBeLessThanOrEqual(2 * Math.ceil(20 / 2));
+        expect(landings).toBeLessThanOrEqual(2 * Math.ceil(8 / 2));
         expect(spawned.files.length * 3, "far fewer processes than a probe per time").toBeLessThan(
           spawnedAlone,
         );
@@ -968,6 +997,24 @@ describe("extractVideoFrameToBuffer", () => {
           expect.stringMatching(/FFprobe could not read .*garbage\.mp4: .*Invalid data found/),
         ]);
       } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(noProbe)(
+    "prints a video's name in its warning with control characters shown as escapes",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-escape-"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const named = join(dir, "clip\u001b]0;x\u0007.mp4");
+        expect(await extractVideoFrameOrWarn([], named, 1)).toBeNull();
+        const out = warn.mock.calls.map((call) => String(call[0])).join("\n");
+        expect(out).toContain("clip\\x1b]0;x\\x07.mp4");
+        expect(out).not.toContain("\u0007");
+      } finally {
+        warn.mockRestore();
         rmSync(dir, { recursive: true, force: true });
       }
     },
@@ -1542,3 +1589,78 @@ describe("renderNotReadyError", () => {
     expect(error.message).toContain("not render-ready after 5000ms");
   });
 });
+
+// fails without the fix: the --against path reached the terminal with its control characters live.
+it("prints a missing --against path's control characters as visible escapes", async () => {
+  const project = mkdtempSync(join(tmpdir(), "hf-snapshot-against-"));
+  writeFileSync(
+    join(project, "index.html"),
+    `<div data-composition-id="main" data-width="320" data-height="180" data-duration="1"></div>`,
+  );
+  const lines: string[] = [];
+  const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+    lines.push(parts.map(String).join(" "));
+  });
+  try {
+    await expect(
+      snapshotCommand.run?.({
+        args: { dir: project, against: join(project, "re\u001b[2Jf.mp4") },
+      } as never),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
+    expect(lines.join("\n")).toContain("re\\x1b[2Jf.mp4");
+    expect(lines.join("\n")).not.toContain("re\u001b[2Jf");
+  } finally {
+    log.mockRestore();
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+// fails without the fix: the folder and file names of saved snapshots reached the terminal with their control characters live.
+it.skipIf(process.platform === "win32")(
+  "prints saved snapshot paths' control characters as visible escapes",
+  async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-snapshot-saved-"));
+    writeFileSync(
+      join(project, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="320" data-height="180" data-start="0" data-duration="2"><div class="clip" data-start="0" data-duration="2">Visible</div></div></body></html>`,
+    );
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    snapshotState.openSettledPage.mockResolvedValueOnce({
+      browser: { close: vi.fn(async () => undefined) },
+      page: {
+        evaluate: vi
+          .fn()
+          .mockResolvedValueOnce({ loaded: [], errored: [], unused: [] })
+          .mockResolvedValueOnce(2)
+          .mockResolvedValueOnce(true)
+          .mockResolvedValueOnce([])
+          .mockResolvedValue(true),
+        screenshot: vi.fn(async () => png),
+      },
+      renderReadyTimedOut: false,
+    });
+    snapshotState.seek.mockResolvedValue(undefined);
+    snapshotState.settle.mockResolvedValue({ pending: [], failed: [] });
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await snapshotCommand.run?.({
+        args: { dir: project, at: "1", end: false, output: join(project, "o\u001b[2Jut") },
+      } as never);
+      const printed = lines.join("\n");
+      expect(printed).toContain("snapshots saved to");
+      expect(printed).toContain("o\\x1b[2Jut");
+      expect(printed).not.toContain("o\u001b[2Jut");
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  },
+);

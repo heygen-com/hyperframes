@@ -1,6 +1,14 @@
 // @vitest-environment node
 // fallow-ignore-file code-duplication
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -24,10 +32,10 @@ vi.mock("../history/blobStore", async (importOriginal) => {
       const store = await real.openBlobStore(dir);
       return {
         ...store,
-        put: async (path: string) => {
+        put: (async (path, ...rest) => {
           if (path.endsWith(".bin")) await mediaCopy.held;
-          return store.put(path);
-        },
+          return store.put(path, ...rest);
+        }) satisfies typeof store.put,
       };
     },
   };
@@ -226,6 +234,21 @@ describe("history routes", () => {
     expect(await (await call(`/blob/${entry.files[0].before}`)).text()).toBe("A");
     expect((await call(`/blob/${"0".repeat(64)}`)).status).toBe(404);
     expect((await call(`/blob/${encodeURIComponent(outsideHistory)}`)).status).toBe(404);
+  });
+
+  // fails without the fix: the redo of an undo that kept its file changes no file, so it named no paths.
+  it("name the file a redo of a kept upload will write", async () => {
+    const { projectDir, history, call } = await demoProject();
+    const you = { kind: "person", name: "You" } as const;
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(join(projectDir, "assets/song.mp3"), "mp3");
+    await history.claim(you, "Uploaded", ["assets/song.mp3"]);
+    writeFileSync(join(projectDir, "index.html"), '<audio src="assets/song.mp3"></audio>');
+    await history.claim({ kind: "agent", name: "Agent" }, "Music", ["index.html"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(await (await call("")).json()).toMatchObject({
+      forward: { label: "Undid: Uploaded", paths: ["assets/song.mp3"] },
+    });
   });
 
   it("name what Cmd+Z and Cmd+Shift+Z would revert next", async () => {
@@ -474,6 +497,29 @@ describe("history routes", () => {
     expect(entries[0].targets).toEqual([
       { file: "index.html", id: "title", selector: ".title", selectorIndex: 0 },
       { file: "index.html", selector: ".word" },
+    ]);
+  });
+
+  it("keeps a target's layer name, trimmed and capped, and never as its only identity", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await call("/claim", {
+      label: "Move layer",
+      paths: ["index.html"],
+      targets: [
+        { file: "index.html", id: "title", name: "  Title  " },
+        { file: "index.html", id: "long", name: "x".repeat(500) },
+        { file: "index.html", id: "empty", name: "   " },
+        { file: "index.html", id: "typed", name: 7 },
+        { file: "index.html", name: "Nameless but no identity" },
+      ],
+    });
+    const { entries } = await (await call("")).json();
+    expect(entries[0].targets).toEqual([
+      { file: "index.html", id: "title", name: "Title" },
+      { file: "index.html", id: "long", name: "x".repeat(200) },
+      { file: "index.html", id: "empty" },
+      { file: "index.html", id: "typed" },
     ]);
   });
 

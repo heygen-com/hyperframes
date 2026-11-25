@@ -47,6 +47,12 @@ lints the file it is editing.
 
 **Fix:** Give every caption element the same `data-track-index`.
 
+### `multiple_scene_templates`
+
+**Warning.** A file has more than one `<template>` holding a composition root and no composition root outside them. Only the first one renders; the message names each template.
+
+**Fix:** Keep one composition root per file, or move the other scenes into their own files.
+
 ### `clip_ends_past_root_duration`
 
 **Warning.** A clip runs past the root composition's `data-duration`, so it is cut off in previews, posters and renders.
@@ -226,7 +232,7 @@ stylesheet links in `<head>`, so those styles never apply in preview, snapshot o
 
 ### `timeline_track_too_dense`
 
-**Warning.** One track in this file carries more than 3 timed elements (audio, video, caption cues and sub-composition mounts are not counted), which makes the timeline harder to read, iterate on, and diff.
+**Warning.** This file has more than 3 timed elements, whatever tracks they sit on (audio, video, caption cues and sub-composition mounts are not counted), which makes the timeline harder to read, iterate on, and diff.
 
 **Fix:** Split the elements into sub-compositions and mount them from the parent with `data-composition-src`.
 
@@ -284,6 +290,12 @@ For a state of your own, toggle a class or data attribute from your script and s
 **Error.** The composition registers no `window.__timelines` registry at all.
 
 **Fix:** Register each composition timeline on `window.__timelines[compositionId]`.
+
+### `linked_files_not_checked`
+
+**Warning.** The stylesheets and scripts a file links add up to more than one page may hold (64 MB), so lint stopped reading them. Each file is read once, under any of its names; the ones past the limit are not checked, and `missing_timeline_registry` is not reported when a skipped script could hold the registry.
+
+**Fix:** Link each file once, and keep large data out of linked stylesheets and scripts.
 
 ### `non_deterministic_code`
 
@@ -532,6 +544,12 @@ Or keep the element `visibility: hidden` until its draw tween starts.
 
 Source: `packages/lint/src/rules/media.ts`.
 
+### `audio_attribute_unreadable`
+
+**Error.** A `data-automation` or `data-fx-chain` is not one the render can parse: not JSON, no `"version": 1`, no `lanes` / `nodes` array, a lane without `target` or `points`, or a node without `type`. The audio mix fails on it, locally and in the cloud.
+
+**Fix:** Write it as `{"version": 1, "lanes": [...]}` (automation) or `{"version": 1, "nodes": [...]}` (effect chain), or remove the attribute.
+
 ### `audio_carve_ungrouped_sources`
 
 **Warning.** A voiceover carve names its member clips directly instead of carving an `<hf-audio-group>`, so the list silently rots when clips change.
@@ -572,7 +590,7 @@ Source: `packages/lint/src/rules/media.ts`.
 
 **Warning.** An element has `data-volume` gain and a GSAP tween on `volume`; tween values are absolute and replace the gain rather than scale it.
 
-**Fix:** Write tween targets as absolute gains that already include the gain, or reset `data-volume` to 1 and let the tween carry the level.
+**Fix:** Keep the level you set. Use an absolute gain for each level the tween should reach: for `data-volume="0.3"`, use `volume: 0.3` where it should reach that level, and keep `volume: 0` at endpoints intended to be silent. If `data-volume="0"`, the clip is authored silent: drop the volume tween to keep it silent, or deliberately set `data-volume="1"` and let the tween carry the level. If the level is in doubt, measure the rendered file with `hyperframes audio render.mp4` (replace `render.mp4` with your output file) before changing it.
 
 ### `base64_media_prohibited`
 
@@ -771,7 +789,13 @@ Source: `packages/lint/src/rules/fonts.ts`.
 
 **Fix:** Declare each family with `@font-face` pointing at the captured `.woff2` files, or bundle the font under `capture/assets/fonts/`.
 
-The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional.
+The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional. Families named in a `font` shorthand (`font: 500 16px/1 "PingFang SC", sans-serif`) count the same as `font-family`.
+
+### `font_face_local_only`
+
+**Warning.** An `@font-face` names only `local()` sources. A local render draws the font installed on this machine; a cloud render, or another machine without it, falls back to a different font.
+
+**Fix:** Add a `url()` source pointing at a `.woff2` file inside the project, or use a Google Fonts family.
 
 ### `system_font_will_alias`
 
@@ -898,9 +922,9 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 
 ### `duplicate_audio_track`
 
-**Warning.** Two audible elements overlap on the same track index, so their audio doubles up.
+**Warning.** Two audible clips overlap in time on the same `data-track-index`. Both play at once: the render mixes every audible clip whatever its track, and `data-track-index` only picks the Studio lane, so Studio draws the two over each other in that lane. An overlap like this is either an accidental duplicate or two sounds sharing one lane.
 
-**Fix:** Use non-overlapping time windows or different track indices.
+**Fix:** If both should sound (a whoosh into a hit), give one its own `data-track-index`; the mix does not change. If one is a leftover duplicate, remove it or move it so the windows do not overlap.
 
 ### `texture_mask_asset_not_found`
 

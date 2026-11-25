@@ -56,7 +56,7 @@ npx hyperframes doctor --json
 
 Set both variables in the environment that launches HyperFrames. On Windows, point them at `ffmpeg.exe` and `ffprobe.exe` using your shell's environment-variable syntax. A configured path takes precedence over automatic discovery; a missing configured file is reported as missing.
 
-Alternatively, put the binaries in `.hyperframes/bin/ffmpeg` and `.hyperframes/bin/ffprobe` (`.exe` on Windows), then run HyperFrames from that project's directory. Discovery checks `PATH` before this project-local directory, so use the environment variables when you need a particular build.
+Automatic discovery never runs an FFmpeg or FFprobe that sits inside the project folder or the working directory, such as `.hyperframes/bin` or a project's `@ffmpeg-installer` package, since a project can come from anyone. Keep the binaries outside the project and either set the variables above or add their folder to `PATH` as an absolute path.
 
 Verify the **FFmpeg** and **FFprobe** entries in `doctor --json` report `ok: true` and the expected paths. To gate only these encoding dependencies with `jq`:
 

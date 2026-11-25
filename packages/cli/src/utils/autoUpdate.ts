@@ -12,9 +12,9 @@
  *               marker. The user is now on the new version.
  *
  * Guardrails:
- *   - Never auto-update across major versions. The user opts in explicitly
- *     via `hyperframes upgrade`.
- *   - Skip on CI, unattended runs (agents, no TTY), dev mode, unknown installer, ephemeral exec (npx),
+ *   - Never auto-update across major versions (or minor versions while in
+ *     0.x). The user opts in explicitly via `hyperframes upgrade`.
+ *   - Skip on CI, unattended runs (agents, no TTY), dev mode, Homebrew, unknown installer, ephemeral exec (npx),
  *     or when `HYPERFRAMES_NO_AUTO_INSTALL` / `HYPERFRAMES_NO_UPDATE_CHECK`
  *     is set.
  *   - If a previous install is still in flight (less than 10 min old), don't
@@ -23,24 +23,26 @@
  *     postmortem; the user's terminal stays clean.
  */
 
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, openSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { resolve } from "node:path";
+import { globalInstallLocation } from "./homeCliCommand.js";
 import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { isUnattended } from "./attendedTerminal.js";
 import { updateCheckDisabled } from "./updateCheck.js";
-import { RUNNING_DIR, RUNNING_STALE_MS } from "./runningCli.js";
+import { RUNNING_STALE_MS, registeredAsRunning, runningDir } from "./runningCli.js";
 import {
   detectInstaller,
   installInvocation,
   type InstallInvocation,
 } from "./installerDetection.js";
+import { hyperframesConfigDir, seededConfigFile } from "./configDir.js";
 
-const CONFIG_DIR = join(homedir(), ".hyperframes");
-const LOG_FILE = join(CONFIG_DIR, "auto-update.log");
+const configDir = () => hyperframesConfigDir();
+const logFile = () => hyperframesConfigDir("auto-update.log");
 /** An install that hasn't finished after this many ms is considered stuck. */
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
 /** A waiting installer gives up after this long; the next run schedules it again. */
@@ -53,10 +55,11 @@ function isAutoInstallDisabled(): boolean {
   );
 }
 
-/** Parse a semver-ish string's major number; returns NaN for pre-releases etc. */
-function majorOf(version: string): number {
-  const match = /^(\d+)\./.exec(version);
-  return match?.[1] ? Number.parseInt(match[1], 10) : Number.NaN;
+/** `0.<minor>` before 1.0 (a 0.x minor may break), `<major>` after; null when unparsable. */
+function breakingLine(version: string): string | null {
+  const match = /^(\d+)\.(\d+)\./.exec(version);
+  if (!match) return null;
+  return match[1] === "0" ? `0.${match[2]}` : String(match[1]);
 }
 
 /**
@@ -65,14 +68,15 @@ function majorOf(version: string): number {
  */
 function log(line: string): void {
   try {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-    appendFileSync(LOG_FILE, `${new Date().toISOString()} ${line}\n`, { mode: 0o600 });
+    mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+    appendFileSync(logFile(), `${new Date().toISOString()} ${line}\n`, { mode: 0o600 });
   } catch {
     /* best-effort */
   }
 }
 
 export interface InstallerScriptOptions {
+  cwd: string;
   configFile: string;
   version: string;
   bin: string;
@@ -144,7 +148,7 @@ export function installerScript(o: InstallerScriptOptions): string {
       clearInterval(lockBeat);
       if (ownsLock()) { try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} }
     };
-    const install = () => execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
+    const install = () => execFile(BIN, ARGS, { cwd: ${JSON.stringify(o.cwd)}, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
       withLock(() => {
         let cfg = {};
         try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }
@@ -205,30 +209,38 @@ function launchDetachedInstall(
   invocation: InstallInvocation,
   displayCommand: string,
   version: string,
+  cwd: string,
 ): void {
-  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  const configFile = join(CONFIG_DIR, "config.json");
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  const configFile = seededConfigFile("config.json");
 
   const nodeScript = installerScript({
-    configFile,
+    cwd,
+    configFile: resolve(configFile),
     version,
     bin: invocation.bin,
     args: invocation.args,
-    runningDir: RUNNING_DIR,
+    runningDir: resolve(runningDir()),
     pollMs: INSTALL_POLL_MS,
     maxWaitMs: INSTALL_MAX_WAIT_MS,
     staleMs: RUNNING_STALE_MS,
   });
 
-  const out = openSync(LOG_FILE, "a", 0o600);
+  const out = openSync(logFile(), "a", 0o600);
   const child = spawn(process.execPath, ["-e", nodeScript], {
+    cwd,
     detached: true,
     stdio: ["ignore", out, out],
     windowsHide: true,
     env: { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: "1", HYPERFRAMES_NO_AUTO_INSTALL: "1" },
   });
+  if (child.pid === undefined) {
+    // A vanished cwd makes spawn return without a pid and emit its error on the next tick.
+    child.once("error", (err) => log(`[error] ${err.message}`));
+    throw new Error("Detached installer did not start");
+  }
   child.unref();
-  log(`[launch] pid=${child.pid ?? "?"} cmd=${displayCommand} version=${version}`);
+  log(`[launch] pid=${child.pid} cmd=${displayCommand} version=${version}`);
 }
 
 function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean {
@@ -242,16 +254,31 @@ function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean
   }
   if (cmp <= 0) return false;
 
-  // Major-version jumps carry breaking-change risk. Don't silent-install;
-  // the existing `printUpdateNotice` banner nudges the user to run
-  // `hyperframes upgrade` explicitly.
-  const latestMajor = majorOf(latestVersion);
-  const currentMajor = majorOf(currentVersion);
-  if (Number.isFinite(latestMajor) && Number.isFinite(currentMajor) && latestMajor > currentMajor) {
+  // Major-version jumps (minor jumps while in 0.x) carry breaking-change risk.
+  // Don't silent-install; the existing `printUpdateNotice` banner nudges the
+  // user to run `hyperframes upgrade` explicitly.
+  const latestLine = breakingLine(latestVersion);
+  const currentLine = breakingLine(currentVersion);
+  if (latestLine !== null && currentLine !== null && latestLine !== currentLine) {
     log(`[skip] major-bump ${currentVersion} -> ${latestVersion}`);
     return false;
   }
   return true;
+}
+
+/** The install to run unattended, or null when this installer cannot be held to `version`. */
+function backgroundInstaller(
+  version: string,
+): { installCommand: string; invocation: InstallInvocation } | null {
+  const installer = detectInstaller();
+  if (installer.kind === "skip" || installer.kind === "brew") {
+    const brew = `brew upgrade installs the tap's formula, not ${version}; notice only`;
+    log(`[skip] ${installer.kind === "brew" ? brew : installer.reason}`);
+    return null;
+  }
+  const installCommand = installer.installCommand(version);
+  const invocation = installInvocation(installer.kind, version);
+  return installCommand && invocation ? { installCommand, invocation } : null;
 }
 
 /**
@@ -261,15 +288,22 @@ function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean
 export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
   if (isAutoInstallDisabled()) return false;
   if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
-
-  const installer = detectInstaller();
-  if (installer.kind === "skip") {
-    log(`[skip] ${installer.reason}`);
+  const installer = backgroundInstaller(latestVersion);
+  if (!installer) return false;
+  const location = globalInstallLocation();
+  if ("reason" in location) {
+    // The rejected home may be shared or belong to another user, so avoid opening a log in it.
+    process.stderr.write(`  Skipping CLI auto-update: ${location.reason}\n`);
     return false;
   }
-  const installCommand = installer.installCommand(latestVersion);
-  const invocation = installInvocation(installer.kind, latestVersion);
-  if (!installCommand || !invocation) return false;
+  if (!registeredAsRunning()) {
+    log(
+      `[skip] ${latestVersion}: this CLI is not on record as running, so an install could replace it mid-run`,
+    );
+    return false;
+  }
+
+  const { installCommand, invocation } = installer;
 
   const config = readConfig();
 
@@ -297,7 +331,7 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
   if (!writeConfig(config)) return false;
 
   try {
-    launchDetachedInstall(invocation, installCommand, latestVersion);
+    launchDetachedInstall(invocation, installCommand, latestVersion, location.cwd);
     return true;
   } catch (err) {
     log(`[error] spawn failed: ${String(err)}`);
@@ -333,12 +367,14 @@ export function reportCompletedUpdate(): void {
   if (!process.stderr.isTTY) return;
 
   if (done.ok) {
-    process.stderr.write(`  hyperframes auto-updated to v${done.version}\n\n`);
+    process.stderr.write(
+      `  hyperframes auto-updated to v${terminalText(String(done.version))}\n\n`,
+    );
   } else if (!done.reported) {
     // Failed installs are surfaced once too — the user should know why the
     // auto-update didn't take.
     process.stderr.write(
-      `  hyperframes auto-update to v${done.version} failed. Run \`hyperframes upgrade\` to retry.\n\n`,
+      `  hyperframes auto-update to v${terminalText(String(done.version))} failed. Run \`hyperframes upgrade\` to retry.\n\n`,
     );
   }
 }

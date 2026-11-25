@@ -1,3 +1,4 @@
+import { useGsapSnapshotVersion } from "../../hooks/gsapFrameSnapshot";
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
@@ -6,13 +7,11 @@ import { useStudioShellContext } from "../../contexts/StudioContext";
 import { readStudioBoxSize } from "./manualEdits";
 import { readMoveOffset, readShownRotation } from "./plainTranslate";
 import {
-  buildElementInfoText,
   EMPTY_STYLES,
   formatPxMetricValue,
   parsePxMetricValue,
   RESPONSIVE_GRID,
   readGsapRuntimeValuesForPanel,
-  readGsapBorderRadiusForPanel,
   isSelectedElementHidden,
   selectionIdentityKey,
 } from "./propertyPanelHelpers";
@@ -36,6 +35,11 @@ import { TimingSection } from "./propertyPanelTimingSection";
 import { type PropertyPanelProps } from "./propertyPanelHelpers";
 import { GestureRecordPanelButton } from "./GestureRecordControl";
 import { PropertyPanelEmptyState } from "./PropertyPanelEmptyState";
+import {
+  readElementInfoText,
+  readGsapBorderRadiusForPanel,
+  useAnswered,
+} from "./propertyPanelSealedReads";
 import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
 import { isAudioDomElement } from "../../utils/timelineInspector";
 import { useManualEditDisabledFlags } from "./previewReadOnlyContext";
@@ -69,7 +73,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     onUngroup,
     onSetStyle,
     onSetAttribute,
-    onSetAttributeLive,
+    onSetAttributeQuiet,
     onApplyColorGradingScope,
     onSetManualOffset,
     onSetManualSize,
@@ -134,22 +138,29 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
       gsapAnimations?.[0]?.id ??
       null)
     : null;
+  const sealedReads = useGsapSnapshotVersion();
   const gsapRuntimeValues = useMemo(
     () =>
       element
         ? readGsapRuntimeValuesForPanel(gsapAnimIdForMemo, gsapAnimations, element, iframeRef)
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- iframeRef is stable; currentTime drives re-reads during playback
-    [gsapAnimIdForMemo, gsapAnimations, element, currentTime],
+    [gsapAnimIdForMemo, gsapAnimations, element, currentTime, sealedReads],
   );
-  const gsapBorderRadius = useMemo(
+  const borderRadiusRead = useMemo(
     () =>
       element
-        ? readGsapBorderRadiusForPanel(gsapRuntimeValues, gsapAnimations, element, iframeRef)
+        ? readGsapBorderRadiusForPanel(
+            gsapRuntimeValues,
+            gsapAnimations,
+            element,
+            iframeRef.current,
+          )
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [gsapRuntimeValues, gsapAnimations, element, currentTime],
   );
+  const gsapBorderRadius = useAnswered(borderRadiusRead, element);
   // The 3D Transform panel should be reachable on ANY element, not only ones GSAP is
   // already animating — otherwise you can't add depth/rotation to a fresh static
   // element (the panel never appears, the classic chicken-and-egg). Default to
@@ -234,11 +245,10 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   const displayR = gsapRuntimeValues?.rotation ?? manualRotation.angle;
 
   const handleCopyElementInfo = () => {
-    const text = buildElementInfoText(element, sourceLabel, gsapAnimations, previewIframeRef);
     // Claim the copy only once the write actually lands — a denied clipboard
     // permission otherwise reports a copy that never happened.
-    navigator.clipboard
-      .writeText(text)
+    void readElementInfoText(element, sourceLabel, gsapAnimations, previewIframeRef?.current)
+      .then((text) => navigator.clipboard.writeText(text))
       .then(() => {
         showToast(`Copied element info for ${element.label}. Paste it into any AI agent`, "info");
         setClipboardCopied(true);
@@ -355,7 +365,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
             assets={assets}
             previewIframeRef={previewIframeRef}
             onImportAssets={onImportAssets}
-            onSetAttributeLive={onSetAttributeLive}
+            onSetAttributeQuiet={onSetAttributeQuiet}
             onApplyScope={onApplyColorGradingScope}
           />
         )}
