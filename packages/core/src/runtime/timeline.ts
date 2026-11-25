@@ -8,6 +8,7 @@ import type {
 import { transitionLabelsForDocument } from "./transitionLabels";
 import { unproxiedSrc } from "./proxySrc";
 import { stableClipId } from "./clipTree";
+import { CLIP_NODES } from "./clipNodes";
 import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
 import {
   AUTHORED_DURATION_ATTR,
@@ -430,7 +431,6 @@ export function collectRuntimeTimelinePayload(params: {
   // as clips — they have no declared timing so the timeline can't show their
   // actual visibility window. They can still appear as scenes via the separate
   // scene collection below.
-  const CLIP_NODES = "[data-start], [data-track-index], [data-composition-id], video, audio, img";
   const nodes = Array.from(document.querySelectorAll(CLIP_NODES));
   let maxEnd = 0;
   const clipOf = (node: Element, i: number): RuntimeTimelineClip | null => {
