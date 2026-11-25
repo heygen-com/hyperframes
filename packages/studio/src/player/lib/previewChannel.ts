@@ -47,6 +47,18 @@ export function samePreviewLoad(iframe: HTMLIFrameElement): () => boolean {
   return () => clients.get(iframe)?.client === client;
 }
 
+const promotedTo = new WeakMap<HTMLIFrameElement, HTMLIFrameElement>();
+
+export function notePreviewPromoted(retired: HTMLIFrameElement, live: HTMLIFrameElement): void {
+  promotedTo.set(retired, live);
+}
+
+export function shownPreviewFrame(iframe: HTMLIFrameElement): HTMLIFrameElement {
+  let shown = iframe;
+  for (let next = promotedTo.get(shown); next; next = promotedTo.get(shown)) shown = next;
+  return shown;
+}
+
 export function retirePreviewEditingClient(iframe: HTMLIFrameElement): void {
   clients.get(iframe)?.retire();
 }
