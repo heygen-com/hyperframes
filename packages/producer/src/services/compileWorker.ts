@@ -2,15 +2,17 @@
 // this thread only: the parent keeps answering /health and other requests, and can end it at a deadline.
 import { parentPort, workerData } from "node:worker_threads";
 import { onTrackedChildProcess } from "@hyperframes/engine";
+import { fromEmptyFolder } from "@hyperframes/parsers/ff-binaries";
 import { scratchOutputOf } from "./compileScratch.js";
 import { compileForRender, type CompileForRenderOptions } from "./htmlCompiler.js";
 import type { ProducerLogger } from "../logger.js";
 
-const { projectDir, htmlPath, downloadDir, options } = workerData as {
+const { projectDir, htmlPath, downloadDir, options, emptyFolder } = workerData as {
   projectDir: string;
   htmlPath: string;
   downloadDir: string;
   options: Omit<CompileForRenderOptions, "log" | "abortSignal">;
+  emptyFolder: boolean;
 };
 
 function post(level: string, message: string, meta?: Record<string, unknown>): void {
@@ -56,11 +58,13 @@ onTrackedChildProcess((proc) => {
 });
 
 try {
-  const compiled = await compileForRender(projectDir, htmlPath, downloadDir, {
-    ...options,
-    log,
-    abortSignal: controller.signal,
-  });
+  const compile = () =>
+    compileForRender(projectDir, htmlPath, downloadDir, {
+      ...options,
+      log,
+      abortSignal: controller.signal,
+    });
+  const compiled = await (emptyFolder ? fromEmptyFolder(compile) : compile());
   parentPort?.postMessage({ type: "result", compiled });
 } catch (error) {
   const props: Record<string, unknown> = {};

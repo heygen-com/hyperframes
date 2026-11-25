@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from "node:fs";
+import { ffmpegCwd } from "@hyperframes/parsers/ff-binaries";
 import { dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -121,7 +122,13 @@ export async function compileForRenderInWorker(
 
   return new Promise<CompiledComposition>((resolve, reject) => {
     const thread = new Worker(entry, {
-      workerData: { projectDir, htmlPath, downloadDir, options: cloneable },
+      workerData: {
+        projectDir,
+        htmlPath,
+        downloadDir,
+        options: cloneable,
+        emptyFolder: ffmpegCwd() !== undefined,
+      },
     });
     const children = new Map<number, string | undefined>();
     const scratchRoots = [downloadDir, options.animatedGifCacheDir].flatMap((dir) =>
