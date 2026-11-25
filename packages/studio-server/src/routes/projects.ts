@@ -2,12 +2,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
-import { isInHiddenOrVendorDir, isPrivateProjectPath, walkDir } from "../helpers/safePath.js";
-import { isCompositionSource } from "../helpers/hfIdPersist.js";
+import { isPrivateProjectPath, walkDir } from "../helpers/safePath.js";
+import { isCompositionPath, isCompositionSource } from "../helpers/hfIdPersist.js";
 import { resolveProjectSignature } from "../helpers/projectSignature.js";
 
 async function filterCompositionFiles(projectDir: string, files: string[]): Promise<string[]> {
-  const htmlFiles = files.filter((f) => f.endsWith(".html") && !isInHiddenOrVendorDir(f));
+  const htmlFiles = files.filter(isCompositionPath);
   const checks = await Promise.all(
     htmlFiles.map(async (f) => {
       try {

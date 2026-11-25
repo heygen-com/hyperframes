@@ -5,7 +5,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from "no
 import { basename, dirname, join, resolve } from "node:path";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { recordFolder } from "../utils/projectRecords.js";
@@ -68,7 +68,7 @@ export function runFfmpeg(args: string[], input?: Buffer, cwd?: string, timeout?
 }
 
 export function ffmpegInput(path: string, { playlists = false } = {}): string[] {
-  return [...mediaInputFormatArgs(ffmpegBin(), path, { playlists }), "-i", path];
+  return [...mediaInputArgs(ffmpegBin(), path, { playlists }), "-i", path];
 }
 
 export function ffmpegToFile(args: string[], out: string, input?: Buffer): string {
@@ -140,7 +140,7 @@ export function probeSeconds(path: string): number {
     [
       "-v",
       "error",
-      ...mediaInputFormatArgs(bin, path),
+      ...mediaInputArgs(bin, path),
       "-show_entries",
       "format=duration",
       "-of",
@@ -219,7 +219,7 @@ function startsWithMp4Header(path: string): boolean {
 export function probeVideo(path: string, { guarded = false } = {}): VideoInfo {
   if (!existsSync(path)) throw new Fix(`no file at ${path}`, missingFileFix(path));
   const bin = ffprobeBin();
-  const formats = mediaInputFormatArgs(bin, path, { playlists: guarded });
+  const formats = mediaInputArgs(bin, path, { playlists: guarded });
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
     json = JSON.parse(
