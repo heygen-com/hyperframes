@@ -762,7 +762,8 @@ accepted instead, and everything else declines:
   (cross-origin): pseudo-elements from a list of static ones (`::before`,
   `::after`, `::marker`, `::first-line`, `::first-letter`, `::selection`,
   `::placeholder`, `::backdrop`, `::highlight()`, `::part()`, `::slotted()`,
-  the `-webkit-scrollbar` family), and no `paint()` (`overlay_unsupported`);
+  the `-webkit-scrollbar` family), no `paint()`, and no `scroll-behavior`
+  but `auto` ("Motion on the browser's clock" below; `overlay_unsupported`);
 - images: every image the page loads, whoever references it and however
   (an element, a pseudo-element, a border or mask, a `data:` or `blob:`
   URL), is read from the network record (`Network.enable` on the
@@ -799,6 +800,69 @@ An `<audio>` element paints nothing without controls; one whose controls
 GSAP turns on mid-composition is in the fingerprint with its playback
 position (the runtime seeks it), so frames with controls never merge and
 the verification probes decline (`overlay_unverified`).
+
+## Motion on the browser's clock
+
+A GSAP `set()` of `scrollTop` on a scroller with `scroll-behavior: smooth`
+starts a scroll the browser runs on its own clock, with no page code. The
+probe right after the seek still reads the old offset, so the jump frame's
+fingerprint equals the frame before it and capture reuses that state's PNG,
+while the layered render's screenshot, taken later in the same frame, shows
+the new position. A realistic 3 s HLG template (GSAP captions, logo, lower
+third, local fonts, music) with a twelve-line credits scroller jumped twice
+took the passthrough and decoded 35 of 90 frames identical to flag off: the
+two jump frames showed the previous scroll position (36 dB in the scroller
+crop), and the rest was x265 carrying that difference. Every probe agreed
+with every other, `getAnimations()` does not list a smooth scroll, and the
+page code watch saw no page code. A tween that sets `scrollBehavior` to
+`smooth` at 1.0 s and back to `auto` at 2.6 s did the same (21/90), and so
+did one that sets it to `smooth`, writes `scrollTop` and sets it back to
+`auto` at one time position (26/90): Chrome keeps animating a smooth scroll
+once it started, so no probe ever reads a smooth value. The layered render
+is not repeatable there either: its screenshot catches the scroll wherever
+the browser's clock has it, and two flag-off renders of the template on a
+loaded host differ in the scroller at the first jump frame (13487 pixels,
+up to 110 of 255), so a fallback can match flag off only as well as flag
+off matches itself.
+
+So the passthrough declines (`overlay_unsupported`) wherever smooth
+scrolling can come from:
+
+- CSS: any `scroll-behavior` declaration but `auto` (`smooth`, `inherit`,
+  a `var()`) in a stylesheet, an open shadow root's sheets, an `@import` or
+  an inline style, read with the other CSS gates (`ownClock.ts`);
+- GSAP: any tween that writes `scroll-behavior`, as a key in any spelling
+  GSAP resolves (`scrollBehavior`, `"scroll-behavior"`, inside `css` or
+  `startAt`) or as a string that names it or holds a CSS escape (`attr:
+{ style }`), found in the vars walk (`seekReachable.ts`);
+- every probe: the fingerprint reads each element's computed
+  `scroll-behavior` (the root's is the viewport's), open shadow trees
+  included, and a probe where one is not `auto` throws `BrowserClockError`
+  (`overlayFingerprint.ts`). This holds for a value no text scan reads
+  (an escaped property name in a cross-origin sheet). An element outside
+  the flat tree (a shadow host's unslotted child) has no computed style and
+  no box to scroll.
+
+A CSS transition is the same kind of motion: a GSAP `set()` of a property
+an element transitions starts it on the seek, and it plays on the wall
+clock, so the capture's screenshot and the layered render's catch it at
+different points. Eligibility declines a running animation it sees
+(`overlay_non_gsap_animation`), but a short one can start on a seek only
+capture makes and end before any later gate looks: under load the review's
+`css-transition` (0.5 s, set at 1.5 s) took the passthrough in one full
+run of the earlier rounds' fixtures (about 400 parity runs), 29 of 90
+frames identical. The fingerprint already reads
+every animation's play state on every probe, and the probe right after the
+seek always sees the transition running (reading the animations resolves
+the style change first), so a probe that sees any running animation now
+throws `BrowserClockError` too (`overlay_non_gsap_animation`).
+
+Scroll snapping and scroll anchoring move the offset without page code
+too, but synchronously: a `scrollTop` write on a `scroll-snap-type: y
+mandatory` scroller reads back snapped, and a resized row above the anchor
+reads back adjusted, on the write or the layout the read forces
+(`overlayFingerprint.integration.test.ts`). Both take the passthrough and
+decode identical to flag off (`snap-anchor-scroll`).
 
 ## Capture dedup
 
@@ -959,6 +1023,9 @@ reports 35–80%.
   layered render does ("Two pages"), and the paint state a builtin can set
   is in the fingerprint, so a change the reaction makes where the planner
   sees none declines.
+- Any `scroll-behavior` but `auto` declines, whether or not anything
+  scrolls: a reset that sets `html { scroll-behavior: smooth }` costs the
+  passthrough, as does a GSAP tween that writes the property at all.
 - GSAP tweens of anything but elements decline when they write anything,
   including a plain object only page code reads (a counter whose `onUpdate`
   writes the DOM would decline on the callback anyway).
@@ -1565,3 +1632,68 @@ to match). Every fallback whose layered render is repeatable decodes
 identical to flag off; the others are the wall-clock fixtures as before
 (animated images and SVG, marquees, CSS and WAAPI animation, the
 `gc-selfdrop` pair, run-varying `unp-po-append` and `unp-waapi`).
+
+Round 11 (main merged at 5969cd2b43; ffmpeg 7.0.2 and 8.0.1): motion on
+the browser's clock ("Motion on the browser's clock").
+
+On the commit before, the review's realistic 3 s HLG template with a
+smooth credits scroller took the passthrough on every run and decoded 35
+of 90 frames identical to flag off on both versions (89/90 in a lighter
+window), and two variants of it with no `scroll-behavior` in any
+stylesheet did the same: a tween that sets `scrollBehavior` to `smooth`
+for a while (21/90) and one that sets it, scrolls and sets it back at one
+time position (26/90). All three now decline (`overlay_unsupported`: the
+CSS gate, then the GSAP vars walk for both tweens), and their fallbacks
+match a flag-off render made beside them. Scroll snapping and scroll
+anchoring variants of the same template took the passthrough before and
+after and decode identical (90/90, bitstream identical). The review's
+`css-transition` took the passthrough in the first full run of the earlier
+rounds' fixtures on this round's scroll changes (29/90); with the
+probe's running-animation decline it falls back in the second run, as do
+the generated `css-transition-set` (in one render by eligibility, in the
+other by the probe the decline names) and the review's `css-trans-all`,
+`css-trans-color` and `starting-style`.
+
+The new harness fixtures (3 s, HLG on 7.0.2 and PQ on 8.0.1):
+`smooth-scroll`, `smooth-scroll-toggle` and `css-transition-set` fall back
+with their reasons; `snap-anchor-scroll` takes the passthrough and decodes
+identical to flag off (90/90).
+
+Concurrent load, the same 24 flag-on renders per version with one flag-off
+render of each, all at once: 48 of 48 decode identical to flag off with
+the same bitstream, stream and frame side data and audio (load average up
+to 152 on 7.0.2 and 130 on 8.0.1), 40 taking the passthrough and 8 the
+`gc-fr-remove` declines. A first 8.0.1 run met a load average of 439 from
+other work on the host: two flag-off renders failed by the layered path's
+own stall rule, and 13 flag-on renders fell back with "the encoder did not
+go idle within 120000 ms"; it was run again.
+
+The 20 s fixtures on ffmpeg 8.0.1, each row's eight renders started
+together:
+
+| row | load  | transfer | `captions` off / on | `captions-gsap` off / on |
+| --- | ----- | -------- | ------------------- | ------------------------ |
+| 1   | 21-58 | HLG      | 217 s / 107 s, 2.0x | 244 s / 106 s, 2.3x      |
+| 1   | 21-58 | PQ       | 217 s / 104 s, 2.1x | 238 s / 106 s, 2.2x      |
+| 2   | 25-66 | HLG      | 241 s / 118 s, 2.0x | 273 s / 121 s, 2.3x      |
+| 2   | 25-66 | PQ       | 242 s / 121 s, 2.0x | 274 s / 122 s, 2.2x      |
+
+All eight flag-on renders took the passthrough and decode identical to flag
+off (framemd5 600/600, bitstream, stream and frame side data equal).
+
+Flag off renders identical to main (5969cd2b43) on the same ten fixtures
+as round 10.
+
+The earlier rounds' fixtures and generated sets, plus the round-10
+review's (404 parity runs, 478 project renders, both sides rendered),
+take the route they took in round 10 but for two kinds: `unp-waapi`
+declines with `overlay_unverified` where it declined with
+`overlay_non_gsap_animation` or the other way round (four runs; both
+fallbacks decode identical), and the `gc-selfdrop` pair took the
+passthrough on the loaded host (0/90 on the round-9 copies, 90/90 on the
+review's copy of `gc-selfdrop-remove`): their registry's cleanup ran and
+the registry was collected while the page loaded, before the census, as
+"Limitations" describes, and two flag-off renders of `gc-selfdrop-remove`
+differ with each other (14/90). Every other passthrough, 128 renders,
+decodes identical to flag off but the hostile load-time channels left out
+of scope (`if-get-mark`, `if-proto-late`, `iface-timer`).

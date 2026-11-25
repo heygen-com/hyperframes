@@ -144,7 +144,19 @@ git: the 20 s source is about 13 MB, the 3 min one about 120 MB.
   `scroll-clamp` (a `set()` shrinks a scroller's content at 1 s, which
   clamps its 1500 px offset for good) and `lazy-decode-popover` (a `set()`
   shows a lazy image at 1.5 s, whose `decode()` reaction opens a popover
-  through a bound builtin). SVG images that animate once parsed as XML
+  through a bound builtin), and `snap-anchor-scroll` (`set()`s of
+  `scrollTop` on a snapping scroller and of row heights above its scroll
+  anchor: the browser moves the offset, synchronously). `smooth-scroll`
+  (GSAP `set()`s of `scrollTop` on a `scroll-behavior: smooth` scroller,
+  which the browser animates after the probe) and `smooth-scroll-toggle`
+  (the same scroller made smooth only inside the seek that scrolls it)
+  decline as `overlay_unsupported` (wall clock: the layered render's
+  screenshot catches a smooth scroll wherever the browser's clock has it,
+  so two flag-off renders under load differ at the jump frames).
+  `css-transition-set` (a GSAP `set()` of opacity on an element with a
+  0.5 s CSS transition) declines as `overlay_non_gsap_animation` at the
+  probe after the seek that starts the transition (wall clock). SVG
+  images that animate once parsed as XML
   decline as `overlay_non_gsap_animation` (wall clock): `svg-prefixed-smil`
   (`<s:animate>`, `s` bound to the SVG namespace) and `svg-reference-css`
   (`anim&#97;tion` and `&#64;keyframes` in `<style>`).
