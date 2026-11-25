@@ -7,10 +7,33 @@ import { isInHiddenOrVendorDir, mkdirOwnedWithinProject, walkDir } from "./safeP
 
 const COMPOSITION_ID_TEXT = /data-composition-id\s*=/i;
 // HTML's whitespace set, not `\s`: a browser keeps other space characters inside an attribute name.
+const SPACE = "\t\n\f\r ";
 const TAG_NAME = /<[a-zA-Z][^\t\n\f\r />]*/y;
-const TAG_ATTRIBUTE =
-  /[\t\n\f\r /]*([^\t\n\f\r />][^\t\n\f\r />=]*)([\t\n\f\r ]*=[\t\n\f\r ]*(?:"[^"]*"?|'[^']*'?|[^\t\n\f\r >]*))?/y;
-const TAG_END = /[\t\n\f\r /]*>/y;
+const ATTRIBUTE_NAME = /[^\t\n\f\r />][^\t\n\f\r />=]*/y;
+const ATTRIBUTE_VALUE = /"[^"]*"?|'[^']*'?|[^\t\n\f\r >]*/y;
+
+function past(html: string, at: number, chars: string): number {
+  while (at < html.length && chars.includes(html[at]!)) at += 1;
+  return at;
+}
+
+/** Walks a start tag's attributes from `at`: where they end, and whether one is the marker with a value. */
+function attributesFrom(html: string, at: number): { at: number; named: boolean } {
+  let named = false;
+  for (;;) {
+    at = past(html, at, `${SPACE}/`);
+    ATTRIBUTE_NAME.lastIndex = at;
+    const name = ATTRIBUTE_NAME.exec(html);
+    if (!name) return { at, named };
+    at = ATTRIBUTE_NAME.lastIndex;
+    const equals = past(html, at, SPACE);
+    if (html[equals] !== "=") continue;
+    ATTRIBUTE_VALUE.lastIndex = past(html, equals + 1, SPACE);
+    ATTRIBUTE_VALUE.test(html);
+    at = ATTRIBUTE_VALUE.lastIndex;
+    named ||= name[0].toLowerCase() === "data-composition-id";
+  }
+}
 
 /** True when a closed start tag of `html` has an attribute named exactly `data-composition-id` with a
  * value. The marker's text alone is not enough, since Studio runs a composition's scripts on its own
@@ -30,15 +53,9 @@ export function isCompositionSource(html: string): boolean {
       at += 1;
       continue;
     }
-    TAG_ATTRIBUTE.lastIndex = TAG_NAME.lastIndex;
-    at = TAG_NAME.lastIndex;
-    let named = false;
-    for (let match = TAG_ATTRIBUTE.exec(html); match; match = TAG_ATTRIBUTE.exec(html)) {
-      named ||= match[2] !== undefined && match[1]!.toLowerCase() === "data-composition-id";
-      at = TAG_ATTRIBUTE.lastIndex;
-    }
-    TAG_END.lastIndex = at;
-    if (named && TAG_END.test(html)) return true;
+    const tag = attributesFrom(html, TAG_NAME.lastIndex);
+    at = tag.at;
+    if (tag.named && html[at] === ">") return true;
   }
   return false;
 }
