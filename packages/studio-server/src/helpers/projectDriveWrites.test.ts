@@ -120,8 +120,8 @@ describe("a project drive that answers reads but never a write", () => {
   });
 });
 
-// fails without the fix: a save that lands while the async stamp stages its stamped copy must still be in the file
-// once the stamp is done, and the stamp leaves that file for the next open
+// fails without the fix: the async stamp checked a file, then staged and renamed its stamped copy, so a save that
+// landed while the copy was staged was replaced by the older stamped text
 describe("a save that lands while the async stamp stages its copy", () => {
   it("is kept, and the stamp leaves that file for the next open", async () => {
     const dir = folder("hf-drive-race-");
