@@ -178,7 +178,9 @@ it.each(MODES)(
         const retired = document.querySelector("iframe")!;
         (window as unknown as Held).hfStudio.removeIframeTimelineElements(retired, [clip]);
       }, clipB);
-      await expect.poll(() => hasB(shadow), { message: "the shown frame drops the deleted clip" }).toBe(false);
+      await expect
+        .poll(() => hasB(shadow), { message: "the shown frame drops the deleted clip" })
+        .toBe(false);
     } finally {
       await preview.page.close();
     }
@@ -200,7 +202,9 @@ it("a sealed delete still waiting on its lookup when the reload is promoted remo
       w.__hold = false;
       for (const deliver of w.__held.splice(0)) deliver();
     });
-    await expect.poll(() => hasB(shadow), { message: "the new frame drops the deleted clip" }).toBe(false);
+    await expect
+      .poll(() => hasB(shadow), { message: "the new frame drops the deleted clip" })
+      .toBe(false);
   } finally {
     await preview.page.close();
   }
