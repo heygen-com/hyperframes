@@ -15,6 +15,7 @@ import {
   checkInventoryPaths,
   classifyPath,
   excludedFolder,
+  isPrivateSourcePath,
   prefiltered,
   skippedSymlink,
   validatePath,
@@ -28,9 +29,16 @@ import { readRenderOutputs, settledState } from "./projectState.mjs";
 const INLINE_HASH_BYTES = 4 * 1024 * 1024;
 const HASHING_AT_ONCE = 4;
 
+/** Test a child of a directory so a file-only rule does not prune a folder of the same name.
+ * @param {string} rel @param {boolean} directory */
+function isPrivateEntry(rel, directory) {
+  return isPrivateSourcePath(directory ? `${rel}/x` : rel);
+}
+
 /** @param {string} root @param {string} rel @param {import("node:fs").Dirent} entry @param {Walk} walk
  * @param {string[]} dirs */
 async function visit(root, rel, entry, walk, dirs) {
+  if (isPrivateEntry(rel, entry.isDirectory())) return;
   if (entry.isDirectory()) {
     if (!excludedFolder(rel)) dirs.push(rel);
     return;

@@ -229,8 +229,10 @@ import {
   type CaptureCostEstimate,
   buildHeapAdvisoryWarning,
   resolveRenderWorkerCount,
+  pickAutoGpuModeFromCalibration,
   runCaptureCalibration,
   selectCaptureCalibrationFrames,
+  shouldCalibrateSoftwareGpu,
 } from "./render/captureCost.js";
 import {
   computeCompositionObservabilityHash,
@@ -946,6 +948,18 @@ export class RenderCancelledError extends Error {
     super(message);
     this.name = "RenderCancelledError";
     this.reason = reason;
+  }
+}
+
+/**
+ * Aborts a render because a promise rejection nobody handled came from it. The
+ * render fails with the original error; it is not reported as a cancel.
+ */
+export class EscapedRejectionError extends Error {
+  constructor(cause: Error) {
+    super(cause.message, { cause });
+    Object.assign(this, cause);
+    this.name = cause.name;
   }
 }
 
@@ -3850,7 +3864,7 @@ async function executeRenderPipeline(input: {
     updateJobStatus(job, "rendering", "Checking browser GPU", 25, onProgress, {
       code: "start_browsers",
     });
-    const resolvedBrowserGpuMode = await resolveBrowserGpuMode(cfg.browserGpuMode, {
+    let resolvedBrowserGpuMode = await resolveBrowserGpuMode(cfg.browserGpuMode, {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
     });
@@ -4349,6 +4363,18 @@ async function executeRenderPipeline(input: {
           )
         : undefined;
       let outcome: Awaited<ReturnType<typeof runCaptureCalibration>>;
+      let softwareOutcome: Awaited<ReturnType<typeof runCaptureCalibration>> | undefined;
+      const calibrationInput = {
+        fileServer: activeFileServer,
+        log,
+        job,
+        totalFrames,
+        buildCaptureOptions: buildPrepCaptureOptions,
+        createRenderVideoFrameInjector: calibrationFrames
+          ? calibrationFrames.injector
+          : createRenderVideoFrameInjector,
+        assertNotAborted,
+      };
       try {
         outcome = await observeRenderStage(
           observability,
@@ -4361,22 +4387,36 @@ async function executeRenderPipeline(input: {
             // ts=1784019503.
             stagePhase: "calibrating",
           }),
-          () =>
-            runCaptureCalibration({
+          async () => {
+            const result = await runCaptureCalibration({
+              ...calibrationInput,
               cfg: calibrationCaptureConfig(cfg),
-              fileServer: activeFileServer,
               workDir,
-              log,
-              job,
-              totalFrames,
               forceScreenshot: captureForceScreenshot,
               probeSession,
-              buildCaptureOptions: buildPrepCaptureOptions,
-              createRenderVideoFrameInjector: calibrationFrames
-                ? calibrationFrames.injector
-                : createRenderVideoFrameInjector,
-              assertNotAborted,
-            }),
+            });
+            probeSession = result.probeSession;
+            if (
+              shouldCalibrateSoftwareGpu(
+                cfg.browserGpuMode,
+                resolvedBrowserGpuMode,
+                result.calibration?.estimate,
+              )
+            ) {
+              softwareOutcome = await runCaptureCalibration({
+                ...calibrationInput,
+                cfg: calibrationCaptureConfig({ ...cfg, browserGpuMode: "software" }),
+                workDir: join(workDir, "software-gpu"),
+                forceScreenshot: applyConcreteGpuScreenshotClamp(
+                  captureForceScreenshot,
+                  "software",
+                  cfg,
+                ),
+                probeSession: null,
+              });
+            }
+            return result;
+          },
           { heartbeatMessage: "browser calibrating (frames not started)" },
         );
       } finally {
@@ -4387,15 +4427,45 @@ async function executeRenderPipeline(input: {
       calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
-      probeSession = outcome.probeSession;
       if (outcome.lastBrowserConsole.length > 0) {
         lastBrowserConsole = outcome.lastBrowserConsole;
       }
+      if (
+        softwareOutcome &&
+        outcome.calibration &&
+        pickAutoGpuModeFromCalibration(
+          outcome.calibration.estimate,
+          softwareOutcome.calibration?.estimate,
+        ) === "software"
+      ) {
+        log.warn(
+          "[Render] Auto GPU mode: software capture measured faster than the hardware GPU, rendering in software.",
+          {
+            hardwareP95Ms: outcome.calibration.estimate.p95Ms,
+            softwareP95Ms: softwareOutcome.calibration?.estimate.p95Ms,
+          },
+        );
+        cfg.browserGpuMode = "software";
+        resolvedBrowserGpuMode = "software";
+        captureCalibration = softwareOutcome.calibration;
+        captureForceScreenshot = softwareOutcome.forceScreenshot;
+        // The probe browser runs on the hardware GPU; the capture stage opens its own.
+        if (probeSession) {
+          lastBrowserConsole = probeSession.browserConsoleBuffer;
+          await closeCaptureSession(probeSession).catch(() => {});
+          probeSession = null;
+        }
+        updateCaptureObservability({
+          browserGpuMode: resolvedBrowserGpuMode,
+          forceScreenshot: captureForceScreenshot,
+        });
+      }
       observability.checkpoint("capture_calibration", "resolved", {
         forceScreenshot: captureForceScreenshot,
-        multiplier: outcome.calibration?.estimate.multiplier ?? null,
-        p95Ms: outcome.calibration?.estimate.p95Ms ?? null,
-        medianMs: outcome.calibration?.estimate.medianMs ?? null,
+        browserGpuMode: resolvedBrowserGpuMode,
+        multiplier: captureCalibration?.estimate.multiplier ?? null,
+        p95Ms: captureCalibration?.estimate.p95Ms ?? null,
+        medianMs: captureCalibration?.estimate.medianMs ?? null,
       });
     } else {
       observability.checkpoint("capture_calibration", "skipped", {
@@ -5943,13 +6013,16 @@ async function executeRenderPipeline(input: {
       framesRendered: job.framesRendered ?? 0,
       error: caught,
     });
+    const escapedRejection =
+      executionSignal.reason instanceof EscapedRejectionError ? executionSignal.reason : undefined;
     const error = surfaceScriptFailure(
-      tooSlowError ?? audioFailure ?? pageNeverReady ?? caught,
+      tooSlowError ?? audioFailure ?? escapedRejection ?? pageNeverReady ?? caught,
       job,
     );
     if (
       !tooSlowError &&
       !audioFailure &&
+      !escapedRejection &&
       (error instanceof RenderCancelledError || executionSignal.aborted)
     ) {
       job.error = error instanceof Error ? error.message : "render_cancelled";

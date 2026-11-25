@@ -76,6 +76,8 @@ describe("createEditingPortClient", () => {
           "wait-for-seek",
           "set-loop-start",
           "computed-styles",
+          "authored-styles",
+          "font-faces",
           "elements-at-point",
           "pointer-targets",
           "describe",
