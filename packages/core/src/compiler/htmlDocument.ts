@@ -1,6 +1,6 @@
 import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
 import { findSceneTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   escapeInlineScriptSource,
   indexOfLower,
