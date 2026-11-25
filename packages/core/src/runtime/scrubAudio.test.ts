@@ -42,7 +42,7 @@ describe("createScrubAudio", () => {
 
   it("plays the music row's own track when a sub-composition repeats its id", () => {
     const [inner, root] = tracks(
-      '<div data-composition-id="strip" data-composition-src="compositions/strip.html"><audio id="music"></audio></div>' +
+      '<div data-composition-id="strip" data-composition-src="compositions/strip.html" data-composition-file="compositions/strip.html"><audio id="music"></audio></div>' +
         '<audio id="music" class="root"></audio>',
     );
 

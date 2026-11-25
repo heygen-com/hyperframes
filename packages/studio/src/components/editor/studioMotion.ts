@@ -36,6 +36,7 @@ export {
 } from "./studioMotionOps";
 
 import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
+import { readElementSource } from "@hyperframes/core/runtime/editing-port";
 import { readStudioMotionFromElement as readMotionAttr } from "./studioMotionOps";
 import {
   STUDIO_MOTION_ATTR,
@@ -53,14 +54,7 @@ import {
 // ── DOM Helpers ──
 
 function sourceFileForElement(element: HTMLElement, activeCompositionPath: string | null): string {
-  let current: HTMLElement | null = element;
-  while (current) {
-    const sourceFile =
-      current.getAttribute("data-composition-file") ?? current.getAttribute("data-composition-src");
-    if (sourceFile) return sourceFile;
-    current = current.parentElement;
-  }
-  return activeCompositionPath ?? "index.html";
+  return readElementSource(element).file ?? activeCompositionPath ?? "index.html";
 }
 
 function elementMatchesSourceFile(
