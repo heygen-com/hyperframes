@@ -13,7 +13,7 @@
 
 import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, closeSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { downloadTo, noteProjectProviderKey, searchSounds } from "./heygen.mjs";
@@ -105,6 +105,13 @@ export function inferBgmPrompt({ blob = "", archetype = "", arc = "", userPrompt
   return `${base}, BPM ${bpm}, MAJOR`;
 }
 
+/** The file at a track name when a job starts, or null. The job leaves it there until its own track is
+ * complete, so wait-bgm takes the track as finished only once the file is no longer this one. */
+export function trackAtStart(abs) {
+  const file = lstatSync(abs, { throwIfNoEntry: false });
+  return file ? { ino: file.ino, size: file.size, mtime_ms: file.mtimeMs } : null;
+}
+
 // ── generation (Lyria → MusicGen, detached) ──────────────────────────────────
 // Returns a bgmMeta the caller folds into audio_meta:
 //   { path, mode, volume, provider, pid, log, target_duration_s, seed_duration_s,
@@ -123,7 +130,13 @@ export function generateBgmDetached({
   mkdirSync(join(hyperframesDir, "assets", "bgm"), { recursive: true });
   const log = join(hyperframesDir, "assets", "bgm", `bgm-${Date.now()}.log`);
   const targetS = Math.max(1, durationS);
-  const baseMeta = { path: rel, mode: null, volume: bgmDefaultVolume(hasVoice), pending: true };
+  const baseMeta = {
+    path: rel,
+    mode: null,
+    volume: bgmDefaultVolume(hasVoice),
+    pending: true,
+    replaces: trackAtStart(abs),
+  };
 
   const lyriaConfigured = !!lyriaKey() && !!lyriaRecipe && existsSync(lyriaRecipe);
 
@@ -148,7 +161,6 @@ export function generateBgmDetached({
       "--prompt",
       prompt,
     ]);
-    rmSync(abs, { force: true }); // wait-bgm takes any file here as the finished track
     const proc = spawn(cmd, args, { detached: true, stdio: ["ignore", fd, fd] });
     proc.unref();
     closeSync(fd);
@@ -167,7 +179,6 @@ export function generateBgmDetached({
     const loops = targetS > seedS ? Math.ceil(targetS / seedS) : 1;
     const script = musicgenScript({ prompt, abs, targetS, seedS });
     const { cmd, args } = pythonInvocation(["-c", script]);
-    rmSync(abs, { force: true });
     // transformers reads "facebook/musicgen-small" as a folder when one exists in the working
     // directory, so the model is never looked up in the project.
     const proc = spawn(cmd, args, { cwd: homedir(), detached: true, stdio: ["ignore", fd, fd] });

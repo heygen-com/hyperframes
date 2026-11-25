@@ -169,7 +169,7 @@ test("the narrated default is well below the voice (≈ 0 dBFS)", () => {
 });
 
 test(
-  "generating music again clears the engine's old track, so waiting cannot mistake it for the new one",
+  "generating music again leaves the engine's old track in place and names it, so waiting can tell it from the new one",
   { skip: process.platform === "win32" && "the fake python is a shell script" },
   (t) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-bgm-"));
@@ -199,7 +199,8 @@ test(
     });
 
     assert.equal(gen.path, "assets/bgm/track.wav");
-    assert.equal(existsSync(join(dir, "assets/bgm/track.wav")), false);
+    const old = lstatSync(join(dir, "assets/bgm/track.wav"));
+    assert.deepEqual(gen.replaces, { ino: old.ino, size: old.size, mtime_ms: old.mtimeMs });
   },
 );
 
