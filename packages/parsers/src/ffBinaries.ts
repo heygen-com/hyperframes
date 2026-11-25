@@ -347,14 +347,13 @@ export { assertLiteralMediaInput };
 
 const PLAYLIST_DEMUXERS = new Set(["hls", "applehttp", "concat"]);
 
-/** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. Playlists only with `playlists: true`; anything but an http(s) URL reads as a local file. */
+/** The `-format_whitelist` pair for `input` (no playlists unless `playlists: true`); callers read it by position. */
 export function mediaInputFormatArgs(
   listingBinary: string,
   input: string,
   { playlists = false }: { playlists?: boolean } = {},
 ): string[] {
   assertLiteralMediaInput(input);
-  const local = /^https?:\/\//i.test(input) ? [] : ["-protocol_whitelist", "file"];
   const allowed = (formats: string) =>
     playlists
       ? formats
@@ -377,10 +376,19 @@ export function mediaInputFormatArgs(
     } catch {
       formats = undefined;
     }
-    if (formats === undefined) return [...local, "-format_whitelist", SELF_CONTAINED_FORMATS];
+    if (formats === undefined) return ["-format_whitelist", SELF_CONTAINED_FORMATS];
     demuxerLists.set(listingBinary, formats);
   }
-  return [...local, "-format_whitelist", allowed(formats)];
+  return ["-format_whitelist", allowed(formats)];
+}
+
+export function mediaInputArgs(
+  listingBinary: string,
+  input: string,
+  options: { playlists?: boolean } = {},
+): string[] {
+  const local = /^https?:\/\//i.test(input) ? [] : ["-protocol_whitelist", "file"];
+  return [...local, ...mediaInputFormatArgs(listingBinary, input, options)];
 }
 
 const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
