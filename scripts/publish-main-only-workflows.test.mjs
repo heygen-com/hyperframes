@@ -121,12 +121,12 @@ test("the catalog PR is the app's, its key reaches only the first step, and Acti
   const job = doc.jobs.publish;
   assert.equal(job.environment, "catalog-publish");
   assert.notEqual((job.permissions ?? doc.permissions)["pull-requests"], "write");
-  assert.equal(source.match(/secrets\.GENESIS_PRIVATE_KEY/g).length, 1);
+  assert.equal(source.match(/secrets\.CI_SYNC_PRIVATE_KEY/g).length, 1);
   const [mint] = job.steps;
   assert.match(mint.uses, /^actions\/create-github-app-token@[a-f0-9]{40}$/);
   assert.deepEqual(mint.with, {
-    "app-id": "${{ secrets.GENESIS_APP_ID }}",
-    "private-key": "${{ secrets.GENESIS_PRIVATE_KEY }}",
+    "app-id": "${{ secrets.CI_SYNC_APP_ID }}",
+    "private-key": "${{ secrets.CI_SYNC_PRIVATE_KEY }}",
     "permission-pull-requests": "write",
   });
   assert.deepEqual(

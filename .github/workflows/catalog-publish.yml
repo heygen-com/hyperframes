@@ -30,8 +30,8 @@ jobs:
         id: pr-token
         uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
         with:
-          app-id: ${{ secrets.GENESIS_APP_ID }}
-          private-key: ${{ secrets.GENESIS_PRIVATE_KEY }}
+          app-id: ${{ secrets.CI_SYNC_APP_ID }}
+          private-key: ${{ secrets.CI_SYNC_PRIVATE_KEY }}
           permission-pull-requests: write
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
