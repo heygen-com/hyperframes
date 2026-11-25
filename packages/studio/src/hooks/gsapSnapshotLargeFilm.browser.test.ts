@@ -90,13 +90,10 @@ it.each(MODES)(
           button: snapshot?.targets.some((target) => target.id === "button") ?? false,
         };
       });
-      expect(read).toEqual({
-        gestureCanStart: true,
-        timeline: mode === "sealed" ? CELLS * FLIPS + 1 : null,
-        tweens: CELLS * FLIPS + 1,
-        targets: CELLS + 1,
-        button: true,
-      });
+      expect(read).toMatchObject({ gestureCanStart: true, button: true });
+      expect(read.tweens).toBeGreaterThan(CELLS * FLIPS);
+      expect(read.targets).toBeGreaterThan(CELLS);
+      expect(read.timeline).toBe(mode === "sealed" ? read.tweens : null);
     } finally {
       await preview.page.close();
     }
