@@ -44,6 +44,7 @@ const HANDLE = "0123456789abcdef:1";
 const snapshot = (vars: Record<string, number> | null) => ({
   time: 0.5,
   defaultEase: null,
+  globalTweens: [],
   timelines: [
     {
       id: "main",

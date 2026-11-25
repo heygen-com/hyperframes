@@ -1,11 +1,12 @@
 // fallow-ignore-file code-duplication complexity
 import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
 import {
@@ -346,13 +347,18 @@ export async function ensureModel(
   const pin = PINNED_MODELS.get(model);
   ensurePrivateCacheDir(MODELS_DIR, hyperframesCacheDir());
   const cachedBytes = statSync(modelPath, { throwIfNoEntry: false })?.size;
-  if (cachedBytes !== undefined && (!pin || cachedBytes === pin.bytes)) return modelPath;
+  if (
+    cachedBytes !== undefined &&
+    (!pin || (cachedBytes === pin.bytes && (await cachedCopyVerified(modelPath, pin))))
+  )
+    return modelPath;
 
   rmSync(modelPath, { force: true });
+  rmSync(verifiedMarker(modelPath), { force: true });
   options?.onProgress?.(
     cachedBytes === undefined
       ? `Downloading model ${model}...`
-      : `Model ${model} is incomplete; downloading it again...`,
+      : `Model ${model} does not match its pinned copy; downloading it again...`,
   );
   await downloadFile(getModelUrl(model), modelPath, {
     signal: options?.signal,
@@ -365,7 +371,32 @@ export async function ensureModel(
       }
     },
   });
+  if (pin) replaceFileAtomically(verifiedMarker(modelPath), verifiedStamp(modelPath, pin));
   return modelPath;
+}
+
+const verifiedMarker = (modelPath: string) => `${modelPath}.verified`;
+
+function verifiedStamp(modelPath: string, pin: ModelFile): string {
+  const { size, mtimeMs, ino } = statSync(modelPath);
+  return `${pin.sha256} ${size} ${mtimeMs} ${ino}`;
+}
+
+const readStamp = (marker: string) => {
+  try {
+    return readFileSync(marker, "utf8");
+  } catch {
+    return undefined;
+  }
+};
+
+async function cachedCopyVerified(modelPath: string, pin: ModelFile): Promise<boolean> {
+  const marker = verifiedMarker(modelPath);
+  const stamp = verifiedStamp(modelPath, pin);
+  if (readStamp(marker) === stamp) return true;
+  if (!(await verifies(modelPath, pin))) return false;
+  replaceFileAtomically(marker, stamp);
+  return true;
 }
 
 export function hasFFmpeg(): boolean {

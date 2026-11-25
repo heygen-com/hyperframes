@@ -59,6 +59,25 @@ test("optedOut respects DO_NOT_TRACK / HYPERFRAMES_NO_TELEMETRY / CI", () => {
   }
 });
 
+// fails without the fix: the media-use scripts took only "1", so DO_NOT_TRACK=true silenced the CLI and not them.
+for (const [name, value] of [
+  ["DO_NOT_TRACK", "true"],
+  ["DO_NOT_TRACK", "yes"],
+  ["DO_NOT_TRACK", " ON "],
+  ["HYPERFRAMES_NO_TELEMETRY", "TRUE"],
+]) {
+  test(`optedOut respects ${name}=${JSON.stringify(value)}, as the CLI does`, () => {
+    const saved = { ...process.env };
+    try {
+      withoutTelemetryOptOut();
+      process.env[name] = value;
+      assert.equal(optedOut(), true);
+    } finally {
+      restoreEnv(saved);
+    }
+  });
+}
+
 test("optedOut honors telemetryEnabled: false from the shared config", () => {
   const savedEnv = { ...process.env };
   const { root, home } = sandbox();
