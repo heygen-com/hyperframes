@@ -230,9 +230,11 @@ function gitBashFile(src: string): string | undefined {
 /** Resolves a media `src` like a browser URL (`..` clamps at the project root); a miss returns the base-dir join. */
 export function resolveProjectRelativeSrc(
   src: string,
-  baseDir: string,
-  compiledDir?: string,
+  relativeOrAbsoluteBase: string,
+  relativeOrAbsoluteCompiled?: string,
 ): string {
+  const baseDir = resolve(relativeOrAbsoluteBase);
+  const compiledDir = relativeOrAbsoluteCompiled && resolve(relativeOrAbsoluteCompiled);
   const cleanSrc = fileUrlAsPath(cleanAssetUrl(src));
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.

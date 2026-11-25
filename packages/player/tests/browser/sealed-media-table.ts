@@ -485,10 +485,10 @@ async function installDriver(frame: Frame) {
       if (data.table) data.corsAtLoad = cors;
       if (data.table && !driving) {
         data.ours = String(Number(data.ours ?? 0) + 1);
-        if (data.corsAtFetch !== undefined && data.corsAtFetch !== cors)
-          data.corsLoads = String(Number(data.corsLoads ?? 0) + 1);
+        const switched = data.corsAtFetch !== undefined && data.corsAtFetch !== cors;
+        if (switched) data.corsLoads = String(Number(data.corsLoads ?? 0) + 1);
         data.loadedAt = String(this.currentTime);
-        if (this.hasAttribute("crossorigin"))
+        if (switched && this.hasAttribute("crossorigin"))
           data.upgrades = String(Number(data.upgrades ?? 0) + 1);
         delete data.restartGap;
         if (!this.paused) {
@@ -501,6 +501,8 @@ async function installDriver(frame: Frame) {
           (this.currentTime > 0 && data.play !== undefined);
         if (pending.has(this) && corsReload && races) setTimeout(() => interrupt(this));
       }
+      // The next load is measured against this one: a second load before the fetch begins starts that same fetch.
+      if (data.table) data.corsAtFetch = cors;
       return load.call(this);
     };
     window.addEventListener(

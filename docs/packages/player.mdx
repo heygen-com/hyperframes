@@ -145,7 +145,7 @@ player.addEventListener("timeupdate", (event) => {
 | `ratechange`   | —                 | Playback rate changed                                        |
 | `volumechange` | —                 | Volume or muted state changed                                |
 | `scenes`       | `{ scenes }`      | The runtime reported its scene list                          |
-| `error`        | `{ message }`     | Load or runtime error, or no timeline within the load limit (Windows 90 s, Linux 30 s, other systems 120 s). The player keeps listening, so a timeline that comes later still fires `ready`. A video adds its `MediaError` `code` |
+| `error`        | `{ message }`     | Load or runtime error, or no timeline within the load limit (Windows 90 s, Linux 30 s, other systems 120 s). The player keeps listening, so a timeline that comes later still fires `ready`. A video adds its `MediaError` `code`. With no listener and no `onerror`, it is also a console warning |
 | `playbackerror` | `{ source, error }` | The browser blocked playback, for example unmuted autoplay |
 
 ## Custom icons and loading mark

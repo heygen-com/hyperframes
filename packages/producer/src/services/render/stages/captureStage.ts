@@ -50,6 +50,7 @@ import {
   completeDeferredDrawElementInit,
   createCaptureSession,
   getCapturePerfSummary,
+  retainCapturePerf,
   initializeSession,
   prepareCaptureSessionForReuse,
 } from "@hyperframes/engine";
@@ -641,7 +642,7 @@ async function captureSessionFrames(
       assertNotAborted();
       const absoluteIdx = rangeStart + i;
       const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
-      const { encodeResult } = await captureFrameToBufferPipelined(session, i, time);
+      const { encodeResult } = await captureFrameToBufferPipelined(session, absoluteIdx, time);
       await drainPrev();
       prev = { fileIndex: i, encodeResult };
     }
@@ -651,7 +652,7 @@ async function captureSessionFrames(
       assertNotAborted();
       const absoluteIdx = rangeStart + i;
       const time = (absoluteIdx * job.config.fps.den) / job.config.fps.num;
-      await captureFrame(session, i, time);
+      await captureFrame(session, absoluteIdx, time, i);
       reportFrame(i);
     }
   }
@@ -670,5 +671,5 @@ async function captureSessionFrames(
   );
   // Capture the sequential session's static-dedup perf before close (the
   // counters are valid only while the session is live).
-  dedupPerfs.push(getCapturePerfSummary(session));
+  retainCapturePerf(dedupPerfs, getCapturePerfSummary(session));
 }

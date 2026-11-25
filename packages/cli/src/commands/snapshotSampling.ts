@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { createRuntimeStartTimeResolver } from "@hyperframes/core";
 import { CliUsageError } from "../utils/commandResult.js";
 export type SnapshotRange = [number, number];

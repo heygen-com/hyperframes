@@ -25,13 +25,31 @@
 
 import "../../scripts/lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
-import { readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { dirname, relative, resolve, sep } from "node:path";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  fchmodSync,
+  lstatSync,
+  openSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import * as carveApi from "./lib/audio-carve.mjs";
 import { isMainModule } from "./lib/main-module.mjs";
-import { isIndirectFormat, pinnedInput, probeFormat } from "./lib/media-input.mjs";
-import { projectPath } from "./lib/project-path.mjs";
+import {
+  ACCEPTED_CONTAINERS,
+  isIndirectFormat,
+  pinnedInput,
+  probeFormat,
+} from "./lib/media-input.mjs";
+import { isPlainProjectPath, projectPath } from "./lib/project-path.mjs";
 import { assertLiteralMediaPath } from "../../scripts/lib/literal-media-input.mjs";
+import { replaceFileWith } from "../../scripts/lib/link-safe-write.mjs";
+import { readRegularFile } from "../../scripts/lib/recipe-store.mjs";
 
 /** Sample rate the analysis runs at. Matches Studio's own decode rate, so the
  *  bands and envelopes come out the same either way. */
@@ -202,7 +220,10 @@ export function mediaSource(compDir, src) {
 /** Mono float PCM for one media file, via ffmpeg reading that file alone. */
 function decode(path) {
   const format = probeFormat(path);
-  if (!format) fail(`could not decode ${path}: ffmpeg cannot read it as media`);
+  if (!format)
+    fail(
+      `could not decode ${path}: it is not media in an accepted container (${ACCEPTED_CONTAINERS})`,
+    );
   if (isIndirectFormat(format)) {
     fail(`${path} is a ${format} list that points at other files; give the media file itself`);
   }
@@ -342,12 +363,66 @@ const startOf = (tag) => {
   return Number.isFinite(raw) ? raw : 0;
 };
 
+/**
+ * The composition's HTML. Throws when the name is a link or not a regular file, or when a folder
+ * between the working folder and it is a link: a received project could point either at a file
+ * outside the project, and the carve would read that file and write it back changed.
+ */
+export function readComposition(compPath, from = process.cwd()) {
+  const rel = relative(from, compPath);
+  // ".." alone or as the first part leaves the working folder; a name that only begins with two dots does not
+  const leaves = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+  const under = rel !== "" && !leaves;
+  if (under && !isPlainProjectPath(from, rel) && lstatSync(compPath, { throwIfNoEntry: false })) {
+    throw new Error(
+      `${compPath} is a link or is reached through one, not a composition file; nothing was read or written`,
+    );
+  }
+  const content = readRegularFile(compPath);
+  if (content !== undefined) return content.toString("utf-8");
+  if (lstatSync(compPath, { throwIfNoEntry: false })) {
+    throw new Error(
+      `${compPath} is a link or not a regular file, not a composition file; nothing was read or written`,
+    );
+  }
+  throw new Error(`${compPath} does not exist`);
+}
+
+/**
+ * Saves the composition as a new file renamed over the old one, so a link put at the name since the
+ * read is replaced, not followed. The file keeps its permissions, and one that may not be written
+ * is refused as before. Until it has those permissions the new file is readable by its owner only.
+ * `written(temp)` runs once the text is in the new file, before it gets its permissions and its name.
+ */
+export function saveComposition(compPath, html, written = () => {}) {
+  const old = lstatSync(compPath, { throwIfNoEntry: false });
+  if (old?.isFile()) accessSync(compPath, constants.W_OK);
+  const mode = old?.isFile() ? old.mode & 0o777 : 0o666 & ~process.umask();
+  replaceFileWith(compPath, (temp) => {
+    // The helper's temp is empty and has default permissions: ours is made again, owner-only, and filled by the handle that made it.
+    rmSync(temp);
+    const file = openSync(temp, "wx", 0o600);
+    try {
+      writeFileSync(file, html);
+      written(temp);
+      fchmodSync(file, mode);
+    } finally {
+      closeSync(file);
+    }
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const compPath = resolve(args.comp);
   const compDir = dirname(compPath);
 
-  const html = readFileSync(compPath, "utf-8");
+  let html;
+  try {
+    html = readComposition(compPath);
+  } catch (error) {
+    fail(error.message);
+  }
   const {
     bed: bedEl,
     voices,
@@ -521,7 +596,11 @@ async function main() {
   // go: `stripped` is the opening tag alone, so appending would land outside it.
   const nextTag = stripped.replace(/\/?>$/, (close) => `${written}${close}`);
   if (nextTag === stripped) fail("attribute write produced no change — refusing to save");
-  writeFileSync(compPath, html.replace(bedTag, nextTag));
+  try {
+    saveComposition(compPath, html.replace(bedTag, nextTag));
+  } catch (error) {
+    fail(`could not save ${args.comp}: ${error.message}`);
+  }
   process.stdout.write(`wrote ${args.comp} (id="${bedEl.id}")\n`);
 }
 

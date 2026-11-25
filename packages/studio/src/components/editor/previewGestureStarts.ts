@@ -161,6 +161,7 @@ export function createPreviewGestureStarts(
     start: ShownStart,
     draw: WaitingPressState["draw"] = null,
     targets: () => DomEditSelection[] = () => [],
+    routeFromSnapshot = false,
   ): boolean => {
     const at = playheadMoment();
     const iframe = opts.iframeRef.current;
@@ -173,6 +174,7 @@ export function createPreviewGestureStarts(
     // The press already holds the pointer, which may be up by the time the gesture starts.
     const held = { setPointerCapture() {} };
     const down = { ...e, currentTarget: held, preventDefault() {}, stopPropagation() {} };
+    const before = opts.waitingPressRef.current;
     const press: WaitingPressState = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -181,8 +183,13 @@ export function createPreviewGestureStarts(
       frame: 0,
       moved: null,
       released: null,
-      after: opts.waitingPressRef.current,
+      after: before,
       ended: false,
+      refused: false,
+      drawBack: () => {
+        if (before?.refused) before.drawBack();
+        else draw?.(0, 0);
+      },
     };
     opts.waitingPressRef.current = press;
     const onSave = !!press.after || isPreviewChanging() || isStudioEditSaving();
@@ -213,6 +220,7 @@ export function createPreviewGestureStarts(
         opts.overlayRef.current,
         opts.activeCompositionPathRef.current,
         targets(),
+        routeFromSnapshot,
       ).then((answer) => {
         if (askedOf !== frame) return;
         overChannel = answer;
@@ -267,10 +275,11 @@ export function createPreviewGestureStarts(
       return true;
     };
     const sayWhyNotStarted = (step: "lost" | "run" | "unanswered") => {
+      if (step !== "unanswered" || !channel) return;
+      press.refused = true;
+      press.drawBack();
       const pressed = opts.selectionRef.current;
-      if (step !== "unanswered" || !channel || !pressed) return;
-      press.draw?.(0, 0);
-      opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
+      if (pressed) opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
     };
     pollFirst(channel, press, poll);
     return true;
@@ -380,6 +389,7 @@ export function createPreviewGestureStarts(
       },
       draw,
       () => (target ? [target] : []),
+      kind === "resize",
     );
   };
 

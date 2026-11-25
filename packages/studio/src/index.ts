@@ -46,8 +46,11 @@ export {
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
 export {
+  previewAuthoredStyles,
+  previewComputedStylesOfEvery,
   previewDocumentCopy,
   previewEditingClient,
+  previewFontFaces,
   previewFrameOpaque,
 } from "./player/lib/previewChannel";
 export {

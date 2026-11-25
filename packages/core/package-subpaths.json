@@ -158,6 +158,18 @@
       "types": "./dist/utils/richTextSanitize.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./drawn-box": {
+      "source": "./src/runtime/drawnBox.ts",
+      "runtime": "./dist/runtime/drawnBox.js",
+      "types": "./dist/runtime/drawnBox.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./inline-text-style": {
+      "source": "./src/utils/inlineTextStyleRead.ts",
+      "runtime": "./dist/utils/inlineTextStyleRead.js",
+      "types": "./dist/utils/inlineTextStyleRead.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./composition-contract": {
       "source": "./src/compositionContract.ts",
       "runtime": "./dist/compositionContract.js",
@@ -384,6 +396,12 @@
       "source": "./src/audioFade.ts",
       "runtime": "./dist/audioFade.js",
       "types": "./dist/audioFade.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audio-decode": {
+      "source": "./src/audioDecode.ts",
+      "runtime": "./dist/audioDecode.js",
+      "types": "./dist/audioDecode.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./speed-ramp": {

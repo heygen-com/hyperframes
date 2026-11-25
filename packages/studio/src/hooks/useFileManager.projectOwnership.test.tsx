@@ -289,3 +289,41 @@ describe("useFileManager uploads", () => {
     );
   });
 });
+
+describe("useFileManager renames", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function rename(response: Record<string, unknown>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ ok: true, path: "moved.mp4", ...response })),
+    );
+    const showToast = vi.fn();
+    const { manager, root } = await mountTestFileManager("project-a", showToast);
+    await act(() => manager.handleRenameFile("clip.mp4", "moved.mp4"));
+    await act(async () => root.unmount());
+    return showToast;
+  }
+
+  it("names the files a rename left pointing at the old path", async () => {
+    const showToast = await rename({ unchangedReferences: ["reference.js", "lib/load.mjs"] });
+    expect(showToast).toHaveBeenCalledWith(
+      "Renamed. These files still use the old name, so update them by hand: reference.js, lib/load.mjs",
+      "info",
+    );
+  });
+
+  it("names the first five and counts the rest", async () => {
+    const showToast = await rename({
+      unchangedReferences: ["a.js", "b.js", "c.js", "d.js", "e.js", "f.js", "g.js"],
+    });
+    expect(showToast).toHaveBeenCalledWith(
+      "Renamed. These files still use the old name, so update them by hand: a.js, b.js, c.js, d.js, e.js and 2 more",
+      "info",
+    );
+  });
+
+  it("says nothing when every reference was updated", async () => {
+    expect(await rename({ unchangedReferences: [] })).not.toHaveBeenCalled();
+  });
+});

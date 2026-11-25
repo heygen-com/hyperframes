@@ -160,21 +160,28 @@ describe("an opaque preview frame's loads under its token", () => {
     ["video", "music.mp3"],
     ["video", "logo.png"],
     ["audio", "clip.mp4"],
-    ["audio", "comp/music.mp3"],
     ["font", "data.json"],
     ["font", "scene.js"],
     ["script", "data.json"],
     ["script", "fonts/Brand.woff2"],
     ["script", "scene.html"],
     ["script", "comp/scene.html"],
-    // The sub-composition route answers any project file with an HTML page.
-    ["script", "comp/scene.js"],
-    ["font", "comp/fonts/Brand.woff2"],
     ["toString", "scene.js"],
     ["constructor", "fonts/Brand.woff2"],
   ])("refuses a %s load of %s", async (dest, path) => {
     const res = await load(path, { origin: "null", "sec-fetch-dest": dest });
     expect(res.status).toBe(200);
+    expectNotGranted(res);
+  });
+
+  // The sub-composition route answers only for compositions, so these never reach a page or a grant.
+  it.each([
+    ["audio", "comp/music.mp3"],
+    ["script", "comp/scene.js"],
+    ["font", "comp/fonts/Brand.woff2"],
+  ])("refuses a %s load of %s with no page", async (dest, path) => {
+    const res = await load(path, { origin: "null", "sec-fetch-dest": dest });
+    expect(res.status).toBe(404);
     expectNotGranted(res);
   });
 

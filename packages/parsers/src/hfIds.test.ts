@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { ensureHfIds, mintHfId, stampHfIdsInPlace, walkCompositionDescendants } from "./hfIds.js";
+import {
+  ensureHfIds,
+  isNonContentElement,
+  mintHfId,
+  stampHfIdsInPlace,
+  walkCompositionDescendants,
+} from "./hfIds.js";
 import { parseHTML } from "linkedom";
 import { assignHfIds } from "./hfIdAssignment.js";
 
@@ -369,5 +375,14 @@ describe("ensureHfIds — edit lifecycle (R1 stability)", () => {
     const pair = ids(ensureHfIds(doc(`<p class="x">same</p><p class="x">same</p>`)));
     expect(pair[0]).toBe(single); // first identical element: stable, content-derived
     expect(pair[1]).not.toBe(single); // second: dedup id, exists only by position
+  });
+});
+
+describe("isNonContentElement", () => {
+  it("names script, style and the other excluded tags in either case, never a content element", () => {
+    for (const tagName of ["script", "STYLE", "Template", "meta", "link", "noscript", "base"])
+      expect(isNonContentElement({ tagName })).toBe(true);
+    for (const tagName of ["div", "SPAN", "textarea", "title", "head"])
+      expect(isNonContentElement({ tagName })).toBe(false);
   });
 });

@@ -232,10 +232,9 @@ describe("a paste is checked as the preview server serves the file", () => {
   });
 
   it("still pastes an svg whose title is plain text", () => {
-    const icon =
-      '<svg viewBox="0 0 4 4"><title>Icon &lt;/title&gt;</title><circle r="2"></circle></svg>';
+    const icon = '<svg viewBox="0 0 4 4"><title>Icon 1 &lt; 2</title><circle r="2"></circle></svg>';
     const file = pasteElementHtml(FILE, { html: icon, readFrom: null }, false, "index.html");
-    expect(file).toMatch(/<title [^>]*>Icon &lt;\/title&gt;<\/title><circle /);
+    expect(file).toMatch(/<title [^>]*>Icon 1 &lt; 2<\/title><circle /);
   });
 });
 

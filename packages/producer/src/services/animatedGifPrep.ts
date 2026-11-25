@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
 import {
   DEFAULT_VP9_CPU_USED,
@@ -115,7 +115,11 @@ export function resolveLocalImageSourcePath(
   const assetRoot = options.allowOutsideFiles ? undefined : options.projectDir;
   const allowed = (candidate: string) =>
     !namesAnotherNetworkRoot(options.projectDir, candidate) &&
-    !isPrivateUnderAssetRoots(candidate, [options.projectDir, options.downloadDir]) &&
+    !isPrivateUnderAssetRoots(
+      candidate,
+      [options.projectDir, options.downloadDir],
+      options.allowOutsideFiles,
+    ) &&
     ((!escapesAssetRoot(candidate, assetRoot) &&
       outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
       !escapesAssetRoot(candidate, options.downloadDir));

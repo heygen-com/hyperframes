@@ -125,7 +125,10 @@ describe("a project page opened by direct navigation", () => {
   it("is answered sandboxed by this server", async () => {
     const project = path.join(root, "project");
     fs.writeFileSync(path.join(project, "index.html"), '<div data-composition-id="main"></div>');
-    fs.writeFileSync(path.join(project, "page.html"), "<script>document.title = 1</script>");
+    fs.writeFileSync(
+      path.join(project, "page.html"),
+      '<div data-composition-id="page"></div><script>document.title = 1</script>',
+    );
     const id = encodeURIComponent(path.basename(project));
     for (const file of ["page.html", "comp/page.html"]) {
       const response = await server.app.request(`/api/projects/${id}/preview/${file}`, {

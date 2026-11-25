@@ -3,7 +3,7 @@ import { redactUrlQueryStrings } from "@hyperframes/core";
 import {
   SELF_CONTAINED_FORMATS,
   assertLiteralMediaInput,
-  mediaInputFormatArgs,
+  mediaInputArgs,
 } from "@hyperframes/parsers/ff-binaries";
 import { resolveRestrictPageNetwork } from "../config.js";
 import { getFfmpegBinary, getFfprobeBinary } from "./ffmpegBinaries.js";
@@ -68,7 +68,9 @@ export function urlInputArgs(
 ): string[] {
   assertLiteralMediaInput(input);
   const mediaFormats = () =>
-    mediaInputFormatArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary(), input);
+    mediaInputArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary(), input, {
+      playlists: true,
+    });
   const restricted = resolveRestrictPageNetwork();
   const route = restricted ? restrictedRoute(input) : undefined;
   if (route === "proxy" && !/^https:\/\//i.test(input))
@@ -78,8 +80,7 @@ export function urlInputArgs(
       ...proxiedLimits(),
       ...PROXY_THAT_REACHES_NOTHING,
     ];
-  if ((route ?? schemeRoute(input)) === "local")
-    return ["-protocol_whitelist", "file", ...mediaFormats()];
+  if ((route ?? schemeRoute(input)) === "local") return mediaFormats();
   if (!/^https:\/\//i.test(input)) return mediaFormats();
   const caFile = caBundles.find((path) => existsSync(path));
   if (!caFile) {

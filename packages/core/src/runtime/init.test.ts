@@ -370,6 +370,47 @@ describe("initSandboxRuntimeModular", () => {
     expect(caption.getAttribute("data-start")).toBe("0");
   });
 
+  it("does not stamp timing onto an element the runtime marks as its own", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const gradingCanvas = document.createElement("canvas");
+    gradingCanvas.id = "__hf_color_grading_clip";
+    gradingCanvas.setAttribute("data-hf-ignore", "");
+    root.appendChild(gradingCanvas);
+    const helperHost = document.createElement("div");
+    helperHost.setAttribute("data-hyperframes-ignore", "");
+    const helperChild = document.createElement("div");
+    helperChild.id = "helper-child";
+    helperHost.appendChild(helperChild);
+    root.appendChild(helperHost);
+    const caption = document.createElement("div");
+    caption.id = "cap-1";
+    root.appendChild(caption);
+
+    const main = createMockTimeline(10);
+    const tweenOnHelper = { ...mockTween(0, 10), targets: () => [helperChild] };
+    main.getChildren = () => [tweenOnHelper as unknown as RuntimeTimelineLike];
+    window.__timelines = { main };
+    const realParent = window.parent;
+    Object.defineProperty(window, "parent", { value: {}, configurable: true });
+    try {
+      initSandboxRuntimeModular();
+    } finally {
+      Object.defineProperty(window, "parent", { value: realParent, configurable: true });
+    }
+
+    expect(gradingCanvas.hasAttribute("data-start")).toBe(false);
+    expect(helperChild.hasAttribute("data-start")).toBe(false);
+    expect(caption.getAttribute("data-start")).toBe("0");
+  });
+
   describe("visibility of runtime-stamped elements in Studio preview", () => {
     afterEach(() => vi.restoreAllMocks());
 
@@ -3500,6 +3541,44 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.currentTime).toBe(0);
   });
 
+  describe("a looped sound in a slot longer than its source", () => {
+    function audioIn(loop: boolean): HTMLAudioElement {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      const audio = document.createElement("audio");
+      audio.setAttribute("data-start", "2");
+      audio.setAttribute("data-duration", "18");
+      audio.loop = loop;
+      root.appendChild(audio);
+      Object.defineProperty(audio, "duration", { value: 4, writable: true, configurable: true });
+      Object.defineProperty(audio, "paused", { value: true, writable: true, configurable: true });
+      Object.defineProperty(audio, "readyState", { value: 4, writable: true, configurable: true });
+      Object.defineProperty(audio, "currentTime", { value: 0, writable: true, configurable: true });
+      audio.load = () => {};
+      audio.pause = () => {};
+      window.__timelines = { main: createMockTimeline(20) };
+      initSandboxRuntimeModular();
+      return audio;
+    }
+
+    // fails without the fix: the clip ended at its 4 s source, so preview paused it after one pass.
+    it("is placed on its second pass at 7 s", () => {
+      const audio = audioIn(true);
+      window.__player?.seek(7);
+      expect(audio.currentTime).toBeCloseTo(1, 3);
+    });
+
+    it("still ends with its source when it does not loop", () => {
+      const audio = audioIn(false);
+      window.__player?.seek(7);
+      expect(audio.currentTime).toBe(0);
+    });
+  });
+
   it("seeks sub-composition timelines at data-start near 0 during renderSeek", () => {
     // Regression: sub-compositions starting at or near t=0 kept their initial CSS state
     // in render. Each scene now gets its own seek, so the paused root need not reach it.
@@ -3666,6 +3745,39 @@ describe("initSandboxRuntimeModular", () => {
     window.__player?.renderSeek(2);
 
     expect(seekCalls).toEqual([{ time: 2, suppressEvents: false }]);
+  });
+
+  // A sealed frame gets each seek as its own message, so Studio re-renders it with one seek to the time it shows.
+  const rootSeeking = (children?: unknown[]) => {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080"></div>`;
+    const seekCalls: Array<{ time: number; suppressEvents?: boolean }> = [];
+    const rootTimeline = createMockTimeline(10);
+    const originalTotalTime = rootTimeline.totalTime;
+    rootTimeline.totalTime = (time: number, suppressEvents?: boolean) => {
+      if (time !== undefined) seekCalls.push({ time, suppressEvents });
+      return originalTotalTime?.(time, suppressEvents);
+    };
+    if (children) Object.assign(rootTimeline, { getChildren: () => children });
+    window.__timelines = { main: rootTimeline };
+    initSandboxRuntimeModular();
+    window.__player?.seek(2);
+    seekCalls.length = 0;
+    window.__player?.seek(2);
+    return seekCalls;
+  };
+
+  it("redraws the root timeline on a seek to the time it already shows", () => {
+    expect(rootSeeking()).toEqual([
+      { time: 2, suppressEvents: false },
+      { time: 1.999, suppressEvents: true },
+      { time: 2, suppressEvents: true },
+    ]);
+  });
+
+  it("does not redraw a root timeline holding a zero-duration callback on a seek to its own time", () => {
+    const callback = { vars: { onComplete: () => {} }, duration: () => 0, totalDuration: () => 0 };
+    // Known limit: a redraw would fire the callback again, so only the seek itself lands.
+    expect(rootSeeking([callback])).toEqual([{ time: 2, suppressEvents: false }]);
   });
 
   it("keeps a later root tween's value over a nested scene the root already drew", () => {

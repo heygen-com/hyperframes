@@ -35,6 +35,32 @@ function captured(capture) {
   return /** @type {Extract<typeof capture, { at: "captured" }>} */ (capture);
 }
 
+test("capture skips a private directory and a symlink with the same name", async (t) => {
+  const root = await project({ "index.html": "project", "actual/.ssh/config": "fixture" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "linked"));
+  await symlink(join(root, "actual/.ssh"), join(root, "linked/.ssh"), "dir");
+  const result = captured(await captureProject(root));
+  assert.deepEqual(
+    result.manifest.document.files.map((file) => file.path),
+    ["index.html"],
+  );
+});
+
+test("a private filename excludes a file but preserves authored assets in a folder of that name", async (t) => {
+  const root = await project({
+    "index.html": "project",
+    "credentials.json": "private fixture",
+    "assets/credentials.json/cover.svg": "<svg/>",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { manifest } = captured(await captureProject(root));
+  assert.deepEqual(
+    manifest.document.files.map((file) => file.path),
+    ["assets/credentials.json/cover.svg", "index.html"],
+  );
+});
+
 test("a capture lists portable files with their hashes and leaves out what the policy excludes", async () => {
   const root = await project({
     "index.html": "<html></html>",
@@ -328,4 +354,51 @@ test("scratch files and wildcard exclusions do not change the snapshot", async (
   assert.deepEqual(captured(await captureProject(root)).manifest, first.manifest);
   await writeFile(join(root, "data.json"), "{}");
   assert.notEqual(await projectFingerprint(root), before);
+});
+
+test("editable source omits credential stores while preserving authored assets", async (t) => {
+  const root = await project({
+    "index.html": "page",
+    ".config/gh/hosts.yml": "fixture",
+    ".config/gcloud/state.db": "fixture",
+    "assets/.DOCKER/config.json": "{}",
+    ".gnupg/keys/data": "fixture",
+    ".kube/config": "fixture",
+    ".azure/settings": "fixture",
+    ".fonts/Inter.woff2": "font",
+    ".Gitignore": "output/",
+    ".GitHub/workflows/ci.yml": "workflow",
+    "assets/deck.key": "slides",
+    ".media/video/clip.mp4": "clip",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.deepEqual(
+    captured(await captureProject(root)).manifest.document.files.map(({ path }) => path),
+    [
+      ".GitHub/workflows/ci.yml",
+      ".Gitignore",
+      ".fonts/Inter.woff2",
+      ".media/video/clip.mp4",
+      "index.html",
+    ],
+  );
+  await symlink(".config/gh/hosts.yml", join(root, "notes.txt"));
+  assert.deepEqual(await captureProject(root), {
+    at: "problems",
+    problems: [{ path: "notes.txt", problem: "symlink" }],
+  });
+});
+
+test("a host can use the package snapshot entry point for private names and strict ignore rules", async (t) => {
+  const { isPrivateSourcePath, privateSourceSpelling, readSourceIgnore } =
+    await import("@hyperframes/share/projectSnapshot.mjs");
+  const root = await project({ ".hyperframesignore": "scratch/\n" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const spelled = "Assets/Ｓervice-Account.json";
+  assert.equal(privateSourceSpelling(spelled), "assets/service-account.json");
+  assert.equal(isPrivateSourcePath(spelled), true);
+  assert.equal(isPrivateSourcePath("assets/voice.wav"), false);
+  const ignored = await readSourceIgnore(root);
+  assert.equal(ignored("scratch/draft.txt"), true);
+  assert.equal(ignored("assets/voice.wav"), false);
 });

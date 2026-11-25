@@ -2,12 +2,13 @@ import { resolve, sep, join, dirname, basename, relative, isAbsolute, parse } fr
 import {
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpath as realpathWalk,
   realpathSync,
   statSync,
 } from "node:fs";
-import { realpath as realpathNative } from "node:fs/promises";
+import { mkdir, realpath as realpathNative } from "node:fs/promises";
 import { promisify } from "node:util";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { projectPathSegments } from "@hyperframes/parsers/private-path";
@@ -307,23 +308,52 @@ export function realProjectRoot(root: string): string {
  * A `dir` outside `root` is created recursively, but only while `root` exists.
  */
 export function mkdirWithinProject(root: string, dir: string): void {
-  if (folderGone(root)) throw new ProjectRootMissingError(root);
-  const inside = relative(resolve(root), resolve(dir));
-  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+  const folders = foldersToMake(root, dir);
+  if (folders === null) {
     mkdirSync(dir, { recursive: true });
     return;
   }
-  let path = resolve(root);
-  for (const part of inside.split(sep).filter(Boolean)) {
-    path = join(path, part);
+  for (const path of folders) {
     try {
       mkdirSync(path);
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT" && folderGone(root)) throw new ProjectRootMissingError(root);
-      if (code !== "EEXIST") throw error;
+      madeOrThrow(root, error);
     }
   }
+}
+
+/** {@link mkdirWithinProject} on fs/promises: a write the drive never answers holds a pool thread, not the caller's. */
+export async function mkdirWithinProjectAsync(root: string, dir: string): Promise<void> {
+  const folders = foldersToMake(root, dir);
+  if (folders === null) {
+    await mkdir(dir, { recursive: true });
+    return;
+  }
+  for (const path of folders) {
+    try {
+      await mkdir(path);
+    } catch (error) {
+      madeOrThrow(root, error);
+    }
+  }
+}
+
+/** Each folder from below `root` down to `dir`, or null when `dir` is outside `root`. */
+function foldersToMake(root: string, dir: string): string[] | null {
+  if (folderGone(root)) throw new ProjectRootMissingError(root);
+  const inside = relative(resolve(root), resolve(dir));
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return null;
+  let path = resolve(root);
+  return inside
+    .split(sep)
+    .filter(Boolean)
+    .map((part) => (path = join(path, part)));
+}
+
+function madeOrThrow(root: string, error: unknown): void {
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code === "ENOENT" && folderGone(root)) throw new ProjectRootMissingError(root);
+  if (code !== "EEXIST") throw error;
 }
 
 /** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
@@ -347,15 +377,48 @@ export function nodeOnlyScript(relPath: string): boolean {
   return NODE_ONLY_SCRIPT.test(foldedPath(relPath).split("/").at(-1) ?? "");
 }
 
-/** A Node-only script, or `.js`/`.mjs` or an extensionless file below (at any depth, past the project too) a package.json that is not the scaffold's. */
+/**
+ * A Node-only script, or below (at any depth, past the project too) a package.json that is not the scaffold's: a
+ * `.js`/`.mjs` file, an extensionless file, or a file Node resolves before the module of its name plus an extension
+ * beside it.
+ */
 export function nodeMayRun(projectDir: string, relPath: string, kind: EntryKind): boolean {
   if (nodeOnlyScript(relPath)) return true;
   const name = foldedPath(relPath).split("/").at(-1) ?? "";
-  const sharedWithNode =
-    BROWSER_OR_NODE_SCRIPT.test(name) || (kind === "file" && isExtensionless(name));
-  if (!sharedWithNode) return false;
   const folder = dirname(resolve(projectDir, relPath));
+  const sharedWithNode =
+    BROWSER_OR_NODE_SCRIPT.test(name) ||
+    (kind === "file" && (isExtensionless(name) || shadowsModuleIn(folder, name)));
+  if (!sharedWithNode) return false;
   return [folder, realFilePath(folder)].some((from) => foldersUp(from).some(manifestBringsNode));
+}
+
+const MODULE_EXTENSIONS = ["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "json", "node"];
+
+const shadowsModuleIn = (folder: string, name: string): boolean =>
+  name !== "" &&
+  [folder, realFilePath(folder)].some((at) => {
+    const entries = foldedEntriesOf(at);
+    return MODULE_EXTENSIONS.some((extension) => entries.has(`${name}.${extension}`));
+  });
+
+const folderEntryCache = new Map<string, { stat: string; names: ReadonlySet<string> }>();
+
+function foldedEntriesOf(folder: string): ReadonlySet<string> {
+  const stat = statSync(folder, { throwIfNoEntry: false });
+  if (!stat?.isDirectory()) return new Set();
+  const key = `${stat.ino}:${stat.mtimeMs}`;
+  const cached = folderEntryCache.get(folder);
+  if (cached?.stat === key) return cached.names;
+  let listed: string[] = [];
+  try {
+    listed = readdirSync(folder);
+  } catch {
+    // expected: a folder that cannot be listed has no module beside the name to shadow
+  }
+  const names = new Set(listed.map(foldedPath));
+  folderEntryCache.set(folder, { stat: key, names });
+  return names;
 }
 
 function foldersUp(from: string): string[] {

@@ -1,7 +1,15 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runInThisContext } from "node:vm";
@@ -293,6 +301,20 @@ describe("collectExternalAssets", () => {
     const result = collectExternalAssets(html, projectDir);
     expect(result.externalAssets.size).toBe(0);
     expect(result.html).toBe(html); // unchanged
+  });
+
+  it("leaves out a private project file named by a path spelled outside the project", () => {
+    const alias = `${projectDir}-alias`;
+    symlinkSync(projectDir, alias);
+    mkdirSync(join(projectDir, ".git"), { recursive: true });
+    writeFileSync(join(projectDir, ".git", "clip.png"), "fake-private");
+    const warnings: string[] = [];
+    const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+    const html = `<html><body><img src="../project-alias/.git/clip.png"><img src="../project-alias/logo.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir, log);
+    rmSync(alias, { force: true });
+    expect([...result.externalAssets.values()]).toEqual([join(alias, "logo.png")]);
+    expect(warnings).toHaveLength(1);
   });
 
   it("collects and rewrites assets outside projectDir via src attribute", () => {
@@ -3237,6 +3259,37 @@ describe("sub-composition variable injection (render path, #2064)", () => {
     expect(compiled.html).toContain('"card-1":{"color":"#000000"}');
   });
 
+  it("renders without the data-composition-file marks the entry file authored", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-entry-file-marks-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<div data-composition-id="card" data-width="320" data-height="240"><p id="inside">in</p></div>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <p id="claim" data-composition-file="compositions/card.html">claim</p>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-start="0" data-duration="3"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const fileOf = (id: string) =>
+      document
+        .getElementById(id)
+        ?.closest("[data-composition-file]")
+        ?.getAttribute("data-composition-file") ?? null;
+
+    expect(fileOf("claim")).toBeNull();
+    expect(fileOf("inside")).toBe("compositions/card.html");
+  });
+
   it("scopes per-instance values when one sub-comp is mounted multiple times (template reuse)", async () => {
     // #2066 fixed the single-instance case but left a preview/render divergence:
     // two mounts of the SAME sub-comp (same authored data-composition-id) with
@@ -3583,6 +3636,33 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
       rmSync(projectDir, { recursive: true, force: true });
     },
   );
+
+  it("never probes a private project file named by a path spelled outside the project", async () => {
+    const projectDir = writeProject("<!--media-->");
+    const alias = `${projectDir}-alias`;
+    symlinkSync(projectDir, alias);
+    const src = join(alias, ".git", "clip.mp4");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      readFileSync(join(projectDir, "index.html"), "utf8").replace(
+        "<!--media-->",
+        `<video id="v1" src="${src}" data-start="0" muted></video>`,
+      ),
+    );
+    mkdirSync(join(projectDir, ".git"), { recursive: true });
+    writeFileSync(src, readFileSync(join(projectDir, "assets", "nested.html")));
+    const warnings: string[] = [];
+    const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+
+    await compileForRender(projectDir, join(projectDir, "index.html"), projectDir, {
+      log,
+      allowOutsideProjectAssets: true,
+    });
+
+    expect(warnings.join("\n")).not.toContain("text document");
+    rmSync(alias, { force: true });
+    rmSync(projectDir, { recursive: true, force: true });
+  });
 });
 
 describe("duplicate media ids across nested compositions", () => {

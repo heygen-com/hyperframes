@@ -193,6 +193,8 @@ describe("installEditingAgent", () => {
           "wait-for-seek",
           "set-loop-start",
           "computed-styles",
+          "authored-styles",
+          "font-faces",
           "elements-at-point",
           "pointer-targets",
           "describe",
@@ -221,6 +223,7 @@ describe("installEditingAgent", () => {
           "max-z-index",
           "crop-lift",
           "edit-element",
+          "remove-elements",
           "stacking-family",
           "gsap-set",
           "patch-tweens",
@@ -273,6 +276,19 @@ describe("installEditingAgent", () => {
       "invalid-params",
     ],
     [{ v: 1, id: 16, kind: "computed-styles", params: { selector: "p" } }, 16, "invalid-params"],
+    ...[
+      { selector: "p", properties: ["font-size"] },
+      { handle: H, properties: [] },
+      { handle: H, properties: ["font-size;"] },
+      { handle: H, properties: Array(65).fill("font-size") },
+      { handle: "not a handle", properties: ["font-size"] },
+      { handle: H, properties: ["font-size"], extra: 1 },
+    ].map((params, index) => [
+      { v: 1, id: 900 + index, kind: "authored-styles", params },
+      900 + index,
+      "invalid-params",
+    ]),
+    [{ v: 1, id: 910, kind: "font-faces", params: { all: true } }, 910, "invalid-params"],
     [{ v: 1, id: 160, kind: "console-errors", params: {} }, 160, "invalid-params"],
     [{ v: 1, id: 161, kind: "console-errors", params: { from: -1 } }, 161, "invalid-params"],
     [{ v: 1, id: 162, kind: "console-errors", params: { from: 1.5 } }, 162, "invalid-params"],
@@ -777,6 +793,45 @@ describe("installEditingAgent", () => {
       ok: false,
       error: { code: "failed" },
     });
+  });
+
+  it("answers the display of every element a selector matches, in document order", async () => {
+    document.body.innerHTML = `<div id="headline"><span style="display: block">Launch</span><span>day</span></div>`;
+    const port = connectedPort();
+    const every = (id: number, selector: string, properties: string[]) =>
+      ask(port, {
+        v: 1,
+        id,
+        kind: "computed-styles",
+        params: { selector, every: true, properties },
+      });
+
+    expect((await every(1, "#headline, #headline *", ["display"])).result).toEqual({
+      styles: null,
+      matches: [{ display: "block" }, { display: "block" }, { display: "inline" }],
+      truncated: false,
+    });
+    expect((await every(2, "#missing", ["display"])).result).toEqual({
+      styles: null,
+      matches: [],
+      truncated: false,
+    });
+    for (const [id, properties] of [
+      [3, ["color"]],
+      [4, ["display", "opacity"]],
+    ] as const)
+      expect(await every(id, "#headline", [...properties])).toMatchObject({
+        ok: false,
+        error: { code: "invalid-params" },
+      });
+    expect(
+      await ask(port, {
+        v: 1,
+        id: 5,
+        kind: "computed-styles",
+        params: { handle: "0123456789abcdef:1", every: true, properties: ["display"] },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid-params" } });
   });
 
   it("reads custom properties whose names use any case or an underscore", async () => {

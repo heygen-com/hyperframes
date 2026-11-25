@@ -474,3 +474,83 @@ describe("media folders refuse a planted directory link (#4304)", () => {
     },
   );
 });
+
+describe("a captured video's file name", () => {
+  const MP4 = Buffer.concat([
+    Buffer.from([0, 0, 0, 0x18]),
+    Buffer.from("ftypisom"),
+    Buffer.alloc(4096),
+  ]);
+  const pageWith = (...descriptors: { src: string; filename: string }[]) =>
+    ({
+      evaluate: vi.fn(async (expression: unknown) =>
+        typeof expression === "function" ? null : descriptors,
+      ),
+      screenshot: vi.fn(async () => Buffer.from("\x89PNG preview")),
+    }) as unknown as Page;
+  const captureDir = () => {
+    const made = tempDir();
+    mkdirSync(join(made, "extracted"));
+    return made;
+  };
+  const savedIn = (dir: string) =>
+    readdirSync(join(dir, "assets", "videos")).filter((name) => name !== "previews");
+  const answer = (body: Buffer, type: string) =>
+    vi
+      .mocked(publicRequest)
+      .mockImplementation(
+        vi.fn(
+          async () => new Response(new Uint8Array(body), { headers: { "content-type": type } }),
+        ),
+      );
+
+  // fails without the fix: the page's own name for the file was kept whole, so a query ending "/CLAUDE.md" wrote
+  // CLAUDE.md into the capture's videos folder.
+  it("is the page name's stem with the extension the video's own bytes are", async () => {
+    const dir = captureDir();
+    answer(MP4, "application/octet-stream");
+    const src = "https://video.example/clip.mp4?next=/CLAUDE.md";
+    await captureVideoManifest(pageWith({ src, filename: "CLAUDE.md" }), dir, () => {});
+    expect(savedIn(dir)).toEqual(["CLAUDE.mp4"]);
+  });
+
+  // fails without the fix: any body with a video type and over 1 KiB was saved, whatever its bytes.
+  it("is never written for a body that is no video container", async () => {
+    const dir = captureDir();
+    answer(Buffer.alloc(4096, "a"), "video/mp4");
+    await captureVideoManifest(
+      pageWith({ src: "https://video.example/hero.mp4", filename: "hero.mp4" }),
+      dir,
+      () => {},
+    );
+    expect(savedIn(dir)).toEqual([]);
+  });
+
+  it("never lands two videos of one capture on the same file", async () => {
+    const dir = captureDir();
+    answer(MP4, "video/mp4");
+    await captureVideoManifest(
+      pageWith(
+        { src: "https://video.example/hero.mp4", filename: "hero.mp4" },
+        { src: "https://video.example/hero.webm", filename: "hero.webm" },
+      ),
+      dir,
+      () => {},
+    );
+    expect(savedIn(dir).sort()).toEqual(["hero-2.mp4", "hero.mp4"]);
+  });
+
+  it("never lands two videos whose names differ only in case on the same file", async () => {
+    const dir = captureDir();
+    answer(MP4, "video/mp4");
+    await captureVideoManifest(
+      pageWith(
+        { src: "https://video.example/Hero.mp4", filename: "Hero.mp4" },
+        { src: "https://video.example/hero.mp4", filename: "hero.mp4" },
+      ),
+      dir,
+      () => {},
+    );
+    expect(savedIn(dir).sort()).toEqual(["Hero.mp4", "hero-2.mp4"]);
+  });
+});

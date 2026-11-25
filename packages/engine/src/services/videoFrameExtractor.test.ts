@@ -361,6 +361,7 @@ describe("resolveVideoExtractionDuration", () => {
         const planned = { ...parsed, start };
         const runtimeDuration = resolveRuntimeMediaClipDuration({
           isVideo: true,
+          loops: loop,
           sourceDuration: 3,
           hostRemaining: 15 - start,
           explicitDuration: null,

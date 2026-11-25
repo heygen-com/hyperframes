@@ -2171,6 +2171,10 @@ export const ALLOWED_DELETIONS = new Map([
     path,
     "held for v0.10.0 with #8311, the change that added it; drop this entry when it re-lands",
   ]),
+  [
+    "packages/studio/src/components/editor/anchoredResizeReleaseShift.test.ts",
+    "tested computeNextResizeAnchor, deleted with the per-frame convergence; the pin is now one measured formula",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

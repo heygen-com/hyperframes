@@ -25,19 +25,38 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
   }
 }
 
+const beforeOtherLoadHandlers = { capture: true } as const;
+
 /** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
   if (open) return open.client;
   const client = createEditingPortClient({ iframe });
   const retire = () => {
-    iframe.removeEventListener("load", retire);
+    iframe.removeEventListener("load", retire, beforeOtherLoadHandlers);
     client.dispose();
     if (clients.get(iframe)?.client === client) clients.delete(iframe);
   };
   clients.set(iframe, { client, retire });
-  iframe.addEventListener("load", retire, { once: true });
+  iframe.addEventListener("load", retire, { ...beforeOtherLoadHandlers, once: true });
   return client;
+}
+
+export function samePreviewLoad(iframe: HTMLIFrameElement): () => boolean {
+  const client = previewEditingClient(iframe);
+  return () => clients.get(iframe)?.client === client;
+}
+
+const promotedTo = new WeakMap<HTMLIFrameElement, HTMLIFrameElement>();
+
+export function notePreviewPromoted(retired: HTMLIFrameElement, live: HTMLIFrameElement): void {
+  promotedTo.set(retired, live);
+}
+
+export function shownPreviewFrame(iframe: HTMLIFrameElement): HTMLIFrameElement {
+  let shown = iframe;
+  for (let next = promotedTo.get(shown); next; next = promotedTo.get(shown)) shown = next;
+  return shown;
 }
 
 export function retirePreviewEditingClient(iframe: HTMLIFrameElement): void {
@@ -162,7 +181,19 @@ export async function previewComputedStyles(
 ): Promise<Record<string, string> | null> {
   const element = typeof target === "string" ? { selector: target } : { handle: target.handle };
   const reply = await previewRequest(iframe, "computed-styles", { ...element, properties });
-  const styles: unknown = reply?.styles;
+  return readStyles(reply?.styles, properties);
+}
+
+export async function previewAuthoredStyles(
+  iframe: HTMLIFrameElement,
+  handle: string,
+  properties: string[],
+): Promise<Record<string, string> | null> {
+  const reply = await previewRequest(iframe, "authored-styles", { handle, properties });
+  return readStyles(reply?.styles, properties);
+}
+
+function readStyles(styles: unknown, properties: string[]): Record<string, string> | null {
   if (typeof styles !== "object" || styles === null) return null;
   const read: Record<string, string> = {};
   for (const name of properties) {
@@ -170,6 +201,40 @@ export async function previewComputedStyles(
     if (typeof value === "string" && value) read[name] = value;
   }
   return read;
+}
+
+export async function previewComputedStylesOfEvery(
+  iframe: HTMLIFrameElement,
+  selector: string,
+  properties: string[],
+): Promise<{ matches: Array<Record<string, string> | null>; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "computed-styles", {
+    selector,
+    every: true,
+    properties,
+  });
+  const matches: unknown = reply?.matches;
+  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  return {
+    matches: matches.map((entry: unknown) => readStyles(entry, properties)),
+    truncated: reply.truncated,
+  };
+}
+
+type FontFaces = { families: string[]; ownFaces: Array<{ family: string; src: string }> };
+
+export async function previewFontFaces(iframe: HTMLIFrameElement): Promise<FontFaces | null> {
+  const reply = await previewRequest(iframe, "font-faces", {});
+  const { families, ownFaces } = reply ?? {};
+  const isText = (value: unknown): value is string => typeof value === "string";
+  const isFace = (face: unknown): face is FontFaces["ownFaces"][number] =>
+    typeof face === "object" &&
+    face !== null &&
+    isText((face as { family?: unknown }).family) &&
+    isText((face as { src?: unknown }).src);
+  if (!Array.isArray(families) || !families.every(isText)) return null;
+  if (!Array.isArray(ownFaces) || !ownFaces.every(isFace)) return null;
+  return { families, ownFaces: ownFaces.map(({ family, src }) => ({ family, src })) };
 }
 
 export async function previewAssetsUnloaded(iframe: HTMLIFrameElement): Promise<boolean | null> {
