@@ -1,13 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Protocol } from "puppeteer-core";
 import { COMPOSITION_SOURCE_URL, SCENE_CALLBACK_ERROR_PREFIX } from "@hyperframes/core";
-import type { CaptureSession } from "./frameCapture.js";
-import type { SubTimelineWaitMemo } from "../types.js";
+import type { CapturePerfSummary, CaptureSession } from "./frameCapture.js";
+import type { CaptureWarning, SubTimelineWaitMemo } from "../types.js";
 import {
   buildZeroDurationDiagnostic,
   pollHfReady,
   recordBackgroundDecodeTimeouts,
   recordSubTimelineWarning,
+  retainCapturePerf,
   captureFramesBatchPipelined,
   captureFrameToBufferPipelined,
   classifyConsoleScriptError,
@@ -402,23 +403,57 @@ describe("classifyPageError", () => {
     );
   });
 
-  // fails without the fix: the served-script set grew by one for every script address the page fetched
-  it("remembers a fixed number of served script addresses", async () => {
+  // fails at 50501bcb: past the served-script cap a project script's throw was dropped, hiding a script failure
+  it("still records a throw from a served script past the served-script cap or with a long URL", async () => {
     const { session, pageListeners, runtimeListeners } = await listenedSession();
     const script = (n: number) => `${server}/s${n}.js`;
-    for (let n = 0; n < 2_000; n++) {
+    const long = `${server}/${"l".repeat(3_000)}.js`;
+    for (const url of [...Array.from({ length: 2_000 }, (_, n) => script(n)), long]) {
       pageListeners.get("response")?.({
         status: () => 200,
-        url: () => script(n),
+        url: () => url,
         request: () => ({ resourceType: () => "script" }),
       });
     }
-    for (const n of [0, 1_999]) {
+    for (const [n, url] of [
+      [0, script(0)],
+      [1_999, script(1_999)],
+      [-1, long],
+    ] as const) {
       runtimeListeners.get("Runtime.exceptionThrown")?.({
-        exceptionDetails: thrown(`Error: from ${n}`, script(n), [script(n)]),
+        exceptionDetails: thrown(`Error: from ${n}`, url, [url]),
       });
     }
-    expect(session.pageErrors).toEqual(["runtime-error:Error: from 0"]);
+    expect(session.pageErrors).toEqual([
+      "runtime-error:Error: from 0",
+      "runtime-error:Error: from 1999",
+      "runtime-error:Error: from -1",
+    ]);
+  });
+
+  // fails at 50501bcb: each recycled session kept its own 1M characters, so a render's kept warnings grew per session
+  it("keeps a fixed total of warning text across a render's sessions, and each kind once more", () => {
+    const perf = (code: CaptureWarning["code"], n: number) =>
+      ({
+        warnings: Array.from({ length: 200 }, (_, i) => ({
+          code,
+          message: `${n}.${i}:${"w".repeat(1_900)}`,
+          details: { sources: [`https://cdn.test/${n}.${i}.jpg`] },
+        })),
+      }) as unknown as CapturePerfSummary;
+    const kept: CapturePerfSummary[] = [];
+    for (let n = 0; n < 20; n++) retainCapturePerf(kept, perf("media_readiness_timeout", n));
+    retainCapturePerf(kept, perf("sub_timeline_script_failure", 20));
+
+    const warnings = kept.flatMap((p) => p.warnings ?? []);
+    expect(JSON.stringify(warnings).length).toBeLessThanOrEqual(1_100_000);
+    expect(new Set(warnings.map((w) => w.code))).toEqual(
+      new Set(["media_readiness_timeout", "sub_timeline_script_failure"]),
+    );
+
+    kept.length = 0;
+    retainCapturePerf(kept, perf("media_readiness_timeout", 21));
+    expect(kept[0]?.warnings).toHaveLength(200);
   });
 
   it("records the page's uncaught errors from scripts it loaded from the server", async () => {

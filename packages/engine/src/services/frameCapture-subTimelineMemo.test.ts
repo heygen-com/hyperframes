@@ -87,6 +87,42 @@ describe("sub-composition timeline wait memo", () => {
     expect(memo.unregisteredIds).toBeUndefined();
   });
 
+  // fails at 50501bcb: the session kept every isolated composition the page named, at full length
+  it("isolates every broken composition in the page but keeps a fixed record of them", async () => {
+    const root = { parentElement: null };
+    const host = (id: string, nested = true) => ({
+      id: "",
+      hasAttribute: () => false,
+      getAttribute: (name: string) => (name === "data-composition-id" ? id : null),
+      parentElement: nested ? { closest: () => root } : null,
+    });
+    const broken = Array.from({ length: 1_000 }, (_, n) => `${n}:${"b".repeat(5_000)}`);
+    const timelines: Record<string, unknown> = { main: {}, live: {} };
+    const document = {
+      querySelectorAll: () => [host("main", false), host("live"), ...broken.map((id) => host(id))],
+    };
+    const window = {
+      __timelines: timelines,
+      __hfForceTimelineRebind: vi.fn(),
+      gsap: { timeline: () => ({ set: () => undefined }) },
+    };
+    const page = {
+      evaluate: vi.fn(async (expr: string) =>
+        new Function("document", "window", `return ${expr}`)(document, window),
+      ),
+    } as unknown as Page;
+    const session = makeSession({}, { pageErrors: ["runtime-error:TypeError: x is undefined"] });
+
+    const wait = track(waitForSubCompositionTimelines(session, page, TIMEOUT_MS));
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);
+    await wait.promise;
+
+    expect(broken.every((id) => timelines[id])).toBe(true);
+    expect(session.isolatedCompositions).toHaveLength(50);
+    const ids = session.isolatedCompositions?.map((c) => c.compositionId) ?? [];
+    expect(Math.max(...ids.map((id) => id.length))).toBeLessThanOrEqual(2_000);
+  });
+
   it("does not remember a wait a VFX failure stopped early", async () => {
     const memo: SubTimelineWaitMemo = {};
     const session = makeSession(memo, { vfxFailure: "chain failed" });

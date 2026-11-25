@@ -242,8 +242,8 @@ export interface CaptureSession {
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
   throwSiteLookups?: Set<string>;
-  /** Characters of warning text this render has kept, against WARNINGS_TEXT_MAX_CHARS. */
-  warningTextChars?: number;
+  /** The text and kinds of `warnings`, against WARNINGS_TEXT_MAX_CHARS. */
+  warningBudget?: WarningBudget;
   /** True once this session honoured `options.strictVariables`: the check ran and passed. */
   strictVariablesChecked?: boolean;
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
@@ -599,7 +599,7 @@ const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
 const PAGE_TEXT_MAX_CHARS = 2_000;
 const PAGE_LIST_MAX = 50;
-// Warnings are the one list a page can grow without a count cap; every other list is capped by count and length.
+// Warnings are the one list a page can grow without a count cap: this caps one session's and one render's.
 const WARNINGS_TEXT_MAX_CHARS = 1_000_000;
 const SERVED_SCRIPTS_MAX = 500;
 const THROW_SITE_LOOKUP_MAX = 10;
@@ -2154,7 +2154,11 @@ async function isolateUnregisteredCompositions(page: Page): Promise<IsolatedComp
     if (out.length && typeof window.__hfForceTimelineRebind === "function") window.__hfForceTimelineRebind();
     return out;
   })()`);
-  return Array.isArray(isolated) ? (isolated as IsolatedComposition[]) : [];
+  if (!Array.isArray(isolated)) return [];
+  return (isolated as IsolatedComposition[]).slice(0, PAGE_LIST_MAX).map((c) => ({
+    compositionId: boundedPageText(c.compositionId),
+    elementId: c.elementId && boundedPageText(c.elementId),
+  }));
 }
 
 export async function waitForSubCompositionTimelines(
@@ -2598,23 +2602,52 @@ function boundedWarning(warning: CaptureWarning, keepLists: boolean): CaptureWar
 const warningKey = (warning: CaptureWarning) =>
   `${warning.code}:${JSON.stringify(warning.details ?? {})}`;
 
+interface WarningBudget {
+  chars: number;
+  codes: Set<CaptureWarning["code"]>;
+  keys: Set<string>;
+}
+
+function warningBudgetOf(kept: readonly CaptureWarning[]): WarningBudget {
+  const budget: WarningBudget = { chars: 0, codes: new Set(), keys: new Set() };
+  for (const warning of kept) {
+    const key = warningKey(warning);
+    budget.chars += key.length + warning.message.length;
+    budget.codes.add(warning.code);
+    budget.keys.add(key);
+  }
+  return budget;
+}
+
 // Past WARNINGS_TEXT_MAX_CHARS, a warning is kept once per code with its lists emptied, so policy still sees it.
-function warningToKeep(session: CaptureSession, raw: CaptureWarning): CaptureWarning | null {
+function keptWithinBudget(budget: WarningBudget, raw: CaptureWarning): CaptureWarning | null {
   const bounded = boundedWarning(raw, true);
   const key = warningKey(bounded);
-  if (session.warnings.some((existing) => warningKey(existing) === key)) return null;
-  const used = (session.warningTextChars ?? 0) + key.length + bounded.message.length;
-  if (used <= WARNINGS_TEXT_MAX_CHARS) {
-    session.warningTextChars = used;
+  if (budget.keys.has(key)) return null;
+  const chars = key.length + bounded.message.length;
+  if (budget.chars + chars <= WARNINGS_TEXT_MAX_CHARS) {
+    budget.chars += chars;
+    budget.codes.add(raw.code);
+    budget.keys.add(key);
     return bounded;
   }
-  if (session.warnings.some((existing) => existing.code === raw.code)) return null;
+  if (budget.codes.has(raw.code)) return null;
+  budget.codes.add(raw.code);
   return boundedWarning(raw, false);
+}
+
+/** Adds a session's summary to a render's list, its warnings bounded by what the list already keeps. */
+export function retainCapturePerf(sink: CapturePerfSummary[], perf: CapturePerfSummary): void {
+  if (!perf.warnings) return void sink.push(perf);
+  const budget = warningBudgetOf(sink.flatMap((kept) => kept.warnings ?? []));
+  const warnings = perf.warnings.flatMap((warning) => keptWithinBudget(budget, warning) ?? []);
+  sink.push({ ...perf, warnings });
 }
 
 function recordCaptureWarnings(session: CaptureSession, warnings: readonly CaptureWarning[]): void {
   for (const raw of warnings) {
-    const warning = warningToKeep(session, raw);
+    const budget = (session.warningBudget ??= warningBudgetOf(session.warnings));
+    const warning = keptWithinBudget(budget, raw);
     if (!warning) continue;
     session.warnings.push(warning);
     console.warn(
@@ -3133,6 +3166,7 @@ function isPlayPauseAbort(message: string): boolean {
 export function classifyPageError(
   details: Protocol.Runtime.ExceptionDetails,
   projectScripts: ReadonlySet<string>,
+  servedPrefix?: string,
 ): string | null {
   const exception = details.exception;
   const message = String(exception?.description ?? exception?.value ?? details.text);
@@ -3142,15 +3176,22 @@ export function classifyPageError(
   // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
   if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
   const urls = frames.length > 0 ? frames : [details.url];
-  return urls.some((url) => isOwnedScriptUrl(url, projectScripts))
+  return urls.some((url) => isOwnedScriptUrl(url, projectScripts, servedPrefix))
     ? `runtime-error:${firstLine}`
     : null;
 }
 
 // The render compiler names the composition's inline code.
 // Inline handlers report the document, which a widget can move.
-function isOwnedScriptUrl(url: string | undefined, projectScripts: ReadonlySet<string>): boolean {
-  return url !== undefined && (projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL));
+// `servedPrefix` is set once the served-script set is full: any URL on the server then counts as served.
+function isOwnedScriptUrl(
+  url: string | undefined,
+  projectScripts: ReadonlySet<string>,
+  servedPrefix?: string,
+): boolean {
+  if (url === undefined) return false;
+  if (servedPrefix !== undefined && url.startsWith(servedPrefix)) return true;
+  return projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL);
 }
 
 const LOOKUP_CALL =
@@ -3161,9 +3202,10 @@ export async function describeThrowSite(
   client: CDPSession,
   details: Protocol.Runtime.ExceptionDetails,
   projectScripts: ReadonlySet<string>,
+  servedPrefix?: string,
 ): Promise<string> {
   const frame = (details.stackTrace?.callFrames ?? []).find((f) =>
-    isOwnedScriptUrl(f.url, projectScripts),
+    isOwnedScriptUrl(f.url, projectScripts, servedPrefix),
   );
   if (!frame) return "";
   let where = `${frame.url}:${frame.lineNumber + 1}:${frame.columnNumber + 1}`;
@@ -3231,20 +3273,17 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
   const projectScripts = new Set<string>();
+  let servedPrefix: string | undefined;
   page.on("response", (response) => {
     const status = response.status();
     const request = response.request();
     const isScript = request.resourceType() === "script";
     const responseUrl = response.url();
     if (status < 400) {
-      // ponytail: a throw from a script past the first SERVED_SCRIPTS_MAX, or a longer URL, is not attributed.
-      if (
-        isScript &&
-        responseUrl.startsWith(`${serverUrl}/`) &&
-        projectScripts.size < SERVED_SCRIPTS_MAX &&
-        responseUrl.length <= PAGE_TEXT_MAX_CHARS
-      )
+      if (!isScript || !responseUrl.startsWith(`${serverUrl}/`)) return;
+      if (projectScripts.size < SERVED_SCRIPTS_MAX && responseUrl.length <= PAGE_TEXT_MAX_CHARS)
         projectScripts.add(responseUrl);
+      else servedPrefix = `${serverUrl}/`;
       return;
     }
 
@@ -3273,7 +3312,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
-    const error = classifyPageError(exceptionDetails, projectScripts);
+    const error = classifyPageError(exceptionDetails, projectScripts, servedPrefix);
     if (!error) return;
     const kept = boundedPageText(error);
     const lookedUp = (session.throwSiteLookups ??= new Set());
@@ -3282,13 +3321,15 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     recordPageError(session, error);
     if (lookedUp.size >= THROW_SITE_LOOKUP_MAX || !session.pageErrors.includes(kept)) return;
     lookedUp.add(kept);
-    void describeThrowSite(runtimeClient, exceptionDetails, projectScripts).then((site) => {
-      const i = session.pageErrors.indexOf(kept);
-      if (!site || i < 0) return;
-      const sited = boundedPageText(`${kept}${site}`);
-      if (session.pageErrors.includes(sited)) session.pageErrors.splice(i, 1);
-      else session.pageErrors[i] = sited;
-    });
+    void describeThrowSite(runtimeClient, exceptionDetails, projectScripts, servedPrefix).then(
+      (site) => {
+        const i = session.pageErrors.indexOf(kept);
+        if (!site || i < 0) return;
+        const sited = boundedPageText(`${kept}${site}`);
+        if (session.pageErrors.includes(sited)) session.pageErrors.splice(i, 1);
+        else session.pageErrors[i] = sited;
+      },
+    );
   });
   await runtimeClient.send("Runtime.enable");
 

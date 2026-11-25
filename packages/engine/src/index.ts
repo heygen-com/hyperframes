@@ -151,6 +151,7 @@ export {
   getCompositionLengthSource,
   type CompositionLengthSource,
   getCapturePerfSummary,
+  retainCapturePerf,
   percentileOf,
   prepareCaptureSessionForReuse,
   deriveBeginFrameProbeTimeTicks,
