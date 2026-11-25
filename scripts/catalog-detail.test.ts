@@ -615,6 +615,23 @@ test("an import parks only the file's geometry in the page, so nothing in the fi
   assert.equal(doc.body.children.length, 0, "the parked copy is removed again");
 });
 
+test("an svg root outside the SVG namespace gets the panel's own message, not a raw error", () => {
+  const win = new Window();
+  const doc = win.document as unknown as Document;
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "DOMParser");
+  Object.defineProperty(globalThis, "DOMParser", { value: win.DOMParser, configurable: true });
+  try {
+    assert.throws(
+      () => svgToPathData('<svg viewBox="0 0 1 1"><path d="M0 0 L1 1"/></svg>', "M0 0 L10 10", doc),
+      /That file is not an SVG, or its markup is malformed\./,
+    );
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "DOMParser", saved);
+    else delete (globalThis as { DOMParser?: unknown }).DOMParser;
+  }
+  assert.equal(doc.body.children.length, 0, "nothing was parked");
+});
+
 test("the parked copy keeps what places or hides a shape, in attributes or its own inline style", () => {
   const win = new Window();
   const file = new win.DOMParser().parseFromString(
