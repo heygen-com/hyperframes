@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { parseHTML } from "@hyperframes/parsers/linkedom-html";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { normalizeRateSpec, sourceTimeAt } from "@hyperframes/core";
 import { silence } from "@hyperframes/core/audio-analysis";
 import {

@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { parseHTML } from "@hyperframes/parsers/linkedom-html";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { readFile, stat as statFile } from "node:fs/promises";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";

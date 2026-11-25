@@ -9,13 +9,9 @@ import { usePlayerStore } from "../player";
 import { saveServerRewriteWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { deletedNotice, getTimelineElementLabel } from "../utils/studioHelpers";
-import {
-  buildPatchTarget,
-  removeIframeTimelineElements,
-  syncCompositionDurationWithEnd,
-} from "./timelineEditingHelpers";
+import { buildPatchTarget, syncCompositionDurationWithEnd } from "./timelineEditingHelpers";
 import { timingGestureStep } from "./timelineTimingSync";
-import { captureDurationRollback } from "./previewTimingPatch";
+import { captureDurationRollback, removeIframeTimelineElements } from "./previewTimingPatch";
 import { setLinkInSource } from "../components/editor/mediaLinkEdits";
 import {
   resolveMainTrackDeleteRippleShifts,

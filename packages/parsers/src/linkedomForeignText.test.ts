@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DOMParser, parseHTML } from "./linkedomHtml.js";
+import { DOMParser, parseHTML } from "./linkedom.js";
 
 const READ_UNLIKE_BROWSER = /can't be read the way a browser reads them/;
 

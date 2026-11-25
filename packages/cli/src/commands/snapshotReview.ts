@@ -1,4 +1,4 @@
-import { parseHTML } from "@hyperframes/parsers/linkedom-html";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { topLevelElements, trackKindOf } from "@hyperframes/parsers";
 import { toDomNode } from "../timeline/domStructure.js";
 import {

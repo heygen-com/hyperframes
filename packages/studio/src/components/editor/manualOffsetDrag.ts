@@ -546,8 +546,9 @@ export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]
 
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
-    if (!isStudioManualEditGestureCurrent(member.element, member.gestureToken)) continue;
+    const current = isStudioManualEditGestureCurrent(member.element, member.gestureToken);
     endStudioManualEditGesture(member.element, member.gestureToken);
+    if (!current) continue;
     endDraftKeepingWhatTheSaveWrites(member);
     member.element.removeAttribute("data-hf-drag-initial-offset-x");
     member.element.removeAttribute("data-hf-drag-initial-offset-y");

@@ -12,7 +12,7 @@ import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, sta
 import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
 import { tmpdir } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
-import { parseHTML } from "@hyperframes/parsers/linkedom-html";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";

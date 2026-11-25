@@ -48,6 +48,7 @@ export function canEditTextInline(selection: DomEditSelection | null): boolean {
 export function canEditSealedTextInline(selection: DomEditSelection | null): boolean {
   if (!selection?.handle || selection.isCompositionHost) return false;
   if (selection.isInsideLockedComposition || selection.textMarkup === false) return false;
+  if (!selection.textContent?.trim()) return false;
   return !["BODY", "HTML"].includes(selection.tagName.toUpperCase());
 }
 

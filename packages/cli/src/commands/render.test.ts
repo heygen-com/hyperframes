@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { VERSION } from "../version.js";
+import { hyperframesConfigDir } from "../utils/configDir.js";
 
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
@@ -1068,6 +1069,12 @@ describe("renderLocal browser GPU config", () => {
     ]);
   });
 
+  // Auto mode reuses the GPU choice measured on this machine, kept with the CLI's other state.
+  const AUTO_GPU_CHOICE = {
+    gpuChoiceFile: hyperframesConfigDir("gpu-choice.json"),
+    hyperframesVersion: VERSION,
+  };
+
   it("forwards browserGpuMode='auto' into producer config (probe-then-choose)", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -1081,6 +1088,7 @@ describe("renderLocal browser GPU config", () => {
 
     expect(producerState.resolveConfigCalls).toContainEqual({
       browserGpuMode: "auto",
+      ...AUTO_GPU_CHOICE,
       forceScreenshot: false,
       beginFrameFirstFrameDeadlineMs: 20_000,
     });
@@ -1103,7 +1111,10 @@ describe("renderLocal browser GPU config", () => {
         hdrMode: "auto",
         quiet: true,
       });
-      expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
+      expect(producerState.resolveConfigCalls).toContainEqual({
+        browserGpuMode: "auto",
+        ...AUTO_GPU_CHOICE,
+      });
       expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("forceScreenshot");
     } finally {
       if (prev === undefined) delete process.env.PRODUCER_FORCE_SCREENSHOT;
@@ -1123,7 +1134,10 @@ describe("renderLocal browser GPU config", () => {
       outputResolution: "landscape",
     });
 
-    expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
+    expect(producerState.resolveConfigCalls).toContainEqual({
+      browserGpuMode: "auto",
+      ...AUTO_GPU_CHOICE,
+    });
     expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("forceScreenshot");
     expect(producerState.resolveConfigCalls[0]).not.toHaveProperty(
       "beginFrameFirstFrameDeadlineMs",

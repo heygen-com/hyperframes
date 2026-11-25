@@ -165,13 +165,16 @@ describe("classifyPageError", () => {
   });
 
   // initializeSession registers its listeners before the incomplete fake session makes it throw.
-  async function listenedSession(memo: SubTimelineWaitMemo = {}) {
+  async function listenedSession(
+    memo: SubTimelineWaitMemo = {},
+    send: (method: string) => Promise<unknown> = async () => ({}),
+  ) {
     const runtimeListeners = new Map<string, (event: unknown) => void>();
     const pageListeners = new Map<string, (event: unknown) => void>();
     const listen =
       (listeners: typeof pageListeners) => (event: string, listener: (event: unknown) => void) =>
         listeners.set(event, listener);
-    const client = { on: listen(runtimeListeners), send: async () => ({}) };
+    const client = { on: listen(runtimeListeners), send };
     const page = { on: listen(pageListeners), createCDPSession: async () => client };
     const session = {
       page,
@@ -216,6 +219,136 @@ describe("classifyPageError", () => {
       expect(session.pageErrors).toEqual(["runtime-error:scene TypeError: x"]);
     } finally {
       stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
+  // fails without the fix: the page's text was logged and kept at whatever length it sent, in unbounded lists
+  it("logs and keeps the page's console and error text only up to a fixed size", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { session, pageListeners, runtimeListeners } = await listenedSession();
+      const huge = (n: number) => `${n}:${"x".repeat(10_000_000)}`;
+      pageListeners.get("response")?.({
+        status: () => 200,
+        url: () => comp,
+        request: () => ({ resourceType: () => "script" }),
+      });
+      for (let n = 0; n < 1_000; n++) {
+        const big = n < 5 ? huge(n) : `${n}:${"y".repeat(5_000)}`;
+        pageListeners.get("console")?.({
+          type: () => "error",
+          text: () => `[HyperFrames] composition script error: ${big}`,
+          location: () => ({ url: big }),
+        });
+        pageListeners.get("pageerror")?.(new Error(big));
+        runtimeListeners.get("Runtime.exceptionThrown")?.({
+          exceptionDetails: thrown(`Error: ${big}`, comp, [comp]),
+        });
+        const url = `${server}/${big}.js`;
+        const request = { resourceType: () => "script", url: () => url, method: () => "GET" };
+        pageListeners.get("requestfailed")?.({
+          ...request,
+          failure: () => ({ errorText: "net::ERR_FAILED" }),
+        });
+        pageListeners.get("response")?.({
+          status: () => 404,
+          url: () => url,
+          statusText: () => big,
+          request: () => request,
+        });
+      }
+
+      const kept = [
+        ...stderr.mock.calls.map((call) => call.join(" ")),
+        ...session.browserConsoleBuffer,
+        ...session.pageErrors,
+        ...session.scriptLoadFailures,
+      ];
+      expect(Math.max(...kept.map((text) => text.length))).toBeLessThanOrEqual(2_000);
+      expect(session.pageErrors).toHaveLength(50);
+      expect(session.pageErrors[0]).toMatch(/^runtime-error:0:x/);
+      expect(session.scriptLoadFailures).toHaveLength(50);
+      expect(session.scriptLoadFailures[0]).toMatch(new RegExp(`^${server}/0:x`));
+      expect(session.browserConsoleBuffer).toHaveLength(200);
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  // fails without the fix: every throw turned the debugger on and downloaded the whole script again
+  it("looks up a throw site once per distinct error, for a few errors in all, however often the page throws", async () => {
+    const sent: string[] = [];
+    const scriptSource = `${"// filler\n".repeat(1_000_000)}document.getElementById("hero").textContent = 1;`;
+    const { session, runtimeListeners } = await listenedSession({}, async (method) => {
+      sent.push(method);
+      return method === "Debugger.getScriptSource" ? { scriptSource } : {};
+    });
+    const frame = { url: named, scriptId: "7", lineNumber: 1_000_000, columnNumber: 9 };
+    const throwAt = (message: string) =>
+      runtimeListeners.get("Runtime.exceptionThrown")?.({
+        exceptionDetails: {
+          ...thrown(`TypeError: ${message}`, named, []),
+          stackTrace: { callFrames: [frame as Protocol.Runtime.CallFrame] },
+        },
+      });
+    for (let n = 0; n < 1_000; n++) throwAt("hero is null");
+    for (let n = 0; n < 1_000; n++) throwAt(`step ${n} is null`);
+
+    expect(sent.filter((method) => method === "Debugger.enable")).toHaveLength(10);
+    await vi.waitFor(() =>
+      expect(sent.filter((method) => method === "Debugger.disable")).toHaveLength(10),
+    );
+    expect(sent.filter((method) => method === "Debugger.getScriptSource")).toHaveLength(10);
+    const hero = session.pageErrors.filter((error) => error.includes("hero is null"));
+    expect(hero).toEqual([
+      `runtime-error:TypeError: hero is null [thrown at: ${named}:1000001:10, getElementById("hero")]`,
+    ]);
+    expect(session.pageErrors.filter((error) => error.includes("[thrown at:"))).toHaveLength(10);
+    expect(session.pageErrors).toHaveLength(50);
+  });
+
+  it("classifies a script by its whole URL before keeping a cut copy", async () => {
+    const { session, pageListeners } = await listenedSession();
+    const url = `https://${"a".repeat(2_100)}.example.com/x.js`;
+    const request = { resourceType: () => "script", url: () => url, method: () => "GET" };
+    pageListeners.get("requestfailed")?.({
+      ...request,
+      failure: () => ({ errorText: "net::ERR_NAME_NOT_RESOLVED" }),
+    });
+    pageListeners.get("response")?.({
+      status: () => 404,
+      url: () => `${url}?again`,
+      statusText: () => "Not Found",
+      request: () => request,
+    });
+    expect(session.scriptLoadFailures).toHaveLength(2);
+    expect(session.scriptLoadCauses?.map((cause) => cause.origin)).toEqual(["remote", "remote"]);
+  });
+
+  it("still fails fast on a blocked integrity check whose URL is long", async () => {
+    const { session, pageListeners } = await listenedSession();
+    const url = `https://cdn.example.com/lib.js?signature=${"s".repeat(1_900)}`;
+    pageListeners.get("console")?.({
+      type: () => "error",
+      text: () =>
+        `Failed to find a valid digest in the 'integrity' attribute for resource '${url}' with computed SHA-384 integrity 'abc'. The resource has been blocked.`,
+      location: () => ({ url }),
+    });
+    expect(session.scriptLoadFailures).toEqual(["runtime-error:subresource-integrity"]);
+  });
+
+  it("keeps a long font URL's load error off stderr", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { pageListeners } = await listenedSession();
+      pageListeners.get("console")?.({
+        type: () => "error",
+        text: () => "Failed to load resource: the server responded with a status of 404",
+        location: () => ({ url: `https://fonts.example.com/${"f".repeat(2_100)}.woff2` }),
+      });
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
       stderr.mockRestore();
     }
   });

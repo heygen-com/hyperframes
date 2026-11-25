@@ -29,7 +29,7 @@
 
 import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
-import { parseHTML } from "@hyperframes/parsers/linkedom-html";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   type CaptureOptions,
   type CaptureSession,

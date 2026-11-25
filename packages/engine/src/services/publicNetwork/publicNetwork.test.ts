@@ -98,16 +98,11 @@ describe("public address policy", () => {
   );
   it("fails when neither DNS nor the system lookup answers", async () => {
     mocks.resolve4.mockRejectedValue(new Error("queryA ENOTFOUND"));
-    await expect(resolvePublicAddress("example.com")).rejects.toThrow(
-      "Capture DNS failed: ENOTFOUND",
-    );
+    await expect(resolvePublicAddress("example.com")).rejects.toThrow("DNS failed: ENOTFOUND");
   });
   it.each([
-    [{ code: 3221225794 }, "Capture DNS failed: the lookup helper exited with code 3221225794"],
-    [
-      { code: null, signal: "SIGKILL" },
-      "Capture DNS failed: the lookup helper was ended by SIGKILL",
-    ],
+    [{ code: 3221225794 }, "DNS failed: the lookup helper exited with code 3221225794"],
+    [{ code: null, signal: "SIGKILL" }, "DNS failed: the lookup helper was ended by SIGKILL"],
   ])(
     "names how the system lookup helper ended when it says nothing (%j)",
     async (ended, message) => {
@@ -139,11 +134,11 @@ describe("public address policy", () => {
         (error: Error) => error.message,
       );
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(await first).toBe("Capture DNS timed out");
+      expect(await first).toBe("DNS timed out");
       await vi.advanceTimersByTimeAsync(8_000);
       expect(await Promise.race([second, "still waiting"])).toBe("still waiting");
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(await second).toBe("Capture DNS timed out");
+      expect(await second).toBe("DNS timed out");
       expect(mocks.execFile).toHaveBeenCalledOnce();
       expect(mocks.resolve4).toHaveBeenCalledOnce();
     } finally {
@@ -206,7 +201,7 @@ describe("refusal class", () => {
     const error = await resolvePublicAddress("rebind.example.org").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(NonPublicHostError);
     expect((error as NonPublicHostError).hostClass).toBe("link-local");
-    expect((error as Error).message).toBe("Capture DNS returned a non-public address");
+    expect((error as Error).message).toBe("DNS returned a non-public address");
   });
 });
 

@@ -646,6 +646,10 @@ const PRESETS_BY_ID = new Map<string, HfColorGradingPreset>(
 
 const VARIABLE_REF_RE = /^\$(?:\{([A-Za-z0-9_.:-]+)\}|([A-Za-z0-9_.:-]+))$/;
 
+export function isHfColorGradingVariableRef(value: unknown): boolean {
+  return typeof value === "string" && VARIABLE_REF_RE.test(value.trim());
+}
+
 const ADJUST_LIMITS: Record<HfColorGradingAdjustKey, { min: number; max: number }> = {
   exposure: { min: -2, max: 2 },
   contrast: { min: -1, max: 1 },

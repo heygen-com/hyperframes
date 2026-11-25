@@ -11,6 +11,7 @@ import { findVariableDeclaration } from "./variableModel.js";
 import {
   ensureHfIds,
   isCompositionTemplate,
+  isNonContentElement,
   walkCompositionDescendants,
 } from "@hyperframes/core/hf-ids";
 
@@ -371,7 +372,7 @@ function isTextOrBrLeaf(el: Element): boolean {
 function resolveSingleChildTextTarget(el: Element): Element | null {
   const inner = el.children.length === 1 ? el.firstElementChild : null;
   if (!inner || !isHTMLElementTarget(inner)) return null;
-  if (VOID_TEXT_TARGET_TAGS.has(inner.tagName)) return null;
+  if (VOID_TEXT_TARGET_TAGS.has(inner.tagName) || isNonContentElement(inner)) return null;
   return inner;
 }
 
@@ -388,12 +389,19 @@ export function getOwnText(el: Element): string {
   return text;
 }
 
-/** Replace the SDK text target without destroying multi-child element structure. */
-export function setOwnText(el: Element, text: string): void {
+/** The element, or its lone child, is a script, style or other non-content element. */
+function declinesText(el: Element): boolean {
+  const lone = el.children.length === 1 ? el.firstElementChild : null;
+  return isNonContentElement(el) || (lone !== null && isNonContentElement(lone));
+}
+
+/** Replace the SDK text target, keeping multi-child structure; false, writing nothing, on non-content. */
+export function setOwnText(el: Element, text: string): boolean {
+  if (declinesText(el)) return false;
   const singleChild = resolveSingleChildTextTarget(el);
   if (singleChild) {
     singleChild.textContent = text;
-    return;
+    return true;
   }
 
   const doc = el.ownerDocument;
@@ -411,7 +419,7 @@ export function setOwnText(el: Element, text: string): void {
       if (index > 0) el.appendChild(spareBrs.shift() ?? doc.createElement("br"));
       if (line) el.appendChild(doc.createTextNode(line));
     });
-    return;
+    return true;
   }
 
   const children = Array.from(el.childNodes);
@@ -432,6 +440,7 @@ export function setOwnText(el: Element, text: string): void {
     const ref = firstTextIdx >= 0 ? (current[firstTextIdx] ?? null) : null;
     el.insertBefore(doc.createTextNode(text), ref);
   }
+  return true;
 }
 
 // ─── CSS style helpers ────────────────────────────────────────────────────────

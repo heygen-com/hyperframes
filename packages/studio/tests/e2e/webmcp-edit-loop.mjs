@@ -39,7 +39,7 @@ import { arch, platform, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
-import { resolveChromeExecutable } from "./chrome-executable.mjs";
+import { resolveChromeExecutable, screenshotInPlace } from "./chrome-executable.mjs";
 
 const E2E_DIR = dirname(fileURLToPath(import.meta.url));
 const STUDIO_DIR = resolve(E2E_DIR, "../..");
@@ -267,7 +267,7 @@ async function savePreviewScreenshot(page, name) {
   });
   const element = handle.asElement();
   assert(element, "Could not find the Studio preview iframe");
-  await element.screenshot({ path: join(EVIDENCE_DIR, name) });
+  await screenshotInPlace(element, { path: join(EVIDENCE_DIR, name) });
   await handle.dispose();
 }
 
@@ -278,7 +278,7 @@ async function capturePreviewHash(page) {
   });
   const element = handle.asElement();
   assert(element, "Could not find the Studio preview iframe");
-  const bytes = await element.screenshot({ type: "png" });
+  const bytes = await screenshotInPlace(element, { type: "png" });
   await handle.dispose();
   return sha256(bytes);
 }

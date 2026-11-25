@@ -80,6 +80,7 @@ import { wrapCaptureStageError } from "../captureStageError.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { HdrLayeredCapturePlan } from "../capturePlan.js";
 import type { DeliveryEncoderOptions } from "../deliveryEncoder.js";
+import { windowStartFrame } from "../frameWindow.js";
 
 export interface CaptureHdrStageInput {
   job: RenderJob;
@@ -369,7 +370,11 @@ export async function runCaptureHdrStage(
 
       // ── Dispatch to sequential or hybrid frame loop ────────────────────
       const effectiveWorkerCount = Math.max(1, workerCount);
-      const transitionFrameCount = partitionTransitionFrames(transitionRanges, totalFrames).size;
+      const transitionFrameCount = partitionTransitionFrames(
+        transitionRanges,
+        totalFrames,
+        windowStartFrame(job.frameWindow),
+      ).size;
       const useHybrid = shouldUseHybridLayeredPath({
         hasHdrContent,
         transitionFramesCount: transitionFrameCount,

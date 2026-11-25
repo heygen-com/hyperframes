@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { TELEMETRY_OPT_OUT_DEFINE } from "./vite.telemetry";
 
 export default defineConfig({
   tsconfig: "tsconfig.lib.json",
@@ -13,6 +14,7 @@ export default defineConfig({
   dts: true,
   clean: false,
   splitting: true,
+  define: TELEMETRY_OPT_OUT_DEFINE,
   external: [
     "@codemirror/autocomplete",
     "@codemirror/commands",

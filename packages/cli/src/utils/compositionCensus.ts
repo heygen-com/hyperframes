@@ -1,4 +1,4 @@
-import { parseHTML } from "@hyperframes/parsers/linkedom-html";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 
 /**
  * A privacy-preserving structural anatomy of a HyperFrames composition. The

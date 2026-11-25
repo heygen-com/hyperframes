@@ -41,6 +41,10 @@ export interface EngineConfig {
 
   // ── Browser ──────────────────────────────────────────────────────────
   chromePath?: string;
+  /** Where auto GPU mode keeps the GPU-or-software choice it measured on this machine; unset measures per render. */
+  gpuChoiceFile?: string;
+  /** The HyperFrames version; a stored GPU choice is reused only by the version that measured it. */
+  hyperframesVersion?: string;
   disableGpu: boolean;
   /**
    * Chrome/WebGL rendering backend.
@@ -351,6 +355,8 @@ const OPTIONAL_ENGINE_CONFIG_FIELDS = [
   "streamingEncodeAutoDisabledOnWin32Compound",
   "runtimeManifestPath",
   "extractCacheDir",
+  "gpuChoiceFile",
+  "hyperframesVersion",
 ] as const;
 
 const BOOLEAN_ENGINE_CONFIG_FIELDS = [
@@ -516,7 +522,13 @@ function validateEngineConfigHdr(config: Record<string, unknown>): void {
 }
 
 function validateOptionalEngineConfigFields(config: Record<string, unknown>): void {
-  for (const field of ["chromePath", "runtimeManifestPath", "extractCacheDir"] as const) {
+  for (const field of [
+    "chromePath",
+    "runtimeManifestPath",
+    "extractCacheDir",
+    "gpuChoiceFile",
+    "hyperframesVersion",
+  ] as const) {
     if (
       config[field] !== undefined &&
       (typeof config[field] !== "string" || config[field].length === 0)

@@ -9,7 +9,7 @@
   },
   "@hyperframes/core": {
     "packed": 1948041,
-    "unpacked": 4898942
+    "unpacked": 5217372
   },
   "@hyperframes/engine": {
     "packed": 522000,
@@ -28,8 +28,8 @@
     "unpacked": 737342
   },
   "@hyperframes/parsers": {
-    "packed": 230037,
-    "unpacked": 977339
+    "packed": 229500,
+    "unpacked": 930000
   },
   "@hyperframes/player": {
     "packed": 437000,
