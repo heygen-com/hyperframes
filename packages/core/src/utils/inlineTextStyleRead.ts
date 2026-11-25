@@ -46,13 +46,12 @@ export function readInlineStyleSpread(range: Range, property: string): string[] 
     // that shows none of it — the stray band on a selection that happens to
     // start or end next to a space.
     if (!char.trim()) continue;
-    if (style[property] === undefined) continue;
-    // As painted, where `var()` and `currentColor` mean what they mean for the text.
+    // As painted: `var()`, `currentColor` and a stylesheet's colour mean what they mean for the text.
     const shown = painter?.ownerDocument.defaultView
       ?.getComputedStyle(painter)
       .getPropertyValue(property);
     const value = shown || style[property];
-    if (seen.has(value)) continue;
+    if (!value || seen.has(value)) continue;
     seen.add(value);
     spread.push(value);
   }

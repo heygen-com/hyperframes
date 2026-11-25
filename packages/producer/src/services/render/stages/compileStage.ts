@@ -37,7 +37,7 @@
 
 import { requireOutputDimensions } from "../outputDimensions.js";
 import { existsSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { escapesAssetRoot } from "../../../utils/paths.js";
 import { privateCacheRoot, type ChromaSubsampling, type EngineConfig } from "@hyperframes/engine";
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
@@ -61,7 +61,7 @@ import {
 
 function animatedGifCacheDir(extractCacheDir: string | undefined): string | undefined {
   try {
-    const root = extractCacheDir && privateCacheRoot(extractCacheDir);
+    const root = extractCacheDir && privateCacheRoot(resolve(extractCacheDir));
     return root ? join(root, "animated-gif") : undefined;
   } catch {
     return undefined;
