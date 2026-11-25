@@ -35,7 +35,6 @@ function escapeTextOnWrite(): void {
   }
 }
 
-// Typed with the DOM's own types: published declarations that name linkedom's fail a strict consumer.
 // linkedom reads these as plain text even inside svg or math, where a browser reads their markup.
 const READ_AS_TEXT = new Set(["title", "style", "script", "textarea", "xmp"]);
 const FOREIGN = new Set(["svg", "math"]);
@@ -84,6 +83,7 @@ function readsUnlikeBrowser(root: ParentNode): boolean {
   return false;
 }
 
+// Typed with the DOM's own types: published declarations that name linkedom's fail a strict consumer.
 /** linkedom's `parseHTML`, refusing HTML that a browser would read as a different tree. */
 export function parseHTML(html: string, globals?: unknown): Window & typeof globalThis {
   escapeTextOnWrite();
