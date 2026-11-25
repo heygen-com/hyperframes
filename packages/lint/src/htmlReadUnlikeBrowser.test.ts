@@ -59,6 +59,18 @@ describe("a file the HTML parser refuses", () => {
     expect(refusalsIn(results[0]!.result.findings)).toHaveLength(0);
   });
 
+  it("leaves the report whole when the mounted file's name is URL-encoded", async () => {
+    const dir = project({
+      "index.html": page(
+        `${host("scenes/my%20scene.html")}<audio src="missing.mp3" data-start="0"></audio>`,
+      ),
+      "scenes/my scene.html": scene(HIDDEN),
+    });
+    const { results } = await lintProject(dir);
+    const codes = results.flatMap((entry) => entry.result.findings.map((finding) => finding.code));
+    expect(codes).toContain("audio_src_not_found");
+  });
+
   it("is named when a scene outside compositions/ mounts it", async () => {
     const dir = project({
       "index.html": page(host("scenes/scene.html")),
