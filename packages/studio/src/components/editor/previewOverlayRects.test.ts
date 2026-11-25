@@ -796,6 +796,18 @@ describe("a press on a settled preview", () => {
     expect(press.start.mock.calls[0]![3]).toEqual({ at: expect.any(Object) });
   });
 
+  // fails without the fix: a drag pressed just after a reload swapped the page dragged the replaced page's copy of the
+  // element, so nothing on screen moved and the release saved nothing (edit bench seqfastkeys, 194 px).
+  it("on a scriptable frame starts on the shown page's element when the selection still names the replaced page's", () => {
+    const turned = document.getElementById("turned")!;
+    const replaced = document.implementation.createHTMLDocument().createElement("div");
+    replaced.id = "turned";
+    pressOn(liveFrame(), makeSelection("turned", replaced));
+    expect(press.start).toHaveBeenCalledOnce();
+    const started = press.start.mock.calls[0]![3] as { selection?: DomEditSelection };
+    expect(started.selection?.element).toBe(turned);
+  });
+
   // fails without the fix: the press asked the frame only on the next animation frame, and started on the one after.
   it("on an opaque frame asks at the press and starts once the frame answers, with no animation frame", async () => {
     const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 0);
