@@ -237,7 +237,8 @@ function clearProps(element: Styled, saved: Before): void {
 }
 
 function dropTranslateNoOneWroteSince(element: Styled, saved: Before): void {
-  if (element.style.getPropertyValue("translate") === saved.drawnTranslate)
+  const drewOnGsap = saved.gsapPosition !== undefined;
+  if (!drewOnGsap && element.style.getPropertyValue("translate") === saved.drawnTranslate)
     restore(element, ["translate"]);
 }
 

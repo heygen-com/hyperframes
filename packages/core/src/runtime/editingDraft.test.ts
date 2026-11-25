@@ -251,6 +251,23 @@ describe("moves through GSAP", () => {
     ]);
   });
 
+  it("keeps translate none after a GSAP-route draft when GSAP folded a stylesheet translate", () => {
+    document.head.innerHTML = "<style>#card { translate: 40px 30px }</style>";
+    const { element, handle } = card("width: 50px");
+    const fold = (target: HTMLElement) => target.style.setProperty("translate", "none");
+    (window as { gsap?: unknown }).gsap = {
+      getProperty: (t: HTMLElement) => (fold(t), 0),
+      set: () => {},
+    };
+    drawDrafts([
+      { handle, translate: { x: 10, y: 0, route: "gsap" }, size: { width: 80, height: 40 } },
+    ]);
+
+    drawDrafts([{ handle, end: "keep-size" }]);
+
+    expect(getComputedStyle(element).translate).toBe("none");
+  });
+
   // fails without the fix: restore compared GSAP's x/y with the drawn one, so a later set to that same value, or one
   // within 0.001 px, read as the draft's own and was thrown back to where the drag began.
   it.each([
