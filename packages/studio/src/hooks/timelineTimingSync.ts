@@ -93,7 +93,7 @@ async function syncTimingEditPreview(
 ): Promise<void> {
   const currentTime = () => usePlayerStore.getState().currentTime;
   if (!outcome.mutated && rebindWhenUnmutated) {
-    rebindIframeTiming(iframe, currentTime(), reloadPreview);
+    rebindIframeTiming(iframe, currentTime, reloadPreview);
     return;
   }
   const { scriptText } = outcome;

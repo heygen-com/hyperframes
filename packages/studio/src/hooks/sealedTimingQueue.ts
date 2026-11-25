@@ -17,7 +17,7 @@ export function noteTimingPatch(iframe: HTMLIFrameElement, applied: boolean): vo
 
 export function rebindIframeTiming(
   iframe: HTMLIFrameElement | null,
-  currentTime: number,
+  currentTime: () => number,
   reload: () => void,
 ): void {
   if (iframe && previewFrameOpaque(iframe)) {
@@ -25,11 +25,11 @@ export function rebindIframeTiming(
       const missed = missedPatches.delete(iframe);
       const answer = missed
         ? null
-        : await previewRequest(iframe, "rebind-timing", { time: currentTime });
+        : await previewRequest(iframe, "rebind-timing", { time: currentTime() });
       if (answer?.rebound !== true) reload();
     });
     return;
   }
   const missed = iframe !== null && missedPatches.delete(iframe);
-  if (missed || !applySoftReloadFinalization(iframe, currentTime)) reload();
+  if (missed || !applySoftReloadFinalization(iframe, currentTime())) reload();
 }
