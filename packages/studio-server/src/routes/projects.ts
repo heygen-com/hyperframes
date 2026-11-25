@@ -1,24 +1,35 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import { isPrivateProjectPath, walkDir } from "../helpers/safePath.js";
-import { isCompositionPath, isCompositionSource } from "../helpers/hfIdPersist.js";
+import { isCompositionPath } from "../helpers/hfIdPersist.js";
+import { runOffThread } from "../helpers/subCompositionBuild.js";
 import { resolveProjectSignature } from "../helpers/projectSignature.js";
 
-async function filterCompositionFiles(projectDir: string, files: string[]): Promise<string[]> {
+const WHOLE_SCAN_LIMIT_MS = 30_000;
+const PAGE_IN_PROGRESS_GRACE_MS = 5_000;
+
+async function compositionFiles(
+  projectDir: string,
+  files: string[],
+): Promise<string[] | undefined> {
   const htmlFiles = files.filter(isCompositionPath);
-  const checks = await Promise.all(
-    htmlFiles.map(async (f) => {
-      try {
-        const content = await readFile(join(projectDir, f), "utf-8");
-        return isCompositionSource(content);
-      } catch {
-        return false;
-      }
-    }),
-  );
-  return htmlFiles.filter((_, i) => checks[i]);
+  if (htmlFiles.length === 0) return [];
+  const job = {
+    kind: "compositions" as const,
+    projectDir,
+    files: htmlFiles,
+    leaveUncheckedAfterMs: WHOLE_SCAN_LIMIT_MS,
+  };
+  const deadline = performance.now() + WHOLE_SCAN_LIMIT_MS + PAGE_IN_PROGRESS_GRACE_MS;
+  const listing = `[hyperframes] listing ${projectDir}: the compositions are left out of this answer,`;
+  try {
+    const { compositions, unchecked } = await runOffThread(job, deadline, projectDir);
+    if (unchecked === 0) return compositions;
+    console.warn(`${listing} ${unchecked} of ${htmlFiles.length} HTML files were not read in time`);
+  } catch (error) {
+    console.warn(`${listing} the scan did not end:`, error);
+  }
+  return undefined;
 }
 
 export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): void {
@@ -51,7 +62,7 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     const files = walkDir(project.dir).filter((file) => !isPrivateProjectPath(file));
-    const compositions = await filterCompositionFiles(project.dir, files);
+    const compositions = await compositionFiles(project.dir, files);
     return c.json({ id: project.id, dir: project.dir, title: project.title, files, compositions });
   });
 }

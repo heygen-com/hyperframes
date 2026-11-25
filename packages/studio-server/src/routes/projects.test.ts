@@ -1,14 +1,27 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runPreviewJob } from "../helpers/previewJobs";
 import { registerProjectRoutes } from "./projects";
 import type { StudioApiAdapter } from "../types";
+
+const scan = vi.hoisted(() => ({ result: undefined as (() => Promise<unknown>) | undefined }));
+vi.mock("../helpers/subCompositionBuild", async (original) => {
+  const actual = await original<typeof import("../helpers/subCompositionBuild")>();
+  const runOffThread: typeof actual.runOffThread = (job, ...rest) =>
+    scan.result && job.kind === "compositions"
+      ? (scan.result() as ReturnType<typeof actual.runOffThread>)
+      : actual.runOffThread(job, ...rest);
+  return { ...actual, runOffThread };
+});
 
 const tempDirs: string[] = [];
 
 afterEach(() => {
+  scan.result = undefined;
+  vi.restoreAllMocks();
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -205,6 +218,57 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
 
     expect(payload.compositions).toContain("index.html");
     expect(payload.compositions).not.toContain("extracted/page.html");
+  });
+
+  // fails without the fix: the listing parsed each page on the request thread, so nothing else was answered meanwhile.
+  it("answers another request while a first listing still parses a large page", async () => {
+    const projectDir = createProjectDir();
+    const large = `<html><body>${"<p>hello world</p>".repeat(700_000)}<div data-composition-id="big"></div></body></html>`;
+    writeFileSync(join(projectDir, "large.html"), large);
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(projectDir));
+    const order: string[] = [];
+
+    const listing = app.request("http://localhost/projects/demo").then((response) => {
+      order.push("listing");
+      return response.json();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const other = await app.request("http://localhost/projects");
+    order.push("other");
+
+    expect(other.status).toBe(200);
+    expect(await listing).toMatchObject({
+      compositions: expect.arrayContaining(["index.html", "large.html"]),
+    });
+    expect(order).toEqual(["other", "listing"]);
+  }, 60_000);
+
+  it("counts the pages a scan did not reach by its limit, and judges none of them", () => {
+    const projectDir = createProjectDir();
+    const files = ["index.html", "compositions/scene.html"];
+    const scan = (leaveUncheckedAfterMs: number) =>
+      runPreviewJob({ kind: "compositions", projectDir, files, leaveUncheckedAfterMs });
+
+    expect(scan(60_000)).toEqual({ compositions: files, unchecked: 0 });
+    expect(scan(-1)).toEqual({ compositions: [], unchecked: 2 });
+  });
+
+  // A list that misses pages would drop open compositions in Studio, which keeps its last list when none is sent.
+  it.each([
+    ["stops at its limit", () => Promise.resolve({ compositions: ["index.html"], unchecked: 1 })],
+    ["does not end", () => Promise.reject(new Error("the build worker exited (1)"))],
+  ])("sends the files but no composition list when the scan %s, and says so", async (_, result) => {
+    scan.result = result;
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(createProjectDir()));
+
+    const payload: unknown = await (await app.request("http://localhost/projects/demo")).json();
+
+    expect(payload).toMatchObject({ files: expect.arrayContaining(["index.html"]) });
+    expect(payload).not.toHaveProperty("compositions");
+    expect(warned).toHaveBeenCalledTimes(1);
   });
 
   it("lists no hidden file but Studio's own and the media folder's, nothing under .hyperframes/ that isn't Studio's", async () => {

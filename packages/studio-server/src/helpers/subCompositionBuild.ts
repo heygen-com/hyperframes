@@ -42,12 +42,21 @@ export interface PartsJob {
   ignore: string[];
 }
 
-export type SubCompositionJob = BuildJob | BaseJob | FinishJob | PartsJob;
+export interface CompositionsJob {
+  kind: "compositions";
+  projectDir: string;
+  files: string[];
+  leaveUncheckedAfterMs: number;
+}
+
+export type SubCompositionJob = BuildJob | BaseJob | FinishJob | PartsJob | CompositionsJob;
 type Result<J> = J extends BuildJob
   ? { html: string; references: string[] } | { refused: string } | null
   : J extends BaseJob
     ? { html: string; references: string[] }
-    : string;
+    : J extends CompositionsJob
+      ? { compositions: string[]; unchecked: number }
+      : string;
 
 export class SubCompositionDeadlineError extends Error {
   constructor(compPath: string) {
