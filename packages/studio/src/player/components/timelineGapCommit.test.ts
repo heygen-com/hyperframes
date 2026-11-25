@@ -6,6 +6,7 @@ import {
   commitCloseAllTrackGaps,
   commitCloseTrackGap,
   resolveMainTrackDeleteRippleShifts,
+  resolveMainTrackTrimRipple,
   resolveShiftedElements,
 } from "./timelineGapCommit";
 import { resolveAllTrackGaps } from "./timelineGaps";
@@ -255,5 +256,73 @@ describe("resolveMainTrackDeleteRippleShifts", () => {
       { key: "c", newStart: 2 },
       { key: "e", newStart: 4 },
     ]);
+  });
+});
+
+describe("resolveMainTrackTrimRipple", () => {
+  const starts = (changes: ReturnType<typeof resolveMainTrackTrimRipple>) =>
+    changes?.map((c) => [c.element.id, c.start]);
+
+  it("closes the gap a right-edge trim leaves on the main track", () => {
+    const a = el("a", 0, 4);
+    const ripple = resolveMainTrackTrimRipple(
+      [a, el("b", 4, 2), el("c", 6, 2)],
+      [{ element: a, start: 0, duration: 3 }],
+      true,
+    );
+    expect(starts(ripple)).toEqual([
+      ["b", 3],
+      ["c", 5],
+    ]);
+  });
+
+  it("keeps a left-edge trimmed clip in place and pulls the rest in", () => {
+    const b = el("b", 2, 4);
+    const ripple = resolveMainTrackTrimRipple(
+      [el("a", 0, 2), b, el("c", 6, 2)],
+      [{ element: b, start: 3, duration: 3 }],
+      true,
+    );
+    expect(starts(ripple)).toEqual([
+      ["b", 2],
+      ["c", 5],
+    ]);
+    expect(ripple?.[0]?.element.duration).toBe(3);
+  });
+
+  it("moves a linked partner trimmed with its clip by the same amount", () => {
+    const b = { ...el("b", 2, 4), link: "l1" };
+    const audio = { ...el("b-audio", 2, 4, 1), tag: "audio", link: "l1" };
+    const ripple = resolveMainTrackTrimRipple(
+      [el("a", 0, 2), b, audio],
+      [
+        { element: b, start: 3, duration: 3 },
+        { element: audio, start: 3, duration: 3 },
+      ],
+      true,
+    );
+    expect(starts(ripple)).toEqual([
+      ["b", 2],
+      ["b-audio", 2],
+    ]);
+  });
+
+  it("returns null when ripple is off, off the main track, or when the clip grew", () => {
+    const a = el("a", 0, 4);
+    const lanes = [a, el("b", 4, 2)];
+    expect(
+      resolveMainTrackTrimRipple(lanes, [{ element: a, start: 0, duration: 3 }], false),
+    ).toBeNull();
+    const overlay = el("o", 0, 4, 1);
+    expect(
+      resolveMainTrackTrimRipple(
+        [overlay, el("p", 4, 2, 1)],
+        [{ element: overlay, start: 0, duration: 3 }],
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      resolveMainTrackTrimRipple(lanes, [{ element: a, start: 0, duration: 5 }], true),
+    ).toBeNull();
   });
 });

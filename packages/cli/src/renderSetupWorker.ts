@@ -2,6 +2,7 @@ import "./utils/hideChildConsoles.js";
 import "./utils/windowsExeSearch.js";
 import { readFile, rm } from "node:fs/promises";
 import { constants, setPriority } from "node:os";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { lintHyperframeHtml } from "@hyperframes/lint";
 import { runBrowserInstall } from "./browser/installRun.js";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
@@ -31,7 +32,9 @@ function setOwnPriority(priority: number, whatStaysNormal: string): void {
   } catch (error) {
     if (SANDBOX_REFUSED_PRIORITY.has((error as { info?: { code?: string } }).info?.code ?? ""))
       return;
-    process.stderr.write(`${whatStaysNormal} at normal priority: ${(error as Error).message}\n`);
+    process.stderr.write(
+      `${whatStaysNormal} at normal priority: ${terminalText((error as Error).message)}\n`,
+    );
   }
 }
 

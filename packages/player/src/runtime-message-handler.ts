@@ -13,6 +13,12 @@ import {
 import type { ShaderLoaderState } from "./shader-loader-state.js";
 import type { ShaderTransitionState } from "./shader-options.js";
 import { inspectRuntimeProtocol } from "@hyperframes/core/runtime/protocol";
+import { STUDIO_PREVIEW_ERROR_MESSAGE } from "@hyperframes/core/studio-preview-mark";
+import {
+  parseStaticComposition,
+  STATIC_COMPOSITION,
+  type StaticComposition,
+} from "@hyperframes/core/runtime/composition-length";
 
 type SceneRecord = { id: string; start: number; duration: number };
 
@@ -36,6 +42,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
   setCompositionSize: (width: number, height: number) => void;
   sendControl: (action: string, extra?: Record<string, unknown>) => void;
   getIframeDoc: () => Document | null;
+  getCompositionUrl: () => string | null;
   /** Invoked when the iframe runtime posts `{type: "ready"}` — the player
    *  uses it to replay current bridge state (mute, volume, playback rate) so
    *  control messages sent before the iframe's listener registered aren't lost. */
@@ -48,9 +55,13 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  player uses this as the cross-origin readiness signal because the
    *  same-origin composition probe cannot inspect CDN iframes. */
   onRuntimeTimelineReady: (duration: number, assetsReady: boolean | undefined) => void;
+  /** The frame's own static read, posted before its runtime boots, for a player that can't read the frame. */
+  onStaticComposition?: (read: StaticComposition) => void;
+  onFrameError?: (message: unknown) => void;
   setBuffering?: (buffering: boolean) => void;
   setRuntimeFps?: (fps: number) => void;
   setRuntimeOwnsPlayRange?: (owns: boolean) => void;
+  setRuntimeAnnounces?: (announces: boolean) => void;
   /** Called with the scene list whenever a "timeline" message is received. */
   setScenes: (scenes: SceneRecord[]) => void;
   /** Return false to ignore the iframe runtime's audible-media autoplay fallback.
@@ -68,6 +79,10 @@ export function handleRuntimeMessage(
   if (event.source !== frameWindow) return;
   const data = event.data as Record<string, unknown> | undefined;
   if (!data || data["source"] !== "hf-preview") return;
+  if (data["type"] === STUDIO_PREVIEW_ERROR_MESSAGE) {
+    callbacks.onFrameError?.(data["message"]);
+    return;
+  }
   const protocol = inspectRuntimeProtocol(data);
   if (protocol.status === "unsupported") {
     callbacks.dispatchEvent(
@@ -81,6 +96,9 @@ export function handleRuntimeMessage(
   const ownsPlayRange =
     protocol.status === "supported" && protocol.metadata.capabilities.includes("play-range");
   callbacks.setRuntimeOwnsPlayRange?.(ownsPlayRange);
+  callbacks.setRuntimeAnnounces?.(
+    protocol.status === "supported" && protocol.metadata.capabilities.includes("announce-timeline"),
+  );
 
   if (data["type"] === "shader-transition-state") {
     const state: ShaderTransitionState =
@@ -93,6 +111,12 @@ export function handleRuntimeMessage(
         detail: { compositionId: data["compositionId"], state },
       }),
     );
+    return;
+  }
+
+  if (data["type"] === STATIC_COMPOSITION) {
+    const read = parseStaticComposition(data);
+    if (read) callbacks.onStaticComposition?.(read);
     return;
   }
 
@@ -143,10 +167,8 @@ export function handleRuntimeMessage(
     } catch {
       /* cross-origin */
     }
-    callbacks.media.promoteToParentProxy(iframeDoc, (t, opts) =>
-      callbacks.media.mirrorTime(t, opts),
-    );
-    callbacks.sendControl("set-media-output-muted", { muted: true });
+    if (!iframeDoc) callbacks.media.setupFromList(data["media"], callbacks.getCompositionUrl());
+    callbacks.media.promoteToParentProxy((t, opts) => callbacks.media.mirrorTime(t, opts));
     return;
   }
 

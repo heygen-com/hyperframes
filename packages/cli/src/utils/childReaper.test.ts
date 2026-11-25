@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { testProcessIsAlive, waitForTestCondition } from "./processTestUtils.js";
 
-const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "childReaper.fixture.ts");
+const here = dirname(fileURLToPath(import.meta.url));
+const fixturePath = join(here, "childReaper.fixture.ts");
 const leftovers: number[] = [];
 let parent: ChildProcess | undefined;
 
@@ -47,3 +48,32 @@ describe.skipIf(process.platform === "win32")("a CLI killed outright", () => {
     }
   });
 });
+
+describe.skipIf(process.platform !== "win32")(
+  "a Windows CLI that ends with children still held",
+  () => {
+    // fails without the fix: the reaper ran taskkill /T on each held pid whatever now held it, so a pid Windows had
+    // given to another program was ended with its whole tree.
+    it("ends the child it started and leaves a pid that now runs another program", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hyperframes-child-reaper-image-"));
+      const readyPath = join(dir, "ready");
+      try {
+        parent = spawn(
+          process.execPath,
+          ["--import", "tsx", join(here, "childReaper.image.fixture.ts"), readyPath],
+          { stdio: "ignore" },
+        );
+        await new Promise((resolve) => parent!.once("exit", resolve));
+        const { own, reused } = JSON.parse(readFileSync(readyPath, "utf8")) as {
+          own: number;
+          reused: number;
+        };
+        leftovers.push(own, reused);
+        await waitForTestCondition(() => !testProcessIsAlive(own), 10_000);
+        expect(testProcessIsAlive(reused)).toBe(true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  },
+);

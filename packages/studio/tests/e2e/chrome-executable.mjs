@@ -1,28 +1,12 @@
-import { existsSync, readdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { findSystemChrome } from "../../vite.chrome.ts";
 
-/** Resolve the same Chrome binary for every local Studio browser acceptance test. */
-export function resolveChromeExecutable() {
-  const chromeRoot = join(homedir(), ".cache", "puppeteer", "chrome");
-  const builds = existsSync(chromeRoot) ? readdirSync(chromeRoot).sort().reverse() : [];
-  const installed = builds.flatMap((build) =>
-    [
-      "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-      "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-      "chrome-linux64/chrome",
-    ].map((relative) => join(chromeRoot, build, relative)),
-  );
-  return [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    process.env.CHROME_PATH,
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    ...installed,
-  ].find((candidate) => candidate && existsSync(candidate));
-}
+/** The Chrome every Studio browser acceptance test launches: the one Studio's dev server picks. */
+export const resolveChromeExecutable = findSystemChrome;
+
+/** `element` as laid out now; a shot past the viewport resizes the page mid-shot and Studio's dock re-lays out. */
+export const screenshotInPlace = (element, options = {}) =>
+  element.screenshot({ ...options, captureBeyondViewport: false });
 
 /** Headless Chrome for a Studio browser gate; exits 2 when no Chrome is installed. */
 export async function launchStudioChrome() {

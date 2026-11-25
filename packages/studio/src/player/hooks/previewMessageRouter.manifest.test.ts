@@ -11,7 +11,11 @@ afterEach(() => {
   usePlayerStore.getState().reset();
 });
 
-const PORT_MANIFEST = { clips: [{ id: "a" }], durationInFrames: 60, scenes: [] };
+const PORT_MANIFEST = {
+  clips: [{ id: "a", start: 0, duration: 2, track: 0 }],
+  durationInFrames: 60,
+  scenes: [],
+};
 const GLOBAL_MANIFEST = { clips: [{ id: "x" }], durationInFrames: 30, scenes: [] };
 
 /** A frame whose globals and editing port carry different manifests, so a test sees which was read. */
@@ -34,8 +38,6 @@ function routeStateTicks(opaque: boolean) {
     processTimelineMessageRef: { current: processed },
     enrichMissingCompositionsRef: { current: vi.fn() },
     lastTimelineMessageRef: { current: Date.now() },
-    getAdapter: () => null,
-    syncTimelineElements: vi.fn(),
   });
   const tick = () =>
     handle(
@@ -86,8 +88,6 @@ it("asks a live opaque frame it has not heard from once, though its film has no 
     processTimelineMessageRef: { current: processed },
     enrichMissingCompositionsRef: { current: vi.fn() },
     lastTimelineMessageRef: { current: Date.now() },
-    getAdapter: () => null,
-    syncTimelineElements: vi.fn(),
   });
   const tick = () =>
     handle(

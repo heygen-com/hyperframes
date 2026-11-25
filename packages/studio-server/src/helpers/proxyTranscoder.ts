@@ -42,6 +42,7 @@ import { isProjectCacheFile, mkdirWithinProject, realpath, realProjectRoot } fro
  */
 
 export const PROXY_PARAMS_VERSION = "v7";
+const STILL_ENCODING = "jpeg-matrix";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -276,9 +277,8 @@ export async function proxyWindowSeconds(
 }
 
 // --- global concurrency limiter -------------------------------------------
-// ponytail: a counter + one wait queue is the whole semaphore. Priority copies
-// queue ahead of the rest and are never refused for a full queue, so a few
-// priority asks (the copy a viewer is waiting on) can exceed the cap.
+// ponytail: counters + one wait queue are the whole semaphore. Priority copies (the one a viewer waits on) queue
+// ahead and are never refused; while none runs, one starts past the cap, so other copies cannot starve it.
 
 /** One copy per cache key, shared by every caller asking for it. */
 interface ProxyJob {
@@ -289,6 +289,7 @@ interface ProxyJob {
   callers: number;
   /** Set while the job waits for a slot. */
   queued?: { start: () => void; drop: () => void };
+  holdsPrioritySlot?: boolean;
   abandoned: AbortController;
   progress: Set<(progress: ProxyProgress) => void>;
   lastProgress?: ProxyProgress;
@@ -313,7 +314,21 @@ class ProxyDroppedError extends ProxyTranscodeError {
 }
 
 let activeTranscodes = 0;
+let activePriority = 0;
 const waitQueue: ProxyJob[] = [];
+
+const hasRoom = (job: ProxyJob) =>
+  activeTranscodes < MAX_CONCURRENT_TRANSCODES || (job.priority && activePriority === 0);
+
+function takeSlot(job: ProxyJob): void {
+  activeTranscodes++;
+  job.holdsPrioritySlot = job.priority;
+  if (job.priority) activePriority++;
+}
+
+function startWaiting(): void {
+  while (waitQueue[0] && hasRoom(waitQueue[0])) waitQueue.shift()?.queued?.start();
+}
 
 function enqueue(job: ProxyJob): void {
   if (job.priority) waitQueue.unshift(job);
@@ -326,15 +341,15 @@ function dequeue(job: ProxyJob): void {
 }
 
 function acquireSlot(job: ProxyJob): Promise<void> {
-  if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
-    activeTranscodes++;
+  if (hasRoom(job)) {
+    takeSlot(job);
     return Promise.resolve();
   }
   return new Promise((resolveSlot, reject) => {
     job.queued = {
       start: () => {
         job.queued = undefined;
-        activeTranscodes++;
+        takeSlot(job);
         resolveSlot();
       },
       drop: () => {
@@ -352,9 +367,10 @@ function queueIsFull(): boolean {
   return activeTranscodes >= MAX_CONCURRENT_TRANSCODES && waitQueue.length >= MAX_QUEUED_TRANSCODES;
 }
 
-function releaseSlot(): void {
+function releaseSlot(job: ProxyJob): void {
   activeTranscodes--;
-  waitQueue.shift()?.queued?.start();
+  if (job.holdsPrioritySlot) activePriority--;
+  startWaiting();
 }
 
 function prioritize(job: ProxyJob): void {
@@ -362,6 +378,7 @@ function prioritize(job: ProxyJob): void {
   if (!job.queued) return;
   dequeue(job);
   enqueue(job);
+  startWaiting();
 }
 
 function leave(job: ProxyJob): void {
@@ -1154,7 +1171,7 @@ async function transcodeToCache(
       release();
     }
   } finally {
-    releaseSlot();
+    releaseSlot(job);
   }
 }
 
@@ -1340,8 +1357,13 @@ export function resolveStill(
 ): Promise<string> {
   if (signal?.aborted) return Promise.reject(signal.reason);
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const at = Math.max(0, Math.round(atSeconds * 10) / 10);
-  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
+  const at = Math.max(0, Math.floor(atSeconds * 10 + 1e-6) / 10);
+  const key = fastCopyKey(
+    source.sourcePath,
+    PROXY_PARAMS_VERSION,
+    `still-${STILL_ENCODING}@${at}`,
+    box,
+  );
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
   if (isProjectCacheFile(source.projectDir, cachePath)) {
     markCacheEntryUsed(cachePath);
@@ -1382,6 +1404,10 @@ function waitForStill(job: StillJob, cachePath: string, signal?: AbortSignal): P
   });
 }
 
+const SD_MATRICES = new Set(["bt470bg", "smpte170m"]);
+const browserMatrixOf = (colorSpace: string | undefined) =>
+  SD_MATRICES.has(colorSpace ?? "") ? "bt470bg" : "bt709";
+
 async function makeStill(
   source: CanonicalProxySource,
   at: number,
@@ -1396,7 +1422,8 @@ async function makeStill(
   if (metadata.durationSeconds !== undefined && at > metadata.durationSeconds) {
     throw new StillPastEndError();
   }
-  const filter = await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box);
+  const toJpegMatrix = `colorspace=all=bt709:iall=bt709:ispace=${browserMatrixOf(metadata.color.colorSpace)}:space=bt470bg`;
+  const filter = `${await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box)},${toJpegMatrix}`;
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {

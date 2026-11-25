@@ -7,9 +7,19 @@ import { FileManagerProvider } from "../contexts/FileManagerContext";
 import { mountReactHarness } from "./domSelectionTestHarness";
 
 const analyze = vi.hoisted(() => vi.fn());
+const read = vi.hoisted(() => vi.fn(async (_url: string) => [new Float32Array(1)]));
 vi.mock("@hyperframes/core/beats", async (actual) => ({
   ...(await actual<typeof import("@hyperframes/core/beats")>()),
-  analyzeMusicFromUrl: analyze,
+  analyzeMusicFromSignal: analyze,
+}));
+vi.mock("../utils/projectPcm", () => ({
+  analysisRateOf: async () => 48_000,
+  readPcmChannels: read,
+}));
+// The timeline is at rest, so a read starts within the settle below and "nothing was read" means it.
+vi.mock("../player/components/timelineMotion", async (actual) => ({
+  ...(await actual<typeof import("../player/components/timelineMotion")>()),
+  whenTimelineIdle: async () => {},
 }));
 
 const { useMusicBeatAnalysis } = await import("./useMusicBeatAnalysis");
@@ -51,16 +61,17 @@ async function opened(elements: TimelineElement[]) {
     </FileManagerProvider>,
   );
   await act(async () => {
-    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    await new Promise((settled) => setTimeout(settled, 0));
   });
   const beats = usePlayerStore.getState().beatAnalysis?.beatTimes ?? null;
   act(() => root.unmount());
-  return { decoded: analyze.mock.calls.map(([src]) => src), beats };
+  return { decoded: read.mock.calls.map(([src]) => src), beats };
 }
 
 beforeEach(() => {
   savedBeats = "";
   analyze.mockReset();
+  read.mockClear();
   analyze.mockResolvedValue({ beatTimes: [1, 2], beatStrengths: [1, 1], bpm: 120 });
 });
 afterEach(() =>

@@ -199,13 +199,13 @@ for (const [label, name, list, reason] of [
     "an HLS playlist",
     "take.m3u8",
     (media) => `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${media}\n#EXT-X-ENDLIST\n`,
-    /is a hls list that points at other files/,
+    /is a hls list that points at other files|not audio in an accepted container/,
   ],
   [
     "a concat list",
     "take.ffconcat",
     (media) => `ffconcat version 1.0\nfile '${media}'\n`,
-    /list that points at other files|cannot read/,
+    /list that points at other files|not audio in an accepted container/,
   ],
 ]) {
   test(`a recording that is ${label} naming an outside file is refused`, () => {

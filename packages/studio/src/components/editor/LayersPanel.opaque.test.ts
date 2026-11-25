@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { LayersPanel } from "./LayersPanel";
+import { DomEditCropHandles } from "./DomEditCropHandles";
 import type { LayerReorderEvent } from "./useLayerDrag";
 import type { DomEditLayerItem, DomEditSelection } from "./domEditing";
 import { announcePreviewDocumentLoaded } from "../../player/sceneSwap";
@@ -241,4 +242,37 @@ it("lists the layers in their new order after an undo restacks them in place", a
   await vi.waitFor(() => expect(document.getElementById("back")!.style.zIndex).toBe("3"));
   expect(reload).not.toHaveBeenCalled();
   await vi.waitFor(() => expect(rows()).toEqual(["Back", "Front"]));
+});
+
+// fails without the fix: a layer picked in the Layers panel was never pressed on the canvas, so its sealed crop drew
+// the insets at the overlay's zoom alone, as if the layer had no scale of its own.
+it("draws the crop of a sealed scaled layer picked in the Layers panel at the layer's own scale", async () => {
+  document.body.innerHTML = `<main data-composition-id="main"><div id="card" style="transform: matrix(2, 0, 0, 2, 0, 0); clip-path: inset(0px 20px 0px 0px)"></div></main>`;
+  const card = document.getElementById("card")!;
+  Object.defineProperty(card, "offsetWidth", { value: 200 });
+  Object.defineProperty(card, "offsetHeight", { value: 100 });
+  card.getBoundingClientRect = () =>
+    ({ x: 0, y: 0, width: 400, height: 200, left: 0, top: 0, right: 400, bottom: 200 }) as DOMRect;
+  const rows = renderPanel(sealedPreviewFrame().iframe);
+  await vi.waitFor(() => expect(rows()).toHaveLength(1));
+  act(() => document.querySelector<HTMLElement>("[data-layer-index]")!.click());
+  await vi.waitFor(() => expect(mocks.applyDomSelection).toHaveBeenCalled());
+  const picked = mocks.applyDomSelection.mock.calls[0]![0] as DomEditSelection;
+
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  act(() =>
+    root.render(
+      createElement(DomEditCropHandles, {
+        selection: picked,
+        overlayRect: { left: 0, top: 0, width: 400, height: 200, editScaleX: 1, editScaleY: 1 },
+        onStyleCommit: vi.fn(),
+      }),
+    ),
+  );
+  closers.push(() => act(() => root.unmount()));
+
+  const outline = () =>
+    host.querySelector<HTMLElement>("[data-dom-edit-crop-frame] .border-dashed")?.style.width;
+  await vi.waitFor(() => expect(outline()).toBe("360px"));
 });

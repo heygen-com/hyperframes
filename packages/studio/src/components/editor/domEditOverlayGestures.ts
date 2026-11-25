@@ -96,6 +96,7 @@ export interface GestureState {
    */
   resizeFixedCenterStart?: { x: number; y: number };
   resizePressFromCorner?: { x: number; y: number };
+  resizeGrow?: { a: number; b: number; c: number; d: number };
 }
 
 export interface GroupGestureState {
@@ -138,6 +139,8 @@ export interface WaitingPressState {
   released: React.PointerEvent<HTMLDivElement> | null;
   after: WaitingPressState | null;
   ended: boolean;
+  refused: boolean;
+  drawBack: () => void;
 }
 
 export type FocusableDomEditOverlay = {

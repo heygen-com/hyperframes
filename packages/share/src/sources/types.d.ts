@@ -61,7 +61,10 @@ export interface PathRule {
 /** The fields of contract/path-policy.json this client reads. */
 export interface PolicyDocument {
   policy_version: string;
-  stored_manifest: { legacy_rule_regexes: Record<string, string> };
+  stored_manifest: {
+    legacy_rule_regexes: Record<string, string>;
+    legacy_short_name_alias_names: string[];
+  };
   unicode: { version: string };
   rules: PathRule[];
   path: {
@@ -70,6 +73,8 @@ export interface PolicyDocument {
     forbidden_characters: string;
     reserved_segment_regex: string;
     canonical_spelling_roots: string[];
+    short_name_alias_names: string[];
+    short_name_alias_shape: string;
   };
   client_prefilter: { names: string[] };
   client_symlinks: { skip_prefixes: string[] };

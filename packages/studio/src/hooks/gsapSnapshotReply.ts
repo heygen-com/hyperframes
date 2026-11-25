@@ -29,10 +29,12 @@ export function readGsapSnapshot(value: unknown): Snapshot | null {
   if (!isFields(value) || !isNumberOrNull(value.time) || !isTextOrNull(value.defaultEase))
     return null;
   const budget: Budget = { tweens: MAX_SNAPSHOT_TWEENS, fields: MAX_SNAPSHOT_FIELDS };
-  const { timelines, targets } = value;
+  const { timelines, globalTweens, targets } = value;
   const ok =
     isList(timelines, MAX_SNAPSHOT_TWEENS) &&
     timelines.every((line) => isTimeline(line, budget)) &&
+    isList(globalTweens, MAX_SNAPSHOT_TWEENS) &&
+    globalTweens.every((tween) => isTween(tween, budget)) &&
     isList(targets, MAX_SNAPSHOT_TARGETS) &&
     targets.every(isTarget);
   return ok ? (value as unknown as Snapshot) : null;

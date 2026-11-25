@@ -255,10 +255,6 @@ export function readRegularFile(path, noFollow = constants.O_NOFOLLOW ?? 0) {
 }
 
 /**
- * Writes each named file into `dir` as a new regular file, replacing a link at that name instead
- * of following it, and removes a leftover brief skeleton the bundle does not have.
- */
-/**
  * The content of the project's own `name`, or undefined when it is missing. Throws when it is a link
  * or not a regular file, since a received project could link it to a file outside the project.
  */
@@ -271,6 +267,10 @@ function readProjectSource(root, name) {
   return content;
 }
 
+/**
+ * Writes each named file into `dir` as a new regular file, replacing a link at that name instead
+ * of following it, and removes a leftover brief skeleton the bundle does not have.
+ */
 function writeRecipeFiles(dir, files) {
   mkdirSync(dir, { recursive: true });
   for (const [name, content] of Object.entries(files)) replaceFile(join(dir, name), content);

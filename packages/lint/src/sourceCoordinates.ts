@@ -25,13 +25,38 @@ export function mappedHtmlSource(original: string) {
   return { source, originalOffset: (index: number) => (offsets ? offsets[index] : index) };
 }
 
-/** UTF-16 offsets, one-based lines/columns; CRLF counts as one newline. */
-export function sourcePosition(source: string, offset: number, file?: string): SourceLocation {
-  if (!Number.isInteger(offset) || offset < 0 || offset > source.length) return {};
-  const before = source.slice(0, offset);
-  return {
-    ...(file ? { file } : {}),
-    line: before.split(/\r\n|\r|\n/).length,
-    column: offset - Math.max(before.lastIndexOf("\n"), before.lastIndexOf("\r")),
+const countBelow = (sorted: readonly number[], offset: number): number => {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (sorted[middle]! < offset) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+};
+
+/** UTF-16 offsets, one-based lines/columns; CRLF counts as one newline. Finds the line breaks once per source. */
+export function sourcePositions(source: string): (offset: number, file?: string) => SourceLocation {
+  const breaks: number[] = [];
+  const lineStarts: number[] = [];
+  for (let i = 0; i < source.length; i++) {
+    const code = source.charCodeAt(i);
+    if (code !== 10 && code !== 13) continue;
+    breaks.push(i);
+    if (code === 13 || source.charCodeAt(i - 1) !== 13) lineStarts.push(i);
+  }
+  return (offset, file) => {
+    if (!Number.isInteger(offset) || offset < 0 || offset > source.length) return {};
+    const below = countBelow(breaks, offset);
+    return {
+      ...(file ? { file } : {}),
+      line: countBelow(lineStarts, offset) + 1,
+      column: offset - (below > 0 ? breaks[below - 1]! : -1),
+    };
   };
+}
+
+export function sourcePosition(source: string, offset: number, file?: string): SourceLocation {
+  return sourcePositions(source)(offset, file);
 }

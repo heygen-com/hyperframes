@@ -126,6 +126,15 @@ const MAX_UNRESOLVED_FOCUS_RETRIES = 5;
 // bounds it by wall time instead, independent of re-renders.
 const UNRESOLVED_FOCUS_TIMEOUT_MS = 4000;
 
+function keepFallbackForRemount(resolvedRef: RefObject<{ nonce: number; id: string } | null>) {
+  return () => {
+    const resolved = resolvedRef.current;
+    const stored = usePlayerStore.getState().timelineFocus;
+    if (resolved && stored?.nonce === resolved.nonce && stored.id !== resolved.id)
+      usePlayerStore.getState().requestTimelineFocus(resolved.id);
+  };
+}
+
 /** Model-first focus actor; mounting is a consequence of its returned pins. */
 // Resolution, fallback, reveal, and focus form one ordered state machine.
 // fallow-ignore-next-line complexity
@@ -178,6 +187,8 @@ export function useTimelineFocusCoordinator({
     previousRowsRef.current = logicalRows;
   }, [logicalRows]);
 
+  useEffect(() => keepFallbackForRemount(resolvedRef), []);
+
   // Apply a request exactly once after its logical target and DOM node are both ready.
   // fallow-ignore-next-line complexity
   useEffect(() => {
@@ -203,10 +214,6 @@ export function useTimelineFocusCoordinator({
     }
     if (unresolvedFocusAttemptsRef.current.count !== 0) {
       unresolvedFocusAttemptsRef.current = { id: -1, count: 0 };
-    }
-    if (resolution.target.id !== request.id) {
-      usePlayerStore.getState().requestTimelineFocus(resolution.target.id);
-      return;
     }
     if (
       appliedRef.current?.nonce === request.nonce &&

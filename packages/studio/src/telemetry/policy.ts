@@ -43,15 +43,17 @@ function isApiKeyConfigured(): boolean {
   return POSTHOG_API_KEY.startsWith("phc_");
 }
 
-// VITE_HYPERFRAMES_NO_TELEMETRY mirrors the CLI's HYPERFRAMES_NO_TELEMETRY=1
-// opt-out so HeyGen's own dev/CI builds can suppress telemetry from the studio
-// bundle the same way. Vite injects it at build time. Match the CLI's
-// affirmative privacy-control spellings.
+declare const __HF_TELEMETRY_OPT_OUT_VALUES__: readonly string[] | undefined;
+
+// VITE_HYPERFRAMES_NO_TELEMETRY opts a build out, in the spellings Studio's build injects from the CLI's
+// shared check; a bundle built without them treats any value as an opt-out.
 // `import.meta.env` may be undefined in non-Vite bundlers (Next.js Turbopack).
 function isBuildTimeOptOut(): boolean {
   try {
-    const v = import.meta.env.VITE_HYPERFRAMES_NO_TELEMETRY as string | undefined;
-    return v !== undefined && ["1", "true", "yes", "on"].includes(v.trim().toLowerCase());
+    const value = (import.meta.env.VITE_HYPERFRAMES_NO_TELEMETRY as string | undefined)?.trim();
+    if (!value) return false;
+    if (typeof __HF_TELEMETRY_OPT_OUT_VALUES__ === "undefined") return true;
+    return __HF_TELEMETRY_OPT_OUT_VALUES__.includes(value.toLowerCase());
   } catch {
     return false;
   }

@@ -43,6 +43,7 @@ import {
   readRenderOverrides,
 } from "./getVariables";
 import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
+import { COMPOSITION_SRC_ATTR } from "../compositionSource";
 
 type LoadCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
@@ -167,6 +168,15 @@ function rewriteStyleElementUrlsInTree(root: ParentNode, compositionUrl: URL): v
     const text = styleEl.textContent || "";
     const rewritten = rewriteRuntimeCssAssetUrls(text, compositionUrl);
     if (rewritten !== text) styleEl.textContent = rewritten;
+  }
+}
+
+/** The page's base folder is the project root: Studio pins it with `<base>`, render serves the project at `/`. */
+function isInsideProject(url: URL): boolean {
+  try {
+    return url.href.startsWith(new URL(".", document.baseURI).href);
+  } catch {
+    return false;
   }
 }
 
@@ -745,11 +755,11 @@ async function mountExternalCompositions(
   cleanupDetachedScopedVariables();
   if (trackedHosts.length === 0) return [];
   const hostIdentityByElement = assignRuntimeCompositionIds(trackedHosts, new Set());
-  const hosts = trackedHosts.filter((host) => host.hasAttribute("data-composition-src"));
+  const hosts = trackedHosts.filter((host) => host.hasAttribute(COMPOSITION_SRC_ATTR));
 
   const mounted = await Promise.all(
     hosts.map(async (host): Promise<MountedComposition | null> => {
-      const src = host.getAttribute("data-composition-src");
+      const src = host.getAttribute(COMPOSITION_SRC_ATTR);
       if (!src) return null;
       const hostIdentity = hostIdentityByElement.get(host);
       const authoredCompositionId = hostIdentity?.authoredCompositionId || null;
@@ -788,6 +798,9 @@ async function mountExternalCompositions(
         return composition;
       };
       try {
+        if (!compositionUrl || !isInsideProject(compositionUrl)) {
+          throw new Error("data-composition-src must name a file inside the project");
+        }
         const localContent =
           authoredCompositionId != null
             ? mountTemplateContent(document, authoredCompositionId)
@@ -809,7 +822,7 @@ async function mountExternalCompositions(
             onDiagnostic: params.onDiagnostic,
           });
         }
-        if (!compositionUrl || !/\.html?$/i.test(compositionUrl.pathname)) {
+        if (!/\.html?$/i.test(compositionUrl.pathname)) {
           throw new Error("data-composition-src must name an .html file");
         }
         const response = await fetch(src);

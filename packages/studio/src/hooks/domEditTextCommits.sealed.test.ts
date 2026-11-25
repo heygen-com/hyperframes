@@ -78,6 +78,7 @@ function textCommits(
       activeCompPath: PATH,
       previewIframeRef: { current: iframe },
       showToast: vi.fn(),
+      reloadPreview: vi.fn(),
       domEditSelection: selection,
       applyDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: refresh,

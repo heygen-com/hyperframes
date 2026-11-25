@@ -7,13 +7,24 @@ import {
   type TweenTiming,
 } from "@hyperframes/core/runtime/live-retime";
 import {
+  applySoftReload,
   applySoftReloadFinalization,
   findGsapScriptElements,
   scriptsRegistering,
   timelineKeys,
 } from "./gsapSoftReload";
-import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import { PREVIEW_REJECTED, PREVIEW_STALE, previewFrameOpaque } from "../player/lib/previewChannel";
+import { usePlayerStore } from "../player/store/playerStore";
 import { savedTiming } from "./authoredSource";
+import {
+  SAVED_STATE_DEADLINE_MS,
+  newestPreviewWrite,
+  sendPreviewWrite,
+  takePreviewTicket,
+  ticketNeedsRecovery,
+  type PreviewTicket,
+  type PreviewWrite,
+} from "./sealedPreviewLedger";
 
 /**
  * How a saved script differs from the live one: `retime` when only tween starts and lengths moved
@@ -124,8 +135,8 @@ function sealedRetimeResult(reply: unknown): LiveRetimeResult {
   return RETIME_RESULTS.has(result) ? (result as LiveRetimeResult) : "failed";
 }
 
-/** The edited file as saved before and after the edit. */
-type SavedFiles = { before?: string; after?: string };
+/** The edited file as saved before and after, and the revision its save went out at. */
+type SavedFiles = { before?: string; after?: string; revision?: number };
 
 /** A `retime` plan from the file as saved before the edit; null when no single script there owns the timeline. */
 function planFromSavedFile(
@@ -141,6 +152,17 @@ function planFromSavedFile(
   return plan.kind === "retime" ? plan : null;
 }
 
+function rerunNewest(
+  iframe: HTMLIFrameElement,
+  { scriptText, ...write }: PreviewWrite,
+  reloadPreview: () => void,
+): void {
+  // At the playhead now, not when the retime was sent: a scrub since then must not be undone.
+  const currentTimeOverride = usePlayerStore.getState().currentTime;
+  const options = { ...write, currentTimeOverride, onAsyncFailure: reloadPreview };
+  if (applySoftReload(iframe, scriptText, options) === "cannot-soft-reload") reloadPreview();
+}
+
 // Planned from the saved files alone; the frame checks its timeline matches the plan before moving anything.
 async function moveSealedLiveTweens(
   iframe: HTMLIFrameElement,
@@ -153,16 +175,49 @@ async function moveSealedLiveTweens(
   const plan = planFromSavedFile(scriptText, files.before);
   if (!plan) return false;
   const { key: planKey, after, tweens } = plan;
-  const reply = await previewRequest(iframe, "live-retime", {
+  const snapshot = {
+    scriptText,
+    authoredHtml: files.after,
+    previousHtml: files.before,
+    timingEdit: true,
+    version: files.revision,
+  };
+  const ticket = takePreviewTicket(iframe, {
+    scriptText,
+    snapshot,
+    attributes: false,
+    timing: true,
+  });
+  const params = {
     key: planKey,
     after,
     tweens,
     time: currentTime,
     timing: savedTiming(files.after),
-  });
-  const result = sealedRetimeResult(reply);
-  if (result === "unchanged") return false;
-  if (result === "failed") reloadPreview();
+  };
+  const answer = await sendPreviewWrite(ticket, "live-retime", params, SAVED_STATE_DEADLINE_MS);
+  // Stale: the frame shows a newer file, which recovers in place like a refusal.
+  const result =
+    answer === PREVIEW_STALE
+      ? "unchanged"
+      : sealedRetimeResult(answer === PREVIEW_REJECTED ? null : answer);
+  if (result === "moved" || !ticketNeedsRecovery(ticket)) return true;
+  return recoverRetime(iframe, ticket, result === "failed", files.after, reloadPreview);
+}
+
+/** False when the caller's own re-run of this saved file is the recovery. */
+function recoverRetime(
+  iframe: HTMLIFrameElement,
+  ticket: PreviewTicket,
+  failed: boolean,
+  savedAfter: string,
+  reloadPreview: () => void,
+): boolean {
+  const newest = newestPreviewWrite(ticket);
+  if (failed || !newest) reloadPreview();
+  // A newer saved file is the one to re-run: the caller would re-run this older script.
+  else if (newest.authoredHtml !== savedAfter) rerunNewest(iframe, newest, reloadPreview);
+  else return false;
   return true;
 }
 

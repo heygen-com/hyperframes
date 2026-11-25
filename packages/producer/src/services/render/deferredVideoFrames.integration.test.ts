@@ -104,6 +104,27 @@ describe("extractDeferredFrames", () => {
     await expect(extraction).rejects.toBe(missingError);
     expect(reported).toEqual([{ videoId: "clip", index: 45 }]);
   });
+  // fails without the fix: a cloud chunk's workers wait on this extraction in frame_capture, and with no progress
+  // of its own a clip that took over 5 min to extract was stopped as stalled at frame 0.
+  it("reports FFmpeg's frames written as progress while it extracts, and still returns every frame", async () => {
+    let reports = 0;
+    const extracted = await extractDeferredFrames({
+      videos: [element("clip", 0, 4)],
+      extracted: [deferredVideo("clip", 45)],
+      frames: span(0, 45),
+      fps,
+      outputRoot: join(root, "progress"),
+      cfg: {},
+      sourceOf: () => sourcePath,
+      onMissingFrame: (_video, index) => new Error(`missing frame ${index}`),
+      onProgress: () => {
+        reports += 1;
+      },
+    });
+    expect(extracted[0]!.framePaths.size).toBe(45);
+    expect(reports).toBeGreaterThan(0);
+  });
+
   describe("extractAllDeferredFrames", () => {
     const framesOf = (dir: string) =>
       new Map(readdirSync(dir).map((name) => [name, readFileSync(join(dir, name))] as const));

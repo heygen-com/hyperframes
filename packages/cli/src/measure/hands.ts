@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HTTPRequest, Page } from "puppeteer-core";
 import { trustedCacheRoot } from "@hyperframes/core/cache-dir";
-import { Fix, round, runFfmpeg, type VideoInfo } from "./media.js";
+import { ffmpegInput, Fix, round, runFfmpeg, type VideoInfo } from "./media.js";
 import { ensurePinnedFiles, type PinnedFile } from "./pinnedFiles.js";
 
 const VERSION = "1.0.0";
@@ -154,8 +154,7 @@ export function handFrames(
     "-y",
     "-ss",
     start.toFixed(3),
-    "-i",
-    info.path,
+    ...ffmpegInput(info.path, { playlists: info.guarded }),
     "-t",
     (end - start).toFixed(3),
     "-vf",

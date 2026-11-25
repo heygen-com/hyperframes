@@ -38,7 +38,7 @@ runs:
       shell: bash
       run: |
         dir="$RUNNER_TEMP/headless-shell"
-        bunx @puppeteer/browsers@3.2.2 install chrome-headless-shell@158.0.8127.36 --path "$dir"
+        bunx @puppeteer/browsers@3.2.2 install chrome-headless-shell@158.0.8127.88 --path "$dir"
         echo "path=$(find "$dir" -type f -name chrome-headless-shell | head -n 1)" >> "$GITHUB_OUTPUT"
     - shell: bash
       run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build

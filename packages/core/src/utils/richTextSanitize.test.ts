@@ -189,6 +189,47 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     expect(out).toContain("color: red");
   });
 
+  // fails without the fix: the splitter ended declarations where a browser does not, and kept the rest unchecked.
+  it.each([
+    ["a quote inside a comment", "color: red /* ' */; position: fixed"],
+    ["a string broken by a newline", 'color: red; font-family: "a\n; position: fixed'],
+    ["an escaped function name", "color: red; font-family: \\75 rl(https://x/f)"],
+    ["a string-argument image function", 'color: red; font-family: image-set("https://x/i.png")'],
+  ])("keeps nothing a browser reads past %s", (_case, style) => {
+    const host = parse("<span>x</span>");
+    host.firstElementChild?.setAttribute("style", style);
+    sanitizeRichTextChildren(host);
+    const kept = host.firstElementChild?.getAttribute("style") ?? "";
+    expect(kept).not.toMatch(/position|\\|url\(|image-set\(/i);
+  });
+
+  it.each([
+    [
+      "spacing a value was sent with",
+      "font-family:Inter,\n\tsans-serif;color:  red",
+      "font-family: Inter, sans-serif; color: red",
+    ],
+    ["a value holding markup", "color: red; font-family: Inter <b", "color: red"],
+    [
+      "a value holding an at-rule",
+      "font-style: italic; font-family: Inter @media",
+      "font-style: italic",
+    ],
+    ["a value holding a selector colon", "font-family: a:hover; color: red", "color: red"],
+  ])("writes a kept value from its own tokens, not %s", (_case, style, kept) => {
+    const host = parse("<span>x</span>");
+    host.firstElementChild?.setAttribute("style", style);
+    sanitizeRichTextChildren(host);
+    expect(host.firstElementChild?.getAttribute("style")).toBe(kept);
+  });
+
+  // fails without the fix: the resource-function check read inside quoted strings and dropped the family.
+  it("keeps a quoted font family whose name reads like a function", () => {
+    const out = clean(`<span style='font-family: "Image(Display)"; color: red'>x</span>`, parse);
+    expect(out).toContain("Image(Display)");
+    expect(out).toContain("color: red");
+  });
+
   it("removes a comment, which is neither text nor formatting", () => {
     expect(clean("a<!-- note -->b", parse)).toBe("ab");
   });

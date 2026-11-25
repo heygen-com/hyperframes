@@ -1,9 +1,17 @@
 // @ts-check
-// Validate snapshot paths in the order defined by the bundled portable-source-v4 policy.
+// Validate source manifests against the bundled sync contract.
+import { isCredentialOrToolStatePath, isVcsOrSecretPath } from "@hyperframes/parsers/private-path";
 import { readContract } from "./contract.mjs";
-import { UNICODE_VERSION, allAssigned, comparisonKey, nfc } from "./unicode.mjs";
+import {
+  UNICODE_VERSION,
+  allAssigned,
+  comparisonKey,
+  v4ComparisonKey,
+  nfc,
+  withoutIgnorable,
+} from "./unicode.mjs";
 
-const PATH_POLICY_VERSION = "portable-source-v4";
+const PATH_POLICY_VERSION = "portable-source-v11";
 
 /** @typedef {import("./types.js").PathRule} PathRule @typedef {import("./types.js").PolicyDocument} PolicyDocument */
 
@@ -26,6 +34,25 @@ const whole = (pattern) => new RegExp(`^(?:${pattern})$`, "su");
 /** @param {string} text */
 const escaped = (text) => text.replace(/[\\\]^-]/g, "\\$&");
 
+/** Every stem of a Windows 8.3 short name of `names`: a prefix of each name, its leading dot dropped, 2 to 6 long
+ * (the whole name when shorter), also with the dots before its extension dropped, as Windows shortens
+ * the name .aider.conf.yml to AIDERC~1.YML. @param {readonly string[]} names */
+function shortNameStems(names) {
+  /** @type {Set<string>} */
+  const stems = new Set();
+  for (const name of names) {
+    const bare = comparisonKey(name).replace(/^\./, "");
+    const dot = bare.lastIndexOf(".");
+    const base = dot > 0 ? bare.slice(0, dot).replaceAll(".", "") : bare;
+    for (const spelled of [bare, base]) {
+      const longest = Math.min(6, spelled.length);
+      for (let length = Math.min(2, longest); length <= longest; length++)
+        stems.add(spelled.slice(0, length));
+    }
+  }
+  return stems;
+}
+
 /** @param {PolicyDocument} document */
 function compile(document) {
   if (document.policy_version !== PATH_POLICY_VERSION)
@@ -40,6 +67,15 @@ function compile(document) {
     if ((rule.server_action === "allow") !== (rule.client_action === "include"))
       throw new Error(`path rule ${rule.id}: the server allows exactly what clients include`);
   const limits = document.path;
+  const legacy = document.stored_manifest.legacy_rule_regexes;
+  for (const id of Object.keys(legacy))
+    if (!document.rules.some((rule) => rule.id === id))
+      throw new Error(`path policy's stored_manifest names no rule ${id}`);
+  const currentRules = document.rules.map((rule) => ({ rule, pattern: whole(rule.regex) }));
+  const storedRules = document.rules.map((rule) => ({
+    rule,
+    pattern: whole(legacy[rule.id] ?? rule.regex),
+  }));
   return {
     limits,
     invalidCharacter: new RegExp(
@@ -47,26 +83,22 @@ function compile(document) {
       "u",
     ),
     reservedSegment: whole(limits.reserved_segment_regex),
+    shortNameShape: whole(limits.short_name_alias_shape),
+    paths: {
+      current: { rules: currentRules, stems: shortNameStems(limits.short_name_alias_names) },
+      stored: {
+        rules: storedRules,
+        stems: shortNameStems(document.stored_manifest.legacy_short_name_alias_names),
+      },
+      localV4: { rules: storedRules, stems: new Set() },
+    },
     canonicalRoots: new Map(
       limits.canonical_spelling_roots.map((root) => [comparisonKey(root), root]),
     ),
-    rules: document.rules.map((rule) => ({ rule, pattern: whole(rule.regex) })),
-    storedRules: storedRules(document),
+    rules: currentRules,
     prefilter: new Set(document.client_prefilter.names),
     symlinkPrefixes: document.client_symlinks.skip_prefixes,
   };
-}
-
-/** Each rule the stored manifest section lists matches by its legacy regex in a stored snapshot read.
- * @param {PolicyDocument} document */
-function storedRules(document) {
-  const legacy = new Map(Object.entries(document.stored_manifest.legacy_rule_regexes));
-  const unknown = [...legacy.keys()].filter((id) => !document.rules.some((rule) => rule.id === id));
-  if (unknown.length) throw new Error(`path policy's stored_manifest names no rule ${unknown}`);
-  return document.rules.map((rule) => ({
-    rule,
-    pattern: whole(legacy.get(rule.id) ?? rule.regex),
-  }));
 }
 
 /** @type {ReturnType<typeof compile> | null} */
@@ -85,8 +117,8 @@ export function classifyPath(path) {
   return found.rule;
 }
 
-/** Checks 1 to 10 of the registry's `path.checks`: the ones about the string itself. @param {string} path */
-function checkSpelling(path) {
+/** Checks 1 to 10 of the registry's `path.checks`: the ones about the string itself. @param {string} path @param {boolean} localV4 */
+function checkSpelling(path, localV4) {
   const { limits, invalidCharacter } = policy();
   if (!path) throw new PathViolation("path_empty", path);
   if (invalidCharacter.test(path)) throw new PathViolation("path_invalid_character", path);
@@ -96,13 +128,15 @@ function checkSpelling(path) {
   if (Buffer.byteLength(path, "utf8") > limits.max_path_bytes)
     throw new PathViolation("path_too_long", path);
   if (path.startsWith("/")) throw new PathViolation("path_not_relative", path);
-  return checkSegments(path, limits);
+  return checkSegments(path, limits, localV4);
 }
-/** @param {string} path @param {PolicyDocument["path"]} limits */
-function checkSegments(path, limits) {
+
+/** @param {string} path @param {PolicyDocument["path"]} limits @param {boolean} localV4 */
+function checkSegments(path, limits, localV4) {
   const segments = path.split("/");
-  if (segments.some((segment) => !segment)) throw new PathViolation("path_empty_segment", path);
-  if (segments.some((segment) => segment === "." || segment === ".."))
+  const bare = localV4 ? segments : segments.map(withoutIgnorable);
+  if (bare.some((segment) => !segment)) throw new PathViolation("path_empty_segment", path);
+  if (bare.some((segment) => segment === "." || segment === ".."))
     throw new PathViolation("path_dot_segment", path);
   if (segments.some((segment) => Buffer.byteLength(segment, "utf8") > limits.max_segment_bytes))
     throw new PathViolation("segment_too_long", path);
@@ -111,15 +145,26 @@ function checkSegments(path, limits) {
   return segments;
 }
 
+/** Whether a segment's comparison key is a Windows 8.3 short name (GIT~1) of a name the policy refuses.
+ * @param {string} key @param {ReadonlySet<string>} stems */
+function isShortNameAlias(key, stems) {
+  const stem = policy().shortNameShape.exec(key)?.[1];
+  return stem !== undefined && stems.has(stem);
+}
+
+/** @typedef {"current" | "stored" | "localV4"} PathMode */
+
 /** `path` unchanged when every client can store it and the policy lets it travel; throws PathViolation otherwise,
  * naming the first failing check in the registry's order. @param {string} path
- * @param {boolean} [stored] */
-export function validatePath(path, stored = false) {
-  const segments = checkSpelling(path);
-  const keys = segments.map(comparisonKey);
+ * @param {PathMode} [mode] */
+export function validatePath(path, mode = "current") {
+  const segments = checkSpelling(path, mode === "localV4");
+  const keys = segments.map(mode === "localV4" ? v4ComparisonKey : comparisonKey);
   const { reservedSegment, canonicalRoots } = policy();
-  const rules = stored ? policy().storedRules : policy().rules;
+  const { rules, stems } = policy().paths[mode];
   if (keys.some((key) => reservedSegment.test(key))) throw new PathViolation("reserved_name", path);
+  if (keys.some((key) => isShortNameAlias(key, stems)))
+    throw new PathViolation("segment_short_name", path);
   const root = canonicalRoots.get(keys[0] ?? "");
   if (root !== undefined && segments[0] !== root)
     throw new PathViolation("reserved_path_alias", path);
@@ -134,12 +179,12 @@ export function validatePath(path, stored = false) {
 }
 
 /** Refuses duplicates, and any two paths (or a path and a directory prefix) one filesystem would store as one name.
- * Each path must already pass validatePath. @param {readonly string[]} paths */
-export function checkInventoryPaths(paths) {
+ * Each path must already pass validatePath. @param {readonly string[]} paths @param {(value: string) => string} [keyOf] */
+export function checkInventoryPaths(paths, keyOf = comparisonKey) {
   const seen = { spellingByKey: new Map(), fileKeys: new Set(), directoryKeys: new Set() };
   for (const path of paths) {
     const segments = path.split("/");
-    const keys = segments.map(comparisonKey);
+    const keys = segments.map(keyOf);
     for (let depth = 1; depth <= segments.length; depth++)
       notePrefix(seen, path, {
         prefix: segments.slice(0, depth).join("/"),
@@ -166,7 +211,7 @@ function notePrefix(seen, path, { prefix, key, isFile }) {
 /** The registry's `client_prefilter`: a name (macOS's `Icon\r`) skipped before any path check. @param {string} name */
 export const prefiltered = (name) => policy().prefilter.has(name);
 
-/** The registry's `client_symlinks`: a link under `assets/podcast/` is skipped instead of failing the capture.
+/** The registry's `client_symlinks.skip_prefixes`: a link under `assets/podcast/` is skipped, never followed.
  * @param {string} path */
 export const skippedSymlink = (path) =>
   policy().symlinkPrefixes.some((prefix) => foldedPath(path).startsWith(prefix));
@@ -199,4 +244,20 @@ export function excludedFolder(dir) {
       const prefix = literalPrefix(rule.regex);
       return !(prefix.startsWith(`${folded}/`) || `${folded}/`.startsWith(prefix));
     });
+}
+
+/** Private names omitted locally even when the wire contract accepts them. @param {string} path */
+export const isPrivateSourcePath = (path) =>
+  isVcsOrSecretPath(path) || isCredentialOrToolStatePath(path);
+
+/** A stored manifest may contain paths that are no longer eligible for upload. @param {string} path */
+export function canUploadStoredPath(path) {
+  if (isPrivateSourcePath(path)) return false;
+  try {
+    validatePath(path);
+    return true;
+  } catch (error) {
+    if (error instanceof PathViolation) return false;
+    throw error;
+  }
 }

@@ -22,6 +22,7 @@ import {
   shouldIgnoreHttpError,
 } from "./validate.js";
 import { waitForPreferredSeekTarget } from "../capture/captureCompositionFrame.js";
+import { LINUX_ARM_BROWSER_STEPS } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 
 // validateInBrowser lazy-loads the producer localize helpers via loadProducer;
@@ -437,6 +438,24 @@ describe("validate text report", () => {
       expect(output).not.toContain("\u001b");
       expect(output).not.toContain("\u0007");
     } finally {
+      log.mockRestore();
+    }
+  });
+
+  // fails without the fix: the setup commands were joined to the reason with `\x0a`
+  it("prints the setup commands of a failed run on lines of their own", () => {
+    const reason = `No browser\nhere\n\n${LINUX_ARM_BROWSER_STEPS}`;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      emitFailureReport(reason, false);
+      emitFailureReport(reason, true);
+      expect(error.mock.calls.map((args) => args.join(" ")).join("\n")).toContain(
+        `No browser\\x0ahere\n\n${LINUX_ARM_BROWSER_STEPS}\n`,
+      );
+      expect(JSON.parse(String(log.mock.calls.at(-1)![0])).error.message).toBe(reason);
+    } finally {
+      error.mockRestore();
       log.mockRestore();
     }
   });

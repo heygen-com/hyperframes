@@ -6,7 +6,13 @@
  */
 import { isStylableElement, type StylableElement } from "./domRealm";
 import type { EditingElementHandle } from "./editingElement";
-import { computedTranslateAxes, movedTranslate } from "./editingDraft";
+import {
+  computedTranslateAxes,
+  movedTranslate,
+  SIZE_PROPERTIES,
+  writeDrawnSize,
+} from "./editingDraft";
+import { readCssRotationStart, type CssRotationStart } from "./editing/cssRotation";
 import {
   boxOf,
   elementGeometry,
@@ -19,14 +25,15 @@ import {
 import { elementForHandle } from "./editingHandles";
 
 export interface EditingGestureStart extends EditingElementGeometry {
-  /** The transform-free border box a resize grows from. */
-  layout: { width: number; height: number };
   /** Frame px its centre moves per px of translate, columns `a, b` (x) and `c, d` (y); null when it does not move measurably. */
   move: { a: number; b: number; c: number; d: number } | null;
+  /** Frame px its centre moves per px of drawn width, `a, b`, and height, `c, d`; null when it has no box. */
+  grow: { a: number; b: number; c: number; d: number } | null;
   /** Set when GSAP owns its position: its x/y now, and whether a tween with a duration moves it. */
-  gsap: { x: number; y: number; moving: boolean } | null;
+  gsap: { x: number; y: number; moving: boolean; drawsTranslate: true } | null;
   /** GSAP's rotation now when it owns the element's turn; null when it turns by its own CSS `rotate`. */
   gsapRotation: number | null;
+  cssRotation: CssRotationStart | null;
   planar: { a: number; b: number; c: number; d: number } | null;
 }
 
@@ -68,6 +75,44 @@ function measureMoveResponse(element: StylableElement): EditingGestureStart["mov
   }
 }
 
+/** Where its centre goes as a draft draws its size, so a resize can pin it; its inline size put back. */
+function measureGrowResponse(
+  element: StylableElement,
+  layout: { width: number; height: number },
+): EditingGestureStart["grow"] {
+  const { style } = element;
+  const kept = [...SIZE_PROPERTIES, "translate"].map(
+    (name) => [name, style.getPropertyValue(name), style.getPropertyPriority(name)] as const,
+  );
+  const translateAsTheResizeDraftDrawsIt = movedTranslate(computedTranslateAxes(element), {
+    x: 0,
+    y: 0,
+  });
+  const centre = (width: number, height: number): Point | null => {
+    style.setProperty("translate", translateAsTheResizeDraftDrawsIt);
+    writeDrawnSize(style, { width, height });
+    const box = element.getBoundingClientRect();
+    return box.width > 0 || box.height > 0
+      ? { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+      : null;
+  };
+  try {
+    if (layout.width < 1 || layout.height < 1) return null;
+    const origin = centre(layout.width, layout.height);
+    const wider = centre(layout.width + PROBE_PX, layout.height);
+    const taller = centre(layout.width, layout.height + PROBE_PX);
+    if (!origin || !wider || !taller) return null;
+    const per = (p: Point) => [(p.x - origin.x) / PROBE_PX, (p.y - origin.y) / PROBE_PX];
+    const [[a, b], [c, d]] = [per(wider), per(taller)] as [number[], number[]];
+    return [a, b, c, d].every(Number.isFinite) ? { a: a!, b: b!, c: c!, d: d! } : null;
+  } finally {
+    for (const [name, value, priority] of kept) {
+      if (value) style.setProperty(name, value, priority);
+      else style.removeProperty(name);
+    }
+  }
+}
+
 type GsapTween = {
   vars?: Record<string, unknown>;
   targets?: () => unknown[];
@@ -80,7 +125,7 @@ type GsapWindow = {
 
 // The channels Studio's move route and drag commit read as GSAP moving an element.
 const POSITION = ["x", "y", "xPercent", "yPercent", "left", "top", "translateX", "translateY"];
-const MOVES = [...POSITION, "motionPath"];
+export const MOVES = [...POSITION, "motionPath"];
 const TURNS = [
   "rotation",
   "rotationX",
@@ -117,8 +162,68 @@ function tweensOn(element: Element): GsapTween[] {
   );
 }
 
-const rendersTransform = (element: Element) =>
+export const rendersTransform = (element: Element) =>
   !!(element as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
+
+type Fields = Record<string, unknown>;
+const isPlainFields = (value: unknown): value is Fields =>
+  !!value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype;
+
+function keptFields(fields: Fields, depth = 1): () => void {
+  const values = { ...fields };
+  const nested = depth > 0 ? Object.values(fields).filter(isPlainFields) : [];
+  const inner = nested.map((value) => keptFields(value, depth - 1));
+  return () => {
+    for (const key of Object.keys(fields))
+      if (!(key in values)) Reflect.deleteProperty(fields, key);
+    Object.assign(fields, values);
+    for (const restore of inner) restore();
+  };
+}
+
+function keptAttributes(element: Element): () => void {
+  const names = element.getAttributeNames();
+  const attributes = new Map(names.map((name) => [name, element.getAttribute(name) ?? ""]));
+  return () => {
+    for (const name of element.getAttributeNames())
+      if (!attributes.has(name)) element.removeAttribute(name);
+    for (const [name, value] of attributes)
+      if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+  };
+}
+
+export function withoutGsapTakeover<T>(element: Element, read: () => T): T {
+  if (rendersTransform(element)) return read();
+  const host = element as { _gsap?: Fields };
+  const cache = host._gsap;
+  const restoreCache = cache ? keptFields(cache) : () => Reflect.deleteProperty(host, "_gsap");
+  const restoreAttributes = keptAttributes(element);
+  try {
+    return read();
+  } finally {
+    restoreAttributes();
+    restoreCache();
+  }
+}
+
+export type EditingGestureBase = {
+  x: number;
+  y: number;
+  opacity: number;
+  scale: number;
+  drawsProps?: true;
+};
+
+export function gestureBase(handle: EditingElementHandle): EditingGestureBase | null {
+  const element = elementForHandle(handle);
+  const gsap = (window as GsapWindow).gsap;
+  if (!element) return null;
+  if (!gsap?.getProperty) return { x: 0, y: 0, opacity: 1, scale: 1 };
+  const read = (property: string) => Number(gsap.getProperty?.(element, property));
+  const base = { x: read("x"), y: read("y"), opacity: read("opacity"), scale: read("scaleX") };
+  return Object.values(base).every(Number.isFinite) ? { ...base, drawsProps: true } : null;
+}
+
 // Read only once GSAP owns it: asking GSAP for x makes it fold a CSS translate into its transform.
 const readGsap = (element: Element, property: string) =>
   Number((window as GsapWindow).gsap?.getProperty?.(element, property)) || 0;
@@ -128,12 +233,13 @@ function gsapPosition(element: Element): EditingGestureStart["gsap"] {
   const tweens = tweensOn(element).filter((tween) => tween.vars && carries(tween.vars, MOVES));
   if (!rendersTransform(element) && !tweens.length) return null;
   const moving = tweens.some((tween) => (tween.duration?.() ?? 0) > 0);
-  return { x: readGsap(element, "x"), y: readGsap(element, "y"), moving };
+  return { x: readGsap(element, "x"), y: readGsap(element, "y"), moving, drawsTranslate: true };
 }
 
 function gsapRotation(element: Element): number | null {
   const turned = tweensOn(element).some((tween) => tween.vars && carries(tween.vars, TURNS));
-  return rendersTransform(element) || turned ? readGsap(element, "rotation") : null;
+  if (!rendersTransform(element) && !turned) return null;
+  return withoutGsapTakeover(element, () => readGsap(element, "rotation"));
 }
 
 function planarOf(element: StylableElement): EditingGestureStart["planar"] {
@@ -151,13 +257,14 @@ export function gestureStart(handles: readonly EditingElementHandle[]): {
   const starts = elements.map((geometry, i) => {
     const element = pressed[i];
     if (!geometry || !isStylableElement(element)) return null;
-    const { offsetWidth = 0, offsetHeight = 0 } = element as Partial<HTMLElement>;
+    const rotation = gsapRotation(element);
     return {
       ...geometry,
-      layout: { width: offsetWidth, height: offsetHeight },
       move: measureMoveResponse(element),
+      grow: measureGrowResponse(element, geometry.layout),
       gsap: gsapPosition(element),
-      gsapRotation: gsapRotation(element),
+      gsapRotation: rotation,
+      cssRotation: rotation === null ? readCssRotationStart(element as HTMLElement) : null,
       planar: planarOf(element),
     };
   });

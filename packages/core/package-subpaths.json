@@ -158,6 +158,12 @@
       "types": "./dist/utils/richTextSanitize.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./inline-text-style": {
+      "source": "./src/utils/inlineTextStyleRead.ts",
+      "runtime": "./dist/utils/inlineTextStyleRead.js",
+      "types": "./dist/utils/inlineTextStyleRead.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./composition-contract": {
       "source": "./src/compositionContract.ts",
       "runtime": "./dist/compositionContract.js",
@@ -386,6 +392,12 @@
       "types": "./dist/audioFade.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-decode": {
+      "source": "./src/audioDecode.ts",
+      "runtime": "./dist/audioDecode.js",
+      "types": "./dist/audioDecode.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./speed-ramp": {
       "source": "./src/speedRamp.ts",
       "runtime": "./dist/speedRamp.js",
@@ -470,6 +482,12 @@
       "types": "./dist/runtime/editingPort.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/css-rotation": {
+      "source": "./src/runtime/editing/cssRotation.ts",
+      "runtime": "./dist/runtime/editing/cssRotation.js",
+      "types": "./dist/runtime/editing/cssRotation.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/patch-tween": {
       "source": "./src/runtime/editing/patchTween.ts",
       "runtime": "./dist/runtime/editing/patchTween.js",
@@ -542,10 +560,22 @@
       "types": "./dist/compiler/compositionSizeLimit.d.ts",
       "environments": ["bun", "node"]
     },
+    "./compiler/html-tokens": {
+      "source": "./src/compiler/htmlTokens.ts",
+      "runtime": "./dist/compiler/htmlTokens.js",
+      "types": "./dist/compiler/htmlTokens.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./compiler/html-document": {
       "source": "./src/compiler/htmlDocument.ts",
       "runtime": "./dist/compiler/htmlDocument.js",
       "types": "./dist/compiler/htmlDocument.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./compiler/selector-id-tokens": {
+      "source": "./src/compiler/selectorIdTokens.ts",
+      "runtime": "./dist/compiler/selectorIdTokens.js",
+      "types": "./dist/compiler/selectorIdTokens.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./compiler/png-colour-tags": {

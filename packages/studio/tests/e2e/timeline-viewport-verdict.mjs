@@ -123,6 +123,11 @@ export function describeAgainstBase({ head, base, interactions, frameIntervals, 
   ].join(", ");
 }
 
+/** Which build is measured: a row-virtualized timeline mounts only the rows in view, an unvirtualized one every row. */
+export function rowVirtualizationOf({ mountedRows }, budgets) {
+  return mountedRows <= budgets.maxMountedRows ? "on" : "off";
+}
+
 /** A failed timing attempt is measured once more, so one bad stretch of a shared runner cannot fail the gate alone. */
 export const TIMING_ATTEMPTS = 2;
 

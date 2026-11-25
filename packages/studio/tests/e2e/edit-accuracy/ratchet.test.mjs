@@ -199,13 +199,16 @@ describe("teleport in the gate", () => {
 describe("gate command, as CI runs it", () => {
   const script = fileURLToPath(new URL("./ratchet.mjs", import.meta.url));
   /** Runs `gate --shards <shards>` over the given shard results; returns its exit code, comment and verdict. */
-  function runGate(shards, shardCases) {
+  function runGate(shards, shardCases, grid = "pr") {
     const dir = mkdtempSync(join(tmpdir(), "edit-accuracy-gate-"));
     const base = join(dir, "base.json");
     writeFileSync(base, JSON.stringify(baseline({ a: good, b: good })));
     const results = shardCases.map((cases, i) => {
       const path = join(dir, `shard-${i}.json`);
-      writeFileSync(path, JSON.stringify({ meta: { grid: `pr shard ${i + 1}/${shards}` }, cases }));
+      writeFileSync(
+        path,
+        JSON.stringify({ meta: { grid: `${grid} shard ${i + 1}/${shards}` }, cases }),
+      );
       return path;
     });
     const out = join(dir, "out");
@@ -240,6 +243,15 @@ describe("gate command, as CI runs it", () => {
     expect(g.verdict).toBe(
       "Edit accuracy did not run: 1 of 2 shards reported results; see the shard jobs.",
     );
+  });
+
+  it("says a full grid with a shard missing did not run, not that the missing cases fell", () => {
+    const g = runGate(2, [[run("a")]], "full");
+    expect(g.code).toBe(2);
+    expect(g.verdict).toBe(
+      "Edit accuracy did not run: 1 of 2 shards reported results; see the shard jobs.",
+    );
+    expect(g.comment).not.toMatch(/fell/);
   });
 
   it("still says accuracy fell when a case that ran regressed, even with a shard missing", () => {

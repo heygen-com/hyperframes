@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { TimelineElement } from "../player";
 import {
   domEditSelectionsEqual,
@@ -8,13 +8,9 @@ import {
   replaceDomEditGroupSelection,
   seedDomEditGroupWithSelection,
 } from "../utils/domEditHelpers";
-import {
-  findElementForTimelineElement,
-  type DomEditSelection,
-} from "../components/editor/domEditing";
+import { type DomEditSelection } from "../components/editor/domEditing";
 import {
   elementWithin,
-  findOpaqueTimelineElement,
   findPointerTarget,
   findPointerTargets,
   findSelectionElement,
@@ -28,6 +24,7 @@ import { useStudioTestHooks } from "./useStudioTestHooks";
 import { logSelect } from "../utils/selectDebug";
 import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 import { announceTimelineSelection as announceSelectionToTimeline } from "./domSelectionTimelineMirror";
+import { buildTimelineSelection, sharingRunningBuilds } from "./timelineSelectionBuild";
 import type {
   ApplyDomSelectionOptions,
   ResolveDomSelectionOptions,
@@ -319,36 +316,18 @@ export function useDomSelection({
     setDomEditHoverSelection(selection);
   }, []);
 
-  const buildDomSelectionForTimelineElement = useCallback(
-    // fallow-ignore-next-line complexity
-    async (element: TimelineElement): Promise<DomEditSelection | null> => {
-      const iframe = previewIframeRef.current;
-      const lookup = { activeCompositionPath: activeCompPath, compIdToSrc, isMasterView };
-      let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        return null;
-      }
-      if (!doc) {
-        await holdScenesOf(iframe, element);
-        const found = await findOpaqueTimelineElement(iframe, element, lookup);
-        return found
-          ? buildDomSelectionFromTarget(found, { preferClipAncestor: false }, iframe)
-          : null;
-      }
-
-      const held = holdScenesOf(iframe, element);
-      if (held) await held;
-      reapplyPositionEditsAfterSeek(doc);
-
-      const targetElement = findElementForTimelineElement(doc, element, lookup);
-      return targetElement
-        ? buildDomSelectionFromTarget(targetElement, {
-            preferClipAncestor: false,
-          })
-        : null;
-    },
+  const buildDomSelectionForTimelineElement = useMemo(
+    () =>
+      sharingRunningBuilds(
+        (element, iframe) =>
+          buildTimelineSelection(
+            element,
+            iframe,
+            { activeCompositionPath: activeCompPath, compIdToSrc, isMasterView },
+            buildDomSelectionFromTarget,
+          ),
+        previewIframeRef,
+      ),
     [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView, previewIframeRef],
   );
 

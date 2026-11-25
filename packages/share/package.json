@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/share",
-  "version": "0.9.75",
+  "version": "0.9.93",
   "description": "Shared review identity, version upload and sharing state for HyperFrames hosts",
   "license": "Apache-2.0",
   "repository": {
@@ -108,6 +108,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test tests/*.test.mjs",
     "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@hyperframes/parsers": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

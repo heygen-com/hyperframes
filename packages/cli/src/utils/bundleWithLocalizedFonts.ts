@@ -1,4 +1,5 @@
 import type { BundleOptions } from "@hyperframes/core/compiler";
+import { terminalLines } from "@hyperframes/core/terminal-text";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { c } from "../ui/colors.js";
 
@@ -78,7 +79,7 @@ export function __resetFontLocalizationWarningsForTests(): void {
 export async function localizeWithProducer(
   html: string,
   loadInjector: () => Promise<FontInjector | null> = loadFontInjector,
-  warn: (message: string) => void = (m) => console.warn(`   ${c.warn("⚠")} ${m}`),
+  warn: (message: string) => void = (m) => console.warn(`   ${c.warn("⚠")} ${terminalLines(m)}`),
 ): Promise<string> {
   const inject = await loadInjector();
   if (!inject) return html;

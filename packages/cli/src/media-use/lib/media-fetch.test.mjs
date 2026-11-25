@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import dns from "node:dns";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import http, { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fetchMedia, isPublicMediaUrl, readCappedBody } from "./media-fetch.mjs";
+import { fetchMedia, isPublicMediaUrl, mediaTransport, readCappedBody } from "./media-fetch.mjs";
+import { mediaTransport as skillMediaTransport } from "../../../../../skills/media-use/scripts/lib/media-fetch.mjs";
 import { freezeUrl } from "./freeze.mjs";
 import { downloadTo } from "../../audio/scripts/lib/heygen.mjs";
 import { synthesizeHeygen } from "../../audio/scripts/lib/tts.mjs";
@@ -91,6 +94,61 @@ test("rejects private redirect targets before requesting them and cancels redire
   assert.equal(cancelled, true);
 });
 
+test("refuses a public-looking name that resolves to a private address without connecting", async (t) => {
+  let served = 0;
+  const server = createServer((_req, res) => {
+    served++;
+    res.end("private");
+  });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const realLookup = dns.lookup;
+  t.mock.method(dns, "lookup", (host, options, callback) =>
+    host === "media.example"
+      ? callback(null, options?.all ? [{ address: "127.0.0.1", family: 4 }] : "127.0.0.1", 4)
+      : realLookup(host, options, callback),
+  );
+  await assert.rejects(
+    fetchMedia(`http://media.example:${server.address().port}/clip.mp4`),
+    /non-public address/,
+  );
+  assert.equal(served, 0);
+});
+
+test("every download opens its own connection, so a reused socket never skips the address check", async (t) => {
+  const server = createServer((_req, res) => res.end("media"));
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const realLookup = dns.lookup;
+  t.mock.method(dns, "lookup", (host, options, callback) =>
+    host === "media.example"
+      ? callback(null, options?.all ? [{ address: "127.0.0.1", family: 4 }] : "127.0.0.1", 4)
+      : realLookup(host, options, callback),
+  );
+  const seen = [];
+  const request = http.request;
+  t.mock.method(http, "request", (url, options, callback) => {
+    seen.push(options);
+    return request(url, options, callback);
+  });
+  for (let i = 0; i < 2; i++)
+    await assert.rejects(
+      fetchMedia(`http://media.example:${server.address().port}/a`),
+      /non-public/,
+    );
+  assert.equal(seen.length, 2);
+  for (const options of seen) {
+    assert.equal(options.agent, false);
+    assert.equal(typeof options.lookup, "function");
+  }
+});
+
 test("bounds redirect loops", async () => {
   let calls = 0;
   await assert.rejects(
@@ -106,6 +164,7 @@ test("bounds redirect loops", async () => {
 });
 
 test("freeze refuses a public-to-private redirect without writing response bytes", async (t) => {
+  routeDownloadsToFetch(t);
   const dir = mkdtempSync(join(tmpdir(), "hf-freeze-redirect-"));
   t.mock.method(globalThis, "fetch", async (_url, options) =>
     options?.redirect === "manual"
@@ -122,6 +181,7 @@ test("freeze refuses a public-to-private redirect without writing response bytes
 
 for (const entry of ["heygen audio", "tts mp3", "tts wav", "favicon"]) {
   test(`${entry} blocks private redirects before saving or transcoding`, async (t) => {
+    routeDownloadsToFetch(t);
     const dir = mkdtempSync(join(tmpdir(), "hf-provider-redirect-"));
     const requests = [];
     const fetchImpl = t.mock.method(globalThis, "fetch", async (url, options) => {
@@ -166,6 +226,12 @@ for (const entry of ["heygen audio", "tts mp3", "tts wav", "favicon"]) {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+}
+
+// Both copies of the media fetch (CLI lib and skill scripts) send downloads to the test's fetch stub.
+function routeDownloadsToFetch(t) {
+  for (const transport of [mediaTransport, skillMediaTransport])
+    t.mock.method(transport, "fetch", (url, init) => globalThis.fetch(url, init));
 }
 
 function streamed(sizes, contentLength = null) {

@@ -116,6 +116,40 @@ describe("withProjectLock", () => {
     said.mockRestore();
   });
 
+  // fails without the fix: the command named in the project's lock file reached stderr raw
+  it("prints the holder a project's lock file names with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const dir = project();
+    const lock = projectLockPath(dir);
+    mkdirSync(dirname(lock), { recursive: true });
+    writeFileSync(
+      lock,
+      JSON.stringify({
+        pid: process.pid,
+        command: `render${esc}]0;owned${String.fromCharCode(7)}${esc}[2K${String.fromCharCode(13)}`,
+        startedAt: Date.now(),
+      }),
+    );
+    const said = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const base = Date.now();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValueOnce(base)
+      .mockReturnValue(base + 6_000);
+    await expect(withProjectLock(dir, "check", async () => "ran", locked(300))).rejects.toThrow(
+      ProjectLockTimeout,
+    );
+    clock.mockRestore();
+    const line = String(said.mock.calls[0]?.[0]);
+    said.mockRestore();
+    expect(line).not.toContain(esc);
+    expect(line).not.toContain(String.fromCharCode(13));
+    expect(line).toContain(
+      `waiting for render\\x1b]0;owned\\x07\\x1b[2K\\x0d (pid ${process.pid}, running `,
+    );
+  });
+
   it("takes over a lock whose process has exited", async () => {
     const dir = project();
     hold(dir, 2 ** 22 + 12345);

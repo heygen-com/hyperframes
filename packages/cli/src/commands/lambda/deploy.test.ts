@@ -69,6 +69,9 @@ describe("runDeploy", () => {
 
     await runDeploy({ skipBuild: true, videoArch: "x86_64" });
     expect(vi.mocked(samDeploy).mock.calls[0]?.[0]).toMatchObject({ samDir });
+    expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain(
+      `Using the source checkout at ${dir}`,
+    );
     expect(vi.mocked(samDeploy).mock.calls[0]?.[0].videoImageUri).toBeUndefined();
     expect(pushVideoImage).not.toHaveBeenCalled();
   });

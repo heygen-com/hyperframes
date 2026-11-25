@@ -75,7 +75,7 @@ describe("freeze-frame route", () => {
       await res.json();
     expect(res.status).toBe(200);
     const output = calls[0]?.at(-1) ?? "";
-    expect(calls[0]?.slice(0, 7)).toEqual([
+    expect(calls[0]?.slice(0, 5 + MEDIA_INPUT_ARGS.length)).toEqual([
       "-y",
       "-ss",
       "2.5",

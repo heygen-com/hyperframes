@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
+import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import {
   COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   HF_COLOR_GRADING_ATTR,
@@ -368,6 +369,101 @@ describe("createColorGradingRuntime", () => {
     }
     expect(runtime?.redraw()).toBe(1);
     expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
+  });
+
+  it("holds a seek until each graded video draws the frame it landed on", async () => {
+    resetSeekDispatchState();
+    vi.useFakeTimers();
+    try {
+      const video = makeDrawableVideo();
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_METADATA,
+        configurable: true,
+      });
+      startRuntimeWithVideo(video);
+      runtime!.holdSeekUntilDrawn();
+      expect(runtime!.redraw()).toBe(0);
+      let settled = false;
+      void waitForSeekCompletion().then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_CURRENT_DATA,
+        configurable: true,
+      });
+      video.dispatchEvent(new Event("seeked"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a seek go after a bounded wait when a graded video never draws", async () => {
+    resetSeekDispatchState();
+    vi.useFakeTimers();
+    try {
+      const video = makeDrawableVideo();
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_METADATA,
+        configurable: true,
+      });
+      startRuntimeWithVideo(video);
+      runtime!.holdSeekUntilDrawn();
+      let settled = false;
+      const seek = waitForSeekCompletion().then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await seek;
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not hold a seek for a graded video that has nothing to draw", async () => {
+    resetSeekDispatchState();
+    vi.useFakeTimers();
+    try {
+      const video = makeDrawableVideo();
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_NOTHING,
+        configurable: true,
+      });
+      startRuntimeWithVideo(video);
+      runtime!.holdSeekUntilDrawn();
+      let settled = false;
+      void waitForSeekCompletion().then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a held seek go as soon as its graded video fails", async () => {
+    resetSeekDispatchState();
+    vi.useFakeTimers();
+    try {
+      const video = makeDrawableVideo();
+      Object.defineProperty(video, "readyState", {
+        value: HTMLMediaElement.HAVE_METADATA,
+        configurable: true,
+      });
+      startRuntimeWithVideo(video);
+      runtime!.holdSeekUntilDrawn();
+      let settled = false;
+      void waitForSeekCompletion().then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      video.dispatchEvent(new Event("error"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not redraw-loop on its own hide writes (opacity/visibility only)", async () => {
@@ -2277,6 +2373,31 @@ describe("createColorGradingRuntime", () => {
       state: "unavailable",
       message: "Media cannot be sampled by WebGL",
     });
+  });
+
+  it("shows the plain video, not its last graded frame, when a later frame can't be sampled", () => {
+    const { video, canvas } = startRuntimeWithVideo();
+    expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
+    const gl = getContextSpy.mock.results[0]!.value as { texImage2D: ReturnType<typeof vi.fn> };
+    const upload = gl.texImage2D.getMockImplementation()!;
+    gl.texImage2D.mockImplementation((...args: unknown[]) => {
+      if (args.length === 6) throw new DOMException("The video is tainted", "SecurityError");
+      return upload(...args);
+    });
+
+    runtime?.redraw();
+    expect([canvas.style.display, video.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)]).toEqual([
+      "none",
+      false,
+    ]);
+    expect(runtime?.getStatus("#hero-video").state).toBe("unavailable");
+
+    gl.texImage2D.mockImplementation(upload);
+    runtime?.redraw();
+    expect([canvas.style.display, video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)]).toEqual([
+      "block",
+      "true",
+    ]);
   });
 
   it("falls back to the source media on WebGL context loss and redraws after restore", () => {

@@ -98,7 +98,7 @@ export default defineCommand({
     try {
       startPort = parsePort(args.port ?? "3003");
     } catch (error) {
-      clack.log.error(normalizeErrorMessage(error));
+      clack.log.error(terminalText(normalizeErrorMessage(error)));
       failUsage();
     }
     const project = resolveProject(args.dir);
@@ -126,7 +126,7 @@ export default defineCommand({
         args["remote-debugging-port"] as string | undefined,
       );
     } catch (err) {
-      clack.log.error((err as Error).message);
+      clack.log.error(terminalText((err as Error).message));
       failUsage();
     }
 
@@ -239,6 +239,7 @@ export async function registerCompositionRoute(
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
+    if (reqPath === null) return ctx.text("Not found", 404);
     const filePath = resolve(project.dir, reqPath);
 
     // Security: don't allow path traversal outside project dir. isSafePath

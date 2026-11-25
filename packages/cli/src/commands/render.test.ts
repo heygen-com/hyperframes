@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { VERSION } from "../version.js";
+import { hyperframesConfigDir } from "../utils/configDir.js";
 
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
@@ -17,6 +18,7 @@ const producerState = vi.hoisted(() => ({
     _job: Record<string, unknown>,
     _abortSignal?: AbortSignal,
     _assertRenderActive?: () => void,
+    _onProgress?: (job: { progress: number }, message: string) => void,
   ): Promise<void> => undefined,
 }));
 
@@ -146,10 +148,10 @@ vi.mock("../utils/producer.js", () => ({
         job: Record<string, unknown>,
         _projectDir: string,
         _outputPath: string,
-        _onProgress: unknown,
+        onProgress: ((job: { progress: number }, message: string) => void) | undefined,
         abortSignal?: AbortSignal,
         assertRenderActive?: () => void,
-      ) => producerState.executeImpl(job, abortSignal, assertRenderActive),
+      ) => producerState.executeImpl(job, abortSignal, assertRenderActive, onProgress),
     ),
   })),
 }));
@@ -320,6 +322,85 @@ describe("renderLocal browser GPU config", () => {
   it("points strict warning-only renders to --strict-all", () => {
     expect(renderLintContinuationHint(true)).toContain("--strict-all");
     expect(renderLintContinuationHint(true)).not.toContain("Use --strict to block");
+  });
+
+  // fails without the fix: a failure reported as progress was written as it arrived, over several lines.
+  it("writes a progress update whose text has line breaks as one line", async () => {
+    const written: string[] = [];
+    const isTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    }) as never);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    producerState.executeImpl = async (_job, _signal, _active, onProgress) => {
+      onProgress?.({ progress: 40 }, "Failed: encoder said\nno such filter\r\nexit 1");
+    };
+    try {
+      await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+        throwOnError: true,
+      });
+    } finally {
+      out.mockRestore();
+      Object.defineProperty(process.stdout, "isTTY", { value: isTTY, configurable: true });
+    }
+    const update = written.find((chunk) => chunk.includes("Failed: encoder said"));
+    expect(update).toContain("Failed: encoder said\\x0ano such filter\\x0d\\x0aexit 1");
+    expect(update?.trimEnd()).not.toMatch(/[\r\n]/);
+  });
+
+  // fails without the fix: the check's detail and hint, the probe failure and the job's warning are printed as they arrived.
+  it("shows control characters in a preflight warning, a probe failure and a job warning as text", async () => {
+    const esc = String.fromCharCode(27);
+    const odd = `od${esc}[2Jd${String.fromCharCode(7)}`;
+    const shown = "od\\x1b[2Jd\\x07";
+    const warned: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warned.push(args.join(" "));
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const outcomes = preflightState.result.outcomes as Array<Record<string, unknown>>;
+    outcomes.push({
+      name: "Disk",
+      ok: true,
+      level: "warn",
+      detail: `low ${odd}`,
+      hint: `free ${odd}`,
+    });
+    ffmpegEncoderState.error = new Error(`probe ${odd}`);
+    producerState.executeImpl = async (job) => {
+      job.outcome = "completed_with_warnings";
+      job.warnings = [{ code: "late_media", message: `late ${odd}\nsecond line` }];
+    };
+    try {
+      await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+        throwOnError: true,
+      });
+    } finally {
+      outcomes.pop();
+    }
+    const said = warned.join("\n").replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+    expect(said).toContain(`Disk: low ${shown}`);
+    expect(said).toContain(`free ${shown}`);
+    expect(said).toContain(`Unable to probe H.264 encoder capabilities: probe ${shown}`);
+    expect(said).toContain(`[late_media] late ${shown}\nsecond line`);
+    expect(said).not.toContain(esc);
   });
 
   it("points non-strict renders to --strict for lint errors", () => {
@@ -988,6 +1069,12 @@ describe("renderLocal browser GPU config", () => {
     ]);
   });
 
+  // Auto mode reuses the GPU choice measured on this machine, kept with the CLI's other state.
+  const AUTO_GPU_CHOICE = {
+    gpuChoiceFile: hyperframesConfigDir("gpu-choice.json"),
+    hyperframesVersion: VERSION,
+  };
+
   it("forwards browserGpuMode='auto' into producer config (probe-then-choose)", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -1001,6 +1088,7 @@ describe("renderLocal browser GPU config", () => {
 
     expect(producerState.resolveConfigCalls).toContainEqual({
       browserGpuMode: "auto",
+      ...AUTO_GPU_CHOICE,
       forceScreenshot: false,
       beginFrameFirstFrameDeadlineMs: 20_000,
     });
@@ -1023,7 +1111,10 @@ describe("renderLocal browser GPU config", () => {
         hdrMode: "auto",
         quiet: true,
       });
-      expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
+      expect(producerState.resolveConfigCalls).toContainEqual({
+        browserGpuMode: "auto",
+        ...AUTO_GPU_CHOICE,
+      });
       expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("forceScreenshot");
     } finally {
       if (prev === undefined) delete process.env.PRODUCER_FORCE_SCREENSHOT;
@@ -1043,7 +1134,10 @@ describe("renderLocal browser GPU config", () => {
       outputResolution: "landscape",
     });
 
-    expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
+    expect(producerState.resolveConfigCalls).toContainEqual({
+      browserGpuMode: "auto",
+      ...AUTO_GPU_CHOICE,
+    });
     expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("forceScreenshot");
     expect(producerState.resolveConfigCalls[0]).not.toHaveProperty(
       "beginFrameFirstFrameDeadlineMs",

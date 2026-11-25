@@ -9,7 +9,8 @@ import { PREVIEW_NONCE_HEADER, previewProof, previewToken } from "@hyperframes/c
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { realpath, terminalText } from "@hyperframes/core";
+import { realpath, terminalLines, terminalText } from "@hyperframes/core";
+import { stackOrMessage } from "../utils/errorMessage.js";
 import {
   createReadStream,
   existsSync,
@@ -279,7 +280,7 @@ async function downloadRemoteGifImageSources(
       } catch (err) {
         console.warn(
           "[Studio] Remote animated GIF prep skipped:",
-          err instanceof Error ? err.message : err,
+          terminalText(err instanceof Error ? err.message : String(err)),
         );
       }
     }),
@@ -395,7 +396,7 @@ async function getThumbnailBrowser(
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
-        err instanceof Error ? err.message : err,
+        terminalText(err instanceof Error ? err.message : String(err)),
       );
       _thumbnailBrowserInitializing = null;
       return null;
@@ -557,7 +558,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         return history;
       })
       .catch((error: unknown) => {
-        console.warn(`[studio] Project history is off: ${String(error)}`);
+        console.warn(`[studio] Project history is off: ${terminalText(String(error))}`);
         if (error instanceof HistoryBusyError) ownerWaitMs = 0;
         if (error instanceof HistoryBusyError || error instanceof HistoryClosedError)
           histories.forget(projectDir);
@@ -615,7 +616,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       } catch (err) {
         const { isCompositionTooLargeError } = await import("@hyperframes/core/compiler");
         if (isCompositionTooLargeError(err)) throw err;
-        console.error("[studio] Bundle failed:", err);
+        console.error("[studio] Bundle failed:", terminalLines(stackOrMessage(err)));
         return null;
       }
     },
@@ -641,7 +642,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         outputDir: heifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/heif",
         allowOutsideFiles,
-        onFailure: (error) => console.warn(`[studio] ${error.message}`),
+        onFailure: (error) => console.warn(`[studio] ${terminalText(error.message)}`),
       });
       const prepared = await prepareAnimatedGifInputs(htmlWithJpegs, {
         projectDir: project.dir,
@@ -935,7 +936,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         if (!opts.signal.aborted) {
           console.warn(
             "[Studio] Thumbnail generation failed:",
-            err instanceof Error ? err.message : err,
+            terminalText(err instanceof Error ? err.message : String(err)),
           );
         }
         return null;
@@ -945,8 +946,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     async listRegistryCatalog() {
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
       const { loadProjectConfig } = await import("../utils/projectConfig.js");
+      const { fromReceivedRegistry } = await import("../commands/add.js");
       // The same registry `add` installs from, so the panel lists what can be installed.
-      const registry = { baseUrl: loadProjectConfig(projectDir).registry };
+      const baseUrl = loadProjectConfig(projectDir).registry;
+      const registry = { baseUrl, publicOnly: fromReceivedRegistry(projectDir, baseUrl) };
       const entries = await listRegistryItems(undefined, registry);
       const blockAndComponentEntries = entries.filter(
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
@@ -1208,10 +1211,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Mount the shared studio API at /api.
   // Use fetch() forwarding (not .route()) so the sub-app sees paths without
   // the /api prefix — the shared module's path extraction uses c.req.path.
-  const api = createStudioApi(adapter, { allowedHosts, sandboxThumbnailCaptures: true });
+  const api = createStudioApi(adapter, {
+    allowedHosts,
+    sandboxThumbnailCaptures: true,
+    sandboxDirectOpens: true,
+  });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
-    url.pathname = url.pathname.slice(4); // Strip "/api" prefix
+    url.pathname = url.pathname.replace(/^\/[^/]*/, ""); // Strip the "/api" segment however it is spelled
     const forwardReq = new Request(url.toString(), {
       method: c.req.method,
       headers: c.req.raw.headers,
