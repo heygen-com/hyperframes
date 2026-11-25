@@ -78,8 +78,8 @@ export const composeTranslate = (original: string, x: string, y: string): string
  * the edit translate is written. GSAP folds a CSS `translate` it sees at an
  * element's first parse into its cached transform (losing it per-axis on
  * absolute tweens); once the cache exists, later tweens and positioned set()s
- * reuse it and never read the translate again. gsap.getProperty parses
- * without mutating the element. Best-effort — absent or failing GSAP is fine.
+ * reuse it and never read the translate again. The parse also writes the
+ * folded transform onto the element. Best-effort — absent or failing GSAP is fine.
  */
 const primeGsapTransformCache = (el: StylableElement): void => {
   try {

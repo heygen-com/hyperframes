@@ -250,6 +250,39 @@ export function estimateMeasuredCaptureCostMultiplier(
   };
 }
 
+/** Auto mode chose the hardware GPU and calibration measured it slow: worth timing software too. */
+export function shouldCalibrateSoftwareGpu(
+  requestedMode: EngineConfig["browserGpuMode"],
+  resolvedMode: "software" | "hardware",
+  hardware: CaptureCostEstimate | undefined,
+): boolean {
+  return (
+    requestedMode === "auto" &&
+    resolvedMode === "hardware" &&
+    hardware !== undefined &&
+    hardware.multiplier > 1 &&
+    hardware.p95Ms !== undefined
+  );
+}
+
+export function settleAutoGpuChoice(
+  hardware: CaptureCostEstimate | undefined,
+  software: CaptureCostEstimate | undefined,
+): "software" | "hardware" | undefined {
+  if (hardware?.p95Ms === undefined) return undefined;
+  if (hardware.multiplier <= 1) return "hardware";
+  if (software?.p95Ms === undefined) return undefined;
+  return software.p95Ms < hardware.p95Ms ? "software" : "hardware";
+}
+
+/** Auto mode keeps the hardware GPU unless software measured strictly faster. */
+export function pickAutoGpuModeFromCalibration(
+  hardware: CaptureCostEstimate,
+  software: CaptureCostEstimate | undefined,
+): "software" | "hardware" {
+  return settleAutoGpuChoice(hardware, software) ?? "hardware";
+}
+
 export function selectCaptureCalibrationFrames(totalFrames: number): number[] {
   if (totalFrames <= 0) return [];
   const lastFrame = totalFrames - 1;
@@ -270,8 +303,10 @@ export async function measureCaptureCostFromSession(
   totalFrames: number,
   fps: number,
   log?: ProducerLogger,
+  /** The film frame a range render starts at; samples are taken inside its window. */
+  firstFrame = 0,
 ): Promise<{ estimate: CaptureCostEstimate; samples: CaptureCalibrationSample[] }> {
-  const sampledFrames = selectCaptureCalibrationFrames(totalFrames);
+  const sampledFrames = selectCaptureCalibrationFrames(totalFrames).map((i) => firstFrame + i);
   const samples: CaptureCalibrationSample[] = [];
   const totalSamples = sampledFrames.length;
 
@@ -430,7 +465,13 @@ export async function runCaptureCalibration(input: {
     }
     assertNotAborted();
     log.info("Calibration session ready, capturing test frames...");
-    const result = await measureCaptureCostFromSession(session, totalFrames, fps, log);
+    const result = await measureCaptureCostFromSession(
+      session,
+      totalFrames,
+      fps,
+      log,
+      job.frameWindow?.startFrame,
+    );
     logCaptureCalibrationResult(result, log);
     return result;
   };

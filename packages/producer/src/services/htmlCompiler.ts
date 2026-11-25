@@ -836,7 +836,7 @@ async function resolveMediaDuration(
     if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
     if (
       escapesAssetRoot(filePath, assetRoot) ||
-      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir])
+      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir], assetRoot === undefined)
     ) {
       return { duration: null, resolvedPath: filePath };
     }
@@ -1999,7 +1999,9 @@ async function downloadAndRewriteUrls(
 
   let result = html;
   for (const [url, relPath] of urlToRelPath) {
-    result = result.replaceAll(`"${url}"`, `"${relPath}"`).replaceAll(`'${url}'`, `'${relPath}'`);
+    result = result
+      .replaceAll(`"${url}"`, () => `"${relPath}"`)
+      .replaceAll(`'${url}'`, () => `'${relPath}'`);
     if (extraRewrite) result = extraRewrite(result, url, relPath);
   }
 
@@ -2130,7 +2132,7 @@ export async function localizeRemoteBackgroundImages(
     assets,
     // Quoted url('..')/url("..") are rewritten by downloadAndRewriteUrls' default
     // replaceAll; this handles the unquoted url(https://..) form.
-    (h, url, rel) => h.replaceAll(`url(${url})`, `url(${rel})`),
+    (h, url, rel) => h.replaceAll(`url(${url})`, () => `url(${rel})`),
   );
 }
 
@@ -2376,7 +2378,7 @@ function localizeFontFaceUrls(
           style,
           css,
           "</style>".length,
-          css.replaceAll(`url(${url})`, `url("${relPath}")`),
+          css.replaceAll(`url(${url})`, () => `url("${relPath}")`),
         ),
       ),
   );
@@ -3005,7 +3007,7 @@ async function compileWithAssets(
       namesAnotherNetworkRoot(projectDir, videoPath) ||
       !existsSync(videoPath) ||
       escapesAssetRoot(videoPath, assetRoot) ||
-      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir])
+      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir], assetRoot === undefined)
     )
       continue;
     advised.add(videoPath);

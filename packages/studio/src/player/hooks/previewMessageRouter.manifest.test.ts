@@ -38,8 +38,6 @@ function routeStateTicks(opaque: boolean) {
     processTimelineMessageRef: { current: processed },
     enrichMissingCompositionsRef: { current: vi.fn() },
     lastTimelineMessageRef: { current: Date.now() },
-    getAdapter: () => null,
-    syncTimelineElements: vi.fn(),
   });
   const tick = () =>
     handle(
@@ -90,8 +88,6 @@ it("asks a live opaque frame it has not heard from once, though its film has no 
     processTimelineMessageRef: { current: processed },
     enrichMissingCompositionsRef: { current: vi.fn() },
     lastTimelineMessageRef: { current: Date.now() },
-    getAdapter: () => null,
-    syncTimelineElements: vi.fn(),
   });
   const tick = () =>
     handle(

@@ -1,5 +1,13 @@
 import { readCoveredInlineStyleChars } from "./inlineTextStyleRange";
 
+/** What the formatting toolbar shows and sets on a selection. */
+export const INLINE_STYLE_PROPERTIES = [
+  "color",
+  "font-weight",
+  "font-style",
+  "text-decoration-line",
+];
+
 /**
  * What the range is styled with, for a toolbar that has to open showing the
  * truth rather than a default. Reports a property only when the whole range
@@ -32,14 +40,19 @@ export function readInlineStyleSpread(range: Range, property: string): string[] 
   if (!covered) return [];
   const seen = new Set<string>();
   const spread: string[] = [];
-  for (const { char, style } of covered) {
+  for (const { char, style, painter } of covered) {
     // A space paints nothing, so the colour it inherits is not a colour anyone
     // can see. Counting it puts the element's own colour in the swatch for text
     // that shows none of it — the stray band on a selection that happens to
     // start or end next to a space.
     if (!char.trim()) continue;
-    const value = style[property];
-    if (value === undefined || seen.has(value)) continue;
+    if (style[property] === undefined) continue;
+    // As painted, where `var()` and `currentColor` mean what they mean for the text.
+    const shown = painter?.ownerDocument.defaultView
+      ?.getComputedStyle(painter)
+      .getPropertyValue(property);
+    const value = shown || style[property];
+    if (seen.has(value)) continue;
     seen.add(value);
     spread.push(value);
   }
@@ -54,3 +67,5 @@ export function readFirstPaintedElement(range: Range, property: string): Element
     painted.find(({ style }) => style[property] !== undefined) ?? painted[0] ?? covered[0];
   return owner?.painter ?? null;
 }
+
+export { applyInlineStyle, type InlineStyleDelta } from "./inlineTextStyleRange";

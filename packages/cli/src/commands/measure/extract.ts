@@ -92,7 +92,7 @@ export async function cutStill(info: VideoInfo, at: number, roi: Roi, out: strin
     const full = join(work, "frame.png");
     writeFileSync(full, png);
     encodeOnto(out, (staged) =>
-      runFfmpeg(["-y", "-i", full, "-vf", crop(roi), "-frames:v", "1", staged]),
+      runFfmpeg(["-y", ...ffmpegInput(full), "-vf", crop(roi), "-frames:v", "1", staged]),
     );
   } finally {
     rmSync(work, { recursive: true, force: true });
@@ -119,7 +119,7 @@ export function cutClip(
   // seek time, which at some rates is the one before k0.
   encodeOnto(out, (staged) =>
     runFfmpeg([
-      ...["-y", ...ffmpegInput(info.path)],
+      ...["-y", ...ffmpegInput(info.path, { playlists: info.guarded })],
       ...[
         "-vf",
         `trim=start_frame=${k0}:end_frame=${k1},setpts=PTS-STARTPTS,${crop(roi)},format=yuv420p`,
@@ -171,7 +171,7 @@ export function cutSound(info: VideoInfo, from: number, to: number, out: string)
       "-y",
       "-ss",
       String(a),
-      ...ffmpegInput(info.path),
+      ...ffmpegInput(info.path, { playlists: info.guarded }),
       "-t",
       String(b - a),
       "-vn",

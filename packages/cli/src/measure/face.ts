@@ -56,7 +56,7 @@ export function minWindow(h: number, share: number): number {
 }
 
 function decode(info: VideoInfo, args: string[]): Buffer {
-  const formats = mediaInputFormatArgs(ffmpegBin(), info.path);
+  const formats = mediaInputFormatArgs(ffmpegBin(), info.path, { playlists: info.guarded });
   if (!info.guarded) return runFfmpeg([...formats, ...args]);
   try {
     return runFfmpeg([...formats, ...args], undefined, undefined, GUARDED_RUN_MS);

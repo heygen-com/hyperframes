@@ -36,6 +36,26 @@ describe("isPrivateUnderAssetRoots", () => {
     expect(isPrivateUnderAssetRoots(link, roots)).toBe(true);
   });
 
+  it("refuses a private project file named through a link outside the project, when asked to follow it", () => {
+    const alias = join(root, "alias");
+    symlinkSync(projectDir, alias);
+    const named = join(alias, ".git", "objects", "clip.mp4");
+    file(".git/objects/clip.mp4");
+    expect(isPrivateUnderAssetRoots(named, roots)).toBe(false);
+    expect(isPrivateUnderAssetRoots(named, roots, true)).toBe(true);
+    expect(
+      isPrivateUnderAssetRoots(
+        join(alias, file("media/clip.mp4").slice(projectDir.length)),
+        roots,
+        true,
+      ),
+    ).toBe(false);
+    const outside = join(root, ".ssh", "clip.mp4");
+    mkdirSync(dirname(outside), { recursive: true });
+    writeFileSync(outside, "x");
+    expect(isPrivateUnderAssetRoots(outside, roots, true)).toBe(false);
+  });
+
   it("keeps project media and the render's own files inside .hyperframes", () => {
     expect(isPrivateUnderAssetRoots(file("media/clip.mp4"), roots)).toBe(false);
     expect(assetRootsRefusal(file("media/clip.mp4"), roots)).toBeNull();
