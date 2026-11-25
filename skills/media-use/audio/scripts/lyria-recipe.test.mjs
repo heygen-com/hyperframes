@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   linkSync,
   lstatSync,
   mkdtempSync,
@@ -54,3 +55,67 @@ for (const [kind, plant] of [
     },
   );
 }
+
+const posix = process.platform !== "win32";
+
+// fails without the fix: the new file came out with default permissions, so a private WAV became readable by others.
+test(
+  "lyria-recipe keeps the permissions of the WAV it replaces",
+  { skip: !python || !posix },
+  (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "lyria-mode-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const out = join(dir, "bgm.wav");
+    writeFileSync(out, "old");
+    chmodSync(out, 0o600);
+    const result = spawnSync(python, ["-c", RUN, scripts, out], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(lstatSync(out).mode & 0o777, 0o600);
+    assert.equal(readFileSync(out).length, 44 + 8);
+    assert.deepEqual(readdirSync(dir), ["bgm.wav"]);
+  },
+);
+
+// fails without the fix: the rename replaced a WAV that may not be written, which the write in place refused.
+test(
+  "lyria-recipe refuses a read-only WAV at the output name and leaves it as it was",
+  { skip: !python || !posix || process.getuid() === 0 },
+  (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "lyria-readonly-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const out = join(dir, "bgm.wav");
+    writeFileSync(out, "old");
+    chmodSync(out, 0o444);
+    const result = spawnSync(python, ["-c", RUN, scripts, out], { encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /PermissionError/);
+    assert.equal(readFileSync(out, "utf8"), "old");
+    assert.equal(lstatSync(out).mode & 0o777, 0o444);
+    assert.deepEqual(readdirSync(dir), ["bgm.wav"]);
+  },
+);
+
+// fails without the fix: the temp file was created with default permissions and published as it was.
+test(
+  "lyria-recipe creates its temp file owner-only and gives a new WAV the default permissions",
+  { skip: !python || !posix },
+  (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "lyria-new-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const out = join(dir, "bgm.wav");
+    const seen = `import os, runpy, sys
+from pathlib import Path
+recipe = runpy.run_path(sys.argv[1] + "/lyria-recipe.py")
+real = os.fchmod
+def fchmod(fd, mode):
+    print(oct(os.fstat(fd).st_mode & 0o777), oct(mode))
+    real(fd, mode)
+os.fchmod = fchmod
+os.umask(0o027)
+recipe["write_wav"](Path(sys.argv[2]), bytes(8))`;
+    const result = spawnSync(python, ["-c", seen, scripts, out], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "0o600 0o640");
+    assert.equal(lstatSync(out).mode & 0o777, 0o640);
+  },
+);

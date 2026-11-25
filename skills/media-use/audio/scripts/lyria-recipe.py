@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import errno
 import os
 import secrets
+import stat
 import sys
 import time
 import wave
@@ -54,15 +56,27 @@ def parse_args() -> argparse.Namespace:
 
 
 def write_wav(out_path: Path, audio: bytes) -> None:
-    """Write the WAV to a new temp file beside `out_path`, then rename it over: a link at `out_path` is replaced, not followed."""
+    """Write the WAV to a new temp file beside `out_path`, then rename it over: a link at `out_path` is replaced, not followed.
+
+    A file already there keeps its permissions, and one that may not be written is refused as before.
+    Until it has those permissions the new file is readable by its owner only.
+    """
+    kept = mode_of_writable_file(out_path)
     temp = f"{out_path}.hf{secrets.token_hex(3)}.tmp"  # core's atomicTempPath shape, which Studio's project history skips
-    f = open(temp, "xb")  # created exclusively: never a file someone else already put there
+    umask = os.umask(0o077)
     try:
-        with f, wave.open(f, "wb") as wf:
-            wf.setnchannels(CHANNELS)
-            wf.setsampwidth(SAMPLE_WIDTH)
-            wf.setframerate(SAMPLE_RATE)
-            wf.writeframes(audio)
+        f = open(temp, "xb")  # created exclusively: never a file someone else already put there
+    finally:
+        os.umask(umask)
+    try:
+        with f:
+            with wave.open(f, "wb") as wf:
+                wf.setnchannels(CHANNELS)
+                wf.setsampwidth(SAMPLE_WIDTH)
+                wf.setframerate(SAMPLE_RATE)
+                wf.writeframes(audio)
+            f.flush()
+            set_mode(f.fileno(), temp, 0o666 & ~umask if kept is None else kept)
         replace_riding_windows_holds(temp, out_path)
     except BaseException:
         try:
@@ -70,6 +84,26 @@ def write_wav(out_path: Path, audio: bytes) -> None:
         except OSError:
             pass  # a failed cleanup must not hide the error that got us here
         raise
+
+
+def mode_of_writable_file(out_path: Path) -> int | None:
+    """The permissions of the regular file at `out_path`, or None when there is none. Raises when it may not be written."""
+    try:
+        old = os.lstat(out_path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(old.st_mode):
+        return None
+    if not os.access(out_path, os.W_OK):
+        raise PermissionError(errno.EACCES, "Permission denied", str(out_path))
+    return stat.S_IMODE(old.st_mode)
+
+
+def set_mode(fd: int, path: str, mode: int) -> None:
+    if hasattr(os, "fchmod"):
+        os.fchmod(fd, mode)
+    else:
+        os.chmod(path, mode)  # Windows, where the mode is only the read-only flag
 
 
 def replace_riding_windows_holds(temp: str, out_path: Path) -> None:
