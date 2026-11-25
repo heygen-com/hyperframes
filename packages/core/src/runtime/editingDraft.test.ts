@@ -183,10 +183,20 @@ describe("moves through GSAP", () => {
   function gsapHeld() {
     const { element, handle } = card("translate: 4px 2px; width: 50px");
     const position = { x: 40, y: 30 };
-    (window as { gsap?: unknown }).gsap = {
-      getProperty: (_: Element, axis: "x" | "y") => position[axis],
+    // Like real GSAP, the first read folds the CSS translate into x/y and leaves translate none.
+    const gsap = {
+      getProperty: (target: HTMLElement, axis: "x" | "y") => {
+        if (target.style.translate !== "none") {
+          const [x = 0, y = 0] = shown(target);
+          Object.assign(position, { x: position.x + x, y: position.y + y });
+          target.style.setProperty("translate", "none");
+        }
+        return position[axis];
+      },
       set: (_: Element, props: Partial<typeof position>) => Object.assign(position, props),
     };
+    (window as { gsap?: unknown }).gsap = gsap;
+    gsap.getProperty(element, "x"); // the press reads GSAP's x/y before any draft draws
     const move = (x: number, y: number) =>
       drawDrafts([{ handle, translate: { x, y, route: "gsap" }, size: null }]);
     return { element, handle, position, move };
@@ -203,7 +213,7 @@ describe("moves through GSAP", () => {
     const { element, handle, position, move } = gsapHeld();
     move(30, 36);
     drawDrafts([{ handle, end: "restore" }]);
-    expect([position, element.style.translate]).toEqual([{ x: 40, y: 30 }, "4px 2px"]);
+    expect([position, element.style.translate]).toEqual([{ x: 44, y: 32 }, "none"]);
   });
 
   it("leaves GSAP where the drag drew it when the draft ends keeping its size", () => {
@@ -249,7 +259,7 @@ describe("moves through GSAP", () => {
     move(30, 36);
     gsapSet({ handle, props: { x: 25 } });
     drawDrafts([{ handle, end: "restore" }]);
-    expect(position).toEqual({ x: 25, y: 30 });
+    expect(position).toEqual({ x: 25, y: 32 });
   });
 
   // fails without the fix: the hold dropped only when the whole batch landed, so a restore after a batch with a missed
