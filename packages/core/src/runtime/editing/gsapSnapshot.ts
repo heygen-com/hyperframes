@@ -180,6 +180,7 @@ class SnapshotReader {
       this.spend(TARGET_FIELDS + channels.size);
       const values: Record<string, number> = {};
       const read = (channel: string) => {
+        if (isElementMethod(element, channel)) return;
         const value = Number(gsap?.getProperty?.(element, channel));
         if (Number.isFinite(value)) values[channel] = value;
       };
@@ -236,6 +237,9 @@ class SnapshotReader {
     return out;
   }
 }
+
+const isElementMethod = (element: Element, channel: string) =>
+  typeof Reflect.get(element, channel) === "function";
 
 function timing(live: LiveTween) {
   return {
