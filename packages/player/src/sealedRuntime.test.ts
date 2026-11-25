@@ -226,7 +226,7 @@ describe("a sealed player brings its own runtime", () => {
       await vi.advanceTimersByTimeAsync(LIMIT - 1);
       expect(errors).toEqual([]);
       await vi.advanceTimersByTimeAsync(1);
-      expect(errors).toEqual([timelineNotFound(LIMIT, true)]);
+      expect(errors).toEqual([timelineNotFound(LIMIT)]);
 
       answer(siteResponse(page()));
       await vi.advanceTimersByTimeAsync(0);
