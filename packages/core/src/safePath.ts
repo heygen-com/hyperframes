@@ -8,7 +8,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { mkdir, realpath as realpathNative } from "node:fs/promises";
+import { mkdir, realpath as realpathNative, stat as statAsync } from "node:fs/promises";
 import { promisify } from "node:util";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { projectPathSegments } from "@hyperframes/parsers/private-path";
@@ -293,6 +293,15 @@ export function folderGone(dir: string): boolean {
   }
 }
 
+async function folderGoneAsync(dir: string): Promise<boolean> {
+  try {
+    await statAsync(dir);
+    return false;
+  } catch (error) {
+    return isMissing(error);
+  }
+}
+
 /** The project folder's real path; ProjectRootMissingError when it is gone. */
 export function realProjectRoot(root: string): string {
   try {
@@ -308,7 +317,7 @@ export function realProjectRoot(root: string): string {
  * A `dir` outside `root` is created recursively, but only while `root` exists.
  */
 export function mkdirWithinProject(root: string, dir: string): void {
-  const folders = foldersToMake(root, dir);
+  const folders = foldersToMake(root, dir, folderGone(root));
   if (folders === null) {
     mkdirSync(dir, { recursive: true });
     return;
@@ -317,14 +326,14 @@ export function mkdirWithinProject(root: string, dir: string): void {
     try {
       mkdirSync(path);
     } catch (error) {
-      madeOrThrow(root, error);
+      madeOrThrow(root, error, isMissing(error) && folderGone(root));
     }
   }
 }
 
 /** {@link mkdirWithinProject} on fs/promises: a write the drive never answers holds a pool thread, not the caller's. */
 export async function mkdirWithinProjectAsync(root: string, dir: string): Promise<void> {
-  const folders = foldersToMake(root, dir);
+  const folders = foldersToMake(root, dir, await folderGoneAsync(root));
   if (folders === null) {
     await mkdir(dir, { recursive: true });
     return;
@@ -333,14 +342,14 @@ export async function mkdirWithinProjectAsync(root: string, dir: string): Promis
     try {
       await mkdir(path);
     } catch (error) {
-      madeOrThrow(root, error);
+      madeOrThrow(root, error, isMissing(error) && (await folderGoneAsync(root)));
     }
   }
 }
 
 /** Each folder from below `root` down to `dir`, or null when `dir` is outside `root`. */
-function foldersToMake(root: string, dir: string): string[] | null {
-  if (folderGone(root)) throw new ProjectRootMissingError(root);
+function foldersToMake(root: string, dir: string, rootGone: boolean): string[] | null {
+  if (rootGone) throw new ProjectRootMissingError(root);
   const inside = relative(resolve(root), resolve(dir));
   if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return null;
   let path = resolve(root);
@@ -350,11 +359,12 @@ function foldersToMake(root: string, dir: string): string[] | null {
     .map((part) => (path = join(path, part)));
 }
 
-function madeOrThrow(root: string, error: unknown): void {
-  const code = (error as NodeJS.ErrnoException).code;
-  if (code === "ENOENT" && folderGone(root)) throw new ProjectRootMissingError(root);
-  if (code !== "EEXIST") throw error;
+function madeOrThrow(root: string, error: unknown, rootGone: boolean): void {
+  if (rootGone) throw new ProjectRootMissingError(root);
+  if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 }
+
+const isMissing = (error: unknown) => (error as NodeJS.ErrnoException).code === "ENOENT";
 
 /** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
 export function realFilePath(filePath: string): string {
