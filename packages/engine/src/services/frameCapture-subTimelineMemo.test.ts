@@ -131,6 +131,37 @@ describe("sub-composition timeline wait memo", () => {
     expect(Math.max(...ids.map((id) => id.length))).toBeLessThanOrEqual(2_000);
   });
 
+  // fails at e2d37846: every unregistered id was sent, kept on the session and in the memo at full length
+  it("sends, keeps and remembers a fixed number of unregistered ids, each cut short", async () => {
+    const ids = Array.from({ length: 5_000 }, (_, n) => `${n}:${"u".repeat(500)}`);
+    const host = (id: string) => ({
+      hasAttribute: () => false,
+      getAttribute: (name: string) => (name === "data-composition-id" ? id : null),
+    });
+    const document = { querySelectorAll: () => ids.map(host) };
+    const window = { __timelines: {}, __hfForceTimelineRebind: vi.fn() };
+    const page = {
+      evaluate: vi.fn(async (expr: string) =>
+        new Function("document", "window", `return ${expr}`)(document, window),
+      ),
+    } as unknown as Page;
+    const memo: SubTimelineWaitMemo = {};
+    const session = makeSession(memo);
+
+    const wait = track(waitForSubCompositionTimelines(session, page, TIMEOUT_MS));
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);
+    await wait.promise;
+
+    const answers = await Promise.all(vi.mocked(page.evaluate).mock.results.map((r) => r.value));
+    const sent = answers.filter((a): a is string[] => Array.isArray(a) && typeof a[0] === "string");
+    expect(sent.length).toBeGreaterThan(0);
+    for (const list of [...sent, session.pendingTimelineIds ?? [], memo.unregisteredIds ?? []]) {
+      expect(list).toHaveLength(1_000);
+      expect(Math.max(...list.map((id) => id.length))).toBeLessThanOrEqual(200);
+    }
+    expect(session.subTimelineWaitOutcome).toBe("timeout");
+  });
+
   it("does not remember a wait a VFX failure stopped early", async () => {
     const memo: SubTimelineWaitMemo = {};
     const session = makeSession(memo, { vfxFailure: "chain failed" });

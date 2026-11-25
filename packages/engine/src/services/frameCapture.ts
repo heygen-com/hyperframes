@@ -2094,20 +2094,28 @@ export async function pollHfReady(
 
 // Enumerated regardless of bail reason, so the warning names every composition still
 // waited on, not only a failed script URL.
+const TIMELINE_IDS_MAX = 1_000;
+const TIMELINE_ID_MAX_CHARS = 200;
+
 async function listUnregisteredTimelineIds(page: Page): Promise<string[]> {
   const evaluated = await page.evaluate(`(function() {
     var hosts = document.querySelectorAll("[data-composition-id]");
     var timelines = window.__timelines || {};
     var m = [];
-    for (var i = 0; i < hosts.length; i++) {
+    for (var i = 0; i < hosts.length && m.length < ${TIMELINE_IDS_MAX}; i++) {
       if (hosts[i].hasAttribute("data-no-timeline")) continue;
       var id = hosts[i].getAttribute("data-composition-id");
-      if (id && !timelines[id]) m.push(id);
+      if (!id || timelines[id]) continue;
+      if (id.length > ${TIMELINE_ID_MAX_CHARS}) id = id.slice(0, ${TIMELINE_ID_MAX_CHARS - 1}) + "…";
+      m.push(id);
     }
     return m;
   })()`);
   // Builds a warning, so it must never throw: normalise a loosely typed result.
-  return Array.isArray(evaluated) ? evaluated.map((id) => String(id)) : [];
+  if (!Array.isArray(evaluated)) return [];
+  return evaluated
+    .slice(0, TIMELINE_IDS_MAX)
+    .map((id) => boundedPageText(String(id), TIMELINE_ID_MAX_CHARS));
 }
 
 function isScriptFailure(session: CaptureSession): boolean {
@@ -2355,7 +2363,7 @@ export async function pollSubCompositionTimelines(
       console.warn(
         terminalText(
           `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
-            `script(s) failed (${failed.join(", ")}), so ` +
+            `script(s) failed (${listedInMessage(failed)}), so ` +
             `the timeline registration they carry can never arrive. ` +
             `Fix the script.`,
         ),
