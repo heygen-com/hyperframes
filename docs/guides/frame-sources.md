@@ -35,4 +35,6 @@ Two optional members let such a source take part in the Buffering hold, which pa
 
 `window.__hf.sourceTimeAt(element, time)` returns the source time the source is asked for at composition time `time`, trims and playback rate included, so the source can read ahead to the clip's last frame.
 
+For a clip with no `data-duration`, the runtime needs the source's length. Return it from `length()` once known, and dispatch a `durationchange` event on the element when it becomes known. A `loop` element's source time wraps at that length, as it does for a media element the runtime plays itself.
+
 Registration does not expose arbitrary scene code as editable keyframes. Manual element edits need stable identities and persistent parameters or overrides. Imported iframe sources also need screenshot capture and an explicit message bridge; this API does not grant access to sandboxed DOM.

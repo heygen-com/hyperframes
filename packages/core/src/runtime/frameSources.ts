@@ -2,7 +2,8 @@ import { sourceTimeAt } from "../speedRamp";
 import { readElementRateSpec, readMediaStart } from "./playbackRate";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { isClipOnScreenAt } from "./clipWindow";
-import { isElementNode } from "./domRealm";
+import { isElementNode, isMediaElement } from "./domRealm";
+import { sourceLengthOf, supplySourceLength } from "./sourceLength";
 import type { RuntimeDeterministicAdapter } from "./types";
 
 export interface FrameSource {
@@ -12,6 +13,7 @@ export interface FrameSource {
   render: (sourceTime: number, signal: AbortSignal) => void | PromiseLike<unknown>;
   canPlayAt?: (sourceTime: number) => boolean;
   received?: () => number;
+  length?: () => number | undefined;
   dispose?: () => void;
 }
 
@@ -33,8 +35,14 @@ export const hasFrameSource = (element: unknown): boolean =>
 export const frameSourceReceived = (element: Element): number | undefined =>
   sources.get(element)?.source.received?.();
 
-export const frameSourceTimeAt = (element: Element, time: number, start: number): number =>
-  readMediaStart(element) + sourceTimeAt(readElementRateSpec(element), Math.max(0, time - start));
+export function frameSourceTimeAt(element: Element, time: number, start: number): number {
+  const mediaStart = readMediaStart(element);
+  const target = mediaStart + sourceTimeAt(readElementRateSpec(element), Math.max(0, time - start));
+  const length = isMediaElement(element) && element.loop ? sourceLengthOf(element) : Number.NaN;
+  return length > mediaStart && target >= length
+    ? mediaStart + ((target - mediaStart) % (length - mediaStart))
+    : target;
+}
 
 export function frameSourceWaitsAt(
   element: Element,
@@ -104,10 +112,12 @@ export function registerFrameSource(source: FrameSource): () => void {
       controller.abort();
       pending = null;
       sources.delete(source.element);
+      supplySourceLength(source.element, undefined);
       source.dispose?.();
     },
   };
   sources.set(source.element, registered);
+  supplySourceLength(source.element, source.length);
   return registered.dispose;
 }
 
