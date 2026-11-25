@@ -87,13 +87,9 @@ export interface PostExtractionResult {
   animationCatalog: CaptureResult["animationCatalog"];
 }
 
-/** The captured page with no composition marker left in any letter case, so Studio never takes it for
- * a composition and runs the captured site's scripts on its own origin. The replacement starts and
- * ends with letters the marker does not have, so no page text beside it can form the marker again:
- * `data-composition-idata-composition-id="x"` came out of the old `data-captured-composition-id`
- * replacement still holding `data-composition-id="x"`. */
+const SHARES_NO_FIRST_OR_LAST_LETTER_WITH_THE_MARKER = "hf-captured-composition-key";
 export const withoutCompositionMarker = (capturedHtml: string): string =>
-  capturedHtml.replace(/data-composition-id/gi, "hf-captured-composition-key");
+  capturedHtml.replace(/data-composition-id/gi, SHARES_NO_FIRST_OR_LAST_LETTER_WITH_THE_MARKER);
 
 export async function runPostExtraction(input: PostExtractionInput): Promise<PostExtractionResult> {
   let {
