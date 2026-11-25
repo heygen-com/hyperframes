@@ -603,7 +603,10 @@ async function captureProject(
   return {
     dir: seq,
     clip: {
-      input: ["-framerate", ref.fpsText, "-i", join(seq, "%06d.png")],
+      input: [
+        ...["-framerate", ref.fpsText, "-protocol_whitelist", "file", "-f", "image2"],
+        ...["-i", join(seq, "%06d.png")],
+      ],
       filters: [],
       width: ref.width,
       height: ref.height,

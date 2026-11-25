@@ -61,7 +61,6 @@ jobs:
           git worktree remove "$RUNNER_TEMP/reachability-base"
       - name: Report head reachability
         run: node scripts/check-test-reachability.mjs --report
-      - run: node --test packages/share/tests/*.test.mjs
       - run: node --test scripts/check-test-reachability.test.mjs
       - run: node scripts/check-test-reachability.mjs
 
@@ -251,7 +250,7 @@ jobs:
               - "packages/cli/src/ui/**"
               - "packages/cli/src/{background-removal,registry,telemetry}/**"
               - "packages/cli/src/capture/{captureCompositionFrame,captureTimeout,navigateForCapture,readBoundedResponse}.ts"
-              - "packages/cli/src/media-use/lib/config-lock.mjs"
+              - "packages/cli/src/media-use/lib/{config-lock,telemetry-opt-out}.mjs"
               - "packages/cli/src/auth/**"
               - "packages/cli/scripts/**"
               - "packages/core/stubs/**"
@@ -646,6 +645,7 @@ jobs:
           chrome: "true"
       - run: bun run generate:catalog
         if: needs.changes.outputs.docs_catalog == 'true'
+      - run: node --test packages/share/tests/*.test.mjs
       - run: bun run test:scripts
         env:
           HYPERFRAMES_BROWSER_PATH: ${{ steps.workspace.outputs.chrome-path }}

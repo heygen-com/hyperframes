@@ -250,6 +250,30 @@ export function estimateMeasuredCaptureCostMultiplier(
   };
 }
 
+/** Auto mode chose the hardware GPU and calibration measured it slow: worth timing software too. */
+export function shouldCalibrateSoftwareGpu(
+  requestedMode: EngineConfig["browserGpuMode"],
+  resolvedMode: "software" | "hardware",
+  hardware: CaptureCostEstimate | undefined,
+): boolean {
+  return (
+    requestedMode === "auto" &&
+    resolvedMode === "hardware" &&
+    hardware !== undefined &&
+    hardware.multiplier > 1 &&
+    hardware.p95Ms !== undefined
+  );
+}
+
+/** Auto mode keeps the hardware GPU unless software measured strictly faster. */
+export function pickAutoGpuModeFromCalibration(
+  hardware: CaptureCostEstimate,
+  software: CaptureCostEstimate | undefined,
+): "software" | "hardware" {
+  if (hardware.p95Ms === undefined || software?.p95Ms === undefined) return "hardware";
+  return software.p95Ms < hardware.p95Ms ? "software" : "hardware";
+}
+
 export function selectCaptureCalibrationFrames(totalFrames: number): number[] {
   if (totalFrames <= 0) return [];
   const lastFrame = totalFrames - 1;
