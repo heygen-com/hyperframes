@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import secrets
 import sys
 import wave
 from pathlib import Path
@@ -49,6 +50,22 @@ def parse_args() -> argparse.Namespace:
         help="MAJOR / MINOR / PENTATONIC / etc. — see google.genai.types.Scale. Pass empty string for none.",
     )
     return p.parse_args()
+
+
+def write_wav(path: Path, audio: bytes) -> None:
+    """Write the WAV to a new temp file beside `path`, then rename it over: a link at `path` is replaced, not followed."""
+    temp = f"{path}.hf{secrets.token_hex(3)}.tmp"  # core's atomicTempPath shape, which Studio's project history skips
+    f = open(temp, "xb")  # created exclusively: never a file someone else already put there
+    try:
+        with f, wave.open(f, "wb") as wf:
+            wf.setnchannels(CHANNELS)
+            wf.setsampwidth(SAMPLE_WIDTH)
+            wf.setframerate(SAMPLE_RATE)
+            wf.writeframes(audio)
+        os.replace(temp, path)
+    except BaseException:
+        os.unlink(temp)
+        raise
 
 
 async def generate_bgm(args: argparse.Namespace) -> dict:
@@ -112,11 +129,7 @@ async def generate_bgm(args: argparse.Namespace) -> dict:
             print(f"Timeout after {timeout:.0f}s, collected {len(buf)} bytes", file=sys.stderr)
 
     audio = bytes(buf[:target_bytes])
-    with wave.open(str(out_path), "wb") as wf:
-        wf.setnchannels(CHANNELS)
-        wf.setsampwidth(SAMPLE_WIDTH)
-        wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(audio)
+    write_wav(out_path, audio)
 
     actual_duration = len(audio) / (SAMPLE_RATE * CHANNELS * SAMPLE_WIDTH)
     print(f"BGM: {out_path} ({actual_duration:.2f}s)")
