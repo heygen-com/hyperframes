@@ -155,7 +155,7 @@ describe("two quick timeline saves on one file", () => {
     const grade = () =>
       applyColorGradingScopeUpdate({
         scope: "source-file",
-        value: "warm",
+        value: "warm-daylight",
         selectedSourceFile: "index.html",
         fileTree: ["index.html"],
         projectId: "p1",
@@ -169,7 +169,7 @@ describe("two quick timeline saves on one file", () => {
     await expectBothLand(project, () => move(project, "a", 3), grade);
 
     expect(project.read()).toContain('id="a" class="clip" data-start="3"');
-    expect(project.read()).toContain('data-color-grading="warm"');
+    expect(project.read()).toContain('data-color-grading="warm-daylight"');
   });
 
   it("lands a move started while the previous move's GSAP rewrite is in flight", async () => {

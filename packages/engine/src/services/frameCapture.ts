@@ -241,6 +241,7 @@ export interface CaptureSession {
   scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
+  throwSiteLookups?: Set<string>;
   /** True once this session honoured `options.strictVariables`: the check ran and passed. */
   strictVariablesChecked?: boolean;
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
@@ -596,6 +597,7 @@ const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
 const PAGE_TEXT_MAX_CHARS = 2_000;
 const PAGE_LIST_MAX = 50;
+const THROW_SITE_LOOKUP_MAX = 10;
 
 const CUT_NOTE_MAX_CHARS = 40;
 
@@ -3229,10 +3231,14 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
     const error = classifyPageError(exceptionDetails, projectScripts);
-    recordPageError(session, error);
     if (!error) return;
-    // Recorded first so fail-fast sees it; the throw site is appended once the source is fetched.
     const kept = boundedPageText(error);
+    const lookedUp = (session.throwSiteLookups ??= new Set());
+    if (lookedUp.has(kept)) return;
+    // Recorded first so fail-fast sees it; the throw site is appended once the source is fetched.
+    recordPageError(session, error);
+    if (lookedUp.size >= THROW_SITE_LOOKUP_MAX || !session.pageErrors.includes(kept)) return;
+    lookedUp.add(kept);
     void describeThrowSite(runtimeClient, exceptionDetails, projectScripts).then((site) => {
       const i = session.pageErrors.indexOf(kept);
       if (!site || i < 0) return;

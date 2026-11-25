@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveFrameWindow } from "./frameWindow.js";
+import { assertRangeSupported, resolveFrameWindow } from "./frameWindow.js";
 
 const fps30 = { num: 30, den: 1 };
 const ntsc = { num: 30000, den: 1001 };
@@ -39,6 +39,24 @@ describe("resolveFrameWindow", () => {
     expect(() => resolveFrameWindow({ startSeconds: 10 }, fps30, 300)).toThrow(/holds no frame/);
     expect(() => resolveFrameWindow({ startSeconds: 2, endSeconds: 2.01 }, fps30, 300)).toThrow(
       /holds no frame/,
+    );
+  });
+});
+
+describe("assertRangeSupported", () => {
+  const window = { startFrame: 75, endFrame: 120 };
+
+  it("lets the disk and layered routes capture a window", () => {
+    expect(() => assertRangeSupported(window, "sdr_disk")).not.toThrow();
+    expect(() => assertRangeSupported(window, "hdr_layered")).not.toThrow();
+  });
+
+  it("refuses a window on the streaming routes, which render whole films", () => {
+    expect(() => assertRangeSupported(window, "sdr_streaming")).toThrow(
+      /renders the whole film only/,
+    );
+    expect(() => assertRangeSupported(window, "sdr_segmented")).toThrow(
+      /renders the whole film only/,
     );
   });
 });
