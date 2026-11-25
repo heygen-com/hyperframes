@@ -564,6 +564,26 @@ describe("classifyPageError", () => {
     await expect(captureFramesBatchPipelined(session, [0], [0])).rejects.toMatchObject(stopped);
   });
 
+  // fails without the fix: each cache-busted load of one script counted as a new script, so a long render stopped
+  it("counts a script loaded under ever-new queries once, and still owns its throws", async () => {
+    const { session, pageListeners, runtimeListeners } = await listenedSession();
+    for (let n = 0; n <= 10_000; n++)
+      pageListeners.get("response")?.({
+        status: () => 200,
+        url: () => `${server}/s.js?t=${n}`,
+        request: () => ({ resourceType: () => "script" }),
+      });
+    Object.assign(session, { isInitialized: true, options: { fps: { num: 30, den: 1 } } });
+    await expect(captureFrameToBufferPipelined(session, 0, 0)).rejects.not.toMatchObject({
+      name: "TooManyServedScriptsError",
+    });
+    const url = `${server}/s.js?t=99999#x`;
+    runtimeListeners.get("Runtime.exceptionThrown")?.({
+      exceptionDetails: thrown("Error: busted", url, [url]),
+    });
+    expect(session.pageErrors).toEqual(["runtime-error:Error: busted"]);
+  });
+
   it("refuses to capture another frame once a VFX chain has failed", async () => {
     const session = {
       isInitialized: true,
