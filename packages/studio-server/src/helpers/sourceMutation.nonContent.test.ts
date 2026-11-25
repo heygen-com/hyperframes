@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  probeElementsInSource,
+  patchElementInHtml,
   removeElementsFromHtml,
   splitElementInHtml,
   unwrapElementsFromHtml,
@@ -32,7 +32,6 @@ describe("a structural edit aimed at code or the page shell, not a layer", () =>
     const aim = JSON.stringify(target);
     it(`delete leaves the file as it was for ${aim}`, () => {
       expect(removeElementsFromHtml(PAGE, [target])).toBe(PAGE);
-      expect(probeElementsInSource(PAGE, [target])).toEqual([false]);
     });
     it(`cut is refused for ${aim}`, () => {
       const result = splitElementInHtml(PAGE, target, 2, "half", { start: 0, duration: 4 });
@@ -50,6 +49,14 @@ describe("a structural edit aimed at code or the page shell, not a layer", () =>
   it("delete leaves a file with no page shell as it was when aimed at its body", () => {
     const notAPage = `export const answer = 42;\n`;
     expect(removeElementsFromHtml(notAPage, [{ selector: "body" }])).toBe(notAPage);
+  });
+
+  it("still saves a style set on the page's body", () => {
+    const result = patchElementInHtml(PAGE, { selector: "body" }, [
+      { type: "inline-style", property: "background", value: "black" },
+    ]);
+    expect(result.matched).toBe(true);
+    expect(result.html).toMatch(/<body[^>]*background:\s*black/);
   });
 
   it("still deletes, cuts and groups an ordinary layer on the same page", () => {

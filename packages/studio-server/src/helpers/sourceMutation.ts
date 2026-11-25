@@ -200,7 +200,7 @@ export function removeElementsFromHtml(
   let removed = false;
   for (const target of targets) {
     const element = findTargetElement(document, target);
-    if (!element || isNonContentElement(element)) continue;
+    if (!element || isNotALayerToRestructure(element)) continue;
     const id = element.getAttribute("id");
     removeElementWithGsapCascade(document, element);
     if (id && !document.getElementById(id)) dropCssRulesForId(document, id);
@@ -305,11 +305,14 @@ function stampNewChildIds(parent: Element): void {
   }
 }
 
+function isNonContentElement(el: Element): boolean {
+  return EXCLUDED_TAGS.has(el.tagName.toLowerCase());
+}
+
 const PAGE_SHELL_TAGS = new Set(["html", "head", "body", "title"]);
 
-function isNonContentElement(el: Element): boolean {
-  const tag = el.tagName.toLowerCase();
-  return EXCLUDED_TAGS.has(tag) || PAGE_SHELL_TAGS.has(tag);
+function isNotALayerToRestructure(el: Element): boolean {
+  return isNonContentElement(el) || PAGE_SHELL_TAGS.has(el.tagName.toLowerCase());
 }
 
 // fallow-ignore-next-line complexity
@@ -421,7 +424,7 @@ export function probeElementsInSource(
   return targets.map((target) => {
     if (!target.id && !target.hfId && !target.selector) return false;
     const el = findTargetElement(document, target);
-    return el != null && isHTMLElement(el) && !isNonContentElement(el);
+    return el != null && isHTMLElement(el);
   });
 }
 
@@ -504,7 +507,7 @@ export function splitElementInHtml(
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
-  if (!el || !isHTMLElement(el) || isNonContentElement(el))
+  if (!el || !isHTMLElement(el) || isNotALayerToRestructure(el))
     return refused(source, "target-not-found");
 
   // An untimed wrapper whose row is its timed media's own window is a view of that
@@ -718,7 +721,7 @@ export function wrapElementsInHtml(
   const seen = new Set<Element>();
   for (const target of targets) {
     const el = findTargetElement(document, target);
-    if (!el || !isHTMLElement(el) || isNonContentElement(el) || seen.has(el)) continue;
+    if (!el || !isHTMLElement(el) || isNotALayerToRestructure(el) || seen.has(el)) continue;
     seen.add(el);
     els.push(el);
   }
@@ -850,7 +853,7 @@ export function unwrapElementsFromHtml(
 ): UnwrapElementsResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const group = findTargetElement(document, groupTarget);
-  if (!group || !isHTMLElement(group) || isNonContentElement(group))
+  if (!group || !isHTMLElement(group) || isNotALayerToRestructure(group))
     return { html: source, unwrapped: false };
   // Shape guard mirroring the wrap-side contract: only ever dissolve an actual
   // group wrapper. A stale/desynced selection that resolves to a plain <div>
