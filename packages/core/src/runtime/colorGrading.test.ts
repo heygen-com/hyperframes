@@ -507,6 +507,25 @@ describe("createColorGradingRuntime", () => {
     expect(video.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)).toBe("true");
   });
 
+  it("in WebKit, draws each graded clip with its own WebGL context and copies nothing", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    );
+    for (const id of ["a", "b"]) {
+      const video = makeDrawableVideo();
+      video.id = id;
+      document.body.appendChild(video);
+    }
+    runtime = createColorGradingRuntime();
+
+    expect(webglContexts()).toBe(2);
+    expect(getContextSpy.mock.calls.filter(([type]) => type === "2d")).toHaveLength(0);
+    expect(texImage2DCalls.length).toBeGreaterThan(0);
+    runtime.destroy();
+    runtime = null;
+    expect(loseContextCalls).toBe(2);
+  });
+
   it("draws every graded clip through one WebGL context, however often a seek run shows and hides them", () => {
     const clips = Array.from({ length: 6 }, (_, i) => {
       const video = makeDrawableVideo();
