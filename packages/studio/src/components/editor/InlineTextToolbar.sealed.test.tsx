@@ -55,6 +55,7 @@ const selected = (styles: Record<string, string>, colours: string[], painted: st
     frame.listeners.forEach((listener) =>
       listener({
         handle: HANDLE,
+        caret: null,
         selection: {
           rect: { x: 200, y: 400, width: 100, height: 40 },
           viewportWidth: 1600,
@@ -80,6 +81,10 @@ it("shows over a sealed frame's selection, and sends a press to the frame to sty
     action: "style",
     style: { "font-weight": null },
   });
-  act(() => frame.listeners.forEach((listener) => listener({ handle: HANDLE, selection: null })));
+  act(() =>
+    frame.listeners.forEach((listener) =>
+      listener({ handle: HANDLE, selection: null, caret: null }),
+    ),
+  );
   expect(toolbar()).toBeNull();
 });

@@ -7,6 +7,13 @@ import { sanitizeRichTextChildren } from "../../utils/richTextSanitize";
 import { openTextEdits, isTextMarkup, MAX_EDIT_VALUE } from "./editElement";
 import { isEditableText } from "./textMarkup";
 import {
+  caretBoxIn,
+  caretColorOf,
+  caretSideAfterKey,
+  placeCaretAtEnd,
+  type CaretSide,
+} from "./textCaret";
+import {
   applyInlineStyle,
   INLINE_STYLE_PROPERTIES,
   readFirstPaintedElement,
@@ -36,9 +43,17 @@ export type TextEditSelection = {
   colours: string[];
   painted: string | null;
 };
+export type TextEditCaret = {
+  left: number;
+  top: number;
+  height: number;
+  color: string;
+  viewportWidth: number;
+};
 export type TextEditSelectionEvent = {
   handle: EditingElementHandle;
   selection: TextEditSelection | null;
+  caret: TextEditCaret | null;
 };
 
 const EDITING_OUTLINE = "2px solid #3CE6AC";
@@ -111,15 +126,27 @@ function isSelection(value: unknown): value is TextEditSelection {
   );
 }
 
+function isCaret(value: unknown): value is TextEditCaret {
+  if (!isRecord(value) || !keysAre(value, "color,height,left,top,viewportWidth")) return false;
+  const { left, top, height, color, viewportWidth } = value;
+  return (
+    [left, top, height, viewportWidth].every(isFiniteNumber) &&
+    (height as number) >= 0 &&
+    (viewportWidth as number) > 0 &&
+    isShortText(color)
+  );
+}
+
 export function textEditSelectionEvent(
   data: unknown,
   version: number,
 ): TextEditSelectionEvent | null {
-  if (!isRecord(data) || !keysAre(data, "event,handle,selection,v")) return null;
+  if (!isRecord(data) || !keysAre(data, "caret,event,handle,selection,v")) return null;
   if (data.v !== version || data.event !== "text-edit-selection" || !isHandle(data.handle))
     return null;
-  const { handle, selection } = data;
-  return selection === null || isSelection(selection) ? { handle, selection } : null;
+  const { handle, selection, caret } = data;
+  if (!(selection === null || isSelection(selection))) return null;
+  return caret === null || isCaret(caret) ? { handle, selection, caret } : null;
 }
 
 const isValue = (value: unknown) =>
@@ -153,6 +180,8 @@ interface Session {
   original: string;
   outline: string;
   outlineOffset: string;
+  caretColor: string;
+  caret: { color: string; side: CaretSide; composing: boolean };
   stop: () => void;
   report: () => void;
 }
@@ -212,6 +241,7 @@ function close(keep: boolean): { html: string | null; previous: string } | null 
   element.removeAttribute("contenteditable");
   element.style.outline = open.outline;
   element.style.outlineOffset = open.outlineOffset;
+  element.style.caretColor = open.caretColor;
   if (element.isConnected) {
     clearSelectionWithin(element);
     element.blur();
@@ -242,11 +272,8 @@ function placeCaret(element: Editable, at: Point | null): void {
   const doc = element.ownerDocument;
   const selection = doc.defaultView?.getSelection();
   if (!selection) return;
-  let range = at ? caretRangeAt(doc, at) : null;
-  if (!range || !element.contains(range.startContainer)) {
-    range = doc.createRange();
-    range.selectNodeContents(element);
-  }
+  const range = at ? caretRangeAt(doc, at) : null;
+  if (!range || !element.contains(range.startContainer)) return placeCaretAtEnd(element);
   range.collapse(false);
   selection.removeAllRanges();
   selection.addRange(range);
@@ -301,6 +328,44 @@ function listen(element: Editable, endInFrame: () => void, report: () => void): 
   };
 }
 
+function followCaret(element: Editable, open: Session): () => void {
+  const view = element.ownerDocument.defaultView;
+  const onKey = ({ key }: KeyboardEvent) => {
+    open.caret.side = caretSideAfterKey(key, open.caret.side);
+  };
+  const onPress = () => {
+    open.caret.side = "after";
+  };
+  const composing = (on: boolean) => () => {
+    open.caret.composing = on;
+    open.report();
+  };
+  const begin = composing(true);
+  const finish = composing(false);
+  element.addEventListener("keydown", onKey);
+  element.addEventListener("pointerdown", onPress);
+  element.addEventListener("input", open.report);
+  element.addEventListener("compositionstart", begin);
+  element.addEventListener("compositionend", finish);
+  view?.addEventListener("resize", open.report);
+  view?.addEventListener("scroll", open.report, true);
+  return () => {
+    element.removeEventListener("keydown", onKey);
+    element.removeEventListener("pointerdown", onPress);
+    element.removeEventListener("input", open.report);
+    element.removeEventListener("compositionstart", begin);
+    element.removeEventListener("compositionend", finish);
+    view?.removeEventListener("resize", open.report);
+    view?.removeEventListener("scroll", open.report, true);
+  };
+}
+
+function caretOf(open: Session): TextEditCaret | null {
+  const box = open.caret.composing ? null : caretBoxIn(open.element, open.caret.side);
+  const viewportWidth = open.element.ownerDocument.defaultView?.innerWidth || 1;
+  return box && { ...box, color: open.caret.color, viewportWidth };
+}
+
 function start(
   handle: EditingElementHandle,
   caret: Point | null,
@@ -318,11 +383,14 @@ function start(
     original: editable.innerHTML,
     outline: editable.style.outline,
     outlineOffset: editable.style.outlineOffset,
+    caretColor: editable.style.caretColor,
+    caret: { color: caretColorOf(editable), side: "after", composing: false },
     stop: () => {},
     report: () => {
       if (session !== open) return;
       const selection = selectionIn(editable);
-      port.postMessage({ v: version, event: "text-edit-selection", handle, selection });
+      const caret = caretOf(open);
+      port.postMessage({ v: version, event: "text-edit-selection", handle, selection, caret });
     },
   };
   const endInFrame = () => {
@@ -330,12 +398,19 @@ function start(
     const ended = close(true);
     if (ended) port.postMessage({ v: version, event: "text-edit-ended", handle, ...ended });
   };
-  open.stop = listen(editable, endInFrame, open.report);
+  const stopListening = listen(editable, endInFrame, open.report);
+  const stopFollowing = followCaret(editable, open);
+  open.stop = () => {
+    stopListening();
+    stopFollowing();
+  };
   session = open;
   openTextEdits.add(editable);
   editable.style.outline = EDITING_OUTLINE;
   editable.style.outlineOffset = "2px";
   editable.setAttribute("contenteditable", "true");
+  // Studio draws the caret at screen size: the browser's own would shrink below a pixel in the scaled preview.
+  editable.style.caretColor = "transparent";
   editable.focus({ preventScroll: true });
   placeCaret(editable, caret);
   return { applied: true, html: null, previous: open.original };

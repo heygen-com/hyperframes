@@ -71,7 +71,7 @@ export function InlineTextToolbar({
     if (!sealed || !iframe) return;
     return previewEditingClient(sealed.iframe).onTextEditSelection((event) => {
       if (event.handle !== sealed.handle) return;
-      setPlacement(event.selection && placeAt(frameColoursOnly(event.selection), iframe));
+      setPlacement(event.selection && placeAt(event.selection, iframe));
     });
   }, [session, iframe]);
 
@@ -268,20 +268,6 @@ function placeOverSelection(
     },
     iframe,
   );
-}
-
-/** A sealed frame's colours reach Studio's styles only when they are colours, so nothing else, like a `url()`, can. */
-function frameColoursOnly(selection: TextEditSelection): TextEditSelection {
-  const colour = (value: string | null | undefined) =>
-    value && CSS.supports("color", value) ? value : null;
-  const { color, ...styles } = selection.styles;
-  const agreed = colour(color);
-  return {
-    ...selection,
-    styles: agreed ? { ...styles, color: agreed } : styles,
-    colours: selection.colours.filter((value) => colour(value) !== null),
-    painted: colour(selection.painted),
-  };
 }
 
 function placeAt(

@@ -611,6 +611,7 @@ const BROWSER_CONSOLE_BUFFER_SIZE = 200;
 const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
 const THROW_SITE_LOOKUP_MAX = 10;
+const QUERY_OR_FRAGMENT = /[?#].*$/s;
 
 function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
   session.browserConsoleBuffer.push(boundedPageText(text));
@@ -3231,7 +3232,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
   const servedScriptUrlDigests = new Set<string>();
-  const digest = (url: string) => createHash("sha1").update(url).digest("base64");
+  const digest = (url: string) =>
+    createHash("sha1").update(url.replace(QUERY_OR_FRAGMENT, "")).digest("base64");
   const projectScripts = { has: (url: string) => servedScriptUrlDigests.has(digest(url)) };
   page.on("response", (response) => {
     const status = response.status();
