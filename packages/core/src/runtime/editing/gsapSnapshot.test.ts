@@ -161,6 +161,19 @@ describe("gsapSnapshot", () => {
     expect(snapshot.globalTweens[0]!.vars).toMatchObject({ opacity: 0.5 });
   });
 
+  it("reads a film that sets an attribute, as a flickering grid does", async () => {
+    document.body.innerHTML = `<span id="cell"></span>`;
+    const tl = realGsap.timeline({ paused: true });
+    tl.set("#cell", { attr: { "data-b": 1 } }, 0.5);
+    tl.seek(1);
+    Object.assign(window, { gsap: realGsap, __timelines: { main: tl } });
+
+    const snapshot = await gsapSnapshot();
+
+    expect(snapshot.timelines[0]!.tweens).toHaveLength(1);
+    expect(document.getElementById("cell")!.getAttribute("data-b")).toBe("1");
+  });
+
   it("reads a real GSAP keyframes tween", async () => {
     document.body.innerHTML = `<div id="box"></div>`;
     const tl = realGsap.timeline({ paused: true });
