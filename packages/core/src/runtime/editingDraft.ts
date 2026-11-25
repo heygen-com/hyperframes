@@ -30,6 +30,7 @@ interface Before {
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
   gsapPosition?: { x: number; y: number };
+  drawnTranslate?: string;
   drewTransform?: boolean;
   propsSet?: string[];
   putMarkBack?: () => void;
@@ -134,23 +135,31 @@ export function movedTranslate(
 
 type DraftTranslate = NonNullable<Extract<EditingDraft, { translate: unknown }>["translate"]>;
 
+function writeDrawnTranslate(element: Styled, saved: Before, value: string): void {
+  element.style.setProperty("translate", value);
+  saved.drawnTranslate = element.style.getPropertyValue("translate");
+}
+
 function drawTranslate(element: Styled, offset: DraftTranslate): void {
   const saved = beforeOf(element);
   if (offset.route !== "gsap")
-    return void element.style.setProperty("translate", movedTranslate(saved.translate, offset));
+    return writeDrawnTranslate(element, saved, movedTranslate(saved.translate, offset));
   const gsap = frameGsap();
   const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
   saved.gsapPosition ??= { x: read("x"), y: read("y") };
-  element.style.setProperty("translate", "none");
+  writeDrawnTranslate(element, saved, "none");
   gsap?.set?.(element, { x: offset.x, y: offset.y });
 }
 
 export function rebaseDrawnPosition(element: Element, props: Record<string, unknown>): void {
-  const position = before.get(element)?.gsapPosition;
-  for (const axis of ["x", "y"] as const) {
-    const value = props[axis];
-    if (position && typeof value === "number" && Number.isFinite(value)) position[axis] = value;
-  }
+  const saved = before.get(element);
+  const moved = (["x", "y"] as const).filter((axis) => Number.isFinite(props[axis]));
+  if (!moved.length || !isStylableElement(element)) return;
+  if (!saved) element.style.setProperty("translate", "none");
+  for (const entry of saved?.inline ?? [])
+    if (entry[0] === "translate") [entry[1], entry[2]] = ["none", ""];
+  for (const axis of moved)
+    if (saved?.gsapPosition) saved.gsapPosition[axis] = props[axis] as number;
 }
 
 function restoreGsapPosition(element: Styled): void {
@@ -227,6 +236,18 @@ function clearProps(element: Styled, saved: Before): void {
   putLiveDraftsBack();
 }
 
+function settleTranslateUnderGsap(element: Styled): void {
+  restore(element, ["translate"]);
+  const under = getComputedStyle(element).getPropertyValue("translate");
+  if (under && under !== "none") element.style.setProperty("translate", "none");
+}
+
+function dropDrawnTranslate(element: Styled, saved: Before): void {
+  if (saved.gsapPosition !== undefined) return settleTranslateUnderGsap(element);
+  if (element.style.getPropertyValue("translate") === saved.drawnTranslate)
+    restore(element, ["translate"]);
+}
+
 function end(element: Styled, ending: EditingDraftEnd): boolean {
   const saved = before.get(element);
   if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return false;
@@ -237,7 +258,7 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
     restoreGsapPosition(element);
     restoreGsapRotation(element);
   }
-  if (ending.end === "keep-size") restore(element, ["translate"]);
+  if (ending.end === "keep-size") dropDrawnTranslate(element, saved);
   before.delete(element);
   return ending.end === "restore";
 }

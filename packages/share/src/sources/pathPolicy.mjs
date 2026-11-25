@@ -1,6 +1,7 @@
 // @ts-check
 // Validate source manifests against the bundled sync contract.
-import { isCredentialOrToolStatePath, isVcsOrSecretPath } from "@hyperframes/parsers/private-path";
+import { isPrivateSourcePath, privateSourceSpelling } from "./privateSource.mjs";
+export { isPrivateSourcePath };
 import { readContract } from "./contract.mjs";
 import {
   UNICODE_VERSION,
@@ -11,7 +12,7 @@ import {
   withoutIgnorable,
 } from "./unicode.mjs";
 
-const PATH_POLICY_VERSION = "portable-source-v11";
+const PATH_POLICY_VERSION = "portable-source-v12";
 
 /** @typedef {import("./types.js").PathRule} PathRule @typedef {import("./types.js").PolicyDocument} PolicyDocument */
 
@@ -109,10 +110,15 @@ const policy = () => (compiled ??= compile(readContract("path-policy.json")));
 /** Every segment replaced by its comparison key. @param {string} path */
 const foldedPath = (path) => path.split("/").map(comparisonKey).join("/");
 
+/** @param {{ pattern: RegExp, rule: PathRule }} entry @param {string} folded @param {string} path */
+const matches = ({ pattern, rule }, folded, path) =>
+  pattern.test(folded) ||
+  (rule.id === "private-source" && pattern.test(privateSourceSpelling(path)));
+
 /** The first rule matching a path's folded spelling. @param {string} path @returns {PathRule} */
 export function classifyPath(path) {
   const folded = foldedPath(path);
-  const found = policy().rules.find(({ pattern }) => pattern.test(folded));
+  const found = policy().rules.find((entry) => matches(entry, folded, path));
   if (!found) throw new Error("the path policy's catch-all rule did not match");
   return found.rule;
 }
@@ -169,7 +175,7 @@ export function validatePath(path, mode = "current") {
   if (root !== undefined && segments[0] !== root)
     throw new PathViolation("reserved_path_alias", path);
   const folded = keys.join("/");
-  const found = rules.find(({ pattern }) => pattern.test(folded));
+  const found = rules.find((entry) => matches(entry, folded, path));
   if (!found) throw new Error("the path policy's catch-all rule did not match");
   if (found.rule.server_action === "reject")
     throw new PathViolation("excluded_path", path, found.rule.id);
@@ -245,10 +251,6 @@ export function excludedFolder(dir) {
       return !(prefix.startsWith(`${folded}/`) || `${folded}/`.startsWith(prefix));
     });
 }
-
-/** Private names omitted locally even when the wire contract accepts them. @param {string} path */
-export const isPrivateSourcePath = (path) =>
-  isVcsOrSecretPath(path) || isCredentialOrToolStatePath(path);
 
 /** A stored manifest may contain paths that are no longer eligible for upload. @param {string} path */
 export function canUploadStoredPath(path) {
