@@ -8,12 +8,19 @@ const WARNINGS_TEXT_MAX_CHARS = 1_000_000;
 
 const CUT_NOTE_MAX_CHARS = 40;
 
-export function boundedPageText(text: string): string {
-  if (text.length <= PAGE_TEXT_MAX_CHARS) return text;
-  let end = PAGE_TEXT_MAX_CHARS - CUT_NOTE_MAX_CHARS;
+export function boundedPageText(text: string, maxChars = PAGE_TEXT_MAX_CHARS): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars - CUT_NOTE_MAX_CHARS;
   const high = text.charCodeAt(end - 1);
   if (high >= 0xd800 && high <= 0xdbff) end -= 1;
   return `${text.slice(0, end)}… (${text.length - end} more characters)`;
+}
+
+/** At most a few items, each cut short, so a message keeps room for its own guidance; details keep the full list. */
+export function listedInMessage(items: readonly string[]): string {
+  const named = items.slice(0, 3).map((item) => boundedPageText(item, 200));
+  const more = items.length > named.length ? ` and ${items.length - named.length} more` : "";
+  return `${named.join(", ")}${more}`;
 }
 
 function boundedWarningItem(item: unknown): unknown {

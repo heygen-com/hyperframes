@@ -178,7 +178,12 @@ describe("classifyPageError", () => {
       (listeners: typeof pageListeners) => (event: string, listener: (event: unknown) => void) =>
         listeners.set(event, listener);
     const client = { on: listen(runtimeListeners), send };
-    const page = { on: listen(pageListeners), createCDPSession: async () => client };
+    const frameUrl = { current: doc };
+    const page = {
+      on: listen(pageListeners),
+      createCDPSession: async () => client,
+      frames: () => [{ url: () => frameUrl.current }],
+    };
     const session = {
       page,
       serverUrl: server,
@@ -189,7 +194,7 @@ describe("classifyPageError", () => {
       subTimelineWaitMemo: memo,
     } as unknown as CaptureSession;
     await initializeSession(session).catch(() => {});
-    return { session, pageListeners, runtimeListeners };
+    return { session, pageListeners, runtimeListeners, frameUrl };
   }
 
   it("keeps browser diagnostics on stderr and in the session buffer", async () => {
@@ -386,6 +391,27 @@ describe("classifyPageError", () => {
     expect(Math.max(...lists.map((list) => list.length))).toBeLessThanOrEqual(50);
   });
 
+  // fails at 5c807e39: long pending ids came first, so the cut message lost the exception and the repair advice
+  it("keeps the exception and its repair advice in a timeline warning whose pending ids are long", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session = {
+      subTimelineWaitOutcome: "timeout",
+      pendingTimelineIds: Array.from({ length: 1_000 }, (_, n) => `${n}:${"p".repeat(2_000)}`),
+      scriptLoadFailures: [],
+      pageErrors: ["runtime-error:TypeError: boom"],
+      warnings: [],
+      browserConsoleBuffer: [],
+    } as unknown as CaptureSession;
+    recordSubTimelineWarning(session, 45_000);
+
+    const [warning] = session.warnings;
+    expect(warning?.message.length).toBeLessThanOrEqual(2_000);
+    expect(warning?.message).toContain("runtime-error:TypeError: boom");
+    expect(warning?.message).toContain("Fix the error");
+    expect(warning?.message).toContain("and 997 more");
+    expect(warning?.details?.pendingCompositionIds).toHaveLength(50);
+  });
+
   // fails without the fix: every distinct warning was kept, so a page could grow a render's memory without end
   it("keeps a fixed total of page text per render, and still each kind of warning", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -403,39 +429,38 @@ describe("classifyPageError", () => {
     );
   });
 
-  // fails at 50501bcb: past the cap a project script's throw was dropped; at 30537d4e a document's throw counted
-  it("past the served-script cap, still records a served script's throw and not the document's", async () => {
-    const { session, pageListeners, runtimeListeners } = await listenedSession();
-    const script = (n: number) => `${server}/s${n}.js`;
-    const long = `${server}/${"l".repeat(3_000)}.js`;
-    pageListeners.get("response")?.({
-      status: () => 200,
-      url: () => doc,
-      request: () => ({ resourceType: () => "document" }),
-    });
-    for (const url of [...Array.from({ length: 2_000 }, (_, n) => script(n)), long]) {
-      pageListeners.get("response")?.({
-        status: () => 200,
-        url: () => url,
-        request: () => ({ resourceType: () => "script" }),
-      });
-    }
-    for (const [n, url] of [
-      [0, script(0)],
-      [1_999, script(1_999)],
-      [-1, long],
-      [-2, doc],
-    ] as const) {
-      runtimeListeners.get("Runtime.exceptionThrown")?.({
-        exceptionDetails: thrown(`Error: from ${n}`, url, [url]),
-      });
-    }
-    expect(session.pageErrors).toEqual([
-      "runtime-error:Error: from 0",
-      "runtime-error:Error: from 1999",
-      "runtime-error:Error: from -1",
-    ]);
-  });
+  // fails at 50501bcb: past the cap a project script's throw was dropped; at 5c807e39 a long or moved document counted
+  it.each([doc, `${doc}#c`, `${server}/elsewhere/page?q=1`, `${server}/${"d".repeat(3_000)}.html`])(
+    "past the served-script cap, records a served script's throw and not one from the document at %s",
+    async (documentUrl) => {
+      const { session, pageListeners, runtimeListeners, frameUrl } = await listenedSession();
+      const script = (n: number) => `${server}/s${n}.js`;
+      const long = `${server}/${"l".repeat(3_000)}.js`;
+      for (const url of [...Array.from({ length: 2_000 }, (_, n) => script(n)), long]) {
+        pageListeners.get("response")?.({
+          status: () => 200,
+          url: () => url,
+          request: () => ({ resourceType: () => "script" }),
+        });
+      }
+      frameUrl.current = documentUrl;
+      for (const [n, url] of [
+        [0, script(0)],
+        [1_999, script(1_999)],
+        [-1, long],
+        [-2, documentUrl],
+      ] as const) {
+        runtimeListeners.get("Runtime.exceptionThrown")?.({
+          exceptionDetails: thrown(`Error: from ${n}`, url, [url]),
+        });
+      }
+      expect(session.pageErrors).toEqual([
+        "runtime-error:Error: from 0",
+        "runtime-error:Error: from 1999",
+        "runtime-error:Error: from -1",
+      ]);
+    },
+  );
 
   // fails at 50501bcb: each recycled session kept its own 1M characters, so a render's kept warnings grew per session
   it("keeps a fixed total of warning text across a render's sessions, and each kind once more", () => {

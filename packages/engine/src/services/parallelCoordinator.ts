@@ -1319,7 +1319,6 @@ export async function executeParallelCapture(
   });
   const onFailure = failureHandler.onFailure;
   const gate = hooks?.verifyFirstSession && createFirstSessionGate(hooks.verifyFirstSession);
-  // Each worker's summary is bounded as it finishes, so held summaries never grow with the worker count.
   const collected: CapturePerfSummary[] = [];
   const results = await launchWithinMemory(tasks, (task, onLoaded) =>
     executeWorkerTask(

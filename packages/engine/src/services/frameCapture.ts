@@ -77,6 +77,7 @@ import { openPage } from "./openPage.js";
 import {
   boundedPageText,
   keptWithinBudget,
+  listedInMessage,
   PAGE_LIST_MAX,
   PAGE_TEXT_MAX_CHARS,
   warningBudgetOf,
@@ -2610,7 +2611,7 @@ export class ImageMissingFromFrameError extends Error {
     readonly failedToLoad: boolean,
   ) {
     super(
-      `Frame ${frameIndex} shows ${sources.join(", ")}, which ${failedToLoad ? "failed to load" : "did not load in time"}, ` +
+      `Frame ${frameIndex} shows ${listedInMessage(sources)}, which ${failedToLoad ? "failed to load" : "did not load in time"}, ` +
         `so the render stopped rather than make a video missing it. ` +
         (failedToLoad
           ? `Check that the image exists and can be opened.`
@@ -2732,7 +2733,8 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
   const sources = [...session.scriptLoadFailures, ...session.pageErrors];
   const loadCauses = session.scriptLoadCauses ?? [];
   const pending = session.pendingTimelineIds ?? [];
-  const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
+  const pendingSuffix =
+    pending.length > 0 ? ` (still unregistered: ${listedInMessage(pending)})` : "";
   // The render page's gsap reads null until GSAP's script runs, so a too-early gsap.timeline() surfaces as this.
   const gsapNotLoaded = sources.some((s) =>
     /gsap is not defined|Cannot read properties of (?:null|undefined) \(reading '(?:timeline|registerPlugin)'\)/.test(
@@ -2748,7 +2750,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
         code: "script_error_isolated",
         message:
           `A composition script failed, so its animation was skipped and the render went on: ` +
-          `${isolated.map((c) => c.elementId ?? c.compositionId).join(", ")} (${sources.join(", ")}).`,
+          `${listedInMessage(isolated.map((c) => c.elementId ?? c.compositionId))} (${listedInMessage(sources)}).`,
         details: {
           sources,
           pendingCompositionIds: [...pending],
@@ -2764,11 +2766,11 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: threwThenTimedOut
         ? `A composition script threw before its timeline registered` +
-          `${pendingSuffix} (${sources.join(", ")}).${gsapNotLoaded} Fix the error; a composition animated by ` +
+          `${pendingSuffix} (${listedInMessage(sources)}).${gsapNotLoaded} Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
           ? `A sub-composition timeline script failed to load${scriptLoadCauseSuffix(loadCauses)} ` +
-            `(${sources.join(", ")})`
+            `(${listedInMessage(sources)})`
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -3118,10 +3120,10 @@ export function classifyPageError(
 
 // The render compiler names the composition's inline code.
 // Inline handlers report the document, which a widget can move.
-/** Set once the served-script set is full: any URL on the server then counts, except the documents it served. */
+/** Set once the served-script set is full: any URL on the server then counts, except a frame's current document. */
 interface ServedScriptFallback {
   prefix: string;
-  documents: ReadonlySet<string>;
+  isDocument: (url: string) => boolean;
 }
 
 function isOwnedScriptUrl(
@@ -3130,7 +3132,7 @@ function isOwnedScriptUrl(
   fallback?: ServedScriptFallback,
 ): boolean {
   if (url === undefined) return false;
-  if (fallback && url.startsWith(fallback.prefix) && !fallback.documents.has(url)) return true;
+  if (fallback && url.startsWith(fallback.prefix) && !fallback.isDocument(url)) return true;
   return projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL);
 }
 
@@ -3213,22 +3215,20 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
   const projectScripts = new Set<string>();
-  const servedDocuments = new Set<string>();
   let fallback: ServedScriptFallback | undefined;
+  const withoutFragment = (url: string) => url.split("#")[0];
+  const isDocument = (url: string) =>
+    page.frames().some((frame) => withoutFragment(frame.url()) === withoutFragment(url));
   page.on("response", (response) => {
     const status = response.status();
     const request = response.request();
     const isScript = request.resourceType() === "script";
     const responseUrl = response.url();
     if (status < 400) {
-      if (!responseUrl.startsWith(`${serverUrl}/`)) return;
-      const fits = responseUrl.length <= PAGE_TEXT_MAX_CHARS;
-      // ponytail: a document past PAGE_LIST_MAX is not excluded once the script fallback is on.
-      if (request.resourceType() === "document" && fits && servedDocuments.size < PAGE_LIST_MAX)
-        servedDocuments.add(responseUrl);
-      if (!isScript) return;
-      if (fits && projectScripts.size < SERVED_SCRIPTS_MAX) projectScripts.add(responseUrl);
-      else fallback = { prefix: `${serverUrl}/`, documents: servedDocuments };
+      if (!isScript || !responseUrl.startsWith(`${serverUrl}/`)) return;
+      if (projectScripts.size < SERVED_SCRIPTS_MAX && responseUrl.length <= PAGE_TEXT_MAX_CHARS)
+        projectScripts.add(responseUrl);
+      else fallback = { prefix: `${serverUrl}/`, isDocument };
       return;
     }
 
