@@ -107,8 +107,13 @@ describe("readPreviewElement", () => {
 
   it("refuses a description longer anywhere than the runtime ever sends one", () => {
     const value = "x".repeat(MAX_ELEMENT_VALUE);
-    const atLimit = described(1, { selector: value, id: value, attributes: [["src", value]] });
+    const atLimit = described(1, {
+      selector: `.${value.slice(1)}`,
+      attributes: [["src", value]],
+    });
     expect(readPreviewElement(atLimit)).toEqual(atLimit);
+    const idAtLimit = described(1, { selector: `#${value.slice(1)}`, id: value.slice(1) });
+    expect(readPreviewElement(idAtLimit)).toEqual(idAtLimit);
     const over = `${value}x`;
     const text = "y".repeat(MAX_ELEMENT_TEXT + 1);
     const many = Array.from({ length: MAX_ELEMENT_ENTRIES + 1 }, (_, i) => [`data-${i}`, ""]);
@@ -245,6 +250,45 @@ describe("element requests over an opaque frame's port", () => {
     ]);
     expect(answers).toEqual([null, null, null]);
     expect(Date.now() - started).toBeLessThan(AGENT_PROBE_MS + 500);
+  });
+});
+
+describe("the selector a description may carry", () => {
+  it("keeps the forms Studio builds for an element itself", () => {
+    for (const kept of [
+      described(1, { selector: "#title", id: "title" }),
+      described(1, { selector: "#\\31 st\\.hero", id: "1st.hero" }),
+      described(1, { selector: ".tile" }),
+      described(1, { selector: ".md\\:w-1\\/2" }),
+      described(1, { selector: '[data-composition-id="card__hf2"]' }),
+      described(1, { selector: '[data-hf-group="a \\"b\\" c"]' }),
+    ]) {
+      expect(readPreviewElement(kept)).toEqual(kept);
+    }
+  });
+
+  it("drops a description whose selector Studio would not have built", () => {
+    for (const forged of [
+      described(1, { selector: "script" }),
+      described(1, { selector: "body > script:nth-of-type(2)" }),
+      described(1, { selector: ".tile script" }),
+      described(1, { selector: ".tile, script" }),
+      described(1, { selector: ".tile.other" }),
+      described(1, { selector: '[data-composition-id="card"] script' }),
+      described(1, { selector: '[data-composition-id="card"], script' }),
+      described(1, { selector: '[src="app.js"]' }),
+      described(1, { selector: "*" }),
+      described(1, { selector: "" }),
+    ]) {
+      expect(readPreviewElement(forged)).toBeNull();
+    }
+  });
+
+  it("drops an id selector that names another element than the described id", () => {
+    expect(readPreviewElement(described(1, { selector: "#boot", id: "title" }))).toBeNull();
+    expect(readPreviewElement(described(1, { selector: "#boot" }))).toBeNull();
+    expect(readPreviewElement(described(1, { selector: "#title script", id: "title" }))).toBeNull();
+    expect(readPreviewElement(described(1, { selector: ".tile", id: "title" }))).toBeNull();
   });
 });
 

@@ -175,6 +175,22 @@ export function buildStableSelector(el: Element): string | undefined {
   return getPreferredClassSelector(el);
 }
 
+const ESCAPED_IDENTIFIER = String.raw`(?:[A-Za-z0-9_-]|[^\x00-\x7f]|\\[0-9a-f]{1,6} |\\[^0-9a-f\n\r\f])+`;
+const ESCAPED_STRING = String.raw`"(?:[^"\\\n\r\f]|\\\\|\\"|\\a |\\d |\\c )*"`;
+const CLASS_SELECTOR = new RegExp(`^\\.${ESCAPED_IDENTIFIER}$`);
+const ATTRIBUTE_SELECTOR = new RegExp(`^\\[data-(?:composition-id|hf-group)=${ESCAPED_STRING}\\]$`);
+
+/**
+ * Is `selector` one `buildStableSelector` could have made for an element whose id is `id`: that id,
+ * a composition id, a group, or one class. A selector from outside Studio is held to this before it
+ * is used, so it can only name an element the way Studio itself would.
+ */
+export function isStableSelector(selector: string, id: string | null): boolean {
+  if (selector.startsWith("#"))
+    return Boolean(id) && selector === `#${escapeCssIdentifier(id ?? "")}`;
+  return !id && (CLASS_SELECTOR.test(selector) || ATTRIBUTE_SELECTOR.test(selector));
+}
+
 export function getPreferredClassSelector(el: Element): string | undefined {
   const classes = Array.from(el.classList)
     .map((value) => value.trim())

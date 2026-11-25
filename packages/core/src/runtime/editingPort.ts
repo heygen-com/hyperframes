@@ -113,6 +113,7 @@ export {
   MAX_POINT_STACK,
   MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
+  isStableSelector,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
