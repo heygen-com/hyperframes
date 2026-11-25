@@ -97,7 +97,7 @@ describe("createTimingRecordFilter", () => {
     ).toBe(true);
   });
 
-  // fails without the fix: an observer callback delivered after its test's page was torn down threw on the missing global Node
+  // fails without the fix: an observer callback run after its page was torn down threw on the missing global Node
   it("judges an inserted element without the global Node, as a callback after its page is gone does", () => {
     mount();
     const records = recordsOf((root) => root.append(document.createElement("video")));
