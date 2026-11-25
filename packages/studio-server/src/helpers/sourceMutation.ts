@@ -8,8 +8,8 @@ import { escapeCssIdentifier } from "@hyperframes/core/compiler/selector-id-toke
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import {
-  EXCLUDED_TAGS,
   ensureHfIds,
+  isNonContentElement,
   mintHfId,
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
@@ -300,13 +300,9 @@ function stampNewChildIds(parent: Element): void {
   });
   for (const el of parent.querySelectorAll("*")) {
     if (el.getAttribute("data-hf-id")) continue;
-    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    if (isNonContentElement(el)) continue;
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
   }
-}
-
-function isNonContentElement(el: Element): boolean {
-  return EXCLUDED_TAGS.has(el.tagName.toLowerCase());
 }
 
 // fallow-ignore-next-line complexity

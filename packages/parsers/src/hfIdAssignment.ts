@@ -11,6 +11,9 @@ export const EXCLUDED_TAGS = new Set([
   "base",
 ]);
 
+export const isNonContentElement = (el: { tagName: string }): boolean =>
+  EXCLUDED_TAGS.has(el.tagName.toLowerCase());
+
 // 32-bit FNV-1a. Pure, deterministic, no crypto, no Math.random.
 function fnv1a(str: string): number {
   let h = 0x811c9dc5;
