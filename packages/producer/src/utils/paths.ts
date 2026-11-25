@@ -12,7 +12,7 @@ import {
 } from "node:path";
 import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { isSafePath } from "@hyperframes/core/safe-path";
+import { isPrivateFileUnder, isSafePath, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import {
   isCopiedOutsideFileType,
   isPrivateOutsideFile,
@@ -92,7 +92,11 @@ export function outsideAssetRefusal(
   path: string,
   policy: OutsideFilePolicy = {},
 ): LeftOutReason | null {
-  if (!linksOutside(projectDir, path)) return null;
+  if (!linksOutside(projectDir, path)) {
+    const privateByAnotherSpelling =
+      !isPathInside(path, projectDir) && isPrivateFileUnder(projectDir, path, isStudioPrivatePath);
+    return privateByAnotherSpelling ? "blocklisted" : null;
+  }
   if (isPrivateOutsideFile(projectDir, path)) return "blocklisted";
   const folder = statSync(path, { throwIfNoEntry: false })?.isDirectory();
   if (folder || isUploadedOutsideFileType(path)) return null;
