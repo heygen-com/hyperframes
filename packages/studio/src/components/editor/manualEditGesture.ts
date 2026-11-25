@@ -12,6 +12,7 @@ import { BOX_SIZE_STYLE_PROPS } from "./manualEditsDomPatches";
 
 let studioManualEditGestureId = 0;
 const detachedStandInGestures = new WeakMap<Document, Set<Element>>();
+const liveGestures = new WeakMap<Element, Array<{ token: string; at: string | null }>>();
 
 export type StudioGestureDraws = "move" | "resize" | "rotate" | "edit";
 const MOVE_DRAWS = ["translate", STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP];
@@ -29,20 +30,34 @@ export function beginStudioManualEditGesture(
 ): string {
   studioManualEditGestureId += 1;
   const token = `gesture-${studioManualEditGestureId}:${draws}`;
-  element.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, token);
+  const gesture = { token, at: at ? JSON.stringify(at) : null };
+  liveGestures.set(element, [...(liveGestures.get(element) ?? []), gesture]);
+  markGesture(element, gesture);
   if (!element.isConnected) {
     const doc = element.ownerDocument;
     detachedStandInGestures.set(doc, (detachedStandInGestures.get(doc) ?? new Set()).add(element));
   }
-  if (at) element.setAttribute(STUDIO_EDIT_MOMENT_ATTR, JSON.stringify(at));
-  else element.removeAttribute(STUDIO_EDIT_MOMENT_ATTR);
   return token;
+}
+
+function markGesture(element: HTMLElement, { token, at }: { token: string; at: string | null }) {
+  element.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, token);
+  if (at) element.setAttribute(STUDIO_EDIT_MOMENT_ATTR, at);
+  else element.removeAttribute(STUDIO_EDIT_MOMENT_ATTR);
 }
 
 const GESTURE_ENDED = "hf-manual-edit-gesture-ended";
 
 export function endStudioManualEditGesture(element: HTMLElement, token?: string): void {
-  if (token && element.getAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) !== token) return;
+  const live = liveGestures.get(element) ?? [];
+  if (token && !live.some((gesture) => gesture.token === token)) return;
+  const rest = token ? live.filter((gesture) => gesture.token !== token) : [];
+  if (rest.length) {
+    liveGestures.set(element, rest);
+    markGesture(element, rest[rest.length - 1]!);
+    return;
+  }
+  liveGestures.delete(element);
   if (!element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   element.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
   element.removeAttribute(STUDIO_EDIT_MOMENT_ATTR);
