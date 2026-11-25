@@ -55,6 +55,8 @@ export interface TimelineElement {
   playbackStartAttr?: "media-start" | "playback-start";
   playbackRate?: number;
   sourceDuration?: number;
+  /** The media element has `loop`, so it plays on past the end of its source. */
+  loop?: boolean;
   volume?: number;
   /** A video with sound to mix (`data-has-audio`, or unmuted without it); `muted` silences it. */
   hasAudio?: boolean;
