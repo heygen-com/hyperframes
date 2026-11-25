@@ -6,6 +6,8 @@ import {
   type EditingPortClient,
   type EditingRequestKind,
   type EditingResult,
+  type TextEditSelection,
+  type TextEditSelectionEvent,
 } from "@hyperframes/core/runtime/editing-port";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
 import { wellFormedClips } from "./manifestClips";
@@ -32,6 +34,9 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
   const open = clients.get(iframe);
   if (open) return open.client;
   const client = createEditingPortClient({ iframe });
+  const onTextEditSelection = client.onTextEditSelection;
+  client.onTextEditSelection = (listener) =>
+    onTextEditSelection((event) => listener(frameColoursOnly(event)));
   const retire = () => {
     iframe.removeEventListener("load", retire, beforeOtherLoadHandlers);
     client.dispose();
@@ -40,6 +45,29 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
   clients.set(iframe, { client, retire });
   iframe.addEventListener("load", retire, { ...beforeOtherLoadHandlers, once: true });
   return client;
+}
+
+function frameColoursOnly(event: TextEditSelectionEvent): TextEditSelectionEvent {
+  const { selection, caret } = event;
+  return {
+    ...event,
+    caret: caret && colourOnly(caret.color) ? caret : null,
+    selection: selection && selectionColoursOnly(selection),
+  };
+}
+
+const colourOnly = (value: string | null | undefined) =>
+  value && CSS.supports("color", value) ? value : null;
+
+function selectionColoursOnly(selection: TextEditSelection): TextEditSelection {
+  const { color, ...styles } = selection.styles;
+  const agreed = colourOnly(color);
+  return {
+    ...selection,
+    styles: agreed ? { ...styles, color: agreed } : styles,
+    colours: selection.colours.filter((value) => colourOnly(value) !== null),
+    painted: colourOnly(selection.painted),
+  };
 }
 
 export function samePreviewLoad(iframe: HTMLIFrameElement): () => boolean {
