@@ -51,15 +51,21 @@ describe("remove-elements", () => {
     expect(document.getElementById(id)).toBeNull();
   });
 
-  it("counts each clip once, though a batch names it twice or names its child too", () => {
-    document.body.innerHTML = `
+  it.each([
+    ["the clip first", ["p", "c", "p"]],
+    ["its child first", ["c", "p"]],
+  ])(
+    "counts each clip once, though a batch names it twice or names its child too (%s)",
+    (_, ids) => {
+      document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-start="0" data-duration="8">
         <div id="p" data-start="0"><div id="c" data-start="1"></div></div>
       </div>`;
-    const [p, c] = ["p", "c"].map((id) => handleFor(document.getElementById(id)!));
-    expect(removeElements({ handles: [p!, c!, p!] })).toEqual({ removed: 1 });
-    expect(document.getElementById("p")).toBeNull();
-  });
+      const handles = ids.map((id) => handleFor(document.getElementById(id)!));
+      expect(removeElements({ handles })).toEqual({ removed: 1 });
+      expect(document.getElementById("p")).toBeNull();
+    },
+  );
 
   it("removes every kind of clip the runtime's timeline lists, all of them in one mixed delete", () => {
     kinds();
