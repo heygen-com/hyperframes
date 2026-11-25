@@ -77,3 +77,15 @@ it("draws nothing for another session's caret, and takes the caret away when the
   posted(HANDLE, null);
   expect(drawn()).toBeNull();
 });
+
+it("keeps a sealed frame's caret inside the preview's box, wherever the frame says it stands", () => {
+  sealedCaret();
+  posted(HANDLE, { ...CARET, left: 1e6, top: -1e6, height: 1e7 });
+  const caret = drawn();
+  expect(caret).not.toBeNull();
+  expect(caret!.style.left).toBe(`${100 + 400 - CARET_PX}px`);
+  expect(caret!.style.top).toBe("50px");
+  expect(caret!.style.height).toBe("225px");
+  posted(HANDLE, { ...CARET, top: 1e6 });
+  expect(drawn()).toBeNull();
+});

@@ -94,7 +94,9 @@ export function InlineTextCaret({
     if (!sealed || !iframe) return;
     let last: TextEditCaret | null = null;
     const update = () =>
-      setPlacement(last && onScreen(last, last.color, iframe, last.viewportWidth));
+      setPlacement(
+        last && insideFrame(onScreen(last, last.color, iframe, last.viewportWidth), iframe),
+      );
     const stopListening = previewEditingClient(sealed.iframe).onTextEditSelection((event) => {
       if (event.handle !== sealed.handle) return;
       last = event.caret;
@@ -144,6 +146,16 @@ function onScreen(
     height: caret.height * scale,
     color,
   };
+}
+
+/** A sealed frame says where its caret stands; Studio draws it only inside the frame's box. */
+function insideFrame(placement: CaretPlacement, iframe: HTMLIFrameElement): CaretPlacement | null {
+  const box = iframe.getBoundingClientRect();
+  const top = Math.max(placement.top, box.top);
+  const bottom = Math.min(placement.top + placement.height, box.top + box.height);
+  if (bottom <= top) return null;
+  const left = Math.min(Math.max(placement.left, box.left), box.left + box.width - CARET_PX);
+  return { ...placement, left, top, height: bottom - top };
 }
 
 /** The preview moves by transforms (the player's scale, a pan or zoom of the stage) that fire no event: the frame's
