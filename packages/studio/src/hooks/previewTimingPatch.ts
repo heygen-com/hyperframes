@@ -89,8 +89,13 @@ export function removeIframeTimelineElements(
     inOrder(iframe, () => removeSealedElements(iframe, elements, activeCompositionPath));
     return;
   }
-  for (const element of elements)
-    findTimelineElementInIframe(iframe, element, activeCompositionPath)?.remove();
+  let removed = false;
+  for (const element of elements) {
+    const el = findTimelineElementInIframe(iframe, element, activeCompositionPath);
+    el?.remove();
+    removed ||= el !== null;
+  }
+  if (removed) void syncContentDuration(iframe, iframe?.contentDocument ?? null);
 }
 
 async function removeSealedElements(
@@ -104,11 +109,12 @@ async function removeSealedElements(
   const found = await Promise.all(
     elements.map((element) => findSealedTimelineElement(iframe, element, activeCompositionPath)),
   );
-  const replaced = !sameLoad() || shownPreviewFrame(given) !== iframe;
-  if (replaced && !retried && found.includes(undefined))
+  if (!retried && (!sameLoad() || shownPreviewFrame(given) !== iframe))
     return removeSealedElements(given, elements, activeCompositionPath, true);
   const handles = found.flatMap((element) => (element ? [element.handle] : []));
-  if (handles.length) await previewRequest(iframe, "remove-elements", { handles });
+  if (!handles.length) return;
+  await previewRequest(iframe, "remove-elements", { handles });
+  await syncContentDuration(iframe, await previewDocumentCopy(iframe));
 }
 
 function patchIframeRootDuration(iframe: HTMLIFrameElement | null, contentEnd: number): void {
