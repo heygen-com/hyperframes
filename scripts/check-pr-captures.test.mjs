@@ -1,14 +1,17 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 
 import {
   blocking,
   isFork,
   attachCommand,
+  captureSources,
+  checkSource,
   downloadAsset,
   duplicateCaptureProblems,
   LimitExceeded,
@@ -36,7 +39,7 @@ test("a missing After heading fails and names it", () => {
     files: [studio("packages/player/src/a.ts")],
   });
   assert.equal(ok, false);
-  assert.deepEqual(problems, ['the body has no "After" heading']);
+  assert.deepEqual(problems, ['no "After" heading']);
 });
 
 test("a heading with no media fails and names the section", () => {
@@ -731,4 +734,98 @@ test("the CLI passes on notices alone", () => {
   );
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /not compared/);
+});
+
+const NO_VISIBLE = "## No visible change\nOnly a helper moved.\n";
+function commentsFile(pages) {
+  const path = join(mkdtempSync(join(tmpdir(), "captures-comments-")), "comments.json");
+  writeFileSync(path, JSON.stringify(pages));
+  return path;
+}
+const comment = (login, body, id = 1) => ({
+  user: { login },
+  body,
+  html_url: `https://github.com/a/r/pull/1#issuecomment-${id}`,
+});
+const withComments = (pages, author = "author") => ({
+  HEAD_REPO: "a/r",
+  BASE_REPO: "a/r",
+  PR_AUTHOR: author,
+  PR_COMMENTS_FILE: commentsFile(pages),
+});
+
+test("the section in a comment by the PR's author passes, read across pages", () => {
+  const pages = [[comment("someone", "thanks", 1)], [comment("author", NO_VISIBLE, 2)]];
+  const result = runCli(withComments(pages), "Moves a helper.");
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /issuecomment-2/);
+});
+
+test("the same section in anyone else's comment fails", () => {
+  const result = runCli(withComments([[comment("reviewer", NO_VISIBLE)]]), "Moves a helper.");
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /nobody else's comment counts/);
+});
+
+test("the body alone still passes with an empty comment list", () => {
+  const result = runCli(withComments([[]]), NO_VISIBLE);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /the PR description/);
+});
+
+test("a comment counts on its own: Before in the body and After in a comment is no section", async () => {
+  const sources = captureSources(
+    `## Before\n[a](${OLD})\n`,
+    [comment("author", `## After\n[b](${NEW})\n`)],
+    "author",
+  );
+  const files = [studio("packages/studio/src/a.tsx")];
+  for (const { text } of sources)
+    assert.equal((await checkSource(text, files, fromMap, {})).ok, false);
+});
+
+test("an author comment with good captures passes over a body whose captures are duplicates", async () => {
+  const sources = captureSources(
+    bodyWith(`[a](${OLD})`, `[b](${sameBytes})`),
+    [comment("author", bodyWith(`[a](${OLD})`, `[b](${NEW})`))],
+    "author",
+  );
+  const files = [studio("packages/studio/src/a.tsx")];
+  const verdicts = [];
+  for (const { text } of sources) verdicts.push((await checkSource(text, files, fromMap, {})).ok);
+  assert.deepEqual(verdicts, [false, true]);
+});
+
+test("no author means no comment counts", () => {
+  assert.deepEqual(
+    captureSources("b", [comment("x", NO_VISIBLE)], undefined).map((source) => source.label),
+    ["the PR description"],
+  );
+});
+
+test("an unreadable comments file fails closed", () => {
+  const result = runCli(
+    { PR_COMMENTS_FILE: join(tmpdir(), "no-such-dir-xyz", "c.json") },
+    NO_VISIBLE,
+  );
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+  assert.match(result.stderr, /cannot read the PR comments/);
+});
+
+test("a comment event never runs the PR's code and re-checks only for the PR's own author", () => {
+  const { jobs, on } = parse(
+    readFileSync(new URL("../.github/workflows/pr-captures.yml", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(on.issue_comment.types, ["created", "edited", "deleted"]);
+  assert.match(jobs.captures.if, /github\.event_name != 'issue_comment'/);
+  assert.match(jobs.recheck.if, /github\.event\.issue\.pull_request/);
+  assert.match(
+    jobs.recheck.if,
+    /github\.event\.comment\.user\.login == github\.event\.issue\.user\.login/,
+  );
+  assert.ok(
+    jobs.recheck.steps.every((step) => !step.uses),
+    "recheck checks nothing out",
+  );
+  assert.deepEqual(jobs.recheck.permissions, { actions: "write", "pull-requests": "read" });
 });
