@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, expect, it } from "vitest";
+import { afterAll, beforeEach, expect, it } from "vitest";
 
 const cliEntry = join(dirname(fileURLToPath(import.meta.url)), "cli.ts");
 const home = mkdtempSync(join(tmpdir(), "hf-unknown-command-"));
@@ -17,6 +17,7 @@ interface Run {
 
 // A CLI start can take seconds on a busy Windows runner; several at once stalled the whole job there.
 const starts = { running: 0, peak: 0 };
+beforeEach(() => void (starts.peak = 0));
 
 function runCli(args: string[], cwd = home): Promise<Run> {
   return new Promise((resolve, reject) => {
