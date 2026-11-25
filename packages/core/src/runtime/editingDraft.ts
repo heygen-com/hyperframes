@@ -30,6 +30,7 @@ interface Before {
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
   gsapPosition?: { x: number; y: number };
+  drawnTranslate?: string;
   drewTransform?: boolean;
   propsSet?: string[];
   putMarkBack?: () => void;
@@ -134,14 +135,19 @@ export function movedTranslate(
 
 type DraftTranslate = NonNullable<Extract<EditingDraft, { translate: unknown }>["translate"]>;
 
+function writeDrawnTranslate(element: Styled, saved: Before, value: string): void {
+  element.style.setProperty("translate", value);
+  saved.drawnTranslate = element.style.getPropertyValue("translate");
+}
+
 function drawTranslate(element: Styled, offset: DraftTranslate): void {
   const saved = beforeOf(element);
   if (offset.route !== "gsap")
-    return void element.style.setProperty("translate", movedTranslate(saved.translate, offset));
+    return writeDrawnTranslate(element, saved, movedTranslate(saved.translate, offset));
   const gsap = frameGsap();
   const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
   saved.gsapPosition ??= { x: read("x"), y: read("y") };
-  element.style.setProperty("translate", "none");
+  writeDrawnTranslate(element, saved, "none");
   gsap?.set?.(element, { x: offset.x, y: offset.y });
 }
 
@@ -230,10 +236,9 @@ function clearProps(element: Styled, saved: Before): void {
   putLiveDraftsBack();
 }
 
-function dropTranslateUnderGsapPosition(element: Styled): void {
-  restore(element, ["translate"]);
-  const under = getComputedStyle(element).getPropertyValue("translate");
-  if (frameGsap() && under && under !== "none") element.style.setProperty("translate", "none");
+function dropTranslateNoOneWroteSince(element: Styled, saved: Before): void {
+  if (element.style.getPropertyValue("translate") === saved.drawnTranslate)
+    restore(element, ["translate"]);
 }
 
 function end(element: Styled, ending: EditingDraftEnd): boolean {
@@ -246,7 +251,7 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
     restoreGsapPosition(element);
     restoreGsapRotation(element);
   }
-  if (ending.end === "keep-size") dropTranslateUnderGsapPosition(element);
+  if (ending.end === "keep-size") dropTranslateNoOneWroteSince(element, saved);
   before.delete(element);
   return ending.end === "restore";
 }

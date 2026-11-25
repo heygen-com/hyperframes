@@ -237,6 +237,20 @@ describe("moves through GSAP", () => {
     expect([getComputedStyle(element).translate, element.style.width]).toEqual(["none", "80px"]);
   });
 
+  it("puts back a CSS-placed layer's translate when GSAP is loaded but never moved it", () => {
+    document.head.innerHTML = "<style>#card { translate: 40px 30px }</style>";
+    const { element, handle } = card("width: 50px");
+    (window as { gsap?: unknown }).gsap = { getProperty: () => 0, set: () => {} };
+    drawDrafts([{ handle, translate: { x: -50, y: -33 }, size: { width: 80, height: 40 } }]);
+
+    drawDrafts([{ handle, end: "keep-size" }]);
+
+    expect([getComputedStyle(element).translate, element.style.width]).toEqual([
+      "40px 30px",
+      "80px",
+    ]);
+  });
+
   // fails without the fix: restore compared GSAP's x/y with the drawn one, so a later set to that same value, or one
   // within 0.001 px, read as the draft's own and was thrown back to where the drag began.
   it.each([
