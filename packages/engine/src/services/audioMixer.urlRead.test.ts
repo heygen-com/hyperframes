@@ -40,11 +40,7 @@ async function streamBody(
 // open-ended answer fills the socket buffers before the client closes it and the count would measure
 // buffering, which varies with load, not what the client read.
 const SERVED_RANGE_BYTES = 1_048_576;
-function serve(
-  body: Buffer,
-  cut?: { at: number; fired?: boolean },
-  served?: { bytes: number },
-): Promise<Server> {
+function serve(body: Buffer, cut?: { at: number }, served?: { bytes: number }): Promise<Server> {
   const server = createServer(async (req, res) => {
     const start = Number(/bytes=(\d+)-/.exec(req.headers.range ?? "")?.[1] ?? 0);
     const end = served ? Math.min(body.length, start + SERVED_RANGE_BYTES) : body.length;
@@ -55,7 +51,6 @@ function serve(
       "Content-Type": "audio/wav",
     });
     if (cut === undefined || start >= cut.at) return streamBody(res, body, start, end, served);
-    cut.fired = true;
     res.write(body.subarray(start, cut.at), () => res.destroy());
   });
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
@@ -145,7 +140,7 @@ describe.skipIf(!HAS_FFMPEG)("audio cut from a cloud-held file's URL", { timeout
 
   it("fails the track when the read is cut mid-span, instead of padding it with silence", async () => {
     // The clip reads source seconds 2 to 12; the link fails at second 6.
-    const cut = { at: 6 * BYTES_PER_SECOND, fired: false };
+    const cut = { at: 6 * BYTES_PER_SECOND };
     server = await serve(makeVoice(), cut);
 
     const result = await mixFromUrl();
@@ -160,7 +155,7 @@ describe.skipIf(!HAS_FFMPEG)("audio cut from a cloud-held file's URL", { timeout
         retryable: true,
       }),
     ]);
-    expect(cut.fired).toBe(true);
+    expect(result.failures?.[0]?.detail).toContain(`Stream ends prematurely at ${cut.at}`);
   });
 
   it("mixes a video whose audio track ends before its picture", async () => {
