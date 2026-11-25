@@ -177,7 +177,7 @@ describe("computeVideoFrameCoverage", () => {
     expect(() => assertVideoFrameCoverage(reports, 0.95)).not.toThrow();
   });
 
-  // fails without the fix: the error named only the frame counts, so a field failure said nothing of the source's shape.
+  // fails without the fix: the error named only frame counts, so a field failure said nothing of the source's shape.
   it("names the clip's source in the error's first sentence, so a cut report still says what the video was", () => {
     const videos = [makeVideo({ id: "rec-end", start: 0, end: 34 / 30, mediaStart: 2.5 })];
     const extracted = [makeExtracted("rec-end", 21, { fps: 60, durationSeconds: 4, isVFR: true })];
