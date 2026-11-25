@@ -35,16 +35,15 @@ function escapeTextOnWrite(): void {
   }
 }
 
-export function parseHTML(
-  ...args: Parameters<typeof linkedomParseHTML>
-): ReturnType<typeof linkedomParseHTML> {
+// Typed with the DOM's own types: published declarations that name linkedom's fail a strict consumer.
+export function parseHTML(html: string, globals?: unknown): Window & typeof globalThis {
   escapeTextOnWrite();
-  return linkedomParseHTML(...args);
+  return linkedomParseHTML(html, globals);
 }
 
-export class DOMParser extends LinkedomDOMParser {
+export const DOMParser = class extends LinkedomDOMParser {
   constructor() {
     super();
     escapeTextOnWrite();
   }
-}
+} as unknown as { new (): globalThis.DOMParser };
