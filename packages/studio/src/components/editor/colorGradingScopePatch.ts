@@ -6,7 +6,13 @@ import {
 
 const MEDIA_TAG_RE = /<\s*(video|img)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
 const TAG_NAME_RE = /^<\s*\w+/;
-const NEXT_ATTRIBUTE_RE = /[\s/]*([^\s/>][^\s/>=]*)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/y;
+const HTML_SPACE = "\\t\\n\\f\\r ";
+const NEXT_ATTRIBUTE_RE = new RegExp(
+  `[${HTML_SPACE}/]*([^${HTML_SPACE}/>][^${HTML_SPACE}/>=]*)` +
+    `(?:[${HTML_SPACE}]*=[${HTML_SPACE}]*(?:"[^"]*"|'[^']*'|[^${HTML_SPACE}>]+))?`,
+  "y",
+);
+const SEPARATES_ATTRIBUTES = new RegExp(`[${HTML_SPACE}/>]`);
 const IGNORED_HTML_RANGE_RE = /<!--[\s\S]*?-->|<(script|style)\b[\s\S]*?<\/\1\s*>/gi;
 
 interface TextRange {
@@ -36,29 +42,31 @@ function escapeHtmlAttribute(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function colorGradingAttributeSpans(tag: string): TextRange[] {
-  const spans: TextRange[] = [];
-  NEXT_ATTRIBUTE_RE.lastIndex = TAG_NAME_RE.exec(tag)?.[0].length ?? 0;
+function readAttributes(tag: string): { gradingSpans: TextRange[]; end: number } {
+  const gradingSpans: TextRange[] = [];
+  let end = TAG_NAME_RE.exec(tag)?.[0].length ?? 0;
+  NEXT_ATTRIBUTE_RE.lastIndex = end;
   let match: RegExpExecArray | null;
   while ((match = NEXT_ATTRIBUTE_RE.exec(tag)) !== null && match[0] !== "") {
+    end = match.index + match[0].length;
     if (match[1]?.toLowerCase() === "data-color-grading") {
-      spans.push({ start: match.index, end: match.index + match[0].length });
+      gradingSpans.push({ start: match.index, end });
     }
   }
-  return spans;
+  return { gradingSpans, end };
 }
 
 const keepsNextAttributeApart = (tag: string, end: number): string =>
-  end < tag.length && !/[\s/>]/.test(tag.charAt(end)) ? " " : "";
+  end < tag.length && !SEPARATES_ATTRIBUTES.test(tag.charAt(end)) ? " " : "";
 
 function patchMediaTag(tag: string, value: string | null): string {
   const nextAttr = value ? ` data-color-grading="${escapeHtmlAttribute(value)}"` : "";
-  const spans = colorGradingAttributeSpans(tag);
-  if (spans.length === 0) {
-    return nextAttr ? tag.replace(/\s*\/?>$/, (end) => `${nextAttr}${end}`) : tag;
+  const { gradingSpans, end } = readAttributes(tag);
+  if (gradingSpans.length === 0) {
+    return nextAttr ? tag.slice(0, end) + nextAttr + tag.slice(end) : tag;
   }
   let patched = tag;
-  for (const [index, span] of [...spans.entries()].reverse()) {
+  for (const [index, span] of [...gradingSpans.entries()].reverse()) {
     const written = index === 0 ? nextAttr : "";
     patched =
       patched.slice(0, span.start) +

@@ -184,6 +184,23 @@ describe("patchMediaColorGradingInHtml with other ways to write the attribute", 
     expect(patchMediaColorGradingInHtml(before, null).html).toBe(`<video src=clip.mp4?t=1>`);
   });
 
+  it.each([
+    [
+      "a no-break space, which HTML does not treat as a separator",
+      "<img src=x\u00a0data-color-grading>",
+    ],
+    ["a slash that ends an unquoted value", "<img src=images/>"],
+    ["a self-closing slash after a quoted value", '<img src="a.png" />'],
+  ])("keeps the source whole past %s", (_, before) => {
+    const lastValueEnd =
+      before.lastIndexOf(" />") === -1 ? before.length - 1 : before.lastIndexOf(" />");
+    const written = ' data-color-grading="{&quot;preset&quot;:&quot;mono-clean&quot;}"';
+    expect(patchMediaColorGradingInHtml(before, '{"preset":"mono-clean"}').html).toBe(
+      before.slice(0, lastValueEnd) + written + before.slice(lastValueEnd),
+    );
+    expect(patchMediaColorGradingInHtml(before, null).html).toBe(before);
+  });
+
   it("writes the first of two grading attributes and removes the second", () => {
     const before = `<video data-color-grading="a" src="c" data-color-grading="b">`;
     const value = '{"preset":"mono-clean"}';
