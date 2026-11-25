@@ -11,6 +11,7 @@ import {
   MAX_SNAPSHOT_TEXT,
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
+  TARGET_FIELDS,
 } from "./gsapSnapshotLimits";
 
 export type SnapshotValue =
@@ -163,6 +164,7 @@ class SnapshotReader {
   tween(live: LiveTween): GsapSnapshotTween {
     if (++this.tweens > MAX_SNAPSHOT_TWEENS) throw new SnapshotBound("tweens");
     const elements = (live.targets?.() ?? []).filter(isElementNode);
+    this.spend(elements.length);
     const vars = this.plain(live.vars, 0);
     const parsed = parsedChannels(live._pt);
     const parts = (live.timeline?.getChildren?.() ?? []).map((part) => this.tween(part));
@@ -175,6 +177,7 @@ class SnapshotReader {
     if (this.channels.size > MAX_SNAPSHOT_TARGETS) throw new SnapshotBound("targets");
     return [...this.channels].map(([element, channels]) => {
       if (channels.size > MAX_SNAPSHOT_CHANNELS) throw new SnapshotBound("channels");
+      this.spend(TARGET_FIELDS + channels.size);
       const values: Record<string, number> = {};
       const read = (channel: string) => {
         const value = Number(gsap?.getProperty?.(element, channel));
@@ -207,8 +210,12 @@ class SnapshotReader {
     for (const { p } of [...parsed, ...parts.flatMap((part) => part.parsed)]) channels.add(p);
   }
 
+  private spend(fields: number) {
+    if ((this.fields += fields) > MAX_SNAPSHOT_FIELDS) throw new SnapshotBound("fields");
+  }
+
   private plain(value: unknown, depth: number): SnapshotValue | undefined {
-    if (++this.fields > MAX_SNAPSHOT_FIELDS) throw new SnapshotBound("tween fields");
+    this.spend(1);
     if (Array.isArray(value)) return this.list(value, depth);
     if (isLiteralRecord(value)) return this.record(value, depth);
     return scalar(value);

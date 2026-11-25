@@ -148,6 +148,7 @@ export {
   MAX_SNAPSHOT_TEXT,
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
+  TARGET_FIELDS,
 } from "./editing/gsapSnapshotLimits";
 export {
   compositionPoint,

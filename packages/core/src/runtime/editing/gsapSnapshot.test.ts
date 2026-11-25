@@ -3,7 +3,7 @@ import { gsap as realGsap } from "gsap";
 import { handleFor } from "../editingHandles";
 import { gestureStart } from "../editingGestureStart";
 import { gsapSnapshot } from "./gsapSnapshot";
-import { MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshotLimits";
+import { MAX_SNAPSHOT_FIELDS, MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshotLimits";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -73,6 +73,15 @@ describe("gsapSnapshot", () => {
     const tween = { targets: () => [], vars: {}, startTime: () => 0, duration: () => 1 };
     frame(Array.from({ length: MAX_SNAPSHOT_TWEENS + 1 }, () => tween));
     await expect(gsapSnapshot()).rejects.toThrow(/bound on tweens/);
+  });
+
+  it("charges each target to the field bound, so a frame cannot pass it in targets", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const box = document.getElementById("box")!;
+    // The vars alone are 3 fields under the bound; the target's handle and fields pass it.
+    const vars = { a: Array.from({ length: MAX_SNAPSHOT_FIELDS - 5 }, () => 1) };
+    frame([{ targets: () => [box], vars, startTime: () => 0, duration: () => 1 }]);
+    await expect(gsapSnapshot()).rejects.toThrow(/bound on fields/);
   });
 
   it("refuses a tween value past the text bound", async () => {
