@@ -11,9 +11,9 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 <Update
   label="HyperFrames v0.9.95"
   description="Released - 2026-11-25"
-  tags={["Release", "Media Use", "Studio", "Engine"]}
+  tags={["Release", "Core", "Studio", "Studio Server"]}
 >
-Studio opens a project without waiting on a slow drive, and a sealed preview keeps its timeline and selection box after a reload. A file's markup can no longer choose where edits are written, and ffmpeg reads project media from an empty folder.
+Studio opens a project without waiting on a slow drive, and a sealed preview keeps its timeline and selection box after a reload. Edits are written only to the file Studio mounted and only to HTML, and a file's markup can no longer steer them.
 
 ## Features
 
@@ -21,6 +21,9 @@ Studio opens a project without waiting on a slow drive, and a sealed preview kee
 
 ## Fixes
 
+- **Core:** Strip file marks inside templates and refuse markup a browser reads differently ([81869faaa7](https://github.com/heygen-com/hyperframes/commit/81869faaa769c3a1f720ac6adcf59d3201a58046), [#8845](https://github.com/heygen-com/hyperframes/pull/8845)).
+- **Studio:** An edit goes to the file a host was mounted from, never one its markup names ([9dc416ad50](https://github.com/heygen-com/hyperframes/commit/9dc416ad50f958a9fa5454b14bbebb1094911a0e), [#8844](https://github.com/heygen-com/hyperframes/pull/8844)).
+- **Studio Server:** Element and animation edits take an HTML file only ([92d0210a17](https://github.com/heygen-com/hyperframes/commit/92d0210a174390913958dde9ab50242a75065fc2), [#8843](https://github.com/heygen-com/hyperframes/pull/8843)).
 - **Media Use:** A music job puts its track at the name only when complete, and leaves the earlier one until then ([5dd0ee9eff](https://github.com/heygen-com/hyperframes/commit/5dd0ee9eff5b9656a84f6617b2cf65a93181448e), [#8841](https://github.com/heygen-com/hyperframes/pull/8841)).
 - **Studio:** A file is a composition only when a browser would build an element carrying data-composition-id ([d494f25c7b](https://github.com/heygen-com/hyperframes/commit/d494f25c7b3048de45c38767503d94ebe34d2970), [#8831](https://github.com/heygen-com/hyperframes/pull/8831)).
 - **Media Use:** Audio scripts replace the file at a name and leave a link's target alone ([4c0d6148a3](https://github.com/heygen-com/hyperframes/commit/4c0d6148a317bab266aec23168a48273e33989b8), [#8830](https://github.com/heygen-com/hyperframes/pull/8830)).
