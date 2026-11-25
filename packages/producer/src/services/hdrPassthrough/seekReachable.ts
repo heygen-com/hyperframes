@@ -25,7 +25,12 @@
  * - nothing plays on GSAP's global timeline outside the registered
  *   timelines, and nothing paused there holds a callback (a `delayedCall`):
  *   it would run on GSAP's own clock, which capture's out-of-order seeks do
- *   not share with the layered path.
+ *   not share with the layered path;
+ * - no tween writes `scroll-behavior` (a key or a string value naming it,
+ *   at any depth the walk reads, `css`, `attr` and `startAt` included): a
+ *   seek that sets it to `smooth`, writes `scrollTop` and sets it back
+ *   leaves a scroll the browser animates and no smooth value for any probe
+ *   to read (`scrollBehaviorWrites`, declined as `overlay_unsupported`).
  * It returns the element targets and the keys their tweens write, for the
  * fingerprint to read back (`overlayFingerprint.ts`).
  */
@@ -83,6 +88,15 @@ const MAX_NODES = 20000;
 /** How deep tween vars are followed. */
 const MAX_VARS_DEPTH = 4;
 
+/**
+ * A tween vars key or string value that can write `scroll-behavior`: the
+ * property in any spelling GSAP resolves (`scrollBehavior`,
+ * `"scroll-behavior"`, a vendor prefix) or a string that names it (an
+ * `attr: { style }`). A CSS escape in a string could spell it too, so any
+ * backslash counts; a false positive only declines.
+ */
+const SCROLL_BEHAVIOR_WRITE = /scroll-?behavior|\\/i;
+
 /** An element a tween writes, as a main-world handle, with the vars keys of its tweens. */
 export interface ElementTarget {
   objectId: string;
@@ -92,6 +106,8 @@ export interface ElementTarget {
 export interface SeekReachable {
   /** Why the passthrough must decline, first finding first; empty when nothing does. */
   findings: string[];
+  /** Tween vars that write `scroll-behavior`, by label; empty when none does. */
+  scrollBehaviorWrites: string[];
   /** Every element a registered tween targets. */
   elementTargets: ElementTarget[];
 }
@@ -114,6 +130,7 @@ function isPlatformAccessor(kind: "get" | "set", key: string, remote: RemoteObje
 
 class Walk {
   readonly findings: string[] = [];
+  readonly scrollBehaviorWrites: string[] = [];
   private visited = 0;
 
   constructor(
@@ -187,6 +204,10 @@ class Walk {
         continue;
       }
       const value = entry.value;
+      const text = value?.type === "string" ? String(value.value) : "";
+      if (SCROLL_BEHAVIOR_WRITE.test(entry.name) || SCROLL_BEHAVIOR_WRITE.test(text)) {
+        if (this.scrollBehaviorWrites.length < 5) this.scrollBehaviorWrites.push(at);
+      }
       if (isCallable(value)) await this.callable(at, value);
       else if (
         isObject(value) &&
@@ -668,5 +689,9 @@ export async function readSeekReachable(
   } catch (error) {
     walk.note(`page state unreadable (${error instanceof Error ? error.message : String(error)})`);
   }
-  return { findings: walk.findings, elementTargets };
+  return {
+    findings: walk.findings,
+    scrollBehaviorWrites: walk.scrollBehaviorWrites,
+    elementTargets,
+  };
 }

@@ -11,6 +11,7 @@ import {
   type PassthroughDeps,
 } from "./index.js";
 import { EncoderPacingError } from "./encoderPacing.js";
+import { BrowserClockError } from "./overlayFingerprint.js";
 import type { HdrPassthroughInput, HdrPassthroughResult, PassthroughEligibility } from "./types.js";
 
 interface LogCall {
@@ -251,4 +252,19 @@ describe("attemptHdrPassthrough pages", () => {
       h.calls.some((c) => c.message.startsWith("[Render] HDR passthrough off: ffmpeg_unsupported")),
     ).toBe(true);
   });
+
+  it.each([
+    ["overlay_unsupported", "scroll-behavior other than auto on <div#roll>"],
+    [
+      "overlay_non_gsap_animation",
+      "running animation at a probe: CSSTransition(opacity) on <div#t>",
+    ],
+  ] as const)(
+    "declines with %s when a probe finds motion on the browser's clock",
+    async (reason, detail) => {
+      const h = harness({ runThrows: new BrowserClockError(reason, detail) });
+      const outcome = await attemptHdrPassthrough(h.input, h.deps);
+      expect(outcome).toMatchObject({ kind: "fallback", reason, detail });
+    },
+  );
 });

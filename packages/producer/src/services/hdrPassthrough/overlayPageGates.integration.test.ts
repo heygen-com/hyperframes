@@ -316,6 +316,62 @@ describe("the overlay page gates in Chrome", { timeout: 60_000 }, () => {
     expect(await content()).toMatchObject({ reason });
   });
 
+  // A GSAP write of `scrollTop` on a smooth scroller starts a scroll the browser animates after the
+  // probe: smooth declared anywhere declines on content, a tween that writes it on state (a seek
+  // could set it, write the offset and set it back, leaving no smooth value for a probe to read).
+  it.each<[string, PageSpec]>([
+    [
+      "a stylesheet's smooth scroll-behavior",
+      {
+        style: "#roll { overflow: hidden; height: 20px; scroll-behavior: smooth; }",
+        body: '<div id="roll"><div style="height: 200px">rows</div></div>',
+      },
+    ],
+    [
+      "an inline smooth scroll-behavior",
+      { body: '<div style="overflow: hidden; scroll-behavior: smooth">rows</div>' },
+    ],
+    ["a smooth scroll-behavior on the root", { style: "html { scroll-behavior: smooth; }" }],
+  ])("declines %s", async (_name, next) => {
+    await load(next);
+    expect(await state()).toBeNull();
+    expect(await content()).toMatchObject({
+      reason: "overlay_unsupported",
+      detail: expect.stringContaining("scroll-behavior: smooth"),
+    });
+  });
+
+  it.each([
+    ["a camelCase key", '{ scrollBehavior: "smooth" }'],
+    ["a kebab-case key", '{ "scroll-behavior": "smooth" }'],
+    ["a css object", '{ css: { scrollBehavior: "smooth" } }'],
+    ["a style attribute", '{ attr: { style: "scroll-behavior: smooth" } }'],
+    ["a style attribute with a CSS escape", '{ attr: { style: "scroll-beh\\\\61vior: smooth" } }'],
+  ])("declines a GSAP tween that writes scroll-behavior through %s", async (_name, vars) => {
+    await load({
+      body:
+        '<div id="roll" style="overflow: hidden; height: 20px"><div style="height: 200px">rows</div></div>' +
+        inline(
+          `window.__timelines.main.set("#roll", ${vars}, 1.2); window.__timelines.main.set("#roll", { scrollTop: 100 }, 1.2); window.__timelines.main.set("#roll", { scrollBehavior: "auto" }, 1.2);`,
+        ),
+    });
+    expect(await state()).toMatchObject({
+      reason: "overlay_unsupported",
+      detail: expect.stringContaining("writes scroll-behavior"),
+    });
+  });
+
+  it("passes a GSAP scrollTop write on a scroller without smooth scrolling", async () => {
+    await load({
+      style: "html { scroll-behavior: auto; }",
+      body:
+        '<div id="roll" style="overflow: hidden; height: 20px; scroll-snap-type: y mandatory"><div style="height: 200px">rows</div></div>' +
+        inline('window.__timelines.main.set("#roll", { scrollTop: 100 }, 1.2);'),
+    });
+    expect(await state()).toBeNull();
+    expect(await content()).toBeNull();
+  });
+
   // Every way an element or pseudo-element can paint an image, in the document and in an open
   // shadow root, as a URL or as data: the image is judged by its bytes, not by where it is used.
   const DATA_GIF = `data:image/gif;base64,${gif(3).toString("base64")}`;

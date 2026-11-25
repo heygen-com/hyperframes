@@ -34,6 +34,17 @@
  *     the page's CSS names, the selection, custom highlights, `designMode`;
  *   - the element stacking the layered compositor groups layers from.
  *
+ * What a probe reads is what the screenshot paints only when nothing moves
+ * on the browser's own clock between the two. A probe throws
+ * `BrowserClockError` (a decline) when any element's computed
+ * `scroll-behavior` is not `auto` (a GSAP write of `scrollTop` there starts
+ * a scroll the browser animates after the read) or any animation is running
+ * (a CSS transition a seek's style change started runs on the wall clock, so
+ * the capture's screenshot and the layered render's catch it at different
+ * points; one that ends before any later gate looks went unseen). Scroll
+ * snapping and scroll anchoring move the offset synchronously, on the write
+ * or the layout the read forces, so the read already holds them.
+ *
  * The passthrough video and its injected replacement frame are left out:
  * their per-frame changes are the video, not the overlay, and the capture
  * masks them. Anything unaccounted for can only make two equal overlays look
@@ -69,17 +80,25 @@ import type { ElementTarget } from "./seekReachable.js";
 /**
  * Runs in the DevTools isolated world (`isolatedWorld.ts`), where page script
  * cannot replace anything it calls; must stay self-contained. Returns the
- * text the caller hashes in Node. Read-only: never seeks, never writes the
- * DOM. `targets` are the elements GSAP tweens write, each followed by the
- * vars keys of its tweens (`seekReachable.ts`).
+ * text the caller hashes in Node, the elements whose computed
+ * `scroll-behavior` is not `auto` and the running animations
+ * (`BrowserClockError`). Read-only: never
+ * seeks, never writes the DOM. `targets` are the elements GSAP tweens
+ * write, each followed by the vars keys of its tweens (`seekReachable.ts`).
  */
 // fallow-ignore-next-line complexity
 export function collectOverlayPageFingerprint(
   videoId: string,
   mediaIdAttribute: string,
   targets: ReadonlyArray<Element | string[]> = [],
-): string {
+): OverlayPageFingerprint {
   const parts: string[] = [];
+  const describe = (el: Element) => `<${el.localName}${el.id ? `#${el.id}` : ""}>`;
+  // Elements whose computed `scroll-behavior` is not `auto`: a write of their scroll offset starts
+  // a scroll the browser animates after the probe has read the old offset.
+  const smoothScrollers: string[] = [];
+  // Animations playing on the browser's clock (a CSS transition a seek started).
+  const runningAnimations: string[] = [];
   const skipped = new Set<Node>();
   const escaped = videoId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const video =
@@ -121,6 +140,11 @@ export function collectOverlayPageFingerprint(
     const el = node as Element;
     nodeIndex.set(el, nodeIndex.size);
     elements.push(el);
+    // "" is an element outside the flat tree (a shadow host's unslotted child): it has no box.
+    const scrollBehavior = getComputedStyle(el).scrollBehavior;
+    if (scrollBehavior !== "auto" && scrollBehavior !== "" && smoothScrollers.length < 5) {
+      smoothScrollers.push(describe(el));
+    }
     parts.push(`<${el.tagName}`);
     const inline = (el as Element & { style?: CSSStyleDeclaration }).style;
     for (const attr of Array.from(el.attributes)) {
@@ -180,6 +204,14 @@ export function collectOverlayPageFingerprint(
     try {
       for (const animation of scope.getAnimations()) {
         parts.push(`@anim ${animation.playState},${String(animation.currentTime)}`);
+        if (animation.playState === "running" && runningAnimations.length < 5) {
+          const target = (animation.effect as KeyframeEffect | null)?.target;
+          const property = (animation as Animation & { transitionProperty?: string })
+            .transitionProperty;
+          runningAnimations.push(
+            `${animation.constructor.name}${property ? `(${property})` : ""} on ${target ? describe(target) : "no element"}`,
+          );
+        }
       }
     } catch {
       // Unreadable animations cannot be proven equal: make this probe unique.
@@ -306,7 +338,37 @@ export function collectOverlayPageFingerprint(
       }
     }
   }
-  return parts.join("\n");
+  return { text: parts.join("\n"), smoothScrollers, runningAnimations };
+}
+
+/** What `collectOverlayPageFingerprint` reads: the text to hash, and what moves on its own. */
+export interface OverlayPageFingerprint {
+  text: string;
+  smoothScrollers: string[];
+  runningAnimations: string[];
+}
+
+/**
+ * Thrown by `readOverlayFingerprint` on a probe where something moves on the
+ * browser's own clock, with no page code, after the probe has read it:
+ *
+ * - an element whose computed `scroll-behavior` is not `auto`
+ *   (`overlay_unsupported`): a GSAP `set()` of `scrollTop` there starts a
+ *   smooth scroll, so the probe reads the old offset, the frame's
+ *   fingerprint equals the frame before it, and the layered render's
+ *   screenshot, taken later, shows the new one;
+ * - a running animation (`overlay_non_gsap_animation`): a CSS transition a
+ *   seek's style change started, which the capture's screenshot and the
+ *   layered render's catch at different points of the wall clock.
+ */
+export class BrowserClockError extends Error {
+  constructor(
+    readonly reason: "overlay_unsupported" | "overlay_non_gsap_animation",
+    readonly detail: string,
+  ) {
+    super(`hdrPassthrough: ${detail}`);
+    this.name = "BrowserClockError";
+  }
 }
 
 /**
@@ -367,17 +429,35 @@ export async function readOverlayFingerprint(
   stacking: ElementStackingInfo[],
 ): Promise<string> {
   const targets = await targetHandles.get(session.page);
-  const text = await callIsolated<string>(
+  const read = await callIsolated<OverlayPageFingerprint>(
     session.page,
-    collectOverlayPageFingerprint as (...args: never[]) => string,
+    collectOverlayPageFingerprint as (...args: never[]) => OverlayPageFingerprint,
     [
       { value: videoId },
       { value: MEDIA_RENDER_ID_ATTR },
       targets ? { objectId: targets } : { value: [] },
     ],
   );
-  if (typeof text !== "string") throw new Error("hdrPassthrough: the fingerprint returned no text");
-  return overlayFingerprintKey(text, stackingFingerprint(stacking, videoId));
+  if (
+    typeof read?.text !== "string" ||
+    !Array.isArray(read.smoothScrollers) ||
+    !Array.isArray(read.runningAnimations)
+  ) {
+    throw new Error("hdrPassthrough: the fingerprint returned no text");
+  }
+  if (read.smoothScrollers.length > 0) {
+    throw new BrowserClockError(
+      "overlay_unsupported",
+      `scroll-behavior other than auto on ${read.smoothScrollers.join(", ")} (the browser animates its scroll)`,
+    );
+  }
+  if (read.runningAnimations.length > 0) {
+    throw new BrowserClockError(
+      "overlay_non_gsap_animation",
+      `running animation at a probe: ${read.runningAnimations.join(", ")} (it plays on the wall clock)`,
+    );
+  }
+  return overlayFingerprintKey(read.text, stackingFingerprint(stacking, videoId));
 }
 
 /** The part of a `DOMSnapshot.captureSnapshot` result `findBlindSpotsInSnapshot` reads. */

@@ -13,6 +13,9 @@ import {
   collectOverlayPageFingerprint,
   findBlindSpotsInSnapshot,
   findOwnClockElementsInSnapshot,
+  type OverlayPageFingerprint,
+  readOverlayFingerprint,
+  BrowserClockError,
 } from "./overlayFingerprint.js";
 
 type PageFingerprint = string;
@@ -39,8 +42,8 @@ const PAGE = `<!doctype html>
 </body>
 </html>`;
 
-/** The fingerprint text, collected where the page cannot reach (the isolated world). */
-async function fingerprint(page: Page): Promise<PageFingerprint> {
+/** What the collector reads, where the page cannot reach (the isolated world). */
+function collect(page: Page) {
   return evaluateIsolated(
     page as never,
     collectOverlayPageFingerprint,
@@ -48,6 +51,11 @@ async function fingerprint(page: Page): Promise<PageFingerprint> {
     MEDIA_RENDER_ID_ATTR,
     [],
   );
+}
+
+/** The fingerprint text. */
+async function fingerprint(page: Page): Promise<PageFingerprint> {
+  return (await collect(page)).text;
 }
 
 describe("collectOverlayPageFingerprint in Chrome", () => {
@@ -81,6 +89,119 @@ describe("collectOverlayPageFingerprint in Chrome", () => {
   it("is stable for an unchanged page", async () => {
     const first = await fingerprint(page);
     expect(await fingerprint(page)).toEqual(first);
+  });
+
+  // A GSAP `set()` of `scrollTop` on such an element starts a scroll the browser animates after
+  // the probe read the old offset: the probe names it, and `readOverlayFingerprint` declines.
+  it.each<[string, () => void, string]>([
+    [
+      "a stylesheet rule",
+      () =>
+        (document.getElementById("sheet") as HTMLStyleElement).sheet!.insertRule(
+          "#list{scroll-behavior:smooth}",
+          1,
+        ),
+      "<div#list>",
+    ],
+    [
+      "an inline style",
+      () => document.getElementById("list")!.style.setProperty("scroll-behavior", "smooth"),
+      "<div#list>",
+    ],
+    [
+      "the root (the viewport's scroll)",
+      () => document.documentElement.style.setProperty("scroll-behavior", "smooth"),
+      "<html>",
+    ],
+    [
+      "an element in an open shadow root",
+      () => {
+        const host = document.getElementById("cue")!.attachShadow({ mode: "open" });
+        host.innerHTML = '<div id="inner" style="scroll-behavior: smooth">x</div>';
+      },
+      "<div#inner>",
+    ],
+  ])("names a computed smooth scroll-behavior from %s", async (_name, change, element) => {
+    expect((await collect(page)).smoothScrollers).toEqual([]);
+    await page.evaluate(change);
+    expect((await collect(page)).smoothScrollers).toEqual([element]);
+  });
+
+  it("throws BrowserClockError from the probe while any element scrolls smoothly", async () => {
+    const probe = () => readOverlayFingerprint({ page } as never, "video", []);
+    expect(await probe()).toMatch(/^[0-9a-f]{64}$/);
+    await page.evaluate(() =>
+      document.getElementById("list")!.style.setProperty("scroll-behavior", "smooth"),
+    );
+    await expect(probe()).rejects.toMatchObject({
+      name: "BrowserClockError",
+      reason: "overlay_unsupported",
+    });
+  });
+
+  // A style change a seek makes starts a CSS transition that runs on the wall clock; the probe
+  // right after it sees it running, however soon it ends.
+  it("names a running CSS transition a style change started, and the probe declines", async () => {
+    const probe = () => readOverlayFingerprint({ page } as never, "video", []);
+    await page.evaluate(() => {
+      const cue = document.getElementById("cue")!;
+      cue.style.setProperty("transition", "opacity 0.2s linear");
+      void getComputedStyle(cue).opacity;
+    });
+    expect((await collect(page)).runningAnimations).toEqual([]);
+    expect(await probe()).toMatch(/^[0-9a-f]{64}$/);
+    await page.evaluate(() => document.getElementById("cue")!.style.setProperty("opacity", "0.5"));
+    expect((await collect(page)).runningAnimations).toEqual([
+      "CSSTransition(opacity) on <div#cue>",
+    ]);
+    await expect(probe()).rejects.toBeInstanceOf(BrowserClockError);
+    await page.waitForFunction(() => document.getAnimations().length === 0);
+    expect((await collect(page)).runningAnimations).toEqual([]);
+  });
+
+  it("passes a paused animation, which follows the seek", async () => {
+    await page.evaluate(() =>
+      document.getElementById("cue")!.style.setProperty("animation", "pulse 1s linear paused"),
+    );
+    expect((await collect(page)).runningAnimations).toEqual([]);
+  });
+
+  it("reads a smooth scroll's write as not yet applied, so the probe declines", async () => {
+    const offsets = await page.evaluate(() => {
+      const list = document.getElementById("list")!;
+      list.style.setProperty("scroll-behavior", "smooth");
+      list.scrollTop = 100;
+      const read = list.scrollTop;
+      return [read, list.scrollTop];
+    });
+    // Within the task that wrote it, the offset is still the old one; the browser moves it later.
+    expect(offsets).toEqual([0, 0]);
+    expect((await collect(page)).smoothScrollers).toEqual(["<div#list>"]);
+    await page.waitForFunction(() => document.getElementById("list")!.scrollTop === 100);
+  });
+
+  it("reads snapping and scroll anchoring as soon as the write or layout happens", async () => {
+    const offsets = await page.evaluate(() => {
+      const rows = (n: number, height: number, style: string) =>
+        Array.from({ length: n }, (_, i) => `<div style="height:${height}px;${style}">${i}</div>`);
+      document
+        .getElementById("root")!
+        .insertAdjacentHTML(
+          "beforeend",
+          `<div id="snap" style="overflow:hidden;height:20px;scroll-snap-type:y mandatory">${rows(12, 15, "scroll-snap-align:start").join("")}</div>` +
+            `<div id="anchor" style="overflow:hidden;height:20px">${rows(12, 40, "").join("")}</div>`,
+        );
+      const snap = document.getElementById("snap")!;
+      snap.scrollTop = 50;
+      const snapped = snap.scrollTop;
+      const anchor = document.getElementById("anchor")!;
+      anchor.scrollTop = 80;
+      void anchor.offsetHeight;
+      (anchor.firstElementChild as HTMLElement).style.height = "70px";
+      return [snapped, anchor.scrollTop];
+    });
+    expect(offsets).toEqual([45, 110]);
+    expect((await collect(page)).smoothScrollers).toEqual([]);
   });
 
   it.each<[string, () => void]>([
@@ -304,12 +425,14 @@ describe("collectOverlayPageFingerprint in Chrome", () => {
       { objectId: adopted as string },
       { value: ["scrollTop"] },
     ] as never);
-    const read = () =>
-      callIsolated<string>(page as never, collectOverlayPageFingerprint as never, [
-        { value: "video" },
-        { value: MEDIA_RENDER_ID_ATTR },
-        { objectId: targets },
-      ]);
+    const read = async () =>
+      (
+        await callIsolated<OverlayPageFingerprint>(
+          page as never,
+          collectOverlayPageFingerprint as never,
+          [{ value: "video" }, { value: MEDIA_RENDER_ID_ATTR }, { objectId: targets }],
+        )
+      ).text;
     const before = await read();
     await page.evaluate(() => {
       (

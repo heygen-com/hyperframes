@@ -131,6 +131,12 @@ describe("findUnsupportedCssText", () => {
     ["video::cue{color:red}", "::cue"],
     ["::view-transition-old(root){animation:none}", "::view-transition-old"],
     [".x{background:paint(ripple)}", "a paint() worklet image"],
+    ["#roll { overflow: hidden; scroll-behavior: smooth; }", "scroll-behavior: smooth"],
+    ["html{scroll-behavior:smooth!important}", "scroll-behavior: smooth"],
+    ["scroll-behavior:smooth", "scroll-behavior: smooth"],
+    ["@media (min-width:1px){html{ SCROLL-BEHAVIOR : Smooth }}", "scroll-behavior: smooth"],
+    ["#roll{scroll-behavior:var(--sb)}", "scroll-behavior: var(--sb)"],
+    ["#roll{scroll-behavior:inherit}", "scroll-behavior: inherit"],
   ])("declines %s", (css, finding) => {
     expect(findUnsupportedCssText(css)).toContain(finding);
   });
@@ -139,6 +145,14 @@ describe("findUnsupportedCssText", () => {
     expect(
       findUnsupportedCssText(
         ".cap::before{content:'>'} li::marker{color:red} ::selection{color:#fff} .p:hover{x:1} ::-webkit-scrollbar{display:none} .x{background:url(a.png)} .y{width:calc(1px + 2px)}",
+      ),
+    ).toBeNull();
+  });
+
+  it("accepts scroll-behavior: auto, other scroll properties and custom properties", () => {
+    expect(
+      findUnsupportedCssText(
+        "html{scroll-behavior:auto} .r{scroll-behavior: AUTO !important; scroll-snap-type: y mandatory; overflow-anchor: auto} .s{--scroll-behavior: smooth}\nscroll-behavior:auto\ncolor:red",
       ),
     ).toBeNull();
   });

@@ -430,6 +430,9 @@ describe("INELIGIBLE_CASES", () => {
       "shadow-root-gif",
       "shadow-root-video",
       "paint-worklet",
+      "smooth-scroll",
+      "smooth-scroll-toggle",
+      "css-transition-set",
       "svg-prefixed-smil",
       "svg-reference-css",
       "svg-comment-css",
@@ -453,11 +456,30 @@ describe("INELIGIBLE_CASES", () => {
       "tostring-painter",
       "scroll-clamp",
       "lazy-decode-popover",
+      "snap-anchor-scroll",
       "pause-timer",
       "pause-mark",
       "compile-timer",
     ]);
     for (const c of takes) expect(c.wallClock).toBeUndefined();
+  });
+
+  it("scrolls a smooth scroller with GSAP, and toggles smooth only inside the seek that scrolls", () => {
+    const find = (name: string) => INELIGIBLE_CASES.find((c) => c.name === name)!;
+    const smooth = find("smooth-scroll");
+    expect(smooth.reason).toBe("overlay_unsupported");
+    expect(smooth.composition.headHtml).toContain("scroll-behavior: smooth");
+    expect(smooth.composition.timelineScript).toContain("scrollTop: 240");
+    const toggle = find("smooth-scroll-toggle");
+    expect(toggle.reason).toBe("overlay_unsupported");
+    expect(toggle.composition.headHtml).not.toContain("scroll-behavior");
+    expect(toggle.composition.timelineScript).toContain(
+      'tl.set("#roll", { scrollBehavior: "smooth" }, 1.2); tl.set("#roll", { scrollTop: 240 }, 1.2); tl.set("#roll", { scrollBehavior: "auto" }, 1.2);',
+    );
+    expect(find("snap-anchor-scroll").composition.headHtml).toContain("scroll-snap-type");
+    const fade = find("css-transition-set");
+    expect(fade.reason).toBe("overlay_non_gsap_animation");
+    expect(fade.composition.headHtml).toContain("transition: opacity 0.5s");
   });
 
   it("names javascript: URL cases like DevTools evaluations, encoded so the setter survives", () => {

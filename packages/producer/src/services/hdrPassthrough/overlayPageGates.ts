@@ -125,6 +125,12 @@ async function readPageState(
         `${reachable.findings.length} page callback(s) or GSAP state the passthrough cannot use: ${reachable.findings.slice(0, 3).join("; ")}`,
       );
     }
+    if (reachable.scrollBehaviorWrites.length > 0) {
+      return {
+        reason: "overlay_unsupported",
+        detail: `a GSAP tween writes scroll-behavior (the browser animates the scroll): ${reachable.scrollBehaviorWrites.join(", ")}`,
+      };
+    }
     setFingerprintTargets(page, reachable.elementTargets);
     return null;
   } catch (error) {

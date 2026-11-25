@@ -21,7 +21,10 @@
  *   shadow roots and `@import`s, read in the isolated world, plus the text of
  *   every stylesheet the page loaded): pseudo-elements from a short list of
  *   static ones (no `::scroll-button()`, `::picker-icon`, `::checkmark`,
- *   `::scroll-marker`, `::cue`, view transitions), and no `paint()`;
+ *   `::scroll-marker`, `::cue`, view transitions), no `paint()`, and no
+ *   `scroll-behavior` but `auto` (a smooth scroll moves on the browser's
+ *   clock after the seek that started it; the fingerprint also reads every
+ *   element's computed value on every probe, `overlayFingerprint.ts`);
  * - images (`recordImageResources`): every image the page loads, whoever
  *   references it and however (an element, a pseudo-element, a mask, a
  *   `data:` or `blob:` URL), is read from the network record and decoded
@@ -144,10 +147,17 @@ const ACCEPTED_PSEUDO_ELEMENTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * A `scroll-behavior` declaration and its value. Any value but `auto` (`smooth`, a `var()`,
+ * `inherit`) lets a GSAP write of `scrollTop` start a scroll the browser animates on its own clock:
+ * the probe right after the seek still reads the old offset, a later screenshot shows the new one.
+ */
+const SCROLL_BEHAVIOR_DECLARATION = /(^|[^\w-])scroll-behavior\s*:\s*([^;}!\r\n]*)/gi;
+
+/**
  * What in CSS text declines the passthrough, or null: a pseudo-element
- * outside the accepted list (`::name`, either case), or a `paint()` image.
- * Reads the text as written, comments and strings included: a false
- * positive only declines.
+ * outside the accepted list (`::name`, either case), a `paint()` image, or
+ * a `scroll-behavior` other than `auto`. Reads the text as written,
+ * comments and strings included: a false positive only declines.
  */
 export function findUnsupportedCssText(css: string): string | null {
   const found = new Set<string>();
@@ -156,6 +166,10 @@ export function findUnsupportedCssText(css: string): string | null {
     if (!ACCEPTED_PSEUDO_ELEMENTS.has(name)) found.add(`::${name}`);
   }
   if (/(^|[^\w-])paint\(/i.test(css)) found.add("a paint() worklet image");
+  for (const match of css.matchAll(SCROLL_BEHAVIOR_DECLARATION)) {
+    const value = (match[2] ?? "").trim().toLowerCase();
+    if (value !== "auto") found.add(`scroll-behavior: ${value} (the browser animates the scroll)`);
+  }
   return found.size > 0 ? [...found].slice(0, 5).join(", ") : null;
 }
 

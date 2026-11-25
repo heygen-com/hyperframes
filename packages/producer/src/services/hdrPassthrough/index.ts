@@ -34,6 +34,7 @@ import {
   captureOverlayStates,
 } from "./overlayCapture.js";
 import { releaseIsolated } from "./isolatedWorld.js";
+import { BrowserClockError } from "./overlayFingerprint.js";
 import { censusForLog } from "./loadCensus.js";
 import {
   inspectPageContent,
@@ -224,6 +225,9 @@ function declineOf(
   }
   if (error instanceof OverlayStateMismatchError) {
     return { reason: "overlay_unverified", detail: error.message };
+  }
+  if (error instanceof BrowserClockError) {
+    return { reason: error.reason, detail: error.detail };
   }
   return undefined;
 }

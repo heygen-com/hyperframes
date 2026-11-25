@@ -589,6 +589,11 @@ export interface IneligibleCase {
 
 const BADGE_STYLE = "position:absolute;top:48px;right:48px;width:128px;height:128px";
 
+/** A credits scroller GSAP scrolls, twelve 60 px lines in a 180 px window. */
+const ROLL_STYLE =
+  "position:absolute;right:60px;top:60px;width:420px;height:180px;overflow:hidden;color:#fff;font:700 36px sans-serif;background:rgba(0,0,0,.4)";
+const ROLL_HTML = `<div id="roll">${Array.from({ length: 12 }, (_, i) => `<div style="height:60px">Credit line ${i}</div>`).join("")}</div>`;
+
 /** A badge GSAP fades in and recolours, as in `captions-gsap`. */
 const GSAP_BADGE: Pick<CompositionOptions, "overlayHtml" | "timelineScript"> = {
   overlayHtml: `<div id="badge" style="position:absolute;top:48px;left:900px;width:128px;height:128px;background:#36f"></div>`,
@@ -1201,6 +1206,67 @@ export const INELIGIBLE_CASES: readonly IneligibleCase[] = [
       timelineScript: `tl.set("#lz", { display: "block" }, 1.5); document.getElementById("lz").decode().then(HTMLElement.prototype.showPopover.bind(document.getElementById("pop")));`,
     },
     assets: ["gsap", "still-png"],
+  },
+  // A GSAP set() of scrollTop on a scroller with `scroll-behavior: smooth` starts a scroll the
+  // browser runs on its own clock, with no page code: the probe right after the seek still reads
+  // the old offset, so the jump frame's fingerprint equals the frame before it. The layered
+  // render's screenshot catches that scroll wherever the browser's clock has it, so two flag-off
+  // renders under load differ at the jump frames: wall clock.
+  {
+    name: "smooth-scroll",
+    wallClock: true,
+    reason: "overlay_unsupported",
+    composition: {
+      headHtml: `<style>#roll { ${ROLL_STYLE}; scroll-behavior: smooth; }</style>`,
+      overlayHtml: ROLL_HTML,
+      timelineScript:
+        'tl.set("#roll", { scrollTop: 240 }, 1.2); tl.set("#roll", { scrollTop: 480 }, 2.0);',
+    },
+    assets: ["gsap"],
+  },
+  {
+    // Smooth only inside the seek that writes the offset: no probe reads a smooth value.
+    name: "smooth-scroll-toggle",
+    wallClock: true,
+    reason: "overlay_unsupported",
+    composition: {
+      headHtml: `<style>#roll { ${ROLL_STYLE}; }</style>`,
+      overlayHtml: ROLL_HTML,
+      timelineScript: [1.2, 2.0]
+        .map(
+          (at, i) =>
+            `tl.set("#roll", { scrollBehavior: "smooth" }, ${at}); tl.set("#roll", { scrollTop: ${240 * (i + 1)} }, ${at}); tl.set("#roll", { scrollBehavior: "auto" }, ${at});`,
+        )
+        .join(" "),
+    },
+    assets: ["gsap"],
+  },
+  {
+    // A GSAP set() of opacity on an element with a short CSS transition: the seek's style change
+    // starts a transition on the wall clock, which may end before any gate after the probes looks.
+    name: "css-transition-set",
+    wallClock: true,
+    reason: "overlay_non_gsap_animation",
+    composition: {
+      headHtml: `<style>#fade { ${BADGE_STYLE}; background: #0ff; opacity: 0; transition: opacity 0.5s linear; }</style>`,
+      overlayHtml: '<div id="fade"></div>',
+      timelineScript: 'tl.set("#fade", { opacity: 1 }, 1.5);',
+    },
+    assets: ["gsap"],
+  },
+  {
+    // Snapping and scroll anchoring move the offset on the write, or on the layout the probe's
+    // read forces, so the probe reads what the screenshot paints: taken, and must match.
+    name: "snap-anchor-scroll",
+    reason: "",
+    takesPassthrough: true,
+    composition: {
+      headHtml: `<style>#roll { ${ROLL_STYLE}; scroll-snap-type: y mandatory; } #roll > div { scroll-snap-align: start; }</style>`,
+      overlayHtml: ROLL_HTML,
+      timelineScript:
+        'tl.set("#roll", { scrollTop: 250 }, 1.2); tl.set("#roll > div:first-child", { height: 95 }, 1.6); tl.set("#roll", { scrollTop: 470 }, 2.0); tl.set("#roll > div:nth-child(2)", { height: 150 }, 2.4);',
+    },
+    assets: ["gsap"],
   },
   // SVG images that animate once parsed as XML: decided by parsing, not by a scan of the bytes.
   {
