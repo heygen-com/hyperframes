@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
+import { RANGE_NOT_RENDERED } from "@hyperframes/studio-server";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 
 const producer = vi.hoisted(() => ({
@@ -98,6 +99,13 @@ describe("Vite GIF rendering", { timeout: 30_000 }, () => {
 const RENDER_DONE = { timeout: 20_000 };
 
 describe("Studio dev server render jobs", { timeout: 30_000 }, () => {
+  it("fails a job that asks for a part of the film instead of rendering it whole", async () => {
+    const { state } = await fixture({ format: "mp4", range: { startSeconds: 2, endSeconds: 4 } });
+    expect(state.status).toBe("failed");
+    expect(state.error).toBe(RANGE_NOT_RENDERED);
+    expect(producer.createRenderJob).not.toHaveBeenCalled();
+  });
+
   it("hands the route's pageMotionBlur to the job, so a preview that could not blur renders unblurred", async () => {
     producer.executeRenderJob.mockResolvedValue(undefined);
     const { state } = await fixture({ format: "mp4", pageMotionBlur: "off" });
