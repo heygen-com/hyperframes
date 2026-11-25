@@ -5,7 +5,7 @@
 
 import { arch, platform, totalmem } from "node:os";
 import { fpsToNumber, type HfVfxCapture } from "@hyperframes/core";
-import { hostCpuCount } from "@hyperframes/engine";
+import { hostCpuCount, retainCapturePerf } from "@hyperframes/engine";
 import type {
   CapturePerfSummary,
   StaticVerificationOutcome,
@@ -51,7 +51,7 @@ export function pushWorkerDedupPerfs(
   sink: CapturePerfSummary[],
 ): void {
   for (const r of results) {
-    if (r.perf) sink.push(r.perf);
+    if (r.perf) retainCapturePerf(sink, r.perf);
   }
 }
 

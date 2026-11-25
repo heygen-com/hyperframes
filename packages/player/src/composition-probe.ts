@@ -14,6 +14,7 @@ import {
   readCompositionSizeFromDocument,
   readStaticCompositionMeta,
 } from "@hyperframes/core/runtime/composition-length";
+import { RUNTIME_BOOTSTRAP_ATTR } from "@hyperframes/core/compiler/html-tokens";
 import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
 import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import {
@@ -250,19 +251,21 @@ export class CompositionProbe {
     const doc = this._iframe.contentDocument;
     const timelines = Reflect.get(win, "__timelines");
     const hasRuntime = this.hasRuntimeBridge(win);
+    const runtimeInjectedOrLinked =
+      this._runtimeInjected || !!doc?.querySelector(`script[${RUNTIME_BOOTSTRAP_ATTR}]`);
     if (
       shouldInjectRuntime({
         hasRuntime,
         hasTimelines: isObjectRecord(timelines) && Object.keys(timelines).length > 0,
         hasNestedCompositions: !!doc?.querySelector("[data-composition-src]"),
-        runtimeInjected: this._runtimeInjected,
+        runtimeInjected: runtimeInjectedOrLinked,
         attempts,
       })
     ) {
       this._injectRuntime();
       return null;
     }
-    if (this._runtimeInjected && !hasRuntime) return null;
+    if (runtimeInjectedOrLinked && !hasRuntime) return null;
     const result = this._resolveReadyResult(win, doc);
     return result ? { kind: "ready", result } : null;
   }

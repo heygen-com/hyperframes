@@ -43,7 +43,7 @@ import {
   readRenderOverrides,
 } from "./getVariables";
 import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
-import { COMPOSITION_SRC_ATTR } from "../compositionSource";
+import { COMPOSITION_SRC_ATTR, dropAuthoredCompositionFiles } from "../compositionSource";
 
 type LoadCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
@@ -833,6 +833,7 @@ async function mountExternalCompositions(
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
         dropAuthoredSvgReferenceAliases(doc);
+        dropAuthoredCompositionFiles(doc);
         // Resolve parent-relative assets against the fetched composition before mounting.
         rewriteSubCompositionAssetPaths(doc, compositionUrl);
         const content =
