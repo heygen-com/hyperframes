@@ -48,7 +48,7 @@ afterEach(() => {
   usePlayerStore.setState({ currentTime: 0, isPlaying: false });
 });
 
-async function pressSealedBox() {
+async function pressSealedBox(routeFromSnapshot = true) {
   const { iframe: sealed, frame } = sealedPreviewFrame();
   const iframe = sized(sealed, [100, 50, 960, 540]) as HTMLIFrameElement;
   watchPreviewFrame(iframe);
@@ -64,7 +64,7 @@ async function pressSealedBox() {
   const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
   // The press's own read, with no GSAP snapshot of the frame held yet: the first resize after a load.
   const pressed = { ...makeSelection("box", standIn), id: "box", handle };
-  return askShownGestureStarts(iframe, overlay, "index.html", [pressed]);
+  return askShownGestureStarts(iframe, overlay, "index.html", [pressed], routeFromSnapshot);
 }
 
 async function sealedResizeMember() {
@@ -111,6 +111,16 @@ it("does not start a sealed resize when the frame's GSAP snapshot does not arriv
   snapshot.answers = false;
 
   expect(await pressSealedBox()).toBe(UNANSWERED);
+});
+
+// fails without the fix: every sealed press waited on the snapshot, so a move, rotate or nudge failed with it.
+it("starts a sealed press that does not route from the snapshot when the snapshot does not arrive", async () => {
+  mount();
+  snapshot.answers = false;
+
+  const read = await pressSealedBox(false);
+
+  expect(read !== UNANSWERED && read?.shown.length).toBe(1);
 });
 
 // fails without the fix: sealed, the press took a layer GSAP does not move at GSAP x/y 0, 0, so a resize handed to

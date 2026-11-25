@@ -112,6 +112,7 @@ export async function askShownGestureStarts(
   overlay: HTMLDivElement | null,
   path: string | null,
   selections: DomEditSelection[],
+  routeFromSnapshot = false,
 ): Promise<OverChannel | null | typeof UNANSWERED> {
   const found = await Promise.all(
     selections.map((selection) => findPreviewElementForSelection(iframe, selection, path)),
@@ -122,7 +123,7 @@ export async function askShownGestureStarts(
   await whenPreviewStageSized(iframe, PRESS_WAIT_MAX_MS);
   const [read, gsapRouteReadable] = await Promise.all([
     measurePreviewGestureStart(iframe, overlay, handles as string[]),
-    settleGsapSnapshot(iframe),
+    routeFromSnapshot ? settleGsapSnapshot(iframe) : true,
   ]);
   if (!read || !gsapRouteReadable) return UNANSWERED;
   const shown = selections.flatMap((selection, i) => {
