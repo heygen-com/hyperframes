@@ -258,7 +258,10 @@ async function directOwner(
     turn,
     owner: {
       via: "direct",
-      list: async () => history.list(),
+      list: async () => {
+        await history.replacedNow();
+        return history.list();
+      },
       peek: async (point) => history.peek(point),
       blob: (hash) => history.readBlob(hash),
       undo: async (id, who, mode) => {
