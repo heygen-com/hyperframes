@@ -82,9 +82,7 @@ export function isVcsOrSecretPath(relPath: string): boolean {
   return vcsOrSecret.test(projectPathSegments(relPath).join("/"));
 }
 
-// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no file
-// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load. Studio
-// reads and writes those only in the project's own `.hyperframes/`, so one in a subfolder holds records only.
+// Only known project files in the root .hyperframes directory can be served as assets.
 const STUDIO_FILES = new Set([
   ".hyperframes/studio-motion.json",
   ".hyperframes/studio-manual-edits.json",
