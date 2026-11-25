@@ -3,11 +3,14 @@ import test from "node:test";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -497,8 +500,13 @@ test(
       writeFileSync(comp, "old");
       chmodSync(comp, 0o600);
       saveComposition(comp, "new");
-      assert.equal(lstatSync(comp).mode & 0o777, 0o600);
-      assert.equal(readFileSync(comp, "utf-8"), "new");
+      const saved = openSync(comp, "r");
+      try {
+        assert.equal(fstatSync(saved).mode & 0o777, 0o600);
+        assert.equal(readFileSync(saved, "utf-8"), "new");
+      } finally {
+        closeSync(saved);
+      }
       chmodSync(comp, 0o444);
       if (process.getuid?.() !== 0) {
         assert.throws(() => saveComposition(comp, "newer"), { code: "EACCES" });
