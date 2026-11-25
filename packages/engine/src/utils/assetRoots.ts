@@ -6,7 +6,10 @@ import {
   realFilePath,
   realPathWithin,
 } from "@hyperframes/core/safe-path";
-import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
+import {
+  isWithinProjectRoot,
+  namesAnotherNetworkRoot,
+} from "@hyperframes/parsers/asset-resolution";
 
 export function isInsideAssetRoots(path: string, roots: readonly string[]): boolean {
   if (roots.some((root) => isSafePath(root, path))) return true;
@@ -14,8 +17,9 @@ export function isInsideAssetRoots(path: string, roots: readonly string[]): bool
   return roots.some((root) => isWithinProjectRoot(root, path)) && !existsSync(path);
 }
 
+// A path on another network root is never looked at, so it is in no root.
 const realFileWithin = (root: string, path: string): boolean =>
-  realPathWithin(realFilePath(root), realFilePath(path));
+  !namesAnotherNetworkRoot(root, path) && realPathWithin(realFilePath(root), realFilePath(path));
 
 // Judged from every root holding it, since a render's own work folder may sit in the project's `.hyperframes/`.
 // `bySpellingOrRealFile` is for a render that brings in outside files: a path spelled outside a root can be a file in it.
