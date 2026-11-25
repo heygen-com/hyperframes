@@ -315,6 +315,27 @@ it("a seek during a hold is not undone when a clip the hold reloaded loads later
   expect(music.currentTime).toBe(landed);
 });
 
+it("a hold for an audio clip leaves a video on screen that has played as it is, so its picture stays", () => {
+  const { music, musicReady, voice, voiceReady, playFor } = playPodcast(0, "video");
+  for (const el of [music, voice])
+    Object.defineProperty(el, "played", { get: () => ({ length: 1 }), configurable: true });
+  voiceReady.value = 4;
+  playFor(1);
+  const preload = voice.preload;
+  const srcWrites = new MutationObserver(() => {});
+  srcWrites.observe(voice, { attributeFilter: ["src"] });
+
+  musicReady.value = 1;
+  playFor(0.5);
+  expect(srcWrites.takeRecords()).toHaveLength(0);
+  expect(voice.preload).toBe(preload);
+
+  musicReady.value = 4;
+  const heldAt = window.__player!.getTime();
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThan(heldAt + 0.9);
+});
+
 it("a hold for data does not reload a later clip", () => {
   const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
   const mark = document.createElement("meta");

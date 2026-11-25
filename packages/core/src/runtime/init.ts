@@ -6237,6 +6237,7 @@ export function initSandboxRuntimeModular(): void {
           isInClipWindow(time, start, end) &&
           isPlayableTrack(el) &&
           el.played.length > 0 &&
+          !isVideoElement(el) &&
           !webAudio.ownsElement(el),
       )
       .map((clip) => {
