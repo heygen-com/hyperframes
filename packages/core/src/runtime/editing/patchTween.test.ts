@@ -170,7 +170,7 @@ describe("patch-tweens ending a gesture's draft", () => {
 
     expect(reply).toEqual({ patched: true });
     expect(set).toHaveBeenCalledExactlyOnceWith(element, { x: 130, y: 80 });
-    expect(element.style.translate).toBe("");
+    expect(element.style.translate).toBe("none");
   });
 
   it("leaves a live draft alone when the patch ends none", () => {
