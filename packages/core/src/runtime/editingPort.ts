@@ -968,10 +968,19 @@ export {
   takePlainTextOnly,
   textEditResult,
   type TextEditEndedEvent,
+  type TextEditCaret,
   type TextEditResult,
   type TextEditSelection,
   type TextEditSelectionEvent,
 } from "./editing/textEdit";
+export {
+  caretBoxIn,
+  caretColorOf,
+  caretSideAfterKey,
+  placeCaretAtEnd,
+  type CaretBox,
+  type CaretSide,
+} from "./editing/textCaret";
 export {
   parsePausedFrameAsk,
   PAUSED_FRAME_BYTES,
