@@ -200,7 +200,7 @@ export function removeElementsFromHtml(
   let removed = false;
   for (const target of targets) {
     const element = findTargetElement(document, target);
-    if (!element) continue;
+    if (!element || isNonContentElement(element)) continue;
     const id = element.getAttribute("id");
     removeElementWithGsapCascade(document, element);
     if (id && !document.getElementById(id)) dropCssRulesForId(document, id);
@@ -305,8 +305,11 @@ function stampNewChildIds(parent: Element): void {
   }
 }
 
+const PAGE_SHELL_TAGS = new Set(["html", "head", "body", "title"]);
+
 function isNonContentElement(el: Element): boolean {
-  return EXCLUDED_TAGS.has(el.tagName.toLowerCase());
+  const tag = el.tagName.toLowerCase();
+  return EXCLUDED_TAGS.has(tag) || PAGE_SHELL_TAGS.has(tag);
 }
 
 // fallow-ignore-next-line complexity
@@ -418,7 +421,7 @@ export function probeElementsInSource(
   return targets.map((target) => {
     if (!target.id && !target.hfId && !target.selector) return false;
     const el = findTargetElement(document, target);
-    return el != null && isHTMLElement(el);
+    return el != null && isHTMLElement(el) && !isNonContentElement(el);
   });
 }
 
@@ -501,7 +504,8 @@ export function splitElementInHtml(
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
-  if (!el || !isHTMLElement(el)) return refused(source, "target-not-found");
+  if (!el || !isHTMLElement(el) || isNonContentElement(el))
+    return refused(source, "target-not-found");
 
   // An untimed wrapper whose row is its timed media's own window is a view of that
   // media: cut the media and leave the wrappers untimed. A GSAP scene keeps its own window.
@@ -714,7 +718,7 @@ export function wrapElementsInHtml(
   const seen = new Set<Element>();
   for (const target of targets) {
     const el = findTargetElement(document, target);
-    if (!el || !isHTMLElement(el) || seen.has(el)) continue;
+    if (!el || !isHTMLElement(el) || isNonContentElement(el) || seen.has(el)) continue;
     seen.add(el);
     els.push(el);
   }
@@ -846,7 +850,8 @@ export function unwrapElementsFromHtml(
 ): UnwrapElementsResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const group = findTargetElement(document, groupTarget);
-  if (!group || !isHTMLElement(group)) return { html: source, unwrapped: false };
+  if (!group || !isHTMLElement(group) || isNonContentElement(group))
+    return { html: source, unwrapped: false };
   // Shape guard mirroring the wrap-side contract: only ever dissolve an actual
   // group wrapper. A stale/desynced selection that resolves to a plain <div>
   // would otherwise be unwrapped — rebasing its children by the parent's origin
