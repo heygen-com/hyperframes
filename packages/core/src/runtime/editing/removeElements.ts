@@ -31,6 +31,12 @@ export function removeElements({ handles }: { handles: EditingElementHandle[] })
 } {
   const elements = handles.map(elementForHandle);
   if (!elements.every(removableClip)) return { removed: 0 };
-  for (const element of elements) element.remove();
-  return { removed: elements.length };
+  let removed = 0;
+  for (const element of elements) {
+    // A clip named twice, or inside one already removed, has left the document with it.
+    if (!element.isConnected) continue;
+    element.remove();
+    removed += 1;
+  }
+  return { removed };
 }
