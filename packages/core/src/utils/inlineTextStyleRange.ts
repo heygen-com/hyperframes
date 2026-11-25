@@ -26,7 +26,7 @@ import {
   isRichTextFormattingAttribute,
   isRichTextFormattingStyle,
   isRichTextFormattingTag,
-} from "@hyperframes/core/rich-text-sanitize";
+} from "./richTextSanitize";
 
 /** One stretch of characters that are all styled the same way. */
 interface StyledRun {
