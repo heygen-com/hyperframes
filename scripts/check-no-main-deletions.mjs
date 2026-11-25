@@ -2119,6 +2119,10 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/producer/src/services/audioExtractor.ts",
     "imported by nothing; its own ffmpeg spawn quoted stderr unredacted, outside ManagedChildProcess",
   ],
+  [
+    ".github/workflows/deprecate-mcp-github-name.yml",
+    "one-off manual workflow to retire the old io.github registry listing; it never ran and the maintainers no longer need it",
+  ],
   ["scripts/prune-fallow-audit-caches.mjs", FALLOW_PRUNE_REASON],
   ["scripts/prune-fallow-audit-caches.test.mjs", FALLOW_PRUNE_REASON],
   ...PLAN_V1_SAMPLE_FILES.map((path) => [path, PLAN_V1_SAMPLE_REASON]),

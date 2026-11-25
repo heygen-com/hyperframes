@@ -194,14 +194,3 @@ test("the MCP listing publishes as com.heygen with the environment's domain key,
   );
   assert.match(JSON.stringify(job), /"MCP_PRIVATE_KEY":"\$\{\{ secrets\.MCP_PRIVATE_KEY \}\}"/);
 });
-
-test("the old io.github listing is retired only by hand, from main, in the mcp-registry environment", () => {
-  const { doc } = workflows.find(({ file }) => file === "deprecate-mcp-github-name.yml");
-  assert.deepEqual(Object.keys(triggers(doc)), ["workflow_dispatch"]);
-  const [job] = Object.values(doc.jobs);
-  assert.equal(normalize(job.if), MAIN_GUARD);
-  assert.equal(job.environment, "mcp-registry");
-  const runs = job.steps.map((step) => step.run ?? "").join("\n");
-  assert.match(runs, /mcp-publisher status --status deprecated --all-versions --yes/);
-  assert.match(runs, /io\.github\.heygen-com\/hyperframes/);
-});
