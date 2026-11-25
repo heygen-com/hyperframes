@@ -241,7 +241,6 @@ export function mkdirOwnedWithinProject(root: string, dir: string): void {
   mkdirWithinProject(root, dir);
 }
 
-/** {@link mkdirOwnedWithinProject} whose folder writes run on fs/promises. */
 export async function mkdirOwnedWithinProjectAsync(root: string, dir: string): Promise<void> {
   refuseLinkOnTheWay(root, dir);
   await mkdirWithinProjectAsync(root, dir);

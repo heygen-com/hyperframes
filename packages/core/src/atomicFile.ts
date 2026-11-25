@@ -122,7 +122,6 @@ async function refuseReadOnlyAsync(filePath: string): Promise<void> {
   }
 }
 
-/** A file that is not there yet is written; any other refusal (read-only, no permission) is the caller's. */
 function readOnlyOrMissing(error: unknown): void {
   if (errorCode(error) !== "ENOENT") throw error;
 }
