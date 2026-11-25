@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -83,7 +83,7 @@ describe("prepareHeifImageInputs", () => {
     const d = dirs();
     for (const [name, bytes] of Object.entries(files)) {
       const target = join(d.projectDir, name);
-      spawnSync("mkdir", ["-p", join(target, "..")]);
+      mkdirSync(join(target, ".."), { recursive: true });
       writeFileSync(target, bytes);
     }
     return d;
@@ -264,7 +264,7 @@ describe("prepareHeifImageInputs", () => {
   it("reads no HEIC outside the project unless the caller allows outside files", async () => {
     const d = project({});
     const outside = join(d.base, "Pictures", "IMG_0001.HEIC");
-    spawnSync("mkdir", ["-p", join(outside, "..")]);
+    mkdirSync(join(outside, ".."), { recursive: true });
     writeFileSync(outside, readFileSync(FIXTURE));
     const html = `<img src="../Pictures/IMG_0001.HEIC"><img src="${outside}">`;
     const { calls, transcode } = countingTranscode();
