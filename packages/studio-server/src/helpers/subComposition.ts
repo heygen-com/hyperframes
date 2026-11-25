@@ -10,6 +10,7 @@ import {
 } from "@hyperframes/core";
 import {
   deferScriptsUntilFonts,
+  dropAuthoredCompositionFiles,
   RUNTIME_BOOTSTRAP_ATTR,
   stripEmbeddedRuntimeScripts,
 } from "@hyperframes/core/compiler";
@@ -372,6 +373,7 @@ export function buildSubCompositionHtml(
   );
   deferScriptsUntilFonts(scriptsDoc as unknown as Document);
   chargeMountsTheBrowserFetches(projectDir, scriptsDoc as unknown as Document);
+  dropAuthoredCompositionFiles(scriptsDoc as unknown as Document);
   rewrittenContent = scriptsDoc.body.innerHTML;
 
   // The comp's root carries data-composition-id but (unlike inlined sub-comps,
