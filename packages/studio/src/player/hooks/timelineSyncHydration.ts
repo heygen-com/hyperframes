@@ -302,8 +302,14 @@ export function resolveReloadSeekTime(input: {
 type SeekablePreview = Pick<PlaybackAdapter, "seek">;
 
 /** Re-run the current frame even when the runtime already reports that time. */
-export function reseekPreviewAtTime(preview: SeekablePreview, time: number): void {
+export function reseekPreviewAtTime(
+  preview: SeekablePreview,
+  time: number,
+  iframe: HTMLIFrameElement | null,
+): void {
   const target = Number.isFinite(time) && time > 0 ? time : 0;
+  // A sealed frame's runtime redraws on a seek to its own time, and paints each seek message: a guard would show.
+  if (iframe && previewFrameOpaque(iframe)) return void preview.seek(target);
   preview.seek(target > 0.001 ? Math.max(0, target - 0.001) : 0.001);
   preview.seek(target);
 }
@@ -311,6 +317,7 @@ export function reseekPreviewAtTime(preview: SeekablePreview, time: number): voi
 export function seekAdapterToRestorePoint(
   adapter: PlaybackAdapter,
   pendingSeekRef: { current: number | null },
+  iframe: HTMLIFrameElement | null,
 ): number {
   const storeSeek = usePlayerStore.getState().requestedSeekTime;
   const startTime = resolveReloadSeekTime({
@@ -321,7 +328,7 @@ export function seekAdapterToRestorePoint(
   });
   pendingSeekRef.current = null;
   if (storeSeek != null) usePlayerStore.getState().clearSeekRequest();
-  reseekPreviewAtTime(adapter, startTime);
+  reseekPreviewAtTime(adapter, startTime, iframe);
   return startTime;
 }
 
