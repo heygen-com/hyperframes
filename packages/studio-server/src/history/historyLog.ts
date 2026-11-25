@@ -53,6 +53,7 @@ export interface HistoryLog {
   entries: HistoryEntry[];
   pins: Set<string>;
   keepsLedger?: boolean;
+  baselineLines?: number;
 }
 
 export type LogRecord =
@@ -88,6 +89,7 @@ export function readLog(file: string, onUnreadable: (line: number) => void): His
 
 function applyRecord(log: HistoryLog, record: LogRecord): void {
   if (record.type === "baseline") {
+    log.baselineLines = (log.baselineLines ?? 0) + 1;
     log.baseline = new Map(Object.entries(record.files));
     log.keepsLedger = record.keepsLedger === true;
   } else if (record.type === "entry") log.entries.push(record.entry);
@@ -107,6 +109,7 @@ export function saveRecord(file: string, log: HistoryLog, record: LogRecord): vo
   }
   try {
     writeSync(fd, `${JSON.stringify(record)}\n`);
+    if (record.type === "baseline") log.baselineLines = (log.baselineLines ?? 0) + 1;
   } finally {
     closeSync(fd);
   }
@@ -128,6 +131,7 @@ export function writeLog(file: string, log: HistoryLog): void {
   ];
   mkdirSync(dirname(file), { recursive: true });
   replaceFileAtomically(file, records.map((r) => `${JSON.stringify(r)}\n`).join(""), 0o644);
+  log.baselineLines = 1;
 }
 
 function applyEntry(manifest: Manifest, entry: HistoryEntry, side: HistoryEntrySide): void {

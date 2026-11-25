@@ -393,6 +393,7 @@ const historyFiles = async (dir: string, ignores?: (path: string) => boolean) =>
   (await listProjectFilesAsync(dir)).filter((file) => isHistoryPath(file.path, ignores));
 type ListedFile = ListedProjectFile;
 const COPY_LATER_ABOVE_BYTES = 1024 ** 2;
+const ADOPTION_SAVE_MS = 2000;
 
 const sameWho = (a: HistoryWho, b: HistoryWho) => a.kind === b.kind && a.name === b.name;
 
@@ -567,6 +568,8 @@ class Engine {
   quietTimer: NodeJS.Timeout | undefined;
   maxTimer: NodeJS.Timeout | undefined;
   notedTimer: NodeJS.Timeout | null = null;
+  adoptionSaveTimer: NodeJS.Timeout | null = null;
+  owesAdoptionSave = false;
   listeners = new Set<(entry: HistoryEntry) => void>();
   tail: Promise<unknown> = Promise.resolve();
   closed = false;
@@ -682,6 +685,7 @@ class Engine {
   }
 
   persistLog(record?: LogRecord): void {
+    if (record?.type !== "baseline") this.saveAdoption();
     this.owesVideoState = true;
     if (record) saveRecord(this.logFile, this.log, record);
     else writeLog(this.logFile, this.log);
@@ -706,6 +710,7 @@ class Engine {
     );
     if (!log) return this.firstOpen();
     this.takeLog(log);
+    if ((log.baselineLines ?? 0) > 1) this.persistLog();
     await this.reclaimUncopied();
     if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
@@ -888,6 +893,7 @@ class Engine {
   }
 
   saveWentAhead(): void {
+    if (this.owesAdoptionSave) return this.saveAdoption();
     const windows = this.windows.filter((open) => open.wentAheadOf?.size);
     const state: WentAhead = {
       pending: [...this.wentAhead],
@@ -930,7 +936,28 @@ class Engine {
   }
 
   saveAdopting(): void {
+    if (this.owesAdoptionSave) return this.saveAdoption();
     this.saveJson("adopting.json", this.adopting.size ? [...this.adopting.keys()] : null);
+  }
+
+  oweAdoptionSave(): void {
+    this.owesAdoptionSave = true;
+    const save = () => void this.queue(async () => this.saveAdoption()).catch(() => {});
+    this.adoptionSaveTimer ??= setTimeout(save, ADOPTION_SAVE_MS);
+    this.adoptionSaveTimer.unref?.();
+  }
+
+  /** The baseline first: adopting.json and went-ahead.json stop naming a file only once the baseline holds it. */
+  saveAdoption(compact = false): void {
+    if (this.adoptionSaveTimer) clearTimeout(this.adoptionSaveTimer);
+    this.adoptionSaveTimer = null;
+    if (!this.owesAdoptionSave) return;
+    this.owesAdoptionSave = false;
+    if (compact && (this.log.baselineLines ?? 0) > 0) this.persistLog();
+    else this.persistLog(baselineRecord(this.log));
+    this.saveStatCache();
+    this.saveWentAhead();
+    this.saveAdopting();
   }
 
   /** Null removes the file. */
@@ -1003,8 +1030,8 @@ class Engine {
         this.adopting.delete(file.path);
         this.heardBeforeCopy.delete(file.path);
         this.wentAhead.delete(file.path);
-        this.saveWentAhead();
-        this.saveAdopting();
+        this.oweAdoptionSave();
+        if (!this.adopting.size) this.saveAdoption(true);
         // The sweeps since open passed this file by: one more takes in any edit since the bytes were read.
         if (fromOpen) this.sweepIn(0);
         return "over";
@@ -1039,16 +1066,14 @@ class Engine {
     this.tracked.set(file.path, { hash, stat: this.statKey(file, sweptAt) });
     this.log.baseline.set(file.path, start);
     if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
-    this.persistLog(baselineRecord(this.log));
-    this.saveStatCache();
+    this.oweAdoptionSave();
   }
 
   /** A file a step went ahead of starts here; its next sweep takes in whatever stands there now. */
   startUnseen(path: string, start: string): void {
     this.tracked.set(path, { hash: start, stat: "" });
     this.log.baseline.set(path, start);
-    this.persistLog(baselineRecord(this.log));
-    this.saveStatCache();
+    this.oweAdoptionSave();
     this.sweepIn(0);
   }
 
@@ -2099,6 +2124,7 @@ class Engine {
           const owed = [...this.adopting.values()];
           for (const adoption of owed) void adoption.retryNow();
           await Promise.all(owed.map((adoption) => adoption.ended));
+          this.saveAdoption();
           if (this.notedTimer) clearTimeout(this.notedTimer);
           this.stopHearing?.();
           const settled = this.queue(() => this.settleAll());
