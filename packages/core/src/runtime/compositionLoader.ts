@@ -460,7 +460,6 @@ async function mountCompositionContent(params: {
   hostCompositionSrc: string;
   sourceNode: ParentNode;
   hasTemplate: boolean;
-  fallbackBodyInnerHtml: string;
   compositionUrl: URL | null;
   injectedStyles: HTMLStyleElement[];
   injectedScripts: HTMLScriptElement[];
@@ -617,8 +616,11 @@ async function mountCompositionContent(params: {
     stripExtractedCompositionAssets(mountedContent);
     params.host.appendChild(mountedContent);
   } else {
-    params.host.innerHTML = params.fallbackBodyInnerHtml;
-    stripExtractedCompositionAssets(params.host);
+    const mountedContent = document.createDocumentFragment();
+    for (const node of Array.from(contentNode.childNodes))
+      mountedContent.appendChild(document.importNode(node, true));
+    stripExtractedCompositionAssets(mountedContent);
+    params.host.appendChild(mountedContent);
   }
   for (const el of plan.inertScriptsOutsideRoot)
     params.host.appendChild(document.importNode(el, true));
@@ -735,7 +737,6 @@ async function mountInlineTemplateCompositions(
       hostCompositionSrc: `template#${compId}-template`,
       sourceNode,
       hasTemplate: true,
-      fallbackBodyInnerHtml: "",
       compositionUrl: null,
       injectedStyles: params.injectedStyles,
       injectedScripts: params.injectedScripts,
@@ -813,7 +814,6 @@ async function mountExternalCompositions(
             hostCompositionSrc: src,
             sourceNode: localContent,
             hasTemplate: true,
-            fallbackBodyInnerHtml: "",
             compositionUrl,
             injectedStyles: params.injectedStyles,
             injectedScripts: params.injectedScripts,
@@ -848,7 +848,6 @@ async function mountExternalCompositions(
           hostCompositionSrc: src,
           sourceNode,
           hasTemplate: Boolean(content),
-          fallbackBodyInnerHtml: doc.body.innerHTML,
           compositionUrl,
           injectedStyles: params.injectedStyles,
           injectedScripts: params.injectedScripts,
