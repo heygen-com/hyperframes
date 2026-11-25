@@ -519,7 +519,7 @@ function handleSetText(parsed: ParsedDocument, ids: HfId[], value: string): Muta
     const el = resolveScoped(parsed.document, id);
     if (!el) continue;
     const oldText = getOwnText(el);
-    setOwnText(el, value);
+    if (!setOwnText(el, value)) continue;
     const path = textPath(id);
     // getOwnText always returns string ("" for empty) — use it directly so
     // the forward patch is always op:'replace', not op:'add'. An op:'add' on

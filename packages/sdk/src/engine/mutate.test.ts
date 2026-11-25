@@ -259,6 +259,28 @@ describe("setText", () => {
     expect(html).toContain("Old</text></svg>New</div>");
   });
 
+  // A text edit never rewrites code or CSS: on a <script>/<style>, or an element whose lone child is one, it is
+  // declined with no write and no patch, so Studio leaves the edit to the server's element patch.
+  const RAW = { script: "window.raw = 1;", style: ".raw { color: red; }" } as const;
+
+  it.each(["script", "style"] as const)("declines a text edit on a lone <%s> child", (tag) => {
+    const parsed = parseMutable(`<div data-hf-id="hf-target"><${tag}>${RAW[tag]}</${tag}></div>`);
+    const result = applyOp(parsed, { type: "setText", target: "hf-target", value: "New" });
+    expect(serializeDocument(parsed)).toContain(
+      `<div data-hf-id="hf-target"><${tag}>${RAW[tag]}</${tag}></div>`,
+    );
+    expect(result.forward).toEqual([]);
+  });
+
+  it.each(["script", "style"] as const)("declines a text edit aimed at a <%s> itself", (tag) => {
+    const parsed = parseMutable(
+      `<div data-hf-id="hf-wrap"><${tag} data-hf-id="hf-raw">${RAW[tag]}</${tag}></div>`,
+    );
+    const result = applyOp(parsed, { type: "setText", target: "hf-raw", value: "New" });
+    expect(serializeDocument(parsed)).toContain(`>${RAW[tag]}</${tag}>`);
+    expect(result.forward).toEqual([]);
+  });
+
   it("override-set key maps correctly", () => {
     expect(pathToKey("/elements/hf-title/text")).toBe("hf-title.text");
   });
