@@ -327,6 +327,26 @@ it("drops a reply from a frame once another is on screen, before that one loads"
   expect(sync).not.toHaveBeenCalled();
 });
 
+// fails without the fix: a read cut off by the frame reloading in place landed with no document, so its rows lost their ids.
+it("drops a sealed read the frame's own reload cut off", async () => {
+  document.body.innerHTML = `<div data-composition-id="main" data-composition-file="index.html">
+    <div id="box" class="clip" data-start="0" data-duration="2"></div>
+  </div>`;
+  const sealed = sealedPreviewFrame();
+  const { sync, process } = processWith(sealed.iframe, adapterOf(2));
+
+  process({ clips: [boxClip], durationInFrames: 60 });
+  sealed.reload();
+  process({ clips: [boxClip], durationInFrames: 60 });
+
+  await vi.waitFor(() => expect(sync).toHaveBeenCalled());
+  await previewDocumentCopy(sealed.iframe);
+  await previewClipParents(sealed.iframe);
+  expect(sync.mock.calls.flatMap(([rows]) => rows.map((row) => row.key))).toEqual([
+    "index.html#box",
+  ]);
+});
+
 // fails without the fix: the hidden reload's load cancelled the on-screen frame's read, so its rows never came.
 it("keeps the on-screen frame's read when a hidden reload starts loading", async () => {
   document.body.innerHTML = `<div data-composition-id="main"><div id="fresh" data-start="0" data-duration="2"></div></div>`;
