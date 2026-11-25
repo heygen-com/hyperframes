@@ -2121,9 +2121,9 @@ How it uses the machine, and when it gives up:
 | Flag                                                     | Default                                    | Description                                                                                                       |
 | -------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | `--workers, -w`                                          | auto                                       | 1–24 workers. Each is a separate Chrome, roughly 256 MB. Auto weighs cores, memory, frame count, and cost. N is a ceiling: a render drawElement can capture still uses one worker. |
-| `--low-memory-mode` / `--no-low-memory-mode`             | auto at 8 GB RAM or less                   | Safe profile: one worker, screenshot capture, no calibration. See the note below.                                   |
+| `--low-memory-mode` / `--no-low-memory-mode`             | auto at 8 GB RAM or less                   | Safe profile: one worker, screenshot capture, no worker calibration. See the note below.                                   |
 | `--gpu`                                                  | off                                        | Hardware FFmpeg encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)                                                    |
-| `--browser-gpu` / `--no-browser-gpu`                     | auto locally, off in Docker                | Host GPU for Chrome and WebGL capture, or software rendering. Auto probes WebGL once and falls back. When calibration finds the GPU slow, auto also times software capture and renders in software if it is faster. |
+| `--browser-gpu` / `--no-browser-gpu`                     | auto locally, off in Docker                | Host GPU for Chrome and WebGL capture, or software rendering. Auto probes WebGL once and falls back. When calibration finds the GPU slow, auto also times software capture and renders in software if it is faster. `render` measures this once per machine, GPU driver and HyperFrames version (even with `--workers`), keeps the answer in `gpu-choice.json` under `HYPERFRAMES_CONFIG_DIR`, and reuses it. |
 | `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for SDR shader transitions in mp4, hls and gif, ~6× faster. webm and mov use the layered path; gif always uses page-side WebGL, even with `--no-page-side-compositing`. |
 | `--experimental-fast-capture`                            | on where it can engage                     | Chrome's draw-element capture, ~2× faster; falls back to screenshots on its own. Env: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`. |
 | `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
@@ -2943,7 +2943,7 @@ hyperframes auth logout --yes            # no prompt
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
 | `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; used first, never refreshed. |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
-| `HYPERFRAMES_CONFIG_DIR` | Settings root: credentials, telemetry and update settings, project links (default `~/.hyperframes`). |
+| `HYPERFRAMES_CONFIG_DIR` | Settings root: credentials, telemetry and update settings, project links, the measured GPU choice (default `~/.hyperframes`). |
 | `HYPERFRAMES_ENV` | `prod` (default) or `dev`; `dev` uses a separate credential directory. Hosts and the OAuth client id come from `HEYGEN_API_URL` and `HYPERFRAMES_OAUTH_*`. |
 | `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the selected public OAuth client. |
 

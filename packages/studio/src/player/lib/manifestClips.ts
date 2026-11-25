@@ -28,7 +28,7 @@ const stringsOnly = (fields: Record<string, unknown>): boolean =>
         (ancestor) => typeof ancestor === "string" && boundedId(ancestor),
       )));
 
-const OPTIONAL_NUMBERS = ["zIndex", "playbackStart", "playbackRate"] as const;
+const OPTIONAL_NUMBERS = ["zIndex", "playbackStart", "playbackRate", "timelineDuration"] as const;
 
 export const clipNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;

@@ -92,7 +92,9 @@ import {
 import {
   parseTextEdit,
   textEditEndedEvent,
+  textEditSelectionEvent,
   type TextEditEndedEvent,
+  type TextEditSelectionEvent,
   type TextEditParams,
   type TextEditResult,
 } from "./editing/textEdit";
@@ -113,6 +115,7 @@ export {
   MAX_POINT_STACK,
   MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
+  isStableSelector,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
@@ -211,6 +214,7 @@ export const EDITING_REQUEST_KINDS = [
   "max-z-index",
   "crop-lift",
   "edit-element",
+  "remove-elements",
   "stacking-family",
   "gsap-set",
   "patch-tweens",
@@ -394,6 +398,7 @@ export interface EditingRequests {
     result: { lifted: boolean; clipPath: string | null };
   };
   "edit-element": { params: EditElementParams; result: EditElementResult };
+  "remove-elements": { params: { handles: EditingElementHandle[] }; result: { removed: number } };
   "stacking-family": {
     params: { handle: EditingElementHandle };
     result: { family: EditingStackingSibling[] | null; locked: boolean };
@@ -698,6 +703,7 @@ const PARAM_PARSERS: {
       ? { handle: params.handle, lift: params.lift }
       : null,
   "edit-element": parseEditElement,
+  "remove-elements": handleList,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
   "gsap-set": gsapSetWithDrafts,
@@ -754,6 +760,7 @@ export interface EditingPortClient {
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
+  onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -815,6 +822,7 @@ export function createEditingPortClient(options: {
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
+  const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
@@ -841,7 +849,9 @@ export function createEditingPortClient(options: {
     const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
     if (geometry) return geometryListeners.forEach((listener) => listener(geometry));
     const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
-    if (ended) textEditListeners.forEach((listener) => listener(ended));
+    if (ended) return textEditListeners.forEach((listener) => listener(ended));
+    const selected = textEditSelectionEvent(data, EDITING_PROTOCOL_VERSION);
+    if (selected) selectionListeners.forEach((listener) => listener(selected));
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
@@ -913,12 +923,17 @@ export function createEditingPortClient(options: {
       textEditListeners.add(listener);
       return () => textEditListeners.delete(listener);
     },
+    onTextEditSelection(listener) {
+      selectionListeners.add(listener);
+      return () => selectionListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       keyListeners.clear();
       geometryListeners.clear();
       textEditListeners.clear();
+      selectionListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
@@ -940,6 +955,8 @@ export {
   textEditResult,
   type TextEditEndedEvent,
   type TextEditResult,
+  type TextEditSelection,
+  type TextEditSelectionEvent,
 } from "./editing/textEdit";
 export {
   parsePausedFrameAsk,

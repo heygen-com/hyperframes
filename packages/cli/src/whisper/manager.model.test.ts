@@ -124,6 +124,26 @@ it.skipIf(!process.getuid)(
   },
 );
 
+// fails without the fix: "tiny.bin?/../…/planted" downloaded the tiny model to planted.bin outside the models folder.
+it("refuses a model name that is not one plain file-name part, before any file or download", async () => {
+  for (const model of [
+    "tiny.bin?/../../../outside/planted",
+    "../x",
+    "a/b",
+    "a\\b",
+    "tiny#x",
+    "tiny%2e",
+    "tiny..en",
+    "..",
+    ".x",
+    "",
+  ]) {
+    await expect(ensureModel(model)).rejects.toThrow(/is not a whisper model name/);
+  }
+  expect(vi.mocked(downloadFile)).not.toHaveBeenCalled();
+  expect(readdirSync(modelsDir)).toEqual([]);
+});
+
 // fails without the fix: a same-size file at a pinned model's name was used as the model, never checked.
 it("downloads a pinned model again when the cached file has the right size but other bytes", async () => {
   writeFileSync(tiny, "");
