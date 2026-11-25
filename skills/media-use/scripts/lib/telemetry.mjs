@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { withFileLock } from "./config-lock.mjs";
 import { globalMediaDir } from "./media-home.mjs";
+import { telemetryOptOutVariable } from "./telemetry-opt-out.mjs";
 
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
 const POSTHOG_HOST = "https://us.i.posthog.com";
@@ -41,8 +42,7 @@ export function optedOut() {
     // `hyperframes telemetry disable` writes telemetryEnabled: false to the
     // shared config; one opt-out must cover the CLI and the media-use scripts.
     readSharedConfig().telemetryEnabled === false ||
-    process.env.HYPERFRAMES_NO_TELEMETRY === "1" ||
-    process.env.DO_NOT_TRACK === "1" ||
+    telemetryOptOutVariable(process.env) !== null ||
     process.env.CI === "true" ||
     process.env.CI === "1" ||
     process.env.NODE_ENV === "development"

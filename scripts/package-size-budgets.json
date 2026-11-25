@@ -9,10 +9,10 @@
   },
   "@hyperframes/core": {
     "packed": 1948041,
-    "unpacked": 4898942
+    "unpacked": 5217372
   },
   "@hyperframes/engine": {
-    "packed": 511900,
+    "packed": 522000,
     "unpacked": 1742862
   },
   "@hyperframes/gcp-cloud-run": {

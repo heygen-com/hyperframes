@@ -23,9 +23,9 @@ const root = (markup: string) =>
 const TIMELINE = `window.__timelines = window.__timelines || {};
   window.__timelines["main"] = gsap.timeline({ paused: true }).to("#t", { opacity: 1, duration: 4 }, 0);`;
 /** The saved file as Studio reads it. */
-const file = (markup: string) => `<html><body>${root(markup)}</body></html>`;
+export const file = (markup: string) => `<html><body>${root(markup)}</body></html>`;
 /** The saved file as the preview loads it. */
-const page = (markup: string) =>
+export const page = (markup: string) =>
   `<!doctype html><html><head><meta charset="UTF-8" />${MARK}</head><body>${root(markup)}` +
   `<script>${GSAP}</script><script>${TIMELINE}</script><script>${RUNTIME}</script></body></html>`;
 
