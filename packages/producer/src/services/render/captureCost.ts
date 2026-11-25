@@ -265,10 +265,6 @@ export function shouldCalibrateSoftwareGpu(
   );
 }
 
-/**
- * What calibration settles for auto mode: hardware when it is not slow, else whichever measured faster.
- * Undefined when a calibration it needs measured nothing, so nothing is settled.
- */
 export function settleAutoGpuChoice(
   hardware: CaptureCostEstimate | undefined,
   software: CaptureCostEstimate | undefined,
