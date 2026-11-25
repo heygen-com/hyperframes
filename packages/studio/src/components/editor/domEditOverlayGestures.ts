@@ -86,15 +86,6 @@ export interface GestureState {
   resizeHandle?: ResizeHandle;
   /** Last anchoring translation applied during a corner resize (overlay px). */
   lastResizeAnchor?: { dx: number; dy: number };
-  /**
-   * The element's rendered CENTER in overlay px at gesture start (the centroid of
-   * its four real — possibly rotated — corners). A center-anchored resize keeps this
-   * point pinned; the per-frame anchor translation is computed as the shift of this
-   * exact center, not an AABB width/height delta (which only holds the center still
-   * when the element grows symmetrically from an unrotated layout box). Undefined
-   * when the corner geometry can't be measured (member creation still succeeded).
-   */
-  resizeFixedCenterStart?: { x: number; y: number };
   resizePressFromCorner?: { x: number; y: number };
   resizeGrow?: { a: number; b: number; c: number; d: number };
 }
@@ -190,26 +181,6 @@ export function resolveShiftClickCandidate<T extends { element: Element }>(input
     cacheIsAboutThisPoint: describes,
   });
   return describes ? input.cached : null;
-}
-
-/**
- * Overlay-px translation that keeps the element's CENTER fixed while a corner
- * resizes: a CSS width/height change grows the layout box from its top-left, so
- * the center drifts by half the size change on each axis; translating back by that
- * half-delta re-pins the center. This is the UNROTATED (AABB) fallback used only
- * when the element's real transformed corners can't be measured — the primary path
- * pins the measured center (rotation-safe) in useDomEditOverlayGestures.
- */
-export function resolveResizeCenterAnchorOffset(input: {
-  originWidth: number;
-  originHeight: number;
-  overlayWidth: number;
-  overlayHeight: number;
-}): { dx: number; dy: number } {
-  return {
-    dx: (input.originWidth - input.overlayWidth) / 2,
-    dy: (input.originHeight - input.overlayHeight) / 2,
-  };
 }
 
 function pointerAngleDegrees(centerX: number, centerY: number, x: number, y: number): number {
