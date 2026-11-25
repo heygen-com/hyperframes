@@ -1803,6 +1803,19 @@ describe("html a browser reads differently", () => {
     expect(results.map(({ file }) => file)).toContain("index.html");
   });
 
+  it("finds a mounted file it cannot read by the name the renderer opens, URL-encoded or not", async () => {
+    const root = validHtml().replace(
+      "</div>",
+      '<div data-composition-src="compositions/my%20scene.html" data-start="0" data-duration="5"></div></div>',
+    );
+    const project = makeProject(root, {
+      "my scene.html": `<template><div data-composition-id="scene">${HIDDEN}</div></template>`,
+    });
+    const { results } = await lintProject(project);
+    expect(refusals(results)).toEqual([{ file: "compositions/my scene.html", severity: "error" }]);
+    expect(results.map(({ file }) => file)).toContain("index.html");
+  });
+
   it("reports a mounted file outside compositions/ that it cannot read", async () => {
     const root = validHtml().replace(
       "</div>",

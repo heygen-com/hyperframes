@@ -356,8 +356,8 @@ function mountedSources(
       const src = host.getAttribute("data-composition-src")?.trim();
       if (!src || longerThanAnyPath(src)) continue;
       if (isUnresolvedAssetPlaceholder(src) || isRemoteOrInlineUrl(src)) continue;
-      const path = resolve(projectDir, src);
-      if (seen.has(path) || !isWithinProjectRoot(projectDir, path)) continue;
+      const path = resolveCompositionSrc(projectDir, src);
+      if (path === null || seen.has(path)) continue;
       seen.add(path);
       const read = readLinkedProjectFile(projectDir, path);
       if (read.kind !== "file") continue;
