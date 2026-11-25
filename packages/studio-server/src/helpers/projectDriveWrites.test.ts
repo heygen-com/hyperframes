@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import fs, { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import fs, { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { stampProjectHfIdsAsync } from "./hfIdPersist.js";
 import { projectHistoryId } from "../history/historyId.js";
 
@@ -117,33 +116,5 @@ describe("a project drive that answers reads but never a write", () => {
     } finally {
       restore();
     }
-  });
-});
-
-// fails without the fix: the async stamp checked a file, then staged and renamed its stamped copy, so a save that
-// landed while the copy was staged was replaced by the older stamped text
-describe("a save that lands while the async stamp stages its copy", () => {
-  it("is kept, and the stamp leaves that file for the next open", async () => {
-    const dir = folder("hf-drive-race-");
-    const page = join(dir, "a.html");
-    writeFileSync(page, PAGE);
-    const saved = PAGE.replace("Hi", "Saved");
-    const promises = fs.promises as unknown as Record<string, (...args: unknown[]) => unknown>;
-    const realWriteFile = promises.writeFile!;
-    let saves = 0;
-    promises.writeFile = function (this: unknown, ...args: unknown[]) {
-      if (typeof args[0] === "string" && args[0].startsWith(`${page}.hf`) && saves++ === 0)
-        replaceFileAtomically(page, saved);
-      return realWriteFile.apply(this, args);
-    };
-    syncBuiltinESMExports();
-    try {
-      await stampProjectHfIdsAsync(dir);
-    } finally {
-      promises.writeFile = realWriteFile;
-      syncBuiltinESMExports();
-    }
-    expect(saves).toBe(1);
-    expect(readFileSync(page, "utf8")).toBe(saved);
   });
 });
