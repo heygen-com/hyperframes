@@ -265,13 +265,26 @@ export function shouldCalibrateSoftwareGpu(
   );
 }
 
+/**
+ * What calibration settles for auto mode: hardware when it is not slow, else whichever measured faster.
+ * Undefined when a calibration it needs measured nothing, so nothing is settled.
+ */
+export function settleAutoGpuChoice(
+  hardware: CaptureCostEstimate | undefined,
+  software: CaptureCostEstimate | undefined,
+): "software" | "hardware" | undefined {
+  if (hardware?.p95Ms === undefined) return undefined;
+  if (hardware.multiplier <= 1) return "hardware";
+  if (software?.p95Ms === undefined) return undefined;
+  return software.p95Ms < hardware.p95Ms ? "software" : "hardware";
+}
+
 /** Auto mode keeps the hardware GPU unless software measured strictly faster. */
 export function pickAutoGpuModeFromCalibration(
   hardware: CaptureCostEstimate,
   software: CaptureCostEstimate | undefined,
 ): "software" | "hardware" {
-  if (hardware.p95Ms === undefined || software?.p95Ms === undefined) return "hardware";
-  return software.p95Ms < hardware.p95Ms ? "software" : "hardware";
+  return settleAutoGpuChoice(hardware, software) ?? "hardware";
 }
 
 export function selectCaptureCalibrationFrames(totalFrames: number): number[] {
