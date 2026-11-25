@@ -34,7 +34,6 @@ import {
 type ShownStart = (
   e: React.PointerEvent<HTMLElement>,
   at: EditMoment,
-  /** Find the pressed targets again on the shown page: the press waited, or its selection names a replaced page. */
   findAgain: boolean,
   overChannel?: OverChannel,
 ) => boolean;
@@ -51,7 +50,6 @@ const pollFirst = (
   else press.frame = requestAnimationFrame(poll);
 };
 
-/** A reload that just swapped the page can leave a held selection naming the replaced page's element. */
 const namesReplacedPage = (iframe: HTMLIFrameElement | null, targets: DomEditSelection[]) => {
   const live = iframe?.contentDocument;
   return !!live && targets.some((target) => target.element.ownerDocument !== live);
