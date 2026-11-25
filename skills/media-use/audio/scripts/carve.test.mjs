@@ -490,6 +490,16 @@ test("a composition that is a plain file reads, from its own folder or from outs
     assert.throws(() => readComposition(join(dir, "project"), dir), /not a regular file/);
   }));
 
+// One handle for both, so the mode and the text are the same file's.
+function modeAndText(path) {
+  const file = openSync(path, "r");
+  try {
+    return [fstatSync(file).mode & 0o777, readFileSync(file, "utf-8")];
+  } finally {
+    closeSync(file);
+  }
+}
+
 // Guards the save itself: a plain rename would put a default-mode file in place and overwrite a read-only one.
 test(
   "saving keeps the composition's permissions and refuses one that may not be written",
@@ -500,17 +510,11 @@ test(
       writeFileSync(comp, "old");
       chmodSync(comp, 0o600);
       saveComposition(comp, "new");
-      const saved = openSync(comp, "r");
-      try {
-        assert.equal(fstatSync(saved).mode & 0o777, 0o600);
-        assert.equal(readFileSync(saved, "utf-8"), "new");
-      } finally {
-        closeSync(saved);
-      }
+      assert.deepEqual(modeAndText(comp), [0o600, "new"]);
       chmodSync(comp, 0o444);
       if (process.getuid?.() !== 0) {
         assert.throws(() => saveComposition(comp, "newer"), { code: "EACCES" });
-        assert.equal(readFileSync(comp, "utf-8"), "new");
+        assert.deepEqual(modeAndText(comp), [0o444, "new"]);
       }
       assert.deepEqual(readdirSync(dir), ["index.html"]);
     }),
