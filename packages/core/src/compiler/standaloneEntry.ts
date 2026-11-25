@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { HF_AUDIO_FX_ATTR } from "../audioFx";
 import { locateSceneRoot } from "./htmlDocument";
 

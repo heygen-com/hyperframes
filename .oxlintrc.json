@@ -92,6 +92,27 @@
       }
     },
     {
+      "files": ["packages/*/src/**/*.ts"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "packages/parsers/src/linkedom.ts",
+        "packages/cli/src/**/*.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "linkedom",
+                "message": "Import from @hyperframes/parsers/linkedom: it writes <title> and <textarea> text so it can't close its element."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["packages/cli/src/**/*.ts"],
       "excludeFiles": [
         "**/*.test.ts",
@@ -111,6 +132,10 @@
               {
                 "name": "@clack/prompts",
                 "message": "Import prompts and spinners from packages/cli/src/ui/prompts.ts: it refuses to prompt when nobody can answer."
+              },
+              {
+                "name": "linkedom",
+                "message": "Import from @hyperframes/parsers/linkedom: it writes <title> and <textarea> text so it can't close its element."
               }
             ]
           }

@@ -1,5 +1,5 @@
 {
-  "policy_version": "portable-source-v11",
+  "policy_version": "portable-source-v12",
   "about": "Golden vectors for the composition sync manifest. valid: build the canonical bytes from `manifest`; UTF-8 encoding `canonical` gives those bytes and `manifest_sha256` is their SHA-256. invalid: validating `manifest` fails with `error.code` (and `error.rule` for path-policy rules). limits: with `limits`, the first exceeded limit in the order file_count, file_size, project_size, manifest_size is `limit` (null: admitted). stored: base64 `body` is stored manifest bytes; reading them requires they are already canonical.",
   "valid": [
     {
@@ -306,7 +306,7 @@
             "size": 9
           },
           {
-            "path": "deck.key",
+            "path": "deck.pdf",
             "sha256": "8e11a86cf1052f458f6766baba49f519b80b3eee7c35433debd93483515626d4",
             "size": 8
           },
@@ -327,8 +327,8 @@
           }
         ]
       },
-      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".gitignore\",\"sha256\":\"bc37d034bad564583790a46f19d807abfe519c5671395fd494d8cce506c42947\",\"size\":10},{\"path\":\".hyperframes/brand-kit.json\",\"sha256\":\"dda44abb548e99aad3ec261c6b87c5f545eb09f8fb1b261d3c75a7cfc21bfa94\",\"size\":27},{\"path\":\".hyperframes/caption-skin.html\",\"sha256\":\"a2e2d9315c6a9e3437f752e69a8514d8c662f53a9ade33db2686fa9affaa97b2\",\"size\":30},{\"path\":\".hyperframes/studio-manual-edits.json\",\"sha256\":\"450ba94d0f2fbb1ac30cc5e1dcae043e2f7f970357984a6bdfaf2f2087904fe0\",\"size\":37},{\"path\":\".hyperframes/studio-motion.json\",\"sha256\":\"205f890f2a576608d6f009ef4738fc2b81df387329f2e20bdf67356c5365b55d\",\"size\":31},{\"path\":\".hyperframes/transcription.json\",\"sha256\":\"bc0b9ef4215d81d0ae7adabc471993f63ac70a24a693f4f91b4c18a103dd9ba1\",\"size\":31},{\"path\":\".hyperframes/transcripts/a.json\",\"sha256\":\"7ffb8ceda0a4b872cc4a9ba63bdd040a70631e3343157454a95206f2fc9f27cf\",\"size\":31},{\"path\":\".hyperframes/transcripts/nested/b.json\",\"sha256\":\"a5222ca2063d161da3e06294d2ab5c6c32d7692a1177bb0f79ddde4001deb47b\",\"size\":38},{\"path\":\".hyperframesignore\",\"sha256\":\"4f7382fe2d1d64d27e88900b9997a85f9d9fa42062f04aab7426b03cabba7497\",\"size\":18},{\"path\":\".media/CREDITS.md\",\"sha256\":\"4056dedc9ad51868f89af43f34035af851bb566f6d30f804e57551da7ec0dd9c\",\"size\":17},{\"path\":\".media/images/image_001.png\",\"sha256\":\"35037cf8cd8a2d3e2b20a04563ecba015e6404678af5631c0e9e3a50fec200de\",\"size\":27},{\"path\":\".media/index.md\",\"sha256\":\"8a925d0e3cc08cd0ed4601d0f94e8a781881d1b3034d07fe11cc02d296a2ad43\",\"size\":15},{\"path\":\".media/preferences.json\",\"sha256\":\"888316c0c00d9d6929423a311f302500134d74315226a6a78a7a73bf66b4ef58\",\"size\":23},{\"path\":\".media/video/unused-take.mp4\",\"sha256\":\"a3e29b7ba3f66207df6182ec09ed749df364378cf2cfb8cf589163a6cdac93e2\",\"size\":28},{\"path\":\"CLAUDE.md\",\"sha256\":\"6ebdb617a8104a7756d0cf36578ab01103dc9f07e4dc6feb751296b9c402faf7\",\"size\":9},{\"path\":\"deck.key\",\"sha256\":\"8e11a86cf1052f458f6766baba49f519b80b3eee7c35433debd93483515626d4\",\"size\":8},{\"path\":\"docs/node_modules.md\",\"sha256\":\"ef0612da92e8204f7277982d4d3ce82b4589d200192fcfa74371a5b80365d5ba\",\"size\":20},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"notes/TRANSCRIPTS/file.bin\",\"sha256\":\"0392523321b470965a29a3ec513f460128fe11513b1dc2e2396fe510d5e67b15\",\"size\":26},{\"path\":\"templates/env.example.md\",\"sha256\":\"bf8e2a33ac126e948ed744ea606beb8f150409bbfcea9fbdf3184a710d0d3bff\",\"size\":24}],\"format_version\":1}",
-      "manifest_sha256": "376dac8985415bfe84d9fbc3fb8086cc6a2cfa2a8b2d8c180a8a8a2c3fef8360",
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".gitignore\",\"sha256\":\"bc37d034bad564583790a46f19d807abfe519c5671395fd494d8cce506c42947\",\"size\":10},{\"path\":\".hyperframes/brand-kit.json\",\"sha256\":\"dda44abb548e99aad3ec261c6b87c5f545eb09f8fb1b261d3c75a7cfc21bfa94\",\"size\":27},{\"path\":\".hyperframes/caption-skin.html\",\"sha256\":\"a2e2d9315c6a9e3437f752e69a8514d8c662f53a9ade33db2686fa9affaa97b2\",\"size\":30},{\"path\":\".hyperframes/studio-manual-edits.json\",\"sha256\":\"450ba94d0f2fbb1ac30cc5e1dcae043e2f7f970357984a6bdfaf2f2087904fe0\",\"size\":37},{\"path\":\".hyperframes/studio-motion.json\",\"sha256\":\"205f890f2a576608d6f009ef4738fc2b81df387329f2e20bdf67356c5365b55d\",\"size\":31},{\"path\":\".hyperframes/transcription.json\",\"sha256\":\"bc0b9ef4215d81d0ae7adabc471993f63ac70a24a693f4f91b4c18a103dd9ba1\",\"size\":31},{\"path\":\".hyperframes/transcripts/a.json\",\"sha256\":\"7ffb8ceda0a4b872cc4a9ba63bdd040a70631e3343157454a95206f2fc9f27cf\",\"size\":31},{\"path\":\".hyperframes/transcripts/nested/b.json\",\"sha256\":\"a5222ca2063d161da3e06294d2ab5c6c32d7692a1177bb0f79ddde4001deb47b\",\"size\":38},{\"path\":\".hyperframesignore\",\"sha256\":\"4f7382fe2d1d64d27e88900b9997a85f9d9fa42062f04aab7426b03cabba7497\",\"size\":18},{\"path\":\".media/CREDITS.md\",\"sha256\":\"4056dedc9ad51868f89af43f34035af851bb566f6d30f804e57551da7ec0dd9c\",\"size\":17},{\"path\":\".media/images/image_001.png\",\"sha256\":\"35037cf8cd8a2d3e2b20a04563ecba015e6404678af5631c0e9e3a50fec200de\",\"size\":27},{\"path\":\".media/index.md\",\"sha256\":\"8a925d0e3cc08cd0ed4601d0f94e8a781881d1b3034d07fe11cc02d296a2ad43\",\"size\":15},{\"path\":\".media/preferences.json\",\"sha256\":\"888316c0c00d9d6929423a311f302500134d74315226a6a78a7a73bf66b4ef58\",\"size\":23},{\"path\":\".media/video/unused-take.mp4\",\"sha256\":\"a3e29b7ba3f66207df6182ec09ed749df364378cf2cfb8cf589163a6cdac93e2\",\"size\":28},{\"path\":\"CLAUDE.md\",\"sha256\":\"6ebdb617a8104a7756d0cf36578ab01103dc9f07e4dc6feb751296b9c402faf7\",\"size\":9},{\"path\":\"deck.pdf\",\"sha256\":\"8e11a86cf1052f458f6766baba49f519b80b3eee7c35433debd93483515626d4\",\"size\":8},{\"path\":\"docs/node_modules.md\",\"sha256\":\"ef0612da92e8204f7277982d4d3ce82b4589d200192fcfa74371a5b80365d5ba\",\"size\":20},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"notes/TRANSCRIPTS/file.bin\",\"sha256\":\"0392523321b470965a29a3ec513f460128fe11513b1dc2e2396fe510d5e67b15\",\"size\":26},{\"path\":\"templates/env.example.md\",\"sha256\":\"bf8e2a33ac126e948ed744ea606beb8f150409bbfcea9fbdf3184a710d0d3bff\",\"size\":24}],\"format_version\":1}",
+      "manifest_sha256": "d520abd030a7461b5565047aaf492b697be1e35badf6a23b6772a98ce6237792",
       "file_count": 20,
       "project_bytes": 460
     },
@@ -5656,6 +5656,419 @@
       "error": {
         "code": "excluded_path",
         "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "credential-docker",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "nested/.DoCker/config.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-gh",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "boards/.config/gh/hosts.yml",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-gcloud",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".config/gcloud/credentials.db",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-gnupg",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".gnupg/data",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-kube",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".kube/config",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-azure",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".azure/cache.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-pip",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "pip.ini",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-gitconfig",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".gitconfig",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-netrc",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "_netrc",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-ecdsa",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "id_ecdsa.pub",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-dsa",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "id_dsa",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "DOCKER~1/config",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "private-source-1",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "nested/service-account.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "private-source"
+      }
+    },
+    {
+      "name": "private-source-2",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "nested/.env-production/token",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "private-source"
+      }
+    },
+    {
+      "name": "private-source-3",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "config/terraform.tfstate.backup",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "private-source"
+      }
+    },
+    {
+      "name": "private-source-4",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "nested/SERVICE_ACCOUNT.JSON",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "private-source"
+      }
+    },
+    {
+      "name": "private-source-5",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "assets/deck.key",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "private-source"
+      }
+    },
+    {
+      "name": "private-source-6",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "nested/ｓervice-account.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "private-source"
       }
     }
   ],

@@ -3747,6 +3747,39 @@ describe("initSandboxRuntimeModular", () => {
     expect(seekCalls).toEqual([{ time: 2, suppressEvents: false }]);
   });
 
+  // A sealed frame gets each seek as its own message, so Studio re-renders it with one seek to the time it shows.
+  const rootSeeking = (children?: unknown[]) => {
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080"></div>`;
+    const seekCalls: Array<{ time: number; suppressEvents?: boolean }> = [];
+    const rootTimeline = createMockTimeline(10);
+    const originalTotalTime = rootTimeline.totalTime;
+    rootTimeline.totalTime = (time: number, suppressEvents?: boolean) => {
+      if (time !== undefined) seekCalls.push({ time, suppressEvents });
+      return originalTotalTime?.(time, suppressEvents);
+    };
+    if (children) Object.assign(rootTimeline, { getChildren: () => children });
+    window.__timelines = { main: rootTimeline };
+    initSandboxRuntimeModular();
+    window.__player?.seek(2);
+    seekCalls.length = 0;
+    window.__player?.seek(2);
+    return seekCalls;
+  };
+
+  it("redraws the root timeline on a seek to the time it already shows", () => {
+    expect(rootSeeking()).toEqual([
+      { time: 2, suppressEvents: false },
+      { time: 1.999, suppressEvents: true },
+      { time: 2, suppressEvents: true },
+    ]);
+  });
+
+  it("does not redraw a root timeline holding a zero-duration callback on a seek to its own time", () => {
+    const callback = { vars: { onComplete: () => {} }, duration: () => 0, totalDuration: () => 0 };
+    // Known limit: a redraw would fire the callback again, so only the seek itself lands.
+    expect(rootSeeking([callback])).toEqual([{ time: 2, suppressEvents: false }]);
+  });
+
   it("keeps a later root tween's value over a nested scene the root already drew", () => {
     document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0" data-duration="2" data-width="1920" data-height="1080"><div data-composition-id="child" data-start="0" data-duration="2"><div id="box"></div></div></div>`;
     const box = document.getElementById("box")!;

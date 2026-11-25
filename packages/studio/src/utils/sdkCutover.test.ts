@@ -332,6 +332,28 @@ describe("sdkCutoverPersist", () => {
     },
   );
 
+  it("a text edit of a real layer whose only child is a <textarea> saves no script", async () => {
+    const layer = `<div data-hf-id="hf-layer" data-start="0" data-duration="1"><textarea>old</textarea></div>`;
+    const html = `<!DOCTYPE html><html><body><div data-hf-id="hf-stage" data-hf-root>${layer}</div></body></html>`;
+    const live = await openComposition(html, { history: false });
+    const deps = makeDeps();
+    await sdkCutoverPersist(
+      { hfId: "hf-layer" } as never,
+      [textOp("</textarea><script>window.pwned=1</script>")],
+      html,
+      "/comp.html",
+      live,
+      deps,
+    );
+    // One end tag means the typed "</textarea>" stayed text: nothing after it can parse as markup.
+    const endTags = (html: unknown) => String(html).match(/<\/textarea/gi)?.length ?? 0;
+    expect(deps.writeProjectFile).toHaveBeenCalled();
+    for (const [, written] of vi.mocked(deps.writeProjectFile).mock.calls)
+      expect(endTags(written)).toBe(1);
+    expect(endTags(live.serialize())).toBe(1);
+    live.dispose();
+  });
+
   it("dispatches setAttribute for attribute op with data- prefix", async () => {
     const deps = makeDeps();
     const session = makeSession(true);

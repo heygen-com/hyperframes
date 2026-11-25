@@ -3,7 +3,7 @@ import { redactUrlQueryStrings } from "@hyperframes/core";
 import {
   SELF_CONTAINED_FORMATS,
   assertLiteralMediaInput,
-  mediaInputFormatArgs,
+  mediaInputArgs,
 } from "@hyperframes/parsers/ff-binaries";
 import { resolveRestrictPageNetwork } from "../config.js";
 import { getFfmpegBinary, getFfprobeBinary } from "./ffmpegBinaries.js";
@@ -68,7 +68,7 @@ export function urlInputArgs(
 ): string[] {
   assertLiteralMediaInput(input);
   const mediaFormats = () =>
-    mediaInputFormatArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary(), input, {
+    mediaInputArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary(), input, {
       playlists: true,
     });
   const restricted = resolveRestrictPageNetwork();

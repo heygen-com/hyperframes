@@ -12,6 +12,10 @@ const { state, CAPTURE_REACHED } = vi.hoisted(() => ({
     shaderTransitions: false,
     disk: [] as { totalFrames: number; frameRange?: { startFrame: number; endFrame: number } }[],
     streaming: 0,
+    layered: [] as {
+      totalFrames: number;
+      frameWindow?: { startFrame: number; endFrame: number };
+    }[],
     audio: [] as { totalFrames: number; frameWindow?: { startFrame: number; endFrame: number } }[],
   },
   CAPTURE_REACHED: "capture reached",
@@ -102,6 +106,16 @@ vi.mock("./render/stages/captureStage.js", async (importOriginal) => ({
     throw new Error(CAPTURE_REACHED);
   },
 }));
+vi.mock("./render/stages/captureHdrStage.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./render/stages/captureHdrStage.js")>()),
+  runCaptureHdrStage: async (input: {
+    totalFrames: number;
+    job: { frameWindow?: { startFrame: number; endFrame: number } };
+  }) => {
+    state.layered.push({ totalFrames: input.totalFrames, frameWindow: input.job.frameWindow });
+    throw new Error(CAPTURE_REACHED);
+  },
+}));
 vi.mock("./render/stages/captureStreamingStage.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/stages/captureStreamingStage.js")>()),
   runCaptureStreamingStage: async () => {
@@ -115,6 +129,7 @@ beforeEach(() => {
   state.shaderTransitions = false;
   state.disk = [];
   state.streaming = 0;
+  state.layered = [];
   state.audio = [];
 });
 afterEach(() => {
@@ -164,12 +179,13 @@ it("renders the whole film as before without a range", async () => {
   expect(state.disk[0]?.frameRange).toBeUndefined();
 });
 
-it("refuses a range on the layered route instead of rendering the whole film", async () => {
+it("captures the range's frames on the layered route", async () => {
   // webm and mov composite shader transitions on the layered route; mp4 composites them in the page.
   state.shaderTransitions = true;
-  await expect(render({ startSeconds: 2.5, endSeconds: 4 }, "webm")).rejects.toThrow(
-    /"hdr_layered" capture route, which renders the whole film only/,
-  );
+  await render({ startSeconds: 2.5, endSeconds: 4 }, "webm");
+  expect(state.layered).toEqual([
+    { totalFrames: 45, frameWindow: { startFrame: 75, endFrame: 120 } },
+  ]);
   expect(state.disk).toEqual([]);
   expect(state.streaming).toBe(0);
 });
