@@ -27,3 +27,22 @@ export function selfContainedInput(file) {
   assertLiteralMediaPath(file);
   return ["-protocol_whitelist", "file", "-format_whitelist", SELF_CONTAINED_FORMATS];
 }
+
+/** ffmpeg options that read `list` as a concat list of local parts, each opened only as `reader`, which wrote them. */
+export function partsListInput(list, reader) {
+  if (!SELF_CONTAINED_FORMATS.split(",").includes(reader))
+    throw new Error(`not a self-contained reader: ${reader}`);
+  const readers = `concat,${reader}`;
+  return [
+    "-protocol_whitelist",
+    "file",
+    "-format_whitelist",
+    readers,
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-i",
+    list,
+  ];
+}
