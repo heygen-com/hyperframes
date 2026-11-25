@@ -21,7 +21,11 @@ import { previewStandIn } from "../components/editor/previewDrafts";
 import { requestOverlayFrames } from "../components/editor/overlayFrameLoop";
 import { previewEditingClient, previewRequest } from "../player/lib/previewChannel";
 import { editPreviewElement, previewTextEdit } from "../player/lib/previewElements";
-import { caretRangeAt, takePlainTextOnly } from "@hyperframes/core/runtime/editing-port";
+import {
+  caretRangeAt,
+  placeCaretAtEnd,
+  takePlainTextOnly,
+} from "@hyperframes/core/runtime/editing-port";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -541,34 +545,4 @@ function placeCaret(element: HTMLElement, at?: { x: number; y: number }): void {
     return;
   }
   placeCaretAtEnd(element);
-}
-
-/**
- * Put the caret after the last character, with nothing selected.
- *
- * Selecting the whole text would mean the next keystroke silently destroys it,
- * which is a bad thing to do to someone who double-clicked to fix a typo. A
- * caret at the end is where a person who wants to keep typing expects to be,
- * and everything else stays available: click anywhere to move it, drag to
- * select, Cmd+A to take the lot.
- */
-function placeCaretAtEnd(element: HTMLElement): void {
-  const doc = element.ownerDocument;
-  const selection = doc.defaultView?.getSelection();
-  if (!selection) return;
-  const range = doc.createRange();
-  // Into the text node, not just past the last child: collapsing the element's
-  // contents leaves the caret at a node boundary, which types in the right
-  // place but reports itself as "after child 0" and is a different position
-  // from the one the user sees at the end of the word.
-  const last = element.lastChild;
-  if (last && last.nodeType === 3) {
-    range.setStart(last, last.textContent?.length ?? 0);
-    range.collapse(true);
-  } else {
-    range.selectNodeContents(element);
-    range.collapse(false);
-  }
-  selection.removeAllRanges();
-  selection.addRange(range);
 }

@@ -103,9 +103,18 @@ function windowsFolderKey(dir: string): string {
   return dir.replaceAll("/", "\\").replace(/\\+$/, "").toLowerCase();
 }
 
+export function readEnv(
+  name: string,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  if (platform !== "win32") return env[name];
+  const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+  return key === undefined ? undefined : env[key];
+}
+
 function windowsSystemFolders(env: NodeJS.ProcessEnv): Set<string> {
-  const rootKey = Object.keys(env).find((key) => key.toUpperCase() === "SYSTEMROOT");
-  const root = (rootKey && env[rootKey]) || "C:\\Windows";
+  const root = readEnv("SYSTEMROOT", env, "win32") || "C:\\Windows";
   const system32 = win32.join(root, "System32");
   return new Set(
     [
@@ -119,18 +128,18 @@ function windowsSystemFolders(env: NodeJS.ProcessEnv): Set<string> {
 
 /** The PATH folders a helper program may come from, in PATH order. Windows always keeps its system folders. */
 export function trustedPathDirs(
-  pathValue = process.env.PATH ?? "",
+  pathValue?: string,
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
   const system = platform === "win32" ? windowsSystemFolders(env) : new Set<string>();
-  const entries = pathEntries(pathValue, platform);
+  const entries = pathEntries(pathValue ?? readEnv("PATH", env, platform) ?? "", platform);
   const trusted = trustRule();
   return [...new Set(entries.filter((dir) => system.has(windowsFolderKey(dir)) || trusted(dir)))];
 }
 
 function windowsExtensions(): string[] {
-  const listed = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+  const listed = (readEnv("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
     .split(";")
     .map((ext) => ext.trim().toLowerCase())
     .filter(Boolean);

@@ -193,6 +193,36 @@ describe("createStudioManualEditsRenderBodyScript", () => {
     expect(nestedCard.style.getPropertyValue("rotate")).toContain("--hf-studio-rotation");
   });
 
+  // fails without the fix: an authored data-composition-src made a saved edit to index.html apply to its own copy
+  it("applies an edit to index.html to no element under an authored data-composition-src naming it", () => {
+    const window = new Window();
+    window.document.body.innerHTML = `
+      <div data-composition-id="root">
+        <div data-composition-id="scene" data-composition-file="scenes/a.html">
+          <div data-composition-id="wrapper" data-composition-src="index.html"><div id="card"></div></div>
+        </div>
+        <div id="card"></div>
+      </div>
+    `;
+    const [authoredCard, ownCard] = Array.from(window.document.getElementsByTagName("*")).filter(
+      (element): element is HTMLElement =>
+        element instanceof window.HTMLElement && element.id === "card",
+    );
+    if (!authoredCard || !ownCard) throw new Error("render fixture missing");
+    const script = createStudioManualEditsRenderBodyScript(
+      JSON.stringify({
+        version: 1,
+        edits: [{ kind: "rotation", target: { sourceFile: "index.html", id: "card" }, angle: 21 }],
+      }),
+    );
+    if (!script) throw new Error("script fixture missing");
+
+    runScript(window, script);
+
+    expect(authoredCard.style.getPropertyValue("rotate")).toBe("");
+    expect(ownCard.style.getPropertyValue("rotate")).toContain("--hf-studio-rotation");
+  });
+
   it("applies render edits inside composition-file hosts without composition ids", () => {
     const window = new Window();
     window.document.body.innerHTML = `

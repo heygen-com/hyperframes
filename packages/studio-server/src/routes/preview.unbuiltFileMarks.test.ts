@@ -13,6 +13,7 @@ afterEach(() => {
 
 const entry = (mark: string) => `<html><head></head><body><div data-composition-id="main">
   <p id="claim" ${mark}="scenes/other.html">Hi</p>
+  <template><b ${mark}="scenes/other.html">later</b></template>
 </div></body></html>`;
 
 function api(bundle: StudioApiAdapter["bundle"], mark: string) {

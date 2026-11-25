@@ -13,6 +13,8 @@ function createMockDeps() {
     onSetMediaOutputMuted: vi.fn(),
     onSetNativeMediaSyncDisabled: vi.fn(),
     onSetWebAudioMediaDisabled: vi.fn(),
+    onSetParentAudio: vi.fn(),
+    onAudioClock: vi.fn(),
     onSetPlaybackRate: vi.fn(),
     onSetIdleHeartbeat: vi.fn(),
     onSetColorGrading: vi.fn(),
@@ -254,6 +256,29 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("set-native-media-sync-disabled"));
     expect(deps.onSetNativeMediaSyncDisabled).toHaveBeenCalledWith(false);
+  });
+
+  // fails without the fix: the film had no way to hear the parent's audio clock or which clips it plays.
+  it("passes the parent's audio clock and its clips on, and drops a malformed one", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    try {
+      handler(makeControlMessage("audio-clock", { time: 4.5, rate: 1, at: 1000 }));
+      expect(deps.onAudioClock).toHaveBeenLastCalledWith({ time: 4.5, rate: 1, at: 1000 });
+      handler(makeControlMessage("audio-clock", { time: null }));
+      expect(deps.onAudioClock).toHaveBeenLastCalledWith(null);
+      for (const bad of [{ time: "4" }, { time: 4, rate: 0, at: 1 }, { time: 4, rate: 1 }])
+        handler(makeControlMessage("audio-clock", bad));
+      expect(deps.onAudioClock).toHaveBeenCalledTimes(2);
+
+      handler(makeControlMessage("set-parent-audio", { clips: ["a", "b"] }));
+      expect(deps.onSetParentAudio).toHaveBeenLastCalledWith(["a", "b"]);
+      handler(makeControlMessage("set-parent-audio", { clips: [1] }));
+      handler(makeControlMessage("set-parent-audio", { clips: "a" }));
+      expect(deps.onSetParentAudio).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("message", handler);
+    }
   });
 
   it("dispatches set-web-audio-media-disabled command", () => {

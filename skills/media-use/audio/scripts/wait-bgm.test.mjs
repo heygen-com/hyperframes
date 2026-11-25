@@ -327,3 +327,96 @@ test("a broken audio_meta.json prints its bytes with control characters as escap
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Time moves on every read and by the full length of every wait, as it does on a loaded machine. The wall
+// clock can also step back, as it does when the system time is corrected. Every wait is logged.
+const MOVING_CLOCK = `
+import { appendFileSync, writeFileSync } from "node:fs";
+let now = performance.now();
+Object.defineProperty(performance, "now", { value: () => (now += 1), configurable: true });
+let wall = Date.now();
+const back = Boolean(process.env.WALL_CLOCK_STEPS_BACK);
+Date.now = () => (wall += back ? -1000 : 1);
+const wait = globalThis.setTimeout;
+globalThis.setTimeout = (fn, ms = 0, ...rest) => {
+  appendFileSync(process.env.WAITS, ms + "\\n");
+  if (process.env.TRACK_DURING_WAIT) writeFileSync(process.env.TRACK_DURING_WAIT, "RIFF");
+  now += ms;
+  if (!back) wall += ms;
+  return wait(fn, 0, ...rest);
+};
+`;
+
+const waitsIn = (dir) =>
+  readFileSync(join(dir, "waits"), "utf8").split("\n").filter(Boolean).map(Number);
+
+function waitOnMovingClock(dir, timeoutMs, env = {}, intervalMs = timeoutMs) {
+  writeFileSync(join(dir, "waits"), "");
+  writeFileSync(join(dir, "clock.mjs"), MOVING_CLOCK);
+  writeFileSync(
+    join(dir, "audio_meta.json"),
+    JSON.stringify({ bgm: { path: "assets/bgm/track.wav" }, bgm_pending: true }),
+  );
+  const script = new URL("./wait-bgm.mjs", import.meta.url).pathname;
+  const run = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      join(dir, "clock.mjs"),
+      script,
+      "--audio-meta",
+      join(dir, "audio_meta.json"),
+      "--hyperframes",
+      dir,
+      "--timeout-ms",
+      String(timeoutMs),
+      "--interval-ms",
+      String(intervalMs),
+    ],
+    {
+      encoding: "utf8",
+      timeout: 10_000,
+      env: { ...process.env, WAITS: join(dir, "waits"), ...env },
+    },
+  );
+  assert.equal(run.status, 0, run.stderr);
+  return JSON.parse(readFileSync(join(dir, "bgm_status.json"), "utf8")).status;
+}
+
+// fails without the fix: a tick between starting the clock and the first look skipped every look.
+test("a finished track is ready with --timeout-ms 0 even when the clock moves before the first look", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  try {
+    mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+    writeFileSync(join(dir, "assets/bgm/track.wav"), "RIFF");
+    assert.equal(waitOnMovingClock(dir, 0), "ready");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// fails without the fix: the wait ended at the deadline without looking again.
+test("a track that lands during the last wait is ready", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  try {
+    mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+    const track = join(dir, "assets/bgm/track.wav");
+    assert.equal(waitOnMovingClock(dir, 100, { TRACK_DURING_WAIT: track }, 1000), "ready");
+    const waits = waitsIn(dir);
+    assert.ok(waits.length > 0 && waits.every((ms) => ms <= 100), `waits: ${waits}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// fails without the fix: elapsed time came from the wall clock, so a step back made a zero timeout wait.
+test("a zero timeout looks once and never waits, even when the wall clock steps back", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  try {
+    mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+    assert.equal(waitOnMovingClock(dir, 0, { WALL_CLOCK_STEPS_BACK: "1" }), "timeout");
+    assert.deepEqual(waitsIn(dir), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
