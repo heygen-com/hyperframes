@@ -17,6 +17,7 @@ import {
   type Viewport,
   type ConsoleMessage,
 } from "puppeteer-core";
+import { createHash } from "crypto";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { availableParallelism } from "os";
 import { join } from "path";
@@ -606,7 +607,6 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<stri
 const BROWSER_CONSOLE_BUFFER_SIZE = 200;
 const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
-const SERVED_SCRIPTS_MAX = 500;
 const THROW_SITE_LOOKUP_MAX = 10;
 
 function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
@@ -2155,7 +2155,6 @@ async function isolateUnregisteredCompositions(page: Page): Promise<IsolatedComp
     return out;
   })()`);
   if (!Array.isArray(isolated)) return [];
-  // The page's own cap can be undone by a page that patches built-ins, so the record is bounded here too.
   return (isolated as IsolatedComposition[]).slice(0, PAGE_LIST_MAX).map((c) => ({
     compositionId: boundedPageText(c.compositionId),
     elementId: c.elementId && boundedPageText(c.elementId),
@@ -3102,8 +3101,7 @@ function isPlayPauseAbort(message: string): boolean {
 /** `runtime-error:<first line>` when a script served with the composition threw; null if not attributable to one. */
 export function classifyPageError(
   details: Protocol.Runtime.ExceptionDetails,
-  projectScripts: ReadonlySet<string>,
-  fallback?: ServedScriptFallback,
+  projectScripts: Pick<ReadonlySet<string>, "has">,
 ): string | null {
   const exception = details.exception;
   const message = String(exception?.description ?? exception?.value ?? details.text);
@@ -3113,27 +3111,18 @@ export function classifyPageError(
   // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
   if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
   const urls = frames.length > 0 ? frames : [details.url];
-  return urls.some((url) => isOwnedScriptUrl(url, projectScripts, fallback))
+  return urls.some((url) => isOwnedScriptUrl(url, projectScripts))
     ? `runtime-error:${firstLine}`
     : null;
 }
 
 // The render compiler names the composition's inline code.
 // Inline handlers report the document, which a widget can move.
-/** Set once the served-script set is full: any URL on the server then counts, except a frame's current document. */
-interface ServedScriptFallback {
-  prefix: string;
-  isDocument: (url: string) => boolean;
-}
-
 function isOwnedScriptUrl(
   url: string | undefined,
-  projectScripts: ReadonlySet<string>,
-  fallback?: ServedScriptFallback,
+  projectScripts: Pick<ReadonlySet<string>, "has">,
 ): boolean {
-  if (url === undefined) return false;
-  if (fallback && url.startsWith(fallback.prefix) && !fallback.isDocument(url)) return true;
-  return projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL);
+  return url !== undefined && (projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL));
 }
 
 const LOOKUP_CALL =
@@ -3143,11 +3132,10 @@ const LOOKUP_CALL =
 export async function describeThrowSite(
   client: CDPSession,
   details: Protocol.Runtime.ExceptionDetails,
-  projectScripts: ReadonlySet<string>,
-  fallback?: ServedScriptFallback,
+  projectScripts: Pick<ReadonlySet<string>, "has">,
 ): Promise<string> {
   const frame = (details.stackTrace?.callFrames ?? []).find((f) =>
-    isOwnedScriptUrl(f.url, projectScripts, fallback),
+    isOwnedScriptUrl(f.url, projectScripts),
   );
   if (!frame) return "";
   let where = `${frame.url}:${frame.lineNumber + 1}:${frame.columnNumber + 1}`;
@@ -3214,21 +3202,17 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
-  const projectScripts = new Set<string>();
-  let fallback: ServedScriptFallback | undefined;
-  const withoutFragment = (url: string) => url.split("#")[0];
-  const isDocument = (url: string) =>
-    page.frames().some((frame) => withoutFragment(frame.url()) === withoutFragment(url));
+  const servedScriptUrlDigests = new Set<string>();
+  const digest = (url: string) => createHash("sha1").update(url).digest("base64");
+  const projectScripts = { has: (url: string) => servedScriptUrlDigests.has(digest(url)) };
   page.on("response", (response) => {
     const status = response.status();
     const request = response.request();
     const isScript = request.resourceType() === "script";
     const responseUrl = response.url();
     if (status < 400) {
-      if (!isScript || !responseUrl.startsWith(`${serverUrl}/`)) return;
-      if (projectScripts.size < SERVED_SCRIPTS_MAX && responseUrl.length <= PAGE_TEXT_MAX_CHARS)
-        projectScripts.add(responseUrl);
-      else fallback = { prefix: `${serverUrl}/`, isDocument };
+      if (isScript && responseUrl.startsWith(`${serverUrl}/`))
+        servedScriptUrlDigests.add(digest(responseUrl));
       return;
     }
 
@@ -3257,7 +3241,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
-    const error = classifyPageError(exceptionDetails, projectScripts, fallback);
+    const error = classifyPageError(exceptionDetails, projectScripts);
     if (!error) return;
     const kept = boundedPageText(error);
     const lookedUp = (session.throwSiteLookups ??= new Set());
@@ -3266,15 +3250,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     recordPageError(session, error);
     if (lookedUp.size >= THROW_SITE_LOOKUP_MAX || !session.pageErrors.includes(kept)) return;
     lookedUp.add(kept);
-    void describeThrowSite(runtimeClient, exceptionDetails, projectScripts, fallback).then(
-      (site) => {
-        const i = session.pageErrors.indexOf(kept);
-        if (!site || i < 0) return;
-        const sited = boundedPageText(`${kept}${site}`);
-        if (session.pageErrors.includes(sited)) session.pageErrors.splice(i, 1);
-        else session.pageErrors[i] = sited;
-      },
-    );
+    void describeThrowSite(runtimeClient, exceptionDetails, projectScripts).then((site) => {
+      const i = session.pageErrors.indexOf(kept);
+      if (!site || i < 0) return;
+      const sited = boundedPageText(`${kept}${site}`);
+      if (session.pageErrors.includes(sited)) session.pageErrors.splice(i, 1);
+      else session.pageErrors[i] = sited;
+    });
   });
   await runtimeClient.send("Runtime.enable");
 

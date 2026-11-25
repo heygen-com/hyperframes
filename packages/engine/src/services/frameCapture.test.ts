@@ -429,9 +429,10 @@ describe("classifyPageError", () => {
     );
   });
 
-  // fails at 50501bcb: past the cap a project script's throw was dropped; at 5c807e39 a long or moved document counted
+  // fails at 50501bcb (late scripts' throws dropped), 5c807e39 (long or moved documents counted) and 2bfcb813
+  // (a script's throw dropped while a frame showed that URL as its document)
   it.each([doc, `${doc}#c`, `${server}/elsewhere/page?q=1`, `${server}/${"d".repeat(3_000)}.html`])(
-    "past the served-script cap, records a served script's throw and not one from the document at %s",
+    "records every served script's throw, however many and long, and none from the document at %s",
     async (documentUrl) => {
       const { session, pageListeners, runtimeListeners, frameUrl } = await listenedSession();
       const script = (n: number) => `${server}/s${n}.js`;
@@ -443,21 +444,20 @@ describe("classifyPageError", () => {
           request: () => ({ resourceType: () => "script" }),
         });
       }
-      frameUrl.current = documentUrl;
-      for (const [n, url] of [
-        [0, script(0)],
-        [1_999, script(1_999)],
-        [-1, long],
-        [-2, documentUrl],
-      ] as const) {
+      const throwFrom = (n: number, url: string) =>
         runtimeListeners.get("Runtime.exceptionThrown")?.({
           exceptionDetails: thrown(`Error: from ${n}`, url, [url]),
         });
-      }
+      throwFrom(0, script(0));
+      throwFrom(-1, long);
+      frameUrl.current = documentUrl;
+      throwFrom(-2, documentUrl);
+      frameUrl.current = script(1_999);
+      throwFrom(1_999, script(1_999));
       expect(session.pageErrors).toEqual([
         "runtime-error:Error: from 0",
-        "runtime-error:Error: from 1999",
         "runtime-error:Error: from -1",
+        "runtime-error:Error: from 1999",
       ]);
     },
   );
