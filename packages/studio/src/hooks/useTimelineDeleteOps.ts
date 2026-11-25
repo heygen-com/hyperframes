@@ -142,7 +142,6 @@ export function useTimelineDeleteOps({
         const rippleChanges = rippleShifts ? resolveShiftedElements(survivors, rippleShifts) : null;
         // Timeline and preview follow at once, so the next edit starts from this result.
         usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
-        // Snapshot the duration BEFORE the removal below shortens it, so a failed persist rolls it back.
         const rollbackDuration = captureDurationRollback(previewIframeRef.current);
         removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
         const deleted = enqueueTimelineEdit(editQueueRef, async (pid) => {
