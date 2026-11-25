@@ -1,4 +1,5 @@
 import { oneProcessOverPipe, resolveRestrictPageNetwork } from "@hyperframes/engine";
+import { ffmpegCwd } from "@hyperframes/parsers/ff-binaries";
 import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "./captureTimeout.js";
 import {
   rethrowAfterBrowserCleanup,
@@ -881,7 +882,7 @@ export async function runFfmpegOnce(
   timeoutMs: number,
 ): Promise<FfmpegRunResult> {
   return await new Promise((resolvePromise) => {
-    const ff = spawn(ffmpegPath, args, { windowsHide: true });
+    const ff = spawn(ffmpegPath, args, { windowsHide: true, cwd: ffmpegCwd() });
     let stderr = "";
     let timedOut = false;
     const timer = setTimeout(() => {

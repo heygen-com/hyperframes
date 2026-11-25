@@ -8,6 +8,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn, type ChildProcess } from "child_process";
+import { ffmpegCwd } from "@hyperframes/parsers/ff-binaries";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { ffmpegInputIndexes, withPublicOnlyProxy } from "./urlInput.js";
 import { trackChildProcess } from "./processTracker.js";
@@ -166,7 +167,11 @@ function spawnFfmpeg(args: string[], env?: NodeJS.ProcessEnv): ChildProcess {
   // this Node opens a visible console window per spawn on Windows. A render
   // shells out dozens of times across parallel workers, which flashes a burst
   // of windows across the user's desktop. No-op on macOS and Linux.
-  const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true, ...(env && { env }) });
+  const ffmpeg = spawn(getFfmpegBinary(), args, {
+    windowsHide: true,
+    cwd: ffmpegCwd(),
+    ...(env && { env }),
+  });
   trackChildProcess(ffmpeg);
   return ffmpeg;
 }

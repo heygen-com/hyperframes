@@ -1,11 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Protocol } from "puppeteer-core";
 import { COMPOSITION_SOURCE_URL, SCENE_CALLBACK_ERROR_PREFIX } from "@hyperframes/core";
-import type { CaptureSession } from "./frameCapture.js";
-import type { SubTimelineWaitMemo } from "../types.js";
+import type { CapturePerfSummary, CaptureSession } from "./frameCapture.js";
+import { retainCapturePerf } from "./pageTextBounds.js";
+import type { CaptureWarning, SubTimelineWaitMemo } from "../types.js";
 import {
   buildZeroDurationDiagnostic,
   pollHfReady,
+  recordBackgroundDecodeTimeouts,
+  recordSubTimelineWarning,
   captureFramesBatchPipelined,
   captureFrameToBufferPipelined,
   classifyConsoleScriptError,
@@ -175,7 +178,12 @@ describe("classifyPageError", () => {
       (listeners: typeof pageListeners) => (event: string, listener: (event: unknown) => void) =>
         listeners.set(event, listener);
     const client = { on: listen(runtimeListeners), send };
-    const page = { on: listen(pageListeners), createCDPSession: async () => client };
+    const frameUrl = { current: doc };
+    const page = {
+      on: listen(pageListeners),
+      createCDPSession: async () => client,
+      frames: () => [{ url: () => frameUrl.current }],
+    };
     const session = {
       page,
       serverUrl: server,
@@ -186,7 +194,7 @@ describe("classifyPageError", () => {
       subTimelineWaitMemo: memo,
     } as unknown as CaptureSession;
     await initializeSession(session).catch(() => {});
-    return { session, pageListeners, runtimeListeners };
+    return { session, pageListeners, runtimeListeners, frameUrl };
   }
 
   it("keeps browser diagnostics on stderr and in the session buffer", async () => {
@@ -351,6 +359,132 @@ describe("classifyPageError", () => {
     } finally {
       stderr.mockRestore();
     }
+  });
+
+  // fails without the fix: a warning kept every timeline id and media source the page named, at full length
+  it("keeps a warning's timeline ids and media sources only up to a fixed count and size", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const long = (n: number) => `${n}:${"z".repeat(10_000)}`;
+    const session = {
+      subTimelineWaitOutcome: "timeout",
+      pendingTimelineIds: Array.from({ length: 1_000 }, (_, n) => long(n)),
+      scriptLoadFailures: [],
+      pageErrors: [],
+      warnings: [],
+      browserConsoleBuffer: [],
+    } as unknown as CaptureSession;
+    recordSubTimelineWarning(session, 45_000);
+    recordBackgroundDecodeTimeouts(
+      session,
+      Array.from({ length: 1_000 }, (_, n) => `https://cdn.test/${long(n)}.jpg`),
+    );
+
+    const lists = session.warnings.flatMap((w) =>
+      Object.values(w.details ?? {}).filter((v): v is string[] => Array.isArray(v)),
+    );
+    const texts = [...session.warnings.map((w) => w.message), ...lists.flat()];
+    expect(session.warnings.map((w) => w.code)).toEqual([
+      "sub_timeline_readiness_timeout",
+      "media_readiness_timeout",
+    ]);
+    expect(Math.max(...texts.map((text) => text.length))).toBeLessThanOrEqual(2_000);
+    expect(Math.max(...lists.map((list) => list.length))).toBeLessThanOrEqual(50);
+  });
+
+  // fails at 5c807e39: long pending ids came first, so the cut message lost the exception and the repair advice
+  it("keeps the exception and its repair advice in a timeline warning whose pending ids are long", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session = {
+      subTimelineWaitOutcome: "timeout",
+      pendingTimelineIds: Array.from({ length: 1_000 }, (_, n) => `${n}:${"p".repeat(2_000)}`),
+      scriptLoadFailures: [],
+      pageErrors: ["runtime-error:TypeError: boom"],
+      warnings: [],
+      browserConsoleBuffer: [],
+    } as unknown as CaptureSession;
+    recordSubTimelineWarning(session, 45_000);
+
+    const [warning] = session.warnings;
+    expect(warning?.message.length).toBeLessThanOrEqual(2_000);
+    expect(warning?.message).toContain("runtime-error:TypeError: boom");
+    expect(warning?.message).toContain("Fix the error");
+    expect(warning?.message).toContain("and 997 more");
+    expect(warning?.details?.pendingCompositionIds).toHaveLength(50);
+  });
+
+  // fails without the fix: every distinct warning was kept, so a page could grow a render's memory without end
+  it("keeps a fixed total of page text per render, and still each kind of warning", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session = { warnings: [], browserConsoleBuffer: [] } as unknown as CaptureSession;
+    for (let n = 0; n < 2_000; n++) {
+      recordBackgroundDecodeTimeouts(session, [`https://cdn.test/${n}-${"q".repeat(1_900)}.jpg`]);
+    }
+    session.subTimelineWaitOutcome = "timeout";
+    Object.assign(session, { scriptLoadFailures: [], pageErrors: [], pendingTimelineIds: ["a"] });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(JSON.stringify(session.warnings).length).toBeLessThanOrEqual(1_100_000);
+    expect(new Set(session.warnings.map((w) => w.code))).toEqual(
+      new Set(["media_readiness_timeout", "sub_timeline_readiness_timeout"]),
+    );
+  });
+
+  // fails at 50501bcb (late scripts' throws dropped), 5c807e39 (long or moved documents counted) and 2bfcb813
+  // (a script's throw dropped while a frame showed that URL as its document)
+  it.each([doc, `${doc}#c`, `${server}/elsewhere/page?q=1`, `${server}/${"d".repeat(3_000)}.html`])(
+    "records every served script's throw, however many and long, and none from the document at %s",
+    async (documentUrl) => {
+      const { session, pageListeners, runtimeListeners, frameUrl } = await listenedSession();
+      const script = (n: number) => `${server}/s${n}.js`;
+      const long = `${server}/${"l".repeat(3_000)}.js`;
+      for (const url of [...Array.from({ length: 2_000 }, (_, n) => script(n)), long]) {
+        pageListeners.get("response")?.({
+          status: () => 200,
+          url: () => url,
+          request: () => ({ resourceType: () => "script" }),
+        });
+      }
+      const throwFrom = (n: number, url: string) =>
+        runtimeListeners.get("Runtime.exceptionThrown")?.({
+          exceptionDetails: thrown(`Error: from ${n}`, url, [url]),
+        });
+      throwFrom(0, script(0));
+      throwFrom(-1, long);
+      frameUrl.current = documentUrl;
+      throwFrom(-2, documentUrl);
+      frameUrl.current = script(1_999);
+      throwFrom(1_999, script(1_999));
+      expect(session.pageErrors).toEqual([
+        "runtime-error:Error: from 0",
+        "runtime-error:Error: from -1",
+        "runtime-error:Error: from 1999",
+      ]);
+    },
+  );
+
+  // fails at 50501bcb: each recycled session kept its own 1M characters, so a render's kept warnings grew per session
+  it("keeps a fixed total of warning text across a render's sessions, and each kind once more", () => {
+    const perf = (code: CaptureWarning["code"], n: number) =>
+      ({
+        warnings: Array.from({ length: 200 }, (_, i) => ({
+          code,
+          message: `${n}.${i}:${"w".repeat(1_900)}`,
+          details: { sources: [`https://cdn.test/${n}.${i}.jpg`] },
+        })),
+      }) as unknown as CapturePerfSummary;
+    const kept: CapturePerfSummary[] = [];
+    for (let n = 0; n < 20; n++) retainCapturePerf(kept, perf("media_readiness_timeout", n));
+    retainCapturePerf(kept, perf("sub_timeline_script_failure", 20));
+
+    const warnings = kept.flatMap((p) => p.warnings ?? []);
+    expect(JSON.stringify(warnings).length).toBeLessThanOrEqual(1_100_000);
+    expect(new Set(warnings.map((w) => w.code))).toEqual(
+      new Set(["media_readiness_timeout", "sub_timeline_script_failure"]),
+    );
+
+    kept.length = 0;
+    retainCapturePerf(kept, perf("media_readiness_timeout", 21));
+    expect(kept[0]?.warnings).toHaveLength(200);
   });
 
   it("records the page's uncaught errors from scripts it loaded from the server", async () => {

@@ -129,6 +129,7 @@ import {
   type ReferenceBackgroundResult,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
+import { fromEmptyFolder } from "@hyperframes/parsers/ff-binaries";
 import { totalmem } from "node:os";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
@@ -3107,7 +3108,27 @@ export function resolveRenderDebugDir(): string {
  * `outputPath`; throws on cancellation, encoder failure, or a stage
  * error (with a diagnostic summary written to `perf-summary.json`).
  */
-export async function executeRenderJob(
+export function executeRenderJob(
+  job: RenderJob,
+  projectDir: string,
+  outputPath: string,
+  progressSink?: ProgressCallback,
+  abortSignal?: AbortSignal,
+  assertRenderActive?: () => void,
+): Promise<void> {
+  return fromEmptyFolder(() =>
+    renderJob(
+      job,
+      resolve(projectDir),
+      resolve(outputPath),
+      progressSink,
+      abortSignal,
+      assertRenderActive,
+    ),
+  );
+}
+
+async function renderJob(
   job: RenderJob,
   projectDir: string,
   outputPath: string,

@@ -1,4 +1,5 @@
 import type { ReferenceBackgroundResult } from "@hyperframes/producer";
+import { fromEmptyFolder } from "@hyperframes/parsers/ff-binaries";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { recordRenderSuccess, registerRenderOutput } from "@hyperframes/studio-server/history";
 import { resolveGsapVendorDir } from "../server/gsapVendor.js";
@@ -1428,15 +1429,17 @@ async function renderRange(input: {
       logger: input.logger,
       abortSignal: input.signal,
     });
-    const spanResult = await producer.renderSpan(
-      input.projectDir,
-      config,
-      input.range,
-      input.outputPath,
-      {
-        allowOutsideProjectAssets: input.allowOutsideProjectAssets,
-        includeOutsideScripts: input.includeOutsideScripts,
-      },
+    const spanResult = await fromEmptyFolder(() =>
+      producer.renderSpan(
+        resolve(input.projectDir),
+        config,
+        input.range,
+        resolve(input.outputPath),
+        {
+          allowOutsideProjectAssets: input.allowOutsideProjectAssets,
+          includeOutsideScripts: input.includeOutsideScripts,
+        },
+      ),
     );
     framesEncoded = spanResult.framesEncoded;
     reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);
