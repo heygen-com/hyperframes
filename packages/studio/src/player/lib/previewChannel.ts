@@ -203,6 +203,24 @@ function readStyles(styles: unknown, properties: string[]): Record<string, strin
   return read;
 }
 
+export async function previewComputedStylesOfEvery(
+  iframe: HTMLIFrameElement,
+  selector: string,
+  properties: string[],
+): Promise<{ matches: Array<Record<string, string> | null>; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "computed-styles", {
+    selector,
+    every: true,
+    properties,
+  });
+  const matches: unknown = reply?.matches;
+  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  return {
+    matches: matches.map((entry: unknown) => readStyles(entry, properties)),
+    truncated: reply.truncated,
+  };
+}
+
 type FontFaces = { families: string[]; ownFaces: Array<{ family: string; src: string }> };
 
 export async function previewFontFaces(iframe: HTMLIFrameElement): Promise<FontFaces | null> {
