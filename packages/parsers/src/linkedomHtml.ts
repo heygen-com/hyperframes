@@ -46,12 +46,10 @@ function nextInDocumentOrder(element: Element): Element | null {
 }
 
 // One pass in document order: linkedom keeps the tree as a list, so asking each element for its children is quadratic.
+// A parsed template's children are in that list; its `content` is a deep copy linkedom makes and keeps on first read.
 function readsUnlikeBrowser(root: ParentNode): boolean {
-  for (let element = root.firstElementChild; element; element = nextInDocumentOrder(element)) {
-    const content = element.localName === "template" && (element as HTMLTemplateElement).content;
-    if (content && readsUnlikeBrowser(content)) return true;
+  for (let element = root.firstElementChild; element; element = nextInDocumentOrder(element))
     if (readAsTextUnlikeBrowser(element)) return true;
-  }
   return false;
 }
 

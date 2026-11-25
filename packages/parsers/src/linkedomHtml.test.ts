@@ -34,6 +34,15 @@ describe("parseHTML", () => {
     expect(document.querySelectorAll("img")).toHaveLength(0);
   });
 
+  // fails without the fix: the check read each template's content, so linkedom copied every mounted scene and kept
+  // the copy, and a later edit to the template never reached its content.
+  it("leaves a template's content to be made from its children when it is first read", () => {
+    const { document } = parseHTML(page("<template><p>before</p></template>"));
+    const template = document.querySelector("template") as HTMLTemplateElement;
+    template.querySelector("p")!.textContent = "after";
+    expect(template.content.firstChild?.textContent).toBe("after");
+  });
+
   it("reads a page that is only a comment", () => {
     expect(() => parseHTML("<!-- <template><div></div></template> -->")).not.toThrow();
   });
