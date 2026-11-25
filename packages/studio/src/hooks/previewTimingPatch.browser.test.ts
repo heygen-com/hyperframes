@@ -140,7 +140,7 @@ type Held = { __hold: boolean; __held: Array<() => void>; hfStudio: Studio };
 const clipB = { id: "b", domId: "b", selector: "#b", sourceFile: "index.html", kind: "element" };
 
 // A second frame loads the same film, as the shadow reload does, and replaces the first on screen.
-async function promoteShadow(preview: Preview, html: string, mode: string) {
+async function loadShadow(preview: Preview, html: string, mode: string) {
   await preview.page.evaluate(
     (srcdoc, sealed) => {
       const shadow = document.createElement("iframe");
@@ -157,6 +157,11 @@ async function promoteShadow(preview: Preview, html: string, mode: string) {
     .not.toBeNull()
     .then(() => preview.page.frames().find((f) => f.parentFrame() && f !== preview.frame)!);
   await shadowFrame.waitForFunction(() => "__player" in window);
+  return shadowFrame;
+}
+
+async function promoteShadow(preview: Preview, html: string, mode: string) {
+  const shadowFrame = await loadShadow(preview, html, mode);
   await preview.page.evaluate(() => {
     const { hfStudio } = window as unknown as Held;
     const [retired, live] = [...document.querySelectorAll("iframe")];
@@ -205,6 +210,67 @@ it("a sealed delete still waiting on its lookup when the reload is promoted remo
     await expect
       .poll(() => hasB(shadow), { message: "the new frame drops the deleted clip" })
       .toBe(false);
+  } finally {
+    await preview.page.close();
+  }
+});
+
+const clipA = { id: "a", domId: "a", selector: "#a", sourceFile: "index.html", kind: "element" };
+
+it.each(MODES)(
+  "deleting the clip that ended the film shortens the frame's film and the readout, in a %s preview",
+  async (mode) => {
+    const preview = await openPreview(browser, studioBundle, previewHtml(), mode);
+    try {
+      await preview.page.evaluate((clip) => {
+        const frame = document.querySelector("iframe")!;
+        const reported: number[] = [];
+        window.addEventListener("message", ({ source, data }) => {
+          if (source === frame.contentWindow && data?.source === "hf-preview" && data.type === "timeline")
+            reported.push(data.durationSeconds);
+        });
+        const w = window as unknown as Held & { reported: number[] };
+        w.reported = reported;
+        w.hfStudio.usePlayerStore.setState({ duration: 4 });
+        w.hfStudio.removeIframeTimelineElements(frame, [clip]);
+      }, clipA);
+      const shown = () =>
+        preview.page.evaluate(() => {
+          const w = window as unknown as Held & { reported: number[] };
+          return { reported: w.reported.at(-1), readout: w.hfStudio.usePlayerStore.getState().duration };
+        });
+      await expect.poll(shown, { message: "the film ends with the clip left, #b at 2 s" }).toEqual({
+        reported: 2,
+        readout: 2,
+      });
+    } finally {
+      await preview.page.close();
+    }
+  },
+);
+
+it("a sealed delete whose lookups answered just before the reload is promoted removes the clip from the new frame", async () => {
+  const preview = await openPreview(browser, studioBundle, previewHtml(), "sealed");
+  try {
+    const shadow = await loadShadow(preview, previewHtml(), "sealed");
+    await preview.page.evaluate((clip) => {
+      const w = window as unknown as Held;
+      w.__hold = true;
+      w.hfStudio.removeIframeTimelineElements(document.querySelector("iframe")!, [clip]);
+    }, clipB);
+    await expect
+      .poll(() => preview.page.evaluate(() => (window as unknown as Held).__held.length))
+      .toBeGreaterThan(0);
+    // The lookups' answers and the promotion land in one task, before the removal goes out.
+    await preview.page.evaluate(() => {
+      const w = window as unknown as Held;
+      w.__hold = false;
+      for (const deliver of w.__held.splice(0)) deliver();
+      const [retired, live] = [...document.querySelectorAll("iframe")];
+      w.hfStudio.announcePreviewPromoted({ retired, live });
+      w.hfStudio.retirePreviewEditingClient(retired);
+    });
+    await expect.poll(() => hasB(shadow), { message: "the new frame drops the deleted clip" }).toBe(false);
   } finally {
     await preview.page.close();
   }
