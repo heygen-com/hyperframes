@@ -31,12 +31,10 @@ export function removeElements({ handles }: { handles: EditingElementHandle[] })
 } {
   const elements = handles.map(elementForHandle);
   if (!elements.every(removableClip)) return { removed: 0 };
-  let removed = 0;
-  for (const element of elements) {
-    // A clip named twice, or inside one already removed, has left the document with it.
-    if (!element.isConnected) continue;
-    element.remove();
-    removed += 1;
-  }
-  return { removed };
+  // A clip named twice, or inside another named clip, leaves with it and counts once.
+  const outermost = [...new Set(elements)].filter(
+    (element, _, all) => !all.some((other) => other !== element && other.contains(element)),
+  );
+  for (const element of outermost) element.remove();
+  return { removed: outermost.length };
 }
