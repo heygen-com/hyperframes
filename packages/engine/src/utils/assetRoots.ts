@@ -17,19 +17,19 @@ export function isInsideAssetRoots(path: string, roots: readonly string[]): bool
   return roots.some((root) => isWithinProjectRoot(root, path)) && !existsSync(path);
 }
 
-// A path on another network root is never looked at, so it is in no root.
-const realFileWithin = (root: string, path: string): boolean =>
+const realFileWithinUnlessOnAnotherNetworkRoot = (root: string, path: string): boolean =>
   !namesAnotherNetworkRoot(root, path) && realPathWithin(realFilePath(root), realFilePath(path));
 
 // Judged from every root holding it, since a render's own work folder may sit in the project's `.hyperframes/`.
-// `bySpellingOrRealFile` is for a render that brings in outside files: a path spelled outside a root can be a file in it.
 export function isPrivateUnderAssetRoots(
   path: string,
   roots: readonly string[],
   bySpellingOrRealFile = false,
 ): boolean {
   const holders = roots.filter(
-    (root) => isSafePath(root, path) || (bySpellingOrRealFile && realFileWithin(root, path)),
+    (root) =>
+      isSafePath(root, path) ||
+      (bySpellingOrRealFile && realFileWithinUnlessOnAnotherNetworkRoot(root, path)),
   );
   return (
     holders.length > 0 &&

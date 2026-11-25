@@ -303,6 +303,20 @@ describe("collectExternalAssets", () => {
     expect(result.html).toBe(html); // unchanged
   });
 
+  it("leaves out a private project file named by a path spelled outside the project", () => {
+    const alias = `${projectDir}-alias`;
+    symlinkSync(projectDir, alias);
+    mkdirSync(join(projectDir, ".git"), { recursive: true });
+    writeFileSync(join(projectDir, ".git", "clip.png"), "fake-private");
+    const warnings: string[] = [];
+    const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+    const html = `<html><body><img src="../project-alias/.git/clip.png"><img src="../project-alias/logo.png"></body></html>`;
+    const result = collectExternalAssets(html, projectDir, log);
+    rmSync(alias, { force: true });
+    expect([...result.externalAssets.values()]).toEqual([join(alias, "logo.png")]);
+    expect(warnings).toHaveLength(1);
+  });
+
   it("collects and rewrites assets outside projectDir via src attribute", () => {
     const html = `<html><body><img src="../external/hero.png"></body></html>`;
     const result = collectExternalAssets(html, projectDir);
