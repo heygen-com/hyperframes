@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 
 const number = (value: string | null | undefined): number | undefined => {
   const parsed = Number(value);

@@ -15,7 +15,7 @@ function preview(): HTMLIFrameElement {
   doc.write(`<!doctype html><html><body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="8">
       <div id="a" class="clip" data-start="0" data-duration="4"></div>
-      <div id="host" data-composition-id="intro" data-composition-src="intro.html"></div>
+      <div id="host" data-composition-id="intro" data-composition-src="intro.html" data-composition-file="intro.html"></div>
     </div></body></html>`);
   doc.close();
   return iframe;

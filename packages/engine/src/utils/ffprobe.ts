@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication complexity
-import { localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegCwd, localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { spawn } from "child_process";
 import { createReadStream, mkdtempSync, readFileSync, rmSync, statSync } from "fs";
 import { chunkCrc32 } from "./crc32.js";
@@ -140,6 +140,7 @@ async function spawnFfprobe(
     stdio: ["ignore", "pipe", "pipe"],
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,
+    cwd: ffmpegCwd(),
   });
   trackChildProcess(proc);
   // Decoded through StringDecoder rather than per-chunk toString(): a

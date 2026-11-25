@@ -367,7 +367,7 @@ function buildMissingCompositionEntry(params: {
 
   const preferredId = nonEmpty(element.id, compositionId);
   const compositionSrc =
-    element.getAttribute("data-composition-src") ?? element.getAttribute("data-composition-file");
+    element.getAttribute("data-composition-file") ?? element.getAttribute("data-composition-src");
   const selector = getTimelineElementSelector(element);
   const sourceFile = getTimelineElementSourceFile(element);
   const selectorIndex = getTimelineElementSelectorIndex(doc, element, selector);

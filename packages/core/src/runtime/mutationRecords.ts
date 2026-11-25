@@ -2,6 +2,7 @@ import { HF_AUDIO_GROUP_TAG } from "../audioGroups";
 
 // Read for timing beyond their attributes; scripts can register timelines.
 const TIMING_ELEMENTS = ["video", "audio", "source", "script", HF_AUDIO_GROUP_TAG];
+const ELEMENT_NODE = 1;
 
 // Observers here pre-filter attribute records, so those always count. A child-list record counts
 // only when a node it adds or removes matches or holds `selector`, or `holds` says it holds
@@ -11,7 +12,7 @@ export function createRecordFilter(
   holds: (node: Element) => boolean = () => false,
 ): (records: readonly MutationRecord[]) => boolean {
   const touches = (node: Node): boolean =>
-    node.nodeType === Node.ELEMENT_NODE &&
+    node.nodeType === ELEMENT_NODE &&
     ((node as Element).matches(selector) ||
       (node as Element).querySelector(selector) !== null ||
       holds(node as Element));

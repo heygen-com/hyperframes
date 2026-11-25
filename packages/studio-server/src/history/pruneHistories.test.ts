@@ -44,7 +44,8 @@ async function projectWithHistory(
   {
     at = Date.now(),
     projectDir = tempDir("hf-prune-project-"),
-    pruneGoneProjectsBudgetMs = undefined as number | undefined,
+    // The open's own background prune starts no history unless asked, so it cannot race the test's prune.
+    pruneGoneProjectsBudgetMs = 0,
   } = {},
 ) {
   mkdirSync(projectDir, { recursive: true });
@@ -55,8 +56,6 @@ async function projectWithHistory(
     now: () => at,
     pruneGoneProjectsBudgetMs,
   });
-  // Lets the open's own daily prune scan first, so it cannot race the test's.
-  await new Promise((settle) => setImmediate(settle));
   return { projectDir, history, id: readId(projectDir)! };
 }
 
@@ -136,7 +135,11 @@ describe("pruneGoneProjectHistories", () => {
   it("prunes when a history opens a day after the last full prune", async () => {
     const historyRoot = tempDir("hf-prune-root-");
     const start = Date.now();
-    const gone = await projectWithHistory(historyRoot, { at: start });
+    const gone = await projectWithHistory(historyRoot, {
+      at: start,
+      pruneGoneProjectsBudgetMs: Infinity,
+    });
+    await vi.waitFor(() => expect(existsSync(join(historyRoot, ".last-prune"))).toBe(true));
     await gone.history.close();
     rmSync(gone.projectDir, { recursive: true, force: true });
 
@@ -146,7 +149,10 @@ describe("pruneGoneProjectHistories", () => {
     });
     expect(existsSync(join(historyRoot, gone.id))).toBe(true);
     await cli.history.close();
-    const next = await projectWithHistory(historyRoot, { at: start + DAY_MS });
+    const next = await projectWithHistory(historyRoot, {
+      at: start + DAY_MS,
+      pruneGoneProjectsBudgetMs: Infinity,
+    });
     await vi.waitFor(() => expect(existsSync(join(historyRoot, gone.id))).toBe(false));
     await next.history.close();
   });

@@ -1,12 +1,13 @@
 // How big the face is and where, ported from hf-media's face_size: OpenCV's frontal and profile Haar cascades on
 // evenly spaced frames, graded by face height over frame height. A regenerated presenter keeps the likeness from
 // FACE_HOLDS up; below FACE_FLOOR a video model cannot carry one at all (the harness's face-size eval, 2026-10-08).
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import {
   GUARDED_RUN_MS,
   ffmpegBin,
   frameAt,
   guardedLimitReason,
+  guardedCwd,
   round,
   runFfmpeg,
   sumOf,
@@ -56,10 +57,10 @@ export function minWindow(h: number, share: number): number {
 }
 
 function decode(info: VideoInfo, args: string[]): Buffer {
-  const formats = mediaInputFormatArgs(ffmpegBin(), info.path, { playlists: info.guarded });
+  const formats = mediaInputArgs(ffmpegBin(), info.path, { playlists: info.guarded });
   if (!info.guarded) return runFfmpeg([...formats, ...args]);
   try {
-    return runFfmpeg([...formats, ...args], undefined, undefined, GUARDED_RUN_MS);
+    return runFfmpeg([...formats, ...args], undefined, guardedCwd(info), GUARDED_RUN_MS);
   } catch (err) {
     const stopped = guardedLimitReason(err);
     throw stopped ? new Error(`ffmpeg cannot read ${info.path}: ${stopped}`) : err;

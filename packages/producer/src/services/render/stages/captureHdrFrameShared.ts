@@ -9,6 +9,7 @@
  * centralized here.
  */
 
+import type { Fps } from "@hyperframes/core";
 import {
   type BeforeCaptureHook,
   type CaptureSession,
@@ -89,12 +90,13 @@ export function distributeLayeredHybridFrameRanges(
 export function partitionTransitionFrames(
   transitionRanges: ReadonlyArray<Pick<TransitionRange, "startFrame" | "endFrame">>,
   totalFrames: number,
+  firstFrame = 0,
 ): Set<number> {
   const frames = new Set<number>();
   if (totalFrames <= 0) return frames;
   for (const range of transitionRanges) {
-    const start = Math.max(0, range.startFrame);
-    const end = Math.min(totalFrames - 1, range.endFrame);
+    const start = Math.max(firstFrame, range.startFrame);
+    const end = Math.min(firstFrame + totalFrames - 1, range.endFrame);
     for (let i = start; i <= end; i++) frames.add(i);
   }
   return frames;
@@ -414,5 +416,27 @@ export function cleanupEndedHdrVideos(args: {
         cleanedUpVideos.add(videoId);
       }
     }
+  }
+}
+
+export function transitionAtFrame(
+  transitionRanges: TransitionRange[],
+  frame: number,
+): TransitionRange | undefined {
+  return transitionRanges.find((t) => frame >= t.startFrame && frame <= t.endFrame);
+}
+
+export function cleanupHdrVideosEndedBefore(
+  firstFrame: number,
+  fps: Fps,
+  transitionRanges: TransitionRange[],
+  state: Omit<Parameters<typeof cleanupEndedHdrVideos>[0], "time" | "activeTransition">,
+): void {
+  for (let frame = 0; frame < firstFrame; frame++) {
+    cleanupEndedHdrVideos({
+      ...state,
+      time: (frame * fps.den) / fps.num,
+      activeTransition: transitionAtFrame(transitionRanges, frame),
+    });
   }
 }

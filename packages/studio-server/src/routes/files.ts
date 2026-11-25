@@ -107,7 +107,7 @@ import {
   type SplitRefusal,
 } from "../helpers/sourceMutation.js";
 import { ensureStudioFontFaceCss, isStudioFontFaceCss } from "../helpers/studioFontFace.js";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   CompositionInsertionError,
@@ -205,7 +205,7 @@ async function resolveProjectPath(
   c: RouteContext,
   adapter: StudioApiAdapter,
   route: string,
-  opts?: { mustExist?: boolean; pin?: boolean; write?: WriteTarget },
+  opts?: { mustExist?: boolean; pin?: boolean; write?: WriteTarget; markup?: boolean },
 ) {
   const id = c.req.param("id");
   const project = await adapter.resolveProject(id);
@@ -242,6 +242,9 @@ async function resolveProjectPath(
   if (opts?.write && !writableAs(project.dir, absPath, opts.write)) {
     return { error: c.json({ error: "forbidden", why: "protected_path" }, 403) } as const;
   }
+  if (opts?.markup && !isMarkupFile(absPath)) {
+    return { error: c.json({ error: "forbidden", why: "not_html" }, 403) } as const;
+  }
 
   if (opts?.mustExist && !existsSync(absPath)) {
     return { error: c.json({ error: "not found" }, 404) } as const;
@@ -258,6 +261,13 @@ type WriteTarget = "file" | "file-or-folder";
 const writableAs = (projectDir: string, absPath: string, target: WriteTarget) =>
   isWritableProjectFile(projectDir, absPath, target === "file" ? "file" : undefined);
 
+const isMarkupFile = (path: string) => /\.html?$/i.test(path);
+
+const pinMarkupFile = (projectDir: string, path: string) => {
+  const absPath = pinWritableWithinProject(projectDir, path);
+  return absPath && isMarkupFile(absPath) ? absPath : null;
+};
+
 function resolveProjectFile(
   c: RouteContext,
   adapter: StudioApiAdapter,
@@ -270,6 +280,7 @@ function resolveFileMutationContext(c: RouteContext, adapter: StudioApiAdapter, 
   return resolveProjectPath(c, adapter, `file-mutations/${operation}`, {
     pin: true,
     write: "file",
+    markup: true,
   });
 }
 
@@ -468,7 +479,7 @@ function foldAndCommitElementPatchBatches(
   }> = [];
 
   for (const batch of batches) {
-    const absPath = pinWritableWithinProject(projectDir, batch.sourceFile);
+    const absPath = pinMarkupFile(projectDir, batch.sourceFile);
     if (!absPath) return { error: "forbidden", sourceFile: batch.sourceFile };
     if (resolvedPaths.has(absPath)) return { error: "duplicate", sourceFile: batch.sourceFile };
     resolvedPaths.add(absPath);
@@ -2957,7 +2968,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const seen = new Set<string>();
       const prepared: FoldedAtomicCutFile[] = [];
       for (const file of files) {
-        const absPath = pinWritableWithinProject(project.dir, file.path);
+        const absPath = pinMarkupFile(project.dir, file.path);
         if (!absPath) return c.json({ error: `forbidden path: ${file.path}` }, 403);
         if (seen.has(absPath)) return c.json({ error: `duplicate path: ${file.path}` }, 400);
         seen.add(absPath);
@@ -3608,6 +3619,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       mustExist: true,
       pin: true,
       write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 
@@ -3623,6 +3635,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       mustExist: true,
       pin: true,
       write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 
@@ -3647,6 +3660,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       mustExist: true,
       pin: true,
       write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 

@@ -238,21 +238,6 @@ export function cornerEdgeLength(a: { x: number; y: number }, b: { x: number; y:
 }
 
 /**
- * The centroid (rendered center) of the four transformed corners from
- * `elementCornerOverlayPoints`, in overlay px. This is the element's true rotation
- * center — the point a center-anchored resize keeps planted.
- */
-export function overlayCornersCentroid(corners: Record<FixedCorner, { x: number; y: number }>): {
-  x: number;
-  y: number;
-} {
-  return {
-    x: (corners.nw.x + corners.ne.x + corners.se.x + corners.sw.x) / 4,
-    y: (corners.nw.y + corners.ne.y + corners.se.y + corners.sw.y) / 4,
-  };
-}
-
-/**
  * The element's border-box corners in OVERLAY coordinates, honoring its live
  * transform (rotation/skew/scale) — NOT the axis-aligned getBoundingClientRect.
  * A rotated element's four visual corners are the transformed local box corners.

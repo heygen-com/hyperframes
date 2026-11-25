@@ -825,6 +825,45 @@ describe("installEditingAgent", () => {
     });
   });
 
+  it("answers the display of every element a selector matches, in document order", async () => {
+    document.body.innerHTML = `<div id="headline"><span style="display: block">Launch</span><span>day</span></div>`;
+    const port = connectedPort();
+    const every = (id: number, selector: string, properties: string[]) =>
+      ask(port, {
+        v: 1,
+        id,
+        kind: "computed-styles",
+        params: { selector, every: true, properties },
+      });
+
+    expect((await every(1, "#headline, #headline *", ["display"])).result).toEqual({
+      styles: null,
+      matches: [{ display: "block" }, { display: "block" }, { display: "inline" }],
+      truncated: false,
+    });
+    expect((await every(2, "#missing", ["display"])).result).toEqual({
+      styles: null,
+      matches: [],
+      truncated: false,
+    });
+    for (const [id, properties] of [
+      [3, ["color"]],
+      [4, ["display", "opacity"]],
+    ] as const)
+      expect(await every(id, "#headline", [...properties])).toMatchObject({
+        ok: false,
+        error: { code: "invalid-params" },
+      });
+    expect(
+      await ask(port, {
+        v: 1,
+        id: 5,
+        kind: "computed-styles",
+        params: { handle: "0123456789abcdef:1", every: true, properties: ["display"] },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid-params" } });
+  });
+
   it("reads custom properties whose names use any case or an underscore", async () => {
     document.body.innerHTML = `<p id="title" style="--Brand_Color: red; --x2: 4px">Hi</p>`;
     const properties = ["--Brand_Color", "--x2", "--é"];

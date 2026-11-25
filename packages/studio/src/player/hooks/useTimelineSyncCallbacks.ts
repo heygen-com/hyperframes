@@ -15,7 +15,12 @@ import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
 import { buildMissingCompositionElements, manifestTimelines } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
-import { previewClipParents, previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
+import {
+  previewClipParents,
+  previewDocumentCopy,
+  previewFrameOpaque,
+  samePreviewLoad,
+} from "../lib/previewChannel";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import {
   buildTimelineElementsFromClips,
@@ -275,10 +280,11 @@ export function useTimelineSyncCallbacks({
   const readSealedTimeline = useCallback<SealedTimelineRead>(
     (iframe, manifest, previewDuration) => {
       const revision = nextTimelineRevision();
+      const sameLoad = samePreviewLoad(iframe);
       void Promise.all([manifest, previewDocumentCopy(iframe), previewClipParents(iframe)]).then(
         ([data, doc, parents]) => {
           // A frame its player removed is gone: callback refs keep it (promotion repoints them), the page does not.
-          if (!data || !iframe.isConnected) return;
+          if (!data || !iframe.isConnected || !sameLoad()) return;
           if (applyTimelineMessage(data, doc, parents, iframe, previewDuration, revision) && doc)
             addMissingCompositions(doc, manifestTimelines(data.clips));
         },
@@ -317,7 +323,7 @@ export function useTimelineSyncCallbacks({
       if (!adapter || adapter.getDuration() <= 0) return false;
 
       adapter.pause();
-      const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef);
+      const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef, iframeRef.current);
       const commit = () => {
         // Keep non-React listeners such as the time display in sync
         // with the initial adapter seek on iframe load.

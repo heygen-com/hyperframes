@@ -33,6 +33,13 @@ export const skillModuleCopies = [
     ],
   ],
   [
+    "skills/hyperframes/scripts/lib/link-safe-write.mjs",
+    [
+      "skills/media-use/scripts/lib/link-safe-write.mjs",
+      "packages/cli/src/media-use/lib/link-safe-write.mjs",
+    ],
+  ],
+  [
     "skills/hyperframes/scripts/lib/literal-media-input.mjs",
     [
       "skills/media-use/scripts/lib/literal-media-input.mjs",

@@ -25,19 +25,38 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
   }
 }
 
+const beforeOtherLoadHandlers = { capture: true } as const;
+
 /** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
   if (open) return open.client;
   const client = createEditingPortClient({ iframe });
   const retire = () => {
-    iframe.removeEventListener("load", retire);
+    iframe.removeEventListener("load", retire, beforeOtherLoadHandlers);
     client.dispose();
     if (clients.get(iframe)?.client === client) clients.delete(iframe);
   };
   clients.set(iframe, { client, retire });
-  iframe.addEventListener("load", retire, { once: true });
+  iframe.addEventListener("load", retire, { ...beforeOtherLoadHandlers, once: true });
   return client;
+}
+
+export function samePreviewLoad(iframe: HTMLIFrameElement): () => boolean {
+  const client = previewEditingClient(iframe);
+  return () => clients.get(iframe)?.client === client;
+}
+
+const promotedTo = new WeakMap<HTMLIFrameElement, HTMLIFrameElement>();
+
+export function notePreviewPromoted(retired: HTMLIFrameElement, live: HTMLIFrameElement): void {
+  promotedTo.set(retired, live);
+}
+
+export function shownPreviewFrame(iframe: HTMLIFrameElement): HTMLIFrameElement {
+  let shown = iframe;
+  for (let next = promotedTo.get(shown); next; next = promotedTo.get(shown)) shown = next;
+  return shown;
 }
 
 export function retirePreviewEditingClient(iframe: HTMLIFrameElement): void {
@@ -182,6 +201,24 @@ function readStyles(styles: unknown, properties: string[]): Record<string, strin
     if (typeof value === "string" && value) read[name] = value;
   }
   return read;
+}
+
+export async function previewComputedStylesOfEvery(
+  iframe: HTMLIFrameElement,
+  selector: string,
+  properties: string[],
+): Promise<{ matches: Array<Record<string, string> | null>; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "computed-styles", {
+    selector,
+    every: true,
+    properties,
+  });
+  const matches: unknown = reply?.matches;
+  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  return {
+    matches: matches.map((entry: unknown) => readStyles(entry, properties)),
+    truncated: reply.truncated,
+  };
 }
 
 type FontFaces = { families: string[]; ownFaces: Array<{ family: string; src: string }> };

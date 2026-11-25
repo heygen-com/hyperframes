@@ -138,7 +138,8 @@ it("copies a canvas selection from a sealed preview, as saved", async () => {
 });
 
 // Elements the preview's own script made: not in the saved file, so a copy takes the preview's markup.
-const SCRIPT_MADE = [
+const READ_UNLIKE_BROWSER = /can't be read the way a browser reads them/;
+const SCRIPT_MADE: ReadonlyArray<readonly [string, boolean | RegExp]> = [
   ['<div id="made" class="clip" onclick="alert(1)">Made</div>', true],
   ['<a id="made" class="clip" href="javascript:alert(1)">Made</a>', true],
   ['<div id="made" class="clip"><script>alert(1)</script>Made</div>', true],
@@ -146,7 +147,7 @@ const SCRIPT_MADE = [
   // fails without the fix: inert in the check's scripting-off parse, live in a preview that runs scripts.
   [
     '<div id="made" class="clip"><noscript><p title="</noscript><img src=x onerror=alert(1)>"></p></noscript></div>',
-    true,
+    READ_UNLIKE_BROWSER,
   ],
   ['<div id="made" class="clip"><base href="https://elsewhere.example/"></div>', true],
   ['<div id="made" class="clip"><meta http-equiv="refresh" content="0;url=x"></div>', true],
@@ -156,7 +157,7 @@ const SCRIPT_MADE = [
   ],
   ['<div id="made" class="clip"><style>p{}</style><p>Made</p></div>', true],
   ['<video id="made" class="clip" src="clip.mp4" data-start="1" data-duration="2"></video>', false],
-] as const;
+];
 
 it("pastes a sealed preview's own element only when its markup runs no code", async () => {
   for (const [markup, refused] of SCRIPT_MADE) {
@@ -170,7 +171,7 @@ it("pastes a sealed preview's own element only when its markup runs no code", as
     await clipboard().handlePaste();
     if (refused) {
       expect(writes).toEqual([]);
-      expect(toasts.at(-1)).toMatch(/^Couldn't paste/);
+      expect(toasts.at(-1)).toMatch(refused === true ? /^Couldn't paste/ : refused);
     } else {
       expect(writes[0]).toContain('src="clip.mp4"');
     }
@@ -248,11 +249,9 @@ it("writes nothing the server serves as running code, from the live copy or a sa
   );
   expect(saved.clipboard().handleCopy()).toBe(true);
   await saved.clipboard().handlePaste();
-  // The saved file is read through linkedom, which ends the title early: its handler shows, so the paste is refused.
+  // linkedom would end the title early in the saved file, so that file is refused before anything is read from it.
   expect(saved.writes).toEqual([]);
-  expect(saved.toasts).toContain(
-    "Couldn't paste: the copied element holds markup that can't be pasted here.",
-  );
+  expect(saved.toasts.join("\n")).toMatch(/can't be read the way a browser reads them/);
 });
 
 // fails without the fix: markup the copy found in another file was taken as saved and pasted unchecked.
