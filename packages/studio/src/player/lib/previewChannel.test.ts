@@ -89,6 +89,19 @@ describe("previewEditingClient", () => {
     expect(handed).toHaveBeenCalledOnce();
   });
 
+  it("hands a load handler attached before the client the new load's client", async () => {
+    const { iframe, handed } = servedFrame(() => ({ waited: false }));
+    let asked: Promise<unknown> | undefined;
+    iframe.addEventListener("load", () => {
+      asked = previewEditingClient(iframe).request("wait-for-seek", {});
+    });
+    const first = previewEditingClient(iframe);
+    iframe.dispatchEvent(new Event("load"));
+    expect(previewEditingClient(iframe)).not.toBe(first);
+    await expect(asked).resolves.toEqual({ waited: false });
+    expect(handed).toHaveBeenCalledOnce();
+  });
+
   it("sends an opaque frame's loop start over the port, only when it changes", async () => {
     const seen: unknown[] = [];
     const { iframe } = servedFrame((_kind, params) => {

@@ -21,6 +21,7 @@ import {
   concatVideoFiles,
   createCaptureSession,
   getCapturePerfSummary,
+  retainCapturePerf,
   initializeSession,
   prepareCaptureSessionForReuse,
   resolveDeVerifyMinDb,
@@ -519,7 +520,7 @@ async function recycleWorkerSession(
   why: "cadence" | "retry",
 ): Promise<void> {
   // Counters are only valid while the session is live, so harvest before close.
-  run.input.dedupPerfs.push(getCapturePerfSummary(worker.ctx.session));
+  retainCapturePerf(run.input.dedupPerfs, getCapturePerfSummary(worker.ctx.session));
   const memory = worker.ctx.session.chromeMemory?.stats();
   await run.deps.closeSession(worker.ctx.session);
   const { frames } = worker.ctx;
@@ -702,7 +703,8 @@ export async function runCaptureSegmentedStage(
     // every worker has to stop before the finally runs. The first error is
     // rethrown below.
     const outcomes = await Promise.allSettled(workers.map((w) => runWorkerLoop(w)));
-    for (const worker of workers) dedupPerfs.push(getCapturePerfSummary(worker.ctx.session));
+    for (const worker of workers)
+      retainCapturePerf(dedupPerfs, getCapturePerfSummary(worker.ctx.session));
     const failure = outcomes.find((o) => o.status === "rejected");
     if (failure && failure.status === "rejected") throw failure.reason;
   } catch (error) {

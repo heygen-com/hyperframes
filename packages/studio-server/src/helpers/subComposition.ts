@@ -10,6 +10,7 @@ import {
 } from "@hyperframes/core";
 import {
   deferScriptsUntilFonts,
+  dropAuthoredCompositionFiles,
   RUNTIME_BOOTSTRAP_ATTR,
   stripEmbeddedRuntimeScripts,
 } from "@hyperframes/core/compiler";
@@ -135,6 +136,8 @@ function extractFullDocumentParts(
   bodyAttrs: string;
 } {
   const { document: doc } = parseHTML(rawHtml);
+  // Its <html> and <body> attributes are copied onto the page as text below, past the content-only drop.
+  dropAuthoredCompositionFiles(doc as unknown as Document);
 
   const rewriteTargets = [doc.head, doc.body].filter(Boolean);
   for (const target of rewriteTargets) {
@@ -376,6 +379,7 @@ export function buildSubCompositionHtml(
   );
   deferScriptsUntilFonts(scriptsDoc as unknown as Document);
   chargeMountsTheBrowserFetches(projectDir, scriptsDoc as unknown as Document);
+  dropAuthoredCompositionFiles(scriptsDoc as unknown as Document);
   rewrittenContent = scriptsDoc.body.innerHTML;
 
   // The comp's root carries data-composition-id but (unlike inlined sub-comps,

@@ -800,3 +800,39 @@ describe("tagRootCompositionFile", () => {
     for (const page of shapes) expectFast(() => tagRootCompositionFile(page, "a.html"), 100);
   });
 });
+
+describe("buildSubCompositionHtml authored file marks", () => {
+  it("names the composition's own file on its root, whatever file its markup claims", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<div data-composition-id="scene" data-composition-file="index.html">
+  <p id="claim" data-composition-file="compositions/other.html">Hi</p>
+</div>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/runtime.js") ?? "";
+    const { document } = parseHTML(html);
+
+    expect(
+      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-file"),
+    ).toBe("compositions/scene.html");
+    expect(document.querySelector("#claim")?.hasAttribute("data-composition-file")).toBe(false);
+  });
+
+  it("drops a mark a full document wrote on its <html> or <body>", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<!doctype html><html data-composition-file="index.html"><head></head>
+<body data-composition-file="index.html"><div data-composition-id="scene"><p id="in">a</p></div><p id="out">b</p></body></html>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/runtime.js") ?? "";
+    const { document } = parseHTML(html);
+    const fileOf = (id: string) =>
+      document
+        .getElementById(id)
+        ?.closest("[data-composition-file]")
+        ?.getAttribute("data-composition-file") ?? null;
+
+    expect(fileOf("in")).toBe("compositions/scene.html");
+    expect(fileOf("out")).toBeNull();
+  });
+});
