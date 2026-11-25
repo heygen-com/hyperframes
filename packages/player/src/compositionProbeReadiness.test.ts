@@ -131,14 +131,19 @@ describe("composition probe readiness", () => {
     vi.advanceTimersByTime(LIMIT);
     expect(onError).toHaveBeenCalledOnce();
   });
+  const linksRuntime =
+    root + '<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script>';
+  it("adds no second runtime to a preview that links its own, as a sealed player can't", () => {
+    const { iframe } = mount(linksRuntime, { __timelines: { main: timeline(4) } });
+    vi.advanceTimersByTime(LIMIT);
+    expect(iframe.contentDocument!.querySelectorAll("script")).toHaveLength(1);
+  });
   it("times out a preview whose own runtime never boots, as a sealed player does", () => {
-    const { iframe, onReady, onError } = mount(
-      root + '<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script>',
-      { __timelines: { main: timeline(4) } },
-    );
+    const { iframe, onReady, onError } = mount(linksRuntime, {
+      __timelines: { main: timeline(4) },
+    });
     vi.advanceTimersByTime(LIMIT - 1);
     expect(onReady).not.toHaveBeenCalled();
-    expect(iframe.contentDocument!.querySelectorAll("script")).toHaveLength(1);
     vi.advanceTimersByTime(1);
     expect(onError).toHaveBeenCalledExactlyOnceWith(TIMED_OUT);
     Object.assign(iframe.contentWindow!, { __player: { getDuration: () => 4 } });
