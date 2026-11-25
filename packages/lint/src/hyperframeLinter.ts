@@ -1,3 +1,4 @@
+import { htmlReadUnlikeBrowserFinding } from "./readableHtml.js";
 import type {
   HyperframeLintFinding,
   HyperframeLintResult,
@@ -135,6 +136,23 @@ export async function lintHyperframeHtml(
   options: HyperframeLinterOptions = {},
 ): Promise<HyperframeLintResult> {
   const startedAt = performance.now();
+  const refusal = htmlReadUnlikeBrowserFinding(html);
+  if (refusal) {
+    const finding = options.filePath ? { ...refusal, file: options.filePath } : refusal;
+    return {
+      ok: false,
+      errorCount: 1,
+      warningCount: 0,
+      infoCount: 0,
+      findings: [finding],
+      timings: {
+        totalMs: performance.now() - startedAt,
+        groupMs: {},
+        slowestRule: "",
+        slowestRuleMs: 0,
+      },
+    };
+  }
   const ctx = buildLintContext(html, options);
   const { findings: rawFindings, timings } = await runRules(ctx, options.filePath);
   const locate = createSourceLocator(html);
