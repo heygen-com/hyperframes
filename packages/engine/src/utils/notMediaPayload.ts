@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createDecipheriv, createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open as openFile } from "node:fs/promises";
+import { open as openFile, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 
@@ -353,6 +353,7 @@ function hlsEntries(body: string): Entry[] | true {
   for (const raw of body.replaceAll("\0", "\n").split(/[\r\n]/)) {
     if (raw.length > MAX_LIST_LINE_BYTES) return true;
     const line = withoutTrailing(raw, TRAILING_HLS_BLANK);
+    if (namesByteRange(line)) return true;
     const found = line.startsWith("#")
       ? attributeUris(line).map((uri) => [uri])
       : line
@@ -392,20 +393,30 @@ function concatEntries(body: string): Entry[] | true {
   return entries;
 }
 
-/** `URI=` values of a tag, split as ffmpeg's `ff_parse_key_value` splits them. */
-function attributeUris(line: string): string[] {
-  const uris: string[] = [];
+/** A tag's attributes, split as ffmpeg's `ff_parse_key_value` splits them, keys upper-cased. */
+function attributes(line: string): [string, string][] {
+  const found: [string, string][] = [];
   let at = line.indexOf(":") + 1;
   while (at > 0 && at < line.length) {
     while (at < line.length && ATTRIBUTE_GAP.test(line[at]!)) at++;
     const equals = line.indexOf("=", at);
     if (equals < 0) break;
     const [value, next] = attributeValue(line, equals + 1);
-    if (line.slice(at, equals).toUpperCase() === "URI") uris.push(value);
+    found.push([line.slice(at, equals).toUpperCase(), value]);
     at = next;
   }
-  return uris;
+  return found;
 }
+
+const attributeUris = (line: string): string[] =>
+  attributes(line).flatMap(([key, value]) => (key === "URI" ? [value] : []));
+
+const MAP_TAG = /^#EXT-X-MAP:/i;
+
+// ffmpeg feeds a byte range of a file to the demuxer, which the walk does not model.
+const namesByteRange = (line: string): boolean =>
+  /^#EXT-X-BYTERANGE\b/i.test(line) ||
+  (MAP_TAG.test(line) && attributes(line).some(([key]) => key === "BYTERANGE"));
 
 /** A quoted value drops its quotes and the backslash before any character; a bare one ends at a space or comma. */
 function attributeValue(line: string, at: number): [string, number] {
@@ -428,9 +439,12 @@ function attributeValue(line: string, at: number): [string, number] {
 
 const UTF8_BOM = "\xEF\xBB\xBF";
 
+const listBody = (text: string): string =>
+  (text.startsWith(UTF8_BOM) ? text.slice(UTF8_BOM.length) : text).trimStart();
+
 /** The entries a list can open; true when it must be refused unread; undefined when the text is no list. */
 function playlistEntries(text: string): Entry[] | true | undefined {
-  const body = (text.startsWith(UTF8_BOM) ? text.slice(UTF8_BOM.length) : text).trimStart();
+  const body = listBody(text);
   if (body.startsWith("#EXTM3U")) return hlsEntries(body);
   if (/^ffconcat\s+version/i.test(body)) return concatEntries(body);
   return undefined;
@@ -524,25 +538,27 @@ async function textStart(fh: FileHandle, first: Buffer): Promise<number> {
 const MAX_TEXT_STARTS = 64;
 
 /** Every offset a list may be read from: ffmpeg's probe counts a tag's footer, its demuxer only for a clean v2.4 tag. */
-async function textStarts(fh: FileHandle, first: Buffer): Promise<number[] | null> {
+type Read = (bytes: number, position: number) => Promise<Buffer>;
+
+async function textStarts(read: Read, first: Buffer): Promise<number[] | null> {
   const starts = new Set<number>();
   let tagged = [0];
   for (let tags = 0; tagged.length > 0; tags++) {
     if (tags > MAX_ID3_TAGS || tagged.length + starts.size > MAX_TEXT_STARTS) return null;
-    tagged = await pastTags(fh, first, tagged, starts);
+    tagged = await pastTags(read, first, tagged, starts);
   }
   return [...starts];
 }
 
 async function pastTags(
-  fh: FileHandle,
+  read: Read,
   first: Buffer,
   offsets: number[],
   starts: Set<number>,
 ): Promise<number[]> {
   const next = new Set<number>();
   for (const offset of offsets) {
-    const head = offset === 0 ? first : await readAt(fh, 10, offset);
+    const head = offset === 0 ? first : await read(10, offset);
     if (!isId3Header(head)) starts.add(offset);
     else for (const footer of footers(head)) next.add(id3End(head, offset) + footer);
   }
@@ -579,7 +595,7 @@ async function readList(path: string, nested: boolean): Promise<string | null | 
 
 async function listText(fh: FileHandle, nested: boolean): Promise<string | null | true> {
   const first = await readAt(fh, SNIFF_BYTES, 0);
-  const starts = await textStarts(fh, first);
+  const starts = await textStarts((bytes, position) => readAt(fh, bytes, position), first);
   if (!starts) return true;
   // ffmpeg's probe and demuxer can read a tagged list from different bytes, so a list behind a tag is refused.
   if (starts.length > 1 || starts[0] !== 0) return (await taggedList(fh, starts, nested)) || null;
@@ -610,6 +626,13 @@ function budgetedEntries(text: string, walk: Walk): Entry[] | true {
   return walk.bytes > MAX_WALK_BYTES || walk.entries > MAX_WALK_ENTRIES ? true : entries;
 }
 
+async function checkedEntries(text: string, path: string, walk: Walk): Promise<Entry[] | true> {
+  const entries = budgetedEntries(text, walk);
+  return entries === true || (await streamReadsAsList(listBody(text), dirname(path)))
+    ? true
+    : entries;
+}
+
 /** Every list a list names is read too, against the top list's folder. A nested file that cannot be read is refused. */
 async function listLeaves(
   readPath: string,
@@ -625,7 +648,7 @@ async function listLeaves(
   if (text === true || depth >= MAX_PLAYLIST_DEPTH) return true;
   if (walk.seen.has(path)) return false;
   walk.seen.add(path);
-  const entries = budgetedEntries(text, walk);
+  const entries = await checkedEntries(text, path, walk);
   if (entries === true) return true;
   for (const entry of entries) {
     if (await entryLeaves(entry, dirname(path), walk, depth)) return true;
@@ -659,4 +682,244 @@ async function nestedVerdict(path: string, walk: Walk, depth: number): Promise<V
     walk.verdicts.set(path, verdict);
   }
   return verdict;
+}
+
+interface StreamPart {
+  names: string[];
+  init: boolean;
+  key?: { uri: string; iv: Buffer };
+}
+
+interface StreamState {
+  parts: StreamPart[];
+  key?: { uri: string; iv?: Buffer };
+  firstSequence: number;
+  segments: number;
+  segment: boolean;
+}
+
+const IV_VALUE = /^0x[0-9a-f]{32}$/i;
+
+function sequenceIv(sequence: number): Buffer {
+  const iv = Buffer.alloc(16);
+  iv.writeBigUInt64BE(BigInt(sequence), 8);
+  return iv;
+}
+
+function partKey(state: StreamState): StreamPart["key"] {
+  if (!state.key) return undefined;
+  const iv = state.key.iv ?? sequenceIv(state.firstSequence + state.segments);
+  return { uri: state.key.uri, iv };
+}
+
+/** The key ffmpeg decrypts whole segments with; false when a tag names one it cannot read as written. */
+function keyTag(line: string, state: StreamState): boolean {
+  const values = new Map(attributes(line));
+  if (values.get("METHOD") !== "AES-128") {
+    state.key = undefined;
+    return true;
+  }
+  const iv = values.get("IV");
+  if (iv !== undefined && !IV_VALUE.test(iv)) return false;
+  state.key = {
+    uri: values.get("URI") ?? "",
+    iv: iv ? Buffer.from(iv.slice(2), "hex") : undefined,
+  };
+  return true;
+}
+
+function mapTag(line: string, state: StreamState): boolean {
+  for (const uri of attributeUris(line)) {
+    state.parts.push({ names: [uri], init: true, key: partKey(state) });
+  }
+  return true;
+}
+
+function sequenceTag(line: string, state: StreamState): boolean {
+  state.firstSequence = Number.parseInt(line.slice(line.indexOf(":") + 1), 10) || 0;
+  return true;
+}
+
+const STREAM_TAGS: [RegExp, (line: string, state: StreamState) => boolean][] = [
+  [/^#EXTINF:/i, (_line, state) => (state.segment = true)],
+  [MAP_TAG, mapTag],
+  [/^#EXT-X-KEY:/i, keyTag],
+  [/^#EXT-X-MEDIA-SEQUENCE:/i, sequenceTag],
+];
+
+function streamLine(line: string, state: StreamState): boolean {
+  const tag = STREAM_TAGS.find(([pattern]) => pattern.test(line));
+  if (tag) return tag[1](line, state);
+  if (line && !line.startsWith("#") && state.segment) {
+    state.parts.push({
+      names: [...new Set([line, line.trim()])],
+      init: false,
+      key: partKey(state),
+    });
+    state.segments++;
+    state.segment = false;
+  }
+  return true;
+}
+
+/** The init sections and segments ffmpeg's hls demuxer joins into one stream, in order; true when it cannot tell. */
+function hlsStream(body: string): StreamPart[] | true {
+  const state: StreamState = { parts: [], firstSequence: 0, segments: 0, segment: false };
+  for (const raw of body.replaceAll("\0", "\n").split(/[\r\n]/)) {
+    if (!streamLine(withoutTrailing(raw, TRAILING_HLS_BLANK), state)) return true;
+  }
+  return state.parts;
+}
+
+interface Piece {
+  size: number;
+  read: Read;
+  init: boolean;
+}
+
+async function readFileAt(path: string, bytes: number, position: number): Promise<Buffer> {
+  if (bytes <= 0) return Buffer.alloc(0);
+  const fh = await openRegular(Buffer.from(path, "latin1"));
+  if (!fh) throw new Error("not a regular file");
+  try {
+    return await readAt(fh, bytes, position);
+  } finally {
+    await fh.close().catch(() => {});
+  }
+}
+
+/** The one file an entry's names open, with its size; null when none is there; true when several are, or one is no file. */
+async function onlyFile(
+  names: string[],
+  base: string,
+): Promise<{ path: string; size: number } | null | true> {
+  const found = new Map<string, number>();
+  const local = names.filter((name) => !HTTP_URL.test(name));
+  for (const path of new Set(local.flatMap((name) => [name, percentDecoded(name)]))) {
+    const resolved = resolve(base, path);
+    const stats = await stat(Buffer.from(resolved, "latin1")).catch((error: unknown) =>
+      isMissing(error) ? null : true,
+    );
+    if (stats === true || (stats && !stats.isFile())) return true;
+    if (stats) found.set(resolved, stats.size);
+  }
+  if (found.size > 1) return true;
+  const [only] = found;
+  return only ? { path: only[0], size: only[1] } : null;
+}
+
+function decrypt(key: Buffer, iv: Buffer, data: Buffer): Buffer {
+  const decipher = createDecipheriv("aes-128-cbc", key, iv).setAutoPadding(false);
+  return Buffer.concat([decipher.update(data), decipher.final()]);
+}
+
+/** A whole-segment AES-128 file as the plain bytes ffmpeg reads from it; true when it cannot be read that way. */
+async function decryptedPiece(
+  path: string,
+  size: number,
+  key: NonNullable<StreamPart["key"]>,
+  base: string,
+): Promise<Omit<Piece, "init"> | null | true> {
+  const keyFile = await onlyFile([key.uri], base);
+  if (keyFile === true) return true;
+  // ffmpeg skips a segment whose key it cannot read.
+  if (!keyFile || keyFile.size !== 16) return null;
+  if (size === 0 || size % 16) return true;
+  const secret = await readFileAt(keyFile.path, 16, 0);
+  const before = size >= 32 ? await readFileAt(path, 16, size - 32) : key.iv;
+  const padding = decrypt(secret, before, await readFileAt(path, 16, size - 16))[15]!;
+  if (padding < 1 || padding > 16) return true;
+  const plain = size - padding;
+  const read: Read = async (bytes, position) => {
+    const end = Math.min(position + bytes, plain);
+    if (end <= position) return Buffer.alloc(0);
+    const from = position - (position % 16);
+    const iv = from === 0 ? key.iv : await readFileAt(path, 16, from - 16);
+    const blocks = await readFileAt(path, Math.ceil(end / 16) * 16 - from, from);
+    return decrypt(secret, iv, blocks).subarray(position - from, end - from);
+  };
+  return { size: plain, read };
+}
+
+async function streamPiece(part: StreamPart, base: string): Promise<Piece | null | true> {
+  const file = await onlyFile(part.names, base);
+  if (file === null || file === true) return file;
+  const piece = part.key
+    ? await decryptedPiece(file.path, file.size, part.key, base)
+    : {
+        size: file.size,
+        read: (bytes: number, position: number) =>
+          readFileAt(file.path, Math.min(bytes, file.size - position), position),
+      };
+  return piece === null || piece === true ? piece : { ...piece, init: part.init };
+}
+
+/** Each stream ffmpeg may start reading: from any segment, behind the init section in force there. */
+function startingStreams(pieces: Piece[]): Piece[][] {
+  const streams: Piece[][] = [];
+  let init: Piece | undefined;
+  pieces.forEach((piece, at) => {
+    if (piece.init) init = piece;
+    else streams.push([...(init ? [init] : []), ...pieces.slice(at)]);
+  });
+  return streams.length > 0 ? streams : [pieces];
+}
+
+function joined(pieces: Piece[]): Read {
+  return async (bytes, position) => {
+    const chunks: Buffer[] = [];
+    let at = position;
+    let start = 0;
+    for (const piece of pieces) {
+      const end = start + piece.size;
+      const left = position + bytes - at;
+      if (left <= 0) break;
+      if (at < end) {
+        const chunk = await piece.read(Math.min(left, end - at), at - start);
+        chunks.push(chunk);
+        at += chunk.length;
+        if (at < end) break;
+      }
+      start = end;
+    }
+    return Buffer.concat(chunks);
+  };
+}
+
+async function readsAsList(read: Read): Promise<boolean> {
+  const starts = await textStarts(read, await read(SNIFF_BYTES, 0));
+  if (!starts) return true;
+  for (const start of starts) {
+    if (startsAsPlaylist(await read(SNIFF_BYTES, start))) return true;
+  }
+  return false;
+}
+
+async function streamPieces(parts: StreamPart[], base: string): Promise<Piece[] | true> {
+  const pieces: Piece[] = [];
+  for (const part of parts) {
+    const piece = await streamPiece(part, base);
+    if (piece === true) return true;
+    if (piece) pieces.push(piece);
+  }
+  return pieces;
+}
+
+/**
+ * ffmpeg's hls demuxer reads a playlist's init sections and segments as one stream, so a list
+ * that any of them is, or that they form together, would be read too. True for such a playlist.
+ */
+async function streamReadsAsList(body: string, base: string): Promise<boolean> {
+  if (!body.startsWith("#EXTM3U")) return false;
+  try {
+    const parts = hlsStream(body);
+    const pieces = parts === true ? true : await streamPieces(parts, base);
+    if (pieces === true) return true;
+    for (const stream of startingStreams(pieces)) {
+      if (await readsAsList(joined(stream))) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
 }
