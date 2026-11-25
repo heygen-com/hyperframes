@@ -177,6 +177,7 @@ export function useShadowPreviewReload({
   // The newest reload asked for while a still is being taken; it starts once the still is up.
   const holdingUrlRef = useRef<string | null>(null);
   const holdTokenRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const restoringRef = useRef<(() => void) | null>(null);
   const dropRestoring = useCallback(() => {
@@ -466,6 +467,7 @@ export function useShadowPreviewReload({
 
   const beginShadowReload = useCallback(
     (url: string) => {
+      if (!mountedRef.current) return;
       const live = iframeRef.current;
       const take = holdStillRef.current;
       if (heldRef.current || !take || !live?.isConnected) {
@@ -527,6 +529,7 @@ export function useShadowPreviewReload({
 
   // Hiding the tab pauses the budget; showing it again restarts the full budget for a pending shadow.
   useMountEffect(() => {
+    mountedRef.current = true;
     const onVisibilityChange = () => {
       if (isDocumentHidden()) {
         clearTimeout(readyTimerRef.current);
@@ -538,6 +541,7 @@ export function useShadowPreviewReload({
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      mountedRef.current = false;
       retry.cancel();
       stopPendingShadow();
       heldRef.current?.release();
