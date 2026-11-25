@@ -3,7 +3,7 @@
 // green clip-path wipe from the left (4-6 s). Grading once froze the dissolve, and its hide once blacked it out.
 // A click on a graded clip still picks it.
 import { mkdirSync, writeFileSync } from "node:fs";
-import { launchStudioChrome } from "./chrome-executable.mjs";
+import { launchStudioChrome, screenshotInPlace } from "./chrome-executable.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const OUT_DIR = process.env.OUT_DIR;
@@ -50,7 +50,7 @@ try {
       const r = document.getElementById("film").getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     });
-    const png = await iframe.screenshot({ encoding: "base64" });
+    const png = await screenshotInPlace(iframe, { encoding: "base64" });
     if (OUT_DIR) writeFileSync(`${OUT_DIR}/${name}.png`, Buffer.from(png, "base64"));
     const box = await iframe.boundingBox();
     const scale = box.width / (await frame.evaluate(() => window.innerWidth));
@@ -76,7 +76,12 @@ try {
     );
   };
   const dark = ({ r, g, b }) => Math.max(r, g, b) < 40;
-  const leads = ({ r, g, b }) => (g > r && g > b ? "green" : b > r ? "blue" : "red");
+  const CHANNEL_COLOUR = { r: "red", g: "green", b: "blue" };
+  const leads = (pixel) => {
+    const values = Object.values(pixel);
+    if (Math.max(...values) - Math.min(...values) < 40) return "no colour";
+    return CHANNEL_COLOUR[Object.keys(pixel).reduce((top, c) => (pixel[c] > pixel[top] ? c : top))];
+  };
 
   for (const { time, red } of DISSOLVE) {
     const [centre] = await sample(`dissolve-${time}`, time, [[0.5, 0.5]]);
@@ -108,7 +113,9 @@ try {
   ]) {
     if (dark(pixel)) failures.push(`wipe at ${WIPE.time} s, ${side}: black`);
     else if (leads(pixel) !== colour)
-      failures.push(`wipe at ${WIPE.time} s, ${side}: ${leads(pixel)} leads, expected ${colour}`);
+      failures.push(
+        `wipe at ${WIPE.time} s, ${side}: ${leads(pixel)} leads (${JSON.stringify(pixel)}), expected ${colour}`,
+      );
   }
 } finally {
   await browser.close();

@@ -61,7 +61,6 @@ jobs:
           git worktree remove "$RUNNER_TEMP/reachability-base"
       - name: Report head reachability
         run: node scripts/check-test-reachability.mjs --report
-      - run: node --test packages/share/tests/*.test.mjs
       - run: node --test scripts/check-test-reachability.test.mjs
       - run: node scripts/check-test-reachability.mjs
 
@@ -646,6 +645,7 @@ jobs:
           chrome: "true"
       - run: bun run generate:catalog
         if: needs.changes.outputs.docs_catalog == 'true'
+      - run: node --test packages/share/tests/*.test.mjs
       - run: bun run test:scripts
         env:
           HYPERFRAMES_BROWSER_PATH: ${{ steps.workspace.outputs.chrome-path }}
