@@ -34,6 +34,7 @@ const snapshot = (over: Record<string, unknown> = {}) => ({
   time: 0.5,
   defaultEase: null,
   timelines: [{ id: "main", time: 0.5, defaultEase: null, tweens: [tween] }],
+  globalTweens: [],
   targets: [target],
   ...over,
 });
@@ -66,6 +67,8 @@ it.each([
     snapshot({ targets: Array.from({ length: 513 }, () => target) }),
   ],
   ["a value that is not a number", snapshot({ targets: [{ ...target, values: { x: "7" } }] })],
+  ["no list of global tweens", snapshot({ globalTweens: undefined })],
+  ["a global tween off its shape", snapshot({ globalTweens: [{ ...tween, targets: ["x"] }] })],
   [
     "a tween start that is not finite",
     snapshot({

@@ -173,7 +173,7 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
     await p.frame.evaluate(
       () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
     );
-    pausedAt = Math.round((await p.time()) * 100) / 100;
+    pausedAt = await p.time();
   },
   // Studio's editing port gives a request 5 s (editingPort.ts); the plugin stays held past that.
   late: () => new Promise((done) => setTimeout(done, 5_500)),
@@ -233,7 +233,7 @@ async function play(mode: string, steps: Step[]) {
   const sealed = mode === "sealed";
   pausedAt = undefined;
   const preview = await openPreview(mode);
-  const { page, frame, held, seek, time } = preview;
+  const { page, frame, pluginRequested, seek, time } = preview;
   await seek(4);
   if (!sealed) await restoreLeftOfC(preview, sealed, 1);
   const older = rerun(
@@ -243,7 +243,7 @@ async function play(mode: string, steps: Step[]) {
     sealed ? restoreC(1) : [],
     true,
   );
-  await expect.poll(() => held.length).toBeGreaterThan(0);
+  await pluginRequested;
   for (const step of steps) await STEPS[step](preview, sealed);
   const answer = await Promise.race([older, Promise.resolve("kept")]);
   const state = await frame.evaluate(() => {
@@ -255,12 +255,16 @@ async function play(mode: string, steps: Step[]) {
       x: Math.round(new DOMMatrix(getComputedStyle(target).transform).m41),
     };
   });
-  const at = Math.round((await time()) * 100) / 100;
+  const now = await time();
+  const at = Math.round(now * 100) / 100;
   const outcome = {
     answer,
     ...state,
     at,
-    ...(pausedAt === undefined ? {} : { moved: Math.abs(at - pausedAt) > 1 / 30, pausedAt }),
+    // The swap seeks to the frame at or below the paused time; only a whole frame or more is a move.
+    ...(pausedAt === undefined
+      ? {}
+      : { moved: Math.abs(now - pausedAt) >= 1 / 30, pausedAt: Math.round(pausedAt * 100) / 100 }),
   };
   await page.close();
   return outcome;
@@ -489,7 +493,7 @@ describe("late answers held in transit, sealed", () => {
     const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true).catch(
       () => "closed",
     );
-    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await p.pluginRequested;
     await hold(p.page, true);
     await p.release(404);
     await expect.poll(() => heldCount(p.page)).toBe(1);
@@ -504,7 +508,7 @@ describe("late answers held in transit, sealed", () => {
   it("re-runs the newest script when a patch refusal held across the swap arrives late", async () => {
     const p = await openPreview("sealed");
     void rerun(p.page, timeline("main", "older", 60, true), 2, [], true).catch(() => {});
-    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await p.pluginRequested;
     await hold(p.page, true);
     await commit(p.page, timeline("main", "p1", 10), 10);
     await expect.poll(() => heldCount(p.page)).toBe(1);
@@ -522,7 +526,7 @@ describe("late answers held in transit, sealed", () => {
   it("still recovers an older script refusal after an unrelated successful patch", async () => {
     const p = await openPreview("sealed");
     const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
-    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await p.pluginRequested;
     await hold(p.page, true);
     await p.release(404);
     await expect.poll(() => heldCount(p.page)).toBe(1);
@@ -536,7 +540,7 @@ describe("late answers held in transit, sealed", () => {
   it("still recovers an older run that times out after an attribute-only undo", async () => {
     const p = await openPreview("sealed");
     const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
-    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await p.pluginRequested;
     expect(await undoLeftOfC(p.page, 5)).toBe("soft");
     await expect
       .poll(() => p.frame.evaluate(() => document.getElementById("c")!.style.left))

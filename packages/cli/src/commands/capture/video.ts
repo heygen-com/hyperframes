@@ -5,6 +5,7 @@ import { c } from "../../ui/colors.js";
 import { safeFetch } from "../../capture/assetDownloader.js";
 import { ensureCaptureDirSync } from "../../capture/captureFile.js";
 import { CAPTURE_USER_AGENT } from "../../capture/userAgent.js";
+import { videoExtensionOf, videoStem } from "../../capture/capturedVideo.js";
 import { terminalText } from "@hyperframes/core";
 import { printFailureLine } from "../../utils/jsonError.js";
 
@@ -12,7 +13,11 @@ const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_CONTENT_TYPE_RE = /^(video\/|application\/(mp4|octet-stream|x-mpegurl))/i;
 
 // fallow-ignore-next-line complexity
-async function streamToFile(url: string, destPath: string): Promise<number> {
+async function streamToFile(
+  url: string,
+  outDir: string,
+  stem: string,
+): Promise<{ bytes: number; name: string }> {
   // safeFetch re-validates redirect hops; bare redirect:"follow" leaks to private hosts.
   const r = await safeFetch(url, {
     signal: AbortSignal.timeout(120_000),
@@ -38,6 +43,27 @@ async function streamToFile(url: string, destPath: string): Promise<number> {
   }
   if (!r.body) throw new Error(`empty response body for ${url}`);
 
+  // The file's extension is the container its first bytes are; nothing is created for a body that is no video.
+  const reader = (r.body as unknown as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+  const head: Uint8Array[] = [];
+  for (let got = 0; got < 16; ) {
+    const next = await reader.next();
+    if (next.done) break;
+    head.push(next.value);
+    got += next.value.byteLength;
+  }
+  const container = videoExtensionOf(Buffer.concat(head));
+  if (!container) {
+    await reader.return?.();
+    throw new Error(`${url} is not a video file (no MP4, MOV or WebM container).`);
+  }
+  const name = `${stem}${container}`;
+  const destPath = join(outDir, name);
+  async function* body(): AsyncGenerator<Uint8Array> {
+    yield* head;
+    for (let next = await reader.next(); !next.done; next = await reader.next()) yield next.value;
+  }
+
   // `flags: "wx"` = exclusive-create; throws EEXIST if destPath exists. Stream chunks
   // and abort mid-transfer if cumulative bytes exceed the cap so a hostile CDN can't
   // OOM the process by lying about content-length.
@@ -56,7 +82,7 @@ async function streamToFile(url: string, destPath: string): Promise<number> {
       streamErrored,
       new Promise<void>((resolveOpen) => file.once("open", () => resolveOpen())),
     ]);
-    for await (const chunk of r.body as unknown as AsyncIterable<Uint8Array>) {
+    for await (const chunk of body()) {
       if (streamError) throw streamError;
       bytes += chunk.byteLength;
       if (bytes > MAX_VIDEO_BYTES) {
@@ -75,7 +101,7 @@ async function streamToFile(url: string, destPath: string): Promise<number> {
     await new Promise<void>((resolveEnd, rejectEnd) => {
       file.end((err?: Error | null) => (err ? rejectEnd(err) : resolveEnd()));
     });
-    return bytes;
+    return { bytes, name };
   } catch (e) {
     file.destroy();
     // EEXIST means destPath ALREADY existed before we wrote anything — leave it alone.
@@ -89,16 +115,6 @@ async function streamToFile(url: string, destPath: string): Promise<number> {
     }
     throw e;
   }
-}
-
-export function safeFilename(name: string): string {
-  let decoded = name;
-  try {
-    decoded = decodeURIComponent(name);
-  } catch {
-    /* malformed percent-encoding */
-  }
-  return decoded.replace(/[^A-Za-z0-9._-]+/g, "_");
 }
 
 export { VIDEO_CONTENT_TYPE_RE, MAX_VIDEO_BYTES };
@@ -130,17 +146,16 @@ export type PickResult =
       message: string;
     };
 
-// Two manifest entries can produce the same safeFilename (URL-encoded variants of the same name
+// Two manifest entries can produce the same videoStem (URL-encoded variants of the same name
 // collapse after decode). The wx exclusive-create + EEXIST handler would silently misreport the
 // second as "already downloaded" while serving the first's bytes. Fail loudly instead.
 export function findFilenameCollision(
   manifest: ManifestEntry[],
   selected: ManifestEntry,
 ): ManifestEntry[] {
-  const selectedName = safeFilename(selected.filename || basename(selected.url));
+  const selectedName = videoStem(selected.filename || basename(selected.url));
   return manifest.filter(
-    (e) =>
-      e.index !== selected.index && safeFilename(e.filename || basename(e.url)) === selectedName,
+    (e) => e.index !== selected.index && videoStem(e.filename || basename(e.url)) === selectedName,
   );
 }
 
@@ -252,7 +267,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   if (collisions.length > 0) {
     printFailureLine(
       (show) =>
-        `${c.error("✗")} filename "${safeFilename(entry.filename || basename(entry.url))}" ` +
+        `${c.error("✗")} filename "${videoStem(entry.filename || basename(entry.url))}" ` +
         `collides with manifest entr${collisions.length === 1 ? "y" : "ies"} ` +
         `${collisions.map((co) => `[${show(String(co.index))}]`).join(", ")}. ` +
         `Refusing to download — the on-disk file's bytes would not match the requested entry.`,
@@ -271,27 +286,30 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
     setCommandExitCode(1);
     return;
   }
-  const fname = safeFilename(entry.filename || basename(entry.url));
-  const outPath = join(outDir, fname);
-  const relPath = isW2hLayout ? `capture/assets/videos/${fname}` : `assets/videos/${fname}`;
+  const stem = videoStem(entry.filename || basename(entry.url));
+  const relPath = (name: string) =>
+    isW2hLayout ? `capture/assets/videos/${name}` : `assets/videos/${name}`;
 
   console.log(
     `${c.accent("▸")} downloading [${shown(entry.index)}] ${shown(entry.filename)} (${shown(entry.sourceWidth || entry.width)}×${shown(entry.sourceHeight || entry.height)})`,
   );
   console.log(`     from: ${shown(entry.url)}`);
   try {
-    const bytes = await streamToFile(entry.url, outPath);
+    const { bytes, name } = await streamToFile(entry.url, outDir, stem);
     const sizeKb = Math.round(bytes / 1024);
     const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)}MB` : `${sizeKb}KB`;
-    console.log(`${c.success("◇")}  wrote ${relPath} (${sizeStr})`);
+    console.log(`${c.success("◇")}  wrote ${relPath(name)} (${sizeStr})`);
     const snippetId = `video-${shown(entry.index)}`;
     console.log(
       `     Reference it from a beat composition as:\n` +
-        `       <video id="${snippetId}" src="${relPath}" data-start="0" data-duration="${(entry.sourceWidth || entry.width) === (entry.sourceHeight || entry.height) ? 5 : 4}" data-track-index="0" autoplay muted loop></video>`,
+        `       <video id="${snippetId}" src="${relPath(name)}" data-start="0" data-duration="${(entry.sourceWidth || entry.width) === (entry.sourceHeight || entry.height) ? 5 : 4}" data-track-index="0" autoplay muted loop></video>`,
     );
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "EEXIST") {
-      console.log(`${c.warn("⚠")}  already downloaded: ${relPath} (skipping)`);
+      const path = (e as NodeJS.ErrnoException).path;
+      console.log(
+        `${c.warn("⚠")}  already downloaded: ${terminalText(relPath(path ? basename(path) : stem))} (skipping)`,
+      );
       console.log(`     Delete the file and re-run to refetch.`);
       return;
     }
