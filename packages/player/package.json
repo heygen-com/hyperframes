@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/player",
-  "version": "0.9.88",
+  "version": "0.9.93",
   "description": "Embeddable web component for HyperFrames compositions",
   "repository": {
     "type": "git",
@@ -33,7 +33,7 @@
     "test": "vitest run",
     "test:browser-security": "bun run tests/browser/sandbox-origin.ts",
     "test:browser-sealed-media": "bun run tests/browser/sealed-media.ts && bun run tests/browser/sealed-media-table.ts",
-    "test:browser-sealed-runtime": "bun run tests/browser/sealed-runtime.ts",
+    "test:browser-sealed-runtime": "bun run tests/browser/sealed-runtime.ts && bun run tests/browser/sealed-preview-error.ts",
     "test:browser-raster": "bun run tests/browser/preview-raster-size.ts",
     "test:browser-box": "bun run tests/browser/player-box.ts",
     "test:browser-sealed-audio": "bun run tests/browser/sealed-audio.ts",

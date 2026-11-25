@@ -80,6 +80,7 @@ export interface DecodeWindow {
 export interface DecodeFormat {
   sampleRate?: number;
   mono?: boolean;
+  inputArgs?: readonly string[];
 }
 
 export interface Decoded {
@@ -94,7 +95,8 @@ export async function decodeAudio(
   probed?: AudioStreamInfo,
   format: DecodeFormat = {},
 ): Promise<Decoded | null> {
-  const probedInfo = probed ?? (await probeAudio(file));
+  const inputArgs = format.inputArgs ?? [];
+  const probedInfo = probed ?? (await probeAudio(file, inputArgs));
   if (!probedInfo) return null;
   const info = {
     ...probedInfo,
@@ -111,7 +113,7 @@ export async function decodeAudio(
       "-v",
       "error",
       ...inputSeek,
-      ...mediaInputFormatArgs(ffmpeg, file),
+      ...literalInputArgs(ffmpeg, file, inputArgs),
       "-i",
       file,
       ...decodedSeek,

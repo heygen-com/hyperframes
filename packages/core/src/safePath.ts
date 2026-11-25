@@ -1,7 +1,16 @@
 import { resolve, sep, join, dirname, basename, relative, isAbsolute, parse } from "node:path";
-import { lstatSync, mkdirSync, realpath as realpathWalk, realpathSync, statSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpath as realpathWalk,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { realpath as realpathNative } from "node:fs/promises";
 import { promisify } from "node:util";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { projectPathSegments } from "@hyperframes/parsers/private-path";
 
 export {
@@ -83,6 +92,7 @@ export function isSafePath(base: string, resolved: string): boolean {
     // Base must exist and be resolvable; fail closed if not.
     return false;
   }
+  if (!isWithinProjectRoot(base, target) && !isWithinProjectRoot(baseReal, target)) return false;
 
   const trailing: string[] = [];
   let probe = target;
@@ -316,3 +326,124 @@ export function mkdirWithinProject(root: string, dir: string): void {
     }
   }
 }
+
+/** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
+export function realFilePath(filePath: string): string {
+  try {
+    return realpath(filePath);
+  } catch {
+    const dir = dirname(filePath);
+    return dir === filePath ? filePath : join(realFilePath(dir), basename(filePath));
+  }
+}
+
+export type EntryKind = "file" | "folder";
+
+const NODE_ONLY_SCRIPT = /\.(?:[cm]?ts|tsx|jsx|cjs)$/;
+const BROWSER_OR_NODE_SCRIPT = /\.m?js$/;
+const isExtensionless = (name: string) => name !== "" && !name.includes(".");
+
+/** A script only Node runs, whatever folder holds it. */
+export function nodeOnlyScript(relPath: string): boolean {
+  return NODE_ONLY_SCRIPT.test(foldedPath(relPath).split("/").at(-1) ?? "");
+}
+
+/**
+ * A Node-only script, or below (at any depth, past the project too) a package.json that is not the scaffold's: a
+ * `.js`/`.mjs` file, an extensionless file, or a file Node resolves before the module of its name plus an extension
+ * beside it.
+ */
+export function nodeMayRun(projectDir: string, relPath: string, kind: EntryKind): boolean {
+  if (nodeOnlyScript(relPath)) return true;
+  const name = foldedPath(relPath).split("/").at(-1) ?? "";
+  const folder = dirname(resolve(projectDir, relPath));
+  const sharedWithNode =
+    BROWSER_OR_NODE_SCRIPT.test(name) ||
+    (kind === "file" && (isExtensionless(name) || shadowsModuleIn(folder, name)));
+  if (!sharedWithNode) return false;
+  return [folder, realFilePath(folder)].some((from) => foldersUp(from).some(manifestBringsNode));
+}
+
+const MODULE_EXTENSIONS = ["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "json", "node"];
+
+const shadowsModuleIn = (folder: string, name: string): boolean =>
+  name !== "" &&
+  [folder, realFilePath(folder)].some((at) => {
+    const entries = foldedEntriesOf(at);
+    return MODULE_EXTENSIONS.some((extension) => entries.has(`${name}.${extension}`));
+  });
+
+const folderEntryCache = new Map<string, { stat: string; names: ReadonlySet<string> }>();
+
+function foldedEntriesOf(folder: string): ReadonlySet<string> {
+  const stat = statSync(folder, { throwIfNoEntry: false });
+  if (!stat?.isDirectory()) return new Set();
+  const key = `${stat.ino}:${stat.mtimeMs}`;
+  const cached = folderEntryCache.get(folder);
+  if (cached?.stat === key) return cached.names;
+  let listed: string[] = [];
+  try {
+    listed = readdirSync(folder);
+  } catch {
+    // expected: a folder that cannot be listed has no module beside the name to shadow
+  }
+  const names = new Set(listed.map(foldedPath));
+  folderEntryCache.set(folder, { stat: key, names });
+  return names;
+}
+
+function foldersUp(from: string): string[] {
+  const parent = dirname(from);
+  return parent === from ? [from] : [from, ...foldersUp(parent)];
+}
+
+const manifests = new Map<string, { stat: string; bringsNode: boolean }>();
+
+function manifestBringsNode(folder: string): boolean {
+  const path = join(folder, "package.json");
+  const stat = statSync(path, { throwIfNoEntry: false });
+  if (!stat?.isFile()) return false;
+  const key = `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+  const cached = manifests.get(path);
+  if (cached?.stat === key) return cached.bringsNode;
+  const bringsNode = !isScaffoldManifest(readPackageJson(path));
+  manifests.set(path, { stat: key, bringsNode });
+  return bringsNode;
+}
+
+function readPackageJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+const INERT_FIELDS = new Set(
+  "name version private type description license author contributors keywords homepage repository bugs engines".split(
+    " ",
+  ),
+);
+const HYPERFRAMES_COMMAND = /^(?:npx (?:--yes |-y )?)?hyperframes(?:@[\w.+-]+)?(?: [\w@=:./+-]+)*$/;
+
+/** A manifest with nothing but inert fields and scripts that only call the hyperframes CLI, as `hyperframes init` writes. */
+function isScaffoldManifest(pkg: unknown): boolean {
+  if (!pkg || typeof pkg !== "object" || Array.isArray(pkg)) return false;
+  return Object.entries(pkg).every(([field, value]) =>
+    field === "scripts" ? onlyHyperframesScripts(value) : INERT_FIELDS.has(field),
+  );
+}
+
+function onlyHyperframesScripts(scripts: unknown): boolean {
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return false;
+  return Object.values(scripts).every(
+    (script) =>
+      typeof script === "string" &&
+      script.split(" && ").every((command) => HYPERFRAMES_COMMAND.test(command.trim())),
+  );
+}
+
+const foldedPath = (path: string): string =>
+  projectPathSegments(path)
+    .filter((segment) => segment !== "" && segment !== ".")
+    .join("/");

@@ -1,11 +1,12 @@
 // fallow-ignore-file code-duplication complexity
 import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
 import {
@@ -47,6 +48,7 @@ export function isWhisperUnavailable(err: unknown): err is WhisperUnavailableErr
 }
 
 const MODEL_REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1";
+const ONE_PLAIN_FILE_NAME_PART = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 function getModelUrl(model: string): string {
   return `https://huggingface.co/ggerganov/whisper.cpp/resolve/${MODEL_REVISION}/ggml-${model}.bin`;
@@ -342,17 +344,27 @@ export async function ensureModel(
     onDownloadProgress?: (receivedBytes: number, totalBytes: number | null) => void;
   },
 ): Promise<string> {
+  if (!ONE_PLAIN_FILE_NAME_PART.test(model)) {
+    throw new Error(
+      `"${model}" is not a whisper model name. Use a name such as small.en or large-v3-turbo.`,
+    );
+  }
   const modelPath = join(MODELS_DIR, `ggml-${model}.bin`);
   const pin = PINNED_MODELS.get(model);
   ensurePrivateCacheDir(MODELS_DIR, hyperframesCacheDir());
   const cachedBytes = statSync(modelPath, { throwIfNoEntry: false })?.size;
-  if (cachedBytes !== undefined && (!pin || cachedBytes === pin.bytes)) return modelPath;
+  if (
+    cachedBytes !== undefined &&
+    (!pin || (cachedBytes === pin.bytes && (await cachedCopyVerified(modelPath, pin))))
+  )
+    return modelPath;
 
   rmSync(modelPath, { force: true });
+  rmSync(verifiedMarker(modelPath), { force: true });
   options?.onProgress?.(
     cachedBytes === undefined
       ? `Downloading model ${model}...`
-      : `Model ${model} is incomplete; downloading it again...`,
+      : `Model ${model} does not match its pinned copy; downloading it again...`,
   );
   await downloadFile(getModelUrl(model), modelPath, {
     signal: options?.signal,
@@ -365,7 +377,32 @@ export async function ensureModel(
       }
     },
   });
+  if (pin) replaceFileAtomically(verifiedMarker(modelPath), verifiedStamp(modelPath, pin));
   return modelPath;
+}
+
+const verifiedMarker = (modelPath: string) => `${modelPath}.verified`;
+
+function verifiedStamp(modelPath: string, pin: ModelFile): string {
+  const { size, mtimeMs, ino } = statSync(modelPath);
+  return `${pin.sha256} ${size} ${mtimeMs} ${ino}`;
+}
+
+const readStamp = (marker: string) => {
+  try {
+    return readFileSync(marker, "utf8");
+  } catch {
+    return undefined;
+  }
+};
+
+async function cachedCopyVerified(modelPath: string, pin: ModelFile): Promise<boolean> {
+  const marker = verifiedMarker(modelPath);
+  const stamp = verifiedStamp(modelPath, pin);
+  if (readStamp(marker) === stamp) return true;
+  if (!(await verifies(modelPath, pin))) return false;
+  replaceFileAtomically(marker, stamp);
+  return true;
 }
 
 export function hasFFmpeg(): boolean {

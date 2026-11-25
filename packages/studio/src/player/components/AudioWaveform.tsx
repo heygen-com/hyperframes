@@ -1,5 +1,6 @@
 import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { fadeGain } from "@hyperframes/core/audio-fade";
+import { decodeAudioWithin } from "@hyperframes/core/audio-decode";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
@@ -143,13 +144,11 @@ async function fetchWaveformPeaks(url: string, signal: AbortSignal): Promise<num
 }
 
 async function decodeWaveformPeaks(url: string, signal: AbortSignal): Promise<number[]> {
-  const response = await studioApiFetch(url, { signal });
-  if (!response.ok) throw new Error(`Audio request failed (${response.status})`);
-  const buffer = await response.arrayBuffer();
-  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
   const context = new AudioContext();
   try {
-    const decoded = await context.decodeAudioData(buffer);
+    const decoded = await decodeAudioWithin(context, url, {
+      fetch: (asked) => studioApiFetch(asked, { signal }),
+    });
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     return extractPeaks(decoded.getChannelData(0), 4000);
   } finally {

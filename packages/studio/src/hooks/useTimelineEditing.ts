@@ -46,7 +46,6 @@ export function useTimelineEditing({
   publishSdkSession,
   forceReloadSdkSession,
   invalidateGsapCache,
-  handleDomZIndexReorderCommitRef,
   canEdit,
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
@@ -73,7 +72,6 @@ export function useTimelineEditing({
   });
   const { handleTimelineElementMove, handleTimelineElementResize } = useTimelineClipTimingEditing({
     activeCompPath,
-    timelineElements,
     showToast,
     writeProjectFile,
     recordEdit,
@@ -85,7 +83,6 @@ export function useTimelineEditing({
     publishSdkSession,
     forceReloadSdkSession,
     invalidateGsapCache,
-    handleDomZIndexReorderCommitRef,
     editQueueRef,
   });
 

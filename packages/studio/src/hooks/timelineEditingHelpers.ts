@@ -1,5 +1,3 @@
-import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
-import { applyAuthoredTiming } from "@hyperframes/core/studio-preview-mark";
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
 import { toAuthoredStart } from "../player/store/timelineElement";
 import {
@@ -13,12 +11,9 @@ import {
 import {
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
-  type TimelineStackingReorderIntent,
 } from "../player/components/timelineEditing";
-import { getElementZIndex } from "../player/lib/layerOrdering";
 import {
   furthestClipEndFromDocument,
-  getTimelineElementIdentity,
   playbackStartAttributeForElement,
   readPlaybackStartAttributes,
 } from "../player/lib/timelineElementHelpers";
@@ -31,7 +26,6 @@ import {
   type RecordEditInput,
 } from "../utils/studioFileHistory";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
-import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { rootCompositionDurationOf } from "../utils/rootDuration";
 import { readFileContent } from "./timelineTimingSync";
@@ -41,77 +35,6 @@ import {
 } from "../components/editor/domEditingElement";
 export { deleteSelectedKeyframes } from "./deleteSelectedKeyframes";
 export { readFileContent };
-/**
- * Resolve a timeline vertical move to a z-index stacking reorder and commit it
- * through the shared layers-panel reorder path. Reads live sibling z-index from
- * the preview DOM, remaps with the dup-preserving reorder math, and writes only
- * z-index (never data-track-index). No-op when the move isn't a reorder, the
- * dragged clip is audio (no visual layer to restack), or the live siblings can't
- * be resolved. Extracted from StudioApp's timeline hook to keep it under the
- * studio 600-LOC cap.
- */
-// fallow-ignore-next-line complexity
-export function applyTimelineStackingReorder(input: {
-  element: TimelineElement;
-  stackingReorder: TimelineStackingReorderIntent | null | undefined;
-  timelineElements: readonly TimelineElement[];
-  iframe: HTMLIFrameElement | null;
-  activeCompPath: string | null;
-  commit: TimelineZIndexReorderCommit | null | undefined;
-  coalesceKey?: string;
-}): Promise<void> {
-  // Audio has no visual stacking; a vertical drag on it must never write z-index.
-  if (input.element.tag === "audio") return Promise.resolve();
-  const intent = input.stackingReorder ?? null;
-  if (intent == null || intent.zIndexChanges.length === 0) return Promise.resolve();
-  // Resolve each change's live element from the change's OWN locator (the intent
-  // is self-contained), falling back to the top-level element list. Sub-comp
-  // children aren't in `timelineElements`, so a list-only lookup would miss them.
-  const siblingByKey = new Map(
-    input.timelineElements.map((el) => [getTimelineElementIdentity(el), el]),
-  );
-  const doc = input.iframe?.contentDocument ?? null;
-  const commitEntries: Array<{
-    element: HTMLElement;
-    zIndex: number;
-    id?: string;
-    selector?: string;
-    selectorIndex?: number;
-    sourceFile: string;
-    key: string;
-  }> = [];
-  for (const change of intent.zIndexChanges) {
-    const sibling = siblingByKey.get(change.key);
-    const domId = change.domId ?? sibling?.domId;
-    const selector = change.selector ?? sibling?.selector;
-    const selectorIndex = change.selectorIndex ?? sibling?.selectorIndex;
-    const sourceFile =
-      change.sourceFile ?? sibling?.sourceFile ?? input.activeCompPath ?? "index.html";
-    const element = doc
-      ? findElementForSelection(
-          doc,
-          { id: domId, selector, selectorIndex, sourceFile },
-          input.activeCompPath,
-        )
-      : null;
-    if (!isHtmlElement(element)) return Promise.resolve();
-    if (getElementZIndex(element) === change.zIndex) continue;
-    commitEntries.push({
-      element,
-      zIndex: change.zIndex,
-      id: domId ?? sibling?.id ?? change.key,
-      selector,
-      selectorIndex,
-      sourceFile,
-      key: change.key,
-    });
-  }
-  if (commitEntries.length === 0) return Promise.resolve();
-  // The durability report is for gesture-level callers (z→lane mirror); this
-  // lane-drag z-sync path has no dependent follow-up write — swallow it.
-  // Promise.resolve-wrapped: a commit implementation may return void.
-  return Promise.resolve(input.commit?.(commitEntries, input.coalesceKey)).then(() => undefined);
-}
 export function extendRootDurationIfNeeded(newEnd: number): boolean {
   const store = usePlayerStore.getState();
   if (newEnd <= store.duration) return false;
@@ -192,21 +115,6 @@ export function findTimelineElementInDocument(
     return null;
   }
 }
-export function patchIframeDomTiming(
-  iframe: HTMLIFrameElement | null,
-  element: TimelineElement,
-  attrs: Array<[string, string]>,
-  activeCompositionPath: string | null = null,
-): void {
-  try {
-    const el = findTimelineElementInIframe(iframe, element, activeCompositionPath);
-    if (!el) return;
-    applyAuthoredTiming(el, attrs);
-  } catch {
-    // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
-  }
-}
-
 /** Takes deleted clips out of the live preview at once: until the reload lands, anything that re-reads the
  *  preview (composition enrichment) would otherwise put them back on the timeline. */
 export function removeIframeTimelineElements(

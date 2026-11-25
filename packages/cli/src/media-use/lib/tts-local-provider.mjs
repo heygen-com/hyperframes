@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
-import { ffprobeBinary } from "./ff-binaries.mjs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { ffprobeBinary, selfContainedInput } from "./ff-binaries.mjs";
 import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
 import { terminalLines } from "./terminal-text.mjs";
 import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
@@ -18,7 +19,17 @@ function probeDurationSeconds(ffprobe, file) {
   try {
     const out = execFileSync(
       ffprobe,
-      ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", file],
+      [
+        "-v",
+        "error",
+        ...selfContainedInput(file),
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "csv=p=0",
+        "--",
+        file,
+      ],
       { encoding: "utf8", timeout: 15000 },
     );
     const d = parseFloat(String(out).trim());
@@ -42,7 +53,17 @@ export async function localTtsGenerate(
 ) {
   const ffprobe = ffprobeBinary();
   const outPath = privateOutputPath("kokoro", ".wav");
-  const argv = ["hyperframes", "tts", intent, "--output", outPath];
+  // The line goes in a file this run made, never on the command line: `tts` reads a word that
+  // names a .txt file and takes a word starting with dashes as an option. To reproduce, voice the
+  // path of an existing .txt file: the path must be spoken, not the file's text.
+  const textPath = join(dirname(outPath), "line.txt");
+  try {
+    writeFileSync(textPath, intent, { flag: "wx" });
+  } catch (err) {
+    discardPrivateOutput(outPath);
+    throw err;
+  }
+  const argv = ["hyperframes", "tts", "--text-file", textPath, "--output", outPath];
   if (ctx?.voice) argv.push("--voice", ctx.voice);
   if (ctx?.lang && ctx.lang !== "en") argv.push("--lang", ctx.lang);
   // resolveSpawnCommand runs the CLI that started this engine (HYPERFRAMES_CLI_ENTRY) with the

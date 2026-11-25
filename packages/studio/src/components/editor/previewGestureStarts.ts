@@ -41,6 +41,15 @@ type ShownStart = (
 const MAX_SETTLED_WAIT_FRAMES = 60;
 export { PRESS_WAIT_MAX_MS };
 
+const pollFirst = (
+  channel: HTMLIFrameElement | null,
+  press: WaitingPressState,
+  poll: () => void,
+) => {
+  if (channel) poll();
+  else press.frame = requestAnimationFrame(poll);
+};
+
 export function createPreviewGestureStarts(
   opts: UseDomEditOverlayGesturesOptions,
   moveActiveGesture: (e: React.PointerEvent<HTMLDivElement>) => void,
@@ -152,7 +161,6 @@ export function createPreviewGestureStarts(
     start: ShownStart,
     draw: WaitingPressState["draw"] = null,
     targets: () => DomEditSelection[] = () => [],
-    drawn: () => OverChannel | null = () => null,
   ): boolean => {
     const at = playheadMoment();
     const iframe = opts.iframeRef.current;
@@ -165,6 +173,7 @@ export function createPreviewGestureStarts(
     // The press already holds the pointer, which may be up by the time the gesture starts.
     const held = { setPointerCapture() {} };
     const down = { ...e, currentTarget: held, preventDefault() {}, stopPropagation() {} };
+    const before = opts.waitingPressRef.current;
     const press: WaitingPressState = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -173,8 +182,13 @@ export function createPreviewGestureStarts(
       frame: 0,
       moved: null,
       released: null,
-      after: opts.waitingPressRef.current,
+      after: before,
       ended: false,
+      refused: false,
+      drawBack: () => {
+        if (before?.refused) before.drawBack();
+        else draw?.(0, 0);
+      },
     };
     opts.waitingPressRef.current = press;
     const onSave = !!press.after || isPreviewChanging() || isStudioEditSaving();
@@ -205,18 +219,22 @@ export function createPreviewGestureStarts(
         opts.overlayRef.current,
         opts.activeCompositionPathRef.current,
         targets(),
-      ).then((answer) => askedOf === frame && (overChannel = answer));
+      ).then((answer) => {
+        if (askedOf !== frame) return;
+        overChannel = answer;
+        pollNow();
+      });
     };
-    const channelStep = (): "wait" | "lost" | "run" | "drawn" => {
+    const channelStep = (): "wait" | "lost" | "run" | "unanswered" => {
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
       if (overdue) giveUpOnPreviewChange();
       if (isPreviewChanging() && !overdue) return "wait";
       askShownFrame();
       if (overChannel === undefined) return "wait";
-      if (overChannel === UNANSWERED) return "drawn";
+      if (overChannel === UNANSWERED) return "unanswered";
       return overChannel ? "run" : "lost";
     };
-    const waitStep = (): "wait" | "lost" | "run" | "drawn" => {
+    const waitStep = (): "wait" | "lost" | "run" | "unanswered" => {
       if (press.after && !press.after.ended) return "wait";
       if (channel) return channelStep();
       const found = countFrame();
@@ -227,9 +245,8 @@ export function createPreviewGestureStarts(
       if (found === 0 || settledFrames > MAX_SETTLED_WAIT_FRAMES) return "lost";
       return overdue || shownFrames >= 2 ? "run" : "wait";
     };
-    const startsFrom = (step: "lost" | "run" | "drawn"): OverChannel | undefined | false => {
-      if (step === "lost") return false;
-      if (step === "drawn") return drawn() ?? false;
+    const startsFrom = (step: "lost" | "run" | "unanswered"): OverChannel | undefined | false => {
+      if (step !== "run") return false;
       return typeof overChannel === "object" && overChannel ? overChannel : undefined;
     };
     const poll = () => {
@@ -244,6 +261,10 @@ export function createPreviewGestureStarts(
       if (read === false) sayWhyNotStarted(step);
       outline.replayEnded(replay(read) && channel ? opts.iframeRef.current : null);
     };
+    const pollNow = () => {
+      cancelAnimationFrame(press.frame);
+      poll();
+    };
     const replay = (read: ReturnType<typeof startsFrom>): boolean => {
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
       if (read === false || !start(pointerDown, at, true, read)) return false;
@@ -251,12 +272,14 @@ export function createPreviewGestureStarts(
       if (press.released) releaseActiveGesture(press.released);
       return true;
     };
-    const sayWhyNotStarted = (step: "lost" | "run" | "drawn") => {
+    const sayWhyNotStarted = (step: "lost" | "run" | "unanswered") => {
+      if (step !== "unanswered" || !channel) return;
+      press.refused = true;
+      press.drawBack();
       const pressed = opts.selectionRef.current;
-      if (step === "drawn" && channel && pressed)
-        opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
+      if (pressed) opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
     };
-    press.frame = requestAnimationFrame(poll);
+    pollFirst(channel, press, poll);
     return true;
   };
 
@@ -321,7 +344,6 @@ export function createPreviewGestureStarts(
           items.map((item) => ({ ...item, rect: shiftedOverlayRect(item.rect, dx, dy) })),
         ),
       () => items.map((item) => item.selection),
-      () => ({ shown: items.map(({ selection, rect }) => ({ selection, rect })) }),
     );
   };
   const startGesture = (
@@ -365,7 +387,6 @@ export function createPreviewGestureStarts(
       },
       draw,
       () => (target ? [target] : []),
-      () => (target && pressedRect ? { shown: [{ selection: target, rect: pressedRect }] } : null),
     );
   };
 

@@ -17,15 +17,22 @@ import {
   type HfAudioFxChain,
   type HfAudioFxNode,
 } from "./audioFx.js";
+import { windowDb, windowSizeFor } from "./audioAnalysis";
 import { fft } from "./fft";
+
+/** A symmetric Hann window of `size` samples. */
+function hannWindow(size: number): Float32Array {
+  const window = new Float32Array(size);
+  for (let i = 0; i < size; i++) window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (size - 1));
+  return window;
+}
 
 export const HF_AUDIO_CARVE_ATTR = "data-fx-carve";
 
 /** Third-octave centres spanning the range speech actually occupies. */
 const CANDIDATE_CENTERS_HZ = [160, 250, 400, 630, 1000, 1600, 2500, 4000, 6000] as const;
 
-const FRAME = 4096;
-const HOP = 2048;
+const FRAME_SECONDS = 4096 / 48_000;
 
 export interface HfCarveBand {
   freq: number;
@@ -352,6 +359,8 @@ function powerSpectrum(
   mono: Float32Array,
   sampleRate: number,
 ): { freqs: number[]; power: number[] } {
+  const FRAME = windowSizeFor(sampleRate, FRAME_SECONDS);
+  const HOP = FRAME / 2;
   const n = Math.max(mono.length, FRAME);
   const padded =
     mono.length >= FRAME
@@ -362,8 +371,7 @@ function powerSpectrum(
           return p;
         })();
 
-  const window = new Float32Array(FRAME);
-  for (let i = 0; i < FRAME; i++) window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FRAME - 1));
+  const window = hannWindow(FRAME);
 
   const bins = FRAME / 2 + 1;
   const acc = new Float64Array(bins);
@@ -601,8 +609,8 @@ export function analyseCarveDynamics(
 ): HfCarveDynamics[] {
   if (voice.length === 0 || bands.length === 0) return [];
 
-  const window = new Float32Array(FRAME);
-  for (let i = 0; i < FRAME; i++) window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FRAME - 1));
+  const FRAME = windowSizeFor(sampleRate, FRAME_SECONDS);
+  const window = hannWindow(FRAME);
 
   // One window per emitted point, so the hop is what keeps the lane in budget.
   const hop = Math.max(FRAME, Math.ceil(voice.length / POINT_BUDGET));
@@ -654,21 +662,6 @@ export function analyseCarveDynamics(
   });
 }
 
-/** Level in dB of one window, or -Infinity for silence. */
-function windowDb(samples: Float32Array, from: number, count: number): number {
-  let sum = 0;
-  let n = 0;
-  for (let i = from; i < from + count; i++) {
-    const s = samples[i];
-    if (s === undefined) break;
-    sum += s * s;
-    n += 1;
-  }
-  if (n === 0) return Number.NEGATIVE_INFINITY;
-  const rms = Math.sqrt(sum / n);
-  return rms > 0 ? 20 * Math.log10(rms) : Number.NEGATIVE_INFINITY;
-}
-
 /**
  * The level envelope that keeps a bed under a voice.
  *
@@ -692,6 +685,7 @@ export function analyseCarveDuck(
 ): { t: number; v: number }[] {
   if (voice.length === 0 || profile.duckDb <= 0) return [];
 
+  const FRAME = windowSizeFor(sampleRate, FRAME_SECONDS);
   const hop = Math.max(FRAME, Math.ceil(voice.length / POINT_BUDGET));
   const bedOffset = Math.round(offsetSeconds * sampleRate);
 

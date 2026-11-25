@@ -469,6 +469,33 @@ describe("drop counts — why a referenced asset is not in the capture", () => {
       expect(drops["size-ceiling"]).toBe(1);
     });
   });
+
+  it("writes only inline SVGs that are plain images as files", async () => {
+    await withTempDir(async (dir) => {
+      const plain =
+        '<svg viewBox="0 0 24 24" class="icon" fill="currentColor"><path d="M0 0h24v24H0z"/></svg>';
+      const shape = '<rect width="24" height="24" fill="#abc"/>';
+      const notPlain = [
+        `<svg viewBox="0 0 24 24">${shape}<script>fetch("/api/projects")</script></svg>`,
+        `<svg viewBox="0 0 24 24" onload="fetch('/api/projects')">${shape}</svg>`,
+        `<svg viewBox="0 0 24 24">${shape}<foreignObject><iframe src="/"></iframe></foreignObject></svg>`,
+        `<svg viewBox="0 0 24 24">${shape}<a href="javascript:fetch('/')"><rect width="9" height="9"/></a></svg>`,
+        `<svg viewBox="0 0 24 24">${shape}<use href="https://elsewhere.example/sprite.svg#mark"/></svg>`,
+      ];
+      const { assets, drops } = await downloadAssets(
+        {
+          svgs: [plain, ...notPlain].map((outerHTML) => ({ outerHTML, isLogo: false })),
+          sections: [],
+          ogImage: "",
+        } as unknown as DesignTokens,
+        dir,
+      );
+      expect(readdirSync(join(dir, "assets", "svgs"))).toHaveLength(1);
+      expect(assets).toHaveLength(1);
+      expect(readFileSync(join(dir, assets[0]!.localPath), "utf-8")).toBe(toStandaloneSvg(plain));
+      expect(drops.unavailable).toBe(notPlain.length);
+    });
+  });
 });
 
 describe("asset fetches present the same identity as the page navigation", () => {

@@ -8,11 +8,11 @@
     "unpacked": 27443351
   },
   "@hyperframes/core": {
-    "packed": 2111260,
-    "unpacked": 5400455
+    "packed": 2128159,
+    "unpacked": 5455485
   },
   "@hyperframes/engine": {
-    "packed": 511040,
+    "packed": 522000,
     "unpacked": 1742862
   },
   "@hyperframes/gcp-cloud-run": {
@@ -29,7 +29,7 @@
   },
   "@hyperframes/parsers": {
     "packed": 215500,
-    "unpacked": 915000
+    "unpacked": 930000
   },
   "@hyperframes/player": {
     "packed": 540044,

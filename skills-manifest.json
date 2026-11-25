@@ -2,12 +2,12 @@
   "source": "heygen-com/hyperframes",
   "skills": {
     "figma": {
-      "hash": "8507ef58a6c8034c",
+      "hash": "b1facb484ca64802",
       "files": 4
     },
     "hyperframes": {
-      "hash": "cd685206b1ec083b",
-      "files": 83
+      "hash": "1ebf5a311a4d1ed7",
+      "files": 85
     },
     "hyperframes-cli": {
       "hash": "36ed7b39fe73ede2",
@@ -18,8 +18,8 @@
       "files": 13
     },
     "media-use": {
-      "hash": "c0276ffe1b181f43",
-      "files": 133
+      "hash": "ff2fa3c4eb8a7bc1",
+      "files": 135
     },
     "remotion-to-hyperframes": {
       "hash": "3a1dd4a513701ef6",

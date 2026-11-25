@@ -20,12 +20,20 @@ const INDIRECT_FORMATS = new Set([
   "vapoursynth",
 ]);
 
+// Opening a file runs its reader, and a script reader (avisynth, vapoursynth) runs the script, so even the
+// probe names the readers it may use: audio and video containers that hold their own media.
+export const SELF_CONTAINED_FORMATS =
+  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,caf,w64,wv,au,ac3";
+export const ACCEPTED_CONTAINERS =
+  "MP4, M4A, MOV, MKV, WebM, MXF, AVI, MPEG, MPEG-TS, FLV, WMV, Ogg, WAV, W64, CAF, AU, MP3, AAC, AC3, FLAC, WavPack or AIFF";
+const PROBE_INPUT = ["-protocol_whitelist", "file", "-format_whitelist", SELF_CONTAINED_FORMATS];
+
 // The demuxer name for src, such as "mp3" or "mov,mp4,m4a,3gp,3g2,mj2"; null when it cannot tell. Some
 // Windows installs ship ffmpeg without ffprobe, so ffmpeg's input banner is the fallback.
 export function probeFormat(src) {
   const r = spawnSync(
     "ffprobe",
-    ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=format_name"].concat([
+    ["-v", "error", ...PROBE_INPUT, "-show_entries", "format=format_name"].concat([
       "-of",
       "default=nw=1:nk=1",
       "--",
@@ -34,7 +42,7 @@ export function probeFormat(src) {
     { encoding: "utf8" },
   );
   if (r.error?.code === "ENOENT") {
-    const banner = spawnSync("ffmpeg", ["-hide_banner", "-protocol_whitelist", "file", "-i", src], {
+    const banner = spawnSync("ffmpeg", ["-hide_banner", ...PROBE_INPUT, "-i", src], {
       encoding: "utf8",
     });
     return /^Input #0, (.+?), from /m.exec(banner.stderr ?? "")?.[1] ?? null;

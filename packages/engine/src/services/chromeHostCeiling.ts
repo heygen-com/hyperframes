@@ -32,7 +32,7 @@ export function exceedsChromeCeiling(versionName: string, ceiling: number | unde
 
 // Chrome Stable, so the managed shell keeps receiving stable security fixes. macOS 12 gets 150, the last headless
 // shell that launches there; it exposes canvas.drawElementImage under CanvasDrawElement.
-const CHROME_VERSION = "158.0.8127.36";
+const CHROME_VERSION = "158.0.8127.88";
 const MACOS_12_CHROME_VERSION = "150.0.7871.124";
 
 export function managedChromeVersion(
@@ -47,12 +47,12 @@ export function managedChromeVersion(
 /** Each pinned build's headless shell folder (Chrome for Testing), by `headlessShellDigest`, one per platform.
  * Regenerate with `bun run --cwd packages/cli pin:chrome <builds>` whenever a version above moves. */
 export const PINNED_SHELL_DIGESTS: Readonly<Record<string, readonly string[]>> = {
-  "158.0.8127.36": [
-    "564ba9876826b3a3ce71f862a37c85ee7938191975afad9f427918db6b073e13",
-    "32499804ce68213b7a3d5f622c8c94004522b02ed35bab7913495e6c8986c904",
-    "2ba780aa9f4afc4f79f4d6c1b32eb0fb9c0217faaa88ac56b5c82facfb31742d",
-    "ca7a3db192eb40cf690d8c338e5e15b62ebaaee4b02e0996521e22f6081c6db3",
-    "dee5819f7bd47d82915bc0598a80288b7f09b9b3f819eef4008fdc208dc6f345",
+  "158.0.8127.88": [
+    "a6856a54ddbe6a63924abe15002689863373bf006bc97c0d2de597aeffe90bf8",
+    "86b3c803ce030155862b9ffae24a47104cd210d7baecb8e97b5e015755877d68",
+    "484837f7ba541cbfbd8bd33e42b6783fa5d7ebe6563c847330380993bf6a1d5a",
+    "85bbe3b8089609184c194edb0507abeb8632f1eefbec0d1c6ecd00f5c66c3225",
+    "e101a1949999a0e6c915d5cbb095cb0cee6e51095f5b3b2f51186c3c06073fbe",
   ],
   "150.0.7871.124": [
     "8c1c8a8f68f53b66b2ca340bcf0d6b3f50f9961b3042b759cefdecc7d2eacd4b",

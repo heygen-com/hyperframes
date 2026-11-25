@@ -98,16 +98,11 @@ describe("public address policy", () => {
   );
   it("fails when neither DNS nor the system lookup answers", async () => {
     mocks.resolve4.mockRejectedValue(new Error("queryA ENOTFOUND"));
-    await expect(resolvePublicAddress("example.com")).rejects.toThrow(
-      "Capture DNS failed: ENOTFOUND",
-    );
+    await expect(resolvePublicAddress("example.com")).rejects.toThrow("DNS failed: ENOTFOUND");
   });
   it.each([
-    [{ code: 3221225794 }, "Capture DNS failed: the lookup helper exited with code 3221225794"],
-    [
-      { code: null, signal: "SIGKILL" },
-      "Capture DNS failed: the lookup helper was ended by SIGKILL",
-    ],
+    [{ code: 3221225794 }, "DNS failed: the lookup helper exited with code 3221225794"],
+    [{ code: null, signal: "SIGKILL" }, "DNS failed: the lookup helper was ended by SIGKILL"],
   ])(
     "names how the system lookup helper ended when it says nothing (%j)",
     async (ended, message) => {
@@ -139,11 +134,11 @@ describe("public address policy", () => {
         (error: Error) => error.message,
       );
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(await first).toBe("Capture DNS timed out");
+      expect(await first).toBe("DNS timed out");
       await vi.advanceTimersByTimeAsync(8_000);
       expect(await Promise.race([second, "still waiting"])).toBe("still waiting");
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(await second).toBe("Capture DNS timed out");
+      expect(await second).toBe("DNS timed out");
       expect(mocks.execFile).toHaveBeenCalledOnce();
       expect(mocks.resolve4).toHaveBeenCalledOnce();
     } finally {
@@ -206,7 +201,7 @@ describe("refusal class", () => {
     const error = await resolvePublicAddress("rebind.example.org").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(NonPublicHostError);
     expect((error as NonPublicHostError).hostClass).toBe("link-local");
-    expect((error as Error).message).toBe("Capture DNS returned a non-public address");
+    expect((error as Error).message).toBe("DNS returned a non-public address");
   });
 });
 
@@ -230,6 +225,23 @@ describe("pinned request", () => {
     });
     expect(response.status).toBe(302);
     expect(await response.text()).toBe("redirect");
+  });
+  // fails without the fix: a set capture proxy took the request, so no address here was checked or pinned
+  it("checks and pins the address itself when told to use no proxy, even with one configured", async () => {
+    vi.stubEnv("HYPERFRAMES_CAPTURE_PROXY", "http://127.0.0.1:3128");
+    try {
+      mocks.resolve4.mockResolvedValueOnce(["10.0.0.1"]);
+      await expect(publicRequest("https://example.com/", {}, null)).rejects.toThrow(
+        NonPublicHostError,
+      );
+      expect(mocks.request).not.toHaveBeenCalled();
+      mocks.resolve4.mockResolvedValueOnce(["8.8.8.8"]);
+      fakeRequest();
+      await publicRequest("https://example.com/", {}, null);
+      expect(mocks.request.mock.calls[0]?.[0]).toMatchObject({ hostname: "8.8.8.8" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
   it.each(["file:///tmp/a", "http://user:secret@example.com"])(
     "rejects unsafe URL %s",

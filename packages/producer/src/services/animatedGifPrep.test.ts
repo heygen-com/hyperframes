@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   truncateSync,
   writeFileSync,
 } from "node:fs";
@@ -150,6 +151,25 @@ describe("prepareAnimatedGifInputs", () => {
       }
     },
   );
+
+  it("never resolves a private project file named by a path spelled outside the project", () => {
+    const projectDir = makeProject();
+    const alias = `${projectDir}-alias`;
+    try {
+      symlinkSync(projectDir, alias);
+      for (const folder of [".git", "media"]) {
+        mkdirSync(join(projectDir, folder), { recursive: true });
+        writeFileSync(join(projectDir, folder, "sticker.gif"), gif([...frame(5), ...frame(15)], 0));
+      }
+      const options = { projectDir, downloadDir: projectDir, allowOutsideFiles: true };
+      const named = (folder: string) => join(alias, folder, "sticker.gif");
+      expect(resolveLocalImageSourcePath(named(".git"), options)).toBeNull();
+      expect(resolveLocalImageSourcePath(named("media"), options)).toBe(named("media"));
+    } finally {
+      rmSync(alias, { force: true });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 
   it("does not cache a transcode that ffmpeg cut off at its output size limit", async () => {
     const projectDir = makeProject();

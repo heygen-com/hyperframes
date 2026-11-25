@@ -92,7 +92,9 @@ import {
 import {
   parseTextEdit,
   textEditEndedEvent,
+  textEditSelectionEvent,
   type TextEditEndedEvent,
+  type TextEditSelectionEvent,
   type TextEditParams,
   type TextEditResult,
 } from "./editing/textEdit";
@@ -113,6 +115,7 @@ export {
   MAX_POINT_STACK,
   MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
+  isStableSelector,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
@@ -181,6 +184,8 @@ export const EDITING_REQUEST_KINDS = [
   "wait-for-seek",
   "set-loop-start",
   "computed-styles",
+  "authored-styles",
+  "font-faces",
   "elements-at-point",
   "pointer-targets",
   "describe",
@@ -299,6 +304,14 @@ export interface EditingRequests {
     params: ({ selector: string } | { handle: EditingElementHandle }) & { properties: string[] };
     result: { styles: Record<string, string> | null };
   };
+  "authored-styles": {
+    params: { handle: EditingElementHandle; properties: string[] };
+    result: { styles: Record<string, string> | null };
+  };
+  "font-faces": {
+    params: NoParams;
+    result: { families: string[]; ownFaces: Array<{ family: string; src: string }> };
+  };
   /** The stack under a viewport point, topmost first, up to MAX_POINT_STACK. Describe one to keep. */
   "elements-at-point": {
     params: { x: number; y: number };
@@ -339,7 +352,10 @@ export interface EditingRequests {
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
-  draft: { params: { drafts: EditingDraft[] }; result: EditingDraftReply };
+  draft: {
+    params: { drafts: EditingDraft[] };
+    result: EditingDraftReply & { gsapSetTakesDrafts?: true };
+  };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
@@ -573,6 +589,14 @@ function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean 
   return entries.every(isDraftValue);
 }
 
+function gsapSetWithDrafts(params: unknown): GsapSetParams | null {
+  if (!isPlainRecord(params) || !("drafts" in params)) return parseGsapSet(params);
+  const { drafts, ...set } = params;
+  const parsed = parseGsapSet(set);
+  const drawn = draftList({ drafts });
+  return parsed && drawn ? { ...parsed, drafts: drawn.drafts } : null;
+}
+
 function draftList(params: unknown): EditingParams<"draft"> | null {
   if (!hasKeys(params, "drafts") || !Array.isArray(params.drafts)) return null;
   const { drafts } = params;
@@ -627,6 +651,12 @@ const PARAM_PARSERS: {
     const properties = styleProperties(params.properties);
     return target && properties ? { ...target, properties } : null;
   },
+  "authored-styles": (params) => {
+    if (!hasKeys(params, "handle,properties") || !isHandle(params.handle)) return null;
+    const properties = styleProperties(params.properties);
+    return properties?.length ? { handle: params.handle, properties } : null;
+  },
+  "font-faces": noParams,
   "elements-at-point": point,
   "pointer-targets": point,
   describe: handleList,
@@ -673,7 +703,7 @@ const PARAM_PARSERS: {
   "edit-element": parseEditElement,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
-  "gsap-set": parseGsapSet,
+  "gsap-set": gsapSetWithDrafts,
   "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,
@@ -727,6 +757,7 @@ export interface EditingPortClient {
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
+  onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -788,6 +819,7 @@ export function createEditingPortClient(options: {
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
+  const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
@@ -814,7 +846,9 @@ export function createEditingPortClient(options: {
     const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
     if (geometry) return geometryListeners.forEach((listener) => listener(geometry));
     const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
-    if (ended) textEditListeners.forEach((listener) => listener(ended));
+    if (ended) return textEditListeners.forEach((listener) => listener(ended));
+    const selected = textEditSelectionEvent(data, EDITING_PROTOCOL_VERSION);
+    if (selected) selectionListeners.forEach((listener) => listener(selected));
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
@@ -886,12 +920,17 @@ export function createEditingPortClient(options: {
       textEditListeners.add(listener);
       return () => textEditListeners.delete(listener);
     },
+    onTextEditSelection(listener) {
+      selectionListeners.add(listener);
+      return () => selectionListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       keyListeners.clear();
       geometryListeners.clear();
       textEditListeners.clear();
+      selectionListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
@@ -913,6 +952,8 @@ export {
   textEditResult,
   type TextEditEndedEvent,
   type TextEditResult,
+  type TextEditSelection,
+  type TextEditSelectionEvent,
 } from "./editing/textEdit";
 export {
   parsePausedFrameAsk,

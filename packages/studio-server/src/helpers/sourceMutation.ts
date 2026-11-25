@@ -8,8 +8,8 @@ import { escapeCssIdentifier } from "@hyperframes/core/compiler/selector-id-toke
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import {
-  EXCLUDED_TAGS,
   ensureHfIds,
+  isNonContentElement,
   mintHfId,
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
@@ -300,7 +300,7 @@ function stampNewChildIds(parent: Element): void {
   });
   for (const el of parent.querySelectorAll("*")) {
     if (el.getAttribute("data-hf-id")) continue;
-    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    if (isNonContentElement(el)) continue;
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
   }
 }
@@ -315,13 +315,14 @@ export function patchElementInHtml(
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false };
+  if (isNonContentElement(el)) return { html: source, matched: false };
   const htmlEl = el;
   const originalHtml = wrappedFragment ? document.body.innerHTML || "" : document.toString();
 
   const resolved: ResolvedPatchOperation[] = [];
   for (const op of operations) {
     const opTarget = resolveOperationTarget(htmlEl, op);
-    if (!opTarget) return { html: source, matched: false };
+    if (!opTarget || isNonContentElement(opTarget)) return { html: source, matched: false };
     resolved.push({ op, target: opTarget });
   }
 
@@ -368,7 +369,8 @@ export function patchElementInHtml(
       case "text-content":
         if (op.value != null) {
           const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
-          const textTarget = inner && isHTMLElement(inner) ? inner : opTarget;
+          const textTarget =
+            inner && isHTMLElement(inner) && !isNonContentElement(inner) ? inner : opTarget;
           textTarget.textContent = op.value;
         }
         break;

@@ -59,8 +59,8 @@ const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
 const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
 
-type FrameTarget = { src: string } | { srcdoc: string | null };
-type SealedPage = { bySrc: true } | { bySrc: false; html: string; url: string };
+type FrameTarget = { src: string; read?: boolean } | { srcdoc: string | null };
+type SealedPage = { bySrc: true; read: boolean } | { bySrc: false; html: string; url: string };
 
 // A srcdoc copy runs under the embedding page's policy, so a page that sets its own, or whose headers this
 // player can't all read (a redirect to another site), loads by src.
@@ -160,6 +160,7 @@ class HyperframesPlayer extends HTMLElement {
   private _documentLoad = 0;
   /** The URL a sealed srcdoc was fetched from, so its media resolve as they would by `src`. */
   private _srcdocUrl: string | null = null;
+  private _pageRead = false;
   private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
   private _awaitingLoad = false;
@@ -254,7 +255,7 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
-      sealed: () => this.hasAttribute(SANDBOX_ORIGIN_ATTR),
+      unreadSealedLoad: () => this.hasAttribute(SANDBOX_ORIGIN_ATTR) && !this._pageRead,
       onReady: (result) => this._onProbeReady(result),
       onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
     });
@@ -1199,9 +1200,9 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   /** Loads src in place of a sealed srcdoc this player may be showing. */
-  private _writeSrcOverSrcdoc(src: string): void {
+  private _writeSrcOverSrcdoc(src: string, read = false): void {
     this.iframe.removeAttribute("srcdoc");
-    this._writeFrame({ src: prepareSrcForElement(this, src) });
+    this._writeFrame({ src: prepareSrcForElement(this, src), read });
   }
 
   private _navigateFrame(to: FrameTarget): void {
@@ -1211,6 +1212,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private _writeFrame(to: FrameTarget): void {
     this.probe.frameWritten();
+    this._pageRead = !("src" in to) || to.read === true;
     if (!("srcdoc" in to)) this.iframe.src = to.src;
     else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
     else this.iframe.srcdoc = to.srcdoc;
@@ -1224,6 +1226,7 @@ class HyperframesPlayer extends HTMLElement {
       this._navigateFrame({ srcdoc: prepareSrcdocForElement(this, html) });
       return;
     }
+    this._pageRead = true;
     this.probe.markPreparation();
     this._showSealedDocument(html, undefined, load);
   }
@@ -1245,25 +1248,26 @@ class HyperframesPlayer extends HTMLElement {
 
   /**
    * A sealed frame cannot be reached once it loads, so a same-site composition without the runtime is
-   * fetched and shown as srcdoc carrying it. One that brings its own, or that can't be fetched, loads by
-   * `src` as before, under its own headers.
+   * fetched and shown as srcdoc carrying it. One that brings its own, or that can't be read (no-cors: a
+   * redirect off the site answers opaque, without a CORS error), loads by `src` as before, under its own headers.
    */
   private _showSealedSrc(src: string, href: string): void {
     const load = ++this._documentLoad;
+    this._pageRead = false;
     this.probe.markPreparation();
-    fetch(href, { credentials: "same-origin" })
+    fetch(href, { mode: "no-cors", credentials: "same-origin" })
       .then(async (response): Promise<SealedPage> => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        if (mayCarryOwnPolicy(response)) return { bySrc: true };
+        if (mayCarryOwnPolicy(response)) return { bySrc: true, read: false };
         const html = decodePage(await response.arrayBuffer(), response.headers.get("content-type"));
         return carriesRuntime(html)
-          ? { bySrc: true }
+          ? { bySrc: true, read: true }
           : { bySrc: false, html, url: response.url || href };
       })
       .then(
         (page) => {
           if (load !== this._documentLoad) return;
-          if (page.bySrc) this._writeSrcOverSrcdoc(src);
+          if (page.bySrc) this._writeSrcOverSrcdoc(src, page.read);
           else this._showSealedDocument(page.html, page.url, load);
         },
         () => {
@@ -1500,6 +1504,7 @@ class HyperframesPlayer extends HTMLElement {
       onRuntimeTimelineReady: (duration, assetsReady) =>
         this._onRuntimeTimelineReady(duration, assetsReady),
       onStaticComposition: (read) => this._onStaticComposition(read),
+      onFrameError: (message) => this.probe.reportFrameError(message),
       setBuffering: (buffering) => this._setBuffering(buffering),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;

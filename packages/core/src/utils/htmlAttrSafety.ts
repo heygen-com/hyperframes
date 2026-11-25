@@ -6,7 +6,11 @@
  */
 
 import { SVG_ATTRIBUTES, SVG_ELEMENTS } from "./svgAllowlist";
-import { CODE_LOADING_ATTRS } from "../compositionSource";
+import {
+  CODE_LOADING_ATTRS,
+  COMPOSITION_ROOT_ATTRS,
+  SOURCE_HOST_ATTRS,
+} from "../compositionSource";
 
 export const ALLOWED_HTML_ATTRS = new Set([
   "id",
@@ -134,8 +138,14 @@ function elementAllowed(element: Element, tag: string): boolean {
   return ELEMENTS_PARSED_ALIKE_WITH_SCRIPTING_ON.has(tag) || /^hf-[a-z0-9-]+$/.test(tag);
 }
 
+const MARKS_STUDIO_EDITS_THE_FILE_OF: ReadonlySet<string> = new Set([
+  ...SOURCE_HOST_ATTRS,
+  ...COMPOSITION_ROOT_ATTRS,
+]);
+
 function attributeAllowed(element: Element, name: string, value: string): boolean {
   if (!isSafeAttributeValue(name, value) || name.toLowerCase().startsWith("on")) return false;
+  if (MARKS_STUDIO_EDITS_THE_FILE_OF.has(name.toLowerCase())) return false;
   if (isAllowedHtmlAttribute(name)) return true;
   if (!isSvg(element)) return false;
   const namespace = FIXED_NAMESPACES.get(name);

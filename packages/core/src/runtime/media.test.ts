@@ -265,6 +265,7 @@ describe("resolveRuntimeMediaClipDuration", () => {
     expect(
       resolveRuntimeMediaClipDuration({
         isVideo: true,
+        loops: false,
         sourceDuration: 1,
         hostRemaining: 8,
         explicitDuration: 5,
@@ -278,6 +279,7 @@ describe("resolveRuntimeMediaClipDuration", () => {
     expect(
       resolveRuntimeMediaClipDuration({
         isVideo: true,
+        loops: true,
         sourceDuration: 1,
         hostRemaining: null,
         explicitDuration: 10,
@@ -285,10 +287,37 @@ describe("resolveRuntimeMediaClipDuration", () => {
     ).toBe(10);
   });
 
+  // fails without the fix: a looped 4 s sound in an 18 s slot ended at 4 s, so preview paused it after one pass.
+  it("fills an explicit slot for looping audio, pass after pass, as the render does", () => {
+    expect(
+      resolveRuntimeMediaClipDuration({
+        isVideo: false,
+        loops: true,
+        sourceDuration: 4,
+        hostRemaining: null,
+        explicitDuration: 18,
+      }),
+    ).toBe(18);
+  });
+
+  it("keeps looping audio inside its host window and to one pass without a slot", () => {
+    const loopingAudio = (hostRemaining: number | null, explicitDuration: number | null) =>
+      resolveRuntimeMediaClipDuration({
+        isVideo: false,
+        loops: true,
+        sourceDuration: 4,
+        hostRemaining,
+        explicitDuration,
+      });
+    expect(loopingAudio(10, 18)).toBe(10);
+    expect(loopingAudio(null, null)).toBe(4);
+  });
+
   it("keeps audio bounded by its playable source", () => {
     expect(
       resolveRuntimeMediaClipDuration({
         isVideo: false,
+        loops: false,
         sourceDuration: 1,
         hostRemaining: 8,
         explicitDuration: 5,
@@ -300,6 +329,7 @@ describe("resolveRuntimeMediaClipDuration", () => {
     expect(
       resolveRuntimeMediaClipDuration({
         isVideo: true,
+        loops: false,
         sourceDuration: 1,
         hostRemaining: 8,
         explicitDuration: null,
@@ -311,6 +341,7 @@ describe("resolveRuntimeMediaClipDuration", () => {
     expect(
       resolveRuntimeMediaClipDuration({
         isVideo: true,
+        loops: false,
         sourceDuration: 1,
         hostRemaining: null,
         explicitDuration: null,
@@ -322,6 +353,7 @@ describe("resolveRuntimeMediaClipDuration", () => {
     expect(
       resolveRuntimeMediaClipDuration({
         isVideo: true,
+        loops: false,
         sourceDuration: 0,
         hostRemaining: 8,
         explicitDuration: null,
@@ -2003,6 +2035,63 @@ describe("syncRuntimeMedia", () => {
     // At t=7, relTime = 7, wraps to 7 % 3 = 1
     syncRuntimeMedia({ clips: [clip], timeSeconds: 7, playing: false, playbackRate: 1 });
     expect(clip.el.currentTime).toBe(mediaElementTime(1));
+  });
+
+  // fails without the fix: the lap read as 4 s of drift, so the playing sound was seeked back to 0 just as it
+  // looped itself, and Safari then held it at 0 for seconds.
+  it("lets a playing looped sound wrap on its own instead of seeking it a lap back", () => {
+    const clip = createMockClip(
+      { start: 2, end: 20, mediaStart: 0, loop: true, sourceDuration: 4 },
+      "audio",
+    );
+    Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+    let elementTime = 0;
+    const seeks: number[] = [];
+    Object.defineProperty(clip.el, "currentTime", {
+      configurable: true,
+      get: () => elementTime,
+      set: (value: number) => {
+        seeks.push(value);
+        elementTime = value;
+      },
+    });
+    for (let time = 5; time < 5.99; time += 0.016) {
+      elementTime = time - 2;
+      syncRuntimeMedia({ clips: [clip], timeSeconds: time, playing: true, playbackRate: 1 });
+    }
+    seeks.length = 0;
+    elementTime = 3.99; // still at its end; the playhead has wrapped to 0.02
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 6.02, playing: true, playbackRate: 1 });
+    expect(seeks).toEqual([]);
+  });
+
+  it("seeks a trimmed looped sound back to its trim-in when the element wraps to the file's start", () => {
+    const clip = createMockClip(
+      { start: 0, end: 20, mediaStart: 2, loop: true, sourceDuration: 4 },
+      "audio",
+    );
+    Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+    let elementTime = 0;
+    const seeks: number[] = [];
+    Object.defineProperty(clip.el, "currentTime", {
+      configurable: true,
+      get: () => elementTime,
+      set: (value: number) => {
+        seeks.push(value);
+        elementTime = value;
+      },
+    });
+    for (let time = 1; time < 1.99; time += 0.016) {
+      elementTime = time + 2;
+      syncRuntimeMedia({ clips: [clip], timeSeconds: time, playing: true, playbackRate: 1 });
+    }
+    seeks.length = 0;
+    elementTime = 0.02; // a native loop restarts at 0, inside the trimmed head
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 2.02, playing: true, playbackRate: 1 });
+    expect(seeks).toHaveLength(1);
+    expect(seeks[0]).toBeCloseTo(2.02, 3);
   });
 
   it("wraps loop with mediaStart offset", () => {

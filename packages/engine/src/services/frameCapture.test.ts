@@ -220,6 +220,104 @@ describe("classifyPageError", () => {
     }
   });
 
+  // fails without the fix: the page's text was logged and kept at whatever length it sent, in unbounded lists
+  it("logs and keeps the page's console and error text only up to a fixed size", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { session, pageListeners, runtimeListeners } = await listenedSession();
+      const huge = (n: number) => `${n}:${"x".repeat(10_000_000)}`;
+      pageListeners.get("response")?.({
+        status: () => 200,
+        url: () => comp,
+        request: () => ({ resourceType: () => "script" }),
+      });
+      for (let n = 0; n < 1_000; n++) {
+        const big = n < 5 ? huge(n) : `${n}:${"y".repeat(5_000)}`;
+        pageListeners.get("console")?.({
+          type: () => "error",
+          text: () => `[HyperFrames] composition script error: ${big}`,
+          location: () => ({ url: big }),
+        });
+        pageListeners.get("pageerror")?.(new Error(big));
+        runtimeListeners.get("Runtime.exceptionThrown")?.({
+          exceptionDetails: thrown(`Error: ${big}`, comp, [comp]),
+        });
+        const url = `${server}/${big}.js`;
+        const request = { resourceType: () => "script", url: () => url, method: () => "GET" };
+        pageListeners.get("requestfailed")?.({
+          ...request,
+          failure: () => ({ errorText: "net::ERR_FAILED" }),
+        });
+        pageListeners.get("response")?.({
+          status: () => 404,
+          url: () => url,
+          statusText: () => big,
+          request: () => request,
+        });
+      }
+
+      const kept = [
+        ...stderr.mock.calls.map((call) => call.join(" ")),
+        ...session.browserConsoleBuffer,
+        ...session.pageErrors,
+        ...session.scriptLoadFailures,
+      ];
+      expect(Math.max(...kept.map((text) => text.length))).toBeLessThanOrEqual(2_000);
+      expect(session.pageErrors).toHaveLength(50);
+      expect(session.pageErrors[0]).toMatch(/^runtime-error:0:x/);
+      expect(session.scriptLoadFailures).toHaveLength(50);
+      expect(session.scriptLoadFailures[0]).toMatch(new RegExp(`^${server}/0:x`));
+      expect(session.browserConsoleBuffer).toHaveLength(200);
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  it("classifies a script by its whole URL before keeping a cut copy", async () => {
+    const { session, pageListeners } = await listenedSession();
+    const url = `https://${"a".repeat(2_100)}.example.com/x.js`;
+    const request = { resourceType: () => "script", url: () => url, method: () => "GET" };
+    pageListeners.get("requestfailed")?.({
+      ...request,
+      failure: () => ({ errorText: "net::ERR_NAME_NOT_RESOLVED" }),
+    });
+    pageListeners.get("response")?.({
+      status: () => 404,
+      url: () => `${url}?again`,
+      statusText: () => "Not Found",
+      request: () => request,
+    });
+    expect(session.scriptLoadFailures).toHaveLength(2);
+    expect(session.scriptLoadCauses?.map((cause) => cause.origin)).toEqual(["remote", "remote"]);
+  });
+
+  it("still fails fast on a blocked integrity check whose URL is long", async () => {
+    const { session, pageListeners } = await listenedSession();
+    const url = `https://cdn.example.com/lib.js?signature=${"s".repeat(1_900)}`;
+    pageListeners.get("console")?.({
+      type: () => "error",
+      text: () =>
+        `Failed to find a valid digest in the 'integrity' attribute for resource '${url}' with computed SHA-384 integrity 'abc'. The resource has been blocked.`,
+      location: () => ({ url }),
+    });
+    expect(session.scriptLoadFailures).toEqual(["runtime-error:subresource-integrity"]);
+  });
+
+  it("keeps a long font URL's load error off stderr", async () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { pageListeners } = await listenedSession();
+      pageListeners.get("console")?.({
+        type: () => "error",
+        text: () => "Failed to load resource: the server responded with a status of 404",
+        location: () => ({ url: `https://fonts.example.com/${"f".repeat(2_100)}.woff2` }),
+      });
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
   it("records the page's uncaught errors from scripts it loaded from the server", async () => {
     const { session, pageListeners, runtimeListeners } = await listenedSession();
     const loaded = (url: string, resourceType: string) => ({
