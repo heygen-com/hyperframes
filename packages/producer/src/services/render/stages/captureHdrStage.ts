@@ -80,6 +80,7 @@ import { wrapCaptureStageError } from "../captureStageError.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { HdrLayeredCapturePlan } from "../capturePlan.js";
 import type { DeliveryEncoderOptions } from "../deliveryEncoder.js";
+import { windowStartFrame } from "../frameWindow.js";
 
 export interface CaptureHdrStageInput {
   job: RenderJob;
@@ -372,7 +373,7 @@ export async function runCaptureHdrStage(
       const transitionFrameCount = partitionTransitionFrames(
         transitionRanges,
         totalFrames,
-        job.frameWindow?.startFrame,
+        windowStartFrame(job.frameWindow),
       ).size;
       const useHybrid = shouldUseHybridLayeredPath({
         hasHdrContent,

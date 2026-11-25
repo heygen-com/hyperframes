@@ -74,7 +74,9 @@ it("starts a window without the HDR videos a whole render has already passed the
   const close = vi.fn();
   input.hdrVideoEndTimes.set("ended", 1);
   input.hdrVideoEndTimes.set("playing", 5);
-  for (const id of ["ended", "playing"]) {
+  // Ends between frames 99 and 100: a whole render still draws it at frame 100, then frees it.
+  input.hdrVideoEndTimes.set("endsAtFirstFrame", 3.31);
+  for (const id of ["ended", "playing", "endsAtFirstFrame"]) {
     const dir = mkdtempSync(join(tmpdir(), `hf-hdr-${id}-`));
     input.hdrVideoFrameSources.set(id, { dir, windows: { close } } as never);
   }
@@ -85,5 +87,5 @@ it("starts a window without the HDR videos a whole render has already passed the
 
   await runSequentialLayeredFrameLoop(input);
 
-  expect(shownAtFirstFrame).toEqual(["playing"]);
+  expect(shownAtFirstFrame).toEqual(["playing", "endsAtFirstFrame"]);
 });
