@@ -76,6 +76,8 @@ declare global {
       /** The window a clip occupies on the composition clock, its start references resolved as the renderer does;
        *  end is Infinity for the root. Null for an element with no timing. */
       clipWindow?: (el: Element) => { start: number; end: number } | null;
+      /** The source time a frame source on the element is asked for at composition time `time`. */
+      sourceTimeAt?: (el: Element, time: number) => number;
       /** Borrow an element's playback while the transport clock is paused, so the
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;

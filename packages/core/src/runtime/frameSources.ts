@@ -10,11 +10,14 @@ export interface FrameSource {
   ready?: PromiseLike<unknown>;
   sourceRange?: { start: number; duration: number; fps: number };
   render: (sourceTime: number, signal: AbortSignal) => void | PromiseLike<unknown>;
+  canPlayAt?: (sourceTime: number) => boolean;
+  received?: () => number;
   dispose?: () => void;
 }
 
 interface RegisteredSource {
   element: Element;
+  source: FrameSource;
   ready: Promise<unknown>;
   seek: (time: number) => Promise<void>;
   dispose: () => void;
@@ -26,6 +29,22 @@ export const hasFrameSources = (): boolean => sources.size > 0;
 
 export const hasFrameSource = (element: unknown): boolean =>
   isElementNode(element) && sources.has(element);
+
+export const frameSourceReceived = (element: Element): number | undefined =>
+  sources.get(element)?.source.received?.();
+
+export const frameSourceTimeAt = (element: Element, time: number, start: number): number =>
+  readMediaStart(element) + sourceTimeAt(readElementRateSpec(element), Math.max(0, time - start));
+
+export function frameSourceWaitsAt(
+  element: Element,
+  time: number,
+  start: number,
+): boolean | undefined {
+  const registered = sources.get(element);
+  if (!registered) return undefined;
+  return registered.source.canPlayAt?.(frameSourceTimeAt(element, time, start)) === false;
+}
 
 /** Bind a frame source to a timed host. Unregister before replacing its source. */
 export function registerFrameSource(source: FrameSource): () => void {
@@ -71,6 +90,7 @@ export function registerFrameSource(source: FrameSource): () => void {
   };
   const registered: RegisteredSource = {
     element: source.element,
+    source,
     ready,
     seek(time) {
       pending = range
@@ -142,10 +162,10 @@ export function createFrameSourceAdapter(timing: {
           timing.compositionDuration(),
         );
         if (!onScreen) continue;
-        const localTime = Math.max(0, time - start);
-        const sourceTime =
-          readMediaStart(element) + sourceTimeAt(readElementRateSpec(element), localTime);
-        registerSeekCompletion(source.seek(sourceTime), "frame-source");
+        registerSeekCompletion(
+          source.seek(frameSourceTimeAt(element, time, start)),
+          "frame-source",
+        );
       }
     },
     getReadyPromise: () => {

@@ -28,4 +28,11 @@ Call `unregister()` when replacing a source. Removal of its host or runtime tear
 
 A frame source can supply a timed `<video>` or `<audio>`, for example one decoded with WebCodecs from bytes the page reads itself. The runtime then leaves the element alone: it never loads, preloads, seeks or plays it, and the first-frame asset check does not wait for it. The element needs no `src`.
 
+Two optional members let such a source take part in the Buffering hold, which pauses the film while a clip on screen has no data to play:
+
+- `canPlayAt(sourceTime)`: return `false` while the source cannot play on from that source time. The film holds with Buffering until it returns `true`. Without it, the source never holds the film.
+- `received()`: a number that grows while the source still receives data, such as the bytes read so far. As for a media element, the hold gives up 8 seconds after it last grew and the film plays on.
+
+`window.__hf.sourceTimeAt(element, time)` returns the source time the source is asked for at composition time `time`, trims and playback rate included, so the source can read ahead to the clip's last frame.
+
 Registration does not expose arbitrary scene code as editable keyframes. Manual element edits need stable identities and persistent parameters or overrides. Imported iframe sources also need screenshot capture and an explicit message bridge; this API does not grant access to sandboxed DOM.

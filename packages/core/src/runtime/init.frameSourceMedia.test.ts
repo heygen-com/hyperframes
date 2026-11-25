@@ -77,3 +77,71 @@ it("the runtime never loads, seeks or plays a video its frame source supplies, e
   expect(play).not.toHaveBeenCalled();
   expect(seek).not.toHaveBeenCalled();
 });
+
+it("a video whose frame source cannot play yet holds the film with Buffering, and resumes once it can", () => {
+  let canPlay = false;
+  const { states, playFor } = playWithFrameSource(undefined, { canPlayAt: () => canPlay });
+  window.__player!.play();
+
+  playFor(1);
+  expect(window.__player!.getTime()).toBeLessThan(0.1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+
+  canPlay = true;
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThan(0.9);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("a frame source that never can play stops holding the film after 8 s, as a clip without data does", () => {
+  const { states, playFor } = playWithFrameSource(undefined, { canPlayAt: () => false });
+  window.__player!.play();
+
+  playFor(7);
+  expect(window.__player!.getTime()).toBeLessThan(0.1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+
+  playFor(2);
+  expect(window.__player!.getTime()).toBeGreaterThan(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("a frame source still receiving data keeps holding the film past 8 s", () => {
+  let bytes = 0;
+  const { states, playFor } = playWithFrameSource(undefined, {
+    canPlayAt: () => false,
+    received: () => bytes,
+  });
+  window.__player!.play();
+
+  for (let s = 0; s < 12; s++) {
+    bytes += 1000;
+    playFor(1);
+  }
+  expect(window.__player!.getTime()).toBeLessThan(0.1);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+
+  playFor(9);
+  expect(window.__player!.getTime()).toBeGreaterThan(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("a frame source without canPlayAt never holds the film", () => {
+  const { states, playFor } = playWithFrameSource();
+  window.__player!.play();
+
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThan(0.9);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
+it("a frame source gives the page the source time it is asked for, trims and speed included", async () => {
+  const { cam, asked, playFor } = playWithFrameSource(
+    'data-start="2" data-duration="4" data-media-start="5" data-playback-rate="2"',
+  );
+  window.__player!.seek(3);
+  playFor(0.1);
+
+  expect(window.__hf!.sourceTimeAt!(cam, 3)).toBeCloseTo(7);
+  await vi.waitFor(() => expect(asked.at(-1)).toBeCloseTo(7));
+});
