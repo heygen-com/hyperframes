@@ -23,6 +23,23 @@ const reply = (listLength: number) => ({
 });
 
 describe("readGsapSnapshot", () => {
+  it("charges each timeline to the field bound", () => {
+    const timelines = (count: number) => ({
+      time: 0,
+      defaultEase: null,
+      timelines: Array.from({ length: count }, (_, k) => ({
+        id: `t${k}`,
+        time: 0,
+        defaultEase: null,
+        tweens: [],
+      })),
+      globalTweens: [],
+      targets: [],
+    });
+    expect(readGsapSnapshot(timelines(1_000))).not.toBeNull();
+    expect(readGsapSnapshot(timelines(MAX_SNAPSHOT_FIELDS / 2))).toBeNull();
+  });
+
   it("charges each target to the field bound the frame keeps to", () => {
     expect(readGsapSnapshot(reply(MAX_SNAPSHOT_FIELDS - 20))).not.toBeNull();
     // The vars alone are 3 fields under the bound; the target's handle and fields pass it.

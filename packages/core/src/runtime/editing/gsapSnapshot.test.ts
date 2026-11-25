@@ -84,6 +84,17 @@ describe("gsapSnapshot", () => {
     await expect(gsapSnapshot()).rejects.toThrow(/bound on fields/);
   });
 
+  it("charges each timeline to the field bound", async () => {
+    const timeline = { getChildren: () => [], time: () => 0 };
+    Object.assign(window, {
+      gsap: { getProperty: () => 0 },
+      __timelines: Object.fromEntries(
+        Array.from({ length: MAX_SNAPSHOT_FIELDS / 2 }, (_, k) => [`t${k}`, timeline]),
+      ),
+    });
+    await expect(gsapSnapshot()).rejects.toThrow(/bound on fields/);
+  });
+
   it("refuses a tween value past the text bound", async () => {
     const vars = { text: "a".repeat(MAX_SNAPSHOT_TEXT + 1) };
     frame([{ targets: () => [], vars, startTime: () => 0, duration: () => 1 }]);
