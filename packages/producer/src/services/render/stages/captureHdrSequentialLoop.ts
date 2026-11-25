@@ -36,11 +36,14 @@ import { writeFileExclusiveSync } from "../shared.js";
 import {
   captureSceneIntoBuffer,
   cleanupEndedHdrVideos,
+  cleanupHdrVideosEndedBefore,
+  transitionAtFrame,
   ensureFrameWritten,
   type LayeredTransitionBuffers,
   seekInjectAndQueryStacking,
 } from "./captureHdrFrameShared.js";
 import { reportFrameProgress } from "../shared.js";
+import { windowStartFrame } from "../frameWindow.js";
 
 export interface SequentialLoopInput {
   job: RenderJob;
@@ -104,20 +107,14 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
     : null;
   const normalCanvas = Buffer.alloc(bufSize);
 
-  const firstFrame = job.frameWindow?.startFrame ?? 0;
-  const transitionAt = (frame: number) =>
-    transitionRanges.find((t) => frame >= t.startFrame && frame <= t.endFrame);
-  for (let passedFrame = 0; passedFrame < firstFrame; passedFrame++) {
-    cleanupEndedHdrVideos({
-      time: (passedFrame * job.config.fps.den) / job.config.fps.num,
-      activeTransition: transitionAt(passedFrame),
-      hdrVideoEndTimes,
-      cleanedUpVideos,
-      hdrVideoFrameSources,
-      sceneElements,
-      log,
-    });
-  }
+  const firstFrame = windowStartFrame(job.frameWindow);
+  cleanupHdrVideosEndedBefore(firstFrame, job.config.fps, transitionRanges, {
+    hdrVideoEndTimes,
+    cleanedUpVideos,
+    hdrVideoFrameSources,
+    sceneElements,
+    log,
+  });
   for (let i = 0; i < totalFrames; i++) {
     assertNotAborted();
     const frame = firstFrame + i;
@@ -134,7 +131,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
       "frameInjectMs",
       "stackingQueryMs",
     );
-    const activeTransition = transitionAt(frame);
+    const activeTransition = transitionAtFrame(transitionRanges, frame);
 
     if (i % 30 === 0 && (log.isLevelEnabled?.("debug") ?? true)) {
       const hdrEl = stackingInfo.find((e) => e.isHdr);

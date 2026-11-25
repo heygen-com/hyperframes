@@ -54,8 +54,10 @@ import {
   ensureFrameWritten,
   partitionTransitionFrames,
   seekInjectAndQueryStacking,
+  transitionAtFrame,
 } from "./captureHdrFrameShared.js";
 import { reportFrameProgress } from "../shared.js";
+import { windowStartFrame } from "../frameWindow.js";
 
 export interface HybridLoopInput {
   job: RenderJob;
@@ -112,7 +114,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
     assertNotAborted,
     onProgress,
   } = input;
-  const firstFrame = job.frameWindow?.startFrame ?? 0;
+  const firstFrame = windowStartFrame(job.frameWindow);
   const transitionFramesSet = partitionTransitionFrames(transitionRanges, totalFrames, firstFrame);
   const hasTransitions = transitionRanges.length > 0;
   const bufSize = width * height * 6;
@@ -232,7 +234,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
           const frame = firstFrame + i;
           const time = (frame * job.config.fps.den) / job.config.fps.num;
           const activeTransition = transitionFramesSet.has(frame)
-            ? transitionRanges.find((t) => frame >= t.startFrame && frame <= t.endFrame)
+            ? transitionAtFrame(transitionRanges, frame)
             : undefined;
           if (activeTransition && ring) {
             // Pick the next ring slot. If it's still in flight from an earlier

@@ -9,6 +9,7 @@
  * centralized here.
  */
 
+import type { Fps } from "@hyperframes/core";
 import {
   type BeforeCaptureHook,
   type CaptureSession,
@@ -415,5 +416,27 @@ export function cleanupEndedHdrVideos(args: {
         cleanedUpVideos.add(videoId);
       }
     }
+  }
+}
+
+export function transitionAtFrame(
+  transitionRanges: TransitionRange[],
+  frame: number,
+): TransitionRange | undefined {
+  return transitionRanges.find((t) => frame >= t.startFrame && frame <= t.endFrame);
+}
+
+export function cleanupHdrVideosEndedBefore(
+  firstFrame: number,
+  fps: Fps,
+  transitionRanges: TransitionRange[],
+  state: Omit<Parameters<typeof cleanupEndedHdrVideos>[0], "time" | "activeTransition">,
+): void {
+  for (let frame = 0; frame < firstFrame; frame++) {
+    cleanupEndedHdrVideos({
+      ...state,
+      time: (frame * fps.den) / fps.num,
+      activeTransition: transitionAtFrame(transitionRanges, frame),
+    });
   }
 }
