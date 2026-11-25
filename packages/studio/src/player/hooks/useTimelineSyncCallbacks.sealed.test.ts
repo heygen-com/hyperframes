@@ -327,7 +327,7 @@ it("drops a reply from a frame once another is on screen, before that one loads"
   expect(sync).not.toHaveBeenCalled();
 });
 
-// fails without the fix: a read cut off by the frame reloading in place landed with no document, so its rows lost their ids.
+// fails without the fix: a read the frame's own reload cut off landed with no document; its rows lost their ids.
 it("drops a sealed read the frame's own reload cut off", async () => {
   document.body.innerHTML = `<div data-composition-id="main" data-composition-file="index.html">
     <div id="box" class="clip" data-start="0" data-duration="2"></div>
