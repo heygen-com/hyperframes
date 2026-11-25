@@ -34,7 +34,8 @@ styles, assets, and supported Studio edit metadata. Known credential filenames
 history, local sharing state, and recorded render outputs stay out.
 
 These are filename rules, not a secret scanner. `.gitignore` does not control
-source capture. Other regular files can be included even if Git ignores them.
+source capture. Other regular files can be included even if Git ignores them. For example,
+editable source can include authored files under `.github/workflows/`.
 Keep private material outside the project, or use `--video-only` when you do not
 want to upload project files. Unsupported symlinks and invalid file names stop
 source preparation rather than silently producing an incomplete editable project.

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { ffprobeBinary } from "./ff-binaries.mjs";
+import { ffprobeBinary, selfContainedInput } from "./ff-binaries.mjs";
 import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
 import { terminalLines } from "./terminal-text.mjs";
 import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
@@ -19,7 +19,17 @@ function probeDurationSeconds(ffprobe, file) {
   try {
     const out = execFileSync(
       ffprobe,
-      ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", file],
+      [
+        "-v",
+        "error",
+        ...selfContainedInput(file),
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "csv=p=0",
+        "--",
+        file,
+      ],
       { encoding: "utf8", timeout: 15000 },
     );
     const d = parseFloat(String(out).trim());

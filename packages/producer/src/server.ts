@@ -33,8 +33,9 @@ import {
   rmSync,
   createReadStream,
 } from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { basename, resolve, dirname, join } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { parseArgs } from "node:util";
 import { isIP } from "node:net";
 import crypto from "node:crypto";
@@ -50,6 +51,7 @@ import { isSafePath } from "@hyperframes/core/safe-path";
 import { foreignWritablePath } from "@hyperframes/core/cache-dir";
 import {
   RenderCancelledError,
+  EscapedRejectionError,
   createRenderJob,
   executeRenderJob,
   resolveRenderDebugDir,
@@ -99,7 +101,7 @@ export interface HandlerOptions {
   projectsDir?: string;
   /** With `confineRequests`: let requests set `debug: true`, which keeps work dirs on disk. Defaults to PRODUCER_ALLOW_DEBUG=1. */
   allowDebug?: boolean;
-  /** Bearer token `createProducerApp` requires on every route but /health. Defaults to PRODUCER_AUTH_TOKEN. */
+  /** Bearer token required on every route but /health. Defaults to PRODUCER_AUTH_TOKEN; without one no caller is checked. */
   authToken?: string;
 }
 
@@ -108,6 +110,8 @@ export interface ServerOptions extends HandlerOptions {
   port?: number;
   /** Address to listen on. Default: PRODUCER_HOST or 127.0.0.1. A non-loopback address requires `authToken`. */
   hostname?: string;
+  /** Where a token made for a run without `authToken` is written. Default: PRODUCER_AUTH_TOKEN_FILE or ~/.hyperframes/producer/<port>.token. */
+  authTokenFile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -912,7 +916,7 @@ export interface RenderHandlers {
 /**
  * Create route handler functions for the producer server.
  *
- * These can be mounted on any Hono app at any path prefix.
+ * Mount them on any Hono app at any path prefix, behind your own authentication: they check no caller.
  */
 export function createRenderHandlers(options: HandlerOptions = {}): RenderHandlers {
   const log = options.logger ?? defaultLogger;
@@ -1016,11 +1020,14 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     });
 
     try {
-      await executeRenderJob(
-        job,
-        input.projectDir,
-        absoluteOutputPath,
-        createBlockingProgressReporter(log, requestId),
+      await runInRenderScope(requestId, new AbortController(), (signal) =>
+        executeRenderJob(
+          job,
+          input.projectDir,
+          absoluteOutputPath,
+          createBlockingProgressReporter(log, requestId),
+          signal,
+        ),
       );
 
       const fileSize = outputFileSize(absoluteOutputPath);
@@ -1127,12 +1134,8 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const release = await renderSemaphore.acquire();
 
       try {
-        await executeRenderJob(
-          job,
-          input.projectDir,
-          absoluteOutputPath,
-          reportProgress,
-          abortController.signal,
+        await runInRenderScope(requestId, abortController, (signal) =>
+          executeRenderJob(job, input.projectDir, absoluteOutputPath, reportProgress, signal),
         ).finally(release);
         clearInterval(keepalive);
 
@@ -1338,9 +1341,58 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
   return app;
 }
 
+const renderScope = new AsyncLocalStorage<{ requestId: string; fail: (err: Error) => void }>();
+
+/** Runs a render so a rejection nobody handled inside it fails that render only. */
+export function runInRenderScope<T>(
+  requestId: string,
+  abortController: AbortController,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const fail = (err: Error) => abortController.abort(new EscapedRejectionError(err));
+  return renderScope.run({ requestId, fail }, () => run(abortController.signal));
+}
+
+export function onEscapedRejection(reason: unknown, log: ProducerLogger): void {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  const scope = renderScope.getStore();
+  log.error("Unhandled promise rejection", {
+    requestId: scope?.requestId ?? null,
+    error: err.message,
+    stack: err.stack,
+  });
+  scope?.fail(err);
+}
+
 // ---------------------------------------------------------------------------
 // Standalone server
 // ---------------------------------------------------------------------------
+
+interface ServerAuth {
+  token: string;
+  generatedFile?: string;
+}
+
+function serverAuth(options: ServerOptions, hostname: string, port: number): ServerAuth {
+  const configured = resolveAuthToken(options);
+  if (configured) return { token: configured };
+  if (!isLoopbackHostname(hostname)) {
+    throw new Error(
+      `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
+    );
+  }
+  const file = resolve(
+    options.authTokenFile?.trim() ||
+      process.env.PRODUCER_AUTH_TOKEN_FILE?.trim() ||
+      join(homedir(), ".hyperframes", "producer", `${port}.token`),
+  );
+  const token = crypto.randomBytes(32).toString("base64url");
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+  // Removed first so the new file is created with its own mode, never through a link or an older file's mode.
+  rmSync(file, { force: true });
+  writeFileSync(file, `${token}\n`, { flag: "wx", mode: 0o600 });
+  return { token, generatedFile: file };
+}
 
 /**
  * Start the producer HTTP server with graceful shutdown.
@@ -1349,16 +1401,17 @@ export function startServer(options: ServerOptions = {}) {
   const port = options.port ?? parseInt(process.env.PRODUCER_PORT ?? "9847", 10);
   const hostname = options.hostname || process.env.PRODUCER_HOST || "127.0.0.1";
   const log = options.logger ?? defaultLogger;
-  if (!isLoopbackHostname(hostname) && !resolveAuthToken(options)) {
-    throw new Error(
-      `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
-    );
-  }
-  const app = createProducerApp(options);
+  const auth = serverAuth(options, hostname, port);
+  const app = createProducerApp({ ...options, authToken: auth.token });
 
   const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
     const address = info.family === "IPv6" ? `[${info.address}]` : info.address;
     log.info(`Listening on http://${address}:${info.port}`);
+    if (auth.generatedFile) {
+      log.info(
+        `No auth token was set, so this run made one: send "Authorization: Bearer <token>" with the token in ${auth.generatedFile}`,
+      );
+    }
   });
 
   // Disable timeouts for long renders
@@ -1394,6 +1447,7 @@ export function startServer(options: ServerOptions = {}) {
 
   async function shutdown(signal: string) {
     log.info(`Received ${signal}, shutting down`);
+    if (auth.generatedFile) rmSync(auth.generatedFile, { force: true });
     const { drainBrowserPool } = await import("@hyperframes/engine");
     await drainBrowserPool().catch(() => {});
     // Bounded await: if the worker hasn't come online within 1.5s of
@@ -1418,6 +1472,7 @@ export function startServer(options: ServerOptions = {}) {
   }
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("unhandledRejection", (reason) => onEscapedRejection(reason, log));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   return server;

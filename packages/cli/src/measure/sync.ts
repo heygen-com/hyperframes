@@ -18,7 +18,14 @@ const RATE = 16000;
 /** Mono samples of the window at RATE Hz. */
 function samples(info: VideoInfo, start: number, seconds: number): Float32Array {
   const raw = runFfmpeg([
-    ...["-ss", String(start), ...ffmpegInput(info.path), "-t", String(seconds), "-vn"],
+    ...[
+      "-ss",
+      String(start),
+      ...ffmpegInput(info.path, { playlists: info.guarded }),
+      "-t",
+      String(seconds),
+      "-vn",
+    ],
     ...["-af", "aresample=async=1:first_pts=0"],
     ...["-ac", "1", "-ar", String(RATE), "-f", "f32le", "-"],
   ]);

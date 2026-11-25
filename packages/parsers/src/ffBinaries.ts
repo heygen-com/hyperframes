@@ -294,10 +294,10 @@ export function concatListInputArgs(concatListPath: string): string[] {
 
 /** What a render service lets a media input open: containers that name no other file. */
 export const SELF_CONTAINED_FORMATS =
-  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
+  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,caf,w64,wv,au,ac3,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
 
 // Demuxers that open other files or URLs on their own. hls and concat stay allowed: ffmpeg copies the
-// format whitelist into every nested open, so a list cannot reach these, and the folder walk confines its paths.
+// format whitelist into every nested open, so a list cannot reach these; they are read only with `playlists: true`.
 const PATH_OPENING_DEMUXERS = new Set([
   "dash",
   "imf",
@@ -345,9 +345,23 @@ export function localContainerInputArgs(container: "mov" | "matroska" | undefine
 
 export { assertLiteralMediaInput };
 
-/** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. */
-export function mediaInputFormatArgs(listingBinary: string, input: string): string[] {
+const PLAYLIST_DEMUXERS = new Set(["hls", "applehttp", "concat"]);
+
+/** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. Playlists only with `playlists: true`; anything but an http(s) URL reads as a local file. */
+export function mediaInputFormatArgs(
+  listingBinary: string,
+  input: string,
+  { playlists = false }: { playlists?: boolean } = {},
+): string[] {
   assertLiteralMediaInput(input);
+  const local = /^https?:\/\//i.test(input) ? [] : ["-protocol_whitelist", "file"];
+  const allowed = (formats: string) =>
+    playlists
+      ? formats
+      : formats
+          .split(",")
+          .filter((name) => !PLAYLIST_DEMUXERS.has(name))
+          .join(",");
   let formats = demuxerLists.get(listingBinary);
   if (formats === undefined) {
     try {
@@ -363,10 +377,10 @@ export function mediaInputFormatArgs(listingBinary: string, input: string): stri
     } catch {
       formats = undefined;
     }
-    if (formats === undefined) return ["-format_whitelist", SELF_CONTAINED_FORMATS];
+    if (formats === undefined) return [...local, "-format_whitelist", SELF_CONTAINED_FORMATS];
     demuxerLists.set(listingBinary, formats);
   }
-  return ["-format_whitelist", formats];
+  return [...local, "-format_whitelist", allowed(formats)];
 }
 
 const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
