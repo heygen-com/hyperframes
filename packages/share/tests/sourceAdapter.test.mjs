@@ -18,7 +18,7 @@ import {
   shareSourceFingerprint,
   createProjectShareSourceStore,
 } from "../src/shareSources.mjs";
-import { projectFingerprint } from "../src/projectSnapshot.mjs";
+import { projectFingerprint, referencedHiddenDigest } from "../src/projectSnapshot.mjs";
 import { captureProject } from "../src/sources/capture.mjs";
 import { sourceApi } from "../src/sources/api.mjs";
 import { SyncApiError } from "../src/sources/errors.mjs";
@@ -178,6 +178,41 @@ test("source upload verifies before attachment and a fresh adapter reuses the ex
   assert.equal(binding.base.snapshotId, "snapshot");
 });
 
+test("read-only sharing never starts or recovers an upload and attaches only an exact published snapshot", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const options = { access: async () => signed, spaceId: "personal", ...server };
+  const read = shareSources({ ...options, reuseOnly: true });
+  assert.equal((await read.prepare(f.root, f.rendered)).reason, "source_sync_required");
+  assert.equal(server.calls.create, 0);
+  assert.deepEqual(server.calls.begin, []);
+  const synced = await shareSources(options).prepare(f.root, f.rendered);
+  assert.equal(synced.at, "ready");
+  assert.deepEqual(await read.prepare(f.root, f.rendered), synced);
+  assert.deepEqual(await read.filesForExport(f.root, f.rendered), synced.snapshot);
+  const saved = await f.store.read(f.key);
+  await f.store.write({ ...saved, ownerSpaceId: "moved" });
+  assert.equal(await read.filesForExport(f.root, f.rendered), null);
+  await f.store.write(saved);
+  assert.equal(
+    (
+      await shareSources({ ...options, reuseOnly: true, spaceId: "other" }).prepare(
+        f.root,
+        f.rendered,
+      )
+    ).at,
+    "unavailable",
+  );
+  await writeFile(join(f.root, "index.html"), "updated");
+  assert.equal(await read.filesForExport(f.root, f.rendered), null);
+  assert.equal(
+    (await read.prepare(f.root, await projectFingerprint(f.root))).reason,
+    "source_sync_required",
+  );
+  assert.equal(server.calls.begin.length, 1);
+  assert.equal(server.calls.puts.length, 1);
+});
+
 test("source preparation silently omits private files and folders at any depth", async (t) => {
   const names = [
     ".git/config",
@@ -294,7 +329,8 @@ test("eligibility and busy edits refuse before creating cloud compositions", asy
 });
 
 test("lost Begin response retries the durable idempotency key, without creating a second composition", async (t) => {
-  const f = await fixture(t);
+  const html = '<img src=".art/cover.png">';
+  const f = await fixture(t, { "index.html": html, ".art/cover.png": "cover" });
   const server = fakeServer();
   const begin = server.api.begin;
   let fail = true;
@@ -306,43 +342,159 @@ test("lost Begin response retries the durable idempotency key, without creating 
     }
     return answer;
   };
-  const opts = { access: async () => signed, spaceId: "personal", ...server };
+  const opts = {
+    access: async () => signed,
+    spaceId: "personal",
+    expectedReferencedHiddenDigest: referencedHiddenDigest([".art/cover.png"]),
+    ...server,
+  };
   await assert.rejects(shareSources(opts).prepare(f.root, f.rendered), /network lost/);
   assert.equal((await shareSources(opts).prepare(f.root, f.rendered)).at, "ready");
   assert.equal(server.calls.begin[0].idempotencyKey, server.calls.begin[1].idempotencyKey);
   assert.deepEqual(server.calls.begin[0].manifest, server.calls.begin[1].manifest);
+  assert.deepEqual(server.calls.puts.map(String).sort(), [html, "cover"].sort());
+  assert.equal(server.calls.submit, 1);
 });
 
-test("a saved Begin with a newly excluded path is replaced by the current capture", async (t) => {
-  const f = await fixture(t);
-  const server = fakeServer();
-  const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
-  const begin = server.api.begin;
-  server.api.begin = async () => {
-    throw new Error("offline");
-  };
-  await assert.rejects(source.prepare(f.root, f.rendered), /offline/);
-  const binding = await f.store.read(f.key);
-  const saved = binding.inflight;
-  const legacy = parseStoredManifest({
-    ...saved.manifest,
-    files: [
-      ...saved.manifest.files,
-      { path: ".docker/config.json", size: 7, sha256: "a".repeat(64) },
-    ],
+test("a lost Begin for marked hidden assets reconciles publication before uploading the changed project", async (t) => {
+  const f = await fixture(t, {
+    "index.html": '<img src=".art/first.png">',
+    ".art/first.png": "first image",
   });
-  binding.inflight = { ...saved, manifest: legacy.document, manifestSha256: legacy.sha256 };
-  await f.store.write(binding);
-  server.api.begin = begin;
-  assert.equal((await source.prepare(f.root, f.rendered)).at, "ready");
-  assert.equal(server.calls.begin.length, 1);
-  assert.notEqual(server.calls.begin[0].idempotencyKey, saved.idempotencyKey);
-  assert.ok(
-    server.calls.begin[0].manifest.document.files.every(
-      ({ path }) => path !== ".docker/config.json",
-    ),
+  const server = fakeServer();
+  const begin = server.api.begin;
+  server.api.begin = async (...args) => {
+    const receipt = await begin(...args);
+    if (server.calls.begin.length === 1) throw new Error("lost Begin response");
+    if (args[2].idempotencyKey === server.calls.begin[0].idempotencyKey)
+      return {
+        ...receipt,
+        uploadId: "original-upload",
+        snapshotId: "original-snapshot",
+        status: "completed",
+        result: { snapshotId: "original-snapshot", publicationOutcome: "published" },
+      };
+    return receipt;
+  };
+  const options = {
+    access: async () => signed,
+    spaceId: "personal",
+    expectedReferencedHiddenDigest: referencedHiddenDigest([".art/first.png"]),
+    ...server,
+  };
+  const first = shareSources(options);
+  await assert.rejects(first.prepare(f.root, f.rendered), /lost Begin response/);
+  const original = server.calls.begin[0];
+  const saved = (await f.store.read(f.key)).inflight;
+  assert.equal(saved.uploadId, null);
+  assert.equal(
+    saved.manifest.files.find(({ path }) => path === ".art/first.png").include_hidden,
+    true,
   );
+  const html = '<p>Updated title</p><img src=".art/first.png">';
+  await writeFile(join(f.root, "index.html"), html);
+  const rendered = await projectFingerprint(f.root);
+  const second = shareSources(options);
+  const published = await second.prepare(f.root, rendered);
+  assert.equal(published.at, "ready");
+  assert.deepEqual(await second.filesForExport(f.root, rendered), published.snapshot);
+  assert.equal(server.calls.begin.length, 3);
+  const [, replay, current] = server.calls.begin;
+  assert.equal(replay.idempotencyKey, original.idempotencyKey);
+  assert.deepEqual(replay.manifest, original.manifest);
+  assert.equal(current.baseSnapshotId, "original-snapshot");
+  assert.notEqual(current.idempotencyKey, original.idempotencyKey);
+  assert.deepEqual(
+    current.manifest.document.files.map(({ path }) => path),
+    [".art/first.png", "index.html"],
+  );
+  assert.deepEqual(server.calls.puts.map(String).sort(), [html, "first image"].sort());
+  assert.equal(server.calls.submit, 1);
+  assert.equal((await f.store.read(f.key)).inflight, null);
 });
+
+for (const change of ["reference removed", "bytes changed"]) {
+  test(`an unconfirmed Begin omits previously marked assets after ${change}`, async (t) => {
+    const { listReferencedHiddenSourceAssets, referencedHiddenDigest } =
+      await import("@hyperframes/share/projectSnapshot.mjs");
+    const html = '<img src=".art/first.png">';
+    const f = await fixture(t, { "index.html": html, ".art/first.png": "original" });
+    const server = fakeServer();
+    const options = { access: async () => signed, spaceId: "personal", ...server };
+    const adapter = async () =>
+      shareSources({
+        ...options,
+        expectedReferencedHiddenDigest: referencedHiddenDigest(
+          await listReferencedHiddenSourceAssets(f.root),
+        ),
+      });
+    const begin = server.api.begin;
+    server.api.begin = async (...args) => {
+      await begin(...args);
+      throw new Error("lost Begin response");
+    };
+    const originalShare = await adapter();
+    await assert.rejects(originalShare.prepare(f.root, f.rendered), /lost Begin response/);
+    const original = server.calls.begin[0];
+    if (change === "reference removed") await writeFile(join(f.root, "index.html"), "edited");
+    else await writeFile(join(f.root, ".art/first.png"), "updated");
+    server.api.begin = begin;
+    const run = await adapter();
+    const rendered = await projectFingerprint(f.root);
+    if (change === "reference removed") {
+      assert.equal(
+        (await originalShare.prepare(f.root, rendered)).reason,
+        "source_hidden_assets_changed",
+      );
+      assert.equal(server.calls.begin.length, 1);
+    }
+    assert.equal((await run.prepare(f.root, rendered)).at, "ready");
+    assert.equal(server.calls.begin.length, 2);
+    const current = server.calls.begin[1];
+    assert.notEqual(current.idempotencyKey, original.idempotencyKey);
+    assert.deepEqual(
+      current.manifest.document.files.map(({ path }) => path),
+      change === "reference removed" ? ["index.html"] : [".art/first.png", "index.html"],
+    );
+    assert.deepEqual(
+      server.calls.puts.map(String).sort(),
+      change === "reference removed" ? ["edited"] : [html, "updated"].sort(),
+    );
+  });
+}
+
+for (const file of [
+  { path: ".docker/config.json" },
+  { path: ".docker/private.png", include_hidden: true },
+  { path: ".art/old.png" },
+  { path: "regular.png", include_hidden: true },
+]) {
+  test(`an unconfirmed Begin cannot replay ${JSON.stringify(file)}`, async (t) => {
+    const f = await fixture(t);
+    const server = fakeServer();
+    const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+    const begin = server.api.begin;
+    server.api.begin = async () => {
+      throw new Error("offline");
+    };
+    await assert.rejects(source.prepare(f.root, f.rendered), /offline/);
+    const binding = await f.store.read(f.key);
+    const saved = binding.inflight;
+    const legacy = parseStoredManifest({
+      ...saved.manifest,
+      files: [...saved.manifest.files, { ...file, size: 7, sha256: "a".repeat(64) }],
+    });
+    binding.inflight = { ...saved, manifest: legacy.document, manifestSha256: legacy.sha256 };
+    await f.store.write(binding);
+    server.api.begin = begin;
+    assert.equal((await source.prepare(f.root, f.rendered)).at, "ready");
+    assert.equal(server.calls.begin.length, 1);
+    assert.notEqual(server.calls.begin[0].idempotencyKey, saved.idempotencyKey);
+    assert.ok(
+      server.calls.begin[0].manifest.document.files.every(({ path }) => path !== file.path),
+    );
+  });
+}
 
 async function interruptedV4Share(t) {
   const oldName = "co\u200dver.svg";
@@ -549,6 +701,15 @@ test("an incompatible pending manifest requires a matching checksum and a comple
       { uploadId: "known-upload", snapshotId: "known-snapshot", manifestSha256: "0".repeat(64) },
       /checksum/,
     ],
+    [
+      {
+        manifest: {
+          ...saved.manifest,
+          files: saved.manifest.files.map((file) => ({ ...file, include_hidden: 1 })),
+        },
+      },
+      /invalid_schema/,
+    ],
     [{ manifest: { ...saved.manifest, extra: true } }, /invalid_schema/],
   ]) {
     await f.store.write({ ...f.binding, inflight: { ...saved, ...change } });
@@ -739,4 +900,249 @@ test("HTTP adapter identifies CLI and sends credentials only to the API host", a
   assert.equal(JSON.parse(requests[0].init.body).client_type, "cli");
   assert.equal(requests[0].init.headers.authorization, "Bearer test-token");
   assert.match(requests[0].url, /^https:\/\/api.test\/v3\//);
+});
+
+for (const rules of ["draft.txt", "draft.txt\n/art/.images/*\n!/art/.images/keep.png\n!/.ssh/"]) {
+  test(`gitignore source capture, upload and export honor ${JSON.stringify(rules)}`, async (t) => {
+    const { listReferencedHiddenSourceAssets, referencedHiddenDigest } =
+      await import("@hyperframes/share/projectSnapshot.mjs");
+    const html = '<img src="art/.images/keep.png"><img src=".ssh/private.png">';
+    const f = await fixture(t, {
+      ".hyperframesignore": rules,
+      "index.html": html,
+      "art/.images/keep.png": "shared image",
+      "nested/draft.txt": "excluded ordinary file",
+      ".ssh/private.png": "private image",
+    });
+    const selection = { ignoreSyntax: "gitignore" };
+    const paths = await listReferencedHiddenSourceAssets(f.root, undefined, selection);
+    assert.deepEqual(paths, ["art/.images/keep.png"]);
+    const server = fakeServer();
+    const source = shareSources({
+      access: async () => signed,
+      spaceId: "personal",
+      ...server,
+      ...selection,
+      expectedReferencedHiddenDigest: referencedHiddenDigest(paths),
+    });
+    const prepared = await source.prepare(f.root, f.rendered);
+    assert.equal(prepared.at, "ready");
+    const manifest = server.calls.begin[0].manifest;
+    assert.deepEqual(
+      manifest.document.files.map((entry) => [entry.path, !!entry.include_hidden]),
+      [
+        [".hyperframesignore", false],
+        ["art/.images/keep.png", true],
+        ["index.html", false],
+      ],
+    );
+    assert.deepEqual(server.calls.puts.map(String).sort(), [rules, "shared image", html].sort());
+    assert.equal(await shareSourceFingerprint(f.root, selection), manifest.sha256);
+    assert.deepEqual(await source.filesForExport(f.root, f.rendered), prepared.snapshot);
+  });
+}
+
+test("gitignore source preparation rereads exclusions after disclosure, on retry and on export", async (t) => {
+  const { listReferencedHiddenSourceAssets, referencedHiddenDigest } =
+    await import("@hyperframes/share/projectSnapshot.mjs");
+  const f = await fixture(t, {
+    ".hyperframesignore": "/drafts/\n",
+    "index.html": '<img src=".images/first.png"><img src="drafts/.images/other.png">',
+    ".images/first.png": "shown",
+    "drafts/.images/other.png": "undisclosed",
+  });
+  const ignore = join(f.root, ".hyperframesignore");
+  const selection = { ignoreSyntax: "gitignore" };
+  const paths = await listReferencedHiddenSourceAssets(f.root, undefined, selection);
+  assert.deepEqual(paths, [".images/first.png"]);
+  const server = fakeServer();
+  const source = shareSources({
+    access: async () => signed,
+    spaceId: "personal",
+    // Keep the render identity fixed to exercise each source check independently.
+    fingerprint: async () => f.rendered,
+    ...selection,
+    expectedReferencedHiddenDigest: referencedHiddenDigest(paths),
+    ...server,
+  });
+  await writeFile(ignore, "/other/\n");
+  assert.equal((await source.prepare(f.root, f.rendered)).reason, "source_hidden_assets_changed");
+  assert.equal(server.calls.begin.length, 0);
+  await writeFile(ignore, "/drafts/\n");
+  const begin = server.api.begin;
+  server.api.begin = async () => {
+    throw new Error("offline");
+  };
+  await assert.rejects(source.prepare(f.root, f.rendered), /offline/);
+  server.api.begin = begin;
+  await writeFile(ignore, "/other/\n");
+  assert.equal((await source.prepare(f.root, f.rendered)).reason, "source_hidden_assets_changed");
+  assert.equal(server.calls.puts.length, 0);
+  await writeFile(ignore, "/drafts/\n");
+  assert.equal((await source.prepare(f.root, f.rendered)).at, "ready");
+  await writeFile(ignore, "/other/\n");
+  assert.equal(await source.filesForExport(f.root, f.rendered), null);
+});
+
+test("editable sharing sends just the reachable hidden assets, with exact bytes", async (t) => {
+  const { listReferencedHiddenSourceAssets, referencedHiddenDigest } =
+    await import("@hyperframes/share/projectSnapshot.mjs");
+  const html =
+    '<link rel="stylesheet" href="styles/brand.css"><img src="brand/.fonts/link.png"><img src=".config/gh/secret.png"><img src="ignore/.assets/other.png">';
+  const css = '@import "../brand/.fonts/face.css";';
+  const face = '@font-face{font-family:Inter;src:url("Inter%20Regular.woff2?v=1")}';
+  const font = "brand/.fonts/Inter Regular.woff2";
+  const f = await fixture(t, {
+    "index.html": html,
+    "styles/brand.css": css,
+    "brand/.fonts/face.css": face,
+    [font]: "font bytes",
+    "brand/.fonts/unused.woff2": "unreferenced",
+    ".config/gh/secret.png": "private",
+    ".hyperframesignore": "ignore/.assets/\n",
+    "ignore/.assets/other.png": "ignored",
+  });
+  await symlink(join(f.root, font), join(f.root, "brand/.fonts/link.png"));
+  const paths = await listReferencedHiddenSourceAssets(f.root);
+  assert.deepEqual(paths, [font, "brand/.fonts/face.css"]);
+  const server = fakeServer();
+  const options = {
+    access: async () => signed,
+    spaceId: "personal",
+    ...server,
+  };
+  assert.equal(
+    (await shareSources(options).prepare(f.root, f.rendered)).reason,
+    "source_hidden_assets_changed",
+  );
+  const stale = shareSources({
+    ...options,
+    expectedReferencedHiddenDigest: referencedHiddenDigest([]),
+  });
+  assert.equal((await stale.prepare(f.root, f.rendered)).reason, "source_hidden_assets_changed");
+  assert.equal(server.calls.begin.length, 0);
+  const run = shareSources({
+    ...options,
+    expectedReferencedHiddenDigest: referencedHiddenDigest(paths),
+  });
+  assert.equal((await run.prepare(f.root, f.rendered)).at, "ready");
+  assert.deepEqual(
+    server.calls.begin[0].manifest.document.files
+      .filter((file) => file.include_hidden)
+      .map((file) => file.path),
+    paths,
+  );
+  assert.deepEqual(
+    server.calls.puts.map((bytes) => bytes.toString()).sort(),
+    [html, css, face, "font bytes", "ignore/.assets/\n"].sort(),
+  );
+  assert.ok(await run.filesForExport(f.root, f.rendered));
+  await writeFile(join(f.root, font), "new font bytes");
+  assert.equal(await run.filesForExport(f.root, f.rendered), null);
+});
+
+test("dependency discovery follows local HTML, script and CSS resources from the entrypoint", async (t) => {
+  const { listReferencedHiddenSourceAssets } =
+    await import("@hyperframes/share/projectSnapshot.mjs");
+  const f = await fixture(t, {
+    "index.html":
+      '<div data-composition-src="scenes/scene.html"></div><a href=".images/unused.png">link</a><!-- <img src=".images/unused.png"> -->',
+    "scenes/scene.html":
+      '<script type="module" src="scripts/app.js"></script><img srcset="../.images/small.png 1x, ../.images/big.png 2x">',
+    "scenes/scripts/app.js":
+      'import "../../.images/imported.js"; new URL("../../.images/module.png", import.meta.url); fetch("../.images/fetched.png"); const example = "../.images/unused.png";',
+    ".images/imported.js": 'import "./imported.js";',
+    "unused.html": '<img src=".images/unused.png">',
+    ...Object.fromEntries(
+      ["small", "big", "module", "fetched", "unused"].map((name) => [
+        ".images/" + name + ".png",
+        name,
+      ]),
+    ),
+  });
+  assert.deepEqual(await listReferencedHiddenSourceAssets(f.root), [
+    ".images/big.png",
+    ".images/fetched.png",
+    ".images/imported.js",
+    ".images/module.png",
+    ".images/small.png",
+  ]);
+});
+
+test("editable composition variables include asset values and leave free text local", async (t) => {
+  const { listReferencedHiddenSourceAssets } =
+    await import("@hyperframes/share/projectSnapshot.mjs");
+  const decl = JSON.stringify([
+    { id: "image", label: "Cover", type: "image", default: { url: ".brand/cover.png" } },
+    { id: "poster", label: "Poster", type: "string", default: ".brand/fallback.png" },
+    { id: "caption", label: "Caption", type: "string", default: ".brand/example.png" },
+  ]);
+  const html = `<div data-composition-id="main" data-composition-variables='${decl}' data-variable-values='{"poster":".brand/override.png"}'><img data-var-src="poster"></div>`;
+  const f = await fixture(t, {
+    "index.html": html,
+    ...Object.fromEntries(
+      ["cover", "fallback", "example", "override"].map((name) => [".brand/" + name + ".png", name]),
+    ),
+  });
+  assert.deepEqual(await listReferencedHiddenSourceAssets(f.root), [
+    ".brand/cover.png",
+    ".brand/override.png",
+  ]);
+});
+
+test("editable source sends child media bound by each host's variable values", async (t) => {
+  const shape = JSON.stringify([
+    { id: "cover", type: "image", label: "Cover", default: "visible.png" },
+    { id: "caption", type: "string", label: "Caption", default: "Visible title" },
+  ]);
+  const host = (
+    cover,
+    audio,
+  ) => `<div data-composition-id="card" data-composition-src="/scenes/card.html"
+    data-variable-values='${JSON.stringify({ cover: { url: cover }, audio, caption: ".media-src/free.png" })}'></div>`;
+  const html =
+    '<!doctype html><html><head><base href="/show/"></head><body>' +
+    host(".media-src/first.png", ".media-src/voice.mp3") +
+    host(".media-src/second.png", ".docker/never.mp3") +
+    host(".media-src/ignored.png", "https://example.org/remote.mp3") +
+    "</body></html>";
+  const card = `<html><body><div data-composition-id="card" data-composition-variables='${shape}'>
+    <img data-var-src="cover"><audio data-var-src="audio"></audio><span data-var-text="caption"></span></div></body></html>`;
+  const f = await fixture(t, {
+    "index.html": html,
+    "scenes/card.html": card,
+    "show/.media-src/first.png": "first",
+    "show/.media-src/second.png": "second",
+    "show/.media-src/voice.mp3": "voice",
+    "show/.media-src/free.png": "free",
+    "scenes/.media-src/first.png": "wrong base",
+    "show/.docker/never.mp3": "private",
+    "show/.media-src/ignored.png": "ignored",
+    ".hyperframesignore": "show/.media-src/ignored.png\n",
+  });
+  const { listReferencedHiddenSourceAssets, referencedHiddenDigest } =
+    await import("../src/projectSnapshot.mjs");
+  const disclosed = await listReferencedHiddenSourceAssets(f.root);
+  const server = fakeServer();
+  const service = shareSources({
+    access: async () => signed,
+    spaceId: "personal",
+    expectedReferencedHiddenDigest: referencedHiddenDigest(disclosed),
+    store: f.store,
+    api: server.api,
+    fetchImpl: server.fetchImpl,
+  });
+  assert.equal((await service.prepare(f.root, f.rendered)).at, "ready");
+  const paths = server.calls.begin[0].manifest.document.files
+    .filter((f) => f.include_hidden)
+    .map((f) => f.path);
+  assert.deepEqual(paths, [
+    "show/.media-src/first.png",
+    "show/.media-src/second.png",
+    "show/.media-src/voice.mp3",
+  ]);
+  assert.deepEqual(
+    server.calls.puts.map((bytes) => bytes.toString()).sort(),
+    [html, card, "first", "second", "voice", "show/.media-src/ignored.png\n"].sort(),
+  );
 });

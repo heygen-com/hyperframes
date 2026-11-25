@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { terminalLines, terminalText, terminalTextDeep } from "./terminalText.js";
+import { quotedFilePath, terminalLines, terminalText, terminalTextDeep } from "./terminalText.js";
 
 describe("terminalText", () => {
   it("leaves ordinary text and tabs alone", () => {
@@ -50,5 +50,20 @@ describe("terminalTextDeep", () => {
     expect(terminalTextDeep({ "x\u001b]52;c;cGF5\u0007": 1 })).toEqual({
       "x\\x1b]52;c;cGF5\\x07": 1,
     });
+  });
+});
+
+describe("quotedFilePath", () => {
+  it("shows invisible, bidi and compatibility characters distinctly from literal escapes", () => {
+    const raw = "art/.assets/lo\u200bgo\u202e.ｐng";
+    const shown = quotedFilePath(raw);
+    expect(shown).toBe('"art/.assets/lo\\u200bgo\\u202e.\\uff50ng"');
+    expect(shown).not.toBe(quotedFilePath(String.raw`art/.assets/lo\u200bgo\u202e.\uff50ng`));
+    for (const path of [raw, 'a\n"tab\t', "a\u0085", "emoji\u{e0100}", "a\u2028b"]) {
+      expect(JSON.parse(quotedFilePath(path))).toBe(path);
+    }
+  });
+  it("keeps ordinary multilingual filenames readable", () => {
+    expect(quotedFilePath("ブランド/.صور/été 🐈.png")).toBe('"ブランド/.صور/été 🐈.png"');
   });
 });

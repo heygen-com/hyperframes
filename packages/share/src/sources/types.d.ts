@@ -14,6 +14,7 @@ export interface SyncCaptureProblem {
 }
 
 export interface ManifestFile {
+  include_hidden?: true;
   path: string;
   sha256: string;
   size: number;
@@ -97,6 +98,7 @@ export type SyncLimitsRead =
 
 /** A file a capture lists, before hashing. */
 export interface Found {
+  include_hidden?: true;
   path: string;
   full: string;
   size: number;
@@ -106,6 +108,7 @@ export interface Found {
 }
 
 export interface Walk {
+  directoryEntries: Map<string, Set<string>>;
   files: Found[];
   problems: CaptureProblem[];
   waiting: string[];

@@ -52,7 +52,7 @@ export function ShareActions({ model, snapshot, url }: Props & { url: string | n
           className="h-9 rounded-lg"
           variant={snapshot.share.changed !== false ? "primary" : "secondary"}
           disabled={model.busy}
-          onClick={() => void model.run({ action: "update", includeSource: model.includeSource })}
+          onClick={() => void model.run({ action: "update" })}
         >
           {(snapshot.job?.state === "failed" || snapshot.share.state === "failed") &&
           snapshot.share.hasReadyVersion === false
@@ -85,7 +85,6 @@ function CreateShare({ model, snapshot }: Props) {
               action: "share",
               audience: model.audience,
               space: model.spaceId,
-              includeSource: model.includeSource,
             });
         }}
       >
@@ -151,54 +150,6 @@ function ManageShare({ model, snapshot, url }: Props & { url: string | null }) {
         </Button>
       ) : null}
     </div>
-  );
-}
-
-export function ShareSourceStatus({ model, snapshot }: Props) {
-  const last = snapshot.job?.result;
-  const recover = snapshot.job?.error?.code === "source_unavailable";
-  let message = "Video only unless you choose to include project files.";
-  if (last?.source === "video_only")
-    message = "Last Studio upload: video only. Project files weren’t included.";
-  if (last?.source === "ready")
-    message =
-      last.state === "ready"
-        ? "Last Studio upload: project files included."
-        : "Project files are ready; sharing is still processing.";
-  return (
-    <>
-      <label className="flex items-start gap-2 text-step-12 text-text-3">
-        <input
-          type="checkbox"
-          checked={model.includeSource}
-          disabled={model.busy}
-          onChange={(event) => {
-            model.setIncludeSource(event.target.checked);
-            model.track({ event: "share_source_toggled", enabled: event.target.checked });
-          }}
-        />
-        <span>
-          Include editable project files
-          <span className="block text-step-11">
-            Uploads portable project files, including unused and Git-ignored files. Review your
-            folder and .hyperframesignore before sharing.
-          </span>
-        </span>
-      </label>
-      <p className="text-step-11 text-text-3">{message}</p>
-      {recover ? (
-        <Button
-          variant="ghost"
-          className="h-8 rounded-full text-step-13"
-          disabled={model.busy}
-          onClick={() =>
-            void model.run({ action: "update", videoOnly: true, includeSource: false })
-          }
-        >
-          Retry with video only
-        </Button>
-      ) : null}
-    </>
   );
 }
 

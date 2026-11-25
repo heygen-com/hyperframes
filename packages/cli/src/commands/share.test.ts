@@ -1,4 +1,5 @@
 import { SourceIgnoreError, ReviewFailed } from "@hyperframes/share";
+import { referencedHiddenDigest } from "@hyperframes/share/projectSnapshot.mjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { consumeCommandResult } from "../utils/commandResult.js";
@@ -6,9 +7,14 @@ const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   status: vi.fn(),
   confirm: vi.fn(),
+  hiddenAssets: vi.fn(),
   received: null as null | "unchecked" | { path: string; listed: string[]; hashes: string[] },
   unattended: true,
   progress: undefined as undefined | ((value: { step: string; slow?: boolean } | null) => void),
+}));
+vi.mock("@hyperframes/share/projectSnapshot.mjs", async (original) => ({
+  ...(await original<typeof import("@hyperframes/share/projectSnapshot.mjs")>()),
+  listReferencedHiddenSourceAssets: mocks.hiddenAssets,
 }));
 vi.mock("../utils/project.js", () => ({ resolveProjectOrThrow: () => ({ dir: "/project" }) }));
 vi.mock("../utils/privateProjectFile.js", () => ({
@@ -36,6 +42,7 @@ beforeEach(() => {
   mocks.run.mockReset();
   mocks.status.mockReset();
   mocks.confirm.mockReset();
+  mocks.hiddenAssets.mockReset().mockResolvedValue([]);
   mocks.received = null;
   mocks.unattended = true;
   mocks.run.mockResolvedValue({
@@ -409,4 +416,53 @@ it("prints the earlier version's link with control characters as visible escapes
   expect(log).toHaveBeenLastCalledWith(
     "Previous shared version: https://hyperframes.dev/review/b\\x1b[2J",
   );
+});
+
+it.each([false, true])(
+  "reports referenced hidden assets on stderr without another prompt (json=%s)",
+  async (json) => {
+    const paths = ["brand/.fonts/Inter.woff2", "assets/.images/lo\u200bgo.png"];
+    mocks.hiddenAssets.mockResolvedValue(paths);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, {
+      rawArgs: ["--public", "--include-source", ...(json ? ["--json"] : [])],
+    });
+    expect(err).toHaveBeenCalledWith(
+      [
+        "Editable source includes these referenced hidden assets",
+        '"brand/.fonts/Inter.woff2"',
+        '"assets/.images/lo\\u200bgo.png"',
+      ].join("\n"),
+    );
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.run).toHaveBeenCalledOnce();
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedReferencedHiddenDigest: referencedHiddenDigest(paths),
+      }),
+    );
+    expect(out.mock.calls.flat().join(" ")).not.toContain("Inter.woff2");
+  },
+);
+
+it("does not enumerate or report hidden source paths for video-only shares", async () => {
+  await runCommand(command, { rawArgs: ["--public", "--video-only", "--json"] });
+  expect(mocks.hiddenAssets).not.toHaveBeenCalled();
+});
+
+it("checks an empty hidden asset summary and skips sharing when discovery fails", async () => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  const rawArgs = ["--public", "--include-source", "--json"];
+  await runCommand(command, { rawArgs });
+  expect(mocks.run).toHaveBeenCalledWith(
+    expect.objectContaining({
+      expectedReferencedHiddenDigest: referencedHiddenDigest([]),
+    }),
+  );
+  mocks.run.mockClear();
+  mocks.hiddenAssets.mockRejectedValue(new Error("Could not verify the referenced assets."));
+  await runCommand(command, { rawArgs });
+  expect(mocks.run).not.toHaveBeenCalled();
+  expect(consumeCommandResult().exitCode).toBe(1);
 });
