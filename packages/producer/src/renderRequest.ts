@@ -20,6 +20,7 @@ import {
 } from "@hyperframes/core";
 import type { ProducerLogger } from "./logger.js";
 import type { RenderConfig } from "./services/renderOrchestrator.js";
+import type { RenderRange } from "./services/render/frameWindow.js";
 import type { DistributedRenderConfig } from "./services/distributed/plan.js";
 import {
   validateDistributedRenderConfig,
@@ -71,6 +72,7 @@ export interface RenderRequestOptions {
   hdrMode?: RenderConfig["hdrMode"];
   chromaSubsampling?: RenderConfig["chromaSubsampling"];
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
+  range?: RenderRange;
   variables?: Record<string, unknown>;
   strictVariables?: boolean;
   expectedOutputDimensions?: ExpectedOutputDimensions;
@@ -217,8 +219,23 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   }
 }
 
+function isRenderRange(value: unknown): value is RenderRange {
+  if (!isPlainObject(value)) return false;
+  const seconds = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  const { startSeconds, endSeconds } = value;
+  if (!seconds(startSeconds)) return false;
+  return (
+    endSeconds === undefined || (seconds(endSeconds) && Number(endSeconds) > Number(startSeconds))
+  );
+}
+
 function assertRequestOptionObjects(options: Record<string, unknown>): void {
   validateEngineConfigSnapshot(options.engineConfig);
+  if (options.range !== undefined && !isRenderRange(options.range)) {
+    throw new Error(
+      "Render request range must be { startSeconds, endSeconds? } in seconds, end after start",
+    );
+  }
   if (
     options.expectedOutputDimensions !== undefined &&
     !isExpectedOutputDimensions(options.expectedOutputDimensions)
@@ -326,6 +343,8 @@ export function distributedConfigFromRequest(
   const options = request.options;
   const distributed = options.distributed;
   if (!distributed) throw new Error("Render request is missing distributed options");
+  if (options.range)
+    throw new Error("A distributed render takes its range from renderSpan, not the request");
   // Both are in-process only, and the narrowing matters: `DistributedFormat`
   // does not carry either member, so `format: options.format` below only
   // typechecks once they are thrown out.
