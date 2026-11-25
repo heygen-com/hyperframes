@@ -501,6 +501,11 @@ wrong, `--strength` to push it, `--dry-run` to see the report and write nothing.
 It refuses when it cannot tell which track is the bed rather than carving the
 wrong one.
 
+The composition must be a regular file of the project. A `--comp` that is a link,
+or that is reached through a linked folder below the folder the command runs in,
+is refused and nothing is read or written. The save replaces the file under its
+name and keeps its permissions; a read-only composition is not written.
+
 **What it records in `sources`.** When every voice it analysed shares exactly one
 group, and that group is safe to name, it writes the group id. It falls back to
 the individual clip ids — and says so — when the group contains the bed or a

@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -20,6 +24,8 @@ import {
   groupSourceRefusal,
   mediaSource,
   parseArgs,
+  readComposition,
+  saveComposition,
 } from "./carve.mjs";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -431,3 +437,100 @@ test("a composition whose media are files in its folder still carves", () =>
     assert.match(run.stdout, /wrote index.html/);
     assert.match(readFileSync(join(dir, "index.html"), "utf8"), /data-fx-chain=/);
   }));
+
+// fails without the fix: main() read the composition with readFileSync, which follows a link at the name.
+test("a link at the composition name stops the carve before anything is read or written", () =>
+  inTempDir((dir) => {
+    const project = join(dir, "project");
+    mkdirSync(project);
+    const outside = join(dir, "outside.html");
+    const before = '<audio id="music-bed" src="bed.wav" data-start="0"></audio>\n';
+    writeFileSync(outside, before);
+    symlinkSync(outside, join(project, "index.html"));
+    assert.throws(() => readComposition(join(project, "index.html")), /is a link/);
+    const run = runCarve(project);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /index\.html is a link or is reached through one/);
+    assert.equal(readFileSync(outside, "utf-8"), before);
+    assert.equal(lstatSync(join(project, "index.html")).isSymbolicLink(), true);
+  }));
+
+// fails without the fix: only the last name was looked at, so a linked folder led the read and the save outside.
+test("a linked folder on the way to the composition stops the carve", () =>
+  inTempDir((dir) => {
+    const project = join(dir, "project");
+    const outside = join(dir, "outside");
+    mkdirSync(project);
+    mkdirSync(outside);
+    const before = '<audio id="music-bed" src="bed.wav" data-start="0"></audio>\n';
+    writeFileSync(join(outside, "index.html"), before);
+    symlinkSync(outside, join(project, "scenes"), "junction");
+    const comp = join(project, "scenes", "index.html");
+    assert.throws(() => readComposition(comp, project), /is reached through one/);
+    const run = spawnSync(process.execPath, [join(SCRIPTS_DIR, "carve.mjs"), "--comp", comp], {
+      cwd: project,
+      encoding: "utf8",
+    });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /is a link or is reached through one/);
+    assert.equal(readFileSync(join(outside, "index.html"), "utf-8"), before);
+  }));
+
+test("a composition that is a plain file reads, from its own folder or from outside the working folder", () =>
+  inTempDir((dir) => {
+    const comp = join(dir, "project", "index.html");
+    mkdirSync(join(dir, "project"));
+    writeFileSync(comp, "<audio></audio>");
+    assert.equal(readComposition(comp, join(dir, "project")), "<audio></audio>");
+    assert.equal(readComposition(comp, join(dir, "elsewhere")), "<audio></audio>");
+    assert.throws(() => readComposition(join(dir, "project", "none.html"), dir), /does not exist/);
+    assert.throws(() => readComposition(join(dir, "project"), dir), /not a regular file/);
+  }));
+
+// Guards the save itself: a plain rename would put a default-mode file in place and overwrite a read-only one.
+test(
+  "saving keeps the composition's permissions and refuses one that may not be written",
+  { skip: process.platform === "win32" && "POSIX permission bits" },
+  () =>
+    inTempDir((dir) => {
+      const comp = join(dir, "index.html");
+      writeFileSync(comp, "old");
+      chmodSync(comp, 0o600);
+      saveComposition(comp, "new");
+      assert.equal(lstatSync(comp).mode & 0o777, 0o600);
+      assert.equal(readFileSync(comp, "utf-8"), "new");
+      chmodSync(comp, 0o444);
+      if (process.getuid?.() !== 0) {
+        assert.throws(() => saveComposition(comp, "newer"), { code: "EACCES" });
+        assert.equal(readFileSync(comp, "utf-8"), "new");
+      }
+      assert.deepEqual(readdirSync(dir), ["index.html"]);
+    }),
+);
+
+for (const [kind, plant] of [
+  ["symbolic link", (target, at) => symlinkSync(target, at)],
+  ["dangling symbolic link", (target, at) => symlinkSync(`${target}.missing`, at)],
+  ["hard link", (target, at) => linkSync(target, at)],
+]) {
+  // fails without the fix: main() saved with writeFileSync, which writes into the target of a link at the name.
+  test(`saving the composition replaces a ${kind} at its name, never the target`, () =>
+    inTempDir((dir) => {
+      const outside = join(dir, "outside.html");
+      writeFileSync(outside, "outside");
+      const comp = join(dir, "index.html");
+      plant(outside, comp);
+      saveComposition(comp, "<audio></audio>");
+      assert.equal(readFileSync(outside, "utf-8"), "outside");
+      assert.equal(readFileSync(comp, "utf-8"), "<audio></audio>");
+      const entry = lstatSync(comp);
+      assert.equal(entry.isFile(), true);
+      assert.equal(entry.nlink, 1);
+      assert.deepEqual(
+        readdirSync(dir)
+          .filter((name) => name !== "outside.html")
+          .sort(),
+        ["index.html"],
+      );
+    }));
+}
