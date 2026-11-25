@@ -6,13 +6,13 @@ import {
   buildTimelineResizeTimingPatch,
   deleteSelectedKeyframes,
   extendRootDurationIfNeeded,
-  patchIframeDomTiming,
   persistElementAttribute,
   persistTimelineBatchEdit,
   persistTimelineEdit,
   readTargetAttribute,
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
+import { patchIframeDomTiming } from "./previewTimingPatch";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { parseTimelineFromDOM } from "../player/lib/timelineDOM";
 import type { TimelineElement } from "../player/store/playerStore";

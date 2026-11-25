@@ -269,7 +269,9 @@ test(
     make("tone.wav", ["-f", "lavfi", "-i", "sine=duration=1"]);
     make("clip.mp4", ["-f", "lavfi", "-i", "color=red:s=32x32:d=1"]);
     make("still.png", ["-f", "lavfi", "-i", "color=red:s=32x32", "-frames:v", "1"]);
-    for (const name of ["tone.mp3", "tone.wav", "clip.mp4", "still.png"]) {
+    const audio = ["tone.caf", "tone.w64", "tone.wv", "tone.au", "tone.ac3"];
+    for (const name of audio) make(name, ["-f", "lavfi", "-i", "sine=duration=1"]);
+    for (const name of ["tone.mp3", "tone.wav", "clip.mp4", "still.png", ...audio]) {
       assert.ok(probe(join(dir, name)).codec, name);
     }
     // Each names the real clip next to it, which ffmpeg would open if it read the list.

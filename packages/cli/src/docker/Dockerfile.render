@@ -56,7 +56,7 @@ ENV CONTAINER=true
 # The wrapper script below wires whichever binary landed into
 # PRODUCER_HEADLESS_SHELL_PATH, or fails the build loudly if neither did.
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
-      npx --yes @puppeteer/browsers install chrome-headless-shell@158.0.8127.36 \
+      npx --yes @puppeteer/browsers install chrome-headless-shell@158.0.8127.88 \
         --path /root/.cache/puppeteer; \
     else \
       npx --yes playwright-core@${PLAYWRIGHT_VERSION} install chromium-headless-shell; \

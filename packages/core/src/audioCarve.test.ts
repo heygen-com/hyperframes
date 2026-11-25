@@ -15,6 +15,7 @@ import {
   DEFAULT_CARVE,
   normalizeCarveSettings,
 } from "./audioCarve.js";
+import { analyseLevelling } from "./audioLeveller.js";
 
 /** The profile the panel's default strength produces — what the separate controls defaulted to. */
 const PROFILE = carveProfile(DEFAULT_CARVE.strength);
@@ -682,5 +683,32 @@ describe("carve settings written before this took a list of voices", () => {
   it("drops empty ids rather than carrying a source that names nothing", () => {
     expect(normalizeCarveSettings({ sources: ["", "vo", ""] } as never).sources).toEqual(["vo"]);
     expect(normalizeCarveSettings({ source: "" } as never).sources).toEqual([]);
+  });
+});
+
+describe("carve and levels read the same span of audio at any rate", () => {
+  /** Speech-like bursts of 1 kHz with pauses, 20 s at `rate`. */
+  const talk = (rate: number) =>
+    Float32Array.from({ length: rate * 20 }, (_, i) => {
+      const t = i / rate;
+      return (Math.floor(t) % 3 === 2 ? 0.02 : 0.6) * Math.sin(2 * Math.PI * 1000 * t);
+    });
+  const near = (a: { t: number; v: number }[], b: { t: number; v: number }[]) =>
+    a.every((p, i) => Math.abs(p.t - b[i]!.t) < 0.01 && Math.abs(p.v - b[i]!.v) <= 0.11);
+
+  it("draws the same carve envelope from 24 kHz as from 48 kHz", () => {
+    const band = [{ freq: 1000, gainDb: -8, q: 1.4 }];
+    const [at48] = analyseCarveDynamics(talk(48_000), 48_000, band);
+    const [at24] = analyseCarveDynamics(talk(24_000), 24_000, band);
+    expect(at24!.points).toHaveLength(at48!.points.length);
+    expect(near(at48!.points, at24!.points)).toBe(true);
+  });
+
+  it("draws the same levelling lane from 24 kHz as from 48 kHz", () => {
+    const at48 = analyseLevelling(talk(48_000), 48_000);
+    const at24 = analyseLevelling(talk(24_000), 24_000);
+    expect(at48.length).toBeGreaterThan(0);
+    expect(at24).toHaveLength(at48.length);
+    expect(near(at48, at24)).toBe(true);
   });
 });

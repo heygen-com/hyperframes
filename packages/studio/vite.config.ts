@@ -19,12 +19,19 @@ import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
 import type { openProjectHistory } from "@hyperframes/studio-server";
 import { previewChangeOwner } from "./vite.preview-watch";
-import { carriesOAuthReturn, refuseOAuthReturn } from "../studio-server/src/helpers/inertRefusal";
+import {
+  carriesOAuthReturn,
+  inertRefusal,
+  refuseOAuthReturn,
+} from "../studio-server/src/helpers/inertRefusal";
+import { devServesUrl } from "./vite.private-files";
+import { SAME_ORIGIN_FRAMING_HEADERS } from "../engine/src/utils/loopbackOnly";
 import {
   hostHeaderAllowed,
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "../studio-server/src/helpers/requestIdentity";
+import { TELEMETRY_OPT_OUT_DEFINE } from "./vite.telemetry";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -228,6 +235,14 @@ export function devProjectApi(): Plugin {
         if (!carriesOAuthReturn(req.url ?? "/")) return next();
         void bridgeHonoResponse(refuseOAuthReturn(), res);
       });
+      // Plugin middlewares run before Vite's file serving; project files reach the page only through /api, as built.
+      const servedRoots = { studio: __dirname, checkout: resolve(__dirname, "../..") };
+      server.middlewares.use((req, res, next) => {
+        const url = req.url ?? "/";
+        if (url === "/__hyperframes_config" || url.startsWith("/api/")) return next();
+        if (devServesUrl(url, servedRoots)) return next();
+        void bridgeHonoResponse(inertRefusal(404, "Not found."), res);
+      });
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? "";
         if (url !== "/__hyperframes_config" && !url.startsWith("/api/")) return next();
@@ -366,6 +381,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), devProjectApi()],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
+    ...TELEMETRY_OPT_OUT_DEFINE,
   },
   resolve: {
     alias: {
@@ -400,6 +416,10 @@ export default defineConfig({
   },
   server: {
     port: 5190,
+    // The built Studio answers no other origin; Vite's default would let any loopback page read what it serves.
+    cors: false,
+    // The same framing rule as the CLI Studio's shell, so another site cannot frame this one.
+    headers: { ...SAME_ORIGIN_FRAMING_HEADERS },
     // Vite's defaults (localhost, IP literals) still apply on top of this list.
     allowedHosts: previewAllowedHostsFromEnv(),
     watch: {
@@ -423,7 +443,7 @@ export default defineConfig({
   },
   test: {
     exclude: ["data/**", "node_modules/**"],
-    setupFiles: ["src/test-setup.ts"],
+    setupFiles: ["src/test-setup.ts", "../core/vitest.mediaHeader.ts"],
     environmentOptions: {
       happyDOM: { settings: { enableIframePageLoading: true } },
     },

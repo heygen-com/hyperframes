@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Fail a PR touching packages/studio or packages/player unless its body has Before and After sections with media.
+// Fail a PR touching packages/studio or packages/player unless its body, or one comment by its author, has Before
+// and After sections with media.
 // Markdown and tests under them are not behaviour a user sees, so they are not watched.
-// usage: node scripts/check-pr-captures.mjs --base origin/main --head <sha>; the body arrives in the env (see main).
+// usage: node scripts/check-pr-captures.mjs --base origin/main --head <sha>; the body, author and comments file arrive
+// in the env (see main).
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const WATCHED_PREFIXES = ["packages/studio/", "packages/player/"];
@@ -154,7 +156,7 @@ export function noVisibleChangeFailures(files) {
 }
 
 function sectionProblem(section, name) {
-  if (!section) return `the body has no "${name}" heading`;
+  if (!section) return `no "${name}" heading`;
   return hasMedia(section.text) ? null : `the "${name}" section has no image or video`;
 }
 
@@ -445,14 +447,12 @@ function readNumstat(base, head) {
   }
 }
 
-function printFailure(problems, prNumber) {
-  console.error(
-    "This PR changes packages/studio or packages/player, so its body must show the behaviour.",
-  );
-  for (const problem of problems) console.error(`  - ${problem}`);
+function printFailure(prNumber) {
   console.error("\nAdd '## Before' and '## After' sections, each with an image or video, then:");
   console.error(`  ${attachCommand(prNumber)}`);
-  console.error("Only the PR description counts; captures posted as comments are not read.");
+  console.error(
+    "The PR description counts, and so does one comment by the PR's author on its own; nobody else's comment counts.",
+  );
   console.error(
     "Edit the body text first: gh pr edit --body-file replaces the body and drops attachments.",
   );
@@ -485,26 +485,70 @@ function reportCaptureProblems({ unreadable, identical, refused, notices }, env)
   printList("Links the duplicate check could not compare:", notices, console.log);
 }
 
-const prFromEnv = (env) => ({ body: env.PR_BODY ?? "", number: env.PR_NUMBER ?? "<number>" });
-const findProblems = (body, files) =>
-  files.length > 0 ? duplicateCaptureProblems(body) : noProblems();
+/** The description, then each comment by the PR's author; each is checked alone, never joined to the body. */
+export function captureSources(body, comments, author) {
+  const own = author ? comments.filter((comment) => comment.user?.login === author) : [];
+  return [
+    { label: "the PR description", text: body },
+    ...own.map((comment) => ({ label: `comment ${comment.html_url}`, text: comment.body ?? "" })),
+  ];
+}
+
+/** The verdict for one source: the section check, then the duplicate check only when the sections hold. */
+export async function checkSource(text, files, download, env) {
+  const { ok, problems } = evaluate({ body: text, files });
+  if (!ok) return { ok: false, problems };
+  const found = await duplicateCaptureProblems(text, download);
+  return { ok: !blocking(found.unreadable, [...found.identical, ...found.refused], env), found };
+}
+
+/** `gh api --paginate --slurp` gives one array per page. Unset means no comments (a local run). */
+function readComments(path) {
+  if (!path) return [];
+  try {
+    return JSON.parse(readFileSync(path, "utf8")).flat();
+  } catch (error) {
+    console.error(`cannot read the PR comments from ${path}: ${error.message}`);
+    return process.exit(2);
+  }
+}
+
+function reportSource(label, verdict, env) {
+  console.error(`${label}:`);
+  if (verdict.found) reportCaptureProblems(verdict.found, env);
+  else printList("does not show the behaviour:", verdict.problems);
+}
 
 async function main() {
   const args = process.argv.slice(2);
   const numstat = readNumstat(flag(args, "--base", "origin/main"), flag(args, "--head", "HEAD"));
-  const { body, number } = prFromEnv(process.env);
+  const env = process.env;
   const files = parseNumstat(numstat);
-  const { ok, problems } = evaluate({ body, files });
-  if (!ok) {
-    printFailure(problems, number);
+  const sources = captureSources(
+    env.PR_BODY ?? "",
+    readComments(env.PR_COMMENTS_FILE),
+    env.PR_AUTHOR,
+  );
+  const download = perCheckDownloader();
+  const failed = [];
+  for (const source of files.length > 0 ? sources : []) {
+    const verdict = await checkSource(source.text, files, download, env);
+    if (verdict.ok) {
+      if (verdict.found) reportCaptureProblems(verdict.found, env);
+      console.log(`packages/studio and packages/player: captures present in ${source.label}.`);
+      return;
+    }
+    failed.push([source.label, verdict]);
+  }
+  if (failed.length > 0) {
+    console.error(
+      "This PR changes packages/studio or packages/player, so its body or its author's comment must show the behaviour.",
+    );
+    for (const [label, verdict] of failed) reportSource(label, verdict, env);
+    printFailure(env.PR_NUMBER ?? "<number>");
     process.exit(1);
   }
-  const found = await findProblems(body, files);
-  reportCaptureProblems(found, process.env);
-  if (blocking(found.unreadable, [...found.identical, ...found.refused], process.env)) {
-    process.exit(1);
-  }
-  console.log("packages/studio and packages/player: captures present, or nothing to show.");
+  console.log("packages/studio and packages/player: nothing to show.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href)

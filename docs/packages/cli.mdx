@@ -272,7 +272,8 @@ npx hyperframes init my-video --tailwind
 
 Pass `--video` or `--audio` and the CLI transcribes the audio with Whisper and
 patches the captions into the composition for you. `--skip-transcribe` turns
-that off.
+that off. Each must be a single self-contained media file; HLS playlists and
+concat lists are refused.
 
 `--tailwind` injects the pinned Tailwind v4 browser runtime and exposes a
 `window.__tailwindReady` promise that renders wait on before capturing frame 0.
@@ -528,6 +529,8 @@ local files are still read directly; every other request goes to that proxy.
 Turn audio or video into word-level timestamps, or import a transcript you
 already have.
 
+Each named file must be a single self-contained media file; HLS playlists and concat lists are refused.
+
 ```bash
 # Local transcription
 npx hyperframes transcribe audio.mp3
@@ -647,7 +650,8 @@ phonemizer, for a stylized accent.
 
 Cut the background out of a video or image with a local AI model. The output is
 transparent media you can drop straight into a `<video>` or `<img>`. No green
-screen.
+screen. The input must be a single self-contained media file; HLS playlists and
+concat lists are refused.
 
 ```bash
 # Default: VP9-with-alpha WebM, plays natively in HTML5
@@ -901,6 +905,8 @@ at a different sample rate, which can shift a beat slightly.
 ### `audio`
 
 Measure how sound moves in time, so a cut or an animation can land on it.
+
+Each named file must be a single self-contained media file; HLS playlists and concat lists are refused.
 
 ```bash
 npx hyperframes audio sfx/whoosh.mp3                  # one file, in file seconds
@@ -2045,7 +2051,10 @@ editor.
 Studio never writes TypeScript, JSX or CommonJS files (`.ts`, `.tsx`, `.mts`,
 `.cts`, `.jsx`, `.cjs`). It writes `.js` and `.mjs` files, and files with no
 extension, only when no `package.json` in their folder or any folder above it
-does more than run the `hyperframes` CLI. Folders are not affected. A project from `hyperframes init` keeps its composition
+does more than run the `hyperframes` CLI. Under such a `package.json` it also
+refuses a file whose name plus a module extension names a file beside it, such as
+`db.utils` next to `db.utils.js`, because Node loads the exact name first.
+Folders are not affected. A project from `hyperframes init` keeps its composition
 scripts editable. Once a `package.json` adds its own scripts, an entry point or
 dependencies, edit that project's scripts in your editor.
 
@@ -2112,9 +2121,9 @@ How it uses the machine, and when it gives up:
 | Flag                                                     | Default                                    | Description                                                                                                       |
 | -------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | `--workers, -w`                                          | auto                                       | 1–24 workers. Each is a separate Chrome, roughly 256 MB. Auto weighs cores, memory, frame count, and cost. N is a ceiling: a render drawElement can capture still uses one worker. |
-| `--low-memory-mode` / `--no-low-memory-mode`             | auto at 8 GB RAM or less                   | Safe profile: one worker, screenshot capture, no calibration. See the note below.                                   |
+| `--low-memory-mode` / `--no-low-memory-mode`             | auto at 8 GB RAM or less                   | Safe profile: one worker, screenshot capture, no worker calibration. See the note below.                                   |
 | `--gpu`                                                  | off                                        | Hardware FFmpeg encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)                                                    |
-| `--browser-gpu` / `--no-browser-gpu`                     | auto locally, off in Docker                | Host GPU for Chrome and WebGL capture, or software rendering. Auto probes WebGL once and falls back.                |
+| `--browser-gpu` / `--no-browser-gpu`                     | auto locally, off in Docker                | Host GPU for Chrome and WebGL capture, or software rendering. Auto probes WebGL once and falls back. When calibration finds the GPU slow, auto also times software capture and renders in software if it is faster. `render` measures this once per machine, GPU driver and HyperFrames version (even with `--workers`), keeps the answer in `gpu-choice.json` under `HYPERFRAMES_CONFIG_DIR`, and reuses it. |
 | `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for SDR shader transitions in mp4, hls and gif, ~6× faster. webm and mov use the layered path; gif always uses page-side WebGL, even with `--no-page-side-compositing`. |
 | `--experimental-fast-capture`                            | on where it can engage                     | Chrome's draw-element capture, ~2× faster; falls back to screenshots on its own. Env: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`. |
 | `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
@@ -2934,7 +2943,7 @@ hyperframes auth logout --yes            # no prompt
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
 | `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; used first, never refreshed. |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
-| `HYPERFRAMES_CONFIG_DIR` | Settings root: credentials, telemetry and update settings, project links (default `~/.hyperframes`). |
+| `HYPERFRAMES_CONFIG_DIR` | Settings root: credentials, telemetry and update settings, project links, the measured GPU choice (default `~/.hyperframes`). |
 | `HYPERFRAMES_ENV` | `prod` (default) or `dev`; `dev` uses a separate credential directory. Hosts and the OAuth client id come from `HEYGEN_API_URL` and `HYPERFRAMES_OAUTH_*`. |
 | `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the selected public OAuth client. |
 
@@ -3506,6 +3515,7 @@ hyperframes share --manage         # Open web sharing settings
 
 Sharing uploads video only by default. `--include-source` explicitly includes portable project files, including unused and Git-ignored files; review your folder and `.hyperframesignore` first. `--video-only` remains available and cannot be combined with `--include-source`. Source inclusion must be chosen for each upload, including `--update`; `--yes` does not consent to source upload.
 
+Known credential files, Git metadata, and private tool state stay out of editable source.
 
 The first share requires an explicit audience: `--public`, `--team`,
 `--invite-only`, or `--private`. In an attended terminal, `share` asks you to

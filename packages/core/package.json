@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.91",
+  "version": "0.9.93",
   "description": "",
   "repository": {
     "type": "git",
@@ -169,6 +169,12 @@
       "node": "./dist/utils/richTextSanitize.js",
       "import": "./src/utils/richTextSanitize.ts",
       "types": "./src/utils/richTextSanitize.ts"
+    },
+    "./inline-text-style": {
+      "bun": "./src/utils/inlineTextStyleRead.ts",
+      "node": "./dist/utils/inlineTextStyleRead.js",
+      "import": "./src/utils/inlineTextStyleRead.ts",
+      "types": "./src/utils/inlineTextStyleRead.ts"
     },
     "./composition-contract": {
       "bun": "./src/compositionContract.ts",
@@ -397,6 +403,12 @@
       "node": "./dist/audioFade.js",
       "import": "./src/audioFade.ts",
       "types": "./src/audioFade.ts"
+    },
+    "./audio-decode": {
+      "bun": "./src/audioDecode.ts",
+      "node": "./dist/audioDecode.js",
+      "import": "./src/audioDecode.ts",
+      "types": "./src/audioDecode.ts"
     },
     "./speed-ramp": {
       "bun": "./src/speedRamp.ts",
@@ -836,6 +848,10 @@
         "import": "./dist/utils/richTextSanitize.js",
         "types": "./dist/utils/richTextSanitize.d.ts"
       },
+      "./inline-text-style": {
+        "import": "./dist/utils/inlineTextStyleRead.js",
+        "types": "./dist/utils/inlineTextStyleRead.d.ts"
+      },
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
@@ -987,6 +1003,10 @@
       "./audio-fade": {
         "import": "./dist/audioFade.js",
         "types": "./dist/audioFade.d.ts"
+      },
+      "./audio-decode": {
+        "import": "./dist/audioDecode.js",
+        "types": "./dist/audioDecode.d.ts"
       },
       "./speed-ramp": {
         "import": "./dist/speedRamp.js",

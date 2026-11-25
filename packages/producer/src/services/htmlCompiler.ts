@@ -836,7 +836,7 @@ async function resolveMediaDuration(
     if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
     if (
       escapesAssetRoot(filePath, assetRoot) ||
-      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir])
+      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir], assetRoot === undefined)
     ) {
       return { duration: null, resolvedPath: filePath };
     }
@@ -3007,7 +3007,7 @@ async function compileWithAssets(
       namesAnotherNetworkRoot(projectDir, videoPath) ||
       !existsSync(videoPath) ||
       escapesAssetRoot(videoPath, assetRoot) ||
-      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir])
+      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir], assetRoot === undefined)
     )
       continue;
     advised.add(videoPath);

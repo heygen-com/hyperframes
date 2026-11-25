@@ -1,7 +1,7 @@
 // The frame's GSAP tweens as plain data, for a parent that cannot reach the frame's window.
 import type { EditingElementHandle } from "../editingElement";
 import { handleFor } from "../editingHandles";
-import { MOVES, rendersTransform } from "../editingGestureStart";
+import { MOVES, rendersTransform, withoutGsapTakeover } from "../editingGestureStart";
 import { isPlainRecord } from "../editingPort";
 import { isElementNode } from "../domRealm";
 import {
@@ -55,6 +55,7 @@ export interface GsapSnapshot {
   time: number | null;
   defaultEase: string | null;
   timelines: GsapSnapshotTimeline[];
+  globalTweens: GsapSnapshotTween[];
   targets: GsapSnapshotTarget[];
 }
 
@@ -78,6 +79,9 @@ interface LivePropTween {
 interface LiveGsap {
   getProperty?: (target: Element, prop: string) => unknown;
   defaults?: () => { ease?: unknown };
+  globalTimeline?: {
+    getChildren?: (nested: boolean, tweens: boolean, timelines: boolean) => LiveTween[];
+  };
 }
 interface LiveTimeline {
   getChildren?: (nested: boolean) => LiveTween[];
@@ -125,9 +129,11 @@ export async function gsapSnapshot(): Promise<GsapSnapshot> {
   const gsap = frame.gsap;
   const reader = new SnapshotReader();
   const timelines: GsapSnapshotTimeline[] = [];
+  const held = new Set<LiveTween>();
   for (const [id, live] of Object.entries(frame.__timelines ?? {})) {
     if (typeof live?.getChildren !== "function") continue;
     const tweens = live.getChildren(true).filter((child) => typeof child.targets === "function");
+    for (const tween of tweens) held.add(tween);
     if (timelines.length >= MAX_SNAPSHOT_TWEENS) throw new SnapshotBound("timelines");
     timelines.push({
       id: capped(id),
@@ -136,11 +142,15 @@ export async function gsapSnapshot(): Promise<GsapSnapshot> {
       tweens: tweens.map((tween) => reader.tween(tween)),
     });
   }
+  const globalTweens = (gsap?.globalTimeline?.getChildren?.(true, true, false) ?? [])
+    .filter((child) => typeof child.targets === "function" && !held.has(child))
+    .map((tween) => reader.tween(tween));
   const time = frame.__player?.getTime?.();
   return {
     time: typeof time === "number" && Number.isFinite(time) ? time : null,
     defaultEase: text(gsap?.defaults?.().ease),
     timelines,
+    globalTweens,
     targets: reader.targets(gsap),
   };
 }
@@ -170,10 +180,12 @@ class SnapshotReader {
         const value = Number(gsap?.getProperty?.(element, channel));
         if (Number.isFinite(value)) values[channel] = value;
       };
-      for (const channel of channels) read(channel);
       const gsapOwnsPosition =
         rendersTransform(element) || MOVES.some((channel) => channels.has(channel));
-      if (gsapOwnsPosition) for (const axis of ["x", "y"]) if (!(axis in values)) read(axis);
+      withoutGsapTakeover(element, () => {
+        for (const channel of channels) read(channel);
+        if (gsapOwnsPosition) for (const axis of ["x", "y"]) if (!(axis in values)) read(axis);
+      });
       const className = element.getAttribute("class") ?? "";
       if (className.length > MAX_SNAPSHOT_TEXT) throw new SnapshotBound("class names");
       return { handle: handleFor(element), id: capped(element.id), className, values };
