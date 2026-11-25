@@ -248,11 +248,9 @@ it("writes nothing the server serves as running code, from the live copy or a sa
   );
   expect(saved.clipboard().handleCopy()).toBe(true);
   await saved.clipboard().handlePaste();
-  // The saved file is read through linkedom, which ends the title early: its handler shows, so the paste is refused.
+  // linkedom would end the title early in the saved file, so that file is refused before anything is read from it.
   expect(saved.writes).toEqual([]);
-  expect(saved.toasts).toContain(
-    "Couldn't paste: the copied element holds markup that can't be pasted here.",
-  );
+  expect(saved.toasts.join("\n")).toMatch(/can't be read the way a browser reads them/);
 });
 
 // fails without the fix: markup the copy found in another file was taken as saved and pasted unchecked.
