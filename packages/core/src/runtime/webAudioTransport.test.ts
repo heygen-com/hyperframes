@@ -2,7 +2,13 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { MAX_AUDIO_GAIN } from "../audioGain.js";
 import { mediaElementTime } from "./mediaClock";
+import { reportMediaLoadFailure } from "./mediaLoadFailure";
 import { WebAudioTransport } from "./webAudioTransport";
+
+vi.mock("./mediaLoadFailure", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./mediaLoadFailure")>();
+  return { ...real, reportMediaLoadFailure: vi.fn(real.reportMediaLoadFailure) };
+});
 
 function createMockAudioContext(currentTime = 100) {
   const startFn = vi.fn();
@@ -1873,6 +1879,8 @@ describe("WebAudioTransport", () => {
       expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
       expect(t.fitsDecodeBudget(audio("b.mp4", 100))).toBe(false);
       expect(t.fitsDecodeBudget(audio("c.mp4", 10))).toBe(true);
+      // The decode is still in flight: unstubbed, it would reach the real network after this test.
+      t.destroy();
       vi.unstubAllGlobals();
     });
 
@@ -1909,6 +1917,74 @@ describe("WebAudioTransport", () => {
       (t as unknown as { _failedSrcs: Set<string> })._failedSrcs;
     // Keys are resolved against the document, so one asset has one key however it is written.
     const key = (src: string) => new URL(src, document.baseURI).href;
+
+    // fails without the fix: a fetch that settled after destroy() reported a load failure for a torn-down
+    // player; in this file's runs that report reached `window` after the test environment was gone.
+    it("makes no request for a decode started just before destroy()", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      const decoded = transport.decodeAudioElement(el("early.wav"));
+      transport.destroy();
+      expect(await decoded).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it("reports nothing for a decode fetch that settles after destroy()", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      let fail = (_reason: unknown) => {};
+      let fetched = () => {};
+      const started = new Promise<void>((resolve) => (fetched = resolve));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_src: string, init: RequestInit) =>
+            new Promise((_, reject) => {
+              fail = reject;
+              init.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+              fetched();
+            }),
+        ),
+      );
+      vi.mocked(reportMediaLoadFailure).mockClear();
+      const decoded = transport.decodeAudioElement(el("late.wav"));
+      await started;
+      transport.destroy();
+      fail(new TypeError("fetch failed"));
+      expect(await decoded).toBeNull();
+      expect(reportMediaLoadFailure).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it("reports and keeps nothing for a decode that settles after destroy()", async () => {
+      let fail = (_reason: unknown) => {};
+      let decoding = () => {};
+      const started = new Promise<void>((resolve) => (decoding = resolve));
+      const transport = transportWithDecode(
+        () =>
+          new Promise<AudioBuffer>((_, reject) => {
+            fail = reject;
+            decoding();
+          }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })),
+      );
+      vi.mocked(reportMediaLoadFailure).mockClear();
+      const decoded = transport.decodeAudioElement(el("late.wav"));
+      await started;
+      transport.destroy();
+      fail(new DOMException("The context was closed", "InvalidStateError"));
+      expect(await decoded).toBeNull();
+      expect(reportMediaLoadFailure).not.toHaveBeenCalled();
+      expect(failedSrcs(transport).size).toBe(0);
+      vi.unstubAllGlobals();
+    });
 
     it("does NOT blacklist a transient fetch failure — a later play retries and succeeds", async () => {
       const transport = transportWithDecode(async () => ({}) as AudioBuffer);
@@ -1948,6 +2024,7 @@ describe("WebAudioTransport", () => {
         method: "GET",
         credentials: "same-origin",
         redirect: "error",
+        signal: expect.any(AbortSignal),
       });
       vi.unstubAllGlobals();
     });
