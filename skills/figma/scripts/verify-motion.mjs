@@ -32,7 +32,7 @@ function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? process.argv[i + 1] : fallback;
 }
-// Local files only: a URL-shaped argument becomes a path under the current folder, never a URL ffmpeg opens.
+// A URL-shaped argument is read as a name under the current folder; the file-only protocol on every read refuses URLs either way.
 const reference = arg("reference") && resolve(arg("reference"));
 const render = arg("render") && resolve(arg("render"));
 if (!reference || !render) {

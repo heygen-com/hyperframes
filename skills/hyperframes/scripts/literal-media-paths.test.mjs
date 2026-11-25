@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -255,5 +264,193 @@ ffmpegTest(
     ];
     assert.deepEqual(requests, []);
     for (const run of [runs[0], runs[2]]) assert.notEqual(run.code, 0, run.output);
+  },
+);
+
+const EXTRACT_AUDIO = "skills/media-use/audio/scripts/extract-audio-data.py";
+const python = ["python3", "python"].find(
+  (name) => spawnSync(name, ["-c", "import numpy"], { stdio: "ignore" }).status === 0,
+);
+
+test("extract-audio-data reads with the same reader list and pattern checks as the scripts' lib", () => {
+  const py = readFileSync(script(EXTRACT_AUDIO), "utf8");
+  const js = readFileSync(script("skills/hyperframes/scripts/lib/literal-media-input.mjs"), "utf8");
+  assert.equal(/^SELF_CONTAINED_FORMATS = "([^"]+)"/m.exec(py)?.[1], SELF_CONTAINED_FORMATS);
+  for (const name of ["PATTERN_IMAGE2_EXPANDS", "WILDCARD_MAKES_ANY_PERCENT_A_PATTERN"]) {
+    const inJs = new RegExp(`const ${name} = /(.+)/;`).exec(js)?.[1];
+    const inPy = new RegExp(`^${name} = re\\.compile\\(r"(.+)"\\)$`, "m").exec(py)?.[1];
+    assert.ok(inJs, name);
+    assert.equal(inPy, inJs, name);
+  }
+});
+
+test(
+  "extract-audio-data refuses a list named as media, and a name ffmpeg reads as a pattern",
+  { skip: (!HAS_FFMPEG || !python) && "ffmpeg or python with numpy is not installed" },
+  async (t) => {
+    const dir = sandbox(t);
+    const out = join(dir, "audio-data.json");
+    const listed = await promisify(execFile)(python, [
+      script(EXTRACT_AUDIO),
+      listNamedAsMedia(dir, "in.mp3"),
+      "-o",
+      out,
+    ]).then(
+      () => ({ code: 0, output: "" }),
+      (error) => ({ code: error.code, output: `${error.stderr}` }),
+    );
+    assert.notEqual(listed.code, 0);
+    assert.match(listed.output, NOT_ON_WHITELIST);
+    assert.equal(existsSync(out), false);
+
+    const patterned = spawnSync(
+      python,
+      [script(EXTRACT_AUDIO), patternFile(dir, "take%d.wav"), "-o", out],
+      {
+        encoding: "utf8",
+      },
+    );
+    assert.notEqual(patterned.status, 0);
+    assert.match(patterned.stderr, PATTERN);
+    assert.equal(existsSync(out), false);
+  },
+);
+
+// ffmpeg and ffprobe stand-ins that log each call's arguments and run the real program, so a script runs
+// its whole ordinary path and every read it makes can be checked, not only the first one that refuses.
+function recordingPath(dir) {
+  const bin = join(dir, "bin");
+  const logs = join(dir, "calls");
+  mkdirSync(bin);
+  mkdirSync(logs);
+  for (const name of ["ffmpeg", "ffprobe"]) {
+    const real = spawnSync("sh", ["-c", `command -v ${name}`], { encoding: "utf8" }).stdout.trim();
+    const stub = join(bin, name);
+    writeFileSync(
+      stub,
+      `#!/bin/sh\nlog=$(mktemp '${logs}/call.XXXXXX')\nfor a in "$@"; do printf '%s\\t' "$a"; done > "$log"\nexec '${real}' "$@"\n`,
+    );
+    chmodSync(stub, 0o755);
+  }
+  return {
+    env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}` },
+    calls: () =>
+      readdirSync(logs).map((file) =>
+        readFileSync(join(logs, file), "utf8").split("\t").slice(0, -1),
+      ),
+  };
+}
+
+/** Every argument naming one of `inputs` has the file-only protocol and the reader list before it, since its previous input. */
+function unpinnedReads(calls, inputs) {
+  const unpinned = [];
+  for (const args of calls) {
+    let segmentStart = 0;
+    args.forEach((arg, index) => {
+      if (!inputs.includes(arg)) return;
+      const segment = args.slice(segmentStart, index);
+      const at = segment.indexOf("-protocol_whitelist");
+      const pinned =
+        at !== -1 &&
+        segment[at + 1] === "file" &&
+        segment[segment.indexOf("-format_whitelist") + 1] === SELF_CONTAINED_FORMATS;
+      if (!pinned) unpinned.push(args.join(" "));
+      segmentStart = index + 1;
+    });
+  }
+  return unpinned;
+}
+
+test(
+  "every ffmpeg and ffprobe read of an input carries the reader limits, on each script's ordinary path",
+  { skip: (!HAS_FFMPEG || process.platform === "win32") && "needs ffmpeg and a POSIX shell" },
+  async (t) => {
+    const dir = sandbox(t);
+    const { env, calls } = recordingPath(dir);
+    const clip = join(dir, "clip.mp4");
+    const still = join(dir, "still.png");
+    execFileSync("ffmpeg", [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=10:duration=2"],
+      ...["-f", "lavfi", "-i", "sine=duration=2", "-shortest", "-pix_fmt", "yuv420p", clip],
+    ]);
+    execFileSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=64x48",
+      "-frames:v",
+      "1",
+      still,
+    ]);
+    const transcript = join(dir, "transcript.json");
+    writeFileSync(transcript, JSON.stringify({ words: [{ text: "tone", start: 0, end: 2 }] }));
+    const run = (path, args) =>
+      promisify(execFile)(process.execPath, [script(path), ...args], { env, cwd: dir }).then(
+        () => 0,
+        (error) => `${error.stdout}${error.stderr}`,
+      );
+    const runs = {
+      "dither video": await run("skills/media-use/scripts/dither.mjs", [
+        "--input",
+        clip,
+        "--out",
+        join(dir, "d.mp4"),
+        "--json",
+      ]),
+      "dither image": await run("skills/media-use/scripts/dither.mjs", [
+        "--input",
+        still,
+        "--out",
+        join(dir, "d.png"),
+        "--json",
+      ]),
+      "transcript-cut": await run("skills/media-use/scripts/transcript-cut.mjs", [
+        ...[
+          "--input",
+          clip,
+          "--transcript",
+          transcript,
+          "--keep",
+          "0-1",
+          "--out",
+          join(dir, "c.mp4"),
+        ],
+      ]),
+      "transcript-cut --copy": await run("skills/media-use/scripts/transcript-cut.mjs", [
+        ...[
+          "--input",
+          clip,
+          "--transcript",
+          transcript,
+          "--keep",
+          "0-1",
+          "--copy",
+          "--out",
+          join(dir, "k.mp4"),
+        ],
+      ]),
+      "verify-motion": await run("skills/figma/scripts/verify-motion.mjs", [
+        ...["--reference", clip, "--render", clip, "--interval", "0.5", "--min-motion-psnr", "0"],
+      ]),
+      "locate mark": await run("skills/hyperframes/scripts/locate.mjs", [
+        ...["mark", still, "--box", "0,0,0.5,0.5", "--out", join(dir, "check.png")],
+      ]),
+    };
+    for (const [name, result] of Object.entries(runs))
+      assert.equal(result, 0, `${name}: ${result}`);
+    if (python) {
+      await promisify(execFile)(python, [script(EXTRACT_AUDIO), clip, "-o", join(dir, "a.json")], {
+        env,
+      });
+    }
+    const reads = calls().filter((args) => args.some((arg) => arg === clip || arg === still));
+    assert.ok(
+      reads.length >= 10,
+      `expected every script's reads to be logged, saw ${reads.length}`,
+    );
+    assert.deepEqual(unpinnedReads(reads, [clip, still]), []);
   },
 );
