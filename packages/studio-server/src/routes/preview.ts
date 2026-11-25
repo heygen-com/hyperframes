@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
   AFTER_FONTS_SCRIPT_TYPE,
+  dropAuthoredCompositionFiles,
   INLINED_FILE_ATTR,
   RUNTIME_BOOTSTRAP_ATTR,
   insertBeforeCloseTag,
@@ -136,6 +137,14 @@ import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const runStillJob = createJobSlots(4, 16);
+
+/** The saved page served when the build fails: it skips the build, so its authored file marks go here instead. */
+function unbuiltMainHtml(html: string): string {
+  if (!html.includes("data-composition-file")) return ensureHfIds(html);
+  const { document } = parseHTML(html);
+  dropAuthoredCompositionFiles(document as unknown as Document);
+  return ensureHfIds(document.toString());
+}
 
 function escapeGsapUrl(url: string): string {
   return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -714,7 +723,7 @@ export function registerPreviewRoutes(
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
-        bundled = ensureHfIds(diskMain.html);
+        bundled = unbuiltMainHtml(diskMain.html);
         mainCompositionPath = diskMain.compositionPath;
       }
       // <base> and root paths under it, before the runtime adds the server's own root path
@@ -786,7 +795,7 @@ export function registerPreviewRoutes(
       const fallback = resolveProjectMainHtml(project.dir, project.id);
       if (fallback) {
         const fallbackHtml = withPreviewRuntime(
-          withPreviewBase(ensureHfIds(fallback.html), project.id),
+          withPreviewBase(unbuiltMainHtml(fallback.html), project.id),
           adapter.runtimeUrl,
         );
         const fallbackPage = await transformPreviewHtml(
