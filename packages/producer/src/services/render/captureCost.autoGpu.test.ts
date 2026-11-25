@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   estimateMeasuredCaptureCostMultiplier,
   pickAutoGpuModeFromCalibration,
+  settleAutoGpuChoice,
   shouldCalibrateSoftwareGpu,
 } from "./captureCost.js";
 
@@ -75,5 +76,26 @@ describe("pickAutoGpuModeFromCalibration", () => {
       pickAutoGpuModeFromCalibration(hardware, { multiplier: 8, reasons: ["calibration-failed"] }),
     ).toBe("hardware");
     expect(pickAutoGpuModeFromCalibration(hardware, undefined)).toBe("hardware");
+  });
+});
+
+describe("settleAutoGpuChoice", () => {
+  const failed = { multiplier: 8, reasons: ["calibration-failed"] };
+
+  it("settles hardware without timing software when the GPU path is not slow", () => {
+    expect(settleAutoGpuChoice(measured(200, 220, 250, 300, 310), undefined)).toBe("hardware");
+  });
+
+  it("settles whichever measured faster when the GPU path is slow", () => {
+    const slow = measured(1400, 1500, 1550, 1600, 1678);
+    expect(settleAutoGpuChoice(slow, measured(150, 160, 170, 180, 190))).toBe("software");
+    expect(settleAutoGpuChoice(slow, measured(2000, 2100, 2200, 2300, 2400))).toBe("hardware");
+  });
+
+  it("settles nothing when a calibration it needs measured nothing", () => {
+    expect(settleAutoGpuChoice(undefined, undefined)).toBeUndefined();
+    expect(settleAutoGpuChoice(failed, undefined)).toBeUndefined();
+    expect(settleAutoGpuChoice(measured(1400, 1500, 1550, 1600, 1678), failed)).toBeUndefined();
+    expect(settleAutoGpuChoice(measured(1400, 1500, 1550, 1600, 1678), undefined)).toBeUndefined();
   });
 });

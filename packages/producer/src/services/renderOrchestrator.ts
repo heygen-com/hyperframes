@@ -101,6 +101,7 @@ import {
   type WorkerSizing,
   type StaticVerificationOutcome,
   resolveBrowserGpuMode,
+  probedHardwareGpu,
   resolveHeadlessShellPath,
   compositionRequiresWebGpu,
   applyConcreteGpuScreenshotClamp,
@@ -231,9 +232,11 @@ import {
   resolveRenderWorkerCount,
   pickAutoGpuModeFromCalibration,
   runCaptureCalibration,
+  settleAutoGpuChoice,
   selectCaptureCalibrationFrames,
   shouldCalibrateSoftwareGpu,
 } from "./render/captureCost.js";
+import { gpuChoiceStore, readGpuChoice, writeGpuChoice } from "./render/gpuChoice.js";
 import {
   computeCompositionObservabilityHash,
   RenderObservabilityRecorder,
@@ -3868,6 +3871,26 @@ async function executeRenderPipeline(input: {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
     });
+    // The probe browser runs on the GPU auto mode first chose; a switch to software must not reuse it.
+    const closeProbeSession = async (): Promise<void> => {
+      if (!probeSession) return;
+      lastBrowserConsole = probeSession.browserConsoleBuffer;
+      await closeCaptureSession(probeSession).catch(() => {});
+      probeSession = null;
+    };
+    const gpuStore =
+      cfg.browserGpuMode === "auto" && resolvedBrowserGpuMode === "hardware"
+        ? gpuChoiceStore(cfg, await probedHardwareGpu())
+        : undefined;
+    const storedGpuChoice = gpuStore && readGpuChoice(gpuStore);
+    if (gpuStore && storedGpuChoice === "software") {
+      log.info("[Render] Auto GPU mode: rendering in software, as measured on this machine.", {
+        file: gpuStore.file,
+      });
+      cfg.browserGpuMode = "software";
+      resolvedBrowserGpuMode = "software";
+      await closeProbeSession();
+    }
     startingFrameCapture();
     // Apply the software-GPU→screenshot clamp to the AUTHORITATIVE local
     // `captureForceScreenshot` (not just the observability copy) so all
@@ -4343,14 +4366,16 @@ async function executeRenderPipeline(input: {
       },
     });
 
-    if (
+    const sizeByCalibration =
       job.config.workers === undefined &&
       totalFrames >= 60 &&
       !htmlInCanvasDetected &&
       !cfg.lowMemoryMode &&
       !deInversionEligible &&
-      !deParallelRouterEligible
-    ) {
+      !deParallelRouterEligible;
+    // A machine with no stored GPU choice measures it once, even when the worker count is given.
+    const measureGpuChoice = gpuStore !== undefined && storedGpuChoice === undefined;
+    if (sizeByCalibration || measureGpuChoice) {
       updateJobStatus(job, "rendering", "Measuring capture speed", 25, onProgress, {
         code: "start_browsers",
       });
@@ -4397,6 +4422,7 @@ async function executeRenderPipeline(input: {
             });
             probeSession = result.probeSession;
             if (
+              storedGpuChoice === undefined &&
               shouldCalibrateSoftwareGpu(
                 cfg.browserGpuMode,
                 resolvedBrowserGpuMode,
@@ -4423,7 +4449,7 @@ async function executeRenderPipeline(input: {
         calibrationFrames?.release();
       }
       startingFrameCapture();
-      captureCalibration = outcome.calibration;
+      if (sizeByCalibration) captureCalibration = outcome.calibration;
       calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
@@ -4447,18 +4473,32 @@ async function executeRenderPipeline(input: {
         );
         cfg.browserGpuMode = "software";
         resolvedBrowserGpuMode = "software";
-        captureCalibration = softwareOutcome.calibration;
+        if (sizeByCalibration) captureCalibration = softwareOutcome.calibration;
         captureForceScreenshot = softwareOutcome.forceScreenshot;
-        // The probe browser runs on the hardware GPU; the capture stage opens its own.
-        if (probeSession) {
-          lastBrowserConsole = probeSession.browserConsoleBuffer;
-          await closeCaptureSession(probeSession).catch(() => {});
-          probeSession = null;
-        }
+        await closeProbeSession();
         updateCaptureObservability({
           browserGpuMode: resolvedBrowserGpuMode,
           forceScreenshot: captureForceScreenshot,
         });
+      }
+      const settledGpuChoice = measureGpuChoice
+        ? settleAutoGpuChoice(outcome.calibration?.estimate, softwareOutcome?.calibration?.estimate)
+        : undefined;
+      if (gpuStore && settledGpuChoice) {
+        try {
+          writeGpuChoice(gpuStore, settledGpuChoice, {
+            hardwareP95Ms: outcome.calibration?.estimate.p95Ms,
+            softwareP95Ms: softwareOutcome?.calibration?.estimate.p95Ms,
+          });
+        } catch (error) {
+          log.warn(
+            "[Render] Could not save the measured GPU choice; the next render measures again.",
+            {
+              file: gpuStore.file,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
       }
       observability.checkpoint("capture_calibration", "resolved", {
         forceScreenshot: captureForceScreenshot,
