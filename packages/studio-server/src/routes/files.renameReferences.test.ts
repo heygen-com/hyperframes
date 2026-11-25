@@ -838,4 +838,19 @@ describe("renaming a folder over the route", () => {
       'url("old clips/a.png") url(takes/a.png)',
     );
   });
+
+  // fails without the fix: a page's minified <style> ended a url() with `}`, so its folder reading never matched.
+  it("in HTML follows a folder-relative url() in a minified style", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-rename-refs-"));
+    dirs.push(project);
+    mkdirSync(join(project, "assets", "clips"), { recursive: true });
+    writeFileSync(join(project, "assets", "clips", "a.png"), "x");
+    const style = (folder: string) =>
+      `<style>.a{background:url(${folder}/a.png)}.b{background:url(${folder}/a.png)!important}` +
+      `.c{background:image-set(url(${folder}/a.png) 1x)}</style>`;
+    writeFileSync(join(project, "assets", "page.html"), style("clips"));
+    const response = await renameIn(project, "assets/clips", "assets/takes");
+    expect(response.status).toBe(200);
+    expect(readFileSync(join(project, "assets", "page.html"), "utf8")).toBe(style("takes"));
+  });
 });

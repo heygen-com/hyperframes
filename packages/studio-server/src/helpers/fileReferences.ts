@@ -409,7 +409,7 @@ export function referenceRewriter(
 const MAX_REST = 256;
 const restAfter = (text: string, end: number) =>
   /^[^"'`<>\r\n]*/.exec(text.slice(end, end + MAX_REST))![0];
-const REFERENCE_END = /^(?:$|\)(?=$|[\s;,])|[?#]|,\s|\s+\d+(?:\.\d+)?[wx](?![\w.]))/;
+const REFERENCE_END = /^(?:$|\)(?=$|[\s;,}!)/])|[?#]|,\s|\s+\d+(?:\.\d+)?[wx](?![\w.]))/;
 
 function reaches(targets: ReadonlySet<string>, path: string): boolean {
   for (let i = 0; i <= path.length; i++)
