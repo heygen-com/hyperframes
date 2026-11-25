@@ -389,10 +389,15 @@ export function getOwnText(el: Element): string {
   return text;
 }
 
+/** The element, or its lone child, is a script, style or other non-content element. */
+function declinesText(el: Element): boolean {
+  const lone = el.children.length === 1 ? el.firstElementChild : null;
+  return isNonContentElement(el) || (lone !== null && isNonContentElement(lone));
+}
+
 /** Replace the SDK text target, keeping multi-child structure; false, writing nothing, on non-content. */
 export function setOwnText(el: Element, text: string): boolean {
-  const lone = el.children.length === 1 ? el.firstElementChild : null;
-  if (isNonContentElement(el) || (lone && isNonContentElement(lone))) return false;
+  if (declinesText(el)) return false;
   const singleChild = resolveSingleChildTextTarget(el);
   if (singleChild) {
     singleChild.textContent = text;
