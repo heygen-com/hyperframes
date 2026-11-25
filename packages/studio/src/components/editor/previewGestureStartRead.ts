@@ -44,7 +44,7 @@ export function measureLiveGrow(
   iframe: HTMLIFrameElement,
   element: HTMLElement,
 ): Grow | null {
-  const scale = computeOverlayRootScale(overlayEl, iframe, null);
+  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
   const layout = { width: element.offsetWidth, height: element.offsetHeight };
   const grow = scale && measureGrowResponse(element, layout);
   return grow ? growOnOverlay(grow, scale.rootScaleX, scale.rootScaleY) : null;
