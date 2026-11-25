@@ -1,6 +1,8 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import { type FrameSource, registerFrameSource } from "./frameSources";
 import { initSandboxRuntimeModular } from "./init";
+import { installPausedVideoCallbacks } from "./pausedVideoCallbacks";
+import { getPausedVideoFrame } from "./pausedVideoFrames";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 
 const disposers: Array<() => void> = [];
@@ -169,4 +171,28 @@ it("a looping video's frame source is asked for source times that wrap at its le
 
   expect(window.__hf!.sourceTimeAt!(cam, 2)).toBeCloseTo(3);
   expect(window.__hf!.sourceTimeAt!(cam, 4)).toBeCloseTo(2);
+});
+
+it("scripts reading a video's pixels get its frame source's picture, and its frame callbacks fire", async () => {
+  const proto = HTMLVideoElement.prototype;
+  const descriptors = Object.getOwnPropertyDescriptors(proto);
+  onTestFinished(() => {
+    for (const name of ["requestVideoFrameCallback", "cancelVideoFrameCallback"] as const) {
+      if (descriptors[name]) Object.defineProperty(proto, name, descriptors[name]);
+      else Reflect.deleteProperty(proto, name);
+    }
+  });
+  Object.assign(proto, { requestVideoFrameCallback: () => 1, cancelVideoFrameCallback: () => {} });
+  installPausedVideoCallbacks();
+  const shown = document.createElement("canvas");
+  const { cam, playFor } = playWithFrameSource(undefined, {
+    picture: () => ({ canvas: shown, time: 0 }),
+  });
+  const frames: number[] = [];
+  cam.requestVideoFrameCallback((_now, metadata) => void frames.push(metadata.mediaTime));
+  window.__player!.play();
+  playFor(0.5);
+
+  expect(getPausedVideoFrame(cam)).toBe(shown);
+  await vi.waitFor(() => expect(frames).toEqual([0]));
 });

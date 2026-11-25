@@ -1,6 +1,7 @@
 import { isWebKit, MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { applyNativeVideoLook } from "./nativeVideoLook";
+import { frameSourcePicture } from "./frameSources";
 import {
   installPausedVideoCallbacks,
   stagePausedVideoCallbacks,
@@ -60,7 +61,7 @@ const presented = new Map<HTMLMediaElement, Presented>();
 const authoredSeeks = new WeakSet<HTMLVideoElement>();
 
 export function getPausedVideoFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
-  return presented.get(video)?.canvas ?? null;
+  return presented.get(video)?.canvas ?? frameSourcePicture(video)?.canvas ?? null;
 }
 
 export function ownsPausedVideoTime(video: HTMLMediaElement): boolean {

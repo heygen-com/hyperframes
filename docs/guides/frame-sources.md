@@ -37,4 +37,6 @@ Two optional members let such a source take part in the Buffering hold, which pa
 
 For a clip with no `data-duration`, the runtime needs the source's length. Return it from `length()` once known, and dispatch a `durationchange` event on the element when it becomes known. A `loop` element's source time wraps at that length, as it does for a media element the runtime plays itself.
 
+A `<video>` a frame source supplies has no picture of its own. Return the picture on screen from `picture()` as `{ canvas, time }`: scripts that draw the video or upload it as a WebGL texture get `canvas`, and the video's `requestVideoFrameCallback` callbacks fire with `time` as `mediaTime`. Add `frame`, the decoded `VideoFrame` the canvas shows, and a colour grade on the video uploads it directly instead of copying the canvas.
+
 Registration does not expose arbitrary scene code as editable keyframes. Manual element edits need stable identities and persistent parameters or overrides. Imported iframe sources also need screenshot capture and an explicit message bridge; this API does not grant access to sandboxed DOM.

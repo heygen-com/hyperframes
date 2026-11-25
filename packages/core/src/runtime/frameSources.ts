@@ -2,7 +2,8 @@ import { sourceTimeAt } from "../speedRamp";
 import { readElementRateSpec, readMediaStart } from "./playbackRate";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { isClipOnScreenAt } from "./clipWindow";
-import { isElementNode, isMediaElement } from "./domRealm";
+import { isElementNode, isMediaElement, isVideoElement } from "./domRealm";
+import { flushPausedVideoCallbacks, stagePausedVideoCallbacks } from "./pausedVideoCallbacks";
 import { sourceLengthOf, supplySourceLength } from "./sourceLength";
 import type { RuntimeDeterministicAdapter } from "./types";
 
@@ -14,6 +15,7 @@ export interface FrameSource {
   canPlayAt?: (sourceTime: number) => boolean;
   received?: () => number;
   length?: () => number | undefined;
+  picture?: () => { canvas: HTMLCanvasElement; time: number; frame?: VideoFrame } | null;
   dispose?: () => void;
 }
 
@@ -34,6 +36,9 @@ export const hasFrameSource = (element: unknown): boolean =>
 
 export const frameSourceReceived = (element: Element): number | undefined =>
   sources.get(element)?.source.received?.();
+
+export const frameSourcePicture = (element: Element) =>
+  sources.get(element)?.source.picture?.() ?? null;
 
 export function frameSourceTimeAt(element: Element, time: number, start: number): number {
   const mediaStart = readMediaStart(element);
@@ -77,6 +82,15 @@ export function registerFrameSource(source: FrameSource): () => void {
   void ready.catch(() => {});
   let pending: number | null = null;
   let work: Promise<void> | null = null;
+  let shownTime: number | null = null;
+  const showPicture = () => {
+    const picture = source.picture?.();
+    if (!picture || picture.time === shownTime || !isVideoElement(source.element)) return;
+    shownTime = picture.time;
+    const { width, height } = picture.canvas;
+    stagePausedVideoCallbacks(source.element, { mediaTime: picture.time, width, height });
+    flushPausedVideoCallbacks(source.element);
+  };
   const drain = async () => {
     let failure: { reason: unknown } | undefined;
     try {
@@ -86,6 +100,7 @@ export function registerFrameSource(source: FrameSource): () => void {
         pending = null;
         try {
           await Promise.race([source.render(time, controller.signal), cancelled]);
+          showPicture();
         } catch (reason) {
           failure ??= { reason };
         }
