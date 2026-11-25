@@ -31,12 +31,13 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
   if (open) return open.client;
   const client = createEditingPortClient({ iframe });
   const retire = () => {
-    iframe.removeEventListener("load", retire);
+    iframe.removeEventListener("load", retire, { capture: true });
     client.dispose();
     if (clients.get(iframe)?.client === client) clients.delete(iframe);
   };
   clients.set(iframe, { client, retire });
-  iframe.addEventListener("load", retire, { once: true });
+  // Capture runs before every other load handler, so none of them is handed the old load's client.
+  iframe.addEventListener("load", retire, { once: true, capture: true });
   return client;
 }
 
