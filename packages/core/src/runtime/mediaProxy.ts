@@ -403,7 +403,8 @@ function withBoxEdges(el: HTMLVideoElement, size: { width: number; height: numbe
  * in media.ts).
  */
 export function isRenderMode(el: HTMLMediaElement): boolean {
-  if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) return true;
+  if ((window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG)
+    return true;
   return isVideoElement(el) && !!findInjectedRenderFrame(el);
 }
 

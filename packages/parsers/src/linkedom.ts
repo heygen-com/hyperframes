@@ -40,12 +40,20 @@ const READ_AS_TEXT = new Set(["title", "style", "script", "textarea", "xmp"]);
 const FOREIGN = new Set(["svg", "math"]);
 const BACK_TO_HTML = new Set(["foreignobject", "desc"]);
 const TAG_OR_COMMENT = /<[A-Za-z!/?]/;
+const TEXT_UNTIL_ANY_END_TAG_IN_SCRIPTING_BROWSER = new Set([
+  "noscript",
+  "iframe",
+  "noembed",
+  "noframes",
+]);
+const COMMENT_END_ONLY_BROWSERS_READ = "--!>";
+const SHOW_COMMENT = 0x80;
 const CDATA = /<!\[CDATA\[[\s\S]*?\]\]>/g;
 
 export class HtmlReadUnlikeBrowserError extends Error {
   constructor() {
     super(
-      "This HTML has tags or comments inside an SVG or MathML title, style, script, textarea or xmp element, which can't be read the way a browser reads them.",
+      "This HTML has tags or comments inside an SVG or MathML title, style, script, textarea or xmp element, an end tag inside a comment or attribute of a noscript, iframe, noembed or noframes element, or a comment holding --!>, which can't be read the way a browser reads them.",
     );
     this.name = "HtmlReadUnlikeBrowserError";
   }
@@ -61,8 +69,11 @@ function insideForeign(element: Element): boolean {
 }
 
 function readAsTextUnlikeBrowser(element: Element): boolean {
+  const name = element.localName.toLowerCase();
+  if (TEXT_UNTIL_ANY_END_TAG_IN_SCRIPTING_BROWSER.has(name))
+    return new RegExp(`</${name}[\\t\\n\\f\\r />]`, "i").test(element.innerHTML);
   return (
-    READ_AS_TEXT.has(element.localName.toLowerCase()) &&
+    READ_AS_TEXT.has(name) &&
     insideForeign(element) &&
     TAG_OR_COMMENT.test((element.textContent ?? "").replace(CDATA, ""))
   );
@@ -77,9 +88,13 @@ function nextInDocumentOrder(element: Element): Element | null {
 
 // One pass in document order: linkedom keeps the tree as a list, so asking each element for its children is quadratic.
 // A parsed template's children are in that list; its `content` is a deep copy linkedom makes and keeps on first read.
-function readsUnlikeBrowser(root: ParentNode): boolean {
+function readsUnlikeBrowser(root: Document, html: string): boolean {
   for (let element = root.firstElementChild; element; element = nextInDocumentOrder(element))
     if (readAsTextUnlikeBrowser(element)) return true;
+  if (!html.includes(COMMENT_END_ONLY_BROWSERS_READ)) return false;
+  const comments = root.createTreeWalker(root, SHOW_COMMENT);
+  while (comments.nextNode())
+    if (comments.currentNode.nodeValue?.includes(COMMENT_END_ONLY_BROWSERS_READ)) return true;
   return false;
 }
 
@@ -88,7 +103,7 @@ function readsUnlikeBrowser(root: ParentNode): boolean {
 export function parseHTML(html: string, globals?: unknown): Window & typeof globalThis {
   escapeTextOnWrite();
   const parsed = linkedomParseHTML(html, globals) as Window & typeof globalThis;
-  if (readsUnlikeBrowser(parsed.document)) throw new HtmlReadUnlikeBrowserError();
+  if (readsUnlikeBrowser(parsed.document, html)) throw new HtmlReadUnlikeBrowserError();
   return parsed;
 }
 
@@ -105,7 +120,7 @@ export const DOMParser = class extends LinkedomDOMParser {
     globals?: unknown,
   ) {
     const parsed = super.parseFromString(markup, mimeType, globals);
-    if (mimeType === "text/html" && readsUnlikeBrowser(parsed as unknown as Document))
+    if (mimeType === "text/html" && readsUnlikeBrowser(parsed as unknown as Document, markup))
       throw new HtmlReadUnlikeBrowserError();
     return parsed;
   }

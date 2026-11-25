@@ -242,6 +242,10 @@ const ASSUMED_CHANNELS = 2;
 const BYTES_PER_SAMPLE = 4;
 
 export class WebAudioTransport {
+  /** Request options for every decode fetch, over `cache: "no-store"`. */
+  private readonly _fetchInit: RequestInit;
+  private readonly _busDocument: Document | null | undefined;
+  private _givenContext: AudioContext | null;
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
@@ -305,11 +309,21 @@ export class WebAudioTransport {
     return this.open();
   }
 
+  /** `context`: one the caller opened inside a tap, which Safari only lets sound when made there. */
+  constructor(
+    opts: { fetchInit?: RequestInit; busDocument?: Document | null; context?: AudioContext } = {},
+  ) {
+    this._fetchInit = opts.fetchInit ?? {};
+    this._busDocument = opts.busDocument;
+    this._givenContext = opts.context ?? null;
+  }
+
   /** Builds the context on the calling thread: on Windows that opens the audio device and can block seconds. */
   open(): boolean {
     if (this._ctx) return true;
     try {
-      this._ctx = new AudioContext();
+      this._ctx = this._givenContext ?? new AudioContext();
+      this._givenContext = null;
       this._ctx.onstatechange = () => this.rest();
       this._masterGain = this._ctx.createGain();
       this._busOut = this._ctx.createGain();
@@ -428,7 +442,7 @@ export class WebAudioTransport {
       // `no-store`: a retry must actually re-request the asset — not replay a
       // cached 404/stale response from the failed attempt that we chose not to
       // blacklist.
-      const response = await fetch(src, { cache: "no-store" });
+      const response = await fetch(src, { cache: "no-store", ...this._fetchInit });
       if (!response.ok) {
         swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
         reportMediaLoadFailure(el, "fetch", response.status);
@@ -938,10 +952,12 @@ export class WebAudioTransport {
   ): GainNode | null {
     if (!this._masterGain) return null;
     const groupTiming: AutomationTiming = { scheduledAt, elapsed: compositionTime, rate: safeRate };
-    this.ensureMasterBus(el.ownerDocument, groupTiming);
+    const doc = this._busDocument === undefined ? el.ownerDocument : this._busDocument;
+    if (!doc) return this._masterGain;
+    this.ensureMasterBus(doc, groupTiming);
     const groupId = audioGroupOf(el);
     if (!groupId) return this._masterGain;
-    return this.groupInput(groupId, el.ownerDocument, groupTiming) ?? this._masterGain;
+    return this.groupInput(groupId, doc, groupTiming) ?? this._masterGain;
   }
 
   /**

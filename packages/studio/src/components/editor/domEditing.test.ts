@@ -996,7 +996,7 @@ describe("resolveDomEditSelection", () => {
         <div
           id="slide-1"
           data-composition-id="slide-core-conviction"
-          data-composition-src="compositions/slide-01-core-conviction.html"
+          data-composition-src="compositions/slide-01-core-conviction.html" data-composition-file="compositions/slide-01-core-conviction.html"
         >
           <h1>Core Conviction</h1>
         </div>

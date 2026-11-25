@@ -12,7 +12,7 @@ import {
   maskNonScannableRanges,
   resolveExistingLocalAsset,
 } from "@hyperframes/parsers/asset-resolution";
-import { parseHTML } from "@hyperframes/parsers/linkedom";
+import { parseLintHtml } from "./readableHtml.js";
 import type { HyperframeLintFinding } from "./types.js";
 import { mediaSrcOf, mediaSrcTagRe } from "./utils";
 
@@ -150,7 +150,7 @@ interface UnresolvedFiniteVideoSlot extends Omit<LocalFiniteVideoSlot, "src"> {
 }
 
 function collectVideoElements(html: string): Element[] {
-  const { document } = parseHTML(html);
+  const { document } = parseLintHtml(html);
   const roots: ParentNode[] = [document];
   const videos: Element[] = [];
   for (let index = 0; index < roots.length; index++) {

@@ -174,8 +174,7 @@ export function resolveGroupSourceFile(groupEl: Element | null): string | undefi
   while (node) {
     const owner: Element | null = node.closest("[data-composition-id]");
     if (!owner) return undefined;
-    const file =
-      owner.getAttribute("data-composition-file") ?? owner.getAttribute("data-composition-src");
+    const file = owner.getAttribute("data-composition-file");
     if (file) return file;
     node = owner.parentElement;
   }

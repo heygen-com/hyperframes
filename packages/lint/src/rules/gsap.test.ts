@@ -3270,28 +3270,57 @@ describe("SVG draw-on rules", () => {
     expect(performance.now() - started).toBeLessThan(3000);
   });
 
-  // Linear work grows about 4x from n to 4n tags and quadratic work 16x; sizes alternate so a load spike slows both.
-  const growth = async (page: (n: number) => string, n: number): Promise<number> => {
-    const timed = async (html: string) => {
-      const started = performance.now();
+  // Lint's work is string and regex scanning, so it is counted as the calls it makes to those methods plus the
+  // characters they return. Unlike a clock, the count does not change on a busy machine. From n to 4n tags linear
+  // work grows about 4x, n log n about 5x and quadratic work 16x.
+  const SCANNING_METHODS = [
+    [
+      String.prototype,
+      ["charCodeAt", "endsWith", "includes", "indexOf", "lastIndexOf", "match", "matchAll"],
+    ],
+    [
+      String.prototype,
+      ["replace", "replaceAll", "search", "slice", "split", "startsWith", "substring"],
+    ],
+    [String.prototype, ["toLowerCase", "trim"]],
+    [RegExp.prototype, ["exec", "test"]],
+  ] as const;
+  const workOf = async (html: string): Promise<number> => {
+    let work = 0;
+    const restore: Array<() => void> = [];
+    for (const [owner, names] of SCANNING_METHODS)
+      for (const name of names) {
+        const original = Object.getOwnPropertyDescriptor(owner, name)!;
+        const method = original.value as (...args: unknown[]) => unknown;
+        Object.defineProperty(owner, name, {
+          ...original,
+          value(this: unknown, ...args: unknown[]) {
+            const result = method.apply(this, args);
+            work += 1;
+            if (typeof result === "string") work += result.length;
+            else if (Array.isArray(result))
+              for (const part of result) if (typeof part === "string") work += part.length;
+            return result;
+          },
+        });
+        restore.push(() => Object.defineProperty(owner, name, original));
+      }
+    try {
       await lintHyperframeHtml(html);
-      return performance.now() - started;
-    };
-    const [small, large] = [page(n), page(4 * n)];
-    let [bestSmall, bestLarge] = [Infinity, Infinity];
-    for (let run = 0; run < 5; run += 1) {
-      bestSmall = Math.min(bestSmall, await timed(small));
-      bestLarge = Math.min(bestLarge, await timed(large));
+    } finally {
+      for (const undo of restore) undo();
     }
-    return bestLarge / bestSmall;
+    return work;
   };
+  const growth = async (page: (n: number) => string, n: number): Promise<number> =>
+    (await workOf(page(4 * n))) / (await workOf(page(n)));
 
   it("lints script tags naming one file in linear time", { timeout: 120_000 }, async () => {
     const page = (n: number) => `<html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
   ${'<script src="lib.js"></script>\n'.repeat(n)}
 </body></html>`;
-    expect(await growth(page, 1250)).toBeLessThan(8);
+    expect(await growth(page, 1250)).toBeLessThan(6);
   });
 
   it(
@@ -3317,7 +3346,7 @@ describe("SVG draw-on rules", () => {
   ${scripts}
 </body></html>`;
       };
-      expect(await growth(page, 250)).toBeLessThan(8);
+      expect(await growth(page, 250)).toBeLessThan(6);
     },
   );
 

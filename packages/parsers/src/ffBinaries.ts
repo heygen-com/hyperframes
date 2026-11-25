@@ -15,7 +15,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Readable } from "node:stream";
-import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js";
+import { isTrustedExecutablePath, readEnv, trustedPathDirs } from "./trustedExecutable.js";
 
 /**
  * Shared FFmpeg/FFprobe binary resolution for every package that shells out
@@ -122,7 +122,7 @@ function scanPath(name: FfBinaryName): string | undefined {
       ? [
           ".exe",
           ...new Set(
-            (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+            (readEnv("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
               .split(";")
               .map((ext) => ext.trim().toLowerCase())
               .filter(Boolean),

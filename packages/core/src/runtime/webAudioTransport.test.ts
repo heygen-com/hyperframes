@@ -941,8 +941,8 @@ describe("WebAudioTransport", () => {
       return { ctx, gainNodes, analysers, masterGain, monitorGain, mediaElementSource };
     }
 
-    function setupGroupTransport(currentTime = 100) {
-      const transport = new WebAudioTransport();
+    function setupGroupTransport(currentTime = 100, opts?: { busDocument?: Document | null }) {
+      const transport = new WebAudioTransport(opts);
       const mock = createGroupMockAudioContext(currentTime);
       (transport as unknown as { _ctx: unknown })._ctx = mock.ctx;
       (transport as unknown as { _masterGain: unknown })._masterGain = mock.masterGain;
@@ -1622,6 +1622,30 @@ describe("WebAudioTransport", () => {
         expect(masterGain.connect).not.toHaveBeenCalledWith(busOut);
       });
 
+      // fails without the fix: the transport built its own context, which Safari keeps silent outside a tap.
+      it("plays on the context it is handed instead of making one", () => {
+        const made = vi.fn();
+        vi.stubGlobal("AudioContext", made);
+        const { ctx } = createMockAudioContext();
+        const transport = new WebAudioTransport({ context: ctx as unknown as AudioContext });
+
+        expect(transport.open()).toBe(true);
+
+        expect(transport.context).toBe(ctx);
+        expect(made).not.toHaveBeenCalled();
+        vi.unstubAllGlobals();
+      });
+
+      it("reads no master chain from the page when it is given no bus document", async () => {
+        document.body.innerHTML = `<div id="root" data-composition-id="main" data-fx-chain='${GAIN_CHAIN}'></div>`;
+        const setup = setupGroupTransport(100, { busDocument: null });
+        const busOut = withBusOut(setup);
+
+        await scheduleGrouped(setup.transport, setup.gen, "a");
+
+        expect(setup.mock.masterGain.disconnect).not.toHaveBeenCalledWith(busOut);
+      });
+
       it("feeds grouped members through the same master bus", async () => {
         document.body.innerHTML = `<div id="root" data-composition-id="main" data-fx-chain='${GAIN_CHAIN}'></div>`;
         const setup = setupGroupTransport();
@@ -1901,6 +1925,30 @@ describe("WebAudioTransport", () => {
       const second = await transport.decodeAudioElement(el("tts.wav"));
       expect(second).not.toBeNull(); // self-heals once the asset is available
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      vi.unstubAllGlobals();
+    });
+
+    // fails without the fix: a player decoding a sealed film's files could not keep its fetches on the host.
+    it("sends every decode fetch with the request options it was made with, over no-store", async () => {
+      const transport = new WebAudioTransport({
+        fetchInit: { method: "GET", credentials: "same-origin", redirect: "error" },
+      });
+      (transport as unknown as { _ctx: unknown })._ctx = {
+        state: "running",
+        decodeAudioData: vi.fn(async () => ({}) as AudioBuffer),
+      };
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      await transport.decodeAudioElement(el("bed.m4a"));
+      expect(fetchMock).toHaveBeenCalledWith(key("bed.m4a"), {
+        cache: "no-store",
+        method: "GET",
+        credentials: "same-origin",
+        redirect: "error",
+      });
       vi.unstubAllGlobals();
     });
 

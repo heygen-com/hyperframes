@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS } from "../../../src/components/editor/domEditNudge";
-import { pressNudges, saveFault, timedWrite } from "./case.mjs";
+import { pressNudges, saveFault, shownAfterKeys, timedWrite } from "./case.mjs";
 import { slowest } from "./sequences.mjs";
 import { score, UNDO_WRITE_MAX_MS } from "./report.mjs";
 
@@ -80,6 +80,48 @@ describe("a nudge burst", () => {
       await pressed;
       expect(pressedAt).toHaveLength(3);
       expect(pressedAt.at(-1) - pressedAt[0]).toBeLessThan(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("the box after a nudge burst", () => {
+  const at = (x) => ({
+    visible: [
+      [x, 0],
+      [x + 10, 0],
+      [x + 10, 10],
+      [x, 10],
+    ],
+  });
+  // A sealed preview draws a burst a frame round trip after its keys; until then it shows the box where it was.
+  const preview = (shown) => {
+    let frames = 0;
+    return {
+      read: async () => at(shown(frames)),
+      frame: async () => void ((frames += 1), vi.advanceTimersByTime(16)),
+    };
+  };
+
+  it("is the drawn box, not the one shown before the preview drew the keys", async () => {
+    vi.useFakeTimers();
+    try {
+      const { read, frame } = preview((frames) => (frames < 3 ? 0 : 3));
+      expect((await shownAfterKeys(read, at(0).visible, frame)).visible).toEqual(at(3).visible);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up at its deadline with the undrawn box when the keys never draw, so the step still fails", async () => {
+    vi.useFakeTimers();
+    try {
+      const { read, frame } = preview(() => 0);
+      const start = Date.now();
+      expect((await shownAfterKeys(read, at(0).visible, frame)).visible).toEqual(at(0).visible);
+      expect(Date.now() - start).toBeGreaterThanOrEqual(2000);
+      expect(Date.now() - start).toBeLessThan(2100);
     } finally {
       vi.useRealTimers();
     }
