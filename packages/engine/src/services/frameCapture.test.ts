@@ -165,13 +165,16 @@ describe("classifyPageError", () => {
   });
 
   // initializeSession registers its listeners before the incomplete fake session makes it throw.
-  async function listenedSession(memo: SubTimelineWaitMemo = {}) {
+  async function listenedSession(
+    memo: SubTimelineWaitMemo = {},
+    send: (method: string) => Promise<unknown> = async () => ({}),
+  ) {
     const runtimeListeners = new Map<string, (event: unknown) => void>();
     const pageListeners = new Map<string, (event: unknown) => void>();
     const listen =
       (listeners: typeof pageListeners) => (event: string, listener: (event: unknown) => void) =>
         listeners.set(event, listener);
-    const client = { on: listen(runtimeListeners), send: async () => ({}) };
+    const client = { on: listen(runtimeListeners), send };
     const page = { on: listen(pageListeners), createCDPSession: async () => client };
     const session = {
       page,
@@ -271,6 +274,38 @@ describe("classifyPageError", () => {
     } finally {
       stderr.mockRestore();
     }
+  });
+
+  // fails without the fix: every throw turned the debugger on and downloaded the whole script again
+  it("looks up a throw site once per distinct error, for a few errors in all, however often the page throws", async () => {
+    const sent: string[] = [];
+    const scriptSource = `${"// filler\n".repeat(1_000_000)}document.getElementById("hero").textContent = 1;`;
+    const { session, runtimeListeners } = await listenedSession({}, async (method) => {
+      sent.push(method);
+      return method === "Debugger.getScriptSource" ? { scriptSource } : {};
+    });
+    const frame = { url: named, scriptId: "7", lineNumber: 1_000_000, columnNumber: 9 };
+    const throwAt = (message: string) =>
+      runtimeListeners.get("Runtime.exceptionThrown")?.({
+        exceptionDetails: {
+          ...thrown(`TypeError: ${message}`, named, []),
+          stackTrace: { callFrames: [frame as Protocol.Runtime.CallFrame] },
+        },
+      });
+    for (let n = 0; n < 1_000; n++) throwAt("hero is null");
+    for (let n = 0; n < 1_000; n++) throwAt(`step ${n} is null`);
+
+    expect(sent.filter((method) => method === "Debugger.enable")).toHaveLength(10);
+    await vi.waitFor(() =>
+      expect(sent.filter((method) => method === "Debugger.disable")).toHaveLength(10),
+    );
+    expect(sent.filter((method) => method === "Debugger.getScriptSource")).toHaveLength(10);
+    const hero = session.pageErrors.filter((error) => error.includes("hero is null"));
+    expect(hero).toEqual([
+      `runtime-error:TypeError: hero is null [thrown at: ${named}:1000001:10, getElementById("hero")]`,
+    ]);
+    expect(session.pageErrors.filter((error) => error.includes("[thrown at:"))).toHaveLength(10);
+    expect(session.pageErrors).toHaveLength(50);
   });
 
   it("classifies a script by its whole URL before keeping a cut copy", async () => {

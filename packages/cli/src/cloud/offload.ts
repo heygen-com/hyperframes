@@ -21,7 +21,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, relative, resolve } from "node:path";
 import { promisify } from "node:util";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { parseAnimatedGifMetadata } from "@hyperframes/core";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { templateContent } from "@hyperframes/parsers/sub-composition-validity";

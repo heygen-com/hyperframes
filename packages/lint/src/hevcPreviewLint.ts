@@ -12,7 +12,7 @@ import {
   maskNonScannableRanges,
   resolveExistingLocalAsset,
 } from "@hyperframes/parsers/asset-resolution";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import type { HyperframeLintFinding } from "./types.js";
 import { mediaSrcOf, mediaSrcTagRe } from "./utils";
 

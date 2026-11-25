@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 
 export type PageDocument = ReturnType<typeof parseHTML>["document"];
 

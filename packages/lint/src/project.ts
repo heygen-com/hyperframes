@@ -28,7 +28,7 @@ import {
   checkSubCompositionUsability,
   templateContent,
 } from "@hyperframes/parsers/sub-composition-validity";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import postcss from "postcss";
 import {
   cleanAssetUrl,
