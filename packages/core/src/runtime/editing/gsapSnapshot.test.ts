@@ -72,7 +72,7 @@ describe("gsapSnapshot", () => {
   it("refuses rather than cuts a timeline past the bound", async () => {
     const tween = { targets: () => [], vars: {}, startTime: () => 0, duration: () => 1 };
     frame(Array.from({ length: MAX_SNAPSHOT_TWEENS + 1 }, () => tween));
-    await expect(gsapSnapshot()).rejects.toThrow(/bound on tweens/);
+    await expect(gsapSnapshot()).rejects.toThrow(/past the snapshot bound/);
   });
 
   it("charges each target to the field bound, so a frame cannot pass it in targets", async () => {
