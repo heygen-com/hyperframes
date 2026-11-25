@@ -1773,3 +1773,48 @@ describe("missing_timeline_registry with a script outside the project", () => {
     expect(await registryErrors(project)).toHaveLength(1);
   });
 });
+
+describe("html a browser reads differently", () => {
+  const HIDDEN = "<svg><title><!-- </title><img src=x onerror=f()> --></title></svg>";
+  const refusals = (results: Awaited<ReturnType<typeof lintProject>>["results"]) =>
+    results.flatMap(({ file, result }) =>
+      result.findings
+        .filter((finding) => finding.code === "html_read_unlike_browser")
+        .map((finding) => ({ file, severity: finding.severity })),
+    );
+
+  it("reports a root page it cannot read as one error, instead of stopping", async () => {
+    const project = makeProject(validHtml().replace("</body>", `${HIDDEN}</body>`));
+    const { results, totalErrors } = await lintProject(project);
+    expect(refusals(results)).toEqual([{ file: "index.html", severity: "error" }]);
+    expect(totalErrors).toBe(1);
+  });
+
+  it("reports a mounted composition it cannot read, and still lints the root", async () => {
+    const root = validHtml().replace(
+      "</div>",
+      '<div data-composition-src="compositions/scene.html" data-start="0" data-duration="5"></div></div>',
+    );
+    const project = makeProject(root, {
+      "scene.html": `<template><div data-composition-id="scene">${HIDDEN}</div></template>`,
+    });
+    const { results } = await lintProject(project);
+    expect(refusals(results)).toEqual([{ file: "compositions/scene.html", severity: "error" }]);
+    expect(results.map(({ file }) => file)).toContain("index.html");
+  });
+
+  it("reports a mounted file outside compositions/ that it cannot read", async () => {
+    const root = validHtml().replace(
+      "</div>",
+      '<div data-composition-src="scenes/outro.html" data-start="0" data-duration="5"></div></div>',
+    );
+    const project = makeProject(root);
+    mkdirSync(join(project, "scenes"));
+    writeFileSync(
+      join(project, "scenes", "outro.html"),
+      `<template><div data-composition-id="outro">${HIDDEN}</div></template>`,
+    );
+    const { results } = await lintProject(project);
+    expect(refusals(results)).toEqual([{ file: "scenes/outro.html", severity: "error" }]);
+  });
+});

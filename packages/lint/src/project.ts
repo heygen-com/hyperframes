@@ -51,7 +51,7 @@ import {
   lintHevcPreviewCodec,
   lintVideoMediaStartPastEof,
 } from "./hevcPreviewLint.js";
-import { lintHyperframeHtml } from "./hyperframeLinter.js";
+import { lintHyperframeHtml, refusedFinding } from "./hyperframeLinter.js";
 import { readLinkedProjectFile } from "./linkedFile.js";
 import { MAX_EXPANDED_COMPOSITION_BYTES } from "./sizeLimits.js";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/parsers/private-path";
@@ -234,6 +234,7 @@ export function linkedSources(
   HyperframeLinterOptions,
   "externalStyles" | "externalScripts" | "scriptsOutsideProjectUnread" | "linkedFilesOverLimit"
 > {
+  if (!readable({ html })) return {};
   const reader = linkedFileReader(projectDir);
   return {
     externalStyles: collectExternalStyles(projectDir, html, compSrcPath, reader),
@@ -336,6 +337,8 @@ function resolveCssAssetCandidates(
   return resolveLocalAssetCandidates(projectDir, url);
 }
 
+const readable = ({ html }: { html: string }) => refusedFinding(html) === null;
+
 const WINDOWS_LONG_PATH_LIMIT = 32_767;
 const longerThanAnyPath = (src: string) => src.length > WINDOWS_LONG_PATH_LIMIT;
 
@@ -347,6 +350,7 @@ function mountedSources(
   const sources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
   const seen = new Set<string>();
   for (const source of sources) {
+    if (!readable(source)) continue;
     const { document } = parseHTML(source.html);
     for (const host of querySelectorAllIncludingTemplates(document, "[data-composition-src]")) {
       const src = host.getAttribute("data-composition-src")?.trim();
@@ -407,7 +411,7 @@ export async function lintProject(
   const mountedPaths = new Set(mounted.map((source) => source.compSrcPath));
   const unmountedCompositions: string[] = [];
   const unmountedSources: HtmlSource[] = [];
-  const projectFontFamilies = declaredProjectFontFamilies(projectDir, mounted);
+  const projectFontFamilies = declaredProjectFontFamilies(projectDir, mounted.filter(readable));
   const rootResult = await lintHyperframeHtml(rootHtml, {
     ...hostOptions,
     filePath: indexPath,
@@ -448,11 +452,11 @@ export async function lintProject(
       const html = readTextFile(filePath);
       const compSrcPath = `compositions/${file}`;
       if (!includeUnmounted && !mountedPaths.has(compSrcPath)) {
-        unmountedSources.push({ html, compSrcPath });
+        if (readable({ html })) unmountedSources.push({ html, compSrcPath });
         if (!isSnippetFragment(html)) unmountedCompositions.push(compSrcPath);
         continue;
       }
-      allHtmlSources.push({ html, compSrcPath });
+      if (readable({ html })) allHtmlSources.push({ html, compSrcPath });
       // Mountable fragments (figma component imports, registry snippets) are
       // not standalone compositions — composition-root rules don't apply.
       // Anchored to the file's ROOT element so a real composition that merely
@@ -475,6 +479,17 @@ export async function lintProject(
       totalWarnings += result.warningCount;
       totalInfos += result.infoCount;
     }
+  }
+
+  const unreadable = mounted.filter((source) => !readable(source));
+  if (unreadable.length > 0) {
+    for (const { html, compSrcPath = rootFile } of unreadable) {
+      if (results.some((entry) => entry.file === compSrcPath)) continue;
+      const result = await lintHyperframeHtml(html, { filePath: resolve(projectDir, compSrcPath) });
+      results.push({ file: compSrcPath, result, contentHash: contentDigest(html) });
+      totalErrors += result.errorCount;
+    }
+    return { results, totalErrors, totalWarnings, totalInfos, unmountedCompositions };
   }
 
   const projectFindings = [

@@ -147,3 +147,19 @@ describe("lintMediaUrls", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("lintHyperframeHtml on html a browser reads differently", () => {
+  it("returns the refusal as its one error finding, instead of throwing", async () => {
+    const html = `<!DOCTYPE html><html><body><div data-composition-id="main" data-width="1920" data-height="1080">
+<svg><title><!-- </title><img src=x onerror=f()> --></title></svg></div></body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        code: "html_read_unlike_browser",
+        severity: "error",
+        message: expect.stringContaining("can't be read the way a browser reads them"),
+      }),
+    ]);
+  });
+});

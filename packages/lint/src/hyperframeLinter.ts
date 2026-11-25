@@ -8,6 +8,7 @@ import type {
 import { createSourceLocator } from "./sourceLocations";
 import type { LintContext } from "./context";
 import { buildLintContext } from "./context";
+import { HtmlReadUnlikeBrowserError, parseHTML } from "@hyperframes/parsers/linkedom";
 import { parseHtmlStructure, readAttr, truncateSnippet } from "./utils";
 import { coreRules } from "./rules/core";
 import { mediaRules } from "./rules/media";
@@ -130,11 +131,34 @@ function collectFindings(
   }
 }
 
+/** The shared parser's refusal as a finding, so lint lists the file instead of stopping; null when it reads. */
+export function refusedFinding(html: string): HyperframeLintFinding | null {
+  try {
+    parseHTML(html);
+    return null;
+  } catch (error) {
+    if (!(error instanceof HtmlReadUnlikeBrowserError)) throw error;
+    return { code: "html_read_unlike_browser", severity: "error", message: error.message };
+  }
+}
+
 export async function lintHyperframeHtml(
   html: string,
   options: HyperframeLinterOptions = {},
 ): Promise<HyperframeLintResult> {
   const startedAt = performance.now();
+  const refused = refusedFinding(html);
+  if (refused) {
+    const timings = { groupMs: {}, slowestRule: "", slowestRuleMs: 0 };
+    const findings = [options.filePath ? { ...refused, file: options.filePath } : refused];
+    const counts = { errorCount: 1, warningCount: 0, infoCount: 0 };
+    return {
+      ok: false,
+      ...counts,
+      findings,
+      timings: { totalMs: performance.now() - startedAt, ...timings },
+    };
+  }
   const ctx = buildLintContext(html, options);
   const { findings: rawFindings, timings } = await runRules(ctx, options.filePath);
   const locate = createSourceLocator(html);
