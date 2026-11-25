@@ -322,7 +322,7 @@ export function mkdirWithinProject(root: string, dir: string): void {
   }
 }
 
-/** {@link mkdirWithinProject} on fs/promises: a drive that never answers a write holds a pool thread, not the caller's. */
+/** {@link mkdirWithinProject} on fs/promises: a write the drive never answers holds a pool thread, not the caller's. */
 export async function mkdirWithinProjectAsync(root: string, dir: string): Promise<void> {
   const folders = foldersToMake(root, dir);
   if (folders === null) {
