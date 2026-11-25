@@ -836,8 +836,8 @@ async function decryptedPiece(
 ): Promise<Omit<Piece, "init"> | null | true> {
   const keyFile = await onlyFile([key.uri], io);
   if (keyFile === true) return true;
-  // ffmpeg skips a segment whose key it cannot read.
-  if (!keyFile || keyFile.size !== 16) return null;
+  // ffmpeg decrypts with a key file's first 16 bytes, and skips a segment whose key file is shorter.
+  if (!keyFile || keyFile.size < 16) return null;
   if (size === 0 || size % 16) return true;
   const secret = await readFileAt(io, keyFile.path, 16, 0);
   const before = size >= 32 ? await readFileAt(io, path, 16, size - 32) : key.iv;

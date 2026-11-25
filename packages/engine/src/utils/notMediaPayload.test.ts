@@ -993,6 +993,15 @@ describe("playlistLeavesItsFolder reads an HLS list's segments as the one stream
       "hidden.m3u8": hidden,
     });
     expect(await playlistLeavesItsFolder(scripted)).toBe(true);
+    // ffmpeg decrypts with the first 16 bytes of a longer key file.
+    const padded = tree({
+      "clip.m3u8": list,
+      "key.bin": Buffer.concat([key, Buffer.alloc(16, 0xaa)]),
+      "a.ts": encrypt(script.slice(0, 12), 0),
+      "b.ts": encrypt(script.slice(12), 1),
+      "hidden.m3u8": hidden,
+    });
+    expect(await playlistLeavesItsFolder(padded)).toBe(true);
     const plain = tree({
       "clip.m3u8": list,
       "key.bin": key,
