@@ -1109,11 +1109,12 @@ describe("patch builders and prompt builder", () => {
 
     expect(prompt).toContain("## HyperFrames element edit request v1");
     expect(prompt).toContain("Schema version: 1");
-    expect(prompt).toContain("Source file: index.html");
-    expect(prompt).toContain("Selector: #editable-card");
+    expect(prompt).toContain('Source file: "index.html"');
+    expect(prompt).toContain('Selector: "#editable-card"');
     expect(prompt).toContain("Playback time:");
     expect(prompt).toContain("Text fields:");
-    expect(prompt).toContain('key=self:0:div; tag=<div>; source=self; text="Drag me first"');
+    expect(prompt).toContain('key="self:0:div"; tag="div"; source="self"');
+    expect(prompt).toContain('Text field "self:0:div":\nDrag me first');
     expect(prompt).toContain("Inline styles:");
     expect(prompt).toContain("Computed styles (browser-resolved):");
     expect(prompt).toContain("Target HTML:");
@@ -1156,8 +1157,8 @@ describe("patch builders and prompt builder", () => {
       sourceFilePath: "/tmp/hf-studio-project/index.html",
     });
 
-    expect(prompt).toContain("Source file: /tmp/hf-studio-project/index.html");
-    expect(prompt).not.toContain("Source file: index.html");
+    expect(prompt).toContain('Source file: "/tmp/hf-studio-project/index.html"');
+    expect(prompt).not.toContain('Source file: "index.html"');
   });
 
   it("includes raster click context in copied agent prompts", () => {

@@ -1,5 +1,5 @@
-// Studio's inline text editing and text saves, mounted in the test page as the canvas wires them, over a file whose
-// writes the test decides: each lands, fails or waits, in the order they reach it.
+// Studio's inline text editing, its formatting toolbar and text saves, mounted in the test page as the canvas wires
+// them, over a file whose writes the test decides: each lands, fails or waits, in the order they reach it.
 import { createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
@@ -14,6 +14,7 @@ import type { DomEditSelection } from "../src/components/editor/domEditing";
 import type { PersistDomEditOperations } from "../src/hooks/domEditCommitTypes";
 import { useDomEditTextCommits } from "../src/hooks/useDomEditTextCommits";
 import { useInlineTextEdit } from "../src/hooks/useInlineTextEdit";
+import { InlineTextToolbar } from "../src/components/editor/InlineTextToolbar";
 import {
   afterStudioPendingEdits,
   hasStudioPendingEdits,
@@ -125,7 +126,7 @@ export function mountTextEditing(
           onCommit: commits.handleDomRichTextCommit,
           onLost: (reason) => void reported.push(reason),
         });
-        return null;
+        return createElement(InlineTextToolbar, { session: controls.session, iframe });
       }),
     ),
   );
