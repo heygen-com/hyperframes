@@ -120,7 +120,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     setNotice("");
     setProgress("Preparing share…");
     try {
-      if (["share", "update"].includes(action.action)) await beforeShare?.();
+      if (["share", "update", "sync"].includes(action.action)) await beforeShare?.();
       if (!signal.aborted) await poll(await shareAction(token, action, signal), signal);
     } catch (cause) {
       await recoverActionFailure(cause, signal);
@@ -209,10 +209,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     copy,
   };
 }
-export type QuickShareModel = ReturnType<typeof useQuickShare> & {
-  includeSource: boolean;
-  setIncludeSource: (value: boolean) => void;
-};
+export type QuickShareModel = ReturnType<typeof useQuickShare>;
 
 function completionNotice(job: LocalShareJob) {
   if (job.state !== "done") return "";

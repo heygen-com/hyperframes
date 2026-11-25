@@ -122,6 +122,23 @@ export async function shareBootstrap(signal: AbortSignal): Promise<string> {
     throw new LocalShareError("unavailable", "Sharing is not available in this Studio host.");
   return value.csrf;
 }
+export async function projectFilesStatus(
+  token: string,
+  space: string,
+  signal: AbortSignal,
+): Promise<{ state: "off" | "synced" | "needs_sync"; paths: string[]; digest: string }> {
+  const value = await json(`project-files?space=${encodeURIComponent(space)}`, token, signal);
+  if (
+    !record(value) ||
+    (value.state !== "off" && value.state !== "synced" && value.state !== "needs_sync") ||
+    typeof value.digest !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.digest) ||
+    !Array.isArray(value.paths) ||
+    !value.paths.every(text)
+  )
+    throw new LocalShareError("unavailable", "Could not read the hidden asset summary.");
+  return { state: value.state, paths: value.paths, digest: value.digest };
+}
 export async function shareSnapshot(
   token: string,
   signal: AbortSignal,
