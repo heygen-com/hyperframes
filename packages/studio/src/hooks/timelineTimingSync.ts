@@ -29,7 +29,7 @@ import {
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { moveLiveTweens } from "../utils/gsapLiveRetime";
-import { rebindIframeTiming } from "./previewTimingPatch";
+import { rebindIframeTiming } from "./sealedTimingQueue";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
   if (targetPath.includes("\0") || targetPath.includes("..")) {
