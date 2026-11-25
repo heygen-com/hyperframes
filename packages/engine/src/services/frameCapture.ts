@@ -75,6 +75,14 @@ import {
 } from "./browserManager.js";
 import { openPage } from "./openPage.js";
 import {
+  boundedPageText,
+  keptWithinBudget,
+  PAGE_LIST_MAX,
+  PAGE_TEXT_MAX_CHARS,
+  warningBudgetOf,
+  type WarningBudget,
+} from "./pageTextBounds.js";
+import {
   beginFrameCapture,
   forgetBeginFrameCapture,
   ensureRenderFrameSiblings,
@@ -597,22 +605,8 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<stri
 const BROWSER_CONSOLE_BUFFER_SIZE = 200;
 const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
-const PAGE_TEXT_MAX_CHARS = 2_000;
-const PAGE_LIST_MAX = 50;
-// Warnings are the one list a page can grow without a count cap: this caps one session's and one render's.
-const WARNINGS_TEXT_MAX_CHARS = 1_000_000;
 const SERVED_SCRIPTS_MAX = 500;
 const THROW_SITE_LOOKUP_MAX = 10;
-
-const CUT_NOTE_MAX_CHARS = 40;
-
-function boundedPageText(text: string): string {
-  if (text.length <= PAGE_TEXT_MAX_CHARS) return text;
-  let end = PAGE_TEXT_MAX_CHARS - CUT_NOTE_MAX_CHARS;
-  const high = text.charCodeAt(end - 1);
-  if (high >= 0xd800 && high <= 0xdbff) end -= 1;
-  return `${text.slice(0, end)}… (${text.length - end} more characters)`;
-}
 
 function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
   session.browserConsoleBuffer.push(boundedPageText(text));
@@ -2143,18 +2137,24 @@ async function isolateUnregisteredCompositions(page: Page): Promise<IsolatedComp
       }
     }
     if (live === 0) return out;
+    var cut = function(text) {
+      return text && text.length > ${PAGE_TEXT_MAX_CHARS} ? text.slice(0, ${PAGE_TEXT_MAX_CHARS - 1}) + "…" : text;
+    };
     broken.forEach(function(host) {
       var tl = window.gsap.timeline({ paused: true });
       var duration = parseFloat(host.getAttribute("data-duration"));
       if (duration > 0) tl.set({}, {}, duration);
       var id = host.getAttribute("data-composition-id");
       timelines[id] = tl;
-      out.push({ compositionId: id, elementId: host.id || host.getAttribute("data-hf-id") || null });
+      // Only the record is capped here, so a huge page does not cross CDP; every broken host is still isolated.
+      if (out.length < ${PAGE_LIST_MAX})
+        out.push({ compositionId: cut(id), elementId: cut(host.id || host.getAttribute("data-hf-id") || null) });
     });
     if (out.length && typeof window.__hfForceTimelineRebind === "function") window.__hfForceTimelineRebind();
     return out;
   })()`);
   if (!Array.isArray(isolated)) return [];
+  // The page's own cap can be undone by a page that patches built-ins, so the record is bounded here too.
   return (isolated as IsolatedComposition[]).slice(0, PAGE_LIST_MAX).map((c) => ({
     compositionId: boundedPageText(c.compositionId),
     elementId: c.elementId && boundedPageText(c.elementId),
@@ -2577,71 +2577,6 @@ export async function collectMediaReadinessWarnings(
   append("media_readiness_timeout", "video", snapshot.pendingVideos);
   append("media_load_failed", "video", snapshot.failedVideos);
   return warnings;
-}
-
-function boundedWarningItem(item: unknown): unknown {
-  if (typeof item === "string") return boundedPageText(item);
-  if (!item || typeof item !== "object") return item;
-  return Object.fromEntries(
-    Object.entries(item).map(([k, v]) => [k, typeof v === "string" ? boundedPageText(v) : v]),
-  );
-}
-
-/** A warning's message and each of its lists cut to the page-text bounds; `keepLists` false empties the lists. */
-function boundedWarning(warning: CaptureWarning, keepLists: boolean): CaptureWarning {
-  const message = boundedPageText(warning.message);
-  if (!warning.details) return { ...warning, message };
-  const details: Record<string, unknown> = { ...warning.details };
-  for (const [key, value] of Object.entries(warning.details)) {
-    if (Array.isArray(value))
-      details[key] = keepLists ? value.slice(0, PAGE_LIST_MAX).map(boundedWarningItem) : [];
-  }
-  return { ...warning, message, details: details as CaptureWarning["details"] };
-}
-
-const warningKey = (warning: CaptureWarning) =>
-  `${warning.code}:${JSON.stringify(warning.details ?? {})}`;
-
-interface WarningBudget {
-  chars: number;
-  codes: Set<CaptureWarning["code"]>;
-  keys: Set<string>;
-}
-
-function warningBudgetOf(kept: readonly CaptureWarning[]): WarningBudget {
-  const budget: WarningBudget = { chars: 0, codes: new Set(), keys: new Set() };
-  for (const warning of kept) {
-    const key = warningKey(warning);
-    budget.chars += key.length + warning.message.length;
-    budget.codes.add(warning.code);
-    budget.keys.add(key);
-  }
-  return budget;
-}
-
-// Past WARNINGS_TEXT_MAX_CHARS, a warning is kept once per code with its lists emptied, so policy still sees it.
-function keptWithinBudget(budget: WarningBudget, raw: CaptureWarning): CaptureWarning | null {
-  const bounded = boundedWarning(raw, true);
-  const key = warningKey(bounded);
-  if (budget.keys.has(key)) return null;
-  const chars = key.length + bounded.message.length;
-  if (budget.chars + chars <= WARNINGS_TEXT_MAX_CHARS) {
-    budget.chars += chars;
-    budget.codes.add(raw.code);
-    budget.keys.add(key);
-    return bounded;
-  }
-  if (budget.codes.has(raw.code)) return null;
-  budget.codes.add(raw.code);
-  return boundedWarning(raw, false);
-}
-
-/** Adds a session's summary to a render's list, its warnings bounded by what the list already keeps. */
-export function retainCapturePerf(sink: CapturePerfSummary[], perf: CapturePerfSummary): void {
-  if (!perf.warnings) return void sink.push(perf);
-  const budget = warningBudgetOf(sink.flatMap((kept) => kept.warnings ?? []));
-  const warnings = perf.warnings.flatMap((warning) => keptWithinBudget(budget, warning) ?? []);
-  sink.push({ ...perf, warnings });
 }
 
 function recordCaptureWarnings(session: CaptureSession, warnings: readonly CaptureWarning[]): void {
@@ -3166,7 +3101,7 @@ function isPlayPauseAbort(message: string): boolean {
 export function classifyPageError(
   details: Protocol.Runtime.ExceptionDetails,
   projectScripts: ReadonlySet<string>,
-  servedPrefix?: string,
+  fallback?: ServedScriptFallback,
 ): string | null {
   const exception = details.exception;
   const message = String(exception?.description ?? exception?.value ?? details.text);
@@ -3176,21 +3111,26 @@ export function classifyPageError(
   // Frameless: a parse error names its script; a rejection names whatever document is current, so it is unattributable.
   if (frames.length === 0 && details.text.startsWith("Uncaught (in promise)")) return null;
   const urls = frames.length > 0 ? frames : [details.url];
-  return urls.some((url) => isOwnedScriptUrl(url, projectScripts, servedPrefix))
+  return urls.some((url) => isOwnedScriptUrl(url, projectScripts, fallback))
     ? `runtime-error:${firstLine}`
     : null;
 }
 
 // The render compiler names the composition's inline code.
 // Inline handlers report the document, which a widget can move.
-// `servedPrefix` is set once the served-script set is full: any URL on the server then counts as served.
+/** Set once the served-script set is full: any URL on the server then counts, except the documents it served. */
+interface ServedScriptFallback {
+  prefix: string;
+  documents: ReadonlySet<string>;
+}
+
 function isOwnedScriptUrl(
   url: string | undefined,
   projectScripts: ReadonlySet<string>,
-  servedPrefix?: string,
+  fallback?: ServedScriptFallback,
 ): boolean {
   if (url === undefined) return false;
-  if (servedPrefix !== undefined && url.startsWith(servedPrefix)) return true;
+  if (fallback && url.startsWith(fallback.prefix) && !fallback.documents.has(url)) return true;
   return projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL);
 }
 
@@ -3202,10 +3142,10 @@ export async function describeThrowSite(
   client: CDPSession,
   details: Protocol.Runtime.ExceptionDetails,
   projectScripts: ReadonlySet<string>,
-  servedPrefix?: string,
+  fallback?: ServedScriptFallback,
 ): Promise<string> {
   const frame = (details.stackTrace?.callFrames ?? []).find((f) =>
-    isOwnedScriptUrl(f.url, projectScripts, servedPrefix),
+    isOwnedScriptUrl(f.url, projectScripts, fallback),
   );
   if (!frame) return "";
   let where = `${frame.url}:${frame.lineNumber + 1}:${frame.columnNumber + 1}`;
@@ -3273,17 +3213,22 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
   const projectScripts = new Set<string>();
-  let servedPrefix: string | undefined;
+  const servedDocuments = new Set<string>();
+  let fallback: ServedScriptFallback | undefined;
   page.on("response", (response) => {
     const status = response.status();
     const request = response.request();
     const isScript = request.resourceType() === "script";
     const responseUrl = response.url();
     if (status < 400) {
-      if (!isScript || !responseUrl.startsWith(`${serverUrl}/`)) return;
-      if (projectScripts.size < SERVED_SCRIPTS_MAX && responseUrl.length <= PAGE_TEXT_MAX_CHARS)
-        projectScripts.add(responseUrl);
-      else servedPrefix = `${serverUrl}/`;
+      if (!responseUrl.startsWith(`${serverUrl}/`)) return;
+      const fits = responseUrl.length <= PAGE_TEXT_MAX_CHARS;
+      // ponytail: a document past PAGE_LIST_MAX is not excluded once the script fallback is on.
+      if (request.resourceType() === "document" && fits && servedDocuments.size < PAGE_LIST_MAX)
+        servedDocuments.add(responseUrl);
+      if (!isScript) return;
+      if (fits && projectScripts.size < SERVED_SCRIPTS_MAX) projectScripts.add(responseUrl);
+      else fallback = { prefix: `${serverUrl}/`, documents: servedDocuments };
       return;
     }
 
@@ -3312,7 +3257,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   // Unlike the pageerror Error, this keeps the script URL of syntax errors and thrown non-errors.
   const runtimeClient = await getCdpSession(page);
   runtimeClient.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
-    const error = classifyPageError(exceptionDetails, projectScripts, servedPrefix);
+    const error = classifyPageError(exceptionDetails, projectScripts, fallback);
     if (!error) return;
     const kept = boundedPageText(error);
     const lookedUp = (session.throwSiteLookups ??= new Set());
@@ -3321,7 +3266,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     recordPageError(session, error);
     if (lookedUp.size >= THROW_SITE_LOOKUP_MAX || !session.pageErrors.includes(kept)) return;
     lookedUp.add(kept);
-    void describeThrowSite(runtimeClient, exceptionDetails, projectScripts, servedPrefix).then(
+    void describeThrowSite(runtimeClient, exceptionDetails, projectScripts, fallback).then(
       (site) => {
         const i = session.pageErrors.indexOf(kept);
         if (!site || i < 0) return;

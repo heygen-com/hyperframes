@@ -2,13 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import type { Protocol } from "puppeteer-core";
 import { COMPOSITION_SOURCE_URL, SCENE_CALLBACK_ERROR_PREFIX } from "@hyperframes/core";
 import type { CapturePerfSummary, CaptureSession } from "./frameCapture.js";
+import { retainCapturePerf } from "./pageTextBounds.js";
 import type { CaptureWarning, SubTimelineWaitMemo } from "../types.js";
 import {
   buildZeroDurationDiagnostic,
   pollHfReady,
   recordBackgroundDecodeTimeouts,
   recordSubTimelineWarning,
-  retainCapturePerf,
   captureFramesBatchPipelined,
   captureFrameToBufferPipelined,
   classifyConsoleScriptError,
@@ -403,11 +403,16 @@ describe("classifyPageError", () => {
     );
   });
 
-  // fails at 50501bcb: past the served-script cap a project script's throw was dropped, hiding a script failure
-  it("still records a throw from a served script past the served-script cap or with a long URL", async () => {
+  // fails at 50501bcb: past the cap a project script's throw was dropped; at 30537d4e a document's throw counted
+  it("past the served-script cap, still records a served script's throw and not the document's", async () => {
     const { session, pageListeners, runtimeListeners } = await listenedSession();
     const script = (n: number) => `${server}/s${n}.js`;
     const long = `${server}/${"l".repeat(3_000)}.js`;
+    pageListeners.get("response")?.({
+      status: () => 200,
+      url: () => doc,
+      request: () => ({ resourceType: () => "document" }),
+    });
     for (const url of [...Array.from({ length: 2_000 }, (_, n) => script(n)), long]) {
       pageListeners.get("response")?.({
         status: () => 200,
@@ -419,6 +424,7 @@ describe("classifyPageError", () => {
       [0, script(0)],
       [1_999, script(1_999)],
       [-1, long],
+      [-2, doc],
     ] as const) {
       runtimeListeners.get("Runtime.exceptionThrown")?.({
         exceptionDetails: thrown(`Error: from ${n}`, url, [url]),

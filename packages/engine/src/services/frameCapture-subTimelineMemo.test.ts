@@ -87,7 +87,7 @@ describe("sub-composition timeline wait memo", () => {
     expect(memo.unregisteredIds).toBeUndefined();
   });
 
-  // fails at 50501bcb: the session kept every isolated composition the page named, at full length
+  // fails at 30537d4e: the page sent every isolated composition it named, at full length, before Node cut it
   it("isolates every broken composition in the page but keeps a fixed record of them", async () => {
     const root = { parentElement: null };
     const host = (id: string, nested = true) => ({
@@ -118,6 +118,14 @@ describe("sub-composition timeline wait memo", () => {
     await wait.promise;
 
     expect(broken.every((id) => timelines[id])).toBe(true);
+    const answers = await Promise.all(vi.mocked(page.evaluate).mock.results.map((r) => r.value));
+    const records = answers.filter(
+      (a): a is { compositionId: string }[] =>
+        Array.isArray(a) && a[0]?.compositionId !== undefined,
+    );
+    expect(records).toHaveLength(1);
+    expect(records[0]).toHaveLength(50);
+    expect(Math.max(...records[0]!.map((c) => c.compositionId.length))).toBeLessThanOrEqual(2_000);
     expect(session.isolatedCompositions).toHaveLength(50);
     const ids = session.isolatedCompositions?.map((c) => c.compositionId) ?? [];
     expect(Math.max(...ids.map((id) => id.length))).toBeLessThanOrEqual(2_000);
