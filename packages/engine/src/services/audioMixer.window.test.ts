@@ -12,7 +12,7 @@ const tempDirs: string[] = [];
 function durationSeconds(path: string): number {
   const result = spawnSync(
     getFfprobeBinary(),
-    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", path],
     { encoding: "utf-8" },
   );
   return Number(result.stdout.trim());
