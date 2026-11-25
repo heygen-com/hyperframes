@@ -930,7 +930,7 @@ describe("shadow reload store ownership and readiness", () => {
   it("keeps a section the new document still hosts but its manifest misses, without dropping it once", () => {
     const { getApi, gen, liveIframe, shadowIframe, root } = setup();
     const film = `<div data-composition-id="main"><div id="benefit" data-composition-id="benefit"
-      data-composition-src="compositions/benefit.html" data-start="0" data-duration="3"></div><p id="a"></p></div>`;
+      data-composition-src="compositions/benefit.html" data-composition-file="compositions/benefit.html" data-start="0" data-duration="3"></div><p id="a"></p></div>`;
     liveIframe.contentDocument!.body.innerHTML = film;
     shadowIframe.contentDocument!.body.innerHTML = film;
     const a = { id: "a", domId: "a", tag: "p", start: 0, duration: 3, track: 0 };

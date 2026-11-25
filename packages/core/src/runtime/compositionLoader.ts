@@ -830,6 +830,7 @@ async function mountExternalCompositions(
           throw new Error(`HTTP ${response.status}`);
         }
         const html = await response.text();
+        host.setAttribute("data-composition-file", src);
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
         dropAuthoredSvgReferenceAliases(doc);
