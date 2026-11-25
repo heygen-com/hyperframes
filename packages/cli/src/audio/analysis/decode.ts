@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { findFfBinary, mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { assertLiteralMediaInput } from "@hyperframes/parsers/literal-media-input";
 import {
   decodableAudioStream,
@@ -26,7 +26,7 @@ function requiredBinary(name: "ffmpeg" | "ffprobe"): string {
 }
 
 function literalInputArgs(binary: string, file: string, inputArgs: readonly string[]) {
-  if (inputArgs.length === 0) return mediaInputFormatArgs(binary, file);
+  if (inputArgs.length === 0) return mediaInputArgs(binary, file);
   assertLiteralMediaInput(file);
   return inputArgs;
 }

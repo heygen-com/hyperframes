@@ -5,8 +5,15 @@ import {
   collectSubCompositionDomChildren,
   collectSubCompositionHostState,
   hydrateTimelineFromPreview,
+  reseekPreviewAtTime,
 } from "./timelineSyncHydration";
 import type { ClipManifestClip, PlaybackAdapter } from "../lib/playbackTypes";
+
+const { sealedFrames } = vi.hoisted(() => ({ sealedFrames: new WeakSet<HTMLIFrameElement>() }));
+vi.mock("../lib/previewChannel", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/previewChannel")>()),
+  previewFrameOpaque: (iframe: HTMLIFrameElement) => sealedFrames.has(iframe),
+}));
 
 const clip = (over: Partial<ClipManifestClip>): ClipManifestClip => ({
   id: "x",
@@ -163,5 +170,22 @@ describe("hydrateTimelineFromPreview", () => {
       syncTimelineElements: vi.fn(),
     });
     expect(attachIframeShortcutListeners).toHaveBeenCalledOnce();
+  });
+});
+
+describe("reseekPreviewAtTime", () => {
+  // Each seek message is its own task in a sealed frame, so a guard seek paints: at 1 s it showed frame 29.
+  it.each([0, 0.5, 1, 3.5])("seeks a sealed frame once, to %s", (t) => {
+    const iframe = document.createElement("iframe");
+    sealedFrames.add(iframe);
+    const seek = vi.fn();
+    reseekPreviewAtTime({ seek }, t, iframe);
+    expect(seek.mock.calls).toEqual([[t]]);
+  });
+
+  it("seeks a frame Studio can script to a guard time first, so an unchanged time still renders", () => {
+    const seek = vi.fn();
+    reseekPreviewAtTime({ seek }, 1, document.createElement("iframe"));
+    expect(seek.mock.calls).toEqual([[0.999], [1]]);
   });
 });

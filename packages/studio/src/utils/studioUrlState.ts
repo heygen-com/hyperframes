@@ -66,10 +66,10 @@ export function normalizeStudioUrlPanelTab(tab: RightPanelTab | null): RightPane
 
 export function normalizeStudioCompositionPath(
   activeCompPath: string | null,
-  fileTree: string[],
+  compositions: string[],
 ): string | null {
   if (!activeCompPath || activeCompPath === "index.html") return null;
-  return fileTree.includes(activeCompPath) ? activeCompPath : null;
+  return compositions.includes(activeCompPath) ? activeCompPath : null;
 }
 
 function parseBoolean(value: string | null): boolean | null {

@@ -2,7 +2,7 @@
  * (linkedom): unknown elements and attributes are dropped by default rather than pattern-matched
  * as dangerous, so a new SVG feature can't reopen a class of bug the way regex denylisting did.
  */
-import { DOMParser } from "linkedom";
+import { DOMParser } from "@hyperframes/parsers/linkedom";
 import {
   SVG_ATTRIBUTES as SAFE_ATTRIBUTES,
   SVG_ELEMENTS as SAFE_ELEMENTS,

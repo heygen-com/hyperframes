@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix, win32 } from "node:path";
+import { isAbsolute, join, posix, resolve, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   collectSubCompositionSrcs,
@@ -143,6 +143,21 @@ describe("collectSubCompositionSrcs", () => {
 
 // The browser clamps `..` at the origin root; path.join does not. One resolver must serve lint and render.
 describe("resolveProjectRelativeSrc — the one src resolver for lint and render", () => {
+  // fails without the fix: with "." as the base the join stayed relative, so a src such as concat:a.wav|b.wav led
+  // the path ffmpeg was handed, and ffmpeg read it as its concat protocol instead of a project file.
+  it("returns an absolute path whatever base the caller passed", () => {
+    for (const base of [".", "./", ""])
+      for (const src of [
+        "concat:a.wav|b.wav",
+        "subfile,,start,0,end,1,,:clip.mp4",
+        "assets/clip.mp4",
+      ]) {
+        const path = resolveProjectRelativeSrc(src, base, base && `${base}/compiled`);
+        expect(isAbsolute(path)).toBe(true);
+        expect(path.startsWith(resolve(base))).toBe(true);
+      }
+  });
+
   let tmp: string;
 
   beforeAll(() => {
