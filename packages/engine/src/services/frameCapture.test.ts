@@ -581,7 +581,14 @@ describe("classifyPageError", () => {
     runtimeListeners.get("Runtime.exceptionThrown")?.({
       exceptionDetails: thrown("Error: busted", url, [url]),
     });
-    expect(session.pageErrors).toEqual(["runtime-error:Error: busted"]);
+    const fragment = `${server}/s.js#y`;
+    runtimeListeners.get("Runtime.exceptionThrown")?.({
+      exceptionDetails: thrown("Error: fragment", fragment, [fragment]),
+    });
+    expect(session.pageErrors).toEqual([
+      "runtime-error:Error: busted",
+      "runtime-error:Error: fragment",
+    ]);
   });
 
   it("refuses to capture another frame once a VFX chain has failed", async () => {
