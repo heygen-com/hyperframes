@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.92",
+  "version": "0.9.93",
   "description": "",
   "repository": {
     "type": "git",
@@ -175,6 +175,12 @@
       "node": "./dist/runtime/drawnBox.js",
       "import": "./src/runtime/drawnBox.ts",
       "types": "./src/runtime/drawnBox.ts"
+    },
+    "./inline-text-style": {
+      "bun": "./src/utils/inlineTextStyleRead.ts",
+      "node": "./dist/utils/inlineTextStyleRead.js",
+      "import": "./src/utils/inlineTextStyleRead.ts",
+      "types": "./src/utils/inlineTextStyleRead.ts"
     },
     "./composition-contract": {
       "bun": "./src/compositionContract.ts",
@@ -851,6 +857,10 @@
       "./drawn-box": {
         "import": "./dist/runtime/drawnBox.js",
         "types": "./dist/runtime/drawnBox.d.ts"
+      },
+      "./inline-text-style": {
+        "import": "./dist/utils/inlineTextStyleRead.js",
+        "types": "./dist/utils/inlineTextStyleRead.d.ts"
       },
       "./composition-contract": {
         "import": "./dist/compositionContract.js",

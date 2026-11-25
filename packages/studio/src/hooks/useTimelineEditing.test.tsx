@@ -14,6 +14,7 @@ import {
   parseTimelineFromDOM,
 } from "../player/lib/timelineDOM";
 import type { ClipManifestClip, IframeWindow } from "../player/lib/playbackTypes";
+import { manifestTimelines } from "../player/lib/timelineIframeHelpers";
 import { computeResizePreview } from "../player/components/timelineClipDragPreview";
 import {
   buildTimelineGroupResizeMembers,
@@ -1537,8 +1538,10 @@ function setupNestedHarness() {
     const clip = { ...intro, tagName: "div", compositionId: "intro" } as ClipManifestClip;
     const hostEl = doc.getElementById("intro");
     const roots = [createTimelineElementFromManifestClip({ clip, fallbackIndex: 0, doc, hostEl })];
-    const win = iframe.contentWindow as IframeWindow;
-    return buildMissingCompositionElements(doc, win, roots, 20).missing.find(
+    // A sealed preview's pass reads the timelines from the manifest; HF_PARITY_MODE=sealed runs that one.
+    const sealed = process.env.HF_PARITY_MODE === "sealed";
+    const timelines = sealed ? manifestTimelines([clip]) : (iframe.contentWindow as IframeWindow);
+    return buildMissingCompositionElements(doc, timelines, roots, 20).missing.find(
       (e) => e.domId === domId,
     )!;
   };

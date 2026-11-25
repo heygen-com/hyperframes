@@ -370,6 +370,47 @@ describe("initSandboxRuntimeModular", () => {
     expect(caption.getAttribute("data-start")).toBe("0");
   });
 
+  it("does not stamp timing onto an element the runtime marks as its own", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const gradingCanvas = document.createElement("canvas");
+    gradingCanvas.id = "__hf_color_grading_clip";
+    gradingCanvas.setAttribute("data-hf-ignore", "");
+    root.appendChild(gradingCanvas);
+    const helperHost = document.createElement("div");
+    helperHost.setAttribute("data-hyperframes-ignore", "");
+    const helperChild = document.createElement("div");
+    helperChild.id = "helper-child";
+    helperHost.appendChild(helperChild);
+    root.appendChild(helperHost);
+    const caption = document.createElement("div");
+    caption.id = "cap-1";
+    root.appendChild(caption);
+
+    const main = createMockTimeline(10);
+    const tweenOnHelper = { ...mockTween(0, 10), targets: () => [helperChild] };
+    main.getChildren = () => [tweenOnHelper as unknown as RuntimeTimelineLike];
+    window.__timelines = { main };
+    const realParent = window.parent;
+    Object.defineProperty(window, "parent", { value: {}, configurable: true });
+    try {
+      initSandboxRuntimeModular();
+    } finally {
+      Object.defineProperty(window, "parent", { value: realParent, configurable: true });
+    }
+
+    expect(gradingCanvas.hasAttribute("data-start")).toBe(false);
+    expect(helperChild.hasAttribute("data-start")).toBe(false);
+    expect(caption.getAttribute("data-start")).toBe("0");
+  });
+
   describe("visibility of runtime-stamped elements in Studio preview", () => {
     afterEach(() => vi.restoreAllMocks());
 

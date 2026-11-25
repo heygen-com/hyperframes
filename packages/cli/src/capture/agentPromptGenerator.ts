@@ -46,6 +46,8 @@ const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 const AGENT_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules"] as const;
 
+const listLength = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
+
 function isCaptureWritten(path: string): boolean {
   try {
     return /^# [^\n]*\n\nSource: /.test(readFileSync(path, "utf-8"));
@@ -87,7 +89,7 @@ function buildPrompt(
 ): string {
   const title = captureSiteName(url);
 
-  const colorSummary = tokens.colors
+  const colorSummary = (Array.isArray(tokens.colors) ? tokens.colors : [])
     .filter((color) => typeof color === "string" && HEX_COLOR.test(color))
     .slice(0, 10)
     .map((hex) => `${hex} (${inferColorRole(hex)})`)
@@ -142,7 +144,7 @@ function buildPrompt(
     );
   }
   tableRows.push(
-    `| \`extracted/tokens.json\` | Design tokens: ${tokens.colors.length} colors, ${tokens.fonts.length} fonts, ${tokens.headings?.length ?? 0} headings, ${tokens.ctas?.length ?? 0} CTAs |`,
+    `| \`extracted/tokens.json\` | Design tokens: ${listLength(tokens.colors)} colors, ${listLength(tokens.fonts)} fonts, ${listLength(tokens.headings)} headings, ${listLength(tokens.ctas)} CTAs |`,
   );
   // design-styles.json is written from a try/catch in capture/index.ts and
   // gets skipped when the live-DOM style extraction fails. Only list it in the

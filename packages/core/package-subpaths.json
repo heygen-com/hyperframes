@@ -164,6 +164,12 @@
       "types": "./dist/runtime/drawnBox.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./inline-text-style": {
+      "source": "./src/utils/inlineTextStyleRead.ts",
+      "runtime": "./dist/utils/inlineTextStyleRead.js",
+      "types": "./dist/utils/inlineTextStyleRead.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./composition-contract": {
       "source": "./src/compositionContract.ts",
       "runtime": "./dist/compositionContract.js",

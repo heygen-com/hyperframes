@@ -115,7 +115,11 @@ export function resolveLocalImageSourcePath(
   const assetRoot = options.allowOutsideFiles ? undefined : options.projectDir;
   const allowed = (candidate: string) =>
     !namesAnotherNetworkRoot(options.projectDir, candidate) &&
-    !isPrivateUnderAssetRoots(candidate, [options.projectDir, options.downloadDir]) &&
+    !isPrivateUnderAssetRoots(
+      candidate,
+      [options.projectDir, options.downloadDir],
+      options.allowOutsideFiles,
+    ) &&
     ((!escapesAssetRoot(candidate, assetRoot) &&
       outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
       !escapesAssetRoot(candidate, options.downloadDir));
