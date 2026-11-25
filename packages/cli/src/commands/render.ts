@@ -1322,16 +1322,13 @@ async function executeLocalRender(
     );
   } catch (error: unknown) {
     maybeConsumeDeParallelRouterTrial(deParallelRouterActive, job, options.quiet);
-    // The render container sets `ENV CONTAINER=true`; suggesting `--docker`
-    // from inside it is a misdirection (heygen-com/hyperframes#3370).
-    const inContainer = process.env.CONTAINER === "true";
     handleRenderError(
       error,
       options,
       startTime,
       cpu,
       false,
-      inContainer ? "" : "Try --docker for containerized rendering",
+      localRenderFailureHint(cancellation.signal.aborted),
       job.failedStage,
       job,
     );
@@ -1986,6 +1983,13 @@ export function chromeLaunchFailure(
   return windows
     ? { title: "Render failed — chrome-headless-shell crashed at launch", remediation: windows }
     : null;
+}
+
+// A cancelled render has nothing to retry in a container, and inside the render
+// container (`ENV CONTAINER=true`) the hint misleads (heygen-com/hyperframes#3370).
+function localRenderFailureHint(cancelled: boolean): string {
+  if (cancelled || process.env.CONTAINER === "true") return "";
+  return "Try --docker for containerized rendering";
 }
 
 function handleRenderError(

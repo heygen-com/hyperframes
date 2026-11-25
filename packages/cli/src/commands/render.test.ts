@@ -650,6 +650,67 @@ describe("renderLocal browser GPU config", () => {
     }
   });
 
+  it("does not suggest --docker when the render was cancelled", async () => {
+    let markExecutionStarted!: () => void;
+    const executionStarted = new Promise<void>((resolve) => {
+      markExecutionStarted = resolve;
+    });
+    producerState.executeImpl = async (_job, abortSignal) => {
+      markExecutionStarted();
+      await new Promise<void>((_resolve, reject) => {
+        abortSignal?.addEventListener("abort", () => reject(new Error("render_cancelled")), {
+          once: true,
+        });
+      });
+    };
+    const priorListeners = new Set(process.listeners("SIGTERM"));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const render = renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+      });
+      await executionStarted;
+      process.listeners("SIGTERM").find((listener) => !priorListeners.has(listener))?.("SIGTERM");
+
+      await expect(render).rejects.toMatchObject({ name: "CliRuntimeError" });
+      const output = errors.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(output).toContain("render_cancelled");
+      expect(output).not.toContain("--docker");
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("still suggests --docker when a render fails on its own", async () => {
+    producerState.executeImpl = async () => {
+      throw new Error("Chrome crashed during capture");
+    };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "mp4",
+          gpu: false,
+          browserGpuMode: "software",
+          hdrMode: "auto",
+          quiet: true,
+        }),
+      ).rejects.toMatchObject({ name: "CliRuntimeError" });
+      const output = errors.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(output).toContain("Try --docker for containerized rendering");
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it.each([
     { kind: "solid", rgb: [10, 46, 138] },
     { kind: "none" },
