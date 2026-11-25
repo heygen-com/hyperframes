@@ -70,6 +70,27 @@ export interface VideoFrameCoverageReport {
   capturedFrames: number;
   /** `capturedFrames / expectedFrames`; `1` when `expectedFrames === 0` (nothing to cover). */
   ratio: number;
+  /** What the clip reads, when it was probed: the failure's message names it. */
+  source?: {
+    codec: string;
+    fps: number;
+    isVFR: boolean;
+    streamSeconds: number;
+    mediaStart: number;
+    playbackRate: number;
+  };
+}
+
+/** "; source h264, 60 fps, variable frame rate, video stream 4.000 s; clip 0.000-1.133 s reads from 2.500 s at 1x" */
+function sourceWords(report: VideoFrameCoverageReport): string {
+  const s = report.source;
+  if (!s) return "";
+  const rate = s.isVFR ? ", variable frame rate" : "";
+  return (
+    `; source ${s.codec}, ${s.fps} fps${rate}, video stream ${s.streamSeconds.toFixed(3)} s; ` +
+    `clip ${report.clipStart.toFixed(3)}-${report.clipEnd.toFixed(3)} s reads from ` +
+    `${s.mediaStart.toFixed(3)} s at ${s.playbackRate}x`
+  );
 }
 
 /**
@@ -221,6 +242,16 @@ export function computeVideoFrameCoverage(
       expectedFrames,
       capturedFrames,
       ratio,
+      ...(entry && {
+        source: {
+          codec: entry.metadata.videoCodec,
+          fps: entry.metadata.fps,
+          isVFR: entry.metadata.isVFR,
+          streamSeconds: resolvePlayableVideoDuration(entry.metadata),
+          mediaStart: video.mediaStart,
+          playbackRate: sourceTimeAt(normalizeRateSpec(video.playbackRate), 1),
+        },
+      }),
     });
   }
   return reports;
@@ -253,7 +284,7 @@ export function assertVideoFrameCoverage(
   const suffix = sorted.length > 1 ? ` (+${sorted.length - 1} more clip(s) below threshold)` : "";
   throw new VideoFrameCoverageError(
     `Video "${worst.videoId}" captured ${worst.capturedFrames} of expected ${worst.expectedFrames} frames ` +
-      `(coverage ${pct}%, threshold ${thresholdPct}%). ` +
+      `(coverage ${pct}%, threshold ${thresholdPct}%${sourceWords(worst)}). ` +
       `check/snapshot may pass while the encoded MP4 renders this clip blank, so the render is aborted ` +
       `to prevent shipping a wrong MP4.${suffix} ` +
       `Set HF_VIDEO_COVERAGE_THRESHOLD=0 to disable this gate.`,
