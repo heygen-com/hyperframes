@@ -87,10 +87,11 @@ function readHit(value: unknown): PreviewElementHit | null {
   return isRect(value.rect) ? (value as unknown as PreviewElementHit) : null;
 }
 
-/** An id and a selector of the forms the runtime builds for that id: the selector later names the element an edit is saved to. */
 function hasOwnIdentity({ id, selector }: Fields): boolean {
   if (!isValueOrNull(id) || !isValueOrNull(selector)) return false;
-  return typeof selector !== "string" || isStableSelector(selector, id as string | null);
+  return (
+    typeof selector !== "string" || isStableSelector(selector, typeof id === "string" ? id : null)
+  );
 }
 
 /** Frame data checked against `EditingElementDescription`; null when any field is off. */

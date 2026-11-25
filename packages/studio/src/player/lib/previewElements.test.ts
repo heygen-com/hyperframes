@@ -6,7 +6,9 @@ import {
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   type EditingElementDescription,
+  isStableSelector,
 } from "@hyperframes/core/runtime/editing-port";
+import { buildStableSelector } from "../../../../core/src/runtime/editingElement";
 import { gestureStart } from "../../../../core/src/runtime/editingGestureStart";
 import { handleFor } from "../../../../core/src/runtime/editingHandles";
 import {
@@ -118,7 +120,7 @@ describe("readPreviewElement", () => {
     const text = "y".repeat(MAX_ELEMENT_TEXT + 1);
     const many = Array.from({ length: MAX_ELEMENT_ENTRIES + 1 }, (_, i) => [`data-${i}`, ""]);
     for (const bad of [
-      described(1, { selector: over }),
+      described(1, { selector: `.${value}` }),
       described(1, { id: over }),
       described(1, { tag: over }),
       described(1, { label: over }),
@@ -279,6 +281,9 @@ describe("the selector a description may carry", () => {
       described(1, { selector: '[src="app.js"]' }),
       described(1, { selector: "*" }),
       described(1, { selector: "" }),
+      described(1, { selector: ".1st" }),
+      described(1, { selector: ".-" }),
+      described(1, { selector: '[data-hf-group=""]' }),
     ]) {
       expect(readPreviewElement(forged)).toBeNull();
     }
@@ -289,6 +294,19 @@ describe("the selector a description may carry", () => {
     expect(readPreviewElement(described(1, { selector: "#boot" }))).toBeNull();
     expect(readPreviewElement(described(1, { selector: "#title script", id: "title" }))).toBeNull();
     expect(readPreviewElement(described(1, { selector: ".tile", id: "title" }))).toBeNull();
+  });
+});
+
+describe("the selector the runtime builds for an element", () => {
+  it("is always one a description may carry", () => {
+    document.body.innerHTML = `
+      <div id="1st.hero"></div><div id="-"></div><div class="md:w-1/2 clip"></div>
+      <div class="-1x"></div><div class="clip"></div><div data-composition-id='a "b"'></div>
+      <div data-hf-group="g\\1"></div><form class="signup"><input name="id" /></form>`;
+    for (const el of Array.from(document.body.querySelectorAll("div, form"))) {
+      const id = typeof el.id === "string" && el.id ? el.id : null;
+      expect(isStableSelector(buildStableSelector(el) ?? "", id), el.outerHTML).toBe(true);
+    }
   });
 });
 
