@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HTMLElement as LinkedomElement, HTMLTitleElement } from "linkedom";
 import { parseHTML } from "./linkedom.js";
 
@@ -66,6 +66,26 @@ describe("@hyperframes/parsers/linkedom", () => {
     const { document } = parseHTML("<title>a &lt;b&gt;</title><textarea>c &lt;d&gt;</textarea>");
     expect(document.querySelector("title")!.textContent).toBe("a <b>");
     expect(document.querySelector("textarea")!.textContent).toBe("c &lt;d&gt;");
+  });
+
+  // A plain re-export lets a bundler link straight to linkedom and drop this module under "sideEffects": false.
+  it("parseHTML and DOMParser are this module's own functions, not linkedom's", async () => {
+    const linkedom = await import("linkedom");
+    const own = await import("./linkedom.js");
+    expect(own.parseHTML).not.toBe(linkedom.parseHTML);
+    expect(own.DOMParser).not.toBe(linkedom.DOMParser);
+  });
+
+  it("a fresh process escapes on save once a DOMParser is made", async () => {
+    vi.resetModules();
+    const linkedom = await import("linkedom");
+    const { DOMParser } = await import("./linkedom.js");
+    new DOMParser();
+    const { document } = linkedom.parseHTML(
+      "<!DOCTYPE html><html><body><textarea>x</textarea></body></html>",
+    );
+    document.querySelector("textarea")!.textContent = `</textarea>${BREAKOUT}`;
+    expect(countScripts(document.toString())).toBe(0);
   });
 
   it("linkedom's own text-element writer is the one the override replaces", () => {
