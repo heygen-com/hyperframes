@@ -170,6 +170,12 @@
       "import": "./src/utils/richTextSanitize.ts",
       "types": "./src/utils/richTextSanitize.ts"
     },
+    "./drawn-box": {
+      "bun": "./src/runtime/drawnBox.ts",
+      "node": "./dist/runtime/drawnBox.js",
+      "import": "./src/runtime/drawnBox.ts",
+      "types": "./src/runtime/drawnBox.ts"
+    },
     "./inline-text-style": {
       "bun": "./src/utils/inlineTextStyleRead.ts",
       "node": "./dist/utils/inlineTextStyleRead.js",
@@ -847,6 +853,10 @@
       "./rich-text-sanitize": {
         "import": "./dist/utils/richTextSanitize.js",
         "types": "./dist/utils/richTextSanitize.d.ts"
+      },
+      "./drawn-box": {
+        "import": "./dist/runtime/drawnBox.js",
+        "types": "./dist/runtime/drawnBox.d.ts"
       },
       "./inline-text-style": {
         "import": "./dist/utils/inlineTextStyleRead.js",

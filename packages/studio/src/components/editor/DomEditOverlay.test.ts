@@ -14,10 +14,7 @@ import {
   resolveDomEditRotationGesture,
 } from "./DomEditOverlay";
 import type { DomEditSelection } from "./domEditing";
-import {
-  hoverCacheDescribesPoint,
-  resolveResizeCenterAnchorOffset,
-} from "./domEditOverlayGestures";
+import { hoverCacheDescribesPoint } from "./domEditOverlayGestures";
 import { usePlayerStore } from "../../player/store/playerStore";
 
 // React 19 warns unless the test environment opts into act().
@@ -756,45 +753,5 @@ describe("hoverCacheDescribesPoint", () => {
     const el = doc.createElement("div");
     expect(hoverCacheDescribesPoint(null, el)).toBe(false);
     expect(hoverCacheDescribesPoint(el, null)).toBe(false);
-  });
-});
-
-// resolveResizeCenterAnchorOffset is the UNROTATED (AABB) fallback used only when
-// the element's real transformed corners can't be measured. Center-anchored: a
-// width/height change grows the box from its top-left, drifting the center by half
-// the size change per axis, so the pin translates back by that half-delta. It is
-// handle-independent — all four corners scale about the same center.
-describe("resolveResizeCenterAnchorOffset", () => {
-  it("grow: translates back by half the size change on both axes", () => {
-    expect(
-      resolveResizeCenterAnchorOffset({
-        originWidth: 200,
-        originHeight: 100,
-        overlayWidth: 230,
-        overlayHeight: 112,
-      }),
-    ).toEqual({ dx: -15, dy: -6 });
-  });
-
-  it("shrink: translates forward by half the (positive) size change", () => {
-    expect(
-      resolveResizeCenterAnchorOffset({
-        originWidth: 200,
-        originHeight: 100,
-        overlayWidth: 160,
-        overlayHeight: 80,
-      }),
-    ).toEqual({ dx: 20, dy: 10 });
-  });
-
-  it("no size change: zero offset", () => {
-    expect(
-      resolveResizeCenterAnchorOffset({
-        originWidth: 200,
-        originHeight: 100,
-        overlayWidth: 200,
-        overlayHeight: 100,
-      }),
-    ).toEqual({ dx: 0, dy: 0 });
   });
 });
