@@ -865,7 +865,20 @@ async function streamPiece(part: StreamPart, io: StreamIo): Promise<Piece | null
         read: (bytes: number, position: number) =>
           readFileAt(io, file.path, Math.min(bytes, file.size - position), position),
       };
-  return piece === null || piece === true ? piece : { ...piece, init: part.init };
+  if (piece === null || piece === true) return piece;
+  return { size: piece.size, read: withPrefix(piece.read, piece.size), init: part.init };
+}
+
+const PREFIX_BYTES = 2 * SNIFF_BYTES;
+
+/** Reads of a piece's opening bytes, which every stream starting before it repeats, come from one read. */
+function withPrefix(read: Read, size: number): Read {
+  let prefix: Promise<Buffer> | undefined;
+  return (bytes, position) => {
+    if (position + bytes > PREFIX_BYTES) return read(bytes, position);
+    prefix ??= read(Math.min(PREFIX_BYTES, size), 0);
+    return prefix.then((head) => head.subarray(position, position + bytes));
+  };
 }
 
 /** Each stream ffmpeg may start reading: from any segment, behind the init section in force there. */
