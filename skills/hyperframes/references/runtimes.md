@@ -6,6 +6,7 @@ HyperFrames seeks each frame on its own, so motion must be a function of time, n
 
 - Register the timeline last. Building inside `document.fonts.ready.then(…)` or another async callback is fine if you register at the end of it; registering first renders blank (`gsap_timeline_registered_before_async_build`).
 - Place tweens at absolute seconds (`tl.to(el, {…}, 2.4)`). Set start states in the tween (`fromTo`), not in CSS.
+- A `fromTo` shows its from-state from 0 s, not from its position (GSAP's `immediateRender: true`). That hides an entrance, but a later `fromTo` whose from-state is visible (a montage layer, a white flash, an exit) covers everything before it, and only a snapshot shows it: give that tween `immediateRender: false`.
 - Measure layout once before building tweens, never inside `onUpdate`.
 - Finite repeats only: `repeat: Math.max(0, Math.floor(duration / cycle) - 1)`.
 - Seed randomness with a small PRNG (mulberry32).

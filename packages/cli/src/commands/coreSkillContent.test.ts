@@ -29,6 +29,12 @@ describe("hyperframes contract docs", () => {
     expect(pull).not.toMatch(/not downloaded again/);
   });
 
+  it("tells agents a later fromTo needs immediateRender: false", () => {
+    const runtimes = read("skills", "hyperframes", "references", "runtimes.md");
+
+    expect(runtimes).toContain("`immediateRender: false`");
+  });
+
   it("teaches check as the canonical quality gate", () => {
     const skill = read("skills", "hyperframes", "SKILL.md");
 
