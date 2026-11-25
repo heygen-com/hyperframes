@@ -173,7 +173,25 @@ function rmsFrames(
   return frames;
 }
 
-const fftSizeFor = (sampleRate: number) => 2 ** Math.round(Math.log2(sampleRate * 0.023));
+export const windowSizeFor = (sampleRate: number, seconds: number): number =>
+  2 ** Math.round(Math.log2(sampleRate * seconds));
+
+/** Level in dB of one window, or -Infinity for silence. */
+export function windowDb(samples: Float32Array, from: number, count: number): number {
+  let sum = 0;
+  let n = 0;
+  for (let i = from; i < from + count; i++) {
+    const s = samples[i];
+    if (s === undefined) break;
+    sum += s * s;
+    n += 1;
+  }
+  if (n === 0) return Number.NEGATIVE_INFINITY;
+  const rms = Math.sqrt(sum / n);
+  return rms > 0 ? 20 * Math.log10(rms) : Number.NEGATIVE_INFINITY;
+}
+
+const fftSizeFor = (sampleRate: number) => windowSizeFor(sampleRate, 0.023);
 
 /** Magnitude spectra of Hann-windowed frames centred on each hop, limited to `band`. */
 /** The FFT bins inside `band`, as [first, end). */

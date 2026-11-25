@@ -14,6 +14,7 @@ import {
   MAX_QUERY_MATCHES,
   MAX_SNAP_TARGETS,
   MAX_SOURCE_GROUPS,
+  isStableSelector,
   isTransformList,
   type EditingElementBox,
   type EditingElementDescription,
@@ -86,12 +87,19 @@ function readHit(value: unknown): PreviewElementHit | null {
   return isRect(value.rect) ? (value as unknown as PreviewElementHit) : null;
 }
 
+function hasOwnIdentity({ id, selector }: Fields): boolean {
+  if (!isValueOrNull(id) || !isValueOrNull(selector)) return false;
+  return (
+    typeof selector !== "string" || isStableSelector(selector, typeof id === "string" ? id : null)
+  );
+}
+
 /** Frame data checked against `EditingElementDescription`; null when any field is off. */
 export function readPreviewElement(value: unknown): PreviewElement | null {
   if (!readHit(value) || !isFields(value)) return null;
   if (value.parent !== null && !isHandle(value.parent)) return null;
   if (value.label !== undefined && !isValue(value.label)) return null;
-  if (!isValueOrNull(value.id) || !isValueOrNull(value.selector)) return null;
+  if (!hasOwnIdentity(value)) return null;
   if (!isSource(value.source) || typeof value.locked !== "boolean") return null;
   if (!isStyles(value.inlineStyles) || !isLongText(value.text)) return null;
   if (value.textMarkup !== undefined && typeof value.textMarkup !== "boolean") return null;

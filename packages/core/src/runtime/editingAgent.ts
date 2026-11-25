@@ -62,6 +62,8 @@ import { colorGradingPlayback } from "./editing/color-grading-playback";
 import { assignAudioGroup } from "./editing/assignAudioGroup";
 import { audioMeter } from "./editing/audioMeter";
 import { documentMarkup } from "./editing/documentMarkup";
+import { removeElements } from "./editing/removeElements";
+import { authoredStyles, fontFaces } from "./editing/textStyleReads";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
@@ -197,6 +199,8 @@ const HANDLERS: Handlers = {
     }
     return { styles };
   },
+  "authored-styles": authoredStyles,
+  "font-faces": () => fontFaces(),
   "elements-at-point": ({ x, y }) => ({ elements: elementsAtPoint(x, y) }),
   "pointer-targets": ({ x, y }) => pointerTargetsAt(x, y),
   describe: ({ handles }) => ({ elements: describeHandles(handles) }),
@@ -204,7 +208,7 @@ const HANDLERS: Handlers = {
   query: ({ selector }) => queryElements(selector),
   geometry: ({ handles, children }) => elementGeometry(handles, children),
   layers: ({ group, offset }) => layersOf(group, offset),
-  draft: ({ drafts }) => drawDrafts(drafts),
+  draft: ({ drafts }) => ({ ...drawDrafts(drafts), gsapSetTakesDrafts: true as const }),
   "gesture-start": ({ handles }) => gestureStart(handles),
   "gesture-base": ({ handles }) => ({ elements: handles.map(gestureBase) }),
   "console-errors": ({ from }) => {
@@ -229,6 +233,7 @@ const HANDLERS: Handlers = {
   "max-z-index": () => maxZIndex(),
   "crop-lift": cropLift,
   "edit-element": editElement,
+  "remove-elements": removeElements,
   "stacking-family": stackingFamily,
   "gsap-set": gsapSet,
   "patch-tweens": patchTweens,

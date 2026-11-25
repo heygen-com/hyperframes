@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadLimitMs, timelineNotFound } from "./composition-probe.js";
 
 const LIMIT = loadLimitMs();
-const TIMED_OUT = `error ${timelineNotFound(LIMIT, true)}`;
+const TIMED_OUT = `error ${timelineNotFound(LIMIT)}`;
 
 type Player = HTMLElement & {
   ready: boolean;

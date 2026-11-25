@@ -62,6 +62,7 @@ import {
   type HdrVideoFrameSource,
   type TransitionRange,
   resolveCompositeTransfer,
+  sanitizeTransitionMeta,
 } from "../../hdrCompositor.js";
 import { type HdrPerfCollector, createHdrPerfCollector } from "../hdrPerf.js";
 import type { HdrDiagnostics, ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
@@ -80,6 +81,7 @@ import { wrapCaptureStageError } from "../captureStageError.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { HdrLayeredCapturePlan } from "../capturePlan.js";
 import type { DeliveryEncoderOptions } from "../deliveryEncoder.js";
+import { windowStartFrame } from "../frameWindow.js";
 
 export interface CaptureHdrStageInput {
   job: RenderJob;
@@ -139,27 +141,34 @@ export interface CaptureHdrStageResult {
  * runtime's shader transitions and each `.scene` element's id'd descendants.
  * The HDR passthrough's capture page makes the same reads (`hdrPassthrough`).
  */
-export async function readLayeredScenes(domSession: CaptureSession): Promise<{
+export async function readLayeredScenes(
+  domSession: CaptureSession,
+  warn: (message: string, meta: Record<string, unknown>) => void,
+): Promise<{
   transitionMeta: HdrTransitionMeta[];
   sceneElements: Record<string, string[]>;
 }> {
-  const transitionMeta: HdrTransitionMeta[] = await domSession.page.evaluate(() => {
-    return window.__hf?.transitions ?? [];
-  });
-  const sceneElements: Record<string, string[]> = await domSession.page.evaluate(() => {
-    const scenes = document.querySelectorAll(".scene");
-    const map: Record<string, string[]> = {};
-    for (const scene of scenes) {
-      if (!scene.id) continue;
-      const ids = new Set<string>([scene.id]);
-      const els = scene.querySelectorAll("[id]");
-      for (const el of els) {
-        if (el.id) ids.add(el.id);
+  const transitionMeta: HdrTransitionMeta[] = sanitizeTransitionMeta(
+    await domSession.page.evaluate((): unknown => window.__hf?.transitions ?? []),
+    warn,
+  );
+  const sceneElements: Record<string, string[]> = Object.assign(
+    Object.create(null),
+    await domSession.page.evaluate(() => {
+      const scenes = document.querySelectorAll(".scene");
+      const map: Record<string, string[]> = {};
+      for (const scene of scenes) {
+        if (!scene.id) continue;
+        const ids = new Set<string>([scene.id]);
+        const els = scene.querySelectorAll("[id]");
+        for (const el of els) {
+          if (el.id) ids.add(el.id);
+        }
+        map[scene.id] = Array.from(ids);
       }
-      map[scene.id] = Array.from(ids);
-    }
-    return map;
-  });
+      return map;
+    }),
+  );
   return { transitionMeta, sceneElements };
 }
 
@@ -261,7 +270,9 @@ export async function runCaptureHdrStage(
     await initTransparentBackground(domSession.page, { clearCompositionRoot: true });
 
     // ── Scene detection for shader transitions ──────────────────────────
-    const { transitionMeta, sceneElements } = await readLayeredScenes(domSession);
+    const { transitionMeta, sceneElements } = await readLayeredScenes(domSession, (message, meta) =>
+      log.warn(message, meta),
+    );
     const fpsDecimal = fpsToNumber(job.config.fps);
     const transitionRanges: TransitionRange[] = transitionMeta.map((t) => ({
       ...t,
@@ -378,7 +389,11 @@ export async function runCaptureHdrStage(
 
       // ── Dispatch to sequential or hybrid frame loop ────────────────────
       const effectiveWorkerCount = Math.max(1, workerCount);
-      const transitionFrameCount = partitionTransitionFrames(transitionRanges, totalFrames).size;
+      const transitionFrameCount = partitionTransitionFrames(
+        transitionRanges,
+        totalFrames,
+        windowStartFrame(job.frameWindow),
+      ).size;
       const useHybrid = shouldUseHybridLayeredPath({
         hasHdrContent,
         transitionFramesCount: transitionFrameCount,

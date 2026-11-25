@@ -97,6 +97,8 @@ export type PassthroughIneligibleReason =
   | "output_format"
   | "alpha_output"
   | "output_scale"
+  // a range render (RenderConfig.range) captures a frame window of the film
+  | "frame_window"
   | "hdr_images"
   | "shader_transitions"
   | "motion_blur"

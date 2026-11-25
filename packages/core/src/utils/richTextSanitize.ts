@@ -197,12 +197,28 @@ function filterStyle(style: string): string {
       const colon = declaration.indexOf(":");
       if (colon === -1) return null;
       const property = declaration.slice(0, colon).trim().toLowerCase();
-      const value = declaration.slice(colon + 1).trim();
-      if (!isRichTextFormattingStyle(property, value)) return null;
+      const value = serializedValue(declaration.slice(colon + 1));
+      if (value === null || !isRichTextFormattingStyle(property, value)) return null;
       return `${property}: ${value}`;
     })
     .filter((declaration): declaration is string => declaration !== null)
     .join("; ");
+}
+
+// Whitespace, a plain string, a number with its unit, a hash, a word or a function's name, a separator, !important.
+const VALUE_TOKEN =
+  /\s+|"[^"\\\n\r\f]*"|'[^'\\\n\r\f]*'|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:%|[a-z]+)?|#[\w-]+|-?-?[a-z_\u00a0-\uffff][\w\u00a0-\uffff-]*\(?|[(),/+*-]|!important\b/giy;
+
+/** The value written out again from its tokens, or null when some of it is no token a formatting value uses. */
+function serializedValue(value: string): string | null {
+  const tokens: string[] = [];
+  VALUE_TOKEN.lastIndex = 0;
+  while (VALUE_TOKEN.lastIndex < value.length) {
+    const token = VALUE_TOKEN.exec(value)?.[0];
+    if (token === undefined) return null;
+    tokens.push(/^\s/.test(token) ? " " : token);
+  }
+  return tokens.join("").trim();
 }
 
 const PLAIN_STRING = /"[^"\\\n\r\f]*"|'[^'\\\n\r\f]*'/g;

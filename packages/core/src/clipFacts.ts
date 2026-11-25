@@ -42,22 +42,48 @@ export {
   spansShareTime,
 } from "@hyperframes/parsers/time-spans";
 
+const CONTROL_BIDI_OR_LINE_SEPARATOR = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+export const PROMPT_LABEL_MAX = 160;
+
+const escaped = (character: string) =>
+  Array.from(
+    { length: character.length },
+    (_, i) => `\\u${character.charCodeAt(i).toString(16).padStart(4, "0")}`,
+  ).join("");
+
+/** A project value as one quoted line that reads back to exactly the value, so text around it cannot be imitated. */
+export function promptField(value: string): string {
+  return JSON.stringify(value).replace(CONTROL_BIDI_OR_LINE_SEPARATOR, escaped);
+}
+
+/** A display label as one quoted line, its whitespace collapsed and its length capped. */
+export function promptLabel(value: string): string {
+  const flat = Array.from(
+    value.replace(CONTROL_BIDI_OR_LINE_SEPARATOR, " ").replace(/\s+/g, " ").trim(),
+  );
+  const kept =
+    flat.length > PROMPT_LABEL_MAX
+      ? `${flat.slice(0, PROMPT_LABEL_MAX - 1).join("")}…`
+      : flat.join("");
+  return JSON.stringify(kept);
+}
+
 export function formatClipLine(clip: ClipFact): string {
   const parts = [
-    `${clip.kind} "${clip.id}"`,
-    clip.src && `src=${clip.src}`,
+    `${promptField(clip.kind)} ${promptField(clip.id)}`,
+    clip.src && `src=${promptField(clip.src)}`,
     `start=${num(clip.start)}`,
     `duration=${num(clip.duration)}`,
     `end=${num(clip.end)}`,
     `track=${clip.trackIndex}`,
     clip.volume !== null && `volume=${num(clip.volume)}`,
     clip.playbackRate !== null && `rate=${num(clip.playbackRate)}`,
-    clip.audioGroup && `group=${clip.audioGroup}`,
-    clip.role && `role=${clip.role}`,
-    clip.sourceFile && `file=${clip.sourceFile}`,
+    clip.audioGroup && `group=${promptField(clip.audioGroup)}`,
+    clip.role && `role=${promptField(clip.role)}`,
+    clip.sourceFile && `file=${promptField(clip.sourceFile)}`,
     ...clip.lanes.map(
       (lane) =>
-        `${lane.target}-lane=[${lane.points.map((p) => `${num(p.t)}:${num(p.v)}`).join(", ")}]`,
+        `lane ${promptField(lane.target)}=[${lane.points.map((p) => `${num(p.t)}:${num(p.v)}`).join(", ")}]`,
     ),
   ];
   return `- ${parts.filter(Boolean).join(" ")}`;

@@ -104,6 +104,7 @@ export {
   closeBrowserPool,
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
+  probedHardwareGpu,
   buildChromeArgs,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,

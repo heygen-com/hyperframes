@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { launchBrowser } from "../perf/runner.js";
 import { startServer } from "../perf/server.js";
 
+// Linux's 30 s load limit, as on CI, plus slack: every wait for an error that comes at the limit.
+const PAST_LOAD_LIMIT_MS = 36_000;
 const server = startServer();
 const browser = await launchBrowser();
 
@@ -47,47 +49,145 @@ try {
     true,
     "removing the policy must reload into the documented trusted mode",
   );
-  // A sealed player adds the runtime to a composition from its own site, so the missing-runtime
-  // error belongs to one from another origin (localhost against 127.0.0.1).
-  const direct = await browser.newPage();
-  await direct.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
-    waitUntil: "domcontentloaded",
-  });
-  await direct.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
-  await direct.evaluate(
-    (url) => {
-      document.querySelector("hyperframes-player")!.setAttribute("src", url);
-    },
-    `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+  // fails without the fix: a sealed player told a cross-site film without the runtime more than an unsealed one.
+  const crossSiteFilm = async (sealed: boolean) => {
+    const page = await browser.newPage();
+    await page.goto(
+      `${server.origin}/host.html?fixture=direct-timeline${sealed ? "&sealed=1" : ""}`,
+      {
+        waitUntil: "domcontentloaded",
+      },
+    );
+    await page.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+    await page.evaluate(
+      (url) => {
+        const player = document.querySelector("hyperframes-player")!;
+        const events: string[] = [];
+        (window as { __events?: string[] }).__events = events;
+        for (const type of ["ready", "error", "durationchange", "play"])
+          player.addEventListener(type, () => events.push(type));
+        window.__playerError = undefined;
+        player.setAttribute("src", url);
+      },
+      `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
+    );
+    await page.waitForFunction(() => window.__playerError !== undefined, {
+      timeout: PAST_LOAD_LIMIT_MS,
+    });
+    return page.evaluate(() => ({
+      error: String(window.__playerError),
+      events: (window as { __events?: string[] }).__events,
+    }));
+  };
+  const sealedCrossSite = await crossSiteFilm(true);
+  const openCrossSite = await crossSiteFilm(false);
+  assert.deepEqual(
+    sealedCrossSite,
+    openCrossSite,
+    "a cross-site film without the runtime fails sealed exactly as unsealed",
   );
-  // Linux's 30 s load limit, as on CI, plus slack.
-  await direct.waitForFunction(() => window.__playerError !== undefined, { timeout: 36_000 });
-  const sealedError = String(await direct.evaluate(() => window.__playerError));
   assert.match(
-    sealedError,
-    /include the runtime script/,
-    "a sealed timeout must name the runtime script",
+    openCrossSite.error,
+    /^Composition timeline not found after \d+s\. A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it\.$/,
   );
-  assert.match(sealedError, /without sandbox-origin/, "a sealed timeout must name the trusted way");
 
-  const elsewhere = await browser.newPage();
-  await elsewhere.goto(`${server.origin}/host.html?fixture=direct-timeline`, {
+  // fails without the fix: Chrome drops a once or aborted listener without calling removeEventListener, so the
+  // player kept counting it and the next unheard error reached no one.
+  const listenerPage = await browser.newPage();
+  const unheard: string[] = [];
+  listenerPage.on("console", (message) => {
+    if (message.text().includes("error with no listener")) unheard.push(message.text());
+  });
+  await listenerPage.goto(`${server.origin}/host.html?fixture=direct-timeline&sealed=1`, {
     waitUntil: "domcontentloaded",
   });
-  await elsewhere.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
-  await elsewhere.evaluate(
+  await listenerPage.waitForFunction(() => window.__playerReady === true, { timeout: 15_000 });
+  await listenerPage.evaluate(
     (url) => {
-      document.querySelector("hyperframes-player")!.setAttribute("src", url);
+      const heard: string[] = [];
+      Object.assign(window, { __heard: heard });
+      const once = document.createElement("hyperframes-player");
+      once.setAttribute("sandbox-origin", "");
+      once.addEventListener("error", () => heard.push("once"), { once: true });
+      once.setAttribute("src", url);
+      document.body.appendChild(once);
+      const aborted = document.createElement("hyperframes-player");
+      aborted.setAttribute("sandbox-origin", "");
+      const added = new AbortController();
+      aborted.addEventListener("error", () => heard.push("aborted"), { signal: added.signal });
+      added.abort();
+      aborted.setAttribute("src", url);
+      document.body.appendChild(aborted);
+      // A once-listener that installs the next one while the first error dispatches: the second error is heard.
+      const replaced = document.createElement("hyperframes-player");
+      replaced.setAttribute("sandbox-origin", "");
+      replaced.addEventListener(
+        "error",
+        () => {
+          heard.push("first");
+          replaced.addEventListener("error", () => heard.push("second"), { once: true });
+        },
+        { once: true },
+      );
+      replaced.setAttribute("src", url);
+      document.body.appendChild(replaced);
+      // A callback removed and added again, then the first registration's signal aborts. Engines differ on whether
+      // that drops the new registration; either way the error reaches it or warns.
+      const readded = document.createElement("hyperframes-player");
+      readded.setAttribute("sandbox-origin", "");
+      const first = new AbortController();
+      const listen = () => heard.push("readded");
+      readded.addEventListener("error", listen, { signal: first.signal });
+      readded.removeEventListener("error", listen);
+      readded.addEventListener("error", listen);
+      first.abort();
+      readded.setAttribute("src", url);
+      document.body.appendChild(readded);
+      Object.assign(window, {
+        __again: () => {
+          once.setAttribute("src", `${url}?again`);
+          replaced.setAttribute("src", `${url}?again`);
+        },
+      });
     },
     `${server.origin.replace("127.0.0.1", "localhost")}/fixtures/direct-timeline/index.html`,
   );
-  // Linux's 30 s load limit, as on CI, plus slack.
-  await elsewhere.waitForFunction(() => window.__playerError !== undefined, { timeout: 36_000 });
-  assert.doesNotMatch(
-    String(await elsewhere.evaluate(() => window.__playerError)),
-    /sandbox-origin/,
-    "a default player with a composition on another origin is not told it is sealed",
+  const heardAll = (...names: string[]) =>
+    listenerPage
+      .waitForFunction(
+        (wanted: string[]) =>
+          wanted.every((name) => (window as { __heard?: string[] }).__heard?.includes(name)),
+        { timeout: PAST_LOAD_LIMIT_MS },
+        names,
+      )
+      .catch(async (error: unknown) => {
+        const heard = await listenerPage.evaluate(() => (window as { __heard?: string[] }).__heard);
+        throw new Error(
+          `waited for ${names.join(", ")}; heard ${JSON.stringify(heard)}, warned ${unheard.length}`,
+          {
+            cause: error,
+          },
+        );
+      });
+  await heardAll("once", "first");
+  await listenerPage.evaluate(() => (window as { __again?: () => void }).__again?.());
+  await heardAll("second");
+  for (let waited = 0; unheard.length < 2 && waited < 15_000; waited += 250)
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  const heard =
+    (await listenerPage.evaluate(() => (window as { __heard?: string[] }).__heard)) ?? [];
+  assert.equal(
+    unheard.length,
+    heard.includes("readded") ? 2 : 3,
+    "every error either reached a listener or warned, never both",
   );
+  assert.deepEqual(heard.filter((name) => name !== "readded").sort(), ["first", "once", "second"]);
+  assert.ok(
+    unheard.every((text) => !text.includes("index.html")),
+    "the warning carries no composition URL",
+  );
+  await listenerPage.close();
 
   const trusted = await browser.newPage();
   await trusted.goto(`${server.origin}/host.html?fixture=direct-timeline`, {

@@ -112,6 +112,11 @@ export function checkRenderGates(input: HdrPassthroughInput): Ineligible | null 
       `${composition.width}x${composition.height} -> ${input.width}x${input.height} @${scale}x`,
     );
   }
+  // A range renders a part of the film; the passthrough encodes the whole one.
+  if (job.frameWindow) {
+    const { startFrame, endFrame } = job.frameWindow;
+    return ineligible("frame_window", `frames ${startFrame}-${endFrame}`);
+  }
   if (job.config.motionBlur) return ineligible("motion_blur");
   if (composition.gradedCanvas) return ineligible("graded_canvas");
   if (composition.masterFxChain) return ineligible("master_fx_chain");

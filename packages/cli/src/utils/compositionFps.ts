@@ -2,7 +2,7 @@ import { terminalText } from "@hyperframes/core/terminal-text";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { c } from "../ui/colors.js";
 
 function getHtmlAttribute(element: Element, name: string): string | null {

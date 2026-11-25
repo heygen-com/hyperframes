@@ -957,13 +957,42 @@ describe("audio_volume_tween_overrides_gain", () => {
     expect(finding?.severity).toBe("warning");
     expect(finding?.elementId).toBe("bgm");
     expect(finding?.message).toMatch(/5\.8 dB/);
+    expect(finding?.fixHint).toContain("`volume: 1.949845`");
   });
 
-  it("warns about an attenuation the tween overrides, not just a boost", async () => {
+  it.each([
+    ["0.3", "0.3"],
+    ["1.95", "1.95"],
+    ["0.030000", "0.03"],
+    ["3e-2", "0.03"],
+  ])("preserves the authored gain %s in its advice", async (authored, gain) => {
     const res = await lintHyperframeHtml(
-      withScript(`data-volume="0.3"`, `tl.to("#bgm", { volume: 1 });`),
+      withScript(`data-volume="${authored}"`, `tl.to("#bgm", { volume: 1 });`),
     );
-    expect(res.findings.some((f) => f.code === "audio_volume_tween_overrides_gain")).toBe(true);
+    const finding = res.findings.find((f) => f.code === "audio_volume_tween_overrides_gain");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("bgm");
+    expect(finding?.fixHint).toContain(`\`volume: ${gain}\``);
+    expect(finding?.fixHint).toContain(
+      "measure the rendered file with `hyperframes audio render.mp4`",
+    );
+    expect(finding?.fixHint).toContain("keep `volume: 0` at endpoints intended to be silent");
+    expect(finding?.fixHint).not.toContain('data-volume="1"');
+    expect(finding?.fixHint).not.toContain("`volume: 1`");
+  });
+
+  it("names both deliberate choices for an authored silent clip", async () => {
+    const res = await lintHyperframeHtml(
+      withScript(`data-volume="0"`, `tl.fromTo("#bgm", { volume: 0 }, { volume: 1 });`),
+    );
+    const finding = res.findings.find((f) => f.code === "audio_volume_tween_overrides_gain");
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.message).toContain("(silence)");
+    expect(finding?.fixHint).toContain('authored silent (`data-volume="0"`)');
+    expect(finding?.fixHint).toContain("To keep it silent, drop the volume tween");
+    expect(finding?.fixHint).toContain('to let the tween carry the level, set `data-volume="1"`');
+    expect(finding?.fixHint).toContain("choose its absolute volume targets deliberately");
+    expect(finding?.fixHint).toContain("hyperframes audio render.mp4");
   });
 
   it("stays quiet on the fade the docs recommend, which carries no data-volume", async () => {

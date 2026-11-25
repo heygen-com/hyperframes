@@ -9,7 +9,7 @@
  */
 
 import { parseHTMLContent } from "@hyperframes/core/compiler/html-document";
-import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
+import { EXCLUDED_TAGS, ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { parseGsapScriptAcornForWrite } from "@hyperframes/core/gsap-parser-acorn";
 import {
   findRoot,
@@ -20,18 +20,6 @@ import {
   querySelectorAllDeep,
 } from "./engine/model.js";
 import type { HyperFramesElement, SdkDocument } from "./types.js";
-
-// Tags that carry no editable content and must not enter the element tree.
-const EXCLUDED_TAGS = new Set([
-  "script",
-  "style",
-  "template",
-  "meta",
-  "link",
-  "noscript",
-  "base",
-  "head",
-]);
 
 // Snapshot text is TRIMMED for display (markup indentation produces noisy
 // whitespace text nodes). The raw text target is shared with setText so shadow
@@ -150,7 +138,8 @@ function buildElement(
   animationIdsByHfId: Map<string, string[]>,
 ): HyperFramesElement | null {
   const tag = el.tagName.toLowerCase();
-  if (EXCLUDED_TAGS.has(tag)) return null;
+  // `head` holds no content but isn't a text-edit target the shared set has to refuse, so only the tree leaves it out.
+  if (EXCLUDED_TAGS.has(tag) || tag === "head") return null;
 
   const id = el.getAttribute("data-hf-id") ?? "";
   if (!id) return null; // should never happen after ensureHfIds, but guard defensively

@@ -14,7 +14,7 @@
   "commands/billing.ts": 1,
   "commands/browser.ts": 4,
   "commands/capture.ts": 10,
-  "commands/capture/video.ts": 7,
+  "commands/capture/video.ts": 6,
   "commands/catalog.ts": 4,
   "commands/catch-up.ts": 5,
   "commands/check.ts": 13,

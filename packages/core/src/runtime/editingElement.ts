@@ -1,4 +1,5 @@
 // How an element is addressed in source: one rule for Studio and the runtime's editing agent.
+import { COMPOSITION_ROOT_ATTRS, SOURCE_HOST_ATTRS } from "../compositionSource";
 import { isHtmlElement } from "./domRealm";
 
 /** Names an element's source file. The parent resolves it: `file`, else its composition map. */
@@ -160,7 +161,7 @@ export function escapeCssString(value: string): string {
 }
 
 export function buildStableSelector(el: Element): string | undefined {
-  if (el.id) return `#${escapeCssIdentifier(el.id)}`;
+  if (el.id && typeof el.id === "string") return `#${escapeCssIdentifier(el.id)}`;
 
   const compositionId = el.getAttribute("data-composition-id");
   if (compositionId) return `[data-composition-id="${escapeCssString(compositionId)}"]`;
@@ -172,6 +173,18 @@ export function buildStableSelector(el: Element): string | undefined {
   if (group) return `[data-hf-group="${escapeCssString(group)}"]`;
 
   return getPreferredClassSelector(el);
+}
+
+const ESCAPED_IDENTIFIER = String.raw`(?:[A-Za-z0-9_-]|[^\x00-\x7f]|\\[0-9a-f]{1,6} |\\[^0-9a-f\n\r\f])+`;
+const ESCAPED_STRING = String.raw`"(?:[^"\\\n\r\f]|\\\\|\\"|\\a |\\d |\\c )+"`;
+const CLASS_SELECTOR = new RegExp(`^\\.(?!-?[0-9]|-$)${ESCAPED_IDENTIFIER}$`);
+const ATTRIBUTE_SELECTOR = new RegExp(`^\\[data-(?:composition-id|hf-group)=${ESCAPED_STRING}\\]$`);
+
+/** Is `selector` one `buildStableSelector` makes for an element whose id is `id`. */
+export function isStableSelector(selector: string, id: string | null): boolean {
+  if (selector.startsWith("#"))
+    return Boolean(id) && selector === `#${escapeCssIdentifier(id ?? "")}`;
+  return !id && (CLASS_SELECTOR.test(selector) || ATTRIBUTE_SELECTOR.test(selector));
 }
 
 export function getPreferredClassSelector(el: Element): string | undefined {
@@ -193,14 +206,13 @@ function closestWithAny(el: Element, names: readonly string[]): Element | null {
 }
 
 export function readElementSource(el: Element): EditingElementSource {
-  const host = closestWithAny(el, ["data-composition-file", "data-composition-src"]);
-  const root = closestWithAny(el, ["data-composition-id"]);
+  const [fileAttr, srcAttr] = SOURCE_HOST_ATTRS;
+  const [idAttr, originalIdAttr] = COMPOSITION_ROOT_ATTRS;
+  const host = closestWithAny(el, SOURCE_HOST_ATTRS);
+  const root = closestWithAny(el, [idAttr]);
   return {
-    file:
-      host?.getAttribute("data-composition-file") ??
-      host?.getAttribute("data-composition-src") ??
-      null,
-    compositionId: root?.getAttribute("data-composition-id") ?? null,
-    originalCompositionId: root?.getAttribute("data-hf-original-composition-id") ?? null,
+    file: host?.getAttribute(fileAttr) ?? host?.getAttribute(srcAttr) ?? null,
+    compositionId: root?.getAttribute(idAttr) ?? null,
+    originalCompositionId: root?.getAttribute(originalIdAttr) ?? null,
   };
 }

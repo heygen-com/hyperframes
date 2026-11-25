@@ -243,7 +243,8 @@ async function replayLayeredPrelude(
   input: HdrPassthroughInput,
   session: CaptureSession,
 ): Promise<void> {
-  await readLayeredScenes(session);
+  // Its warnings are the layered stage's to log; this replay only matches its page reads.
+  await readLayeredScenes(session, () => {});
   const prep = planHdrResources({
     composition: input.composition,
     nativeHdrVideoIds: input.nativeHdrVideoIds,

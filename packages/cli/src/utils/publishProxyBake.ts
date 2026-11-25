@@ -28,7 +28,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
   cleanAssetUrl,

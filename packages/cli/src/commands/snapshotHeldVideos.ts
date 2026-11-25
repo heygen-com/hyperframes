@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { MEDIA_RENDER_ID_ATTR, naturalVideoSize, streamRotation } from "@hyperframes/core";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isNotMediaPayload, type CaptureVideoMetadataHint } from "@hyperframes/engine";
@@ -108,7 +108,7 @@ export function probeHeldVideo(
         [
           "-v",
           "error",
-          ...mediaInputFormatArgs(ffprobe, path),
+          ...mediaInputFormatArgs(ffprobe, path, { playlists: true }),
           "-select_streams",
           "v:0",
           "-show_entries",

@@ -524,6 +524,14 @@ describe("checkRenderGates", () => {
     });
   });
 
+  it("declines a range render, which captures a frame window of the film", () => {
+    const ranged = {
+      ...makeInput(),
+      job: { ...makeInput().job, frameWindow: { startFrame: 30, endFrame: 90 } },
+    } as HdrPassthroughInput;
+    expect(checkRenderGates(ranged)).toMatchObject({ reason: "frame_window" });
+  });
+
   it("rejects SDR renders and passes the default HDR mp4 render", () => {
     const sdr = { ...makeInput(), hasHdrContent: false } as HdrPassthroughInput;
     expect(checkRenderGates(sdr)).toMatchObject({ reason: "not_hdr" });

@@ -7,6 +7,7 @@
 
 import type { Page } from "puppeteer-core";
 import type { DesignTokens } from "./types.js";
+import { normalizeDesignTokens } from "./designTokens.js";
 
 // The entire extraction runs as a single string-based evaluate
 // to avoid tsx __name injection into the browser context.
@@ -524,5 +525,5 @@ const EXTRACT_SCRIPT = `(() => {
 })()`;
 
 export async function extractTokens(page: Page): Promise<DesignTokens> {
-  return page.evaluate(EXTRACT_SCRIPT) as Promise<DesignTokens>;
+  return normalizeDesignTokens(await page.evaluate(EXTRACT_SCRIPT));
 }

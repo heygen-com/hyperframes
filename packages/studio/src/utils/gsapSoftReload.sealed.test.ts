@@ -107,6 +107,7 @@ it("reads the frame's GSAP values again once a saved script reruns in place", as
     time: 2,
     defaultEase: null,
     timelines: [{ id: "main", time: 2, defaultEase: null, tweens: [] }],
+    globalTweens: [],
     targets: [{ handle: "0123456789abcdef:1", id: "b", className: "", values: { scaleX } }],
   });
   let scaleX = 1.125;
