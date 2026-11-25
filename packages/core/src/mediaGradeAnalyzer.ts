@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { basename, extname } from "node:path";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 
 const IMAGE_EXTENSIONS = new Set([
   ".jpg",
@@ -116,7 +116,7 @@ function probeMedia(mediaPath: string, ffprobePath: string): GradeMediaProbe {
       [
         "-v",
         "error",
-        ...mediaInputFormatArgs(ffprobePath, mediaPath),
+        ...mediaInputArgs(ffprobePath, mediaPath),
         "-select_streams",
         "v:0",
         "-show_entries",
@@ -322,7 +322,7 @@ function readSignalStats(
         "-nostdin",
         "-v",
         "error",
-        ...mediaInputFormatArgs(ffmpegPath, mediaPath),
+        ...mediaInputArgs(ffmpegPath, mediaPath),
         ...keyframeSeek,
         "-i",
         mediaPath,

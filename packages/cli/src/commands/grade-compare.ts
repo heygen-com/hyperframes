@@ -23,7 +23,7 @@ import {
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
@@ -519,7 +519,7 @@ async function extractVideoFrameToBuffer(videoPath: string): Promise<Buffer | nu
       "error",
       "-ss",
       "0",
-      ...mediaInputFormatArgs(ffmpegPath, videoPath),
+      ...mediaInputArgs(ffmpegPath, videoPath),
       "-i",
       videoPath,
       "-frames:v",

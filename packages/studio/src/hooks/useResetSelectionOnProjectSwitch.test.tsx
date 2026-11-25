@@ -170,7 +170,7 @@ describe("full stack: useFileTree -> useActiveComposition (masterCompPath stalen
     const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
     const projectIdRef = useRef(projectId);
     projectIdRef.current = projectId;
-    const { fileTree, fileTreeLoaded, compositions } = useFileTree({ projectId, projectIdRef });
+    const { fileTreeLoaded, compositions } = useFileTree({ projectId, projectIdRef });
     const masterCompPath = useMemo(
       () => resolveMasterCompositionPath(compositions),
       [compositions],
@@ -178,7 +178,7 @@ describe("full stack: useFileTree -> useActiveComposition (masterCompPath stalen
     const { activeCompPath } = useActiveComposition({
       projectId,
       initialUrlStateRef,
-      fileTree,
+      compositions,
       fileTreeLoaded,
       masterCompPath,
       setEditingFile: vi.fn(),
@@ -228,6 +228,31 @@ describe("full stack: useFileTree -> useActiveComposition (masterCompPath stalen
     });
     const el = host.firstElementChild as HTMLElement;
     expect(el.dataset.activeCompPath).toBe("hero.html");
+
+    fetchSpy.mockRestore();
+  });
+
+  // fails without the fix: a link from any site picked which project file the same-origin player frame loads
+  it.each([
+    ["extracted/page.html", "index.html"],
+    ["scenes/intro.html", "scenes/intro.html"],
+  ])("opens the URL's comp %s as %s", async (comp, opened) => {
+    PROJECT_DATA["project-d"] = {
+      files: ["index.html", "extracted/page.html", "scenes/intro.html"],
+      compositions: ["index.html", "scenes/intro.html"],
+    };
+    window.location.hash = `#project/project-d?comp=${encodeURIComponent(comp)}`;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(mockFetch as typeof fetch);
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<FullStackHarness projectId="project-d" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect((host.firstElementChild as HTMLElement).dataset.activeCompPath).toBe(opened);
 
     fetchSpy.mockRestore();
   });

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { normalizeRateSpec, sourceTimeAt } from "@hyperframes/core";
 import { silence } from "@hyperframes/core/audio-analysis";
 import {
@@ -9,7 +9,7 @@ import {
   type AudioElement,
   type AudioMetadata,
 } from "@hyperframes/engine";
-import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { findFfBinary, mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { decodeAudio } from "../audio/analysis/decode.js";
 import { createProbeGate } from "../timeline/describeProject.js";
 import { findingAtRoot } from "./checkFindings.js";
@@ -73,7 +73,7 @@ async function silentPart(
     {
       mono: true,
       sampleRate: SILENCE_SAMPLE_RATE,
-      inputArgs: mediaInputFormatArgs(findFfBinary("ffmpeg") ?? "ffmpeg", path, {
+      inputArgs: mediaInputArgs(findFfBinary("ffmpeg") ?? "ffmpeg", path, {
         playlists: true,
       }),
     },

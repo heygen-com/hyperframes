@@ -7,6 +7,9 @@ import { isInHiddenOrVendorDir, mkdirOwnedWithinProject, walkDir } from "./safeP
 
 export const isCompositionSource = (html: string): boolean => /data-composition-id\s*=/.test(html);
 
+export const isCompositionPath = (relPath: string): boolean =>
+  /\.html?$/i.test(relPath) && !isInHiddenOrVendorDir(relPath);
+
 const STAMP_RECORD = join(".hyperframes", "hf-ids-stamped.json");
 
 const contentHash = (text: string): string => createHash("sha1").update(text).digest("base64url");

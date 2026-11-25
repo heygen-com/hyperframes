@@ -36,7 +36,7 @@ import { parseWhisperJson, type Word } from "./normalize.js";
 import { emitWords } from "./progress.js";
 import { probeAudio } from "../audio/analysis/decode.js";
 import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 
 export { initialModelForLanguage };
 
@@ -185,7 +185,7 @@ export function getMediaDurationSeconds(filePath: string): number | null {
       "format=duration",
       "-of",
       "default=noprint_wrappers=1:nokey=1",
-      ...mediaInputFormatArgs(ffprobePath, filePath),
+      ...mediaInputArgs(ffprobePath, filePath),
       "--",
       filePath,
     ]);
@@ -381,7 +381,7 @@ async function extractAudio(videoPath: string, signal?: AbortSignal): Promise<st
   await runFfmpeg(
     ffmpegPath,
     [
-      ...mediaInputFormatArgs(ffmpegPath, videoPath),
+      ...mediaInputArgs(ffmpegPath, videoPath),
       "-i",
       videoPath,
       "-map",
@@ -428,7 +428,7 @@ function isWav16kMono(filePath: string): boolean {
       "-print_format",
       "json",
       "-show_streams",
-      ...mediaInputFormatArgs(ffprobePath, filePath),
+      ...mediaInputArgs(ffprobePath, filePath),
       "--",
       filePath,
     ]);
@@ -458,7 +458,7 @@ async function prepareAudio(audioPath: string, signal?: AbortSignal): Promise<st
   await runFfmpeg(
     ffmpegPath,
     [
-      ...mediaInputFormatArgs(ffmpegPath, audioPath),
+      ...mediaInputArgs(ffmpegPath, audioPath),
       "-i",
       audioPath,
       "-ar",

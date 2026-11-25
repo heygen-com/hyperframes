@@ -317,7 +317,7 @@ export function useTimelineSyncCallbacks({
       if (!adapter || adapter.getDuration() <= 0) return false;
 
       adapter.pause();
-      const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef);
+      const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef, iframeRef.current);
       const commit = () => {
         // Keep non-React listeners such as the time display in sync
         // with the initial adapter seek on iframe load.

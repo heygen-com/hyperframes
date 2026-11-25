@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { readFile, stat as statFile } from "node:fs/promises";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
@@ -69,6 +69,7 @@ import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 import { openRangeEnd } from "../helpers/mediaRange.js";
 import { hasBaseElement } from "../helpers/subComposition.js";
+import { isCompositionPath } from "../helpers/hfIdPersist.js";
 import {
   runOffThread,
   ROOT_PREVIEW_DEADLINE_MS,
@@ -895,6 +896,7 @@ export function registerPreviewRoutes(
       return c.text("not found", 404);
     }
     const compPath = projectRelativePath(project.dir, compFile);
+    if (!isCompositionPath(compPath)) return c.text("not found", 404);
 
     // "v2" salts the etag for the hf-id-pinning change below: a client holding
     // a pre-pin cached response (preview-only ids, unstamped disk file) must

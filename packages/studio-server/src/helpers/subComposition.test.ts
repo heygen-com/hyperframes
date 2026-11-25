@@ -58,7 +58,8 @@ describe("buildSubCompositionHtml", () => {
         '<!doctype html><html><head><meta name="outside-head"></head><body></body></html>',
     });
     const dir = makeTempProject({
-      "scenes/scene.html": '<template><div id="scene"></div></template>',
+      "scenes/scene.html":
+        '<template><div id="scene" data-composition-id="scene"></div></template>',
     });
     symlinkSync(join(outside, "index.html"), join(dir, "index.html"));
     const html = buildSubCompositionHtml(dir, "scenes/scene.html", "/runtime.js");
@@ -570,7 +571,7 @@ describe("buildSubCompositionHtml", () => {
     <link rel="stylesheet" href="_shared.css" />
     <style>.stage { background-image: url("frame-01.png"); }</style>
   </head>
-  <body><div class="stage"><img src="frame-01.png" alt="" /></div></body>
+  <body><div class="stage" data-composition-id="frame-01"><img src="frame-01.png" alt="" /></div></body>
 </html>`,
     });
 

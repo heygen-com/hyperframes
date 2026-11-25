@@ -171,6 +171,11 @@ describe("partitionTransitionFrames", () => {
     expect(set.has(3)).toBe(false);
   });
 
+  it("keeps a window's film frames, from its first frame", () => {
+    const set = partitionTransitionFrames([{ startFrame: 95, endFrame: 105 }], 10, 100);
+    expect([...set].sort((a, b) => a - b)).toEqual([100, 101, 102, 103, 104, 105]);
+  });
+
   it("returns empty set for non-positive totalFrames", () => {
     expect(partitionTransitionFrames([{ startFrame: 0, endFrame: 5 }], 0).size).toBe(0);
     expect(partitionTransitionFrames([{ startFrame: 0, endFrame: 5 }], -1).size).toBe(0);
