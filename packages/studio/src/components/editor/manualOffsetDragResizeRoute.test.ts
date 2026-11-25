@@ -1,15 +1,22 @@
 // @vitest-environment happy-dom
 
 import { gsap } from "gsap";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
-import { settleGsapSnapshot } from "../../hooks/gsapFrameSnapshot";
+
+const snapshot = vi.hoisted(() => ({ answers: true }));
+vi.mock("../../hooks/gsapFrameSnapshot", async (load) => {
+  const real = await load<typeof import("../../hooks/gsapFrameSnapshot")>();
+  const settle: typeof real.settleGsapSnapshot = (iframe) =>
+    snapshot.answers ? real.settleGsapSnapshot(iframe) : Promise.resolve(false);
+  return { ...real, settleGsapSnapshot: settle };
+});
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { createManualOffsetDragMember } from "./manualOffsetDrag";
-import { measurePreviewGestureStart } from "./previewGestureStartRead";
+import { askShownGestureStarts, UNANSWERED } from "./previewGestureStartRead";
 import { standInFor } from "./previewSelection";
 
 // The edit accuracy bench's size layer: a tween writes its width and height, nothing moves it.
@@ -35,12 +42,13 @@ function mount() {
   usePlayerStore.setState({ currentTime: 1, isPlaying: false });
 }
 afterEach(() => {
+  snapshot.answers = true;
   document.body.innerHTML = "";
   for (const name of ["gsap", "__timelines"]) Reflect.deleteProperty(window, name);
   usePlayerStore.setState({ currentTime: 0, isPlaying: false });
 });
 
-async function sealedResizeMember() {
+async function pressSealedBox() {
   const { iframe: sealed, frame } = sealedPreviewFrame();
   const iframe = sized(sealed, [100, 50, 960, 540]) as HTMLIFrameElement;
   watchPreviewFrame(iframe);
@@ -53,15 +61,20 @@ async function sealedResizeMember() {
   );
   const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
   const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
-  await settleGsapSnapshot(iframe);
   const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
-  const { rect, start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!
-    .elements[0]!;
-  const selection = { ...makeSelection("box", standIn), id: "box", handle };
+  // The press's own read, with no GSAP snapshot of the frame held yet: the first resize after a load.
+  const pressed = { ...makeSelection("box", standIn), id: "box", handle };
+  return askShownGestureStarts(iframe, overlay, "index.html", [pressed]);
+}
+
+async function sealedResizeMember() {
+  const read = await pressSealedBox();
+  if (!read || read === UNANSWERED) throw new Error(`press read: ${String(read)}`);
+  const { selection, rect, start } = read.shown[0]!;
   return createManualOffsetDragMember({
     key: "box",
     selection,
-    element: standIn,
+    element: selection.element,
     rect,
     gesture: "resize",
     start,
@@ -91,6 +104,14 @@ it.each(["unsealed", "sealed"])(
     expect(result.ok && result.member.plainTranslate).toBe(false);
   },
 );
+
+// fails without the fix: the press chose its route before the frame's GSAP snapshot arrived, so it could not tell.
+it("does not start a sealed resize when the frame's GSAP snapshot does not arrive", async () => {
+  mount();
+  snapshot.answers = false;
+
+  expect(await pressSealedBox()).toBe(UNANSWERED);
+});
 
 // fails without the fix: sealed, the press took a layer GSAP does not move at GSAP x/y 0, 0, so a resize handed to
 // GSAP saved a CSS-translated layer 50 px off (translate 40px 30px).
