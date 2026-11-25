@@ -82,8 +82,8 @@ RUN case "$TARGETARCH" in \
 # HeadlessExperimental.beginFrame before the image can build. Chrome for Testing
 # publishes no linux arm64 headless shell and no checksums, so the sha256 below
 # was taken from the archive itself; bump the version and hash together.
-ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.36
-ARG CHROME_HEADLESS_SHELL_SHA256_AMD64=2d3a23017323c54fd457a678e4351f895c4076d8050e39d5aa6247f93448b73a
+ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.88
+ARG CHROME_HEADLESS_SHELL_SHA256_AMD64=63401333cc587645bfaeea7f0c90958b327d249251e23954a47f30112ca23d5b
 RUN case "$TARGETARCH" in \
       amd64) CHS_SHA256="$CHROME_HEADLESS_SHELL_SHA256_AMD64" ;; \
       *) echo "no pinned chrome-headless-shell for TARGETARCH '$TARGETARCH'" >&2; exit 1 ;; \
@@ -143,6 +143,8 @@ COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
 COPY packages/gcp-cloud-run/package.json packages/gcp-cloud-run/package.json
 COPY packages/lint/package.json packages/lint/package.json
 COPY packages/parsers/package.json packages/parsers/package.json
+# The share workspace typechecks this subpath during bun install.
+COPY packages/parsers/src/privatePath.ts packages/parsers/src/privatePath.ts
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 COPY packages/inspector/package.json packages/inspector/package.json

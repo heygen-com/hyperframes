@@ -125,7 +125,8 @@ function standIns(dir: string): {
   const listing = [
     "mov,mp4,m4a,3gp,3g2,mj2",
     ...["matroska,webm", "mxf", "avi", "mpeg", "mpegts", "mpegvideo", "flv", "asf", "ogg"],
-    ...["wav", "mp3", "aac", "flac", "aiff", "gif", "ico", "image2", "png_pipe", "jpeg_pipe"],
+    ...["wav", "mp3", "aac", "flac", "aiff", "caf", "w64", "wv", "au", "ac3"],
+    ...["gif", "ico", "image2", "png_pipe", "jpeg_pipe"],
     ...["webp_pipe", "bmp_pipe", "tiff_pipe", "hls", "concat", "dash", "avisynth", "tty"],
   ]
     .map((name) => ` D  ${name} demuxer`)

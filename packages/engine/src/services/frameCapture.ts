@@ -3000,9 +3000,10 @@ export function classifyScriptLoadCause(
   failure: string | number,
 ): ScriptLoadCause {
   let origin: ScriptLoadOrigin = "unknown";
+  const parsed = URL.canParse(url) ? new URL(url) : undefined;
   if (url.startsWith(`${serverUrl}/`)) origin = "local";
   else if (/^https?:\/\//.test(url)) {
-    origin = CDN_HOSTS.test(new URL(url).hostname) ? "cdn" : "remote";
+    origin = parsed && CDN_HOSTS.test(parsed.hostname) ? "cdn" : "remote";
   }
   const code =
     typeof failure === "number"
@@ -3010,7 +3011,7 @@ export function classifyScriptLoadCause(
       : /^net::ERR_[A-Z0-9_]{1,40}$/.test(failure)
         ? failure
         : "unknown";
-  const lib = origin === "cdn" ? cdnLib(new URL(url)) : undefined;
+  const lib = origin === "cdn" && parsed ? cdnLib(parsed) : undefined;
   return lib ? { origin, code, lib } : { origin, code };
 }
 

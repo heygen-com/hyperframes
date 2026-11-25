@@ -25,6 +25,7 @@ import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "../studio-server/src/helpers/requestIdentity";
+import { TELEMETRY_OPT_OUT_DEFINE } from "./vite.telemetry";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -366,6 +367,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), devProjectApi()],
   define: {
     __STUDIO_VERSION__: JSON.stringify(studioPkg.version),
+    ...TELEMETRY_OPT_OUT_DEFINE,
   },
   resolve: {
     alias: {
@@ -423,7 +425,7 @@ export default defineConfig({
   },
   test: {
     exclude: ["data/**", "node_modules/**"],
-    setupFiles: ["src/test-setup.ts"],
+    setupFiles: ["src/test-setup.ts", "../core/vitest.mediaHeader.ts"],
     environmentOptions: {
       happyDOM: { settings: { enableIframePageLoading: true } },
     },

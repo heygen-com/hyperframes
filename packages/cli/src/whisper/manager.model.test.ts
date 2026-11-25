@@ -10,6 +10,7 @@ import {
   statSync,
   symlinkSync,
   truncateSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -141,4 +142,31 @@ it("refuses a model name that is not one plain file-name part, before any file o
   }
   expect(vi.mocked(downloadFile)).not.toHaveBeenCalled();
   expect(readdirSync(modelsDir)).toEqual([]);
+});
+
+// fails without the fix: a same-size file at a pinned model's name was used as the model, never checked.
+it("downloads a pinned model again when the cached file has the right size but other bytes", async () => {
+  writeFileSync(tiny, "");
+  truncateSync(tiny, 77_691_713);
+  vi.mocked(verifies).mockResolvedValueOnce(false);
+
+  await expect(ensureModel("tiny")).resolves.toBe(tiny);
+
+  expect(downloadFile).toHaveBeenCalledOnce();
+  expect(readFileSync(tiny, "utf8")).toBe("fresh");
+});
+
+it("hashes a cached pinned model once, then again only after it changes", async () => {
+  writeFileSync(tiny, "");
+  truncateSync(tiny, 77_691_713);
+
+  await ensureModel("tiny");
+  await ensureModel("tiny");
+  expect(verifies).toHaveBeenCalledTimes(1);
+
+  utimesSync(tiny, new Date(2001, 0, 1), new Date(2001, 0, 1));
+  await ensureModel("tiny");
+  expect(verifies).toHaveBeenCalledTimes(2);
+  expect(downloadFile).not.toHaveBeenCalled();
+  expect(readdirSync(modelsDir).sort()).toEqual(["ggml-tiny.bin", "ggml-tiny.bin.verified"]);
 });

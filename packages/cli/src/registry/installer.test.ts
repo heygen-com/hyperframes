@@ -202,6 +202,21 @@ describe("installItem", () => {
     expect(existsSync(join(dir, "lib", "shaders.iife.js"))).toBe(true);
   });
 
+  it("refuses, from another registry, a file Node would load before the project's module beside it", async () => {
+    const dir = project();
+    writeFileSync(join(dir, "package.json"), JSON.stringify(nodeManifest));
+    mkdirSync(join(dir, "lib"));
+    writeFileSync(join(dir, "lib", "db.utils.js"), "module.exports = {};\n");
+    await expect(
+      installItem(withTarget("lib/db.utils"), {
+        destDir: dir,
+        force: true,
+        baseUrl: otherRegistry,
+      }),
+    ).rejects.toThrow(/Unsafe target.*script Node tooling may run/);
+    expect(readdirSync(join(dir, "lib"))).toEqual(["db.utils.js"]);
+  });
+
   it("refuses a browser script the project's own link leads below a Node package", async () => {
     const dir = project();
     mkdirSync(join(dir, "tools", "pkg"), { recursive: true });

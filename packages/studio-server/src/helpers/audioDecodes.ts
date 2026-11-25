@@ -14,6 +14,9 @@ export class AudioDecodeTimeoutError extends Error {
 
 const runDecode = createJobSlots(AUDIO_DECODE_LIMIT);
 
+export const inAudioDecodeSlot = (run: () => Promise<unknown>, signal: AbortSignal) =>
+  runDecode(run, signal);
+
 interface SharedDecode {
   result: Promise<number[]>;
   waiting: number;

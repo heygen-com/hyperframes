@@ -31,16 +31,16 @@ function paperLaunchClips(): TimelineElement[] {
 describe("formatTimelineBlock", () => {
   it("lists every audio clip with its start and volume", () => {
     const block = formatTimelineBlock(paperLaunchClips());
-    const audioLines = block.split("\n").filter((line) => line.startsWith("- audio "));
+    const audioLines = block.split("\n").filter((line) => line.startsWith('- "audio" '));
     expect(audioLines).toHaveLength(87);
     expect(
       audioLines.every((line) => /start=[\d.]+/.test(line) && /volume=[\d.]+/.test(line)),
     ).toBe(true);
     expect(block).toContain(
-      '- audio "sfx-click-0" src=click.mp3 start=1.6 duration=0.07 end=1.67 track=100 volume=0.85',
+      '- "audio" "sfx-click-0" src="click.mp3" start=1.6 duration=0.07 end=1.67 track=100 volume=0.85',
     );
     expect(block).toContain(
-      '- audio "vo" src=voiceover.mp3 start=29.6 duration=2.17 end=31.77 track=8 volume=0.01',
+      '- "audio" "vo" src="voiceover.mp3" start=29.6 duration=2.17 end=31.77 track=8 volume=0.01',
     );
   });
 
@@ -59,7 +59,7 @@ describe("formatTimelineBlock", () => {
         timelineRole: "music",
       }),
     ]);
-    expect(block).toContain("rate=0.5 group=music role=music volume-lane=[0:0.1, 10:0.5]");
+    expect(block).toContain('rate=0.5 group="music" role="music" lane "volume"=[0:0.1, 10:0.5]');
   });
 
   it("prints volume 0 and a project-relative src, and omits rate at normal speed", () => {
@@ -71,7 +71,7 @@ describe("formatTimelineBlock", () => {
       }),
     ]);
     expect(block).toContain(
-      '- audio "mute" src=assets/a.mp3 start=0 duration=1 end=1 track=0 volume=0',
+      '- "audio" "mute" src="assets/a.mp3" start=0 duration=1 end=1 track=0 volume=0',
     );
     expect(block).not.toContain("rate=");
   });

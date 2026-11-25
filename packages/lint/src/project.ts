@@ -336,6 +336,9 @@ function resolveCssAssetCandidates(
   return resolveLocalAssetCandidates(projectDir, url);
 }
 
+const WINDOWS_LONG_PATH_LIMIT = 32_767;
+const longerThanAnyPath = (src: string) => src.length > WINDOWS_LONG_PATH_LIMIT;
+
 function mountedSources(
   projectDir: string,
   rootHtml: string,
@@ -347,7 +350,8 @@ function mountedSources(
     const { document } = parseHTML(source.html);
     for (const host of querySelectorAllIncludingTemplates(document, "[data-composition-src]")) {
       const src = host.getAttribute("data-composition-src")?.trim();
-      if (!src || isUnresolvedAssetPlaceholder(src) || isRemoteOrInlineUrl(src)) continue;
+      if (!src || longerThanAnyPath(src)) continue;
+      if (isUnresolvedAssetPlaceholder(src) || isRemoteOrInlineUrl(src)) continue;
       const path = resolve(projectDir, src);
       if (seen.has(path) || !isWithinProjectRoot(projectDir, path)) continue;
       seen.add(path);
@@ -1042,6 +1046,11 @@ function lintMissingOrEmptySubComposition(
     // Shared scanner — see collectSubCompositionSrcs for why this must be a
     // text scan rather than a DOM query (template content is inert).
     for (const srcPath of collectSubCompositionSrcs(html)) {
+      if (longerThanAnyPath(srcPath)) {
+        const shown = `${srcPath.slice(0, 80)}…`;
+        checked.set(shown, { srcPath: shown, problem: "it is longer than any file path can be" });
+        continue;
+      }
       // data-composition-src is always written root-relative (even from a
       // nested sub-composition) — matches the resolution the renderer uses
       // in packages/producer/src/services/htmlCompiler.ts (parseSubCompositions

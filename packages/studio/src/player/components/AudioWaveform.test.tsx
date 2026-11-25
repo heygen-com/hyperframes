@@ -248,6 +248,42 @@ describe("AudioWaveform", () => {
     act(() => root.unmount());
   });
 
+  it("draws no bars for an hour-long file with no server peaks, too long to decode in the page, and never fetches it", async () => {
+    vi.stubGlobal("mediaHeaderSeconds", () => 3600);
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        close = async () => {};
+      },
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted.push(root);
+    act(() => {
+      root.render(
+        <AudioWaveform
+          audioUrl="/media/hour.mp3"
+          label=""
+          labelColor="#fff"
+          projectId="project-a"
+          sessionEpoch={1}
+          priority="visible"
+        />,
+      );
+    });
+    const request = leaseSpy.mock.calls.at(-1)?.[0] as {
+      load: (s: AbortSignal) => Promise<unknown>;
+    };
+    await expect(request.load(new AbortController().signal)).rejects.toMatchObject({
+      name: "AudioTooLong",
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it("greys the clip in place when muted", () => {
     const host = document.createElement("div");
     host.className = "timeline-clip is-audio";

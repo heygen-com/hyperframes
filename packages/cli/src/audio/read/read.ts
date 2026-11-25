@@ -26,10 +26,13 @@ import {
 import {
   DRUM_STEM,
   SELF_CONTAINED_STEM_INPUT,
+  VOICE_FREE_MIX,
   VOICE_STEM,
+  addRecordedStems,
   cachedStems,
   fetchStems,
   stemsAccess,
+  writtenHere,
 } from "./stems.js";
 import {
   READ_VERSION,
@@ -40,6 +43,7 @@ import {
   type Voice,
 } from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
+import { refusePlaylistLeavingItsFolder } from "../../utils/playlistInput.js";
 
 export interface ReadOptions {
   /** Where analyses and stems are kept, normally the project's `.hyperframes/read-audio`. */
@@ -133,11 +137,9 @@ function heardStems(tracks: Record<string, Float32Array>): AudibleStem[] {
     .sort((a, b) => b.db - a.db || a.name.localeCompare(b.name));
 }
 
-const VOICE_FREE = "no-vocals.wav";
-
 /** Stems summed at full quality into one file next to them, made once. */
 async function mixedFile(paths: string[], out: string, warnings: string[]) {
-  if (isPlainFile(out)) return out;
+  if (isPlainFile(out) && writtenHere(dirname(out), [basename(out)])) return out;
   const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpeg) {
     warnings.push(`no ${basename(out)}: ffmpeg is required; run: npx hyperframes doctor`);
@@ -146,7 +148,7 @@ async function mixedFile(paths: string[], out: string, warnings: string[]) {
   let stage: string | undefined;
   try {
     stage = createStagingDir(dirname(out), ".hf-mix-");
-    const temporary = join(stage, VOICE_FREE);
+    const temporary = join(stage, VOICE_FREE_MIX);
     await runFile(
       ffmpeg,
       [
@@ -161,6 +163,7 @@ async function mixedFile(paths: string[], out: string, warnings: string[]) {
       { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
     );
     renameSync(temporary, out);
+    addRecordedStems(dirname(out), [basename(out)]);
     return out;
   } catch (error) {
     warnings.push(`no ${basename(out)}: ${error instanceof Error ? error.message : error}`);
@@ -175,7 +178,7 @@ const voiceFreeMix = (stemPaths: Record<string, string>, warnings: string[]) =>
     Object.entries(stemPaths)
       .filter(([name]) => name !== VOICE_STEM)
       .map(([, path]) => path),
-    join(dirname(stemPaths[VOICE_STEM]!), VOICE_FREE),
+    join(dirname(stemPaths[VOICE_STEM]!), VOICE_FREE_MIX),
     warnings,
   );
 
@@ -483,6 +486,7 @@ export async function readAudio(
   file: string,
   options: ReadOptions,
 ): Promise<ReadResult> {
+  await refusePlaylistLeavingItsFolder([path]);
   const quality = options.quality ?? "local";
   const { layer } = options;
   const sha = await sha256(path);

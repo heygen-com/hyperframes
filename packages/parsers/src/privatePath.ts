@@ -111,8 +111,9 @@ export function isStudioPrivatePath(relPath: string): boolean {
   const inside = !isAbsolute(relPath) && !/^\.\.[. ]*$/.test(relPath.split(/[\\/]/, 1)[0] ?? "");
   const name = segments.at(-1) ?? "";
   const loadedType = !name.startsWith(".") && LOADED_ASSET_TYPE.test(name);
+  const firstNamed = segments.findIndex((segment) => segment !== "");
   return segments.some((segment, at) => {
-    const atRoot = segments.slice(0, at).every((before) => before === "");
+    const atRoot = firstNamed === -1 || at <= firstNamed;
     if (segment === ".hyperframes")
       return !atRoot || !isStudioOwnFile(segments.slice(at).join("/"));
     if (BUILD_OUTPUT_FOLDERS.has(segment)) return inside;

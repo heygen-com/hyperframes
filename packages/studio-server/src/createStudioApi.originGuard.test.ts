@@ -286,6 +286,8 @@ describe("createStudioApi media analysis from another site", () => {
     ["waveform", "same-site"],
     ["peaks", "cross-site"],
     ["peaks", "same-site"],
+    ["pcm", "cross-site"],
+    ["pcm", "same-site"],
   ])("refuses a %s request marked %s", async (route, site) => {
     const { app } = createApp();
     const res = await app.request(`http://localhost/projects/demo/${route}/talk.mp4`, {
