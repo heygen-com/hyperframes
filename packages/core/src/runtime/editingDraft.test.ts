@@ -6,6 +6,7 @@ import { handleFor } from "./editingHandles";
 
 afterEach(() => {
   document.body.innerHTML = "";
+  document.head.innerHTML = "";
   delete (window as { gsap?: unknown }).gsap;
 });
 
@@ -182,10 +183,20 @@ describe("moves through GSAP", () => {
   function gsapHeld() {
     const { element, handle } = card("translate: 4px 2px; width: 50px");
     const position = { x: 40, y: 30 };
-    (window as { gsap?: unknown }).gsap = {
-      getProperty: (_: Element, axis: "x" | "y") => position[axis],
+    // Like real GSAP, the first read folds the CSS translate into x/y and leaves translate none.
+    const gsap = {
+      getProperty: (target: HTMLElement, axis: "x" | "y") => {
+        if (target.style.translate !== "none") {
+          const [x = 0, y = 0] = shown(target);
+          Object.assign(position, { x: position.x + x, y: position.y + y });
+          target.style.setProperty("translate", "none");
+        }
+        return position[axis];
+      },
       set: (_: Element, props: Partial<typeof position>) => Object.assign(position, props),
     };
+    (window as { gsap?: unknown }).gsap = gsap;
+    gsap.getProperty(element, "x"); // the press reads GSAP's x/y before any draft draws
     const move = (x: number, y: number) =>
       drawDrafts([{ handle, translate: { x, y, route: "gsap" }, size: null }]);
     return { element, handle, position, move };
@@ -202,14 +213,59 @@ describe("moves through GSAP", () => {
     const { element, handle, position, move } = gsapHeld();
     move(30, 36);
     drawDrafts([{ handle, end: "restore" }]);
-    expect([position, element.style.translate]).toEqual([{ x: 40, y: 30 }, "4px 2px"]);
+    expect([position, element.style.translate]).toEqual([{ x: 44, y: 32 }, "none"]);
   });
 
   it("leaves GSAP where the drag drew it when the draft ends keeping its size", () => {
     const { element, handle, position, move } = gsapHeld();
     move(30, 36);
     drawDrafts([{ handle, end: "keep-size" }]);
-    expect([position, element.style.translate]).toEqual([{ x: 30, y: 36 }, "4px 2px"]);
+    expect([position, element.style.translate]).toEqual([{ x: 30, y: 36 }, "none"]);
+  });
+
+  // fails without the fix: a sealed resize saved as GSAP x/y over a stylesheet translate drew 50 px off after the
+  // drop, because the end put back the press's empty inline translate over the none GSAP's soft reload had set.
+  it("keeps the translate GSAP folded off when a soft reload set it before the end", () => {
+    document.head.innerHTML = "<style>#card { translate: 40px 30px }</style>";
+    const { element, handle } = card("width: 50px");
+    (window as { gsap?: unknown }).gsap = { getProperty: () => 0, set: () => {} };
+    drawDrafts([{ handle, translate: { x: -50, y: -33 }, size: { width: 80, height: 40 } }]);
+    element.style.setProperty("translate", "none");
+
+    drawDrafts([{ handle, end: "keep-size" }]);
+
+    expect([getComputedStyle(element).translate, element.style.width]).toEqual(["none", "80px"]);
+  });
+
+  it("puts back a CSS-placed layer's translate when GSAP is loaded but never moved it", () => {
+    document.head.innerHTML = "<style>#card { translate: 40px 30px }</style>";
+    const { element, handle } = card("width: 50px");
+    (window as { gsap?: unknown }).gsap = { getProperty: () => 0, set: () => {} };
+    drawDrafts([{ handle, translate: { x: -50, y: -33 }, size: { width: 80, height: 40 } }]);
+
+    drawDrafts([{ handle, end: "keep-size" }]);
+
+    expect([getComputedStyle(element).translate, element.style.width]).toEqual([
+      "40px 30px",
+      "80px",
+    ]);
+  });
+
+  it("keeps translate none after a GSAP-route draft when GSAP folded a stylesheet translate", () => {
+    document.head.innerHTML = "<style>#card { translate: 40px 30px }</style>";
+    const { element, handle } = card("width: 50px");
+    const fold = (target: HTMLElement) => target.style.setProperty("translate", "none");
+    (window as { gsap?: unknown }).gsap = {
+      getProperty: (t: HTMLElement) => (fold(t), 0),
+      set: () => {},
+    };
+    drawDrafts([
+      { handle, translate: { x: 10, y: 0, route: "gsap" }, size: { width: 80, height: 40 } },
+    ]);
+
+    drawDrafts([{ handle, end: "keep-size" }]);
+
+    expect(getComputedStyle(element).translate).toBe("none");
   });
 
   // fails without the fix: restore compared GSAP's x/y with the drawn one, so a later set to that same value, or one
@@ -234,7 +290,7 @@ describe("moves through GSAP", () => {
     move(30, 36);
     gsapSet({ handle, props: { x: 25 } });
     drawDrafts([{ handle, end: "restore" }]);
-    expect(position).toEqual({ x: 25, y: 30 });
+    expect(position).toEqual({ x: 25, y: 32 });
   });
 
   // fails without the fix: the hold dropped only when the whole batch landed, so a restore after a batch with a missed

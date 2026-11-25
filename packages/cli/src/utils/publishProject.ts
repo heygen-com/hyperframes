@@ -11,7 +11,7 @@ import {
   type Stats,
   statSync,
 } from "node:fs";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import AdmZip from "adm-zip";
 import type { Ignore } from "ignore";
 import { projectIgnore } from "@hyperframes/lint";

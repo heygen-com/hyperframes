@@ -3,7 +3,7 @@ import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { extname, join } from "node:path";
 import { parseExpressionAt, tokenizer } from "acorn";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 
 export interface Word {
   /** Stable identifier for referencing this word in overrides and compositions.

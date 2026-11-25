@@ -4,6 +4,8 @@ import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
 import { ParentMediaManager } from "./parent-media.js";
+import type { ParentAudio } from "./parent-audio.js";
+import { isWebKit } from "@hyperframes/core/runtime/media-clock";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { handleRuntimeMessage } from "./runtime-message-handler.js";
 import {
@@ -44,6 +46,9 @@ import {
 // timeline itself respects. Clamping here also shields the native
 // HTMLMediaElement.playbackRate setter, which throws for extreme values in
 // production browsers.
+const capturing = (options?: boolean | EventListenerOptions): boolean =>
+  typeof options === "boolean" ? options : options?.capture === true;
+
 function parseUrl(src: string): URL | null {
   try {
     return new URL(src, document.baseURI);
@@ -159,6 +164,8 @@ class HyperframesPlayer extends HTMLElement {
   /** The URL a sealed srcdoc was fetched from, so its media resolve as they would by `src`. */
   private _srcdocUrl: string | null = null;
   private _pageRead = false;
+  /** A sealed player's fetch answered a page it can't read (opaque, or carrying its own policy). */
+  private _pageUnreadable = false;
   private _readyBeforeRuntime = false;
   private _readyDocument: Document | null = null;
   private _awaitingLoad = false;
@@ -185,10 +192,20 @@ class HyperframesPlayer extends HTMLElement {
   private _compositionWidth = 1920;
   private _compositionHeight = 1080;
   private _rescaleWarned = false;
+  private _errorHeard = false;
+  private readonly _errorStandIns = new WeakMap<
+    EventListenerOrEventListenerObject,
+    Map<boolean, EventListener>
+  >();
+  private readonly _errorStandInSet = new WeakSet<EventListenerOrEventListenerObject>();
   private _directTimelineAdapter: DirectTimelineAdapter | null = null;
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
+  private _parentAudio: ParentAudio | null = null;
+  private _parentAudioLoad: Promise<void> | null = null;
+  private _parentAudioGen = 0;
+  private _tapContext: AudioContext | null = null;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
@@ -249,9 +266,12 @@ class HyperframesPlayer extends HTMLElement {
     this.probe = new CompositionProbe(this.iframe, {
       resolveRuntimeUrl: () => runtimeSrcFromElement(this),
       hostOwnsDeadline: () => this.hasAttribute("no-load-timeout"),
-      unreadSealedLoad: () => this.hasAttribute(SANDBOX_ORIGIN_ATTR) && !this._pageRead,
+      // No player adds the runtime to a page it didn't read from another site, or to one its fetch couldn't read; a
+      // same-site page still being fetched or answering an error gets the plain timeout.
+      runtimeOutOfReach: () =>
+        !this._pageRead && (this._filmFromAnotherSite() || this._pageUnreadable),
       onReady: (result) => this._onProbeReady(result),
-      onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
+      onError: (message) => this._emitError({ message }),
     });
 
     this.addEventListener("click", (event) => {
@@ -301,6 +321,12 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineAdapter = null;
     this.shaderLoader.destroy();
     this._media.destroy();
+    this._parentAudio?.destroy();
+    this._parentAudio = null;
+    this._parentAudioLoad = null;
+    this._parentAudioGen++;
+    void this._tapContext?.close();
+    this._tapContext = null;
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
@@ -367,6 +393,7 @@ class HyperframesPlayer extends HTMLElement {
       case "playback-rate": {
         const rate = clampPlaybackRate(parseFloat(val || "1"));
         this._media.updatePlaybackRate(rate);
+        this._parentAudio?.setRate(rate);
         this._sendControl("set-playback-rate", { playbackRate: rate });
         this._directTimelineAdapter?.timeScale?.(rate);
         this.controlsApi?.updateSpeed(rate);
@@ -384,6 +411,7 @@ class HyperframesPlayer extends HTMLElement {
         this._volume = v;
         this._syncVideoAudio();
         this._media.updateVolume(v);
+        this._parentAudio?.setVolume(v);
         this._sendControl("set-volume", { volume: v });
         this.controlsApi?.updateVolume(v);
         this._emit(new Event("volumechange"));
@@ -493,6 +521,9 @@ class HyperframesPlayer extends HTMLElement {
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     else this._media.primeAll();
+    const sealedAudio = this._sealedAudio();
+    if (sealedAudio) sealedAudio.play();
+    else if (this._parentAudioLoad) this._openTapContext();
     this.controlsApi?.updatePlaying(true);
     if (!queuedForReady && announce) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
@@ -516,6 +547,7 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     if (this._media.audioOwner === "parent") this._media.pauseAll();
+    this._parentAudio?.pause();
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
     this._emit(new Event("pause"));
@@ -525,6 +557,7 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("stop-media");
     this._stopIframeMedia();
     this._media.stopAdoptedMedia();
+    this._parentAudio?.pause();
   }
 
   seek(timeInSeconds: number, options?: { keepPlaying?: boolean }) {
@@ -533,6 +566,7 @@ class HyperframesPlayer extends HTMLElement {
     // asset-buffering window is cancelled here too — same reason as pause()
     // above. keepPlaying plays on from the new time, as <video>'s currentTime does.
     this._pendingPlay = false;
+    this._parentAudio?.pause();
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
         timeSeconds: timeInSeconds,
@@ -717,6 +751,57 @@ class HyperframesPlayer extends HTMLElement {
     return this.closest("hyperframes-slideshow") !== null;
   }
 
+  /**
+   * A sealed film's audio, played here from decoded buffers where WebKit would start its elements late.
+   * Its code loads on first need, so other players don't carry it; until then the film plays its own.
+   */
+  private _sealedAudio(): ParentAudio | null {
+    if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR) || !isWebKit() || this._isSlideshowPlayer())
+      return null;
+    this._parentAudioLoad ??= this._loadParentAudio();
+    return this._parentAudio;
+  }
+
+  /** A tap that lands before the audio code: Safari only lets a context sound when it is made in the tap. */
+  private _openTapContext(): void {
+    try {
+      this._tapContext ??= new AudioContext();
+    } catch {
+      return;
+    }
+    void this._tapContext.resume().catch(() => {});
+  }
+
+  private async _loadParentAudio(): Promise<void> {
+    const gen = this._parentAudioGen;
+    const loaded = await import("./parent-audio.js").catch((error: unknown) => {
+      if (gen === this._parentAudioGen) this._parentAudioLoad = null;
+      console.warn(
+        "[hyperframes-player] sealed audio code failed to load; the film plays its own",
+        error,
+      );
+      return null;
+    });
+    if (!loaded || gen !== this._parentAudioGen) return;
+    const { ParentAudio } = loaded;
+    this._parentAudio = new ParentAudio({
+      copies: () => this._media.listedAudio(),
+      sendControl: (action, extra) => this._sendControl(action, extra),
+      getCurrentTime: () => this._currentTime,
+      getPlaybackRate: () => this.playbackRate,
+      getVolume: () => this._volume,
+      getMuted: () => this.muted,
+      isPaused: () => this._paused,
+      takeTapContext: () => {
+        const context = this._tapContext;
+        this._tapContext = null;
+        return context;
+      },
+    });
+    this._parentAudio.postClaims();
+    if (!this._paused) this._parentAudio.play();
+  }
+
   /** Apply a change to the `muted` attribute: re-assert under an audio lock,
    *  else mute/unmute the media, sync the controls, and fire `volumechange`. */
   private _handleMutedChange(val: string | null): void {
@@ -728,6 +813,7 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     this._media.updateMuted(val !== null);
+    this._parentAudio?.setMuted(val !== null);
     this._syncVideoAudio();
     this._setIframeMediaMuted(val !== null);
     this._sendControl("set-muted", { muted: val !== null });
@@ -1060,6 +1146,7 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("set-web-audio-media-disabled", {
       disabled: this._isSlideshowPlayer(),
     });
+    this._sealedAudio()?.postClaims();
     this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
     this._sendDisplayScale();
   }
@@ -1140,6 +1227,7 @@ class HyperframesPlayer extends HTMLElement {
   private _writeFrame(to: FrameTarget): void {
     this.probe.frameWritten();
     this._pageRead = !("src" in to) || to.read === true;
+    this._pageUnreadable = false;
     if (!("srcdoc" in to)) this.iframe.src = to.src;
     else if (to.srcdoc === null) this.iframe.removeAttribute("srcdoc");
     else this.iframe.srcdoc = to.srcdoc;
@@ -1168,7 +1256,7 @@ class HyperframesPlayer extends HTMLElement {
       () => {
         if (load !== this._documentLoad) return;
         this.probe.endNavigation();
-        this._emit(new CustomEvent("error", { detail: { message: SEALED_RUNTIME_LOAD_FAILED } }));
+        this._emitError({ message: SEALED_RUNTIME_LOAD_FAILED });
       },
     );
   }
@@ -1194,8 +1282,10 @@ class HyperframesPlayer extends HTMLElement {
       .then(
         (page) => {
           if (load !== this._documentLoad) return;
-          if (page.bySrc) this._writeSrcOverSrcdoc(src, page.read);
-          else this._showSealedDocument(page.html, page.url, load);
+          if (page.bySrc) {
+            this._writeSrcOverSrcdoc(src, page.read);
+            this._pageUnreadable = !page.read;
+          } else this._showSealedDocument(page.html, page.url, load);
         },
         () => {
           if (load === this._documentLoad) this._writeSrcOverSrcdoc(src);
@@ -1222,7 +1312,7 @@ class HyperframesPlayer extends HTMLElement {
         },
         onError: (message, code) => {
           if (!this._paused) this.pause();
-          this._emit(new CustomEvent("error", { detail: { message, code } }));
+          this._emitError({ message, code });
         },
         onPlayRejected: (error) => this._onVideoPlayRejected(error),
       });
@@ -1443,6 +1533,11 @@ class HyperframesPlayer extends HTMLElement {
         this._runtimeAnnounces = announces;
       },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
+      onParentCopies: () => {
+        this._sealedAudio()?.postClaims();
+        if (!this._paused) this._sealedAudio()?.play();
+      },
+      onRuntimeStopped: () => this._parentAudio?.pause(),
       setScenes: (scenes) => {
         this._scenes = scenes;
         this._emit(new CustomEvent("scenes", { detail: { scenes } }));
@@ -1653,6 +1748,7 @@ class HyperframesPlayer extends HTMLElement {
     this._setBuffering(false);
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
+    this._parentAudio?.reset();
   }
 
   /** Abandons any in-flight asset wait — every `_ready = false` site calls
@@ -1750,6 +1846,71 @@ class HyperframesPlayer extends HTMLElement {
   /** Every event the player raises goes through here, so an update's events keep their order. */
   private _emit(event: Event): void {
     this._afterEvents(() => this.dispatchEvent(event));
+  }
+
+  private _emitError(detail: { message: string; code?: number | null }): void {
+    this._afterEvents(() => {
+      this._errorHeard = false;
+      // The DOM calls the onerror handler set when the error dispatches, which may clear itself.
+      const handler = this.onerror;
+      this.dispatchEvent(new CustomEvent("error", { detail }));
+      if (!this._errorHeard && !handler) {
+        console.warn(`[hyperframes-player] error with no listener: ${detail.message}`);
+      }
+    });
+  }
+
+  override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    super.addEventListener(
+      type,
+      type === "error" && listener ? this._heardBy(listener, capturing(options)) : listener,
+      options,
+    );
+  }
+
+  override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    super.removeEventListener(
+      type,
+      type === "error" && listener ? this._heardBy(listener, capturing(options)) : listener,
+      options,
+    );
+  }
+
+  /** The one stand-in the DOM holds for an error listener: it marks the error heard, and leaves once, signal
+   *  and capture to the browser. */
+  private _heardBy(
+    listener: EventListenerOrEventListenerObject,
+    capture: boolean,
+  ): EventListenerOrEventListenerObject {
+    if (this._errorStandInSet.has(listener)) return listener;
+    const byCapture = this._errorStandIns.get(listener) ?? new Map<boolean, EventListener>();
+    this._errorStandIns.set(listener, byCapture);
+    let standIn = byCapture.get(capture);
+    if (!standIn) {
+      standIn = (event: Event) => {
+        this._errorHeard = true;
+        if (typeof listener === "function") listener.call(this, event);
+        else listener.handleEvent(event);
+      };
+      byCapture.set(capture, standIn);
+      this._errorStandInSet.add(standIn);
+    }
+    return standIn;
+  }
+
+  /** A composition from another origin than the page's: no player, sealed or not, can add the runtime to it. */
+  private _filmFromAnotherSite(): boolean {
+    if (this.hasAttribute("srcdoc")) return false;
+    const url = parseUrl(this.getAttribute("src") ?? "");
+    return url !== null && url.origin !== location.origin;
   }
 
   private _rescale() {

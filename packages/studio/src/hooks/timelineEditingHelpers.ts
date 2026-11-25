@@ -115,17 +115,6 @@ export function findTimelineElementInDocument(
     return null;
   }
 }
-/** Takes deleted clips out of the live preview at once: until the reload lands, anything that re-reads the
- *  preview (composition enrichment) would otherwise put them back on the timeline. */
-export function removeIframeTimelineElements(
-  iframe: HTMLIFrameElement | null,
-  elements: TimelineElement[],
-  activeCompositionPath: string | null = null,
-): void {
-  for (const element of elements)
-    findTimelineElementInIframe(iframe, element, activeCompositionPath)?.remove();
-}
-
 // fallow-ignore-next-line complexity
 function resolveResizePlaybackStart(
   original: string,

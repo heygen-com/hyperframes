@@ -4,7 +4,7 @@ import { logReload } from "../utils/reloadDebug";
 import { afterStudioPendingEdits } from "../utils/studioPendingEdits";
 import { whileScriptWrites } from "./previewReloading";
 import { markScenesStaleIn } from "@hyperframes/core/runtime/scenes";
-import { previewFrameOpaque, previewRequest } from "./lib/previewChannel";
+import { notePreviewPromoted, previewFrameOpaque, previewRequest } from "./lib/previewChannel";
 
 type ApplySwap = (html: string, signal: AbortSignal) => Promise<void>;
 type SwapWindow = Window & {
@@ -56,6 +56,7 @@ const PREVIEW_PROMOTED = "hf-preview-promoted";
 export type PreviewPromotion = { retired: HTMLIFrameElement | null; live: HTMLIFrameElement };
 
 export function announcePreviewPromoted(promotion: PreviewPromotion): void {
+  if (promotion.retired) notePreviewPromoted(promotion.retired, promotion.live);
   promotion.live.ownerDocument.dispatchEvent(
     new CustomEvent(PREVIEW_PROMOTED, { detail: promotion }),
   );

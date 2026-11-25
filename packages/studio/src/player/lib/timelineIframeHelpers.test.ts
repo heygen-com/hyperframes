@@ -46,7 +46,7 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
   it("adds a host the lookup finds in its preview, as a composition", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">
-        <div id="benefit-fresh" data-composition-id="benefit-fresh" data-composition-src="compositions/benefit-fresh.html"
+        <div id="benefit-fresh" data-composition-id="benefit-fresh" data-composition-src="compositions/benefit-fresh.html" data-composition-file="compositions/benefit-fresh.html"
           data-start="0" data-duration="3"></div>
       </div>
     `);

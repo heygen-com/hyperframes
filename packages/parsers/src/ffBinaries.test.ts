@@ -525,7 +525,7 @@ describe("mediaInputFormatArgs", () => {
     vi.resetModules();
     vi.doUnmock("node:fs");
     vi.doUnmock("node:child_process");
-    const { findFfBinary, mediaInputFormatArgs } = await importFresh();
+    const { findFfBinary, mediaInputArgs } = await importFresh();
     const ffmpeg = findFfBinary("ffmpeg");
     if (!ffmpeg) return;
     const dir = mkdtempSync(join(tmpdir(), "hf-text-art-"));
@@ -533,7 +533,7 @@ describe("mediaInputFormatArgs", () => {
     const note = join(dir, "note.asc");
     writeFileSync(note, "API_KEY=not-a-video\nsecond line\n");
     const frame = join(dir, "frame.png");
-    const args = ["-v", "error", "-y", ...mediaInputFormatArgs(ffmpeg, note), "-i", note];
+    const args = ["-v", "error", "-y", ...mediaInputArgs(ffmpeg, note), "-i", note];
     spawnSync(ffmpeg, [...args, "-frames:v", "1", frame]);
     expect(existsSync(frame)).toBe(false);
   });
@@ -547,7 +547,7 @@ describe("mediaInputFormatArgs", () => {
     vi.resetModules();
     vi.doUnmock("node:fs");
     vi.doUnmock("node:child_process");
-    const { findFfBinary, mediaInputFormatArgs } = await importFresh();
+    const { findFfBinary, mediaInputArgs } = await importFresh();
     const ffmpeg = findFfBinary("ffmpeg");
     if (!ffmpeg) return;
     const dir = realpathSync(mkdtempSync(join(tmpdir(), "hf-playlist-input-")));
@@ -576,7 +576,7 @@ describe("mediaInputFormatArgs", () => {
       writeFileSync(input, "ffconcat version 1.0\nfile inner.m3u8\n");
     }
     const out = join(dir, "out.wav");
-    spawnSync(ffmpeg, ["-v", "error", ...mediaInputFormatArgs(ffmpeg, input), "-i", input, out]);
+    spawnSync(ffmpeg, ["-v", "error", ...mediaInputArgs(ffmpeg, input), "-i", input, out]);
     expect(existsSync(out)).toBe(false);
   });
 
@@ -586,12 +586,19 @@ describe("mediaInputFormatArgs", () => {
     ["concat:/project/a.mp4|/project/b.mp4", true],
     ["https://cdn.example/clip.mp4", false],
   ])("reads %s as a local file only: %s", async (input, local) => {
-    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    const { _setDemuxerListingForTests, mediaInputArgs } = await importFresh();
     _setDemuxerListingForTests(" D  mov,mp4,m4a     QuickTime / MOV");
-    const args = mediaInputFormatArgs("/ffmpeg", input);
+    const args = mediaInputArgs("/ffmpeg", input);
     expect(args.slice(0, 2)).toEqual(
       local ? ["-protocol_whitelist", "file"] : ["-format_whitelist", "mov,mp4,m4a"],
     );
+  });
+
+  it("is the one -format_whitelist pair a caller reads by position, for a local file too", async () => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(" D  mov,mp4,m4a     QuickTime / MOV");
+    const [flag, formats, ...rest] = mediaInputFormatArgs("/ffmpeg", "/project/clip.mp4");
+    expect([flag, formats, rest]).toEqual(["-format_whitelist", "mov,mp4,m4a", []]);
   });
 
   it("reads playlists only for a caller that walked the file", async () => {
@@ -622,13 +629,11 @@ describe("mediaInputFormatArgs", () => {
       `#!/bin/sh\nif [ -e "${dir}/ran" ]; then echo ' D  wav  WAV'; else touch "${dir}/ran"; exit 1; fi\n`,
     );
     chmodSync(binary, 0o755);
-    const local = ["-protocol_whitelist", "file"];
     expect(mediaInputFormatArgs(binary, "a.wav")).toEqual([
-      ...local,
       "-format_whitelist",
       SELF_CONTAINED_FORMATS,
     ]);
-    expect(mediaInputFormatArgs(binary, "a.wav")).toEqual([...local, "-format_whitelist", "wav"]);
+    expect(mediaInputFormatArgs(binary, "a.wav")).toEqual(["-format_whitelist", "wav"]);
   });
 
   it("falls back to a list the installed ffprobe reads CAF, W64, WavPack, AU and AC3 with", async () => {

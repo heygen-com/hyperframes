@@ -9,17 +9,9 @@ import { elementForHandle } from "./editingHandles";
 import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
 import type { EditingDraft, EditingDraftProps, EditingDraftRotate } from "./editingPort";
 import { revealClip } from "./clipReveal";
+import { computedTranslateAxes, movedTranslate, SIZE_PROPERTIES, writeDrawnSize } from "./drawnBox";
 import type { RuntimeTimelineLike } from "./types";
 
-export const SIZE_PROPERTIES = [
-  "box-sizing",
-  "width",
-  "height",
-  "min-width",
-  "min-height",
-  "max-width",
-  "max-height",
-] as const;
 const DRAWN = ["translate", "rotate", "transform", ...SIZE_PROPERTIES] as const;
 
 interface Before {
@@ -30,6 +22,7 @@ interface Before {
   /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
   gsapRotation?: number;
   gsapPosition?: { x: number; y: number };
+  drawnTranslate?: string;
   drewTransform?: boolean;
   propsSet?: string[];
   putMarkBack?: () => void;
@@ -54,49 +47,6 @@ function rootTimeline(): RuntimeTimelineLike | null {
 const before = new WeakMap<Element, Before>();
 const liveDrafts = new Map<Styled, EditingDraft>();
 let lastDraft = 0;
-
-/** "calc(50% + 2px) 4px" as its top-level parts. */
-function axes(value: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let part = "";
-  for (const char of value.trim()) {
-    depth += char === "(" ? 1 : char === ")" ? -1 : 0;
-    if (/\s/.test(char) && depth === 0) {
-      if (part) parts.push(part);
-      part = "";
-    } else part += char;
-  }
-  if (part) parts.push(part);
-  return parts;
-}
-
-/** The side a translate's % takes a share of: the box `transform-box` names. */
-function percentSide(computed: CSSStyleDeclaration, size: "width" | "height"): number {
-  const [a, b] = size === "width" ? ["left", "right"] : ["top", "bottom"];
-  const n = (name: string) => Number.parseFloat(computed.getPropertyValue(name)) || 0;
-  const pad =
-    n(`padding-${a}`) + n(`padding-${b}`) + n(`border-${a}-width`) + n(`border-${b}-width`);
-  const content = n(size) - (computed.getPropertyValue("box-sizing") === "border-box" ? pad : 0);
-  const box = computed.getPropertyValue("transform-box");
-  return box === "content-box" || box === "fill-box" ? content : content + pad;
-}
-
-/** Each % as the px it is now, so a resize drawn with it does not move the element again. */
-function percentAsPx(axis: string, side: number): string {
-  return axis.replace(
-    /(-?\d*\.?\d+(?:e[-+]?\d+)?)%/gi,
-    (_, n: string) => `${(Number(n) * side) / 100}px`,
-  );
-}
-
-export function computedTranslateAxes(element: Styled): string[] {
-  const computed = getComputedStyle(element);
-  const translate = computed.getPropertyValue("translate");
-  if (!translate || translate === "none") return [];
-  const sides = [percentSide(computed, "width"), percentSide(computed, "height")];
-  return axes(translate).map((axis, i) => (i < 2 ? percentAsPx(axis, sides[i]!) : axis));
-}
 
 function beforeOf(element: Styled): Before {
   let saved = before.get(element);
@@ -125,32 +75,33 @@ function restore(element: Styled, names: readonly string[]): void {
   }
 }
 
-export function movedTranslate(
-  [x = "0px", y = "0px", z]: string[],
-  offset: { x: number; y: number },
-) {
-  return `calc(${x} + ${offset.x}px) calc(${y} + ${offset.y}px)${z ? ` ${z}` : ""}`;
-}
-
 type DraftTranslate = NonNullable<Extract<EditingDraft, { translate: unknown }>["translate"]>;
+
+function writeDrawnTranslate(element: Styled, saved: Before, value: string): void {
+  element.style.setProperty("translate", value);
+  saved.drawnTranslate = element.style.getPropertyValue("translate");
+}
 
 function drawTranslate(element: Styled, offset: DraftTranslate): void {
   const saved = beforeOf(element);
   if (offset.route !== "gsap")
-    return void element.style.setProperty("translate", movedTranslate(saved.translate, offset));
+    return writeDrawnTranslate(element, saved, movedTranslate(saved.translate, offset));
   const gsap = frameGsap();
   const read = (axis: string) => Number(gsap?.getProperty?.(element, axis)) || 0;
   saved.gsapPosition ??= { x: read("x"), y: read("y") };
-  element.style.setProperty("translate", "none");
+  writeDrawnTranslate(element, saved, "none");
   gsap?.set?.(element, { x: offset.x, y: offset.y });
 }
 
 export function rebaseDrawnPosition(element: Element, props: Record<string, unknown>): void {
-  const position = before.get(element)?.gsapPosition;
-  for (const axis of ["x", "y"] as const) {
-    const value = props[axis];
-    if (position && typeof value === "number" && Number.isFinite(value)) position[axis] = value;
-  }
+  const saved = before.get(element);
+  const moved = (["x", "y"] as const).filter((axis) => Number.isFinite(props[axis]));
+  if (!moved.length || !isStylableElement(element)) return;
+  if (!saved) element.style.setProperty("translate", "none");
+  for (const entry of saved?.inline ?? [])
+    if (entry[0] === "translate") [entry[1], entry[2]] = ["none", ""];
+  for (const axis of moved)
+    if (saved?.gsapPosition) saved.gsapPosition[axis] = props[axis] as number;
 }
 
 function restoreGsapPosition(element: Styled): void {
@@ -168,17 +119,6 @@ function redrawTimelines(): void {
     seekGsapTimeline(timeline, 0, true);
     seekGsapTimeline(timeline, time, true);
   }
-}
-
-export function writeDrawnSize(
-  style: CSSStyleDeclaration,
-  size: { width: number; height: number },
-): void {
-  style.setProperty("box-sizing", "border-box");
-  style.setProperty("width", `${size.width}px`);
-  style.setProperty("height", `${size.height}px`);
-  for (const name of ["min-width", "min-height"]) style.setProperty(name, "0px");
-  for (const name of ["max-width", "max-height"]) style.setProperty(name, "none");
 }
 
 function drawSize(element: Styled, size: { width: number; height: number }): void {
@@ -227,6 +167,18 @@ function clearProps(element: Styled, saved: Before): void {
   putLiveDraftsBack();
 }
 
+function settleTranslateUnderGsap(element: Styled): void {
+  restore(element, ["translate"]);
+  const under = getComputedStyle(element).getPropertyValue("translate");
+  if (under && under !== "none") element.style.setProperty("translate", "none");
+}
+
+function dropDrawnTranslate(element: Styled, saved: Before): void {
+  if (saved.gsapPosition !== undefined) return settleTranslateUnderGsap(element);
+  if (element.style.getPropertyValue("translate") === saved.drawnTranslate)
+    restore(element, ["translate"]);
+}
+
 function end(element: Styled, ending: EditingDraftEnd): boolean {
   const saved = before.get(element);
   if (!saved || ("draft" in ending && ending.draft !== saved.draft)) return false;
@@ -237,7 +189,7 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
     restoreGsapPosition(element);
     restoreGsapRotation(element);
   }
-  if (ending.end === "keep-size") restore(element, ["translate"]);
+  if (ending.end === "keep-size") dropDrawnTranslate(element, saved);
   before.delete(element);
   return ending.end === "restore";
 }

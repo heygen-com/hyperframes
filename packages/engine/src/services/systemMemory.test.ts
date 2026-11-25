@@ -15,11 +15,15 @@ import {
 const BYTES_PER_MIB = 1024 * 1024;
 const CGROUP_V2_MEMORY_MAX_PATH = "/sys/fs/cgroup/memory.max";
 const CGROUP_V1_MEMORY_LIMIT_PATH = "/sys/fs/cgroup/memory/memory.limit_in_bytes";
+const CGROUP_V2_CONTROLLERS_PATH = "/sys/fs/cgroup/cgroup.controllers";
+const CGROUP_V1_CPU_QUOTA_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us";
+const CGROUP_V1_CPU_PERIOD_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_period_us";
 
 type SystemMemoryModule = typeof import("./systemMemory.js");
 
 type MockSystemMemoryOptions = {
   availableParallelism?: number;
+  cgroupVersion?: 1 | 2;
   hostCpus?: number;
   files?: Record<string, string>;
   hostTotalMb?: number;
@@ -46,14 +50,20 @@ async function withSystemMemoryMocks(
 ): Promise<void> {
   const {
     availableParallelism = 32,
+    cgroupVersion = 2,
     hostCpus = 32,
-    files = {},
+    files: layoutFiles = {},
     hostTotalMb = 32768,
     platform = "linux",
     readErrors = {},
     onRead,
     throwOnFileRead = false,
   } = options;
+  // The same object, so a test can change a file between probes.
+  const files =
+    cgroupVersion === 2
+      ? Object.assign(layoutFiles, { [CGROUP_V2_CONTROLLERS_PATH]: "cpu memory" })
+      : layoutFiles;
   const restorePlatform = stubPlatform(platform);
 
   vi.resetModules();
@@ -198,6 +208,58 @@ describe("getCgroupCpuLimit", () => {
       expect(getCgroupCpuLimit()).toBeNull(),
     );
   });
+
+  it("reads the quota over its period on a cgroup v1 host", async () => {
+    await withSystemMemoryMocks(
+      {
+        cgroupVersion: 1,
+        files: { [CGROUP_V1_CPU_QUOTA_PATH]: "200000", [CGROUP_V1_CPU_PERIOD_PATH]: "100000" },
+      },
+      ({ getCgroupCpuLimit }) => expect(getCgroupCpuLimit()).toBe(2),
+    );
+  });
+});
+
+describe("a cgroup v2 host with no limit at its root", () => {
+  // On v2, /sys/fs/cgroup/cpu and /sys/fs/cgroup/memory are child cgroups, not v1 controllers.
+  const unreadable = Object.assign(new Error("permission denied"), { code: "EACCES" });
+
+  it("never reads v1 paths, so finds no limit and warns about nothing", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const readCalls: string[] = [];
+    await withSystemMemoryMocks(
+      {
+        readErrors: {
+          [CGROUP_V1_CPU_QUOTA_PATH]: unreadable,
+          [CGROUP_V1_CPU_PERIOD_PATH]: unreadable,
+          [CGROUP_V1_MEMORY_LIMIT_PATH]: unreadable,
+        },
+        onRead: (path) => readCalls.push(path),
+      },
+      ({ getCgroupCpuLimit, getCgroupMemoryLimitMb }) => {
+        expect(getCgroupCpuLimit()).toBeNull();
+        expect(getCgroupMemoryLimitMb()).toBeNull();
+        expect(readCalls).not.toContain(CGROUP_V1_CPU_QUOTA_PATH);
+        expect(readCalls).not.toContain(CGROUP_V1_MEMORY_LIMIT_PATH);
+        expect(warn).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  it("names the CPU file it could not read, not a memory limit", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await withSystemMemoryMocks(
+      { readErrors: { "/sys/fs/cgroup/cpu.max": unreadable } },
+      ({ getCgroupCpuLimit }) => {
+        expect(getCgroupCpuLimit()).toBeNull();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0]?.[0]).toContain(
+          "[SystemMemory] Unable to read /sys/fs/cgroup/cpu.max (EACCES",
+        );
+        expect(warn.mock.calls[0]?.[0]).not.toContain("memory");
+      },
+    );
+  });
 });
 
 describe("usableCpuCount under a CPU quota", () => {
@@ -305,13 +367,18 @@ describe("getSystemTotalMb", () => {
       ({ _resetCgroupLimitCacheForTests, getSystemTotalMb }) => {
         expect(getSystemTotalMb()).toBe(4096);
         expect(getSystemTotalMb()).toBe(4096);
-        expect(readCalls).toEqual([CGROUP_V2_MEMORY_MAX_PATH]);
+        expect(readCalls).toEqual([CGROUP_V2_CONTROLLERS_PATH, CGROUP_V2_MEMORY_MAX_PATH]);
 
         files[CGROUP_V2_MEMORY_MAX_PATH] = `${2048 * BYTES_PER_MIB}`;
         _resetCgroupLimitCacheForTests();
 
         expect(getSystemTotalMb()).toBe(2048);
-        expect(readCalls).toEqual([CGROUP_V2_MEMORY_MAX_PATH, CGROUP_V2_MEMORY_MAX_PATH]);
+        expect(readCalls).toEqual([
+          CGROUP_V2_CONTROLLERS_PATH,
+          CGROUP_V2_MEMORY_MAX_PATH,
+          CGROUP_V2_CONTROLLERS_PATH,
+          CGROUP_V2_MEMORY_MAX_PATH,
+        ]);
       },
     );
   });
@@ -333,6 +400,7 @@ describe("getSystemTotalMb", () => {
   it("honors cgroup v1 numeric limits when cgroup v2 is absent", async () => {
     await withSystemMemoryMocks(
       {
+        cgroupVersion: 1,
         files: {
           [CGROUP_V1_MEMORY_LIMIT_PATH]: `${6144 * BYTES_PER_MIB}`,
         },
@@ -347,6 +415,7 @@ describe("getSystemTotalMb", () => {
   it("uses the host total when cgroup v1 reports a no-limit sentinel", async () => {
     await withSystemMemoryMocks(
       {
+        cgroupVersion: 1,
         files: {
           [CGROUP_V1_MEMORY_LIMIT_PATH]: "9223372036854771712",
         },
@@ -381,7 +450,7 @@ describe("getSystemTotalMb", () => {
         expect(isLowMemorySystem()).toBe(false);
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn.mock.calls[0]?.[0]).toContain(
-          "[SystemMemory] Unable to read cgroup memory limit",
+          `[SystemMemory] Unable to read ${CGROUP_V2_MEMORY_MAX_PATH} (`,
         );
         expect(warn.mock.calls[0]?.[0]).toContain("EACCES");
       },
@@ -440,6 +509,7 @@ describe("getSystemTotalMb", () => {
     async (content) => {
       await withSystemMemoryMocks(
         {
+          cgroupVersion: 1,
           files: {
             [CGROUP_V1_MEMORY_LIMIT_PATH]: content,
           },

@@ -1263,3 +1263,49 @@ describe("Studio GIF frame-rate cap", () => {
     }
   });
 });
+
+describe("POST /projects/:id/render — range", () => {
+  async function post(body: Record<string, unknown>) {
+    const spy = vi.fn();
+    const { app, cleanup } = buildApp(spy);
+    try {
+      const res = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fps: 30, format: "mp4", ...body }),
+      });
+      return { res, opts: spy.mock.calls[0]?.[0] };
+    } finally {
+      cleanup();
+    }
+  }
+
+  it("forwards a start and an end to the adapter as the range", async () => {
+    const { res, opts } = await post({ start: 2.3, end: 6.7 });
+    expect(res.status).toBe(200);
+    expect(opts.range).toEqual({ startSeconds: 2.3, endSeconds: 6.7 });
+  });
+
+  it("starts at 0 without a start and runs to the film's end without an end", async () => {
+    expect((await post({ end: 4 })).opts.range).toEqual({ startSeconds: 0, endSeconds: 4 });
+    expect((await post({ start: 4 })).opts.range).toEqual({ startSeconds: 4 });
+  });
+
+  it("asks for the whole film when neither is sent", async () => {
+    const { opts } = await post({});
+    expect(opts).not.toHaveProperty("range");
+  });
+
+  it.each([
+    [{ start: -1 }],
+    [{ start: "2" }],
+    [{ end: "4" }],
+    [{ start: null }],
+    [{ start: 5, end: 5 }],
+    [{ start: 5, end: 2 }],
+  ])("refuses %j with 400 and starts no render", async (range) => {
+    const { res, opts } = await post(range);
+    expect(res.status).toBe(400);
+    expect(opts).toBeUndefined();
+  });
+});

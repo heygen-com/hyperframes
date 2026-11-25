@@ -33,6 +33,7 @@ export type {
   StudioSelectionTextField,
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
+export { RANGE_NOT_RENDERED, type RenderRange } from "./helpers/renderRange.js";
 export { stampProjectHfIds, stampProjectHfIdsAsync } from "./helpers/hfIdPersist.js";
 export {
   patchElementInHtml,

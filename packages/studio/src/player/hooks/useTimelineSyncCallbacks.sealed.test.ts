@@ -52,6 +52,7 @@ function processWith(
     sync,
     iframeRef,
     process: processTimelineMessage,
+    enrich: () => callbacks!.enrichMissingCompositions(),
     initialize: () => act(() => initializeAdapter()),
     load: () => act(() => onIframeLoad()),
   };
@@ -326,6 +327,26 @@ it("drops a reply from a frame once another is on screen, before that one loads"
   expect(sync).not.toHaveBeenCalled();
 });
 
+// fails without the fix: a read the frame's own reload cut off landed with no document; its rows lost their ids.
+it("drops a sealed read the frame's own reload cut off", async () => {
+  document.body.innerHTML = `<div data-composition-id="main" data-composition-file="index.html">
+    <div id="box" class="clip" data-start="0" data-duration="2"></div>
+  </div>`;
+  const sealed = sealedPreviewFrame();
+  const { sync, process } = processWith(sealed.iframe, adapterOf(2));
+
+  process({ clips: [boxClip], durationInFrames: 60 });
+  sealed.reload();
+  process({ clips: [boxClip], durationInFrames: 60 });
+
+  await vi.waitFor(() => expect(sync).toHaveBeenCalled());
+  await previewDocumentCopy(sealed.iframe);
+  await previewClipParents(sealed.iframe);
+  expect(sync.mock.calls.flatMap(([rows]) => rows.map((row) => row.key))).toEqual([
+    "index.html#box",
+  ]);
+});
+
 // fails without the fix: the hidden reload's load cancelled the on-screen frame's read, so its rows never came.
 it("keeps the on-screen frame's read when a hidden reload starts loading", async () => {
   document.body.innerHTML = `<div data-composition-id="main"><div id="fresh" data-start="0" data-duration="2"></div></div>`;
@@ -398,3 +419,94 @@ it("lands a promoted frame's read after the old live player is removed", async (
 
   await vi.waitFor(() => expect(rootRow(sync)).toEqual(["scene5@0+5"]));
 });
+
+const NESTED = `<div data-composition-id="main" data-composition-file="index.html" data-duration="20">
+  <div id="intro" data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="2" data-duration="10">
+    <div id="logo" data-composition-id="logo" data-composition-src="compositions/logo.html" data-start="3"></div>
+  </div>
+</div>`;
+const introClip = { ...boxClip, id: "intro", label: "intro", start: 2, duration: 10 };
+const nestedManifest = {
+  clips: [
+    { ...introClip, kind: "composition" as const, compositionId: "intro", timelineDuration: 10 },
+    {
+      ...introClip,
+      ...{ id: "logo", label: "logo", start: 5, duration: 5, kind: "composition" as const },
+      ...{ compositionId: "logo", parentCompositionId: "intro", timelineDuration: 5 },
+    },
+  ],
+  durationInFrames: 600,
+};
+
+// fails without the fix: sealed, the pass that adds a composition nested in a sub-composition read the frame's
+// window and never ran, so the nested host had no row; open, it gets one from its timeline's length.
+it.each(["unsealed", "sealed"])(
+  "gives a composition nested in a sub-composition its row, %s",
+  async (mode) => {
+    usePlayerStore.getState().setElements([]);
+    usePlayerStore.getState().setDuration(20);
+    const sync = vi.fn((els: TimelineElement[]) => usePlayerStore.getState().setElements(els));
+    let iframe: HTMLIFrameElement;
+    if (mode === "sealed") {
+      document.body.innerHTML = NESTED;
+      iframe = sealedPreviewFrame().iframe;
+    } else {
+      iframe = document.createElement("iframe");
+      document.body.append(iframe);
+      iframe.contentDocument!.body.innerHTML = NESTED;
+      const logo = { duration: () => 5 };
+      Object.assign(iframe.contentWindow!, {
+        __timelines: { intro: { duration: () => 10 }, logo },
+      });
+    }
+    const { process, enrich } = processWith(iframe, null, undefined, sync);
+
+    process(nestedManifest);
+    enrich();
+
+    const rows = () =>
+      usePlayerStore.getState().elements.map((r) => `${r.domId}@${r.start}+${r.duration}`);
+    await vi.waitFor(() => expect(rows()).toEqual(["intro@2+10", "logo@5+5"]));
+  },
+);
+
+const NO_LENGTH = NESTED;
+const inheritedManifest = {
+  clips: nestedManifest.clips.map((clip) =>
+    clip.id === "logo" ? { ...clip, duration: 7, timelineDuration: null } : clip,
+  ),
+  durationInFrames: 600,
+};
+
+// fails without the fix: sealed took the length the runtime's clip list inherits for a nested composition with no
+// length and no timeline, so it showed a row the open preview leaves out.
+it.each(["unsealed", "sealed"])(
+  "leaves out a nested composition with no length and no timeline, %s",
+  async (mode) => {
+    usePlayerStore.getState().setElements([]);
+    usePlayerStore.getState().setDuration(20);
+    const sync = vi.fn((els: TimelineElement[]) => usePlayerStore.getState().setElements(els));
+    let iframe: HTMLIFrameElement;
+    if (mode === "sealed") {
+      document.body.innerHTML = NO_LENGTH;
+      iframe = sealedPreviewFrame().iframe;
+    } else {
+      iframe = document.createElement("iframe");
+      document.body.append(iframe);
+      iframe.contentDocument!.body.innerHTML = NO_LENGTH;
+      Object.assign(iframe.contentWindow!, { __timelines: { intro: { duration: () => 10 } } });
+    }
+    const { process, enrich } = processWith(iframe, null, undefined, sync);
+
+    process(inheritedManifest);
+    enrich();
+    await vi.waitFor(() => expect(usePlayerStore.getState().elements).not.toHaveLength(0));
+    // The channel answers in order: once this later request is back, the timeline read's pass has run.
+    if (mode === "sealed") await previewClipParents(iframe);
+
+    const rows = usePlayerStore
+      .getState()
+      .elements.map((r) => `${r.domId}@${r.start}+${r.duration}`);
+    expect(rows).toEqual(["intro@2+10"]);
+  },
+);

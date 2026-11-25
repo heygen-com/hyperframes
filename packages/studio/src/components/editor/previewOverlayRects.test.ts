@@ -80,7 +80,7 @@ class FakeDOMMatrix {
 
 const FIXTURE = `
   <div data-composition-id="main" data-width="1920" data-height="1080">
-    <div id="host" data-composition-src="a.html" data-width="960" data-height="540">
+    <div id="host" data-composition-src="a.html" data-composition-file="a.html" data-width="960" data-height="540">
       <p id="inner"></p><span id="speck"></span>
     </div>
     <div id="turned" style="transform: matrix(0.8, 0.6, -0.6, 0.8, 0, 0)"></div>

@@ -27,6 +27,7 @@ import {
   elementForHandle,
   elementsAtPoint,
   queryElements,
+  readEveryMatch,
 } from "./editingHandles";
 import { elementGeometry } from "./editingGeometry";
 import { pointerTargetsAt } from "./editingTargets";
@@ -62,6 +63,7 @@ import { colorGradingPlayback } from "./editing/color-grading-playback";
 import { assignAudioGroup } from "./editing/assignAudioGroup";
 import { audioMeter } from "./editing/audioMeter";
 import { documentMarkup } from "./editing/documentMarkup";
+import { removeElements } from "./editing/removeElements";
 import { authoredStyles, fontFaces } from "./editing/textStyleReads";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
@@ -162,6 +164,17 @@ function watchKeys(port: MessagePort, combos: string[]): { watching: number } {
   return { watching: combos.length };
 }
 
+function stylesOf(element: Element, properties: readonly string[]): Record<string, string> {
+  const computed = window.getComputedStyle(element);
+  const styles: Record<string, string> = {};
+  for (const name of properties) {
+    const value =
+      name === "opacity" ? getLogicalOpacity(element, computed) : computed.getPropertyValue(name);
+    if (value) styles[name] = value;
+  }
+  return styles;
+}
+
 const HANDLERS: Handlers = {
   hello: () => ({ version: EDITING_PROTOCOL_VERSION, kinds: [...EDITING_REQUEST_KINDS] }),
   "runtime-snapshot": () => ({
@@ -184,19 +197,13 @@ const HANDLERS: Handlers = {
   },
   "computed-styles": (params) => {
     const { properties } = params;
+    if ("every" in params)
+      return { styles: null, ...readEveryMatch(params.selector, (el) => stylesOf(el, properties)) };
     const element =
       "handle" in params
         ? elementForHandle(params.handle)
         : document.querySelector(params.selector);
-    if (!element) return { styles: null };
-    const computed = window.getComputedStyle(element);
-    const styles: Record<string, string> = {};
-    for (const name of properties) {
-      const value =
-        name === "opacity" ? getLogicalOpacity(element, computed) : computed.getPropertyValue(name);
-      if (value) styles[name] = value;
-    }
-    return { styles };
+    return { styles: element ? stylesOf(element, properties) : null };
   },
   "authored-styles": authoredStyles,
   "font-faces": () => fontFaces(),
@@ -232,6 +239,7 @@ const HANDLERS: Handlers = {
   "max-z-index": () => maxZIndex(),
   "crop-lift": cropLift,
   "edit-element": editElement,
+  "remove-elements": removeElements,
   "stacking-family": stackingFamily,
   "gsap-set": gsapSet,
   "patch-tweens": patchTweens,

@@ -8,7 +8,7 @@ vi.mock("node:child_process", () => {
 });
 vi.mock("@hyperframes/parsers/ff-binaries", () => ({
   findFfBinary: () => "/fake/bin/ffprobe",
-  mediaInputFormatArgs: () => [],
+  mediaInputArgs: () => [],
 }));
 
 import { lintHevcPreviewCodec } from "./hevcPreviewLint.js";

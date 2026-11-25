@@ -1,4 +1,5 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
+import { fromEmptyFolder } from "@hyperframes/parsers/ff-binaries";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import {
   HF_AUDIO_AUTOMATION_ATTR,
@@ -488,10 +489,18 @@ function projectFps(source: string): number {
 }
 
 /** Needs a global DOMParser (`ensureDOMParser`). Reads `index.html` and one level of sub-compositions. */
-export async function describeProject(
+export function describeProject(
   indexPath: string,
   measure: MeasureMedia = measureWithFfprobe,
   sourceOverrides: ReadonlyMap<string, string> = new Map(),
+): Promise<ProjectTimeline> {
+  return fromEmptyFolder(() => describeProjectAt(resolve(indexPath), measure, sourceOverrides));
+}
+
+async function describeProjectAt(
+  indexPath: string,
+  measure: MeasureMedia,
+  sourceOverrides: ReadonlyMap<string, string>,
 ): Promise<ProjectTimeline> {
   const projectDir = dirname(indexPath);
   const source = sourceOverrides.get(basename(indexPath)) ?? readFileSync(indexPath, "utf-8");

@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { readFile, stat as statFile } from "node:fs/promises";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
   AFTER_FONTS_SCRIPT_TYPE,
+  dropAuthoredCompositionFiles,
   INLINED_FILE_ATTR,
   RUNTIME_BOOTSTRAP_ATTR,
   insertBeforeCloseTag,
@@ -68,6 +69,7 @@ import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 import { openRangeEnd } from "../helpers/mediaRange.js";
 import { hasBaseElement } from "../helpers/subComposition.js";
+import { isCompositionPath } from "../helpers/hfIdPersist.js";
 import {
   runOffThread,
   ROOT_PREVIEW_DEADLINE_MS,
@@ -136,6 +138,13 @@ import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const runStillJob = createJobSlots(4, 16);
+
+function unbuiltMainHtml(html: string): string {
+  if (!/data-composition-file/i.test(html)) return ensureHfIds(html);
+  const { document } = parseHTML(html);
+  dropAuthoredCompositionFiles(document as unknown as Document);
+  return ensureHfIds(document.toString());
+}
 
 function escapeGsapUrl(url: string): string {
   return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -714,7 +723,7 @@ export function registerPreviewRoutes(
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
-        bundled = ensureHfIds(diskMain.html);
+        bundled = unbuiltMainHtml(diskMain.html);
         mainCompositionPath = diskMain.compositionPath;
       }
       // <base> and root paths under it, before the runtime adds the server's own root path
@@ -786,7 +795,7 @@ export function registerPreviewRoutes(
       const fallback = resolveProjectMainHtml(project.dir, project.id);
       if (fallback) {
         const fallbackHtml = withPreviewRuntime(
-          withPreviewBase(ensureHfIds(fallback.html), project.id),
+          withPreviewBase(unbuiltMainHtml(fallback.html), project.id),
           adapter.runtimeUrl,
         );
         const fallbackPage = await transformPreviewHtml(
@@ -886,6 +895,7 @@ export function registerPreviewRoutes(
       return c.text("not found", 404);
     }
     const compPath = projectRelativePath(project.dir, compFile);
+    if (!isCompositionPath(compPath)) return c.text("not found", 404);
 
     // "v2" salts the etag for the hf-id-pinning change below: a client holding
     // a pre-pin cached response (preview-only ids, unstamped disk file) must

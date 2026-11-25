@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.93",
+  "version": "0.9.95",
   "description": "",
   "repository": {
     "type": "git",
@@ -169,6 +169,12 @@
       "node": "./dist/utils/richTextSanitize.js",
       "import": "./src/utils/richTextSanitize.ts",
       "types": "./src/utils/richTextSanitize.ts"
+    },
+    "./drawn-box": {
+      "bun": "./src/runtime/drawnBox.ts",
+      "node": "./dist/runtime/drawnBox.js",
+      "import": "./src/runtime/drawnBox.ts",
+      "types": "./src/runtime/drawnBox.ts"
     },
     "./inline-text-style": {
       "bun": "./src/utils/inlineTextStyleRead.ts",
@@ -537,6 +543,18 @@
       "import": "./src/runtime/mediaSteer.ts",
       "types": "./src/runtime/mediaSteer.ts"
     },
+    "./runtime/web-audio-transport": {
+      "browser": "./src/runtime/webAudioTransport.ts",
+      "bun": "./src/runtime/webAudioTransport.ts",
+      "import": "./src/runtime/webAudioTransport.ts",
+      "types": "./src/runtime/webAudioTransport.ts"
+    },
+    "./runtime/decodes-first": {
+      "browser": "./src/runtime/decodesFirst.ts",
+      "bun": "./src/runtime/decodesFirst.ts",
+      "import": "./src/runtime/decodesFirst.ts",
+      "types": "./src/runtime/decodesFirst.ts"
+    },
     "./runtime/clip-reveal": {
       "bun": "./src/runtime/clipReveal.ts",
       "node": "./dist/runtime/clipReveal.js",
@@ -848,6 +866,10 @@
         "import": "./dist/utils/richTextSanitize.js",
         "types": "./dist/utils/richTextSanitize.d.ts"
       },
+      "./drawn-box": {
+        "import": "./dist/runtime/drawnBox.js",
+        "types": "./dist/runtime/drawnBox.d.ts"
+      },
       "./inline-text-style": {
         "import": "./dist/utils/inlineTextStyleRead.js",
         "types": "./dist/utils/inlineTextStyleRead.d.ts"
@@ -1092,6 +1114,14 @@
       "./runtime/media-steer": {
         "import": "./dist/runtime/mediaSteer.js",
         "types": "./dist/runtime/mediaSteer.d.ts"
+      },
+      "./runtime/web-audio-transport": {
+        "import": "./dist/runtime/webAudioTransport.js",
+        "types": "./dist/runtime/webAudioTransport.d.ts"
+      },
+      "./runtime/decodes-first": {
+        "import": "./dist/runtime/decodesFirst.js",
+        "types": "./dist/runtime/decodesFirst.d.ts"
       },
       "./runtime/clip-reveal": {
         "import": "./dist/runtime/clipReveal.js",

@@ -72,5 +72,6 @@ The engine bakes BPM / scale into the **prompt text** (via the inference above) 
 | Neither Lyria nor MusicGen can run (generate) | `bgm` disabled with a `pip install …` hint. Voice + SFX still render.                    |
 | Generate still rendering at assemble time     | `bgm_pending: true`; `wait-bgm.mjs` waits/checks and writes `bgm_status.json` first.     |
 | Generate crashed                              | `wait-bgm.mjs` → `bgm_status.json { status: "failed" }`; the `<audio>` track is omitted. |
+| Generate again over an earlier track          | The earlier track stays until the new one is complete; use it only on status `ready`.    |
 
 BGM failure never blocks a render.

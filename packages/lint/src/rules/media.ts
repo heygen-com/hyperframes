@@ -17,7 +17,7 @@ import {
   validateColorGradingContract,
 } from "@hyperframes/parsers/color-grading-contract";
 import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { findLinkedClipFindings } from "./linkedClips";
 import { findUnreadableAudioAttributeFindings } from "./audioAttributes";
 

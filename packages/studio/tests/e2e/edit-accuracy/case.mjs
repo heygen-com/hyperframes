@@ -135,6 +135,26 @@ export const nextFrame = (page, n = 1) =>
     n,
   );
 
+/** One nudge burst of `count` right-arrow presses, then a frame. Back to back: Studio saves a burst once it has had no
+ * key for CANVAS_NUDGE_COMMIT_DEBOUNCE_MS, and a frame wait between keys made one slow frame that pause. */
+export async function pressNudges(page, count) {
+  for (let i = 0; i < count; i++) await page.keyboard.press("ArrowRight");
+  await nextFrame(page);
+}
+
+/** The box once Studio has drawn a burst of keys: off `from`, then unchanged for 2 more reads. A sealed preview draws
+ * a nudge a frame round trip after its keys. Past `timeout` ms it is whatever shows, so keys never drawn still fail. */
+export async function shownAfterKeys(read, from, frame, timeout = 2000) {
+  let [last, still] = [await read(), 0];
+  for (const deadline = Date.now() + timeout; still < 2 && Date.now() < deadline; ) {
+    await frame();
+    const now = await read();
+    const drawn = quadDistance(now.visible, from) >= 0.5;
+    [last, still] = [now, drawn && quadDistance(now.visible, last.visible) < 0.01 ? still + 1 : 0];
+  }
+  return last;
+}
+
 export function readFiles(dir, files) {
   return Object.fromEntries(files.map((f) => [f, readFileSync(join(dir, f), "utf8")]));
 }
@@ -710,16 +730,34 @@ function plan(gesture, pre, pressComp) {
   };
 }
 
-// A press made while the preview reloads waits for it: Studio draws its box at the pointer meanwhile.
-async function waitingQuad(page, map) {
-  const waiting = await page.$("[data-dom-edit-press-waiting]");
-  const quad = waiting && (await contentQuad(waiting)).map(map.toComp);
-  await waiting?.dispose();
-  return quad;
-}
-
 const WAITING_BOX = "[data-dom-edit-press-waiting]";
 const WAITING_ON_SAVE = `${WAITING_BOX}:not([data-dom-edit-press-waiting="frame"])`;
+
+/** The waiting box's quad while it is still in the page and still waiting, else null: a replay ends the wait and
+ *  may then remount the box. A waiting box in the page with no quad still throws. */
+async function liveMarkerQuad(waiting, quadOf) {
+  let quad;
+  try {
+    quad = await quadOf(waiting);
+  } catch (error) {
+    if (await waiting.evaluate((e) => e.isConnected)) throw error;
+    return null;
+  }
+  const live = await waiting.evaluate(
+    (e) => e.isConnected && e.hasAttribute("data-dom-edit-press-waiting"),
+  );
+  return live ? quad : null;
+}
+
+// A press made while the preview reloads waits for it: Studio draws its box at the pointer meanwhile.
+export async function waitingQuad(page, map, quadOf = contentQuad) {
+  const waiting = await page.$(WAITING_BOX);
+  try {
+    return (waiting && (await liveMarkerQuad(waiting, quadOf))?.map(map.toComp)) ?? null;
+  } finally {
+    await waiting?.dispose();
+  }
+}
 
 /** The box as the preview shows it: the waiting marker's quad while a press waits for its replay, else the element. */
 export async function measureShown(
@@ -734,14 +772,10 @@ export async function measureShown(
     try {
       const m = await read(ctx);
       if (gesture === "crop") m.outline = await cropOutline(ctx, m.map);
-      const quad = waiting && (await quadOf(waiting)).map(m.map.toComp);
+      const quad = waiting && (await liveMarkerQuad(waiting, quadOf))?.map(m.map.toComp);
       // Replay removes the marker before moving the element. Do not combine a pre-replay
       // element read with a post-replay marker read into a position nobody displayed.
-      if (
-        waiting &&
-        !(await waiting.evaluate((e) => e.hasAttribute("data-dom-edit-press-waiting")))
-      )
-        continue;
+      if (waiting && !quad) continue;
       return { m: quad ? { ...m, quad, visible: quad } : m, actual: m.visible };
     } finally {
       await waiting?.dispose();
@@ -868,10 +902,7 @@ async function measureControl(browser, gesture) {
     const read = () => readQuads(ctx);
     if (gesture === "nudge") {
       await recording(page, true);
-      for (let i = 0; i < NUDGES; i++) {
-        await page.keyboard.press("ArrowRight");
-        await nextFrame(page);
-      }
+      await pressNudges(page, NUDGES);
       await nextFrame(page, 2);
       return smoothness(await recording(page, false));
     }
@@ -980,13 +1011,14 @@ export async function pointerGesture(ctx, gesture, pre, route) {
 
 async function nudgeGesture(ctx, pre) {
   await recording(ctx.page, true);
-  for (let i = 0; i < NUDGES; i++) {
-    await ctx.page.keyboard.press("ArrowRight");
-    await nextFrame(ctx.page);
-  }
+  await pressNudges(ctx.page, NUDGES);
   await nextFrame(ctx.page, 2);
   const smooth = smoothness(await recording(ctx.page, false));
-  const m = await measure(ctx);
+  const m = await shownAfterKeys(
+    () => measure(ctx),
+    pre.visible,
+    () => nextFrame(ctx.page),
+  );
   const [a, b] = [centre(pre.visible), centre(m.visible)];
   return {
     errors: [dist([b[0] - a[0], b[1] - a[1]], [NUDGES, 0])],

@@ -130,7 +130,7 @@ describe("syncStoredAutomationFromPreview", () => {
     usePlayerStore.setState({ elements: [el({ hfId: "hf-bgm" })] });
     const doc = document.implementation.createHTMLDocument("preview");
     doc.body.innerHTML =
-      '<div data-composition-id="strip" data-composition-src="compositions/strip.html">' +
+      '<div data-composition-id="strip" data-composition-src="compositions/strip.html" data-composition-file="compositions/strip.html">' +
       '<audio id="bgm" data-hf-id="hf-bgm"></audio></div><audio id="bgm" data-hf-id="hf-bgm"></audio>';
     doc.querySelectorAll("audio")[0]?.setAttribute("data-automation", TWO_POINTS);
     doc.querySelectorAll("audio")[1]?.setAttribute("data-automation", RESTORED);

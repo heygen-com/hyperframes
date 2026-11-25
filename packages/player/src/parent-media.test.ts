@@ -127,6 +127,19 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     source.remove();
   });
 
+  // fails without the fix: a looping copy was aimed past its source's end, so it sat silent after one pass.
+  it("aims a looping copy back into its source once the playhead passes the source's end", () => {
+    const mgr = makeManager({ owner: "parent" });
+    const el = makeFakeAudio(true);
+    el.loop = true;
+    Object.defineProperty(el, "duration", { value: 4 });
+    mgr.entries.push({ el, start: 2, duration: 18, mediaStart: 0 });
+
+    mgr.scrubAll(11);
+
+    expect(el.currentTime).toBeCloseTo(mediaElementTime(1), 9);
+  });
+
   it("scrubAll plays in-window proxies at the playhead and pauses out-of-window ones", () => {
     const mgr = makeManager({ owner: "parent" });
     const inWin = makeFakeAudio(true); // currently paused — scrub should start it

@@ -30,12 +30,16 @@ export function resolveFrameWindow(range: RenderRange, fps: Fps, filmFrames: num
   return { startFrame, endFrame };
 }
 
-/** Only the disk route captures a frame window; HDR content and shader transitions render whole films for now. */
+export function windowStartFrame(frameWindow: FrameWindow | undefined): number {
+  return frameWindow?.startFrame ?? 0;
+}
+
+/** The disk and layered routes capture a frame window; the streaming routes render whole films. */
 export function assertRangeSupported(
   frameWindow: FrameWindow | undefined,
   route: CapturePlan["kind"],
 ): void {
-  if (!frameWindow || route === "sdr_disk") return;
+  if (!frameWindow || route === "sdr_disk" || route === "hdr_layered") return;
   throw new Error(
     `This composition renders on the "${route}" capture route, which renders the whole film only; ` +
       "render it without a start or end.",

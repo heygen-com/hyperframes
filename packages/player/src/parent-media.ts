@@ -14,7 +14,14 @@ import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.
 import { isInClipWindow } from "@hyperframes/core/runtime/clip-window";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { readLinkTiming } from "@hyperframes/core/media-link";
-import { mediaFileOf, parentCopyOf, type ParentCopy } from "@hyperframes/core/audible-video";
+import { wrapLoopedSourceTime } from "@hyperframes/core/media-timing";
+import {
+  mediaFileOf,
+  PARENT_COPY_ATTRIBUTES,
+  parentCopyKey,
+  parentCopyOf,
+  type ParentCopy,
+} from "@hyperframes/core/audible-video";
 import { mediaElementTime, startsSoundOnlyInsideATap } from "@hyperframes/core/runtime/media-clock";
 import {
   MEDIA_SYNC_TOLERANCE_SECONDS,
@@ -51,6 +58,11 @@ export interface ProxyEntry {
   seekLatency?: number;
   /** When the seek still landing was issued (ms); unset when none is pending. */
   seekIssuedAt?: number;
+  /** The clip as the film named it (`parentCopyKey`), for a copy made from a sealed film's list. */
+  listedKey?: string;
+  /** Played from a decoded buffer by `ParentAudio`, so this element stays silent. */
+  claimed?: boolean;
+  mastered?: boolean;
 }
 
 export class ParentMediaManager {
@@ -139,11 +151,16 @@ export class ParentMediaManager {
   }
 
   updateMuted(muted: boolean): void {
-    for (const m of this._entries) m.el.muted = muted;
+    for (const m of this._entries) if (!m.claimed) m.el.muted = muted;
   }
 
   updateVolume(volume: number): void {
     for (const m of this._entries) m.el.volume = volume;
+  }
+
+  /** A sealed film's listed audio clips, which `ParentAudio` may play from decoded buffers. */
+  listedAudio(): ProxyEntry[] {
+    return [...this._listed.values()].filter((m) => m.el.tagName === "AUDIO");
   }
 
   updatePlaybackRate(rate: number): void {
@@ -151,7 +168,7 @@ export class ParentMediaManager {
   }
 
   private _playEntry(m: ProxyEntry): void {
-    if (!m.el.src) return;
+    if (!m.el.src || m.claimed) return;
     m.el.play().catch((err: unknown) => {
       this._syncFrameMute();
       this._reportPlaybackError(err);
@@ -219,7 +236,10 @@ export class ParentMediaManager {
   }
 
   private _mediaTime(m: ProxyEntry, timelineSeconds: number): number {
-    return timelineSeconds - m.start + m.mediaStart;
+    const target = timelineSeconds - m.start + m.mediaStart;
+    return m.el.loop && Number.isFinite(m.el.duration)
+      ? wrapLoopedSourceTime(target, m.mediaStart, m.el.duration)
+      : target;
   }
 
   private _gateEntryPlayback(m: ProxyEntry, timeSeconds: number): boolean {
@@ -423,6 +443,7 @@ export class ParentMediaManager {
     for (const [key, copy] of wanted) {
       if (this._listed.has(key)) continue;
       const entry = this._createEntry(copy, null, "anonymous");
+      entry.listedKey = parentCopyKey(JSON.parse(key) as ParentCopy);
       this._listed.set(key, entry);
       this._copyAdded(entry);
     }
@@ -443,6 +464,11 @@ export class ParentMediaManager {
     el.preload = "auto";
     if (crossOrigin != null) el.setAttribute("crossorigin", crossOrigin);
     el.src = copy.src;
+    el.loop = copy.loop === true;
+    for (const name of PARENT_COPY_ATTRIBUTES) {
+      const value = copy.attrs?.[name];
+      if (value !== undefined) el.setAttribute(name, value);
+    }
     el.load();
     el.muted = this._getMuted();
     el.volume = this._getVolume();
@@ -455,6 +481,7 @@ export class ParentMediaManager {
       duration: copy.duration,
       mediaStart: copy.mediaStart,
       source,
+      mastered: copy.mastered === true,
     };
     el.addEventListener("seeked", () => this._noteSeekLanded(entry));
     for (const change of ["playing", "waiting", "pause", "ended", "error"])
@@ -627,15 +654,46 @@ function readCopies(list: unknown): ParentCopy[] {
   return list.filter((item): item is ParentCopy => {
     if (typeof item !== "object" || item === null) return false;
     const c = item as Record<string, unknown>;
-    return (
-      (c.kind === "audio" || c.kind === "video") &&
-      typeof c.src === "string" &&
-      Number.isFinite(c.start) &&
-      typeof c.duration === "number" &&
-      c.duration >= 0 &&
-      Number.isFinite(c.mediaStart)
-    );
+    return isCopyTiming(c) && isCopyExtras(c);
   });
+}
+
+function isCopyTiming(c: Record<string, unknown>): boolean {
+  return (
+    (c.kind === "audio" || c.kind === "video") &&
+    typeof c.src === "string" &&
+    Number.isFinite(c.start) &&
+    typeof c.duration === "number" &&
+    c.duration >= 0 &&
+    Number.isFinite(c.mediaStart)
+  );
+}
+
+const optional = (value: unknown, ok: (value: unknown) => boolean) =>
+  value === undefined || ok(value);
+const isBoolean = (value: unknown) => typeof value === "boolean";
+const isLayer = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
+
+function isCopyExtras(c: Record<string, unknown>): boolean {
+  return (
+    optional(c.layer, isLayer) &&
+    optional(c.loop, isBoolean) &&
+    optional(c.mastered, isBoolean) &&
+    optional(c.attrs, isCopyAttrs)
+  );
+}
+
+const COPY_ATTR_NAMES = new Set<string>(PARENT_COPY_ATTRIBUTES);
+const MAX_COPY_ATTR_LENGTH = 100_000;
+
+function isCopyAttrs(attrs: unknown): boolean {
+  if (typeof attrs !== "object" || attrs === null || Array.isArray(attrs)) return false;
+  return Object.entries(attrs).every(
+    ([name, value]) =>
+      COPY_ATTR_NAMES.has(name) &&
+      typeof value === "string" &&
+      value.length <= MAX_COPY_ATTR_LENGTH,
+  );
 }
 
 /** The file's address on the composition's own origin when it is under its folder; otherwise null. */
