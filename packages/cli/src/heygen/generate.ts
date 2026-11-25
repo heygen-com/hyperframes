@@ -28,6 +28,7 @@ import {
   videoClip,
 } from "../measure/media.js";
 import { loadSharp } from "../utils/optionalPackages.js";
+import { refusePlaylistLeavingItsFolder } from "../utils/playlistInput.js";
 import {
   chargedCredits,
   idempotencyKey,
@@ -510,7 +511,16 @@ function cutsInside(path: string, seconds?: number): { cuts: number[]; length: n
 /** The masks whose box, in `clip`'s frames, holds more edges than the picture around it at some sampled time. */
 function structured(clip: string, guide: { width: number; height: number }, masks: Mask[]) {
   const { width: w, height: h } = probeVideo(clip);
-  const gray = runFfmpeg(["-i", clip, "-vf", "fps=2", "-pix_fmt", "gray", "-f", "rawvideo", "-"]);
+  const gray = runFfmpeg([
+    ...ffmpegInput(clip),
+    "-vf",
+    "fps=2",
+    "-pix_fmt",
+    "gray",
+    "-f",
+    "rawvideo",
+    "-",
+  ]);
   // The box as a fraction of the guide's frame, in the clip's pixels (its size and aspect may differ).
   const [kx, ky] = [w / guide.width, h / guide.height];
   return masks.flatMap((mask) => {
@@ -561,7 +571,7 @@ function fillMasks(path: string, masks: Mask[], work: string): string {
   ]);
   const left = structured(median, info, masks).map((s) => s.mask);
   if (!left.length) return median;
-  return encode(["-i", median], "filled.mp4", [
+  return encode(ffmpegInput(median), "filled.mp4", [
     ...["-filter_complex", maskFilters(left, info.fps, left)],
     ...["-map", `[v${left.length}]`],
   ]);
@@ -582,7 +592,7 @@ function fitAspect(out: string, aspect: string): string | undefined {
     width / height > want ? [even(height * want), height] : [width, even(width / want)];
   ffmpegToFile(
     [
-      ...["-y", "-i", out, "-vf", `crop=${w}:${h}`, "-c:v", "libx264", "-crf", "12"],
+      ...["-y", ...ffmpegInput(out), "-vf", `crop=${w}:${h}`, "-c:v", "libx264", "-crf", "12"],
       ...["-preset", "slow", "-pix_fmt", "yuv420p", "-c:a", "copy"],
     ],
     out,
@@ -721,6 +731,12 @@ export async function generate(
 ): Promise<Generated> {
   checkRequest(r);
   const route = ROUTES[r.type];
+  await refusePlaylistLeavingItsFolder([
+    ...assetsOf(r),
+    ...picturesOf(route, r),
+    r.motion,
+    r.audio,
+  ]);
   const out = resolve(r.out);
   makeOutputFolder(dirname(out));
   const project = projectOf(dirname(out));

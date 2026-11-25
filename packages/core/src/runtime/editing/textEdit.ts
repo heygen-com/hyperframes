@@ -6,11 +6,20 @@ import { isStylableElement, type StylableElement } from "../domRealm";
 import { sanitizeRichTextChildren } from "../../utils/richTextSanitize";
 import { openTextEdits, isTextMarkup, MAX_EDIT_VALUE } from "./editElement";
 import { isEditableText } from "./textMarkup";
+import {
+  applyInlineStyle,
+  INLINE_STYLE_PROPERTIES,
+  readFirstPaintedElement,
+  readInlineStyle,
+  readInlineStyleSpread,
+} from "../../utils/inlineTextStyleRead";
 
 type Point = { x: number; y: number };
+type Style = Record<string, string | null>;
 export type TextEditParams =
   | { handle: EditingElementHandle; action: "start"; caret: Point | null }
-  | { handle: EditingElementHandle; action: "end"; keep: boolean };
+  | { handle: EditingElementHandle; action: "end"; keep: boolean }
+  | { handle: EditingElementHandle; action: "style"; style: Style };
 export type TextEditResult = { applied: boolean; html: string | null; previous: string | null };
 /** Posted to the starting port when Enter, Escape or a blur ends the session in the frame; null html was refused. */
 export type TextEditEndedEvent = {
@@ -19,7 +28,28 @@ export type TextEditEndedEvent = {
   previous: string;
 };
 
+/** The selection in an open session, posted on its port as it changes; null when nothing is selected in it. */
+export type TextEditSelection = {
+  rect: { x: number; y: number; width: number; height: number };
+  viewportWidth: number;
+  styles: Record<string, string>;
+  colours: string[];
+  painted: string | null;
+};
+export type TextEditSelectionEvent = {
+  handle: EditingElementHandle;
+  selection: TextEditSelection | null;
+};
+
 const EDITING_OUTLINE = "2px solid #3CE6AC";
+const MAX_STYLE_VALUE = 256;
+const MAX_COLOURS = 16;
+const STYLE_VALUES: Record<string, (value: string) => boolean> = {
+  color: (value) => value.length <= MAX_STYLE_VALUE,
+  "font-weight": (value) => value === "700",
+  "font-style": (value) => value === "italic",
+  "text-decoration-line": (value) => value === "underline",
+};
 
 type Fields = Record<string, unknown>;
 const isRecord = (value: unknown): value is Fields =>
@@ -39,7 +69,57 @@ export function parseTextEdit(params: unknown): TextEditParams | null {
   }
   if (action === "end" && keysAre(params, "action,handle,keep") && typeof params.keep === "boolean")
     return { handle, action, keep: params.keep };
+  if (action === "style" && keysAre(params, "action,handle,style") && isStyle(params.style))
+    return { handle, action, style: params.style };
   return null;
+}
+
+const isStyle = (value: unknown): value is Style =>
+  isRecord(value) &&
+  Object.keys(value).length > 0 &&
+  Object.entries(value).every(
+    ([key, set]) =>
+      Object.hasOwn(STYLE_VALUES, key) &&
+      (set === null || (typeof set === "string" && STYLE_VALUES[key]!(set))),
+  );
+const isShortText = (value: unknown): value is string =>
+  typeof value === "string" && value.length <= MAX_STYLE_VALUE;
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const isRect = (value: unknown) =>
+  isRecord(value) &&
+  keysAre(value, "height,width,x,y") &&
+  Object.values(value).every(isFiniteNumber);
+const isShownStyles = (value: unknown) =>
+  isRecord(value) &&
+  Object.entries(value).every(([key, set]) => Object.hasOwn(STYLE_VALUES, key) && isShortText(set));
+const isColours = (value: unknown) =>
+  Array.isArray(value) && value.length <= MAX_COLOURS && value.every(isShortText);
+
+function isSelection(value: unknown): value is TextEditSelection {
+  if (!isRecord(value) || !keysAre(value, "colours,painted,rect,styles,viewportWidth"))
+    return false;
+  const { rect, viewportWidth, styles, colours, painted } = value;
+  const shown = isFiniteNumber(viewportWidth) && viewportWidth > 0;
+  return (
+    shown &&
+    isRect(rect) &&
+    isShownStyles(styles) &&
+    isColours(colours) &&
+    (painted === null || isShortText(painted))
+  );
+}
+
+export function textEditSelectionEvent(
+  data: unknown,
+  version: number,
+): TextEditSelectionEvent | null {
+  if (!isRecord(data) || !keysAre(data, "event,handle,selection,v")) return null;
+  if (data.v !== version || data.event !== "text-edit-selection" || !isHandle(data.handle))
+    return null;
+  const { handle, selection } = data;
+  return selection === null || isSelection(selection) ? { handle, selection } : null;
 }
 
 const isValue = (value: unknown) =>
@@ -74,6 +154,7 @@ interface Session {
   outline: string;
   outlineOffset: string;
   stop: () => void;
+  report: () => void;
 }
 
 let session: Session | null = null;
@@ -85,6 +166,32 @@ function clearSelectionWithin(element: Element): void {
   const range = selection.getRangeAt(0);
   if (element.contains(range.startContainer) || element.contains(range.endContainer))
     selection.removeAllRanges();
+}
+
+function selectedRange(element: Element): Range | null {
+  const selection = element.ownerDocument.defaultView?.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  const range = selection.getRangeAt(0);
+  return element.contains(range.commonAncestorContainer) ? range : null;
+}
+
+const shortStyles = (styles: Record<string, string>) =>
+  Object.fromEntries(Object.entries(styles).filter(([, value]) => isShortText(value)));
+
+function selectionIn(element: Element): TextEditSelection | null {
+  const range = selectedRange(element);
+  const view = element.ownerDocument.defaultView;
+  if (!range || !view) return null;
+  const { left: x, top: y, width, height } = range.getBoundingClientRect();
+  const painted = readFirstPaintedElement(range, "color");
+  const paintedColour = painted ? view.getComputedStyle(painted).color : null;
+  return {
+    rect: { x, y, width, height },
+    viewportWidth: view.innerWidth || 1,
+    styles: shortStyles(readInlineStyle(range, INLINE_STYLE_PROPERTIES)),
+    colours: readInlineStyleSpread(range, "color").filter(isShortText).slice(0, MAX_COLOURS),
+    painted: isShortText(paintedColour) ? paintedColour : null,
+  };
 }
 
 function keptMarkup(element: Editable): string | null {
@@ -168,7 +275,7 @@ export function takePlainTextOnly(element: HTMLElement): () => void {
   };
 }
 
-function listen(element: Editable, endInFrame: () => void): () => void {
+function listen(element: Editable, endInFrame: () => void, report: () => void): () => void {
   const onKeyDown = (event: KeyboardEvent) => {
     if ((event.key !== "Enter" || event.shiftKey) && event.key !== "Escape") return;
     event.preventDefault();
@@ -182,8 +289,10 @@ function listen(element: Editable, endInFrame: () => void): () => void {
   const releasePlainText = takePlainTextOnly(element);
   element.addEventListener("keydown", onKeyDown);
   element.addEventListener("blur", endInFrame);
+  element.ownerDocument.addEventListener("selectionchange", report);
   view?.addEventListener("pagehide", endTextEdit);
   return () => {
+    element.ownerDocument.removeEventListener("selectionchange", report);
     releasePlainText();
     element.removeEventListener("keydown", onKeyDown);
     element.removeEventListener("blur", endInFrame);
@@ -210,12 +319,18 @@ function start(
     outline: editable.style.outline,
     outlineOffset: editable.style.outlineOffset,
     stop: () => {},
+    report: () => {
+      if (session !== open) return;
+      const selection = selectionIn(editable);
+      port.postMessage({ v: version, event: "text-edit-selection", handle, selection });
+    },
   };
-  open.stop = listen(editable, () => {
+  const endInFrame = () => {
     if (session !== open) return;
     const ended = close(true);
     if (ended) port.postMessage({ v: version, event: "text-edit-ended", handle, ...ended });
-  });
+  };
+  open.stop = listen(editable, endInFrame, open.report);
   session = open;
   openTextEdits.add(editable);
   editable.style.outline = EDITING_OUTLINE;
@@ -233,6 +348,15 @@ export function textEdit(
 ): TextEditResult {
   if (params.action === "start") return start(params.handle, params.caret, port, version);
   if (session?.handle !== params.handle || session.port !== port) return NOTHING;
+  if (params.action === "style") return styleSelection(session, params.style);
   const ended = close(params.keep);
   return ended ? { applied: true, ...ended } : NOTHING;
+}
+
+function styleSelection(open: Session, style: Style): TextEditResult {
+  const range = selectedRange(open.element);
+  if (!range) return NOTHING;
+  applyInlineStyle(range, style);
+  open.report();
+  return { applied: true, html: null, previous: null };
 }

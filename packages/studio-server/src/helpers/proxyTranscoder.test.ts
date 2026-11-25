@@ -883,11 +883,9 @@ describe("resolveProxy", () => {
     const vp8 = resolveProxy(projectDir, sourcePath, "vp8");
     await flush();
     const vp8Args = calls[0]!.args;
-    expect(vp8Args.slice(vp8Args.indexOf("-i") - 4, vp8Args.indexOf("-i"))).toEqual([
-      "-c:v",
-      "libvpx-vp9",
-      ...MEDIA_INPUT_ARGS,
-    ]);
+    expect(
+      vp8Args.slice(vp8Args.indexOf("-i") - 2 - MEDIA_INPUT_ARGS.length, vp8Args.indexOf("-i")),
+    ).toEqual(["-c:v", "libvpx-vp9", ...MEDIA_INPUT_ARGS]);
     succeed(calls[0]!, "fake-vp8-bytes");
     await vp8;
 

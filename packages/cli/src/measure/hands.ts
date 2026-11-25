@@ -154,7 +154,7 @@ export function handFrames(
     "-y",
     "-ss",
     start.toFixed(3),
-    ...ffmpegInput(info.path),
+    ...ffmpegInput(info.path, { playlists: info.guarded }),
     "-t",
     (end - start).toFixed(3),
     "-vf",
