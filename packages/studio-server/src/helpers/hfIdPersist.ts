@@ -5,7 +5,47 @@ import { dirname, join } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { isInHiddenOrVendorDir, mkdirOwnedWithinProject, walkDir } from "./safePath.js";
 
-export const isCompositionSource = (html: string): boolean => /data-composition-id\s*=/.test(html);
+const COMPOSITION_ID_TEXT = /data-composition-id\s*=/i;
+// HTML's own whitespace set; `\s` also takes characters a browser keeps inside an attribute name.
+const TAG_NAME = /<[a-zA-Z][^\t\n\f\r />]*/y;
+// One attribute of a start tag: its name, then an optional value. Names end at whitespace, "/", ">" or "=".
+const TAG_ATTRIBUTE =
+  /[\t\n\f\r /]*([^\t\n\f\r />][^\t\n\f\r />=]*)([\t\n\f\r ]*=[\t\n\f\r ]*(?:"[^"]*"?|'[^']*'?|[^\t\n\f\r >]*))?/y;
+const TAG_END = /[\t\n\f\r /]*>/y;
+
+/** True when a start tag of `html` has an attribute named exactly `data-composition-id` with a value.
+ * Studio runs a composition's scripts on its own origin, so the marker's text is not enough: a page
+ * saved from another site can carry it in a longer attribute name, an attribute value, a comment or
+ * its text. Reproduce with `<div data-x-data-composition-id="a">`, which must be refused.
+ * Script and style text is read as markup too: skipping it by tag name hid a real root that follows
+ * an empty `<style/>` inside inline SVG. Every character is read once, whatever the file holds. */
+export function isCompositionSource(html: string): boolean {
+  if (!COMPOSITION_ID_TEXT.test(html)) return false;
+  for (let at = html.indexOf("<"); at !== -1; at = html.indexOf("<", at)) {
+    if (html.startsWith("<!--", at)) {
+      const end = html.indexOf("-->", at + 4);
+      if (end === -1) return false;
+      at = end + 3;
+      continue;
+    }
+    TAG_NAME.lastIndex = at;
+    if (!TAG_NAME.test(html)) {
+      at += 1;
+      continue;
+    }
+    TAG_ATTRIBUTE.lastIndex = TAG_NAME.lastIndex;
+    at = TAG_NAME.lastIndex;
+    let named = false;
+    for (let match = TAG_ATTRIBUTE.exec(html); match; match = TAG_ATTRIBUTE.exec(html)) {
+      named ||= match[2] !== undefined && match[1]!.toLowerCase() === "data-composition-id";
+      at = TAG_ATTRIBUTE.lastIndex;
+    }
+    // A tag the file never closes is dropped by a browser, attributes and all.
+    TAG_END.lastIndex = at;
+    if (named && TAG_END.test(html)) return true;
+  }
+  return false;
+}
 
 export const isCompositionPath = (relPath: string): boolean =>
   /\.html?$/i.test(relPath) && !isInHiddenOrVendorDir(relPath);

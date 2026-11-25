@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { parseHTML } from "linkedom";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import {
   buildSubCompositionHtml,
@@ -25,6 +26,36 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  // fails without the fix: the builder judged the text the preview route hands it. Stamping decodes
+  // the marker's first letter, and a caller's text is not the file Studio would run.
+  it("judges the file's own text, not the stamped text it is handed", () => {
+    const page =
+      '<noscript><title>&lt;/title&gt;&lt;/noscript&gt;&lt;div &#100;ata-composition-id="x"&gt;&lt;/div&gt;' +
+      "&lt;script&gt;window.ran = 1&lt;/script&gt;&lt;noscript&gt;&lt;title&gt;</title></noscript>";
+    const dir = makeTempProject({
+      "index.html": '<html><head></head><body><div data-composition-id="main"></div></body></html>',
+      "extracted/page.html": page,
+    });
+    const stamped = ensureHfIds(page);
+    expect(page).not.toContain("data-composition-id");
+    expect(stamped).toContain('data-composition-id="x"');
+    for (const handed of [stamped, '<div data-composition-id="x"></div>']) {
+      expect(
+        buildSubCompositionHtml(dir, "extracted/page.html", "/runtime.js", undefined, handed),
+      ).toBeNull();
+    }
+  });
+
+  // fails without the fix: the builder copied a captured page's scripts into a preview on Studio's origin.
+  it("returns null for a captured page whose text only looks like the marker", () => {
+    const dir = makeTempProject({
+      "index.html": '<html><head></head><body><div data-composition-id="main"></div></body></html>',
+      "extracted/page.html":
+        '<!doctype html><html><head></head><body><div data-captured-composition-idata-composition-id="x"></div><script>window.ran = 1</script></body></html>',
+    });
+    expect(buildSubCompositionHtml(dir, "extracted/page.html", "/runtime.js")).toBeNull();
+  });
+
   // Windows does not allow a quote in a file name.
   it.skipIf(process.platform === "win32")(
     "writes the composition's path into its root as attribute text",

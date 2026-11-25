@@ -171,6 +171,24 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
     expect(payload.compositions).not.toContain(".hyperframes/examples/preset.html");
   });
 
+  // fails without the fix: a page saved by `hyperframes capture` was listed when its text held the marker.
+  it("does not list a captured page whose text only looks like the marker", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "extracted"));
+    writeFileSync(
+      join(projectDir, "extracted", "page.html"),
+      '<html><body><div data-captured-composition-idata-composition-id="x"></div><script>window.ran = 1</script></body></html>',
+    );
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo");
+    const payload = (await response.json()) as { compositions?: string[] };
+
+    expect(payload.compositions).toContain("index.html");
+    expect(payload.compositions).not.toContain("extracted/page.html");
+  });
+
   it("lists no hidden file but Studio's own and the media folder's, nothing under .hyperframes/ that isn't Studio's", async () => {
     const projectDir = createProjectDir();
     writeFileSync(join(projectDir, ".hyperframes", "app-history.jsonl"), "{}");

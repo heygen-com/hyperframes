@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stampFileHfIds } from "./hfIdPersist.js";
+import { isCompositionSource, stampFileHfIds } from "./hfIdPersist.js";
 
 const hooks = vi.hoisted(() => ({ minting: undefined as (() => void) | undefined }));
 vi.mock("@hyperframes/parsers/hf-ids", async (importOriginal) => {
@@ -112,5 +112,45 @@ describe("stampFileHfIds", () => {
     const dir = mkdtempSync(join(tmpdir(), "hfid-stamp-test-"));
     tmpDirs.push(dir);
     expect(stampFileHfIds(dir)).toBeNull();
+  });
+});
+
+describe("isCompositionSource", () => {
+  it.each([
+    '<div data-composition-id="main"></div>',
+    "<div data-composition-id=main></div>",
+    "<div class='a' data-composition-id = 'main'></div>",
+    '<DIV DATA-COMPOSITION-ID="main"></DIV>',
+    '<template data-composition-id="scene"><div></div></template>',
+    '<template><div id="a" data-composition-id="scene"></div></template>',
+    '<div title="a > b" data-composition-id="main"></div>',
+    '<br/data-composition-id="main">',
+    // An empty style or title inside inline SVG is not raw text; the root after it still counts.
+    '<svg><style/></svg><div data-composition-id="main"></div>',
+    '<svg><title></title><style></style></svg>\n<div data-composition-id="main"></div>',
+    '<p>a < b</p><div\n\tdata-composition-id="main"></div>',
+  ])("accepts an element with the attribute: %s", (html) => {
+    expect(isCompositionSource(html)).toBe(true);
+  });
+
+  // fails without the fix: the check was the text `data-composition-id=` anywhere in the file.
+  it.each([
+    // What a page saved by the old one-pass capture strip holds.
+    '<div data-captured-composition-idata-composition-id="x"></div>',
+    '<div data-x-data-composition-id="x"></div>',
+    '<div title="data-composition-id=x"></div>',
+    "<div title='a data-composition-id=\"x\"'></div>",
+    '<!-- <div data-composition-id="x"></div> -->',
+    '<style>[data-composition-id="x"] { color: red }</style>',
+    "<p>data-composition-id=x</p>",
+    "<div data-composition-id></div>",
+    '</div data-composition-id="x">',
+    '<!-- never closed <div data-composition-id="x"></div>',
+    '<div data-composition-id="x"',
+    '<div data-composition-id="x></div>',
+    '<div data-composition-id\u00a0="x"></div>',
+    '<div "data-composition-id="x"></div>',
+  ])("refuses the marker's text outside a real attribute: %s", (html) => {
+    expect(isCompositionSource(html)).toBe(false);
   });
 });

@@ -331,8 +331,11 @@ export function buildSubCompositionHtml(
   // rawOverride lets the preview route thread the hf-id-stamped content in
   // directly, so the build uses ids minted from the raw file, which is never
   // written by serving.
-  const rawComp = rawOverride ?? readFileSync(compFile, "utf-8");
-  if (!isCompositionSource(rawComp)) return null;
+  // The file's own text decides: the override has been parsed and written out again, and that can
+  // turn text the file only quotes into a tag.
+  const fileText = readFileSync(compFile, "utf-8");
+  if (!isCompositionSource(fileText)) return null;
+  const rawComp = rawOverride ?? fileText;
 
   let compHeadContent = "";
   let rewrittenContent: string;
