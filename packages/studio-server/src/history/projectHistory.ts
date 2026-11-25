@@ -46,6 +46,7 @@ import {
   sameFolder,
   projectHistoryId,
   readId,
+  readIdOffThread,
   statOffThread,
   recordProject,
   type FolderIdentity,
@@ -443,10 +444,27 @@ function fileLeftIn(dir: string, at: string, deleted: ReadonlySet<string>): stri
 }
 
 /** Whether the project's disk treats `A` and `a` as one name: its history-id file answers when upper-cased. */
-function ignoresCase(dir: string): boolean {
-  const self = statSync(join(dir, ID_PATH), { throwIfNoEntry: false });
-  const other = statSync(join(dir, ID_PATH.toUpperCase()), { throwIfNoEntry: false });
+async function ignoresCase(dir: string): Promise<boolean> {
+  const [self, other] = await Promise.all([
+    statOffThread(join(dir, ID_PATH)),
+    statOffThread(join(dir, ID_PATH.toUpperCase())),
+  ]);
   return self !== undefined && other?.ino === self.ino && other.dev === self.dev;
+}
+
+interface OpenedFolder {
+  folder: Stats | undefined;
+  id: string | null;
+  foldsCase: boolean;
+}
+
+async function readOpenedFolder(dir: string): Promise<OpenedFolder> {
+  const [folder, id, foldsCase] = await Promise.all([
+    statOffThread(dir),
+    readIdOffThread(dir),
+    ignoresCase(dir),
+  ]);
+  return { folder, id, foldsCase };
 }
 
 const blocks = (removed: string, added: string) =>
@@ -541,6 +559,7 @@ class Engine {
   readonly dir: string;
   readonly foldsCase: boolean;
   readonly folder: FolderIdentity & { dev: number };
+  folderNow: "here" | "gone" | "replaced" = "here";
   readonly home: string;
   log: HistoryLog = { baseline: new Map(), entries: [], pins: new Set() };
   owesVideoState = true;
@@ -590,14 +609,13 @@ class Engine {
     readonly options: ProjectHistoryOptions,
     readonly projectId: string,
     readonly blobs: BlobStore,
+    { folder, id, foldsCase }: OpenedFolder,
   ) {
     this.dir = resolve(options.projectDir);
     this.home = join(options.historyRoot, projectId);
-    this.foldsCase = ignoresCase(this.dir);
-    const folder = statSync(this.dir, { throwIfNoEntry: false });
-    // Checked after the ownership wait, so a folder swapped for a copy meanwhile is refused.
-    if (!folder || readId(this.dir) !== projectId || !isRecordedFolder(this.home, folder))
-      throw this.replaced();
+    this.foldsCase = foldsCase;
+    // Read after the ownership wait, so a folder swapped for a copy meanwhile is refused.
+    if (!folder || id !== projectId || !isRecordedFolder(this.home, folder)) throw this.replaced();
     this.folder = { dev: folder.dev, ino: folder.ino, birthtimeMs: folder.birthtimeMs };
   }
 
@@ -645,9 +663,11 @@ class Engine {
       return Promise.reject(new HistoryClosedError("This project's history is closed."));
     const run = this.tail.then(async () => {
       try {
+        await this.lookAtFolder();
         return await task();
       } finally {
-        if (this.owesVideoState && this.whereFolder() === "here") {
+        if (this.owesVideoState) await this.lookAtFolder().catch(() => undefined);
+        if (this.owesVideoState && this.folderNow === "here") {
           this.owesVideoState = false;
           await writeHistoryState(
             this.dir,
@@ -667,12 +687,26 @@ class Engine {
     return run;
   }
 
-  /** Another project if the folder or its id changed, or the id is gone: a recreated folder may reuse the inode. */
+  /** whereFolder off the main thread; folderNow keeps its answer for the sync reads (assertOpen, replacedAtPath). */
+  async lookAtFolder(): Promise<void> {
+    const now = await statOffThread(this.dir);
+    if (!now) return void (this.folderNow = "gone");
+    const same = now.dev === this.folder.dev && sameFolder(now, this.folder);
+    this.folderNow =
+      same && (await readIdOffThread(this.dir)) === this.projectId ? "here" : "replaced";
+  }
+
+  /** The folder now, asked on this thread: only a write's own check, made right before it writes to that folder. */
   whereFolder(): "here" | "gone" | "replaced" {
     const now = statSync(this.dir, { throwIfNoEntry: false });
     if (!now) return "gone";
     const same = now.dev === this.folder.dev && sameFolder(now, this.folder);
     return same && readId(this.dir) === this.projectId ? "here" : "replaced";
+  }
+
+  async folderAnswer(): Promise<"here" | "gone" | "replaced"> {
+    await this.lookAtFolder();
+    return this.folderNow;
   }
 
   assertWritable(): void {
@@ -695,7 +729,7 @@ class Engine {
 
   assertOpen(): void {
     if (this.closed) throw new HistoryClosedError("This project's history is closed.");
-    if (this.whereFolder() === "replaced") throw this.replaced();
+    if (this.folderNow === "replaced") throw this.replaced();
   }
 
   async start(): Promise<void> {
@@ -825,7 +859,7 @@ class Engine {
     const hashes = await Promise.allSettled(copies.map((copy) => copy.result));
     const late = new Map<string, Promise<Copied>>();
     // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
-    if (this.whereFolder() !== "here") throw this.replaced();
+    if ((await this.folderAnswer()) !== "here") throw this.replaced();
     const owed: ListedFile[] = [];
     copied.forEach((file, i) => {
       const result = hashes[i]!;
@@ -990,7 +1024,7 @@ class Engine {
     owedFromOpen = false,
   ): Promise<"over" | "changing"> {
     try {
-      if (this.whereFolder() !== "here") return "over";
+      if ((await this.folderAnswer()) !== "here") return "over";
       const first = await late?.catch(() => undefined);
       const fromOpen = typeof first === "object";
       const read = () => this.storeIfPresent(file.path, true);
@@ -1022,7 +1056,7 @@ class Engine {
     first: Copied,
     provenance: Provenance,
   ): Promise<Copied> {
-    if (first === "changing" || this.whereFolder() !== "here") return first;
+    if (first === "changing" || (await this.folderAnswer()) !== "here") return first;
     if (first === "gone") {
       if (provenance !== "no-step") this.startUnseen(file.path, hashNoVersionHas());
       return first;
@@ -1105,7 +1139,7 @@ class Engine {
   }
 
   async unsavedBlobBytes(): Promise<number> {
-    if (this.whereFolder() !== "here") return 0;
+    if ((await this.folderAnswer()) !== "here") return 0;
     const missing = new Map<string, number>();
     for (const file of await this.historyFiles()) {
       if (this.copiesNothing(file)) continue;
@@ -1124,7 +1158,7 @@ class Engine {
     foundBy = Infinity,
   ): Promise<void> {
     // A folder moved or removed was not emptied, and another project at its path is none of this history's.
-    if (this.whereFolder() !== "here") return;
+    if ((await this.folderAnswer()) !== "here") return;
     const sweptAt = this.now();
     const seen = (await this.historyFiles()).filter((file) => !this.adopting.has(file.path));
     const at = Math.min(sweptAt, foundBy);
@@ -1220,7 +1254,7 @@ class Engine {
     if (stat && known.stat === stat) return false;
     const heard = this.overwritten.get(path);
     const copied = await this.storeIfPresent(path);
-    if (typeof copied === "string" || this.whereFolder() !== "here") return false;
+    if (typeof copied === "string" || (await this.folderAnswer()) !== "here") return false;
     const { hash } = copied;
     this.tracked.set(path, { hash, stat });
     this.forgetWritesBefore(path, hash, heard);
@@ -2051,7 +2085,7 @@ class Engine {
       checkout: (entryId, side, emptyDir) =>
         this.queue(async () => {
           this.entry(entryId);
-          if (!existsSync(this.dir)) throw new Error(`The project folder is gone: ${this.dir}`);
+          if (this.folderNow === "gone") throw new Error(`The project folder is gone: ${this.dir}`);
           const dest = resolve(emptyDir);
           if (isWithin(this.dir, dest))
             throw new Error(`Checkout writes outside the project only: ${dest}`);
@@ -2092,7 +2126,7 @@ class Engine {
       },
       checkpoint: () => this.queue(() => this.settle()),
       flush: () => this.queue(() => this.settleAll()),
-      replacedAtPath: () => this.whereFolder() === "replaced",
+      replacedAtPath: () => this.folderNow === "replaced",
       close: () =>
         (this.closing ??= (async () => {
           // A copy cut short would leave its media out of the baseline, so a change made while closed is lost.
@@ -2143,7 +2177,8 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
   try {
     const blobs = await openBlobStore(join(options.historyRoot, projectId, "blobs"));
     const closedWindow = options.closedWindowAfterOwnership?.() ?? options.closedWindow;
-    const engine = new Engine({ ...options, closedWindow }, projectId, blobs);
+    const opened = await readOpenedFolder(resolve(options.projectDir));
+    const engine = new Engine({ ...options, closedWindow }, projectId, blobs, opened);
     await engine.queue(async () => {
       await engine.start();
       engine.hearWrites();
