@@ -242,6 +242,8 @@ export interface CaptureSession {
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
   throwSiteLookups?: Set<string>;
+  /** Characters of warning text this render has kept, against WARNINGS_TEXT_MAX_CHARS. */
+  warningTextChars?: number;
   /** True once this session honoured `options.strictVariables`: the check ran and passed. */
   strictVariablesChecked?: boolean;
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
@@ -597,6 +599,9 @@ const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
 const PAGE_TEXT_MAX_CHARS = 2_000;
 const PAGE_LIST_MAX = 50;
+// Warnings are the one list a page can grow without a count cap; every other list is capped by count and length.
+const WARNINGS_TEXT_MAX_CHARS = 1_000_000;
+const SERVED_SCRIPTS_MAX = 500;
 const THROW_SITE_LOOKUP_MAX = 10;
 
 const CUT_NOTE_MAX_CHARS = 40;
@@ -2570,16 +2575,47 @@ export async function collectMediaReadinessWarnings(
   return warnings;
 }
 
+function boundedWarningItem(item: unknown): unknown {
+  if (typeof item === "string") return boundedPageText(item);
+  if (!item || typeof item !== "object") return item;
+  return Object.fromEntries(
+    Object.entries(item).map(([k, v]) => [k, typeof v === "string" ? boundedPageText(v) : v]),
+  );
+}
+
+/** A warning's message and each of its lists cut to the page-text bounds; `keepLists` false empties the lists. */
+function boundedWarning(warning: CaptureWarning, keepLists: boolean): CaptureWarning {
+  const message = boundedPageText(warning.message);
+  if (!warning.details) return { ...warning, message };
+  const details: Record<string, unknown> = { ...warning.details };
+  for (const [key, value] of Object.entries(warning.details)) {
+    if (Array.isArray(value))
+      details[key] = keepLists ? value.slice(0, PAGE_LIST_MAX).map(boundedWarningItem) : [];
+  }
+  return { ...warning, message, details: details as CaptureWarning["details"] };
+}
+
+const warningKey = (warning: CaptureWarning) =>
+  `${warning.code}:${JSON.stringify(warning.details ?? {})}`;
+
+// Past WARNINGS_TEXT_MAX_CHARS, a warning is kept once per code with its lists emptied, so policy still sees it.
+function warningToKeep(session: CaptureSession, raw: CaptureWarning): CaptureWarning | null {
+  const bounded = boundedWarning(raw, true);
+  const key = warningKey(bounded);
+  if (session.warnings.some((existing) => warningKey(existing) === key)) return null;
+  const used = (session.warningTextChars ?? 0) + key.length + bounded.message.length;
+  if (used <= WARNINGS_TEXT_MAX_CHARS) {
+    session.warningTextChars = used;
+    return bounded;
+  }
+  if (session.warnings.some((existing) => existing.code === raw.code)) return null;
+  return boundedWarning(raw, false);
+}
+
 function recordCaptureWarnings(session: CaptureSession, warnings: readonly CaptureWarning[]): void {
-  for (const warning of warnings) {
-    const key = `${warning.code}:${JSON.stringify(warning.details ?? {})}`;
-    if (
-      session.warnings.some(
-        (existing) => `${existing.code}:${JSON.stringify(existing.details ?? {})}` === key,
-      )
-    ) {
-      continue;
-    }
+  for (const raw of warnings) {
+    const warning = warningToKeep(session, raw);
+    if (!warning) continue;
     session.warnings.push(warning);
     console.warn(
       `[FrameCapture:${warning.code}] ${terminalText(warning.message)}`,
@@ -3201,7 +3237,14 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const isScript = request.resourceType() === "script";
     const responseUrl = response.url();
     if (status < 400) {
-      if (isScript && responseUrl.startsWith(`${serverUrl}/`)) projectScripts.add(responseUrl);
+      // ponytail: a throw from a script past the first SERVED_SCRIPTS_MAX, or a longer URL, is not attributed.
+      if (
+        isScript &&
+        responseUrl.startsWith(`${serverUrl}/`) &&
+        projectScripts.size < SERVED_SCRIPTS_MAX &&
+        responseUrl.length <= PAGE_TEXT_MAX_CHARS
+      )
+        projectScripts.add(responseUrl);
       return;
     }
 

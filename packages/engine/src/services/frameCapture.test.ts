@@ -6,6 +6,8 @@ import type { SubTimelineWaitMemo } from "../types.js";
 import {
   buildZeroDurationDiagnostic,
   pollHfReady,
+  recordBackgroundDecodeTimeouts,
+  recordSubTimelineWarning,
   captureFramesBatchPipelined,
   captureFrameToBufferPipelined,
   classifyConsoleScriptError,
@@ -351,6 +353,72 @@ describe("classifyPageError", () => {
     } finally {
       stderr.mockRestore();
     }
+  });
+
+  // fails without the fix: a warning kept every timeline id and media source the page named, at full length
+  it("keeps a warning's timeline ids and media sources only up to a fixed count and size", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const long = (n: number) => `${n}:${"z".repeat(10_000)}`;
+    const session = {
+      subTimelineWaitOutcome: "timeout",
+      pendingTimelineIds: Array.from({ length: 1_000 }, (_, n) => long(n)),
+      scriptLoadFailures: [],
+      pageErrors: [],
+      warnings: [],
+      browserConsoleBuffer: [],
+    } as unknown as CaptureSession;
+    recordSubTimelineWarning(session, 45_000);
+    recordBackgroundDecodeTimeouts(
+      session,
+      Array.from({ length: 1_000 }, (_, n) => `https://cdn.test/${long(n)}.jpg`),
+    );
+
+    const lists = session.warnings.flatMap((w) =>
+      Object.values(w.details ?? {}).filter((v): v is string[] => Array.isArray(v)),
+    );
+    const texts = [...session.warnings.map((w) => w.message), ...lists.flat()];
+    expect(session.warnings.map((w) => w.code)).toEqual([
+      "sub_timeline_readiness_timeout",
+      "media_readiness_timeout",
+    ]);
+    expect(Math.max(...texts.map((text) => text.length))).toBeLessThanOrEqual(2_000);
+    expect(Math.max(...lists.map((list) => list.length))).toBeLessThanOrEqual(50);
+  });
+
+  // fails without the fix: every distinct warning was kept, so a page could grow a render's memory without end
+  it("keeps a fixed total of page text per render, and still each kind of warning", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session = { warnings: [], browserConsoleBuffer: [] } as unknown as CaptureSession;
+    for (let n = 0; n < 2_000; n++) {
+      recordBackgroundDecodeTimeouts(session, [`https://cdn.test/${n}-${"q".repeat(1_900)}.jpg`]);
+    }
+    session.subTimelineWaitOutcome = "timeout";
+    Object.assign(session, { scriptLoadFailures: [], pageErrors: [], pendingTimelineIds: ["a"] });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(JSON.stringify(session.warnings).length).toBeLessThanOrEqual(1_100_000);
+    expect(new Set(session.warnings.map((w) => w.code))).toEqual(
+      new Set(["media_readiness_timeout", "sub_timeline_readiness_timeout"]),
+    );
+  });
+
+  // fails without the fix: the served-script set grew by one for every script address the page fetched
+  it("remembers a fixed number of served script addresses", async () => {
+    const { session, pageListeners, runtimeListeners } = await listenedSession();
+    const script = (n: number) => `${server}/s${n}.js`;
+    for (let n = 0; n < 2_000; n++) {
+      pageListeners.get("response")?.({
+        status: () => 200,
+        url: () => script(n),
+        request: () => ({ resourceType: () => "script" }),
+      });
+    }
+    for (const n of [0, 1_999]) {
+      runtimeListeners.get("Runtime.exceptionThrown")?.({
+        exceptionDetails: thrown(`Error: from ${n}`, script(n), [script(n)]),
+      });
+    }
+    expect(session.pageErrors).toEqual(["runtime-error:Error: from 0"]);
   });
 
   it("records the page's uncaught errors from scripts it loaded from the server", async () => {
