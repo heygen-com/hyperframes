@@ -818,6 +818,31 @@ describe("buildSubCompositionHtml authored file marks", () => {
     expect(document.querySelector("#claim")?.hasAttribute("data-composition-file")).toBe(false);
   });
 
+  it("drops a mark written inside a template, at any depth", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<div data-composition-id="scene">
+  <template><p data-composition-file="index.html">a</p><template><b data-composition-file="index.html">b</b></template></template>
+</div>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/runtime.js") ?? "";
+
+    expect(html).toContain("<p>a</p><template><b>b</b></template>");
+    expect(html).not.toContain('data-composition-file="index.html"');
+  });
+
+  it("refuses a mark hidden where a scripting browser reads past a comment", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<div data-composition-id="scene">
+  <noscript><!-- </noscript><p data-composition-file="index.html">a</p> --></noscript>
+</div>`,
+    });
+    expect(() => buildSubCompositionHtml(dir, "compositions/scene.html", "/runtime.js")).toThrow(
+      /can't be read the way a browser reads them/,
+    );
+  });
+
   it("drops a mark a full document wrote on its <html> or <body>", () => {
     const dir = makeTempProject({
       "index.html": "<!doctype html><html><head></head><body></body></html>",

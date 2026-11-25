@@ -218,7 +218,7 @@ describe("element handles over the editing port", () => {
     document.body.innerHTML = `
       <div class="tile"></div>
       <div data-composition-file="cards.html"><div class="tile"></div><div class="tile"></div></div>
-      <div data-composition-src="cards.html"><div class="tile" id="t"></div></div>
+      <div data-composition-src="cards.html" data-composition-file="cards.html"><div class="tile" id="t"></div></div>
       <div data-composition-file="cards.html"><div class="tile"></div></div>`;
     const last = await describeOne(document.querySelectorAll(".tile")[4]!);
     expect(last.source.file).toBe("cards.html");

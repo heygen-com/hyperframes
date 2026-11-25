@@ -3,7 +3,26 @@ import {
   dropServiceWorkers,
   refusedPreviewMessage,
   refusedPreviewStatus,
+  previewElementSourceFile,
 } from "./studioPreviewMark";
+
+// fails without the fix: an authored data-composition-src chose the file a timeline edit was written to
+describe("previewElementSourceFile", () => {
+  it("keeps the stamped file under an authored host that names another file", () => {
+    document.body.innerHTML = `
+      <div data-composition-id="scene" data-composition-file="compositions/scene.html">
+        <div data-composition-id="wrapper" data-composition-src="index.html"><p id="t"></p></div>
+      </div>`;
+    expect(previewElementSourceFile(document.getElementById("t")!)).toBe("compositions/scene.html");
+    document.body.innerHTML = "";
+  });
+
+  it("names no file for an element under only authored markup", () => {
+    document.body.innerHTML = `<div data-composition-id="wrapper" data-composition-src=""><p id="t"></p></div>`;
+    expect(previewElementSourceFile(document.getElementById("t")!)).toBeUndefined();
+    document.body.innerHTML = "";
+  });
+});
 
 describe("refusedPreviewStatus", () => {
   it.each([404, 410, 500])("reads %i back out of the refused page's message", (status) => {

@@ -10,11 +10,21 @@ export const COMPOSITION_ROOT_ATTRS = [
   "data-hf-original-composition-id",
 ] as const;
 
+function nextInDocumentOrder(element: Element, root: ParentNode): Element | null {
+  if (element.firstElementChild) return element.firstElementChild;
+  for (let at: Element | null = element; at && at !== root; at = at.parentElement)
+    if (at.nextElementSibling) return at.nextElementSibling;
+  return null;
+}
+
 export function dropAuthoredCompositionFiles(root: ParentNode): void {
-  for (const el of Array.from(root.querySelectorAll("*"))) {
+  for (let el = root.firstElementChild; el; el = nextInDocumentOrder(el, root)) {
     for (const name of el.getAttributeNames())
       if (name.toLowerCase() === COMPOSITION_FILE_ATTR) el.removeAttribute(name);
-    const content = (el as { content?: ParentNode | null }).content;
-    if (el.localName === "template" && content) dropAuthoredCompositionFiles(content);
+    const browserTemplateContent =
+      el.localName === "template" && !el.hasChildNodes()
+        ? (el as { content?: ParentNode }).content
+        : null;
+    if (browserTemplateContent) dropAuthoredCompositionFiles(browserTemplateContent);
   }
 }

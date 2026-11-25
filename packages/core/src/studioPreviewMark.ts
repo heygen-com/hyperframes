@@ -135,12 +135,8 @@ export interface PreviewTarget {
 }
 
 export function previewElementSourceFile(el: Element): string | undefined {
-  const ownerRoot = el.parentElement?.closest("[data-composition-id]");
-  return (
-    ownerRoot?.getAttribute("data-composition-file") ??
-    ownerRoot?.getAttribute("data-composition-src") ??
-    undefined
-  );
+  const host = el.parentElement?.closest("[data-composition-file]");
+  return host?.getAttribute("data-composition-file") || undefined;
 }
 
 export function previewElementFinder(
