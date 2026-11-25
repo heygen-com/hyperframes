@@ -1,5 +1,9 @@
 // Types
-export type { PlaybackHeldBy, RuntimeTimelineClipIdentity } from "./runtime/types.js";
+export type {
+  PlaybackHealthReport,
+  PlaybackHeldBy,
+  RuntimeTimelineClipIdentity,
+} from "./runtime/types.js";
 export type {
   ExecutionMode,
   Orientation,

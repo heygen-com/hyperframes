@@ -252,9 +252,10 @@ describe("a rotate press on an element a GSAP tween turns", () => {
 describe("a corner resize on a frame Studio scripts", () => {
   it("pins its centre by the grow the sealed frame would report, so both modes save the same offset", async () => {
     const { measureLiveGrow } = await import("./previewGestureStartRead");
-    const element = document.createElement("div");
     const iframe = document.createElement("iframe");
-    document.body.append(element, iframe);
+    document.body.append(iframe);
+    const element = iframe.contentDocument!.createElement("div");
+    iframe.contentDocument!.body.append(element);
     const overlay = document.createElement("div");
     const opts = {
       ...pressOptions(element),

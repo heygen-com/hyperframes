@@ -4435,4 +4435,25 @@ describe("bundleToSingleHtml composition file marks", () => {
     expect(document.getElementById("shout")?.getAttributeNames()).toEqual(["id"]);
     expect(document.querySelectorAll("[data-composition-file]")).toHaveLength(1);
   });
+
+  it("drops a mark authored inside a template, in the entry page or an inlined sub-composition", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <template id="tpl"><p id="intpl" data-composition-file="compositions/tpl.html">x</p>
+      <template><b data-composition-file="compositions/tpl.html">y</b></template></template>
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <template id="later"><i data-composition-file="compositions/tpl.html">z</i></template>
+  </div>
+</template>`,
+    });
+
+    const html = await bundleToSingleHtml(dir);
+    expect(html.match(/data-composition-file="compositions\/tpl[^"]*"/gi)).toBeNull();
+  });
 });

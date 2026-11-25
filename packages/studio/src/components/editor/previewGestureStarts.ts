@@ -34,7 +34,7 @@ import {
 type ShownStart = (
   e: React.PointerEvent<HTMLElement>,
   at: EditMoment,
-  waited: boolean,
+  findAgain: boolean,
   overChannel?: OverChannel,
 ) => boolean;
 
@@ -48,6 +48,11 @@ const pollFirst = (
 ) => {
   if (channel) poll();
   else press.frame = requestAnimationFrame(poll);
+};
+
+const namesReplacedPage = (iframe: HTMLIFrameElement | null, targets: DomEditSelection[]) => {
+  const live = iframe?.contentDocument;
+  return !!live && targets.some((target) => target.element.ownerDocument !== live);
 };
 
 export function createPreviewGestureStarts(
@@ -167,7 +172,7 @@ export function createPreviewGestureStarts(
     const iframe = opts.iframeRef.current;
     const channel = iframe && previewFrameOpaque(iframe) ? iframe : null;
     if (!channel && !isPreviewChanging() && !opts.waitingPressRef.current)
-      return start(e, at, false);
+      return start(e, at, namesReplacedPage(iframe, targets()));
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -311,8 +316,8 @@ export function createPreviewGestureStarts(
           const selection = shownSelection(item.selection);
           return selection ? [selection.element] : [];
         }),
-      (pressed, at, waited, overChannel) => {
-        if (!waited) return _startGroupDrag(pressed, opts, at);
+      (pressed, at, findAgain, overChannel) => {
+        if (!findAgain) return _startGroupDrag(pressed, opts, at);
         if (overChannel) {
           const measured = items.map((item, i) => ({ ...item, ...overChannel.shown[i]! }));
           return _startGroupDrag(
@@ -371,8 +376,8 @@ export function createPreviewGestureStarts(
         const shown = target && shownSelection(target);
         return shown ? [shown.element] : [];
       },
-      (pressed, at, waited, overChannel) => {
-        if (!waited) return _startGesture(kind, pressed, opts, { ...options, at });
+      (pressed, at, findAgain, overChannel) => {
+        if (!findAgain) return _startGesture(kind, pressed, opts, { ...options, at });
         const shown = overChannel ? overChannel.shown[0] : shownOnPage(target);
         return (
           !!shown &&

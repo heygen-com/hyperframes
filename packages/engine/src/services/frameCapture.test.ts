@@ -545,6 +545,25 @@ describe("classifyPageError", () => {
     log.mockRestore();
   });
 
+  // fails without the fix: the page could grow the render's record of served scripts without end
+  it("stops the render once the page loads more different scripts than a render tracks", async () => {
+    const { session, pageListeners } = await listenedSession();
+    const serve = (n: number) =>
+      pageListeners.get("response")?.({
+        status: () => 200,
+        url: () => `${server}/s${n}.js`,
+        request: () => ({ resourceType: () => "script" }),
+      });
+    Object.assign(session, { isInitialized: true, options: { fps: { num: 30, den: 1 } } });
+    const stopped = { name: "TooManyServedScriptsError" };
+    for (let n = 0; n < 10_000; n++) serve(n);
+    serve(0);
+    await expect(captureFrameToBufferPipelined(session, 0, 0)).rejects.not.toMatchObject(stopped);
+    serve(10_000);
+    await expect(captureFrameToBufferPipelined(session, 0, 0)).rejects.toMatchObject(stopped);
+    await expect(captureFramesBatchPipelined(session, [0], [0])).rejects.toMatchObject(stopped);
+  });
+
   it("refuses to capture another frame once a VFX chain has failed", async () => {
     const session = {
       isInitialized: true,
