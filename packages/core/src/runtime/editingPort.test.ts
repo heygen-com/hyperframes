@@ -115,6 +115,7 @@ describe("createEditingPortClient", () => {
           "mark-scenes-stale",
           "swap-scenes",
           "live-retime",
+          "rebind-timing",
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",

@@ -232,6 +232,7 @@ describe("installEditingAgent", () => {
           "mark-scenes-stale",
           "swap-scenes",
           "live-retime",
+          "rebind-timing",
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
@@ -695,6 +696,35 @@ describe("installEditingAgent", () => {
       ok: true,
       result: { result: "unchanged" },
     });
+  });
+
+  it("rebinds the timing through the port, refuses an off-shape time, and waits out a swap", async () => {
+    const frame = window as unknown as Record<string, unknown>;
+    const rebinds: string[] = [];
+    const port = connectedPort();
+    const rebind = (id: number, params: object) =>
+      ask(port, { v: 1, id, kind: "rebind-timing", params });
+    try {
+      frame.__hfForceTimelineRebind = () => rebinds.push("rebound");
+      for (const [id, params] of [
+        [1, { time: -1 }],
+        [2, { time: Number.NaN }],
+        [3, { time: 1, script: "x" }],
+        [4, {}],
+      ] as const)
+        expect(await rebind(id, params)).toMatchObject({ ok: false });
+      frame.__hfSwapsWaiting = 1;
+      expect(await rebind(5, { time: 0 })).toMatchObject({ ok: true, result: { rebound: false } });
+      expect(rebinds).toEqual([]);
+      delete frame.__hfSwapsWaiting;
+      expect(await rebind(6, { time: 0 })).toMatchObject({ ok: true, result: { rebound: true } });
+      expect(rebinds).toEqual(["rebound"]);
+      delete frame.__hfForceTimelineRebind;
+      expect(await rebind(7, { time: 0 })).toMatchObject({ ok: true, result: { rebound: false } });
+    } finally {
+      delete frame.__hfForceTimelineRebind;
+      delete frame.__hfSwapsWaiting;
+    }
   });
 
   // fails without the fix: the frame refused a turn drawn inside a translating transform, so it never turned.
