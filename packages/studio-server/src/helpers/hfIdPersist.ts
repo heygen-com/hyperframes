@@ -2,63 +2,140 @@ import { stampHfIdsInPlace } from "@hyperframes/parsers/hf-ids";
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  defaultTreeAdapter,
+  Parser,
+  Tokenizer,
+  type DefaultTreeAdapterMap,
+  type DefaultTreeAdapterTypes,
+  type TreeAdapter,
+} from "parse5";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { isInHiddenOrVendorDir, mkdirOwnedWithinProject, walkDir } from "./safePath.js";
 
 const COMPOSITION_ID_TEXT = /data-composition-id\s*=/i;
-// HTML's whitespace set, not `\s`: a browser keeps other space characters inside an attribute name.
-const SPACE = "\t\n\f\r ";
-const TAG_NAME = /<[a-zA-Z][^\t\n\f\r />]*/y;
-const ATTRIBUTE_NAME = /[^\t\n\f\r />][^\t\n\f\r />=]*/y;
-const ATTRIBUTE_VALUE = /"[^"]*"?|'[^']*'?|[^\t\n\f\r >]*/y;
 
-function past(html: string, at: number, chars: string): number {
-  while (at < html.length && chars.includes(html[at]!)) at += 1;
-  return at;
+// Where a browser stops nesting. The parser has no limit of its own and slows with every level.
+const MAX_DEPTH = 512;
+
+type Node = DefaultTreeAdapterTypes.Node;
+
+const templateOf = new WeakMap<Node, Node>();
+
+function above(node: Node): Node | undefined {
+  return ("parentNode" in node && node.parentNode) || templateOf.get(node);
 }
 
-/** Walks a start tag's attributes from `at`: where they end, and whether one is the marker with a value. */
-function attributesFrom(html: string, at: number): { at: number; named: boolean } {
-  let named = false;
-  for (;;) {
-    at = past(html, at, `${SPACE}/`);
-    ATTRIBUTE_NAME.lastIndex = at;
-    const name = ATTRIBUTE_NAME.exec(html);
-    if (!name) return { at, named };
-    at = ATTRIBUTE_NAME.lastIndex;
-    const equals = past(html, at, SPACE);
-    if (html[equals] !== "=") continue;
-    ATTRIBUTE_VALUE.lastIndex = past(html, equals + 1, SPACE);
-    ATTRIBUTE_VALUE.test(html);
-    at = ATTRIBUTE_VALUE.lastIndex;
-    named ||= name[0].toLowerCase() === "data-composition-id";
+function refuseBelowMaxDepth(parent: Node): void {
+  let depth = 1;
+  for (let at = above(parent); at; at = above(at)) if (++depth > MAX_DEPTH) throw new RangeError();
+}
+
+/** parse5's tree adapter with the limits it lacks. `elements` is how many the page may make: closing
+ * tags out of order makes the parser repeat open elements, without end for a small page. */
+function limitedAdapter(elements: number): TreeAdapter<DefaultTreeAdapterMap> {
+  return {
+    ...defaultTreeAdapter,
+    createElement(tagName, namespace, attrs) {
+      if (--elements < 0) throw new RangeError();
+      return defaultTreeAdapter.createElement(tagName, namespace, attrs);
+    },
+    appendChild(parent, child) {
+      refuseBelowMaxDepth(parent);
+      defaultTreeAdapter.appendChild(parent, child);
+    },
+    // Where a node sits among its siblings does not change which elements exist, and keeping the
+    // order means a search or a shift of all the siblings for each node moved.
+    insertBefore(parent, child) {
+      refuseBelowMaxDepth(parent);
+      defaultTreeAdapter.appendChild(parent, child);
+    },
+    insertTextBefore(parent, text) {
+      defaultTreeAdapter.insertText(parent, text);
+    },
+    detachNode(node) {
+      const siblings = node.parentNode?.childNodes;
+      if (!siblings) return;
+      const last = siblings.pop();
+      if (last && last !== node)
+        siblings[siblings[0] === node ? 0 : siblings.lastIndexOf(node)] = last;
+      node.parentNode = null;
+    },
+    setTemplateContent(template, content) {
+      templateOf.set(content, template);
+      defaultTreeAdapter.setTemplateContent(template, content);
+    },
+  };
+}
+
+// More attributes on one tag than any real page has. The parser has no limit of its own, and compares
+// each attribute name on a tag with every one before it.
+const MAX_ATTRIBUTES = 4096;
+
+class AttributeLimitedTokenizer extends Tokenizer {
+  private named = 0;
+
+  protected override _createStartTagToken(): void {
+    this.named = 0;
+    super._createStartTagToken();
+  }
+
+  protected override _createEndTagToken(): void {
+    this.named = 0;
+    super._createEndTagToken();
+  }
+
+  protected override _createAttr(firstCharacter: string): void {
+    if (++this.named > MAX_ATTRIBUTES) throw new RangeError();
+    super._createAttr(firstCharacter);
   }
 }
 
-/** True when a closed start tag of `html` has an attribute named exactly `data-composition-id` with a
- * value. The marker's text alone is not enough, since Studio runs a composition's scripts on its own
- * origin: `<div data-x-data-composition-id="a">` must be refused. Script and style text is read as
- * markup, because skipping it by tag name hid a real root after an empty `<style/>` in inline SVG. */
-export function isCompositionSource(html: string): boolean {
-  if (!COMPOSITION_ID_TEXT.test(html)) return false;
-  for (let at = html.indexOf("<"); at !== -1; at = html.indexOf("<", at)) {
-    if (html.startsWith("<!--", at)) {
-      const end = html.indexOf("-->", at + 4);
-      if (end === -1) return false;
-      at = end + 3;
-      continue;
-    }
-    TAG_NAME.lastIndex = at;
-    if (!TAG_NAME.test(html)) {
-      at += 1;
-      continue;
-    }
-    const tag = attributesFrom(html, TAG_NAME.lastIndex);
-    at = tag.at;
-    if (tag.named && html[at] === ">") return true;
+/** The document a browser with scripting on builds from `html`. Throws past a limit. */
+function parseAsABrowser(html: string): Node {
+  // Every element a page asks for takes at least three characters, so a real page stays under this.
+  const treeAdapter = limitedAdapter(html.length + 16);
+  const parser = new Parser({ scriptingEnabled: true, treeAdapter });
+  parser.tokenizer = new AttributeLimitedTokenizer(parser.options, parser);
+  parser.tokenizer.write(html, true);
+  return parser.document;
+}
+
+function hasCompositionElement(document: Node): boolean {
+  const left: Node[] = [document];
+  for (let node = left.pop(); node; node = left.pop()) {
+    if ("attrs" in node && node.attrs.some((a) => a.name === "data-composition-id" && a.value))
+      return true;
+    if ("content" in node) left.push(node.content);
+    if ("childNodes" in node) for (const child of node.childNodes) left.push(child);
   }
   return false;
 }
+
+/** True when `html`, read as a browser with scripting on reads it, has an element whose
+ * `data-composition-id` attribute has a value; a template's content counts. The marker's text alone
+ * is not enough, since Studio runs a composition's scripts on its own origin: the text inside a
+ * script, style, comment or another attribute is no element. A page nested deeper than a browser
+ * nests, or with thousands of attributes on one tag, is refused. */
+export function isCompositionSource(html: string): boolean {
+  if (!COMPOSITION_ID_TEXT.test(html)) return false;
+  const hash = contentHash(html);
+  let answer = answers.get(hash);
+  if (answer === undefined) {
+    try {
+      answer = hasCompositionElement(parseAsABrowser(html));
+    } catch {
+      answer = false;
+    }
+    if (answers.size >= MAX_ANSWERS) answers.clear();
+    answers.set(hash, answer);
+  }
+  return answer;
+}
+
+// The project listing asks about every page on every request; a page is parsed once per content.
+const MAX_ANSWERS = 2048;
+const answers = new Map<string, boolean>();
 
 export const isCompositionPath = (relPath: string): boolean =>
   /\.html?$/i.test(relPath) && !isInHiddenOrVendorDir(relPath);

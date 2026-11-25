@@ -56,6 +56,23 @@ describe("buildSubCompositionHtml", () => {
     expect(buildSubCompositionHtml(dir, "extracted/page.html", "/runtime.js")).toBeNull();
   });
 
+  // fails without the fix: a tag written inside a script or style counted as the composition's element.
+  it.each([
+    '<script>const s = "<div data-composition-id=\\"x\\"></div>"; window.ran = 1</script>',
+    '<style>/* <div data-composition-id="x"></div> */</style><script>window.ran = 1</script>',
+    '<noscript><div data-composition-id="x"></div></noscript><script>window.ran = 1</script>',
+  ])(
+    "returns null for a page whose only marker is text a browser does not read as a tag: %s",
+    (body) => {
+      const dir = makeTempProject({
+        "index.html":
+          '<html><head></head><body><div data-composition-id="main"></div></body></html>',
+        "extracted/page.html": `<!doctype html><html><head></head><body>${body}</body></html>`,
+      });
+      expect(buildSubCompositionHtml(dir, "extracted/page.html", "/runtime.js")).toBeNull();
+    },
+  );
+
   // Windows does not allow a quote in a file name.
   it.skipIf(process.platform === "win32")(
     "writes the composition's path into its root as attribute text",
