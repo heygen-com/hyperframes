@@ -131,6 +131,21 @@ describe("composition probe readiness", () => {
     vi.advanceTimersByTime(LIMIT);
     expect(onError).toHaveBeenCalledOnce();
   });
+  it("times out a preview whose own runtime never boots, as a sealed player does", () => {
+    const { iframe, onReady, onError } = mount(
+      root + '<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script>',
+      { __timelines: { main: timeline(4) } },
+    );
+    vi.advanceTimersByTime(LIMIT - 1);
+    expect(onReady).not.toHaveBeenCalled();
+    expect(iframe.contentDocument!.querySelectorAll("script")).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(onError).toHaveBeenCalledExactlyOnceWith(TIMED_OUT);
+    Object.assign(iframe.contentWindow!, { __player: { getDuration: () => 4 } });
+    vi.advanceTimersByTime(1000);
+    expect(onReady).toHaveBeenCalledOnce();
+    expect(onReady.mock.calls[0][0].adapter.kind).toBe("runtime");
+  });
   it("gives a frame it can't read the plain timeout, sealed or not", () => {
     const { iframe, onError } = mount('<div data-composition-id="main"></div>');
     Object.defineProperty(iframe, "contentWindow", {
