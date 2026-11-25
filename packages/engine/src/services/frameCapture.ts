@@ -81,6 +81,7 @@ import {
   listedInMessage,
   PAGE_LIST_MAX,
   PAGE_TEXT_MAX_CHARS,
+  SERVED_SCRIPTS_MAX,
   warningBudgetOf,
   type WarningBudget,
 } from "./pageTextBounds.js";
@@ -258,6 +259,8 @@ export interface CaptureSession {
   strictVariablesChecked?: boolean;
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
   vfxFailure?: string;
+  /** Set once the page loads more distinct scripts than SERVED_SCRIPTS_MAX; it stops the render. */
+  tooManyServedScripts?: boolean;
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
   /**
@@ -2954,8 +2957,20 @@ export class VfxFailureError extends Error {
   }
 }
 
-function assertVfxIntact(session: CaptureSession): void {
+/** Thrown once the page loads more distinct scripts than a render tracks, so a throw could go unattributed. */
+class TooManyServedScriptsError extends Error {
+  constructor() {
+    super(
+      `The composition loaded more than ${SERVED_SCRIPTS_MAX.toLocaleString("en-US")} different scripts, ` +
+        "more than a render can track. Load fewer scripts.",
+    );
+    this.name = "TooManyServedScriptsError";
+  }
+}
+
+function assertCaptureIntact(session: CaptureSession): void {
   if (session.vfxFailure) throw new VfxFailureError(session.vfxFailure);
+  if (session.tooManyServedScripts) throw new TooManyServedScriptsError();
 }
 
 // A `vfx:` detail is a chain that cannot paint, so every frame is wrong; `vfx-frame:` is one frame, a page error.
@@ -3224,8 +3239,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const isScript = request.resourceType() === "script";
     const responseUrl = response.url();
     if (status < 400) {
-      if (isScript && responseUrl.startsWith(`${serverUrl}/`))
-        servedScriptUrlDigests.add(digest(responseUrl));
+      if (isScript && responseUrl.startsWith(`${serverUrl}/`)) {
+        const served = digest(responseUrl);
+        if (servedScriptUrlDigests.size < SERVED_SCRIPTS_MAX || servedScriptUrlDigests.has(served))
+          servedScriptUrlDigests.add(served);
+        else session.tooManyServedScripts = true;
+      }
       return;
     }
 
@@ -3332,7 +3351,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
-    assertVfxIntact(session);
+    assertCaptureIntact(session);
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
@@ -3479,7 +3498,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
-    assertVfxIntact(session);
+    assertCaptureIntact(session);
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
@@ -3684,7 +3703,7 @@ async function prepareFrameForCapture(
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");
   }
-  assertVfxIntact(session);
+  assertCaptureIntact(session);
 
   const quantizedTime = quantizeSeekTime(
     time,
@@ -5916,7 +5935,7 @@ export async function captureFramesBatchPipelined(
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");
   }
-  assertVfxIntact(session);
+  assertCaptureIntact(session);
   for (const frameIndex of frameIndices) assertNotRiskFrame(session, frameIndex);
   // The fused batch seeks inside the page, with no stop between frames to wait for a late image.
   if (session.lateImages?.size) {
