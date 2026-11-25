@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
+  closeSync,
+  fstatSync,
   linkSync,
   lstatSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -58,6 +60,16 @@ for (const [kind, plant] of [
 
 const posix = process.platform !== "win32";
 
+/** A file's permissions and bytes, read through one handle. */
+function modeAndBytes(path) {
+  const file = openSync(path, "r");
+  try {
+    return [fstatSync(file).mode & 0o777, readFileSync(file)];
+  } finally {
+    closeSync(file);
+  }
+}
+
 // fails without the fix: the new file came out with default permissions, so a private WAV became readable by others.
 test(
   "lyria-recipe keeps the permissions of the WAV it replaces",
@@ -66,12 +78,12 @@ test(
     const dir = mkdtempSync(join(tmpdir(), "lyria-mode-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const out = join(dir, "bgm.wav");
-    writeFileSync(out, "old");
-    chmodSync(out, 0o600);
+    writeFileSync(out, "old", { mode: 0o600 });
     const result = spawnSync(python, ["-c", RUN, scripts, out], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(lstatSync(out).mode & 0o777, 0o600);
-    assert.equal(readFileSync(out).length, 44 + 8);
+    const [mode, wav] = modeAndBytes(out);
+    assert.equal(mode, 0o600);
+    assert.equal(wav.length, 44 + 8);
     assert.deepEqual(readdirSync(dir), ["bgm.wav"]);
   },
 );
@@ -84,13 +96,11 @@ test(
     const dir = mkdtempSync(join(tmpdir(), "lyria-readonly-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     const out = join(dir, "bgm.wav");
-    writeFileSync(out, "old");
-    chmodSync(out, 0o444);
+    writeFileSync(out, "old", { mode: 0o444 });
     const result = spawnSync(python, ["-c", RUN, scripts, out], { encoding: "utf8" });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /PermissionError/);
-    assert.equal(readFileSync(out, "utf8"), "old");
-    assert.equal(lstatSync(out).mode & 0o777, 0o444);
+    assert.deepEqual(modeAndBytes(out), [0o444, Buffer.from("old")]);
     assert.deepEqual(readdirSync(dir), ["bgm.wav"]);
   },
 );
