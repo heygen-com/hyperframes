@@ -140,7 +140,7 @@ const started = Date.now();
 let lastFailure = "";
 let lastTail = "";
 
-while (Date.now() - started <= timeoutMs) {
+for (;;) {
   const track = statSync(bgmAbsPath, { throwIfNoEntry: false });
   if (track && !isFromBeforeTheJob(track)) {
     const size = track.size;
@@ -179,8 +179,9 @@ while (Date.now() - started <= timeoutMs) {
     process.exit(0);
   }
 
-  if (timeoutMs === 0) break;
-  await sleep(Math.min(intervalMs, Math.max(0, timeoutMs - (Date.now() - started))));
+  const waited = Date.now() - started;
+  if (waited >= timeoutMs) break;
+  await sleep(Math.min(intervalMs, timeoutMs - waited));
 }
 
 const status = writeStatus({
