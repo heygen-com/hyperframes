@@ -76,11 +76,7 @@ export async function replaceFileAtomicallyAsync(
   mode?: number,
 ): Promise<void> {
   traceWrite(filePath, content);
-  try {
-    await fsp.access(filePath, fs.constants.W_OK);
-  } catch (error) {
-    if (errorCode(error) !== "ENOENT") throw error;
-  }
+  await refuseReadOnlyAsync(filePath);
   const tempPath = await writeTempSiblingAsync(filePath, content, mode);
   try {
     if (mode !== undefined) await fsp.chmod(tempPath, mode);
@@ -114,8 +110,21 @@ export function refuseReadOnly(filePath: string): void {
   try {
     fs.accessSync(filePath, fs.constants.W_OK);
   } catch (error) {
-    if (errorCode(error) !== "ENOENT") throw error;
+    readOnlyOrMissing(error);
   }
+}
+
+async function refuseReadOnlyAsync(filePath: string): Promise<void> {
+  try {
+    await fsp.access(filePath, fs.constants.W_OK);
+  } catch (error) {
+    readOnlyOrMissing(error);
+  }
+}
+
+/** A file that is not there yet is written; any other refusal (read-only, no permission) is the caller's. */
+function readOnlyOrMissing(error: unknown): void {
+  if (errorCode(error) !== "ENOENT") throw error;
 }
 
 /** Create a file that must not exist yet (EEXIST otherwise); readers never see it empty or partial. */

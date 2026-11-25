@@ -14,6 +14,7 @@ import {
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
+  mkdirWithinProjectAsync,
   nodeMayRun,
   projectPathSegments,
   realFilePath,
@@ -236,8 +237,18 @@ export function readProjectCacheFile(root: string, file: string, maxBytes: numbe
 
 /** `mkdirWithinProject` for the tool's own caches and records: a link on the way would put their files outside the project. */
 export function mkdirOwnedWithinProject(root: string, dir: string): void {
-  if (!isLinkFreeWithinProject(root, dir)) throw new Error(`A link stands in for a folder: ${dir}`);
+  refuseLinkOnTheWay(root, dir);
   mkdirWithinProject(root, dir);
+}
+
+/** {@link mkdirOwnedWithinProject} whose folder writes run on fs/promises. */
+export async function mkdirOwnedWithinProjectAsync(root: string, dir: string): Promise<void> {
+  refuseLinkOnTheWay(root, dir);
+  await mkdirWithinProjectAsync(root, dir);
+}
+
+function refuseLinkOnTheWay(root: string, dir: string): void {
+  if (!isLinkFreeWithinProject(root, dir)) throw new Error(`A link stands in for a folder: ${dir}`);
 }
 
 const IGNORE_DIRS = new Set([
