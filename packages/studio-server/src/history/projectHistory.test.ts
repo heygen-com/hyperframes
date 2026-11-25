@@ -1159,7 +1159,7 @@ describe("openProjectHistory", () => {
     mkdirSync(projectDir);
     writeFileSync(join(projectDir, "index.html"), "new project");
 
-    expect(history.replacedAtPath()).toBe(true);
+    expect(await history.replacedNow()).toBe(true);
     await expect(history.restore(START, you)).rejects.toThrow(HistoryClosedError);
     expect(() => history.list()).toThrow(HistoryClosedError);
     // What the turn wrote before the swap is still its entry; nothing of the new project is.
@@ -1181,7 +1181,7 @@ describe("openProjectHistory", () => {
 
     await expect(history.restore(START, you)).rejects.toThrow("The project folder is gone");
     expect(existsSync(projectDir)).toBe(false);
-    expect(history.replacedAtPath()).toBe(false);
+    expect(await history.replacedNow()).toBe(false);
   });
 
   it.each([
@@ -1361,7 +1361,7 @@ describe("openProjectHistory", () => {
     rmSync(join(projectDir, ".hyperframes"), { recursive: true });
     write("index.html", "new project");
 
-    expect(history.replacedAtPath()).toBe(true);
+    expect(await history.replacedNow()).toBe(true);
     await expect(history.restore(START, you)).rejects.toThrow(HistoryClosedError);
     expect(read("index.html")).toBe("new project");
   });

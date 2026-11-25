@@ -192,8 +192,9 @@ export interface ProjectHistory {
   /** Takes in every pending write and commits every open window and the outside group. */
   checkpoint(): Promise<void>;
   flush(): Promise<void>;
-  /** True once another project stands at the folder's path: open that one's history instead. */
+  /** True once another project stood at the folder's path when the last operation began. */
   replacedAtPath(): boolean;
+  replacedNow(): Promise<boolean>;
   close(): Promise<void>;
 }
 
@@ -2127,6 +2128,7 @@ class Engine {
       checkpoint: () => this.queue(() => this.settle()),
       flush: () => this.queue(() => this.settleAll()),
       replacedAtPath: () => this.folderNow === "replaced",
+      replacedNow: async () => (await this.folderAnswer()) === "replaced",
       close: () =>
         (this.closing ??= (async () => {
           // A copy cut short would leave its media out of the baseline, so a change made while closed is lost.
