@@ -579,7 +579,7 @@ function measurePackedSize(filename) {
   };
 }
 
-export function listPackageSizeIssues(name, sizes, budget) {
+export function listPackageSizeIssues(name, sizes, budget, baseBudget) {
   const suggest = (bytes) => Math.ceil(bytes * SIZE_BUDGET_HEADROOM);
   if (!budget) {
     return [
@@ -592,7 +592,13 @@ export function listPackageSizeIssues(name, sizes, budget) {
     }
     if (sizes[kind] > budget[kind] * SIZE_BUDGET_TOLERANCE) {
       return [
-        `${name} ${kind} size ${sizes[kind]} bytes is over its budget of ${budget[kind]} by more than 1%. Keep source maps, tests and unused assets out of the tarball; raise the budget in ${SIZE_BUDGETS_FILE} only with the reason in the PR.`,
+        `${name} ${kind} size ${sizes[kind]} bytes is over its budget of ${budget[kind]} by more than 1%. Keep source maps, tests and unused assets out of the tarball; raise the budget to ${suggest(sizes[kind])} in ${SIZE_BUDGETS_FILE} only with the reason in the PR.`,
+      ];
+    }
+    const raised = baseBudget !== undefined && budget[kind] > (baseBudget?.[kind] ?? 0);
+    if (raised && budget[kind] < suggest(sizes[kind])) {
+      return [
+        `${name} ${kind} budget was raised to ${budget[kind]}, under its measured ${sizes[kind]} bytes plus 5%: raise it to ${suggest(sizes[kind])} in ${SIZE_BUDGETS_FILE} so the next change has room.`,
       ];
     }
     if (sizes[kind] < budget[kind] * SIZE_BUDGET_RATCHET) {
@@ -606,11 +612,15 @@ export function listPackageSizeIssues(name, sizes, budget) {
 
 function verifyPackageSizes(packedWorkspaces) {
   const budgets = JSON.parse(readFileSync(join(ROOT, SIZE_BUDGETS_FILE), "utf8"));
+  const baseFile = process.env.SIZE_BUDGETS_BASE_FILE;
+  const baseBudgets =
+    baseFile && existsSync(baseFile) ? JSON.parse(readFileSync(baseFile, "utf8")) : undefined;
   const issues = packedWorkspaces.flatMap(({ filename, packedPackage }) =>
     listPackageSizeIssues(
       packedPackage.name,
       measurePackedSize(filename),
       budgets[packedPackage.name],
+      baseBudgets && (baseBudgets[packedPackage.name] ?? null),
     ),
   );
   if (issues.length > 0) throw new Error(`Package size budgets:\n${issues.join("\n")}`);

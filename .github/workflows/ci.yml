@@ -352,9 +352,14 @@ jobs:
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
+      # A budget a pull request raises is judged against its base; the merge queue checks sizes only.
+      - name: Read the base branch's size budgets
+        if: github.event_name == 'pull_request'
+        run: bash scripts/ci/base-file.sh scripts/package-size-budgets.json /tmp/base-size-budgets.json
       - run: bun run verify:packed-manifests
         env:
           PACK_KEEP_DIR: ${{ startsWith(github.head_ref, 'release/v') && format('{0}/release-tarballs', runner.temp) || '' }}
+          SIZE_BUDGETS_BASE_FILE: ${{ github.event_name == 'pull_request' && '/tmp/base-size-budgets.json' || '' }}
       - name: Keep the release tarballs
         if: startsWith(github.head_ref, 'release/v')
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
