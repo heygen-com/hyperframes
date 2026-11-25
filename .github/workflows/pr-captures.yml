@@ -16,8 +16,9 @@ on:
   issue_comment:
     types: [created, edited, deleted]
 
+# A comment run gets a group of its own: anyone's comment starts one, and only the recheck job's group may cancel.
 concurrency:
-  group: pr-captures-${{ github.event.pull_request.number || (github.event.issue.number && format('comment-{0}', github.event.issue.number)) || github.ref }}
+  group: pr-captures-${{ github.event.pull_request.number || (github.event_name == 'issue_comment' && github.run_id) || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -58,6 +59,9 @@ jobs:
       github.event.comment.user.login == github.event.issue.user.login
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: pr-captures-recheck-${{ github.event.issue.number }}
+      cancel-in-progress: true
     permissions:
       actions: write
       pull-requests: read
@@ -65,6 +69,10 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          # Only a run that ran: a fork PR's run waiting for approval is completed with conclusion action_required.
+          RERUNNABLE: >-
+            select(.status == "completed" and
+            (.conclusion == "success" or .conclusion == "failure" or .conclusion == "cancelled")) | .id
         run: |
           head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
           run=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/pr-captures.yml/runs" \
@@ -74,5 +82,10 @@ jobs:
             exit 0
           fi
           gh run watch "$run" -R "$GITHUB_REPOSITORY" > /dev/null || true
-          gh run rerun "$run" -R "$GITHUB_REPOSITORY"
-          echo "Re-ran run $run, which reports on $head."
+          ran=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq "$RERUNNABLE")
+          if [ -z "$ran" ]; then
+            echo "::notice::Run $run did not finish a check (waiting for approval, or skipped); not re-run."
+            exit 0
+          fi
+          gh run rerun "$ran" -R "$GITHUB_REPOSITORY"
+          echo "Re-ran run $ran, which reports on $head."

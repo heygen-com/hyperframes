@@ -829,3 +829,43 @@ test("a comment event never runs the PR's code and re-checks only for the PR's o
   );
   assert.deepEqual(jobs.recheck.permissions, { actions: "write", "pull-requests": "read" });
 });
+
+const capturesWorkflow = () =>
+  parse(readFileSync(new URL("../.github/workflows/pr-captures.yml", import.meta.url), "utf8"));
+
+test("a comment run whose job is skipped joins no shared group, so it cannot cancel the author's re-check", () => {
+  const { concurrency, jobs } = capturesWorkflow();
+  assert.match(concurrency.group, /github\.event_name == 'issue_comment' && github\.run_id/);
+  assert.doesNotMatch(concurrency.group, /format\('comment-\{0\}', github\.event\.issue\.number\)/);
+  assert.equal(
+    jobs.recheck.concurrency.group,
+    "pr-captures-recheck-${{ github.event.issue.number }}",
+  );
+  assert.equal(jobs.recheck.concurrency["cancel-in-progress"], true);
+});
+
+// Shapes as the runs API reports them; a fork PR's run waiting for approval is completed + action_required.
+const RUNS = {
+  awaitingApproval: { id: 1, status: "completed", conclusion: "action_required" },
+  running: { id: 2, status: "in_progress", conclusion: null },
+  queued: { id: 3, status: "queued", conclusion: null },
+  skipped: { id: 4, status: "completed", conclusion: "skipped" },
+  success: { id: 5, status: "completed", conclusion: "success" },
+  failure: { id: 6, status: "completed", conclusion: "failure" },
+  cancelled: { id: 7, status: "completed", conclusion: "cancelled" },
+};
+
+test("the re-check re-runs only a finished run that ran, never one waiting for approval", () => {
+  const step = capturesWorkflow().jobs.recheck.steps.find((s) => s.run?.includes("gh run rerun"));
+  assert.ok(step.env?.RERUNNABLE, "the re-run goes through the RERUNNABLE filter");
+  assert.match(step.run, /--jq "\$RERUNNABLE"\)/);
+  const picked = Object.entries(RUNS).flatMap(([name, run]) => {
+    const out = spawnSync("jq", ["-r", step.env.RERUNNABLE], {
+      input: JSON.stringify(run),
+      encoding: "utf8",
+    });
+    assert.equal(out.status, 0, out.stderr);
+    return out.stdout.trim() ? [name] : [];
+  });
+  assert.deepEqual(picked, ["success", "failure", "cancelled"]);
+});
