@@ -410,4 +410,10 @@ describe("dropMediaOutsideProject", () => {
     };
     expect(keptVideos(srcs)).toEqual(Object.keys(srcs));
   });
+
+  it("keeps long inline media when outside files are allowed, without walking its text as folders", () => {
+    // A regression test: each `/` in the base64 text was walked as a folder, and thousands of them overflowed the stack.
+    const srcs = { long: `data:video/mp4;base64,${"A/".repeat(20_000)}`, local: "clip.mp4" };
+    expect(keptVideos(srcs, true)).toEqual(Object.keys(srcs));
+  });
 });

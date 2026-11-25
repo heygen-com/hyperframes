@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 const looked = vi.hoisted(() => ({ at: [] as string[] }));
@@ -27,7 +28,15 @@ describe("isPrivateUnderAssetRoots on another network root", () => {
   });
 
   it("still looks at a file on this machine when asked to", () => {
-    expect(isPrivateUnderAssetRoots("/elsewhere/clip.mp4", ["/project"], true)).toBe(false);
-    expect(looked.at).toContain("/elsewhere/clip.mp4");
+    const file = fileURLToPath(import.meta.url);
+    expect(isPrivateUnderAssetRoots(file, ["/project"], true)).toBe(false);
+    expect(looked.at).toContain(file);
+  });
+
+  it("does not look at a name that is no file", () => {
+    looked.at.length = 0;
+    const inline = `/project/data:video/mp4;base64,${"A/".repeat(20_000)}`;
+    expect(isPrivateUnderAssetRoots(inline, ["/project", "/work"], true)).toBe(false);
+    expect(looked.at).toEqual([]);
   });
 });

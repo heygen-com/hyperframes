@@ -17,8 +17,10 @@ export function isInsideAssetRoots(path: string, roots: readonly string[]): bool
   return roots.some((root) => isWithinProjectRoot(root, path)) && !existsSync(path);
 }
 
-const realFileWithinUnlessOnAnotherNetworkRoot = (root: string, path: string): boolean =>
-  !namesAnotherNetworkRoot(root, path) && realPathWithin(realFilePath(root), realFilePath(path));
+const existingFileWithinUnlessOnAnotherNetworkRoot = (root: string, path: string): boolean =>
+  !namesAnotherNetworkRoot(root, path) &&
+  existsSync(path) &&
+  realPathWithin(realFilePath(root), realFilePath(path));
 
 // Judged from every root holding it, since a render's own work folder may sit in the project's `.hyperframes/`.
 export function isPrivateUnderAssetRoots(
@@ -29,7 +31,7 @@ export function isPrivateUnderAssetRoots(
   const holders = roots.filter(
     (root) =>
       isSafePath(root, path) ||
-      (bySpellingOrRealFile && realFileWithinUnlessOnAnotherNetworkRoot(root, path)),
+      (bySpellingOrRealFile && existingFileWithinUnlessOnAnotherNetworkRoot(root, path)),
   );
   return (
     holders.length > 0 &&
