@@ -8,6 +8,7 @@ import {
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
   TARGET_FIELDS,
+  TIMELINE_FIELDS,
   type EditingResult,
 } from "@hyperframes/core/runtime/editing-port";
 import { isFields, isHandle } from "../player/lib/previewElements";
@@ -43,6 +44,7 @@ export function readGsapSnapshot(value: unknown): Snapshot | null {
 
 function isTimeline(value: unknown, budget: Budget): boolean {
   return (
+    (budget.fields -= TIMELINE_FIELDS) >= 0 &&
     isFields(value) &&
     isText(value.id) &&
     isNumberOrNull(value.time) &&

@@ -5,3 +5,4 @@ export const MAX_SNAPSHOT_CHANNELS = 64;
 export const MAX_SNAPSHOT_TEXT = 4_096;
 export const MAX_VARS_DEPTH = 6;
 export const TARGET_FIELDS = 3;
+export const TIMELINE_FIELDS = 3;

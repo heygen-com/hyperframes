@@ -12,6 +12,7 @@ import {
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
   TARGET_FIELDS,
+  TIMELINE_FIELDS,
 } from "./gsapSnapshotLimits";
 
 export type SnapshotValue =
@@ -136,6 +137,7 @@ export async function gsapSnapshot(): Promise<GsapSnapshot> {
     const tweens = live.getChildren(true).filter((child) => typeof child.targets === "function");
     for (const tween of tweens) held.add(tween);
     if (timelines.length >= MAX_SNAPSHOT_TWEENS) throw new SnapshotBound("timelines");
+    reader.spend(TIMELINE_FIELDS);
     timelines.push({
       id: capped(id),
       time: typeof live.time === "function" ? finite(live.time()) : null,
@@ -211,7 +213,7 @@ class SnapshotReader {
     for (const { p } of [...parsed, ...parts.flatMap((part) => part.parsed)]) channels.add(p);
   }
 
-  private spend(fields: number) {
+  spend(fields: number) {
     if ((this.fields += fields) > MAX_SNAPSHOT_FIELDS) throw new SnapshotBound("fields");
   }
 
