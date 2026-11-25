@@ -367,7 +367,9 @@ const startOf = (tag) => {
  */
 export function readComposition(compPath, from = process.cwd()) {
   const rel = relative(from, compPath);
-  const under = rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  // ".." alone or as the first part leaves the working folder; a name that only begins with two dots does not
+  const leaves = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+  const under = rel !== "" && !leaves;
   if (under && !isPlainProjectPath(from, rel) && lstatSync(compPath, { throwIfNoEntry: false })) {
     throw new Error(
       `${compPath} is a link or is reached through one, not a composition file; nothing was read or written`,

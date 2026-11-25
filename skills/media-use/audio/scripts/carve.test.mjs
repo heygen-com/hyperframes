@@ -479,6 +479,37 @@ test("a linked folder on the way to the composition stops the carve", () =>
     assert.equal(readFileSync(join(outside, "index.html"), "utf-8"), before);
   }));
 
+// fails without the fix: a folder whose name begins with two dots read as outside the project, so its link was followed.
+test("a linked folder whose name begins with two dots stops the carve like any other", () =>
+  inTempDir((dir) => {
+    const project = join(dir, "project");
+    const outside = join(dir, "outside");
+    mkdirSync(project);
+    mkdirSync(outside);
+    const before = '<audio id="music-bed" src="bed.wav" data-start="0"></audio>\n';
+    writeFileSync(join(outside, "index.html"), before);
+    for (const name of ["..drafts", "...", "..a..b"]) {
+      symlinkSync(outside, join(project, name), "junction");
+      const comp = join(project, name, "index.html");
+      assert.throws(() => readComposition(comp, project), /is reached through one/, name);
+    }
+    const run = spawnSync(
+      process.execPath,
+      [join(SCRIPTS_DIR, "carve.mjs"), "--comp", join("..drafts", "index.html")],
+      { cwd: project, encoding: "utf8" },
+    );
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /is a link or is reached through one/);
+    assert.equal(readFileSync(join(outside, "index.html"), "utf-8"), before);
+    // a plain folder of such a name is a project folder like any other
+    mkdirSync(join(project, "..plain"));
+    writeFileSync(join(project, "..plain", "index.html"), "<audio></audio>");
+    assert.equal(
+      readComposition(join(project, "..plain", "index.html"), project),
+      "<audio></audio>",
+    );
+  }));
+
 test("a composition that is a plain file reads, from its own folder or from outside the working folder", () =>
   inTempDir((dir) => {
     const comp = join(dir, "project", "index.html");
