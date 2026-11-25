@@ -64,7 +64,12 @@ function normalize(info: VideoInfo, out: string): { path: string; fps: string } 
   makeOutputFolder(dirname(out));
   ffmpegToFile(
     [
-      ...["-y", ...ffmpegInput(info.path), "-vf", [...filters, "format=yuv420p"].join(",")],
+      ...[
+        "-y",
+        ...ffmpegInput(info.path, { playlists: info.guarded }),
+        "-vf",
+        [...filters, "format=yuv420p"].join(","),
+      ],
       ...["-c:v", "libx264", "-crf", "12", "-preset", "medium", "-c:a", "aac", "-b:a", "192k"],
     ],
     out,

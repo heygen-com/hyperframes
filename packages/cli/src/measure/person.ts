@@ -313,7 +313,14 @@ function boxAt(
     ].join(",");
     runFfmpeg(
       [
-        ...[...ffmpegInput(info.path), "-an", "-vf", filters, "-fps_mode", "passthrough"],
+        ...[
+          ...ffmpegInput(info.path, { playlists: info.guarded }),
+          "-an",
+          "-vf",
+          filters,
+          "-fps_mode",
+          "passthrough",
+        ],
         ...["-f", "rawvideo", "out.rgb"],
       ],
       undefined,

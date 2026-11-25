@@ -65,6 +65,14 @@ export class TextArtMediaError extends NotMediaPayloadError {
   }
 }
 
+/** A playlist naming a file outside its own folder or private in it, which ffmpeg would open. */
+export class PlaylistLeavesFolderError extends NotMediaPayloadError {
+  constructor() {
+    super([]);
+    this.message = "Media source is a playlist naming files outside its own folder";
+  }
+}
+
 /** Stable, bounded correlation key. Never the raw element id or source. */
 export function fingerprintElementId(elementId: string): string {
   return createHash("sha256").update(elementId).digest("hex").slice(0, 16);
