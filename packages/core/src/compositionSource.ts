@@ -10,9 +10,6 @@ export const COMPOSITION_ROOT_ATTRS = [
   "data-hf-original-composition-id",
 ] as const;
 
-/** Only the build may stamp data-composition-file: Studio writes an element's edits to the file it names, so a
- * mark authored in a file's markup would pick another file for them. Removes every one under root, templates too.
- * Names match in any case: linkedom keeps the case a file wrote, which a selector misses and a browser ignores. */
 export function dropAuthoredCompositionFiles(root: ParentNode): void {
   for (const el of Array.from(root.querySelectorAll("*"))) {
     for (const name of el.getAttributeNames())

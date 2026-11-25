@@ -139,7 +139,6 @@ import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const runStillJob = createJobSlots(4, 16);
 
-/** The saved page served when the build fails: it skips the build, so its authored file marks go here instead. */
 function unbuiltMainHtml(html: string): string {
   if (!/data-composition-file/i.test(html)) return ensureHfIds(html);
   const { document } = parseHTML(html);
