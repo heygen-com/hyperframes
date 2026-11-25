@@ -29,7 +29,7 @@ import {
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { defineCommand } from "../utils/defineCommand.js";
 import { lintHyperframeHtml } from "@hyperframes/lint";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";

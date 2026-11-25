@@ -1,5 +1,5 @@
 import { findStartTags } from "@hyperframes/core/compiler/html-document";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { STUDIO_PREVIEW_LAZY_ATTR } from "@hyperframes/core/studio-preview-mark";
 
 // A start that is not a plain number (a reference) counts as unknown and keeps the image eager.

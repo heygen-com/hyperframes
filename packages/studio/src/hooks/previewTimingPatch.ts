@@ -2,7 +2,13 @@ import { applyAuthoredTiming, RUNTIME_STAMPED_ATTR } from "@hyperframes/core/stu
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
-import { previewDocumentCopy, previewFrameOpaque } from "../player/lib/previewChannel";
+import {
+  previewDocumentCopy,
+  previewFrameOpaque,
+  previewRequest,
+  samePreviewLoad,
+  shownPreviewFrame,
+} from "../player/lib/previewChannel";
 import { editPreviewElement, queryPreviewElements } from "../player/lib/previewElements";
 import {
   findPreviewElementForSelection,
@@ -38,32 +44,77 @@ export function patchIframeDomTiming(
   }
 }
 
+function findSealedTimelineElement(
+  iframe: HTMLIFrameElement,
+  element: TimelineElement,
+  activeCompositionPath: string | null,
+) {
+  if (element.kind === "composition" && element.compositionSrc)
+    return findPreviewElementForTimelineElement(iframe, element, {
+      activeCompositionPath,
+      isMasterView: true,
+    });
+  return findPreviewElementForSelection(
+    iframe,
+    {
+      hfId: element.hfId,
+      id: element.domId,
+      selector: element.selector,
+      selectorIndex: element.selectorIndex,
+      sourceFile: element.sourceFile || activeCompositionPath || "index.html",
+    },
+    activeCompositionPath,
+  );
+}
+
 async function patchSealedTiming(
   iframe: HTMLIFrameElement,
   element: TimelineElement,
   attrs: Array<[string, string]>,
   activeCompositionPath: string | null,
 ): Promise<void> {
-  const found =
-    element.kind === "composition" && element.compositionSrc
-      ? await findPreviewElementForTimelineElement(iframe, element, {
-          activeCompositionPath,
-          isMasterView: true,
-        })
-      : await findPreviewElementForSelection(
-          iframe,
-          {
-            hfId: element.hfId,
-            id: element.domId,
-            selector: element.selector,
-            selectorIndex: element.selectorIndex,
-            sourceFile: element.sourceFile || activeCompositionPath || "index.html",
-          },
-          activeCompositionPath,
-        );
+  const found = await findSealedTimelineElement(iframe, element, activeCompositionPath);
   if (!found) return;
   const attributes: Array<[string, string | null]> = [...attrs, [RUNTIME_STAMPED_ATTR, null]];
   await editPreviewElement(iframe, found.handle, { attributes }).drawn;
+}
+
+export function removeIframeTimelineElements(
+  given: HTMLIFrameElement | null,
+  elements: TimelineElement[],
+  activeCompositionPath: string | null = null,
+): void {
+  const iframe = given && shownPreviewFrame(given);
+  if (iframe && previewFrameOpaque(iframe)) {
+    inOrder(iframe, () => removeSealedElements(iframe, elements, activeCompositionPath));
+    return;
+  }
+  let removed = false;
+  for (const element of elements) {
+    const el = findTimelineElementInIframe(iframe, element, activeCompositionPath);
+    el?.remove();
+    removed ||= el !== null;
+  }
+  if (removed) void syncContentDuration(iframe, iframe?.contentDocument ?? null);
+}
+
+async function removeSealedElements(
+  given: HTMLIFrameElement,
+  elements: TimelineElement[],
+  activeCompositionPath: string | null,
+  retried = false,
+): Promise<void> {
+  const iframe = shownPreviewFrame(given);
+  const sameLoad = samePreviewLoad(iframe);
+  const found = await Promise.all(
+    elements.map((element) => findSealedTimelineElement(iframe, element, activeCompositionPath)),
+  );
+  if (!retried && (!sameLoad() || shownPreviewFrame(given) !== iframe))
+    return removeSealedElements(given, elements, activeCompositionPath, true);
+  const handles = found.flatMap((element) => (element ? [element.handle] : []));
+  if (!handles.length) return;
+  await previewRequest(iframe, "remove-elements", { handles });
+  await syncContentDuration(iframe, await previewDocumentCopy(iframe));
 }
 
 function patchIframeRootDuration(iframe: HTMLIFrameElement | null, contentEnd: number): void {

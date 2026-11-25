@@ -8,10 +8,12 @@ import { isStylableElement, type StylableElement } from "./domRealm";
 import type { EditingElementHandle } from "./editingElement";
 import {
   computedTranslateAxes,
+  measureGrowResponse,
+  MIN_PROBE_RESPONSE,
   movedTranslate,
-  SIZE_PROPERTIES,
-  writeDrawnSize,
-} from "./editingDraft";
+  PROBE_PX,
+  type Grow,
+} from "./drawnBox";
 import { readCssRotationStart, type CssRotationStart } from "./editing/cssRotation";
 import {
   boxOf,
@@ -28,17 +30,16 @@ export interface EditingGestureStart extends EditingElementGeometry {
   /** Frame px its centre moves per px of translate, columns `a, b` (x) and `c, d` (y); null when it does not move measurably. */
   move: { a: number; b: number; c: number; d: number } | null;
   /** Frame px its centre moves per px of drawn width, `a, b`, and height, `c, d`; null when it has no box. */
-  grow: { a: number; b: number; c: number; d: number } | null;
-  /** Set when GSAP owns its position: its x/y now, and whether a tween with a duration moves it. */
+  grow: Grow;
+  /** Set when GSAP owns its position: x/y, whether a tween moves it. `gsapAt`: read when null; 0, 0 with no GSAP. */
   gsap: { x: number; y: number; moving: boolean; drawsTranslate: true } | null;
+  gsapAt: { x: number; y: number };
   /** GSAP's rotation now when it owns the element's turn; null when it turns by its own CSS `rotate`. */
   gsapRotation: number | null;
   cssRotation: CssRotationStart | null;
   planar: { a: number; b: number; c: number; d: number } | null;
 }
 
-const PROBE_PX = 100;
-const MIN_PROBE_RESPONSE = 0.01;
 type Point = { x: number; y: number };
 
 /**
@@ -72,44 +73,6 @@ function measureMoveResponse(element: StylableElement): EditingGestureStart["mov
   } finally {
     if (value) style.setProperty("translate", value, priority);
     else style.removeProperty("translate");
-  }
-}
-
-/** Where its centre goes as a draft draws its size, so a resize can pin it; its inline size put back. */
-function measureGrowResponse(
-  element: StylableElement,
-  layout: { width: number; height: number },
-): EditingGestureStart["grow"] {
-  const { style } = element;
-  const kept = [...SIZE_PROPERTIES, "translate"].map(
-    (name) => [name, style.getPropertyValue(name), style.getPropertyPriority(name)] as const,
-  );
-  const translateAsTheResizeDraftDrawsIt = movedTranslate(computedTranslateAxes(element), {
-    x: 0,
-    y: 0,
-  });
-  const centre = (width: number, height: number): Point | null => {
-    style.setProperty("translate", translateAsTheResizeDraftDrawsIt);
-    writeDrawnSize(style, { width, height });
-    const box = element.getBoundingClientRect();
-    return box.width > 0 || box.height > 0
-      ? { x: box.left + box.width / 2, y: box.top + box.height / 2 }
-      : null;
-  };
-  try {
-    if (layout.width < 1 || layout.height < 1) return null;
-    const origin = centre(layout.width, layout.height);
-    const wider = centre(layout.width + PROBE_PX, layout.height);
-    const taller = centre(layout.width, layout.height + PROBE_PX);
-    if (!origin || !wider || !taller) return null;
-    const per = (p: Point) => [(p.x - origin.x) / PROBE_PX, (p.y - origin.y) / PROBE_PX];
-    const [[a, b], [c, d]] = [per(wider), per(taller)] as [number[], number[]];
-    return [a, b, c, d].every(Number.isFinite) ? { a: a!, b: b!, c: c!, d: d! } : null;
-  } finally {
-    for (const [name, value, priority] of kept) {
-      if (value) style.setProperty(name, value, priority);
-      else style.removeProperty(name);
-    }
   }
 }
 
@@ -263,6 +226,10 @@ export function gestureStart(handles: readonly EditingElementHandle[]): {
       move: measureMoveResponse(element),
       grow: measureGrowResponse(element, geometry.layout),
       gsap: gsapPosition(element),
+      gsapAt: withoutGsapTakeover(element, () => ({
+        x: readGsap(element, "x"),
+        y: readGsap(element, "y"),
+      })),
       gsapRotation: rotation,
       cssRotation: rotation === null ? readCssRotationStart(element as HTMLElement) : null,
       planar: planarOf(element),

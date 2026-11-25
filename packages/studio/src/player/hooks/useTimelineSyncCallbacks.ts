@@ -13,9 +13,14 @@ import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
-import { buildMissingCompositionElements } from "../lib/timelineIframeHelpers";
+import { buildMissingCompositionElements, manifestTimelines } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
-import { previewClipParents, previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
+import {
+  previewClipParents,
+  previewDocumentCopy,
+  previewFrameOpaque,
+  samePreviewLoad,
+} from "../lib/previewChannel";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import {
   buildTimelineElementsFromClips,
@@ -205,7 +210,7 @@ export function useTimelineSyncCallbacks({
       revision: number,
     ) => {
       // A read lands only from the frame on screen, and only over nothing newer.
-      if (iframe !== onScreen() || !landTimelineRevision(revision)) return;
+      if (iframe !== onScreen() || !landTimelineRevision(revision)) return false;
       usePlayerStore.getState().setClipManifest(data.clips);
       // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
       const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
@@ -250,23 +255,42 @@ export function useTimelineSyncCallbacks({
         usePlayerStore.getState().duration,
         syncTimelineElements,
       );
+      return true;
     },
     [onScreen, syncTimelineElements],
+  );
+
+  const addMissingCompositions = useCallback(
+    (doc: Document, timelines: Parameters<typeof buildMissingCompositionElements>[1]) => {
+      const { elements, duration } = usePlayerStore.getState();
+      const { missing, updatedEls, patched } = buildMissingCompositionElements(
+        doc,
+        timelines,
+        elements,
+        duration,
+      );
+      if (missing.length === 0 && !patched) return;
+      const finalIds = new Set(updatedEls.map((e) => e.id));
+      syncTimelineElements([...updatedEls, ...missing.filter((m) => !finalIds.has(m.id))]);
+    },
+    [syncTimelineElements],
   );
 
   // A sealed frame's rows bind to its document copy and clip tree from the editing port.
   const readSealedTimeline = useCallback<SealedTimelineRead>(
     (iframe, manifest, previewDuration) => {
       const revision = nextTimelineRevision();
+      const sameLoad = samePreviewLoad(iframe);
       void Promise.all([manifest, previewDocumentCopy(iframe), previewClipParents(iframe)]).then(
         ([data, doc, parents]) => {
           // A frame its player removed is gone: callback refs keep it (promotion repoints them), the page does not.
-          if (data && iframe.isConnected)
-            applyTimelineMessage(data, doc, parents, iframe, previewDuration, revision);
+          if (!data || !iframe.isConnected || !sameLoad()) return;
+          if (applyTimelineMessage(data, doc, parents, iframe, previewDuration, revision) && doc)
+            addMissingCompositions(doc, manifestTimelines(data.clips));
         },
       );
     },
-    [applyTimelineMessage],
+    [applyTimelineMessage, addMissingCompositions],
   );
 
   const processTimelineMessage = useCallback(
@@ -288,25 +312,9 @@ export function useTimelineSyncCallbacks({
       const iframe = iframeRef.current;
       const doc = iframe?.contentDocument;
       const iframeWin = iframe?.contentWindow as IframeWindow | null;
-      if (!doc || !iframeWin) return;
-
-      const currentEls = usePlayerStore.getState().elements;
-      const rootDuration = usePlayerStore.getState().duration;
-      const { missing, updatedEls, patched } = buildMissingCompositionElements(
-        doc,
-        iframeWin,
-        currentEls,
-        rootDuration,
-      );
-
-      if (missing.length > 0 || patched) {
-        // Dedup: ensure no missing element duplicates an existing one
-        const finalIds = new Set(updatedEls.map((e) => e.id));
-        const dedupedMissing = missing.filter((m) => !finalIds.has(m.id));
-        syncTimelineElements([...updatedEls, ...dedupedMissing]);
-      }
+      if (doc && iframeWin) addMissingCompositions(doc, iframeWin);
     } catch {}
-  }, [iframeRef, syncTimelineElements]);
+  }, [iframeRef, addMissingCompositions]);
 
   const initializeAdapter = useCallback(
     (context?: number) => {
@@ -315,7 +323,7 @@ export function useTimelineSyncCallbacks({
       if (!adapter || adapter.getDuration() <= 0) return false;
 
       adapter.pause();
-      const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef);
+      const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef, iframeRef.current);
       const commit = () => {
         // Keep non-React listeners such as the time display in sync
         // with the initial adapter seek on iframe load.

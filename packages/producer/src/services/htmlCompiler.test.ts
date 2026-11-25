@@ -3259,6 +3259,37 @@ describe("sub-composition variable injection (render path, #2064)", () => {
     expect(compiled.html).toContain('"card-1":{"color":"#000000"}');
   });
 
+  it("renders without the data-composition-file marks the entry file authored", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-entry-file-marks-"));
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<div data-composition-id="card" data-width="320" data-height="240"><p id="inside">in</p></div>`,
+    );
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html>
+  <body>
+    <div id="root" data-composition-id="host" data-start="0" data-duration="3" data-width="640" data-height="240">
+      <p id="claim" data-composition-file="compositions/card.html">claim</p>
+      <div data-composition-id="card" data-composition-src="compositions/card.html" data-start="0" data-duration="3"></div>
+    </div>
+  </body>
+</html>`,
+    );
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    const { document } = parseHTML(compiled.html);
+    const fileOf = (id: string) =>
+      document
+        .getElementById(id)
+        ?.closest("[data-composition-file]")
+        ?.getAttribute("data-composition-file") ?? null;
+
+    expect(fileOf("claim")).toBeNull();
+    expect(fileOf("inside")).toBe("compositions/card.html");
+  });
+
   it("scopes per-instance values when one sub-comp is mounted multiple times (template reuse)", async () => {
     // #2066 fixed the single-instance case but left a preview/render divergence:
     // two mounts of the SAME sub-comp (same authored data-composition-id) with

@@ -1,8 +1,17 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createCipheriv, createDecipheriv } from "node:crypto";
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  truncateSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { dirname, join, resolve } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import { getFfprobeBinary } from "./ffmpegBinaries.js";
 import {
   assertMediaPayload,
@@ -382,7 +391,10 @@ describe("playlistLeavesItsFolder", () => {
   it("keeps nested lists that stay in the top folder, cycles included", async () => {
     const master = writeTree({
       "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
-      "sub/inner.m3u8": hls("#EXTINF:1,", "../seg.ts", "#EXTINF:1,", "../master.m3u8"),
+      "sub/inner.m3u8":
+        "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n../master.m3u8\n" +
+        "#EXT-X-STREAM-INF:BANDWIDTH=2\nleaf.m3u8\n",
+      "sub/leaf.m3u8": hls("#EXTINF:1,", "../seg.ts"),
       "seg.ts": "segment",
     });
     expect(await playlistLeavesItsFolder(master)).toBe(false);
@@ -861,5 +873,291 @@ describe("playlistLeavesItsFolder refuses a list behind an ID3v2 tag", () => {
       Buffer.concat([tag(3, 0x10), Buffer.from([0xff, 0xfb, 0x90, 0])]),
     );
     expect(await playlistLeavesItsFolder(top)).toBe(false);
+  });
+});
+
+describe("playlistLeavesItsFolder reads an HLS list's segments as the one stream ffmpeg joins", () => {
+  const media = (...lines: string[]) =>
+    ["#EXTM3U", "#EXT-X-TARGETDURATION:1", ...lines, "#EXT-X-ENDLIST", ""].join("\n");
+  const outside = join(tmpdir(), "outside.ts");
+  const hidden = `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${outside}\n#EXT-X-ENDLIST\n`;
+  const script = "ffconcat version 1.0\nfile hidden.m3u8\n";
+  const ftyp = Buffer.from([
+    0,
+    0,
+    0,
+    0x18,
+    ...Buffer.from("ftypiso6"),
+    0,
+    0,
+    0,
+    0,
+    ...Buffer.from("iso6mp41"),
+  ]);
+  const moof = Buffer.from([0, 0, 0, 0x10, ...Buffer.from("moof"), ...Array(8).fill(0)]);
+
+  function tree(files: Record<string, string | Buffer>): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-hls-stream-"));
+    for (const [name, contents] of Object.entries(files)) {
+      mkdirSync(join(dir, name, ".."), { recursive: true });
+      writeFileSync(join(dir, name), contents);
+    }
+    return join(dir, "clip.m3u8");
+  }
+
+  it.each([
+    [
+      "a script split across two segments",
+      {
+        "clip.m3u8": media("#EXTINF:1,", "a.ts", "#EXTINF:1,", "b.ts"),
+        "a.ts": script.slice(0, 12),
+        "b.ts": script.slice(12),
+      },
+    ],
+    [
+      "a script split across the init section and a segment",
+      {
+        "clip.m3u8": media('#EXT-X-MAP:URI="init.mp4"', "#EXTINF:1,", "a.ts"),
+        "init.mp4": script.slice(0, 5),
+        "a.ts": script.slice(5),
+      },
+    ],
+    [
+      "a script in a byte range",
+      {
+        "clip.m3u8": media(`#EXT-X-BYTERANGE:${script.length}@8`, "#EXTINF:1,", "a.ts"),
+        "a.ts": `\x47${"\0".repeat(7)}${script}`,
+      },
+    ],
+    [
+      "a script in an init section in a sub-folder",
+      {
+        "clip.m3u8": media('#EXT-X-MAP:URI="sub/init.mp4"', "#EXTINF:1,", "a.ts"),
+        "sub/init.mp4": script,
+        "sub/hidden.m3u8": media("#EXTINF:1,", "seg.ts"),
+        "sub/seg.ts": "media",
+        "a.ts": "media",
+      },
+    ],
+    [
+      "an init section read through a byte range",
+      {
+        "clip.m3u8": media('#EXT-X-MAP:URI="init.mp4",BYTERANGE="40@0"', "#EXTINF:1,", "a.ts"),
+        "init.mp4": ftyp,
+        "a.ts": moof,
+      },
+    ],
+    [
+      "a later segment ffmpeg may start from",
+      {
+        "clip.m3u8": media("#EXTINF:1,", "a.ts", "#EXTINF:1,", "b.ts"),
+        "a.ts": moof,
+        "b.ts": script,
+      },
+    ],
+    [
+      "a later segment behind the init section in force there",
+      {
+        "clip.m3u8": media('#EXT-X-MAP:URI="init.mp4"', "#EXTINF:1,", "a.ts", "#EXTINF:1,", "b.ts"),
+        "init.mp4": "ffconcat",
+        "a.ts": moof,
+        "b.ts": ` version 1.0\nfile hidden.m3u8\n`,
+      },
+    ],
+  ])("refuses %s", async (_name, files) => {
+    const top = tree({ ...files, "hidden.m3u8": hidden });
+    expect(await playlistLeavesItsFolder(top)).toBe(true);
+    expect(await isNotMediaPayload(top)).toBe(true);
+  });
+
+  it("refuses a script hidden in AES-128 segments, and keeps encrypted media", async () => {
+    const key = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+    const encrypt = (plain: string | Buffer, sequence: number) => {
+      const iv = Buffer.alloc(16);
+      iv.writeBigUInt64BE(BigInt(sequence), 8);
+      const cipher = createCipheriv("aes-128-cbc", key, iv);
+      return Buffer.concat([cipher.update(plain), cipher.final()]);
+    };
+    const list = media(
+      '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"',
+      "#EXTINF:1,",
+      "a.ts",
+      "#EXTINF:1,",
+      "b.ts",
+    );
+    const scripted = tree({
+      "clip.m3u8": list,
+      "key.bin": key,
+      "a.ts": encrypt(script.slice(0, 12), 0),
+      "b.ts": encrypt(script.slice(12), 1),
+      "hidden.m3u8": hidden,
+    });
+    expect(await playlistLeavesItsFolder(scripted)).toBe(true);
+    // ffmpeg decrypts with the first 16 bytes of a longer key file.
+    const padded = tree({
+      "clip.m3u8": list,
+      "key.bin": Buffer.concat([key, Buffer.alloc(16, 0xaa)]),
+      "a.ts": encrypt(script.slice(0, 12), 0),
+      "b.ts": encrypt(script.slice(12), 1),
+      "hidden.m3u8": hidden,
+    });
+    expect(await playlistLeavesItsFolder(padded)).toBe(true);
+    const plain = tree({
+      "clip.m3u8": list,
+      "key.bin": key,
+      "a.ts": encrypt(Buffer.alloc(188, 0x47), 0),
+      "b.ts": encrypt(Buffer.alloc(188, 0x47), 1),
+    });
+    expect(await playlistLeavesItsFolder(plain)).toBe(false);
+  });
+
+  it.each([
+    [
+      "fMP4 with a binary init section",
+      {
+        "clip.m3u8": media(
+          '#EXT-X-MAP:URI="init.mp4"',
+          "#EXTINF:1,",
+          "a.m4s",
+          "#EXTINF:1,",
+          "b.m4s",
+        ),
+        "init.mp4": ftyp,
+        "a.m4s": moof,
+        "b.m4s": moof,
+      },
+    ],
+    [
+      "packed audio segments behind ID3 tags",
+      {
+        "clip.m3u8": media("#EXTINF:1,", "a.aac", "#EXTINF:1,", "b.aac"),
+        "a.aac": Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 4, 1, 2, 3, 4, 0xff, 0xf1]),
+        "b.aac": Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 4, 1, 2, 3, 4, 0xff, 0xf1]),
+      },
+    ],
+  ])("keeps %s", async (_name, files) => {
+    const top = tree(files);
+    expect(await playlistLeavesItsFolder(top)).toBe(false);
+  });
+});
+
+describe("playlistLeavesItsFolder decrypts HLS segments only inside its limits", () => {
+  const key = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+  const keyed = (uri: string, segment: string, count = 1) =>
+    [
+      "#EXTM3U",
+      "#EXT-X-TARGETDURATION:1",
+      `#EXT-X-KEY:METHOD=AES-128,URI="${uri}"`,
+      ...Array.from({ length: count }, () => ["#EXTINF:1,", segment]).flat(),
+      "#EXT-X-ENDLIST",
+      "",
+    ].join("\n");
+
+  function tree(files: Record<string, string | Buffer>): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-hls-key-"));
+    for (const [name, contents] of Object.entries(files)) {
+      mkdirSync(join(dir, name, ".."), { recursive: true });
+      writeFileSync(join(dir, name), contents);
+    }
+    return join(dir, "clip.m3u8");
+  }
+
+  it("refuses a key outside the folder or private in it, as any other entry", async () => {
+    const outside = join(mkdtempSync(join(tmpdir(), "hf-hls-outside-")), "key.bin");
+    writeFileSync(outside, key);
+    for (const uri of [outside, "../key.bin", ".git/key.bin"]) {
+      const top = tree({
+        "clip.m3u8": keyed(uri, "a.ts"),
+        "a.ts": Buffer.alloc(32),
+        ".git/key.bin": key,
+      });
+      expect(await playlistLeavesItsFolder(top), uri).toBe(true);
+    }
+  });
+
+  it("never fetches a key named by a URL", async () => {
+    const fetched = vi.spyOn(globalThis, "fetch");
+    try {
+      const top = tree({
+        "clip.m3u8": keyed("https://keys.example.com/k", "a.ts"),
+        "a.ts": Buffer.alloc(32),
+      });
+      expect(await playlistLeavesItsFolder(top)).toBe(false);
+      expect(fetched).not.toHaveBeenCalled();
+    } finally {
+      fetched.mockRestore();
+    }
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "decrypts only the start of large segments, so hundreds of them stay quick",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-hls-large-"));
+      const size = 1024 ** 3;
+      const segment = join(dir, "big.ts");
+      writeFileSync(segment, "");
+      truncateSync(segment, size);
+      // The last two blocks hold valid padding, so the walk accepts the segment's length as ffmpeg would.
+      const last = Buffer.alloc(16, 7);
+      const decipher = createDecipheriv("aes-128-ecb", key, null).setAutoPadding(false);
+      const plainLast = Buffer.concat([Buffer.alloc(15), Buffer.from([1])]);
+      const before = Buffer.from(decipher.update(last).map((byte, at) => byte ^ plainLast[at]!));
+      const fd = openSync(segment, "r+");
+      writeSync(fd, Buffer.concat([before, last]), 0, 32, size - 32);
+      closeSync(fd);
+      writeFileSync(join(dir, "key.bin"), key);
+      writeFileSync(join(dir, "clip.m3u8"), keyed("key.bin", "big.ts", 300));
+      const started = Date.now();
+      expect(await playlistLeavesItsFolder(join(dir, "clip.m3u8"))).toBe(false);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    },
+  );
+
+  // The budget allows about 32,000 opens; without it this list would take over a million.
+  it(
+    "refuses a list whose stream would cost more than the walk's budget",
+    { timeout: 60_000 },
+    async () => {
+      const list = ["#EXTM3U", "#EXT-X-TARGETDURATION:1"];
+      for (let i = 0; i < 34_000; i++) list.push("#EXTINF:1,", "a.ts");
+      const top = tree({ "clip.m3u8": `${list.join("\n")}\n`, "a.ts": Buffer.alloc(16) });
+      const started = Date.now();
+      expect(await playlistLeavesItsFolder(top)).toBe(true);
+      expect(Date.now() - started).toBeLessThan(45_000);
+    },
+  );
+});
+
+describe("playlistLeavesItsFolder refuses entries ffmpeg opens without joining them to the list's folder", () => {
+  const hls = (...lines: string[]) => ["#EXTM3U", ...lines, "#EXT-X-ENDLIST"].join("\n");
+
+  /** The tree, plus a media file at the name the entry would have if it were joined to `list`'s folder. */
+  function withListRelativeFile(
+    files: Record<string, string>,
+    list: string,
+    entry: string,
+  ): string {
+    const top = writeTree(files);
+    const joined = resolve(dirname(join(dirname(top), list)), entry);
+    mkdirSync(dirname(joined), { recursive: true });
+    writeFileSync(joined, "media");
+    return top;
+  }
+
+  it.each([
+    ["a backslash before the colon, POSIX separators", "a\\:b/../seg.ts"],
+    ["a backslash before the colon, Windows separators", "a\\:b\\..\\seg.ts"],
+    ["an encoded backslash and colon", "a%5C%3Ab/../seg.ts"],
+    ["a :// after the first segment", "sub/x://y/../../seg.ts"],
+  ])("refuses %s at the top and in a list three folders down", async (_name, entry) => {
+    const top = withListRelativeFile({ "clip.m3u8": hls(entry) }, "clip.m3u8", entry);
+    expect(await playlistLeavesItsFolder(top)).toBe(true);
+    const inner = "d1/d2/d3/inner.m3u8";
+    const nested = withListRelativeFile(
+      { "clip.m3u8": hls(inner), [inner]: hls(entry) },
+      inner,
+      entry,
+    );
+    expect(await playlistLeavesItsFolder(nested)).toBe(true);
   });
 });

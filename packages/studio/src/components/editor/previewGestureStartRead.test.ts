@@ -18,6 +18,7 @@ import {
 import {
   askShownGestureStarts,
   gestureStartLayout,
+  measureLiveGrow,
   measurePreviewGestureStart,
   UNANSWERED,
   unansweredMoveReason,
@@ -217,6 +218,7 @@ describe("a gesture's start on an opaque frame", () => {
       layout: { width: 200, height: 100 },
       screenToOffset: { a: -2, b: 0, c: 0, d: 2 },
       gsap: { x: 200, y: 5, moving: false, drawsTranslate: true },
+      gsapAt: { x: 200, y: 5 },
       gsapRotation: 0,
       grow: { a: -0.25, b: 0, c: 0, d: 0.25 },
       cssRotation: null,
@@ -287,6 +289,18 @@ const START: PreviewGestureStart = {
   gsapRotation: null,
 };
 const SNAP = { targets: [], compositionTarget: null, gridEdges: null, snapEnabled: true };
+
+// fails without the fix: the live read asked for the overlay scale without the frame's document, got none, and an
+// unsealed corner resize pinned by half the size change, so an xPercent-centred box jumped off its centre.
+describe("a resize on a frame Studio scripts", () => {
+  it("measures the grow the sealed frame reports for the same element", async () => {
+    const live = measureLiveGrow(overlayEl(), liveFrame(), document.getElementById("card")!);
+    const { iframe, handle } = await opaqueCard();
+    const read = await measurePreviewGestureStart(iframe, overlayEl(), [handle]);
+    expect(live).toEqual({ a: -0.25, b: 0, c: 0, d: 0.25 });
+    expect(live).toEqual(read!.elements[0]!.start.grow);
+  });
+});
 
 describe("starting a gesture from what an opaque frame read", () => {
   it("grows a resize from the frame's layout size, and snaps with the targets it read", () => {

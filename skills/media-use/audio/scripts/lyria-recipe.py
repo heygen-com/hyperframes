@@ -15,8 +15,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import errno
 import os
+import secrets
+import stat
 import sys
+import time
 import wave
 from pathlib import Path
 
@@ -49,6 +53,69 @@ def parse_args() -> argparse.Namespace:
         help="MAJOR / MINOR / PENTATONIC / etc. — see google.genai.types.Scale. Pass empty string for none.",
     )
     return p.parse_args()
+
+
+def write_wav(out_path: Path, audio: bytes) -> None:
+    """Write the WAV to a new temp file beside `out_path`, then rename it over: a link at `out_path` is replaced, not followed.
+
+    A file already there keeps its permissions, and one that may not be written is refused as before.
+    Until it has those permissions the new file is readable by its owner only.
+    """
+    kept = mode_of_writable_file(out_path)
+    temp = f"{out_path}.hf{secrets.token_hex(3)}.tmp"  # core's atomicTempPath shape, which Studio's project history skips
+    umask = os.umask(0o077)
+    try:
+        f = open(temp, "xb")  # created exclusively: never a file someone else already put there
+    finally:
+        os.umask(umask)
+    try:
+        with f:
+            with wave.open(f, "wb") as wf:
+                wf.setnchannels(CHANNELS)
+                wf.setsampwidth(SAMPLE_WIDTH)
+                wf.setframerate(SAMPLE_RATE)
+                wf.writeframes(audio)
+            f.flush()
+            set_mode(f.fileno(), temp, 0o666 & ~umask if kept is None else kept)
+        replace_riding_windows_holds(temp, out_path)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass  # a failed cleanup must not hide the error that got us here
+        raise
+
+
+def mode_of_writable_file(out_path: Path) -> int | None:
+    """The permissions of the regular file at `out_path`, or None when there is none. Raises when it may not be written."""
+    try:
+        old = os.lstat(out_path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(old.st_mode):
+        return None
+    if not os.access(out_path, os.W_OK):
+        raise PermissionError(errno.EACCES, "Permission denied", str(out_path))
+    return stat.S_IMODE(old.st_mode)
+
+
+def set_mode(fd: int, path: str, mode: int) -> None:
+    if hasattr(os, "fchmod"):
+        os.fchmod(fd, mode)
+    else:
+        os.chmod(path, mode)  # Windows, where the mode is only the read-only flag
+
+
+def replace_riding_windows_holds(temp: str, out_path: Path) -> None:
+    """os.replace, retried on Windows while antivirus or a just-exited process still holds the file."""
+    for wait_ms in (10, 20, 40, 80, 160, 320, 640, None):
+        try:
+            os.replace(temp, out_path)
+            return
+        except PermissionError:
+            if os.name != "nt" or wait_ms is None:
+                raise
+            time.sleep(wait_ms / 1000)
 
 
 async def generate_bgm(args: argparse.Namespace) -> dict:
@@ -112,11 +179,7 @@ async def generate_bgm(args: argparse.Namespace) -> dict:
             print(f"Timeout after {timeout:.0f}s, collected {len(buf)} bytes", file=sys.stderr)
 
     audio = bytes(buf[:target_bytes])
-    with wave.open(str(out_path), "wb") as wf:
-        wf.setnchannels(CHANNELS)
-        wf.setsampwidth(SAMPLE_WIDTH)
-        wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(audio)
+    write_wav(out_path, audio)
 
     actual_duration = len(audio) / (SAMPLE_RATE * CHANNELS * SAMPLE_WIDTH)
     print(f"BGM: {out_path} ({actual_duration:.2f}s)")

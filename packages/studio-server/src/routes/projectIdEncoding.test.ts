@@ -32,7 +32,10 @@ function projectWithComposition(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "hf-projectid-"));
   writeFileSync(join(dir, "index.html"), "<html><body>COMPOSITION</body></html>");
   mkdirSync(join(dir, "scenes"), { recursive: true });
-  writeFileSync(join(dir, "scenes", "scene-1.html"), "<html><body>SCENE ONE</body></html>");
+  writeFileSync(
+    join(dir, "scenes", "scene-1.html"),
+    '<html><body><div data-composition-id="scene-1">SCENE ONE</div></body></html>',
+  );
   return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 

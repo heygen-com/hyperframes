@@ -51,7 +51,7 @@ import { trackInitTemplate } from "../telemetry/events.js";
 import { DEFAULT_MODEL, hasFFmpeg } from "../whisper/manager.js";
 import { TRANSCRIPT_FILE } from "../whisper/transcriptFile.js";
 import { initialModelForLanguage } from "../whisper/transcribe.js";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { VERSION } from "../version.js";
 import {
@@ -135,7 +135,7 @@ function probeVideo(filePath: string): VideoMeta | undefined {
       [
         "-v",
         "quiet",
-        ...mediaInputFormatArgs(ffprobePath, filePath),
+        ...mediaInputArgs(ffprobePath, filePath),
         "-print_format",
         "json",
         "-show_format",
@@ -244,7 +244,7 @@ export function transcodeToMp4(inputPath: string, outputPath: string): Promise<b
     const child = spawn(
       ffmpegPath,
       [
-        ...mediaInputFormatArgs(ffmpegPath, inputPath),
+        ...mediaInputArgs(ffmpegPath, inputPath),
         "-i",
         inputPath,
         "-c:v",
