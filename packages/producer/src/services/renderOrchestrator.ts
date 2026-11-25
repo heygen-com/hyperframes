@@ -233,6 +233,12 @@ import {
   selectCaptureCalibrationFrames,
 } from "./render/captureCost.js";
 import {
+  type FrameWindow,
+  type RenderRange,
+  assertRangeSupported,
+  resolveFrameWindow,
+} from "./render/frameWindow.js";
+import {
   computeCompositionObservabilityHash,
   RenderObservabilityRecorder,
   observeRenderStage,
@@ -446,6 +452,8 @@ export interface RenderConfig {
    */
   motionBlur?: MotionBlurOptions;
   pageMotionBlur?: "off";
+  /** Render only this part of the film; the output starts at its start. Absent renders the whole film. */
+  range?: RenderRange;
   workers?: number;
   /** Wall-time budget in ms for the whole render. Absent or 0 disables the ETA guard. */
   maxRenderMs?: number;
@@ -828,6 +836,8 @@ export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   outputPath?: string;
   duration?: number;
   totalFrames?: number;
+  /** The film frames a `range` render captures; `totalFrames` and `duration` then describe this window. */
+  frameWindow?: FrameWindow;
   framesRendered?: number;
   perfSummary?: RenderPerfSummary;
   audioLoweredDb?: number;
@@ -3556,15 +3566,26 @@ async function executeRenderPipeline(input: {
     }
     // The probe stage produces `duration` / `totalFrames` values; the
     // sequencer owns the `RenderJob` and writes them onto it.
-    job.duration = probeResult.duration;
-    job.totalFrames = probeResult.totalFrames;
-    const totalFrames = probeResult.totalFrames;
-    captureTotalFrames = totalFrames;
     validateRenderDuration({
       duration: probeResult.duration,
-      totalFrames,
+      totalFrames: probeResult.totalFrames,
       fps: fpsToNumber(job.config.fps),
     });
+    const frameWindow = job.config.range
+      ? resolveFrameWindow(job.config.range, job.config.fps, probeResult.totalFrames)
+      : undefined;
+    job.frameWindow = frameWindow;
+    // A part of the film renders on the disk route (assertRangeSupported); every streaming,
+    // segmented and video-layer gate reads this flag first.
+    if (frameWindow) cfg.enableStreamingEncode = false;
+    const totalFrames = frameWindow
+      ? frameWindow.endFrame - frameWindow.startFrame
+      : probeResult.totalFrames;
+    job.totalFrames = totalFrames;
+    job.duration = frameWindow
+      ? (totalFrames * job.config.fps.den) / job.config.fps.num
+      : probeResult.duration;
+    captureTotalFrames = totalFrames;
     // Before the video layer may close the probe page; no box means full size, as before.
     const shownBoxes =
       largerThanCanvas.length > 0 && probeSession?.isInitialized
@@ -3803,6 +3824,7 @@ async function executeRenderPipeline(input: {
           workDir,
           compiledDir,
           totalFrames: probeResult.totalFrames,
+          ...(frameWindow && { frameWindow }),
           fps: job.config.fps,
           ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
           audioGain: cfg.audioGain,
@@ -4256,6 +4278,11 @@ async function executeRenderPipeline(input: {
       totalMemoryMb: Math.round(totalmem() / (1024 * 1024)),
       minMemoryMb: deParallelMinMemoryMb,
     });
+    // Both routes pin streaming capture, which renders only the whole film.
+    if (frameWindow) {
+      deInversionEligible = false;
+      deParallelRouterEligible = false;
+    }
     // The browser probe is conditional, so most renders arrive here without the engine's
     // init-time drawElement gates having run. Run them before pinning 1 or 3 workers: a
     // refused comp captures by screenshot and keeps the resolver's parallelism.
@@ -4894,6 +4921,7 @@ async function executeRenderPipeline(input: {
       // Every route the render can end up on passes through here, including the ones a
       // replan lands on, so this is where motion blur's one supported-route answer belongs.
       assertMotionBlurSupported(job.config.motionBlur, capturePlan.kind);
+      assertRangeSupported(job.frameWindow, capturePlan.kind);
       assertOutputScaleSupported(deviceScaleFactor, capturePlan.kind);
       workerCount = capturePlan.workerCount;
       captureForceScreenshot = capturePlan.forceScreenshot;
@@ -5649,6 +5677,7 @@ async function executeRenderPipeline(input: {
                 framesDir,
                 job,
                 totalFrames,
+                ...(job.frameWindow && { frameRange: job.frameWindow }),
                 cfg,
                 plan: diskPlan,
                 log,

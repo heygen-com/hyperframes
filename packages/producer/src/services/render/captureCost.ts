@@ -270,8 +270,10 @@ export async function measureCaptureCostFromSession(
   totalFrames: number,
   fps: number,
   log?: ProducerLogger,
+  /** The film frame a range render starts at; samples are taken inside its window. */
+  firstFrame = 0,
 ): Promise<{ estimate: CaptureCostEstimate; samples: CaptureCalibrationSample[] }> {
-  const sampledFrames = selectCaptureCalibrationFrames(totalFrames);
+  const sampledFrames = selectCaptureCalibrationFrames(totalFrames).map((i) => firstFrame + i);
   const samples: CaptureCalibrationSample[] = [];
   const totalSamples = sampledFrames.length;
 
@@ -430,7 +432,13 @@ export async function runCaptureCalibration(input: {
     }
     assertNotAborted();
     log.info("Calibration session ready, capturing test frames...");
-    const result = await measureCaptureCostFromSession(session, totalFrames, fps, log);
+    const result = await measureCaptureCostFromSession(
+      session,
+      totalFrames,
+      fps,
+      log,
+      job.frameWindow?.startFrame,
+    );
     logCaptureCalibrationResult(result, log);
     return result;
   };
