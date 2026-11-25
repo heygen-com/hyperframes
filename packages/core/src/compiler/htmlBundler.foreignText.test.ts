@@ -49,3 +49,31 @@ describe("bundleToSingleHtml with markup hidden in an svg title", () => {
     expect(html).toContain("<title>Icon 1 &lt; 2</title>");
   });
 });
+
+// fails without the fix: the build kept these marks as comment text, and the preview browser read them as elements.
+describe("bundleToSingleHtml with a data-composition-file a scripting browser reads past a comment", () => {
+  const HIDDEN_MARKS = [
+    '<noscript><!-- </noscript><p data-composition-file="index.html">x</p> --></noscript>',
+    '<p><!-- --!><b data-composition-file="index.html">x</b> --></p>',
+  ];
+
+  it.each(HIDDEN_MARKS)("refuses %s in the root composition", async (body) => {
+    await expect(bundle({ "index.html": root(body) })).rejects.toThrow(READ_UNLIKE_BROWSER);
+  });
+
+  it.each(HIDDEN_MARKS)("refuses %s in a sub-composition", async (body) => {
+    const sub = `<template><div data-composition-id="sub" data-width="320" data-height="180">${body}</div></template>`;
+    const host =
+      '<div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0" data-duration="1"></div>';
+    await expect(
+      bundle({ "index.html": root(host), "compositions/sub.html": sub }),
+    ).rejects.toThrow(READ_UNLIKE_BROWSER);
+  });
+
+  it("still bundles a noscript fallback and comments", async () => {
+    const html = await bundle({
+      "index.html": root("<noscript><p>Turn on JavaScript</p></noscript><!-- a note -->"),
+    });
+    expect(html).toContain("<noscript><p>Turn on JavaScript</p></noscript>");
+  });
+});
