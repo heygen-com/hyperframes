@@ -373,6 +373,25 @@ describe("dropMediaOutsideProject", () => {
     },
   );
 
+  it("drops a private project file named by a path spelled outside the project", () => {
+    for (const rel of [".git/clip.mp4", "media/clip.mp4"]) {
+      mkdirSync(dirname(join(projectDir, rel)), { recursive: true });
+      writeFileSync(join(projectDir, rel), "x");
+    }
+    const alias = join(root, "alias");
+    rmSync(alias, { force: true });
+    symlinkSync(projectDir, alias);
+    const srcs: Record<string, string> = {
+      link: join(alias, ".git", "clip.mp4"),
+      local: join(alias, "media", "clip.mp4"),
+    };
+    // Another letter case names the same folder only where the volume folds case.
+    const upper = join(root, "PROJECT");
+    if (existsSync(upper)) srcs.letterCase = join(upper, ".git", "clip.mp4");
+    expect(keptVideos(srcs, true)).toEqual(["local"]);
+    expect(keptVideos(srcs)).toEqual([]);
+  });
+
   it("drops a URL scheme followed by parent folders, in any letter case", () => {
     const schemes = ["data:", "DATA:", "blob:", "Blob:", "about:", "https:", "HTTP:"];
     const srcs = Object.fromEntries(

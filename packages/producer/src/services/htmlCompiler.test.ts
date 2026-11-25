@@ -1,7 +1,15 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { runInThisContext } from "node:vm";
@@ -3583,6 +3591,33 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
       rmSync(projectDir, { recursive: true, force: true });
     },
   );
+
+  it("never probes a private project file named by a path spelled outside the project", async () => {
+    const projectDir = writeProject("<!--media-->");
+    const alias = `${projectDir}-alias`;
+    symlinkSync(projectDir, alias);
+    const src = join(alias, ".git", "clip.mp4");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      readFileSync(join(projectDir, "index.html"), "utf8").replace(
+        "<!--media-->",
+        `<video id="v1" src="${src}" data-start="0" muted></video>`,
+      ),
+    );
+    mkdirSync(join(projectDir, ".git"), { recursive: true });
+    writeFileSync(src, readFileSync(join(projectDir, "assets", "nested.html")));
+    const warnings: string[] = [];
+    const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+
+    await compileForRender(projectDir, join(projectDir, "index.html"), projectDir, {
+      log,
+      allowOutsideProjectAssets: true,
+    });
+
+    expect(warnings.join("\n")).not.toContain("text document");
+    rmSync(alias, { force: true });
+    rmSync(projectDir, { recursive: true, force: true });
+  });
 });
 
 describe("duplicate media ids across nested compositions", () => {
