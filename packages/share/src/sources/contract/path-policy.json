@@ -327,7 +327,7 @@
     },
     {
       "id": "portable-transcripts",
-      "regex": "\\.hyperframes/transcripts/(?:[^./][^/]*/)*[^./][^/]*\\.json",
+      "regex": "\\.hyperframes/transcripts/(?:[^/]+/)*[^/]+\\.json",
       "client_action": "include",
       "server_action": "allow",
       "basis": "Completed transcripts, keyed by media hash; costly to regenerate"
@@ -362,7 +362,7 @@
     },
     {
       "id": "portable-podcast-media",
-      "regex": "\\.hyperframes/prepared-assets/podcast/(?:[^./][^/]*/)*[^./][^/]*",
+      "regex": "\\.hyperframes/prepared-assets/podcast/(?:[^/]+/)*[^./][^/]*",
       "client_action": "include",
       "server_action": "allow",
       "basis": "Desktop's podcast camera and recorder transcodes (media/, proxies/), which the page plays by this path and a receiving client cannot regenerate without the original files; a dotfile there stays out"
@@ -417,20 +417,6 @@
       "basis": "Third-party reference video, large and re-downloadable"
     },
     {
-      "id": "portable-hidden-sources",
-      "regex": "(?:[^./][^/]*/)*(?:\\.gitignore|\\.vsignore|\\.hyperframesignore)|\\.media/(?:[^./][^/]*/)*[^./][^/]*|\\.github/(?:agents\\.md|workflows/(?:[^./][^/]*/)*[^./][^/]*\\.ya?ml|instructions/(?:[^./][^/]*/)*[^./][^/]*\\.md)",
-      "client_action": "include",
-      "server_action": "allow",
-      "basis": "Portable project ignore files, root media assets and authored GitHub metadata."
-    },
-    {
-      "id": "unrecognized-hidden",
-      "regex": "(?:[^/]+/)*\\.[^/]*(?:/.*)?",
-      "client_action": "exclude",
-      "server_action": "reject",
-      "basis": "Hidden paths stay local unless a portable HyperFrames rule names them, or they are ordinary media-library files, ignore files or recognized GitHub project metadata. This file rule must not prune directories containing allowed descendants."
-    },
-    {
       "id": "default-authored-file",
       "regex": ".+",
       "client_action": "include",
@@ -469,11 +455,7 @@
       "git-directory-head": "(?!)",
       "nested-hyperframes-state": "(?!)",
       "credential-files": "(?:[^/]+/)*(?:\\.netrc|\\.pypirc|\\.git-credentials|[^/]*\\.(?:pem|p12|pfx)|id_rsa[^/]*|id_ed25519[^/]*|(?:\\.ssh|\\.aws)(?:/.*)?)",
-      "private-source": "(?!)",
-      "unrecognized-hidden": "(?!)",
-      "portable-hidden-sources": "(?!)",
-      "portable-transcripts": "\\.hyperframes/transcripts/(?:[^/]+/)*[^/]+\\.json",
-      "portable-podcast-media": "\\.hyperframes/prepared-assets/podcast/(?:[^/]+/)*[^./][^/]*"
+      "private-source": "(?!)"
     },
     "legacy_short_name_alias_names": [
       ".agent",

@@ -36,7 +36,7 @@ test("the vectors are portable-source-v12's, and there are vectors of every kind
   assert.equal(vectors.policy_version, "portable-source-v12");
   assert.deepEqual(
     [vectors.valid.length, vectors.invalid.length, vectors.limits.length, vectors.stored.length],
-    [13, 238, 5, 8],
+    [13, 237, 5, 8],
   );
 });
 

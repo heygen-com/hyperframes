@@ -113,8 +113,7 @@ const foldedPath = (path) => path.split("/").map(comparisonKey).join("/");
 /** @param {{ pattern: RegExp, rule: PathRule }} entry @param {string} folded @param {string} path */
 const matches = ({ pattern, rule }, folded, path) =>
   pattern.test(folded) ||
-  ((rule.id === "private-source" || rule.id === "unrecognized-hidden") &&
-    pattern.test(privateSourceSpelling(path)));
+  (rule.id === "private-source" && pattern.test(privateSourceSpelling(path)));
 
 /** The first rule matching a path's folded spelling. @param {string} path @returns {PathRule} */
 export function classifyPath(path) {
@@ -241,10 +240,7 @@ export function excludedFolder(dir) {
   const folded = foldedPath(dir);
   const at = policy().rules.findIndex(
     ({ pattern, rule }) =>
-      rule.id !== "unrecognized-hidden" &&
-      rule.client_action !== "include" &&
-      pattern.test(folded) &&
-      pattern.test(`${folded}/x`),
+      rule.client_action !== "include" && pattern.test(folded) && pattern.test(`${folded}/x`),
   );
   if (at < 0) return false;
   return policy()

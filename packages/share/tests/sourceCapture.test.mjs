@@ -356,7 +356,7 @@ test("scratch files and wildcard exclusions do not change the snapshot", async (
   assert.notEqual(await projectFingerprint(root), before);
 });
 
-test("editable source omits credential stores and unrecognized hidden files while completed media travels", async (t) => {
+test("editable source omits credential stores while preserving authored assets", async (t) => {
   const root = await project({
     "index.html": "page",
     ".config/gh/hosts.yml": "fixture",
@@ -365,14 +365,22 @@ test("editable source omits credential stores and unrecognized hidden files whil
     ".gnupg/keys/data": "fixture",
     ".kube/config": "fixture",
     ".azure/settings": "fixture",
-    ".config/themes/colors.json": "{}",
+    ".fonts/Inter.woff2": "font",
+    ".Gitignore": "output/",
+    ".GitHub/workflows/ci.yml": "workflow",
     "assets/deck.key": "slides",
     ".media/video/clip.mp4": "clip",
   });
   t.after(() => rm(root, { recursive: true, force: true }));
   assert.deepEqual(
     captured(await captureProject(root)).manifest.document.files.map(({ path }) => path),
-    [".media/video/clip.mp4", "index.html"],
+    [
+      ".GitHub/workflows/ci.yml",
+      ".Gitignore",
+      ".fonts/Inter.woff2",
+      ".media/video/clip.mp4",
+      "index.html",
+    ],
   );
   await symlink(".config/gh/hosts.yml", join(root, "notes.txt"));
   assert.deepEqual(await captureProject(root), {

@@ -32,8 +32,7 @@ Source uses the same portable project policy as Desktop: authored HTML, scripts,
 styles, assets, and supported Studio edit metadata. Known credential filenames
 (such as `.env`, `.npmrc`, and `*.pem`), dependency directories, chat
 history, local sharing state, and recorded render outputs stay out. Files ending in `.key` stay local,
-including Keynote decks. Hidden files and folders stay local unless the portable policy explicitly
-includes them, such as Git workflow files and supported Studio edit metadata.
+including Keynote decks.
 
 These are filename rules, not a secret scanner. `.gitignore` does not control
 source capture. Other regular files can be included even if Git ignores them. For example,
