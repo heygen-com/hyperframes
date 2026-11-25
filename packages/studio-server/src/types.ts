@@ -226,6 +226,7 @@ export interface StudioApiAdapter {
      * the same channel `hyperframes render --variables` uses.
      */
     variables?: Record<string, unknown>;
+    range?: import("./helpers/renderRange.js").RenderRange;
     useGpu?: boolean;
     /**
      * Telemetry id of the browser user who triggered the render. Lets the

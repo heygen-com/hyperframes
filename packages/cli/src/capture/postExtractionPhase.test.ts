@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -72,7 +80,10 @@ describe("runPostExtraction", () => {
     },
   );
 
-  async function runWithFonts(read: () => unknown): Promise<void> {
+  async function runWithFonts(
+    read: () => unknown,
+    bodyHtml?: string,
+  ): Promise<{ outputDir: string }> {
     const root = mkdtempSync(join(tmpdir(), "hyperframes-post-extraction-"));
     onTestFinished(() => rmSync(root, { recursive: true, force: true }));
     const outputDir = join(root, "capture");
@@ -80,6 +91,7 @@ describe("runPostExtraction", () => {
       mkdirSync(join(outputDir, dir), { recursive: true });
     }
     const state = createPartialCaptureState({ url: "https://example.com", outputDir });
+    if (bodyHtml !== undefined) state.extracted.bodyHtml = bodyHtml;
     fonts.read = read;
     await runPostExtraction({
       state,
@@ -102,7 +114,22 @@ describe("runPostExtraction", () => {
       fontDrops: noDrops(),
       canWrite: () => true,
     });
+    return { outputDir };
   }
+
+  // fails without the fix: a captured site that carries the composition marker was saved with it, so Studio listed
+  // extracted/page.html as a composition and ran its scripts on its own origin
+  it("saves the captured page without the composition marker", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { outputDir } = await runWithFonts(
+      () => ({ files: [], families: [], unidentified: [] }),
+      `<div data-composition-id="x"><script>fetch("/api/projects")</script></div><i DATA-COMPOSITION-ID = 'y'></i>`,
+    );
+
+    const saved = readFileSync(join(outputDir, "extracted", "page.html"), "utf-8");
+    expect(saved).toContain(`<script>fetch("/api/projects")</script>`);
+    expect(saved).not.toMatch(/data-composition-id/i);
+  });
 
   const printed = (spy: { mock: { calls: unknown[][] } }): string =>
     spy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");

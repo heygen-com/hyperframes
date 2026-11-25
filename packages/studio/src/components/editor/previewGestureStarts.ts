@@ -161,6 +161,7 @@ export function createPreviewGestureStarts(
     start: ShownStart,
     draw: WaitingPressState["draw"] = null,
     targets: () => DomEditSelection[] = () => [],
+    routeFromSnapshot = false,
   ): boolean => {
     const at = playheadMoment();
     const iframe = opts.iframeRef.current;
@@ -219,6 +220,7 @@ export function createPreviewGestureStarts(
         opts.overlayRef.current,
         opts.activeCompositionPathRef.current,
         targets(),
+        routeFromSnapshot,
       ).then((answer) => {
         if (askedOf !== frame) return;
         overChannel = answer;
@@ -387,6 +389,7 @@ export function createPreviewGestureStarts(
       },
       draw,
       () => (target ? [target] : []),
+      kind === "resize",
     );
   };
 
