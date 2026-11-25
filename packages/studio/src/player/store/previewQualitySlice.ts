@@ -1,6 +1,6 @@
 import type { StoreApi } from "zustand";
 import { isPreviewQuality, type PreviewQuality } from "@hyperframes/core/preview-quality";
-import type { PlaybackHeldBy } from "@hyperframes/core";
+import type { PlaybackHealthReport } from "@hyperframes/core";
 import type { MediaLoadFailure } from "@hyperframes/core/runtime/protocol";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
@@ -13,22 +13,11 @@ export interface PreviewCopies {
   error: string | null;
 }
 
-/** How playback went over the last few seconds of play; null while paused, seeking or warming up. */
-export interface PlaybackHealth {
-  droppedShare: number;
-  seconds: number;
-  choppy: boolean;
-  fps: number;
-  worstFrameMs: number;
-  skippedShare?: number;
-  waitingShare?: number;
-  frozenShare?: number;
-  gapP50Ms?: number;
-  gapP95Ms?: number;
-  clockSource?: "audio" | "webaudio" | "monotonic";
-  heldBy?: PlaybackHeldBy | null;
-  mode: "play";
-}
+type HealthCore = "droppedShare" | "seconds" | "choppy" | "fps" | "worstFrameMs" | "mode";
+
+/** The runtime's report; an older runtime leaves out all but the core fields. */
+export type PlaybackHealth = Pick<PlaybackHealthReport, HealthCore> &
+  Partial<Omit<PlaybackHealthReport, HealthCore>>;
 
 /** What the preview holds, counts and classes only, filled when asked for. */
 export interface PreviewFacts {

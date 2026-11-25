@@ -24,7 +24,6 @@ import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import {
   giveBackWhenDue,
-  isLongSource,
   preloadMedia,
   prefetchMedia,
   prepareUpcomingMedia,
@@ -205,6 +204,7 @@ import {
 } from "./captureMotionBlur";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
+import { decodesFirst } from "./decodesFirst";
 import { watchAudioLoadErrors } from "./mediaLoadFailure";
 import {
   classifyWebAudioMediaRoute,
@@ -269,7 +269,13 @@ import {
   isVideoElement,
   type StylableElement,
 } from "./domRealm";
-import { audibleVideoNeedsWebAudio, isAudibleVideoElement, parentCopyOf } from "../audibleVideo";
+import {
+  audibleVideoNeedsWebAudio,
+  isAudibleVideoElement,
+  PARENT_COPY_ATTRIBUTES,
+  parentCopyLayers,
+  parentCopyKey,
+} from "../audibleVideo";
 import { setRuntimePreload } from "./runtimeAttributes";
 
 /**
@@ -540,22 +546,17 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 
-const parentCopies = () =>
-  Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).flatMap((el) =>
-    isMediaElement(el) ? (parentCopyOf(el) ?? []) : [],
+const listedCopyKeys = new WeakMap<HTMLMediaElement, string>();
+const parentCopies = (layered: ReturnType<typeof parentCopyLayers>) => {
+  const mastered = Boolean(readMasterFxChain(document));
+  return layered(Array.from(document.querySelectorAll(WEB_AUDIO_MEDIA)).filter(isMediaElement)).map(
+    ({ el, copy }) => {
+      listedCopyKeys.set(el, parentCopyKey(copy));
+      return mastered ? { ...copy, mastered } : copy;
+    },
   );
+};
 
-/** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
-function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
-  return (
-    isWebKit() &&
-    isAudioElement(el) &&
-    !isLongSource(el) &&
-    webAudio.fitsDecodeBudget(el) &&
-    typeof readElementRateSpec(el) === "number" &&
-    readElementPlaybackRate(el) === 1
-  );
-}
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);
 
@@ -3307,14 +3308,15 @@ export function initSandboxRuntimeModular(): void {
   let keepLateMedia = false;
   // A sealed player copies only the clips this list names. ponytail: once blocked, every watched
   // change re-reads all media; scope the observer to media records if that shows in a profile.
-  const postParentCopiesWhileTheyChange = () => {
+  const listParentCopies = parentCopyLayers();
+  const postParentCopiesWhileTheyChange = (type: "media-autoplay-blocked" | "parent-copies") => {
     let posted = "";
     const post = () => {
-      const media = parentCopies();
+      const media = parentCopies(listParentCopies);
       const next = JSON.stringify(media);
       if (next === posted || state.tornDown) return;
       posted = next;
-      postRuntimeMessage({ source: "hf-preview", type: "media-autoplay-blocked", media });
+      postRuntimeMessage({ source: "hf-preview", type, media });
     };
     post();
     if (typeof MutationObserver === "undefined") return;
@@ -3336,11 +3338,22 @@ export function initSandboxRuntimeModular(): void {
         "src",
         "preload",
         "muted",
+        "loop",
         "data-has-audio",
         "data-playback-start",
+        ...PARENT_COPY_ATTRIBUTES,
       ],
     });
     runtimeCleanupCallbacks.push(() => observer.disconnect());
+  };
+  // The parent plays these clips from decoded buffers; the film keeps its own copy of each silent.
+  const parentMuted = new Set<HTMLMediaElement>();
+  const claimedByParent = (el: HTMLMediaElement): boolean => {
+    if (state.parentAudioClips.size === 0) return false;
+    const key = listedCopyKeys.get(el);
+    const claimed = key !== undefined && state.parentAudioClips.has(key);
+    if (claimed) parentMuted.add(el);
+    return claimed;
   };
   const preloadNearPlayhead = (
     el: HTMLMediaElement,
@@ -4039,13 +4052,13 @@ export function initSandboxRuntimeModular(): void {
           getSafeTimelineDurationSeconds(state.capturedTimeline, 0, timingRevision),
         onElementVolume: (el, _effectiveVolume, authorVolume, clipGain, unfadedVolume) =>
           webAudio.setElementVolume(el, authorVolume, clipGain, unfadedVolume),
-        isWebAudioOwned: (el) => webAudio.ownsElement(el),
+        isWebAudioOwned: (el) => webAudio.ownsElement(el) || claimedByParent(el),
         isWebAudioRouted: (el) => webAudio.routesElement(el),
         seekUnderDip: (el, target) => webAudio.seekUnderDip(el, target),
         onAutoplayBlocked: () => {
           if (state.mediaAutoplayBlockedPosted) return;
           state.mediaAutoplayBlockedPosted = true;
-          postParentCopiesWhileTheyChange();
+          postParentCopiesWhileTheyChange("media-autoplay-blocked");
         },
       });
     }
@@ -6298,6 +6311,15 @@ export function initSandboxRuntimeModular(): void {
     // 1. WebAudio (AudioContext.currentTime) while it plays a decoded buffer: ~21µs, sample-accurate
     // 2. HTMLMediaElement (audio.currentTime): ~33ms, frame-accurate
     // 3. Monotonic (performance.now()): ~1ms, no audio coupling
+    const parentClock = state.parentAudioClock;
+    if (clock.isPlaying() && parentClock) {
+      const elapsed = (performance.timeOrigin + performance.now() - parentClock.at) / 1000;
+      clock.attachAudioSource({
+        currentTimeSeconds: parentClock.time + elapsed * parentClock.rate,
+        webAudio: true,
+      });
+      return;
+    }
     if (clock.isPlaying() && !state.mediaOutputMuted) {
       if (
         !state.nativeMediaSyncDisabled &&
@@ -6650,7 +6672,7 @@ export function initSandboxRuntimeModular(): void {
     const now = clock.now();
     const horizon = webAudioHorizon();
     for (const rawEl of clips) {
-      if (isSilencedByHidden(rawEl)) continue;
+      if (isSilencedByHidden(rawEl) || claimedByParent(rawEl)) continue;
       const compStart = resolveAbsoluteMediaStartSeconds(rawEl);
       if (!Number.isFinite(compStart)) continue;
       const mediaStart = readElementPlaybackStart(rawEl);
@@ -6828,6 +6850,8 @@ export function initSandboxRuntimeModular(): void {
       }
     },
     onSeek: (timeSeconds, _seekMode) => {
+      // The parent's clock was anchored before the seek; it re-posts one once its buffers start again.
+      state.parentAudioClock = null;
       player.seek(timeSeconds);
       emitAnalyticsEvent("composition_seeked", { time: timeSeconds });
     },
@@ -6889,6 +6913,28 @@ export function initSandboxRuntimeModular(): void {
       } else {
         syncMediaForCurrentState();
       }
+    },
+    onSetParentAudio: (clips) => {
+      state.parentAudioClips = new Set(clips);
+      for (const el of parentMuted) {
+        if (claimedByParent(el)) continue;
+        parentMuted.delete(el);
+        el.muted = false;
+      }
+      if (!state.parentCopiesPosted) {
+        state.parentCopiesPosted = true;
+        postParentCopiesWhileTheyChange("parent-copies");
+      }
+      if (clock.isPlaying()) {
+        webAudio.stopAll();
+        scheduleWebAudioForActiveClips();
+      }
+      state.mediaForceSyncNextTick = true;
+      syncMediaForCurrentState();
+    },
+    onAudioClock: (sample) => {
+      state.parentAudioClock = sample;
+      if (!sample && clock.hasAudioSource()) clock.detachAudioSource();
     },
     onSetWebAudioMediaDisabled: (disabled) => {
       if (state.webAudioMediaDisabled === disabled) return;

@@ -28,6 +28,7 @@ export interface PlaybackStateCallbacks {
   getLoop: () => boolean;
   getPlayRange?: () => PlayRange | null;
   media: ParentMediaManager;
+  onRuntimeStopped?: () => void;
 }
 
 type RuntimeStateData = {
@@ -102,6 +103,34 @@ function olderRuntimeBounds(
   };
 }
 
+function mirrorParentMedia(
+  callbacks: PlaybackStateCallbacks,
+  wasPlaying: boolean,
+  nextPaused: boolean,
+  currentTime: number,
+): void {
+  if (callbacks.media.audioOwner !== "parent") return;
+  if (wasPlaying && nextPaused) callbacks.media.pauseAll();
+  else if (!wasPlaying && !nextPaused) callbacks.media.playAll();
+  callbacks.media.mirrorTime(currentTime);
+}
+
+function reportTime(
+  callbacks: PlaybackStateCallbacks,
+  current: PlaybackState,
+  next: PlaybackState,
+  nextPaused: boolean,
+  currentTime: number,
+): void {
+  const now = performance.now();
+  const playStateChanged = nextPaused !== current.paused;
+  if (now - current.lastUpdateMs <= UI_UPDATE_INTERVAL_MS && !playStateChanged) return;
+  next.lastUpdateMs = now;
+  callbacks.updateControlsTime(currentTime, current.duration);
+  callbacks.updateControlsPlaying(!nextPaused);
+  callbacks.dispatchEvent(new CustomEvent("timeupdate", { detail: { currentTime } }));
+}
+
 /**
  * Process a `state` message from the runtime and return the next state.
  * Side effects (controls updates, events, media mirroring) are fired through
@@ -134,33 +163,25 @@ export function applyRuntimeStateMessage(
   }
 
   const next = { ...current, currentTime, paused: nextPaused, enteringRange: bounds.entering };
+  if (wasPlaying && (nextPaused || completedPlayback)) callbacks.onRuntimeStopped?.();
 
-  if (callbacks.media.audioOwner === "parent") {
-    if (wasPlaying && nextPaused) {
-      callbacks.media.pauseAll();
-    } else if (!wasPlaying && !nextPaused) {
-      callbacks.media.playAll();
-    }
-    callbacks.media.mirrorTime(currentTime);
-  }
+  mirrorParentMedia(callbacks, wasPlaying, nextPaused, currentTime);
+  reportTime(callbacks, current, next, nextPaused, currentTime);
 
-  const now = performance.now();
-  const playStateChanged = nextPaused !== current.paused;
-  if (now - current.lastUpdateMs > UI_UPDATE_INTERVAL_MS || playStateChanged) {
-    next.lastUpdateMs = now;
-    callbacks.updateControlsTime(currentTime, current.duration);
-    callbacks.updateControlsPlaying(!nextPaused);
-    callbacks.dispatchEvent(new CustomEvent("timeupdate", { detail: { currentTime } }));
-  }
-
-  if (completedPlayback) {
-    // A runtime without play-range plays on past the range: stop it on the last frame inside.
-    if (bounds.stopRuntime) callbacks.seek(currentTime);
-    if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
-    next.paused = true;
-    callbacks.updateControlsPlaying(false);
-    callbacks.dispatchEvent(new Event("ended"));
-  }
-
+  if (completedPlayback) endPlayback(callbacks, next, bounds.stopRuntime, currentTime);
   return next;
+}
+
+function endPlayback(
+  callbacks: PlaybackStateCallbacks,
+  next: PlaybackState,
+  stopRuntime: boolean,
+  currentTime: number,
+): void {
+  // A runtime without play-range plays on past the range: stop it on the last frame inside.
+  if (stopRuntime) callbacks.seek(currentTime);
+  if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
+  next.paused = true;
+  callbacks.updateControlsPlaying(false);
+  callbacks.dispatchEvent(new Event("ended"));
 }

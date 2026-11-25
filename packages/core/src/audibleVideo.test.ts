@@ -3,8 +3,14 @@ import {
   AUDIBLE_MEDIA_SELECTOR,
   audibleVideoNeedsWebAudio,
   isAudibleVideoElement,
+  PARENT_COPY_ATTRIBUTES,
+  parentCopyKey,
   parentCopyOf,
 } from "./audibleVideo";
+import { HF_AUDIO_FADE_IN_ATTR, HF_AUDIO_FADE_OUT_ATTR } from "./audioFade";
+import { HF_AUDIO_FX_ATTR } from "./audioFx";
+import { HF_AUDIO_AUTOMATION_ATTR } from "./audioAutomation";
+import { HF_AUDIO_GROUP_ATTR } from "./audioGroups";
 
 const el = (tagName: string, attrs: Record<string, string>) => ({
   tagName,
@@ -87,7 +93,46 @@ describe("parentCopyOf", () => {
       start: 2,
       duration: 5,
       mediaStart: 1.5,
+      loop: false,
+      attrs: {},
     });
+  });
+
+  // fails without the fix: a parent copy lost the clip's loop, rate, fades and volume, so a decoded copy was wrong.
+  it("carries the clip's loop and the attributes a decoded copy is played by", () => {
+    const copy = parentCopyOf(
+      media(
+        '<audio src="a.m4a" data-start="0" loop data-volume="0.5" data-fade-in="1" data-fade-out="2" data-playback-rate="1.25" data-fx-chain="[]" data-audio-group="music" data-automation="{}" title="x"></audio>',
+      ),
+    );
+    expect(copy?.loop).toBe(true);
+    expect(copy?.attrs).toEqual({
+      "data-volume": "0.5",
+      "data-fade-in": "1",
+      "data-fade-out": "2",
+      "data-playback-rate": "1.25",
+      "data-fx-chain": "[]",
+      "data-audio-group": "music",
+      "data-automation": "{}",
+    });
+  });
+
+  it("lists the attributes the transport reads under their own names", () => {
+    expect(PARENT_COPY_ATTRIBUTES).toEqual(
+      expect.arrayContaining([
+        HF_AUDIO_FADE_IN_ATTR,
+        HF_AUDIO_FADE_OUT_ATTR,
+        HF_AUDIO_FX_ATTR,
+        HF_AUDIO_AUTOMATION_ATTR,
+        HF_AUDIO_GROUP_ATTR,
+      ]),
+    );
+  });
+
+  it("names a clip the same way whatever its src is rewritten to on the other side", () => {
+    const copy = { kind: "audio" as const, src: "https://a.test/x.m4a", start: 1, mediaStart: 0 };
+    expect(parentCopyKey({ ...copy, duration: 4, loop: true } as never)).toBe(parentCopyKey(copy));
+    expect(parentCopyKey({ ...copy, start: 2 })).not.toBe(parentCopyKey(copy));
   });
 
   it("reads a <source> child and gives an open-ended clip no end", () => {

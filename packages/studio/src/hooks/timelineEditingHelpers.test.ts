@@ -54,7 +54,7 @@ describe("patchIframeDomTiming", () => {
         <div
           id="scene-host"
           data-composition-id="scene"
-          data-composition-src="compositions/scene.html"
+          data-composition-src="compositions/scene.html" data-composition-file="compositions/scene.html"
           data-start="2"
         ></div>
       </div>

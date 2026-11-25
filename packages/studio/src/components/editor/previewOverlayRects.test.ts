@@ -80,7 +80,7 @@ class FakeDOMMatrix {
 
 const FIXTURE = `
   <div data-composition-id="main" data-width="1920" data-height="1080">
-    <div id="host" data-composition-src="a.html" data-width="960" data-height="540">
+    <div id="host" data-composition-src="a.html" data-composition-file="a.html" data-width="960" data-height="540">
       <p id="inner"></p><span id="speck"></span>
     </div>
     <div id="turned" style="transform: matrix(0.8, 0.6, -0.6, 0.8, 0, 0)"></div>
@@ -794,6 +794,18 @@ describe("a press on a settled preview", () => {
     expect(press.start).toHaveBeenCalledOnce();
     // Synchronously, with nothing read over a channel.
     expect(press.start.mock.calls[0]![3]).toEqual({ at: expect.any(Object) });
+  });
+
+  // fails without the fix: a drag pressed just after a reload swapped the page dragged the replaced page's copy of the
+  // element, so nothing on screen moved and the release saved nothing (edit bench seqfastkeys, 194 px).
+  it("on a scriptable frame starts on the shown page's element when the selection still names the replaced page's", () => {
+    const turned = document.getElementById("turned")!;
+    const replaced = document.implementation.createHTMLDocument().createElement("div");
+    replaced.id = "turned";
+    pressOn(liveFrame(), makeSelection("turned", replaced));
+    expect(press.start).toHaveBeenCalledOnce();
+    const started = press.start.mock.calls[0]![3] as { selection?: DomEditSelection };
+    expect(started.selection?.element).toBe(turned);
   });
 
   // fails without the fix: the press asked the frame only on the next animation frame, and started on the one after.
