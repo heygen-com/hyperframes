@@ -147,7 +147,7 @@ function patchLiveHiddenState(
 export function reseekPreviewRuntime(iframe: HTMLIFrameElement | null): void {
   const store = usePlayerStore.getState();
   if (applySoftReloadFinalization(iframe, store.currentTime)) return;
-  reseekPreviewAtTime({ seek: store.requestSeek }, store.currentTime);
+  reseekPreviewAtTime({ seek: store.requestSeek }, store.currentTime, iframe);
 }
 
 export function groupElementsByTargetPath(
