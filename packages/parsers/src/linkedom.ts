@@ -8,7 +8,7 @@ const escapeDecodedTitleText = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const neutraliseTextareaEndTag = (text: string) => text.replace(/<(\/textarea)/gi, "&lt;$1");
 
-const writeOpenTag = HTMLElement.prototype.toString;
+const writeEmptyElement = HTMLElement.prototype.toString;
 
 for (const [Element, escape] of [
   [HTMLTitleElement, escapeDecodedTitleText],
@@ -18,8 +18,9 @@ for (const [Element, escape] of [
     configurable: true,
     writable: true,
     value(this: InstanceType<typeof Element>) {
-      const empty = writeOpenTag.call(this.cloneNode());
-      return empty.replace("><", () => `>${escape(this.textContent ?? "")}<`);
+      const empty = writeEmptyElement.call(this.cloneNode());
+      const close = empty.lastIndexOf("</");
+      return empty.slice(0, close) + escape(this.textContent ?? "") + empty.slice(close);
     },
   });
 }

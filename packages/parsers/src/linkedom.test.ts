@@ -39,6 +39,16 @@ describe("@hyperframes/parsers/linkedom", () => {
     expect(countScripts(document.toString())).toBe(0);
   });
 
+  it.each(["textarea", "title"])("a '><' in a <%s> attribute keeps the text out of it", (tag) => {
+    const { document } = parseHTML(
+      `<!DOCTYPE html><html><body><${tag} data-x="a><b">old</${tag}></body></html>`,
+    );
+    document.querySelector(tag)!.textContent = "new";
+    const saved = parseHTML(document.toString()).document.querySelector(tag)!;
+    expect(saved.getAttribute("data-x")).toBe("a><b");
+    expect(saved.textContent).toBe("new");
+  });
+
   it("a <textarea>'s source bytes round-trip unchanged", () => {
     const body = "<textarea>x &lt;y&gt; &amp; z</textarea><textarea>raw <b>tag</b></textarea>";
     const src = `<!DOCTYPE html><html><head></head><body>${body}</body></html>`;
