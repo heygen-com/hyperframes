@@ -89,12 +89,13 @@ export function distributeLayeredHybridFrameRanges(
 export function partitionTransitionFrames(
   transitionRanges: ReadonlyArray<Pick<TransitionRange, "startFrame" | "endFrame">>,
   totalFrames: number,
+  firstFrame = 0,
 ): Set<number> {
   const frames = new Set<number>();
   if (totalFrames <= 0) return frames;
   for (const range of transitionRanges) {
-    const start = Math.max(0, range.startFrame);
-    const end = Math.min(totalFrames - 1, range.endFrame);
+    const start = Math.max(firstFrame, range.startFrame);
+    const end = Math.min(firstFrame + totalFrames - 1, range.endFrame);
     for (let i = start; i <= end; i++) frames.add(i);
   }
   return frames;

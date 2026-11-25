@@ -104,9 +104,24 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
     : null;
   const normalCanvas = Buffer.alloc(bufSize);
 
+  const firstFrame = job.frameWindow?.startFrame ?? 0;
+  const transitionAt = (frame: number) =>
+    transitionRanges.find((t) => frame >= t.startFrame && frame <= t.endFrame);
+  for (let passedFrame = 0; passedFrame < firstFrame; passedFrame++) {
+    cleanupEndedHdrVideos({
+      time: (passedFrame * job.config.fps.den) / job.config.fps.num,
+      activeTransition: transitionAt(passedFrame),
+      hdrVideoEndTimes,
+      cleanedUpVideos,
+      hdrVideoFrameSources,
+      sceneElements,
+      log,
+    });
+  }
   for (let i = 0; i < totalFrames; i++) {
     assertNotAborted();
-    const time = (i * job.config.fps.den) / job.config.fps.num;
+    const frame = firstFrame + i;
+    const time = (frame * job.config.fps.den) / job.config.fps.num;
     if (hdrPerf) hdrPerf.frames += 1;
 
     const stackingInfo = await seekInjectAndQueryStacking(
@@ -119,12 +134,12 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
       "frameInjectMs",
       "stackingQueryMs",
     );
-    const activeTransition = transitionRanges.find((t) => i >= t.startFrame && i <= t.endFrame);
+    const activeTransition = transitionAt(frame);
 
     if (i % 30 === 0 && (log.isLevelEnabled?.("debug") ?? true)) {
       const hdrEl = stackingInfo.find((e) => e.isHdr);
       log.debug("[Render] HDR layer composite frame", {
-        frame: i,
+        frame,
         time: time.toFixed(2),
         hdrElement: hdrEl ? { z: hdrEl.zIndex, visible: hdrEl.visible, width: hdrEl.width } : null,
         stackingCount: stackingInfo.length,
@@ -138,7 +153,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
       const progress =
         activeTransition.endFrame === activeTransition.startFrame
           ? 1
-          : (i - activeTransition.startFrame) /
+          : (frame - activeTransition.startFrame) /
             (activeTransition.endFrame - activeTransition.startFrame);
       const sceneAIds = new Set(sceneElements[activeTransition.fromScene] ?? []);
       const sceneBIds = new Set(sceneElements[activeTransition.toScene] ?? []);
@@ -169,7 +184,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
           hdrTargetTransfer,
           hdrPerf,
           log,
-          frameIdx: i,
+          frameIdx: frame,
         });
       }
 
@@ -196,7 +211,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
       if (hdrPerf) hdrPerf.normalFrames += 1;
       timeHdrPhase(hdrPerf, "canvasClearMs", () => normalCanvas.fill(0));
       await timeHdrPhaseAsync(hdrPerf, "normalCompositeMs", () =>
-        compositeHdrFrame(hdrCompositeCtx, normalCanvas, time, stackingInfo, undefined, i),
+        compositeHdrFrame(hdrCompositeCtx, normalCanvas, time, stackingInfo, undefined, frame),
       );
       if (debugDumpEnabled && debugDumpDir && i % 30 === 0) {
         writeFileExclusiveSync(

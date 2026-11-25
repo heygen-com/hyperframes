@@ -369,7 +369,11 @@ export async function runCaptureHdrStage(
 
       // ── Dispatch to sequential or hybrid frame loop ────────────────────
       const effectiveWorkerCount = Math.max(1, workerCount);
-      const transitionFrameCount = partitionTransitionFrames(transitionRanges, totalFrames).size;
+      const transitionFrameCount = partitionTransitionFrames(
+        transitionRanges,
+        totalFrames,
+        job.frameWindow?.startFrame,
+      ).size;
       const useHybrid = shouldUseHybridLayeredPath({
         hasHdrContent,
         transitionFramesCount: transitionFrameCount,

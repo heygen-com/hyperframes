@@ -112,7 +112,8 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
     assertNotAborted,
     onProgress,
   } = input;
-  const transitionFramesSet = partitionTransitionFrames(transitionRanges, totalFrames);
+  const firstFrame = job.frameWindow?.startFrame ?? 0;
+  const transitionFramesSet = partitionTransitionFrames(transitionRanges, totalFrames, firstFrame);
   const hasTransitions = transitionRanges.length > 0;
   const bufSize = width * height * 6;
 
@@ -228,9 +229,10 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
         for (let i = range.start; i < range.end; i++) {
           throwIfFailed();
           assertNotAborted();
-          const time = (i * job.config.fps.den) / job.config.fps.num;
-          const activeTransition = transitionFramesSet.has(i)
-            ? transitionRanges.find((t) => i >= t.startFrame && i <= t.endFrame)
+          const frame = firstFrame + i;
+          const time = (frame * job.config.fps.den) / job.config.fps.num;
+          const activeTransition = transitionFramesSet.has(frame)
+            ? transitionRanges.find((t) => frame >= t.startFrame && frame <= t.endFrame)
             : undefined;
           if (activeTransition && ring) {
             // Pick the next ring slot. If it's still in flight from an earlier
@@ -247,7 +249,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
             // because the per-worker browser session is single-threaded.
             await captureTransitionFrameOnWorker({
               session,
-              frameIdx: i,
+              frameIdx: frame,
               time,
               transition: activeTransition,
               buffers,
@@ -265,7 +267,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
             const progress =
               activeTransition.endFrame === activeTransition.startFrame
                 ? 1
-                : (i - activeTransition.startFrame) /
+                : (frame - activeTransition.startFrame) /
                   (activeTransition.endFrame - activeTransition.startFrame);
             // BLEND + ENCODE without awaiting. The promise drains back into
             // `ringInFlight[slot]`; the next iteration that picks `slot`
@@ -327,7 +329,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
             // Rebind ctx to this worker's session for per-layer captures
             const wctx: HdrCompositeContext = { ...hdrCompositeCtx, domSession: session };
             await timeHdrPhaseAsync(hdrPerf, "normalCompositeMs", () =>
-              compositeHdrFrame(wctx, canvas, time, stackingInfo, undefined, i),
+              compositeHdrFrame(wctx, canvas, time, stackingInfo, undefined, frame),
             );
             if (debugDumpEnabled && debugDumpDir && i % 30 === 0) {
               writeFileExclusiveSync(
