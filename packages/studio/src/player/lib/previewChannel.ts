@@ -42,6 +42,11 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
   return client;
 }
 
+export function samePreviewLoad(iframe: HTMLIFrameElement): () => boolean {
+  const client = previewEditingClient(iframe);
+  return () => clients.get(iframe)?.client === client;
+}
+
 export function retirePreviewEditingClient(iframe: HTMLIFrameElement): void {
   clients.get(iframe)?.retire();
 }
