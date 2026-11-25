@@ -26,6 +26,7 @@ import {
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { parseEncoderOptions, type EncoderOptionsBody } from "../helpers/encoderOptions.js";
+import { parseRenderRange } from "../helpers/renderRange.js";
 import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
@@ -128,6 +129,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       gpu?: boolean;
       previewMotionBlur?: boolean;
       pageMotionBlur?: unknown;
+      start?: unknown;
+      end?: unknown;
     };
     const VALID_FORMATS = ["mp4", "webm", "mov", "gif"] as const;
     const FORMAT_EXT: Record<string, string> = {
@@ -176,6 +179,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
 
     const encoder = parseEncoderOptions(body, format);
     if (!encoder.ok) return c.json({ error: encoder.error }, 400);
+    const range = parseRenderRange(body);
+    if (!range.ok) return c.json({ error: range.error }, 400);
 
     const requestedPageMotionBlur = body.pageMotionBlur;
     if (requestedPageMotionBlur !== undefined && requestedPageMotionBlur !== "off") {
@@ -212,6 +217,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,
       ...(pageMotionBlur === undefined ? {} : { pageMotionBlur }),
+      ...(range.range ? { range: range.range } : {}),
     });
     renderJobs.set(jobId, jobState);
 

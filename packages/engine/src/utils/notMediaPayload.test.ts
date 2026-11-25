@@ -10,7 +10,7 @@ import {
   writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { getFfprobeBinary } from "./ffmpegBinaries.js";
 import {
@@ -1126,4 +1126,38 @@ describe("playlistLeavesItsFolder decrypts HLS segments only inside its limits",
       expect(Date.now() - started).toBeLessThan(45_000);
     },
   );
+});
+
+describe("playlistLeavesItsFolder refuses entries ffmpeg opens without joining them to the list's folder", () => {
+  const hls = (...lines: string[]) => ["#EXTM3U", ...lines, "#EXT-X-ENDLIST"].join("\n");
+
+  /** The tree, plus a media file at the name the entry would have if it were joined to `list`'s folder. */
+  function withListRelativeFile(
+    files: Record<string, string>,
+    list: string,
+    entry: string,
+  ): string {
+    const top = writeTree(files);
+    const joined = resolve(dirname(join(dirname(top), list)), entry);
+    mkdirSync(dirname(joined), { recursive: true });
+    writeFileSync(joined, "media");
+    return top;
+  }
+
+  it.each([
+    ["a backslash before the colon, POSIX separators", "a\\:b/../seg.ts"],
+    ["a backslash before the colon, Windows separators", "a\\:b\\..\\seg.ts"],
+    ["an encoded backslash and colon", "a%5C%3Ab/../seg.ts"],
+    ["a :// after the first segment", "sub/x://y/../../seg.ts"],
+  ])("refuses %s at the top and in a list three folders down", async (_name, entry) => {
+    const top = withListRelativeFile({ "clip.m3u8": hls(entry) }, "clip.m3u8", entry);
+    expect(await playlistLeavesItsFolder(top)).toBe(true);
+    const inner = "d1/d2/d3/inner.m3u8";
+    const nested = withListRelativeFile(
+      { "clip.m3u8": hls(inner), [inner]: hls(entry) },
+      inner,
+      entry,
+    );
+    expect(await playlistLeavesItsFolder(nested)).toBe(true);
+  });
 });

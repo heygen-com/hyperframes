@@ -9,10 +9,10 @@
 import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, statSync } from "fs";
-import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
+import { basename, isAbsolute, join, normalize, relative, resolve, win32 } from "path";
 import { tmpdir } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
@@ -2599,7 +2599,7 @@ export async function extractAllVideoFrames(
   let cacheRootDir: string | undefined;
   if (configuredCacheRootDir) {
     try {
-      cacheRootDir = privateCacheRoot(configuredCacheRootDir);
+      cacheRootDir = privateCacheRoot(resolve(configuredCacheRootDir));
       if (cacheRootDir) mkdirSync(cacheRootDir, { recursive: true });
     } catch {
       cacheRootDir = undefined;

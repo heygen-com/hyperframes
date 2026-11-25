@@ -297,7 +297,7 @@ describe("text-edit selection and style", () => {
         rect: { x: 10, y: 20, width: 30, height: 40 },
         viewportWidth: innerWidth,
         styles: {},
-        colours: [],
+        colours: [getComputedStyle(element).color],
         painted: getComputedStyle(element).color,
       },
     });

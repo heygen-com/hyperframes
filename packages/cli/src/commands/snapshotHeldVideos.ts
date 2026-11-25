@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { MEDIA_RENDER_ID_ATTR, naturalVideoSize, streamRotation } from "@hyperframes/core";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isNotMediaPayload, type CaptureVideoMetadataHint } from "@hyperframes/engine";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegCwd, mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFprobe } from "../browser/ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
@@ -108,7 +108,7 @@ export function probeHeldVideo(
         [
           "-v",
           "error",
-          ...mediaInputFormatArgs(ffprobe, path, { playlists: true }),
+          ...mediaInputArgs(ffprobe, path, { playlists: true }),
           "-select_streams",
           "v:0",
           "-show_entries",
@@ -118,7 +118,7 @@ export function probeHeldVideo(
           "--",
           path,
         ],
-        { timeoutMs: PROBE_TIMEOUT_MS, maxBufferBytes: 1024 * 1024 },
+        { timeoutMs: PROBE_TIMEOUT_MS, maxBufferBytes: 1024 * 1024, cwd: ffmpegCwd() },
       );
       return parseProbe(JSON.parse(stdout) as ProbeJson);
     } catch {

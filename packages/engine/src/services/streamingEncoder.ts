@@ -13,6 +13,7 @@
  *      exposes an async `writeFrame(buffer)` + `close()` API.
  */
 
+import { ffmpegCwd } from "@hyperframes/parsers/ff-binaries";
 import { jpegInputError } from "../utils/jpegInput.js";
 import { spawn, type ChildProcess } from "child_process";
 import { once } from "events";
@@ -554,6 +555,7 @@ export function spawnFfmpegStream(
 
   const ffmpeg: ChildProcess = spawn(getFfmpegBinary(), args, {
     stdio: ["pipe", "pipe", "pipe"],
+    cwd: ffmpegCwd(),
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,
   });

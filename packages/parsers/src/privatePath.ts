@@ -32,26 +32,10 @@ function withoutTrailingDotsOrSpaces(segment: string): string {
   return segment.slice(0, end);
 }
 
-// Git metadata and env files hold commands other tools run and secrets: nothing serves or inlines them.
-export function isVcsOrSecretPath(relPath: string): boolean {
-  return projectPathSegments(relPath).some(
-    (segment) => segment === ".git" || segment.startsWith(".env"),
-  );
-}
-
-// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no file
-// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load. Studio
-// reads and writes those only in the project's own `.hyperframes/`, so one in a subfolder holds records only.
-const STUDIO_FILES = new Set([
-  ".hyperframes/studio-motion.json",
-  ".hyperframes/studio-manual-edits.json",
-]);
-const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
-const UNCONVERTED_PREVIEW_DOWNLOADS = ".hyperframes/prepared-assets/downloads";
-
-// Credentials and coding-tool state that projects often sit next to: registry tokens, MCP and agent settings, cloud and
-// SSH keys. No composition loads one, so no file server serves one and no upload ships one.
-const CREDENTIAL_FILES = new Set([
+// Shared with the editable-source contract. Each expression matches whole normalized paths.
+const anyDepth = String.raw`(?:[^/]*/)*`;
+const vcsOrEnv = String.raw`(?:\.git|\.env[^/]*)(?:/.*)?`;
+const credentialNames = [
   ".npmrc",
   ".yarnrc",
   ".yarnrc.yml",
@@ -67,8 +51,8 @@ const CREDENTIAL_FILES = new Set([
   "serviceaccountkey.json",
   "service-account.json",
   "service_account.json",
-]);
-const CREDENTIAL_FOLDERS = new Set([
+];
+const toolFolders = [
   ".ssh",
   ".aws",
   ".gnupg",
@@ -82,26 +66,33 @@ const CREDENTIAL_FOLDERS = new Set([
   ".gemini",
   ".vscode",
   ".idea",
+];
+const alternatives = (names: string[]) =>
+  names.map((name) => name.replaceAll(".", "\\.")).join("|");
+const keyOrStore = String.raw`id_(?:rsa|dsa|ecdsa|ed25519)[^/]*|[^/]*\.(?:pem|key|p12|pfx|p8|ppk|jks|keystore|kdbx|tfstate(?:\.backup)?|tfvars(?:\.json)?)`;
+const folders = String.raw`(?:${alternatives(toolFolders)}|\.config/(?:gcloud|gh))(?:/.*)?`;
+const credentials = [alternatives(credentialNames), keyOrStore, folders].join("|");
+
+export const portablePrivatePattern = `${anyDepth}(?:${vcsOrEnv}|${credentials})`;
+const vcsOrSecret = new RegExp(`^${anyDepth}(?:${vcsOrEnv})$`, "su");
+const credentialOrToolState = new RegExp(`^${anyDepth}(?:${credentials})$`, "su");
+
+// Git metadata and env files hold commands other tools run and secrets: nothing serves or inlines them.
+export function isVcsOrSecretPath(relPath: string): boolean {
+  return vcsOrSecret.test(projectPathSegments(relPath).join("/"));
+}
+
+// Only known project files in the root .hyperframes directory can be served as assets.
+const STUDIO_FILES = new Set([
+  ".hyperframes/studio-motion.json",
+  ".hyperframes/studio-manual-edits.json",
 ]);
-const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
-const KEY_FILE =
-  /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx|p8|ppk|jks|keystore|kdbx))$/;
-const SECRET_STORE_FILE = /\.(?:tfstate(?:\.backup)?|tfvars(?:\.json)?)$/;
+const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
+const UNCONVERTED_PREVIEW_DOWNLOADS = ".hyperframes/prepared-assets/downloads";
 
 /** Credential files and tool or agent state, for a project-relative path in any spelling Windows opens. */
 export function isCredentialOrToolStatePath(relPath: string): boolean {
-  const segments = projectPathSegments(relPath);
-  const name = segments.at(-1) ?? "";
-  return (
-    CREDENTIAL_FILES.has(name) ||
-    KEY_FILE.test(name) ||
-    SECRET_STORE_FILE.test(name) ||
-    segments.some(
-      (segment, at) =>
-        CREDENTIAL_FOLDERS.has(segment) ||
-        (segment === ".config" && CREDENTIAL_CONFIG_FOLDERS.has(segments[at + 1] ?? "")),
-    )
-  );
+  return credentialOrToolState.test(projectPathSegments(relPath).join("/"));
 }
 
 /** Files no composition loads, in any spelling Windows opens: git, env, credentials, tool state, app records. */

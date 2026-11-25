@@ -1,8 +1,9 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { saveFault, timedWrite } from "./case.mjs";
+import { describe, expect, it, vi } from "vitest";
+import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS } from "../../../src/components/editor/domEditNudge";
+import { pressNudges, saveFault, timedWrite } from "./case.mjs";
 import { slowest } from "./sequences.mjs";
 import { score, UNDO_WRITE_MAX_MS } from "./report.mjs";
 
@@ -61,5 +62,26 @@ describe("undo and redo saves", () => {
     expect(slowest([])).toBe(null);
     expect(score({}, measured(null, slowest(walk))).checks.undo).toBe(false);
     expect(score({}, measured(null, slowest(walk.slice(0, 1)))).checks.undo).toBe(true);
+  });
+});
+
+describe("a nudge burst", () => {
+  it("presses every key inside Studio's burst window, however slow a frame is", async () => {
+    vi.useFakeTimers();
+    try {
+      const pressedAt = [];
+      const page = {
+        keyboard: { press: async () => void pressedAt.push(Date.now()) },
+        // A frame longer than the burst window, as the GPU stall after a rotate gave on CI.
+        evaluate: () => new Promise((r) => setTimeout(r, CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 50)),
+      };
+      const pressed = pressNudges(page, 3);
+      await vi.runAllTimersAsync();
+      await pressed;
+      expect(pressedAt).toHaveLength(3);
+      expect(pressedAt.at(-1) - pressedAt[0]).toBeLessThan(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

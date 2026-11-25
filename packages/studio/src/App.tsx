@@ -123,7 +123,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     useActiveComposition({
       projectId,
       initialUrlStateRef,
-      fileTree: fileManager.fileTree,
+      compositions: fileManager.compositions,
       fileTreeLoaded: fileManager.fileTreeLoaded,
       masterCompPath,
       setEditingFile: fileManager.setEditingFile,
