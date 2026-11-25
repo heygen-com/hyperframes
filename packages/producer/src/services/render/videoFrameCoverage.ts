@@ -75,21 +75,30 @@ export interface VideoFrameCoverageReport {
     codec: string;
     fps: number;
     isVFR: boolean;
-    streamSeconds: number;
-    mediaStart: number;
-    playbackRate: number;
+    /** Where the video's last frame ends on the media timeline: the end the gate's expected frames stop at. */
+    playsTo: number;
+    /** Media time before the video's first frame, when the stream starts late. */
+    leadSeconds: number;
+    /** The span of source the clip's window reads, through its speed or ramp. */
+    readsFrom: number;
+    readsTo: number;
+    /** A number, or "ramp" when the speed changes over the clip. */
+    rate: number | "ramp";
   };
 }
 
-/** "; source h264, 60 fps, variable frame rate, video stream 4.000 s; clip 0.000-1.133 s reads from 2.500 s at 1x" */
+const s3 = (seconds: number) => seconds.toFixed(3);
+
+/** "; source h264, 60 fps, variable frame rate, plays to 4.000 s; clip 0.000-1.133 s reads source 2.500-3.633 s at 1x" */
 function sourceWords(report: VideoFrameCoverageReport): string {
   const s = report.source;
   if (!s) return "";
-  const rate = s.isVFR ? ", variable frame rate" : "";
+  const vfr = s.isVFR ? ", variable frame rate" : "";
+  const lead = s.leadSeconds > 0 ? `, video from ${s3(s.leadSeconds)} s` : "";
+  const speed = s.rate === "ramp" ? "on a speed ramp" : `at ${s.rate}x`;
   return (
-    `; source ${s.codec}, ${s.fps} fps${rate}, video stream ${s.streamSeconds.toFixed(3)} s; ` +
-    `clip ${report.clipStart.toFixed(3)}-${report.clipEnd.toFixed(3)} s reads from ` +
-    `${s.mediaStart.toFixed(3)} s at ${s.playbackRate}x`
+    `; source ${s.codec}, ${s.fps} fps${vfr}, plays to ${s3(s.playsTo)} s${lead}; ` +
+    `clip ${s3(report.clipStart)}-${s3(report.clipEnd)} s reads source ${s3(s.readsFrom)}-${s3(s.readsTo)} s ${speed}`
   );
 }
 
@@ -213,6 +222,23 @@ function expectedFramesForVideo(
   return Math.min(slotFrames, sourceFrames);
 }
 
+function sourceOf(
+  video: VideoElement,
+  entry: ExtractedFrames,
+): NonNullable<VideoFrameCoverageReport["source"]> {
+  const rate = normalizeRateSpec(video.playbackRate);
+  return {
+    codec: entry.metadata.videoCodec,
+    fps: entry.metadata.fps,
+    isVFR: entry.metadata.isVFR,
+    playsTo: resolvePlayableVideoDuration(entry.metadata),
+    leadSeconds: entry.metadata.videoStreamLeadSeconds ?? 0,
+    readsFrom: video.mediaStart,
+    readsTo: video.mediaStart + sourceTimeAt(rate, Math.max(0, video.end - video.start)),
+    rate: typeof rate === "number" ? rate : "ramp",
+  };
+}
+
 export function computeVideoFrameCoverage(
   videos: readonly VideoElement[],
   extracted: readonly ExtractedFrames[],
@@ -242,16 +268,7 @@ export function computeVideoFrameCoverage(
       expectedFrames,
       capturedFrames,
       ratio,
-      ...(entry && {
-        source: {
-          codec: entry.metadata.videoCodec,
-          fps: entry.metadata.fps,
-          isVFR: entry.metadata.isVFR,
-          streamSeconds: resolvePlayableVideoDuration(entry.metadata),
-          mediaStart: video.mediaStart,
-          playbackRate: sourceTimeAt(normalizeRateSpec(video.playbackRate), 1),
-        },
-      }),
+      ...(entry && { source: sourceOf(video, entry) }),
     });
   }
   return reports;

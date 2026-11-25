@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 
 import type { ExtractedFrames, VideoElement, VideoMetadata } from "@hyperframes/engine";
+import { sourceTimeAt } from "@hyperframes/core";
 import { describe, expect, it } from "vitest";
 import {
   assertVideoFrameCoverage,
@@ -185,8 +186,29 @@ describe("computeVideoFrameCoverage", () => {
     expect(reports[0]).toMatchObject({ expectedFrames: 34, capturedFrames: 21 });
     expect(() => assertVideoFrameCoverage(reports, 0.95)).toThrow(
       'Video "rec-end" captured 21 of expected 34 frames (coverage 61.8%, threshold 95.0%; ' +
-        "source h264, 60 fps, variable frame rate, video stream 4.000 s; clip 0.000-1.133 s reads " +
-        "from 2.500 s at 1x).",
+        "source h264, 60 fps, variable frame rate, plays to 4.000 s; clip 0.000-1.133 s reads source " +
+        "2.500-3.633 s at 1x).",
+    );
+  });
+
+  // fails without the fix: a ramp read as its first second's rate, and a video's lead hid inside "stream length".
+  it("names a speed ramp's whole source range and a lead before the video's first frame", () => {
+    const ramp = {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 1, v: 3 },
+      ],
+    };
+    const videos = [makeVideo({ id: "ramp", start: 0, end: 1, playbackRate: ramp })];
+    const extracted = [
+      makeExtracted("ramp", 10, { durationSeconds: 4, videoStreamDurationSeconds: 3.8 }),
+    ];
+    extracted[0]!.metadata.videoStreamLeadSeconds = 0.2;
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).toThrow(
+      "plays to 4.000 s, video from 0.200 s; clip 0.000-1.000 s reads source " +
+        `0.000-${sourceTimeAt(ramp, 1).toFixed(3)} s on a speed ramp).`,
     );
   });
 
