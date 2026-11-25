@@ -2096,6 +2096,7 @@ export async function pollHfReady(
 // waited on, not only a failed script URL.
 const TIMELINE_IDS_MAX = 1_000;
 const TIMELINE_ID_MAX_CHARS = 200;
+const LONG_TIMELINE_ID = "(a composition id over 200 characters)";
 
 async function listUnregisteredTimelineIds(page: Page): Promise<string[]> {
   const evaluated = await page.evaluate(`(function() {
@@ -2106,7 +2107,7 @@ async function listUnregisteredTimelineIds(page: Page): Promise<string[]> {
       if (hosts[i].hasAttribute("data-no-timeline")) continue;
       var id = hosts[i].getAttribute("data-composition-id");
       if (!id || timelines[id]) continue;
-      if (id.length > ${TIMELINE_ID_MAX_CHARS}) id = id.slice(0, ${TIMELINE_ID_MAX_CHARS - 1}) + "…";
+      if (id.length > ${TIMELINE_ID_MAX_CHARS}) id = null;
       m.push(id);
     }
     return m;
@@ -2115,7 +2116,9 @@ async function listUnregisteredTimelineIds(page: Page): Promise<string[]> {
   if (!Array.isArray(evaluated)) return [];
   return evaluated
     .slice(0, TIMELINE_IDS_MAX)
-    .map((id) => boundedPageText(String(id), TIMELINE_ID_MAX_CHARS));
+    .map((id) =>
+      typeof id === "string" && id.length <= TIMELINE_ID_MAX_CHARS ? id : LONG_TIMELINE_ID,
+    );
 }
 
 function isScriptFailure(session: CaptureSession): boolean {
@@ -2197,7 +2200,9 @@ export async function waitForSubCompositionTimelines(
     session.pageErrors.length === 0 &&
     session.scriptLoadFailures.length === 0;
   if (cleanTimeout) {
-    memo.unregisteredIds = session.pendingTimelineIds ?? [];
+    memo.unregisteredIds = (session.pendingTimelineIds ?? []).filter(
+      (id) => id !== LONG_TIMELINE_ID,
+    );
   }
 }
 

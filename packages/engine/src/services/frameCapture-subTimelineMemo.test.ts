@@ -27,6 +27,21 @@ function makeDomPage(timelines: Record<string, unknown>): Page {
   } as unknown as Page;
 }
 
+// A fake DOM of hosts with these composition ids and the given registered timelines.
+function pageWithHosts(ids: string[], timelines: Record<string, unknown>): Page {
+  const host = (id: string) => ({
+    hasAttribute: () => false,
+    getAttribute: (name: string) => (name === "data-composition-id" ? id : null),
+  });
+  const document = { querySelectorAll: () => ids.map(host) };
+  const window = { __timelines: timelines, __hfForceTimelineRebind: vi.fn() };
+  return {
+    evaluate: vi.fn(async (expr: string) =>
+      new Function("document", "window", `return ${expr}`)(document, window),
+    ),
+  } as unknown as Page;
+}
+
 function makeSession(
   memo: SubTimelineWaitMemo,
   extra: Partial<Pick<CaptureSession, "pageErrors" | "scriptLoadFailures" | "vfxFailure">> = {},
@@ -132,34 +147,52 @@ describe("sub-composition timeline wait memo", () => {
   });
 
   // fails at e2d37846: every unregistered id was sent, kept on the session and in the memo at full length
-  it("sends, keeps and remembers a fixed number of unregistered ids, each cut short", async () => {
-    const ids = Array.from({ length: 5_000 }, (_, n) => `${n}:${"u".repeat(500)}`);
-    const host = (id: string) => ({
-      hasAttribute: () => false,
-      getAttribute: (name: string) => (name === "data-composition-id" ? id : null),
-    });
-    const document = { querySelectorAll: () => ids.map(host) };
-    const window = { __timelines: {}, __hfForceTimelineRebind: vi.fn() };
-    const page = {
-      evaluate: vi.fn(async (expr: string) =>
-        new Function("document", "window", `return ${expr}`)(document, window),
-      ),
-    } as unknown as Page;
+  it("sends, keeps and remembers a fixed number of unregistered ids, remembering only whole ones", async () => {
+    const ids = Array.from({ length: 5_000 }, (_, n) =>
+      n % 2 ? `${n}:${"u".repeat(500)}` : `s${n}`,
+    );
     const memo: SubTimelineWaitMemo = {};
     const session = makeSession(memo);
+    const page = pageWithHosts(ids, {});
 
     const wait = track(waitForSubCompositionTimelines(session, page, TIMEOUT_MS));
     await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);
     await wait.promise;
 
     const answers = await Promise.all(vi.mocked(page.evaluate).mock.results.map((r) => r.value));
-    const sent = answers.filter((a): a is string[] => Array.isArray(a) && typeof a[0] === "string");
+    const sent = answers.filter((a): a is (string | null)[] => Array.isArray(a) && a.length > 0);
     expect(sent.length).toBeGreaterThan(0);
-    for (const list of [...sent, session.pendingTimelineIds ?? [], memo.unregisteredIds ?? []]) {
+    for (const list of [...sent, session.pendingTimelineIds ?? []]) {
       expect(list).toHaveLength(1_000);
-      expect(Math.max(...list.map((id) => id.length))).toBeLessThanOrEqual(200);
+      expect(Math.max(...list.map((id) => id?.length ?? 0))).toBeLessThanOrEqual(200);
     }
+    expect(memo.unregisteredIds).toHaveLength(500);
+    expect(memo.unregisteredIds?.every((id) => ids.includes(id))).toBe(true);
     expect(session.subTimelineWaitOutcome).toBe("timeout");
+  });
+
+  // fails at 68aaf33f: the memo held a long id's cut label, and a host whose real id equals it was not waited on
+  it("waits again for a host whose id equals another host's cut-short id", async () => {
+    const long = "x".repeat(300);
+    const memo: SubTimelineWaitMemo = {};
+    const first = track(
+      waitForSubCompositionTimelines(makeSession(memo), pageWithHosts([long], {}), TIMEOUT_MS),
+    );
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);
+    await first.promise;
+
+    const lookalike = `${"x".repeat(199)}…`;
+    const second = track(
+      waitForSubCompositionTimelines(
+        makeSession(memo),
+        pageWithHosts([long, lookalike], { [long]: {} }),
+        TIMEOUT_MS,
+      ),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(second.settled()).toBe(false);
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS * 2);
+    await second.promise;
   });
 
   it("does not remember a wait a VFX failure stopped early", async () => {
