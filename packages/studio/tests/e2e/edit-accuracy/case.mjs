@@ -142,6 +142,19 @@ export async function pressNudges(page, count) {
   await nextFrame(page);
 }
 
+/** The box once Studio has drawn a burst of keys: off `from`, then unchanged for 2 more reads. A sealed preview draws
+ * a nudge a frame round trip after its keys. Past `timeout` ms it is whatever shows, so keys never drawn still fail. */
+export async function shownAfterKeys(read, from, frame, timeout = 2000) {
+  let [last, still] = [await read(), 0];
+  for (const deadline = Date.now() + timeout; still < 2 && Date.now() < deadline; ) {
+    await frame();
+    const now = await read();
+    const drawn = quadDistance(now.visible, from) >= 0.5;
+    [last, still] = [now, drawn && quadDistance(now.visible, last.visible) < 0.01 ? still + 1 : 0];
+  }
+  return last;
+}
+
 export function readFiles(dir, files) {
   return Object.fromEntries(files.map((f) => [f, readFileSync(join(dir, f), "utf8")]));
 }
@@ -1001,7 +1014,11 @@ async function nudgeGesture(ctx, pre) {
   await pressNudges(ctx.page, NUDGES);
   await nextFrame(ctx.page, 2);
   const smooth = smoothness(await recording(ctx.page, false));
-  const m = await measure(ctx);
+  const m = await shownAfterKeys(
+    () => measure(ctx),
+    pre.visible,
+    () => nextFrame(ctx.page),
+  );
   const [a, b] = [centre(pre.visible), centre(m.visible)];
   return {
     errors: [dist([b[0] - a[0], b[1] - a[1]], [NUDGES, 0])],

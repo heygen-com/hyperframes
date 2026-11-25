@@ -142,8 +142,8 @@ export function useTimelineDeleteOps({
         const rippleChanges = rippleShifts ? resolveShiftedElements(survivors, rippleShifts) : null;
         // Timeline and preview follow at once, so the next edit starts from this result.
         usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
+        const rollbackDuration = captureDurationRollback(previewIframeRef.current);
         removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
-        let rollbackDuration = () => {};
         const deleted = enqueueTimelineEdit(editQueueRef, async (pid) => {
           await saveServerRewriteWithHistory({
             projectId: pid,
@@ -190,7 +190,6 @@ export function useTimelineDeleteOps({
               // Optimistically reflect the shrunk length in the readout/seek bar,
               // rolling it back if the persist below fails (see captureDurationRollback).
               whileShown(editQueueRef, () => {
-                rollbackDuration = captureDurationRollback(previewIframeRef.current);
                 if (synced.contentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
                   usePlayerStore.getState().setDuration(synced.contentEnd);
                 }

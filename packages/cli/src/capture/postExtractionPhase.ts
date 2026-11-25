@@ -87,8 +87,9 @@ export interface PostExtractionResult {
   animationCatalog: CaptureResult["animationCatalog"];
 }
 
-const withoutCompositionMarker = (capturedHtml: string): string =>
-  capturedHtml.replace(/data-composition-id/gi, "data-captured-composition-id");
+const SHARES_NO_FIRST_OR_LAST_LETTER_WITH_THE_MARKER = "hf-captured-composition-key";
+export const withoutCompositionMarker = (capturedHtml: string): string =>
+  capturedHtml.replace(/data-composition-id/gi, SHARES_NO_FIRST_OR_LAST_LETTER_WITH_THE_MARKER);
 
 export async function runPostExtraction(input: PostExtractionInput): Promise<PostExtractionResult> {
   let {

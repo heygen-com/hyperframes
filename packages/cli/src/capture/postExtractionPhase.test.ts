@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { noDrops } from "./assetDownloader.js";
 import { createPartialCaptureState } from "./partialCapture.js";
-import { runPostExtraction } from "./postExtractionPhase.js";
+import { runPostExtraction, withoutCompositionMarker } from "./postExtractionPhase.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 
 // Only a test that sets `fonts.read` replaces the font reading; the others get the real one.
@@ -160,5 +160,27 @@ describe("runPostExtraction", () => {
       "Font metadata extraction failed (non-fatal): bad name table in a\\x07.woff2\nsecond line",
     );
     expect(printed(warn)).not.toContain("\u0007");
+  });
+});
+
+describe("withoutCompositionMarker", () => {
+  // fails without the fix: the old replacement ended in "d", which joined the page text after it into the marker again.
+  it.each([
+    '<div data-composition-id="x"></div>',
+    '<div data-composition-idata-composition-id="x"></div>',
+    '<div data-composition-iddata-composition-idata-composition-id="x"></div>',
+    '<div DATA-Composition-IData-composition-ID="x"></div>',
+    `<div data-composition-id${"ata-composition-id".repeat(50)}="x"></div>`,
+    '<div data-composition-data-composition-idid="x"></div>',
+  ])("leaves no marker in any letter case: %s", (html) => {
+    const saved = withoutCompositionMarker(html);
+    expect(saved.toLowerCase()).not.toContain("data-composition-id");
+    expect(withoutCompositionMarker(saved)).toBe(saved);
+  });
+
+  it("changes nothing else on the page", () => {
+    expect(withoutCompositionMarker('<p id="a">data-composition</p>')).toBe(
+      '<p id="a">data-composition</p>',
+    );
   });
 });

@@ -47,6 +47,18 @@ export function samePreviewLoad(iframe: HTMLIFrameElement): () => boolean {
   return () => clients.get(iframe)?.client === client;
 }
 
+const promotedTo = new WeakMap<HTMLIFrameElement, HTMLIFrameElement>();
+
+export function notePreviewPromoted(retired: HTMLIFrameElement, live: HTMLIFrameElement): void {
+  promotedTo.set(retired, live);
+}
+
+export function shownPreviewFrame(iframe: HTMLIFrameElement): HTMLIFrameElement {
+  let shown = iframe;
+  for (let next = promotedTo.get(shown); next; next = promotedTo.get(shown)) shown = next;
+  return shown;
+}
+
 export function retirePreviewEditingClient(iframe: HTMLIFrameElement): void {
   clients.get(iframe)?.retire();
 }
@@ -189,6 +201,24 @@ function readStyles(styles: unknown, properties: string[]): Record<string, strin
     if (typeof value === "string" && value) read[name] = value;
   }
   return read;
+}
+
+export async function previewComputedStylesOfEvery(
+  iframe: HTMLIFrameElement,
+  selector: string,
+  properties: string[],
+): Promise<{ matches: Array<Record<string, string> | null>; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "computed-styles", {
+    selector,
+    every: true,
+    properties,
+  });
+  const matches: unknown = reply?.matches;
+  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  return {
+    matches: matches.map((entry: unknown) => readStyles(entry, properties)),
+    truncated: reply.truncated,
+  };
 }
 
 type FontFaces = { families: string[]; ownFaces: Array<{ family: string; src: string }> };

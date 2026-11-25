@@ -3270,19 +3270,20 @@ describe("SVG draw-on rules", () => {
     expect(performance.now() - started).toBeLessThan(3000);
   });
 
-  // Linear work grows about 4x from n to 4n tags and quadratic work 16x; the faster of two runs absorbs a slow runner.
+  // Linear work grows about 4x from n to 4n tags and quadratic work 16x; sizes alternate so a load spike slows both.
   const growth = async (page: (n: number) => string, n: number): Promise<number> => {
-    const fastest = async (html: string) => {
-      let best = Infinity;
-      for (let run = 0; run < 2; run += 1) {
-        const started = performance.now();
-        await lintHyperframeHtml(html);
-        best = Math.min(best, performance.now() - started);
-      }
-      return best;
+    const timed = async (html: string) => {
+      const started = performance.now();
+      await lintHyperframeHtml(html);
+      return performance.now() - started;
     };
-    const small = await fastest(page(n));
-    return (await fastest(page(4 * n))) / small;
+    const [small, large] = [page(n), page(4 * n)];
+    let [bestSmall, bestLarge] = [Infinity, Infinity];
+    for (let run = 0; run < 5; run += 1) {
+      bestSmall = Math.min(bestSmall, await timed(small));
+      bestLarge = Math.min(bestLarge, await timed(large));
+    }
+    return bestLarge / bestSmall;
   };
 
   it("lints script tags naming one file in linear time", { timeout: 120_000 }, async () => {
