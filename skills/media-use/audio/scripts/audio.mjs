@@ -247,6 +247,7 @@ const bgmFields = {
   bgm_target_duration_s: prev.bgm_target_duration_s ?? null,
   bgm_seed_duration_s: prev.bgm_seed_duration_s ?? null,
   bgm_loop_count: prev.bgm_loop_count ?? null,
+  bgm_replaces: prev.bgm_replaces ?? null,
 };
 if (only.has("bgm")) {
   bgm = null;
@@ -315,6 +316,7 @@ if (only.has("bgm")) {
       bgmFields.bgm_target_duration_s = gen.target_duration_s ?? null;
       bgmFields.bgm_seed_duration_s = gen.seed_duration_s ?? null;
       bgmFields.bgm_loop_count = gen.loop_count ?? null;
+      bgmFields.bgm_replaces = gen.replaces;
       console.error(
         terminalText(`  bgm: launched ${gen.provider} (detached, pid ${gen.pid}) → ${gen.path}`),
       );

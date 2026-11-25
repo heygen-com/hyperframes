@@ -128,13 +128,22 @@ if (!base.enabled) {
   process.exit(0);
 }
 
+// The job leaves the track that was at the name in place until its own is complete, then renames its own over it.
+const before = audioMeta.bgm_replaces;
+const isFromBeforeTheJob = (file) =>
+  Boolean(before) &&
+  file.ino === before.ino &&
+  file.size === before.size &&
+  file.mtimeMs === before.mtime_ms;
+
 const started = Date.now();
 let lastFailure = "";
 let lastTail = "";
 
 while (Date.now() - started <= timeoutMs) {
-  if (existsSync(bgmAbsPath)) {
-    const size = statSync(bgmAbsPath).size;
+  const track = statSync(bgmAbsPath, { throwIfNoEntry: false });
+  if (track && !isFromBeforeTheJob(track)) {
+    const size = track.size;
     writeStatus({
       ...base,
       status: "ready",

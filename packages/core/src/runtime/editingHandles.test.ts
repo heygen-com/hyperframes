@@ -293,6 +293,25 @@ describe("element handles over the editing port", () => {
     expect((await ask<never>("query", { selector: "p[" })).error).toMatchObject({ code: "failed" });
   });
 
+  it("answers every match's display in step with the page, null where a query leaves it out, capped", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 1);
+    document.body.innerHTML = `<b class="t"></b><div data-composition-id="${long}"><p class="t"></p></div><i class="t"></i>`;
+    const every = (selector: string) =>
+      ask<never>("computed-styles", { selector, every: true, properties: ["display"] });
+    expect((await every(".t")).result).toEqual({
+      styles: null,
+      matches: [{ display: "inline" }, null, { display: "inline" }],
+      truncated: false,
+    });
+    document.body.innerHTML = "<i></i>".repeat(MAX_QUERY_MATCHES + 1);
+    const { matches, truncated } = (await every("i")).result as unknown as {
+      matches: unknown[];
+      truncated: boolean;
+    };
+    expect(matches).toHaveLength(MAX_QUERY_MATCHES);
+    expect(truncated).toBe(true);
+  });
+
   it("caps a query's matches and says so", async () => {
     document.body.innerHTML = "<i></i>".repeat(MAX_QUERY_MATCHES + 1);
     const { result } = await ask<never>("query", { selector: "i" });
