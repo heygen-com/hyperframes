@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { duplicateElementInHtml } from "./duplicateElement.js";
 import { parseSourceDocument } from "./sourceMutation.js";
 
+const READ_UNLIKE_BROWSER = /can't be read the way a browser reads them/;
+
 describe("duplicateElementInHtml", () => {
   it("ripples a following natural-duration video by the resolved source clip length", () => {
     const source = `<div>
@@ -90,5 +92,14 @@ describe("duplicateElementInHtml", () => {
     expect(result.matched).toBe(true);
     expect(result.html).toContain('id="scene-copy" data-composition-id="scene-split"');
     expect(result.html.match(/data-composition-id="scene"/g)).toHaveLength(1);
+  });
+
+  // fails without the fix: the copy and the original were written with the title's hidden img live.
+  it("refuses a file a browser would read differently, writing nothing", () => {
+    const source =
+      '<div id="icon" data-start="0" data-duration="1"><svg><title><!-- </title><img src=x onerror=f()> --></title></svg></div>';
+    expect(() => duplicateElementInHtml(source, { id: "icon" }, "icon-copy", 1)).toThrow(
+      READ_UNLIKE_BROWSER,
+    );
   });
 });

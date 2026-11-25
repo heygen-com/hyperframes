@@ -92,7 +92,9 @@ import {
 import {
   parseTextEdit,
   textEditEndedEvent,
+  textEditSelectionEvent,
   type TextEditEndedEvent,
+  type TextEditSelectionEvent,
   type TextEditParams,
   type TextEditResult,
 } from "./editing/textEdit";
@@ -113,6 +115,7 @@ export {
   MAX_POINT_STACK,
   MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
+  isStableSelector,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
@@ -181,6 +184,8 @@ export const EDITING_REQUEST_KINDS = [
   "wait-for-seek",
   "set-loop-start",
   "computed-styles",
+  "authored-styles",
+  "font-faces",
   "elements-at-point",
   "pointer-targets",
   "describe",
@@ -209,6 +214,7 @@ export const EDITING_REQUEST_KINDS = [
   "max-z-index",
   "crop-lift",
   "edit-element",
+  "remove-elements",
   "stacking-family",
   "gsap-set",
   "patch-tweens",
@@ -296,8 +302,24 @@ export interface EditingRequests {
   "set-loop-start": { params: { seconds: number | null }; result: { applied: boolean } };
   /** The element `selector` first matches, or `handle` names. `styles` is null for none; empty values are left out. */
   "computed-styles": {
-    params: ({ selector: string } | { handle: EditingElementHandle }) & { properties: string[] };
+    params: (
+      | { selector: string }
+      | { handle: EditingElementHandle }
+      | { selector: string; every: true }
+    ) & { properties: string[] };
+    result: {
+      styles: Record<string, string> | null;
+      matches?: Array<Record<string, string> | null>;
+      truncated?: boolean;
+    };
+  };
+  "authored-styles": {
+    params: { handle: EditingElementHandle; properties: string[] };
     result: { styles: Record<string, string> | null };
+  };
+  "font-faces": {
+    params: NoParams;
+    result: { families: string[]; ownFaces: Array<{ family: string; src: string }> };
   };
   /** The stack under a viewport point, topmost first, up to MAX_POINT_STACK. Describe one to keep. */
   "elements-at-point": {
@@ -339,7 +361,10 @@ export interface EditingRequests {
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
-  draft: { params: { drafts: EditingDraft[] }; result: EditingDraftReply };
+  draft: {
+    params: { drafts: EditingDraft[] };
+    result: EditingDraftReply & { gsapSetTakesDrafts?: true };
+  };
   "gesture-start": {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
@@ -381,6 +406,7 @@ export interface EditingRequests {
     result: { lifted: boolean; clipPath: string | null };
   };
   "edit-element": { params: EditElementParams; result: EditElementResult };
+  "remove-elements": { params: { handles: EditingElementHandle[] }; result: { removed: number } };
   "stacking-family": {
     params: { handle: EditingElementHandle };
     result: { family: EditingStackingSibling[] | null; locked: boolean };
@@ -444,10 +470,16 @@ const isHandle = (value: unknown): value is EditingElementHandle =>
 
 function styleTarget(params: Record<string, unknown>) {
   const keys = Object.keys(params).sort().join();
-  const { selector, handle } = params;
+  const { selector, handle, every, properties } = params;
   if (keys === "properties,selector" && isSelector(selector)) return { selector };
+  if (keys === "every,properties,selector" && every === true && isSelector(selector))
+    return everyMatchProperties(properties) ? { selector, every } : null;
   return keys === "handle,properties" && isHandle(handle) ? { handle } : null;
 }
+
+const EVERY_MATCH_STYLES: readonly string[] = ["display"];
+const everyMatchProperties = (properties: unknown) =>
+  Array.isArray(properties) && properties.every((name) => EVERY_MATCH_STYLES.includes(name));
 
 function styleProperties(properties: unknown): string[] | null {
   if (!Array.isArray(properties) || properties.length > MAX_STYLE_PROPERTIES) return null;
@@ -573,6 +605,14 @@ function draftPropsWithOneXYWriter(value: unknown, translate: unknown): boolean 
   return entries.every(isDraftValue);
 }
 
+function gsapSetWithDrafts(params: unknown): GsapSetParams | null {
+  if (!isPlainRecord(params) || !("drafts" in params)) return parseGsapSet(params);
+  const { drafts, ...set } = params;
+  const parsed = parseGsapSet(set);
+  const drawn = draftList({ drafts });
+  return parsed && drawn ? { ...parsed, drafts: drawn.drafts } : null;
+}
+
 function draftList(params: unknown): EditingParams<"draft"> | null {
   if (!hasKeys(params, "drafts") || !Array.isArray(params.drafts)) return null;
   const { drafts } = params;
@@ -627,6 +667,12 @@ const PARAM_PARSERS: {
     const properties = styleProperties(params.properties);
     return target && properties ? { ...target, properties } : null;
   },
+  "authored-styles": (params) => {
+    if (!hasKeys(params, "handle,properties") || !isHandle(params.handle)) return null;
+    const properties = styleProperties(params.properties);
+    return properties?.length ? { handle: params.handle, properties } : null;
+  },
+  "font-faces": noParams,
   "elements-at-point": point,
   "pointer-targets": point,
   describe: handleList,
@@ -671,9 +717,10 @@ const PARAM_PARSERS: {
       ? { handle: params.handle, lift: params.lift }
       : null,
   "edit-element": parseEditElement,
+  "remove-elements": handleList,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
-  "gsap-set": parseGsapSet,
+  "gsap-set": gsapSetWithDrafts,
   "patch-tweens": parsePatchTweensRequest,
   "soft-reload": parseSoftReload,
   "hold-scenes": parseHoldScenes,
@@ -727,6 +774,7 @@ export interface EditingPortClient {
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
+  onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -788,6 +836,7 @@ export function createEditingPortClient(options: {
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
+  const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
@@ -814,7 +863,9 @@ export function createEditingPortClient(options: {
     const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
     if (geometry) return geometryListeners.forEach((listener) => listener(geometry));
     const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
-    if (ended) textEditListeners.forEach((listener) => listener(ended));
+    if (ended) return textEditListeners.forEach((listener) => listener(ended));
+    const selected = textEditSelectionEvent(data, EDITING_PROTOCOL_VERSION);
+    if (selected) selectionListeners.forEach((listener) => listener(selected));
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
@@ -886,12 +937,17 @@ export function createEditingPortClient(options: {
       textEditListeners.add(listener);
       return () => textEditListeners.delete(listener);
     },
+    onTextEditSelection(listener) {
+      selectionListeners.add(listener);
+      return () => selectionListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       keyListeners.clear();
       geometryListeners.clear();
       textEditListeners.clear();
+      selectionListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
@@ -913,6 +969,8 @@ export {
   textEditResult,
   type TextEditEndedEvent,
   type TextEditResult,
+  type TextEditSelection,
+  type TextEditSelectionEvent,
 } from "./editing/textEdit";
 export {
   parsePausedFrameAsk,

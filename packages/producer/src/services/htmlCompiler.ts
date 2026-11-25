@@ -27,7 +27,7 @@ import {
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { bundledGsapStandIn, bundledScript } from "./bundledScripts.js";
 import {
   inlineScriptBlocks,
@@ -66,6 +66,7 @@ import { gsapCdnDist, normalizeGsapBaseUrl } from "@hyperframes/core/gsap-cdn";
 import {
   assignBundledRuntimeCompositionIds,
   assignMediaRenderIds,
+  dropAuthoredCompositionFiles,
   type BundledHostCompositionIdentity,
   emitVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
@@ -836,7 +837,7 @@ async function resolveMediaDuration(
     if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
     if (
       escapesAssetRoot(filePath, assetRoot) ||
-      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir])
+      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir], assetRoot === undefined)
     ) {
       return { duration: null, resolvedPath: filePath };
     }
@@ -1393,6 +1394,7 @@ function inlineSubCompositions(
   budget: CompositionExpansionBudget,
 ): { html: string; variablesByComp: Record<string, Record<string, unknown>> } {
   const { document } = parseHTML(html);
+  dropAuthoredCompositionFiles(document);
   budget.chargeElements(ENTRY_PAGE, document.querySelectorAll("*").length);
   const head = document.querySelector("head");
   const body = document.querySelector("body");
@@ -1999,7 +2001,9 @@ async function downloadAndRewriteUrls(
 
   let result = html;
   for (const [url, relPath] of urlToRelPath) {
-    result = result.replaceAll(`"${url}"`, `"${relPath}"`).replaceAll(`'${url}'`, `'${relPath}'`);
+    result = result
+      .replaceAll(`"${url}"`, () => `"${relPath}"`)
+      .replaceAll(`'${url}'`, () => `'${relPath}'`);
     if (extraRewrite) result = extraRewrite(result, url, relPath);
   }
 
@@ -2130,7 +2134,7 @@ export async function localizeRemoteBackgroundImages(
     assets,
     // Quoted url('..')/url("..") are rewritten by downloadAndRewriteUrls' default
     // replaceAll; this handles the unquoted url(https://..) form.
-    (h, url, rel) => h.replaceAll(`url(${url})`, `url(${rel})`),
+    (h, url, rel) => h.replaceAll(`url(${url})`, () => `url(${rel})`),
   );
 }
 
@@ -2370,7 +2374,15 @@ function localizeFontFaceUrls(
     "Remote font download failed",
     "Localized remote font face(s)",
     assets,
-    (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
+    (h, url, relPath) =>
+      replaceMatches(h, styleBlockMatches(h), (style, css) =>
+        replaceInner(
+          style,
+          css,
+          "</style>".length,
+          css.replaceAll(`url(${url})`, () => `url("${relPath}")`),
+        ),
+      ),
   );
 }
 
@@ -2659,7 +2671,7 @@ function rebaseDirectEntryAssetPaths(
 
 export const MAX_VARIABLE_MEDIA_SRC_BYTES = 8 * 1024;
 // oxlint-disable-next-line no-control-regex
-const MEDIA_SRC_CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+const MEDIA_SRC_NON_URL_CHARS = /[\u0000-\u001f\u007f<>]/;
 
 /**
  * Point each `data-var-src` video/audio at the clip its variable names, so the length and sound read below
@@ -2684,7 +2696,7 @@ function bindVariableMediaSources(
     const bound = boundMediaSrc(el, values);
     if (bound === null) continue;
     const src = bound.trim();
-    if (src.length > MAX_VARIABLE_MEDIA_SRC_BYTES || MEDIA_SRC_CONTROL_CHARS.test(src)) {
+    if (src.length > MAX_VARIABLE_MEDIA_SRC_BYTES || MEDIA_SRC_NON_URL_CHARS.test(src)) {
       log?.warn("[Compiler] Refused a variable media source that cannot be a URL", {
         length: src.length,
       });
@@ -2997,7 +3009,7 @@ async function compileWithAssets(
       namesAnotherNetworkRoot(projectDir, videoPath) ||
       !existsSync(videoPath) ||
       escapesAssetRoot(videoPath, assetRoot) ||
-      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir])
+      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir], assetRoot === undefined)
     )
       continue;
     advised.add(videoPath);

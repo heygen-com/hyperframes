@@ -23,6 +23,8 @@ export interface ParentAudioHost {
   getVolume: () => number;
   getMuted: () => boolean;
   isPaused: () => boolean;
+  /** A context the host opened inside a tap before this code had loaded; handed over once. */
+  takeTapContext?: () => AudioContext | null;
 }
 
 export class ParentAudio {
@@ -93,7 +95,11 @@ export class ParentAudio {
   }
 
   private _open(): WebAudioTransport | null {
-    this._transport ??= new WebAudioTransport({ fetchInit: DECODE_FETCH, busDocument: null });
+    this._transport ??= new WebAudioTransport({
+      fetchInit: DECODE_FETCH,
+      busDocument: null,
+      context: this._host.takeTapContext?.() ?? undefined,
+    });
     if (!this._transport.open()) return null;
     this._transport.setVolume(this._host.getVolume());
     this._transport.setMuted(this._host.getMuted());
@@ -121,12 +127,15 @@ export class ParentAudio {
       entry.duration,
     );
     if (!scheduled) return;
-    if (!entry.claimed) {
-      entry.claimed = true;
-      entry.el.pause();
-      this.postClaims();
-    }
+    this._claim(entry);
     this._startClock(transport);
+  }
+
+  private _claim(entry: ProxyEntry): void {
+    if (entry.claimed) return;
+    entry.claimed = true;
+    entry.el.pause();
+    this.postClaims();
   }
 
   /** The audio clock once a buffer plays; until then the film's time, which the first buffer starts from. */

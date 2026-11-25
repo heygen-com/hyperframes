@@ -2344,6 +2344,8 @@ export function initSandboxRuntimeModular(): void {
       // group's automation lanes and FX rack with it.
       const isAudioGroupBus = (el: Element): boolean =>
         el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG;
+      const isRuntimeOwned = (el: Element): boolean =>
+        el.closest("[data-hf-ignore], [data-hyperframes-ignore]") !== null;
       const authoredTimed = new Set<Element>(document.querySelectorAll("[data-start]"));
       const hasAuthoredTimedAncestor = (element: HTMLElement): boolean => {
         let node = element.parentElement;
@@ -2363,6 +2365,7 @@ export function initSandboxRuntimeModular(): void {
               if (!isHtmlElement(target)) continue;
               if (target === rootComp) continue;
               if (isAudioGroupBus(target)) continue;
+              if (isRuntimeOwned(target)) continue;
               if (target.hasAttribute("data-start")) continue;
               if (hasAuthoredTimedAncestor(target)) continue;
               if (seen.has(target)) continue;
@@ -2391,6 +2394,7 @@ export function initSandboxRuntimeModular(): void {
           if (seen.has(el)) continue;
           if (el.tagName === "SCRIPT" || el.tagName === "STYLE" || el.tagName === "LINK") continue;
           if (isAudioGroupBus(el)) continue;
+          if (isRuntimeOwned(el)) continue;
           seen.add(el);
           el.setAttribute("data-start", "0");
           el.setAttribute("data-duration", dur);
@@ -3757,6 +3761,7 @@ export function initSandboxRuntimeModular(): void {
         const explicitDuration = ownDuration != null && ownDuration > 0 ? ownDuration : null;
         return resolveRuntimeMediaClipDuration({
           isVideo: element.tagName === "VIDEO",
+          loops: element.loop,
           sourceDuration,
           hostRemaining,
           explicitDuration,

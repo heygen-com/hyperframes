@@ -78,7 +78,7 @@ can use video-only; changed source, conflicts and unexpected upload failures nee
 an explicit choice to omit source. The CLI exposes `--video-only` for that choice.
 `filesForExport` only validates already-prepared source; it does not upload.
 
-The adapter uses the portable-source-v4 capture/manifest rules and
+The adapter uses the portable-source-v12 capture/manifest rules and
 multipart transport. The pinned policy, Unicode 15.1 registry (with its license),
 and manifest test vectors are checked into this repository. Source is captured through
 verified file handles; upload bytes are streamed and checked against their hash.

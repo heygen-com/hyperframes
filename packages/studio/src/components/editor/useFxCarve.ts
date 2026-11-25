@@ -272,11 +272,11 @@ export function useFxCarve(
   const persistMeasuredCarve = async (
     measured: NonNullable<Awaited<ReturnType<typeof measureCarve>>>,
   ): Promise<void> => {
-    const { bands, carved, duck, voiceMix } = measured;
+    const { bands, carved, duck, voiceMix, sampleRate } = measured;
     const { next, carvedNodes, duckNode } = mintCarveNodes(chain, carved, duck);
     await onSetAttributeQuiet(HF_AUDIO_FX_ATTR, serializeAudioFxChain(next));
 
-    const lanes = carveLanes(carvedNodes, duckNode, duck, voiceMix, bands);
+    const lanes = carveLanes(carvedNodes, duckNode, duck, voiceMix, bands, sampleRate);
     const carriedOver = withoutCarveLanes(automation, chain);
     if (lanes.length > 0 || carriedOver.lanes.length !== automation.lanes.length) {
       writeAutomation({ version: 1, lanes: [...carriedOver.lanes, ...lanes] });

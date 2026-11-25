@@ -4,10 +4,10 @@ import { jsonArg, runMeasure, videoArg } from "../../measure/command.js";
 import {
   ffmpegBin,
   ffmpegInput,
+  ffmpegToFile,
   Fix,
   probeVideo,
   round,
-  runFfmpeg,
   type VideoInfo,
 } from "../../measure/media.js";
 import { toneMapReferenceNits } from "@hyperframes/core";
@@ -62,10 +62,18 @@ function normalize(info: VideoInfo, out: string): { path: string; fps: string } 
     );
   }
   makeOutputFolder(dirname(out));
-  runFfmpeg([
-    ...["-y", ...ffmpegInput(info.path), "-vf", [...filters, "format=yuv420p"].join(",")],
-    ...["-c:v", "libx264", "-crf", "12", "-preset", "medium", "-c:a", "aac", "-b:a", "192k", out],
-  ]);
+  ffmpegToFile(
+    [
+      ...[
+        "-y",
+        ...ffmpegInput(info.path, { playlists: info.guarded }),
+        "-vf",
+        [...filters, "format=yuv420p"].join(","),
+      ],
+      ...["-c:v", "libx264", "-crf", "12", "-preset", "medium", "-c:a", "aac", "-b:a", "192k"],
+    ],
+    out,
+  );
   return { path: out, fps };
 }
 

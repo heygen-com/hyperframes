@@ -50,7 +50,10 @@ describe("a sealed player brings its own runtime", () => {
     const el = player({ "sandbox-origin": "", src: sameSite() });
     const doc = await srcdocOf(el);
 
-    expect(fetchMock).toHaveBeenCalledWith(sameSite(), { credentials: "same-origin" });
+    expect(fetchMock).toHaveBeenCalledWith(sameSite(), {
+      mode: "no-cors",
+      credentials: "same-origin",
+    });
     expect(doc).not.toContain("cdn.jsdelivr.net");
     expect(doc).toContain('built: "<\\/script>"');
     // Base first, then the runtime, both ahead of the composition's own script.
@@ -197,11 +200,14 @@ describe("a sealed player brings its own runtime", () => {
   // fails without the fix: a redirect to another site that allows CORS hides that page's policy headers from
   // the fetch, so the page was shown as srcdoc although its own policy could not be read.
   it("loads by src when the page's headers can't all be read, as after a redirect to another site", async () => {
-    fetchMock.mockResolvedValueOnce(siteResponse(page(), {}, "cors"));
-    const el = player({ "sandbox-origin": "", src: sameSite() });
+    for (const type of ["cors", "opaque"] satisfies ResponseType[]) {
+      fetchMock.mockResolvedValueOnce(siteResponse(page(), {}, type));
+      const el = player({ "sandbox-origin": "", src: sameSite() });
 
-    await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
-    expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+      await vi.waitFor(() => expect(el.iframeElement.src).toBe(sameSite()));
+      expect(el.iframeElement.hasAttribute("srcdoc")).toBe(false);
+      el.remove();
+    }
   });
 
   // fails without the fix: the load clock started only once the frame was written, so a fetch that never answered
@@ -220,7 +226,7 @@ describe("a sealed player brings its own runtime", () => {
       await vi.advanceTimersByTimeAsync(LIMIT - 1);
       expect(errors).toEqual([]);
       await vi.advanceTimersByTimeAsync(1);
-      expect(errors).toEqual([timelineNotFound(LIMIT, true)]);
+      expect(errors).toEqual([timelineNotFound(LIMIT)]);
 
       answer(siteResponse(page()));
       await vi.advanceTimersByTimeAsync(0);
@@ -231,6 +237,43 @@ describe("a sealed player brings its own runtime", () => {
       vi.useRealTimers();
     }
   });
+
+  // fails without the fix: the load limit told a sealed player's host to add a runtime the page it read brought.
+  it.each([
+    [
+      "brings its own runtime",
+      () =>
+        siteResponse(
+          page('<script data-hyperframes-preview-runtime="1" src="/api/runtime.js"></script>'),
+        ),
+      false,
+    ],
+    ["can't be read", () => siteResponse(page(), {}, "cors"), true],
+  ])(
+    "names the runtime in the load limit only when the page loaded by src %s",
+    async (_name, answer, hint) => {
+      vi.useFakeTimers();
+      try {
+        fetchMock.mockResolvedValueOnce(answer());
+        const el = player({ "sandbox-origin": "", src: sameSite() });
+        const errors: string[] = [];
+        el.addEventListener("error", (event: Event) =>
+          errors.push((event as CustomEvent<{ message: string }>).detail.message),
+        );
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.iframeElement.src).toBe(sameSite());
+        Object.defineProperty(el.iframeElement, "contentDocument", {
+          value: null,
+          configurable: true,
+        });
+        (el as unknown as { _onIframeLoad(): void })._onIframeLoad();
+        await vi.advanceTimersByTimeAsync(LIMIT);
+        expect(errors).toEqual([timelineNotFound(LIMIT, hint)]);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("shows nothing from a fetch that answers after the player moved to another composition", async () => {
     let answer: (response: Response) => void = () => {};

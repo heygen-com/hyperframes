@@ -14,6 +14,7 @@ import {
   readCompositionSizeFromDocument,
   readStaticCompositionMeta,
 } from "@hyperframes/core/runtime/composition-length";
+import { RUNTIME_BOOTSTRAP_ATTR } from "@hyperframes/core/compiler/html-tokens";
 import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
 import { shouldInjectRuntime } from "./shouldInjectRuntime.js";
 import {
@@ -26,13 +27,12 @@ import {
 
 import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
 
-const SEALED_RUNTIME_HINT =
-  ". A sealed player adds the HyperFrames runtime only to a composition from its own site: " +
-  "include the runtime script in a composition from another site, or play a composition you trust without sandbox-origin.";
+const ANOTHER_SITE_FIX =
+  "A player can't add the HyperFrames runtime to a composition from another site: include the runtime script in it.";
 
-export function timelineNotFound(limitMs: number, sealed: boolean): string {
+export function timelineNotFound(limitMs: number, runtimeOutOfReach = false): string {
   const message = `Composition timeline not found after ${limitMs / 1000}s`;
-  return sealed ? message + SEALED_RUNTIME_HINT : message;
+  return runtimeOutOfReach ? `${message}. ${ANOTHER_SITE_FIX}` : message;
 }
 
 export { runtimeCdnUrlForVersion };
@@ -51,7 +51,7 @@ export interface ProbeCallbacks {
   onRuntimeInjected?: () => void;
   resolveRuntimeUrl?: () => string;
   hostOwnsDeadline?: () => boolean;
-  sealed?: () => boolean;
+  runtimeOutOfReach?: () => boolean;
 }
 
 /**
@@ -89,14 +89,15 @@ type ProbeOutcome =
   | { kind: "error"; message: string }
   | null;
 
+const AUTHOR_ERROR_MAX_LENGTH = 1000;
+
 function firstAuthorError(errors: unknown): string | null {
   if (!Array.isArray(errors)) return null;
-  return (
-    errors.find(
-      (value): value is string =>
-        typeof value === "string" && value.trim() !== "" && value !== "[object Event]",
-    ) ?? null
+  const found = errors.find(
+    (value): value is string =>
+      typeof value === "string" && value.trim() !== "" && value !== "[object Event]",
   );
+  return found === undefined ? null : found.slice(0, AUTHOR_ERROR_MAX_LENGTH);
 }
 
 export class CompositionProbe {
@@ -111,6 +112,7 @@ export class CompositionProbe {
   private _preparationTimer: ReturnType<typeof setTimeout> | null = null;
   private _limitReportedBeforeLoad = false;
   private _preparedDocumentUnwritten = false;
+  private _frameError: string | null = null;
 
   get failed(): boolean {
     if (this._failure === null || this._failure.deadline) return false;
@@ -128,7 +130,15 @@ export class CompositionProbe {
     this._limitMs = loadLimitMs();
     this._navigationPending = true;
     this._timedFromNavigation = true;
+    this._frameError = null;
     this._endPreparation();
+  }
+
+  reportFrameError(value: unknown): void {
+    if (this._frameError !== null || (!this._navigationPending && this._interval === null)) return;
+    this._frameError = firstAuthorError([value]);
+    if (this._frameError !== null && this._interval !== null)
+      this._settle({ kind: "error", message: this._frameError });
   }
 
   markPreparation(): void {
@@ -157,7 +167,9 @@ export class CompositionProbe {
     this._preparationTimer = null;
     if (!this._navigationPending || this._callbacks.hostOwnsDeadline?.()) return;
     this._limitReportedBeforeLoad = true;
-    this._callbacks.onError(timelineNotFound(this._limitMs, this._callbacks.sealed?.() === true));
+    this._callbacks.onError(
+      timelineNotFound(this._limitMs, this._callbacks.runtimeOutOfReach?.() === true),
+    );
   }
 
   get limitMs(): number {
@@ -202,6 +214,7 @@ export class CompositionProbe {
   }
 
   private _readOutcomeAcrossOrigins(attempts: number): ProbeOutcome {
+    if (this._frameError !== null) return { kind: "error", message: this._frameError };
     try {
       return this._poll(attempts);
     } catch (error) {
@@ -212,6 +225,7 @@ export class CompositionProbe {
 
   private _settle(outcome: NonNullable<ProbeOutcome>): void {
     this.stop();
+    this._frameError = null;
     if (outcome.kind === "ready") {
       this._callbacks.onReady(outcome.result);
       return;
@@ -224,7 +238,9 @@ export class CompositionProbe {
     if (this._interval) clearInterval(this._interval);
     this._interval = setInterval(tick, LATE_POLL_MS);
     this._failure = { document: this._iframe.contentDocument, deadline: true };
-    this._callbacks.onError(timelineNotFound(this._limitMs, this._callbacks.sealed?.() === true));
+    this._callbacks.onError(
+      timelineNotFound(this._limitMs, this._callbacks.runtimeOutOfReach?.() === true),
+    );
   }
 
   private _poll(attempts: number): ProbeOutcome {
@@ -235,19 +251,21 @@ export class CompositionProbe {
     const doc = this._iframe.contentDocument;
     const timelines = Reflect.get(win, "__timelines");
     const hasRuntime = this.hasRuntimeBridge(win);
+    const runtimeInjectedOrLinked =
+      this._runtimeInjected || !!doc?.querySelector(`script[${RUNTIME_BOOTSTRAP_ATTR}]`);
     if (
       shouldInjectRuntime({
         hasRuntime,
         hasTimelines: isObjectRecord(timelines) && Object.keys(timelines).length > 0,
         hasNestedCompositions: !!doc?.querySelector("[data-composition-src]"),
-        runtimeInjected: this._runtimeInjected,
+        runtimeInjected: runtimeInjectedOrLinked,
         attempts,
       })
     ) {
       this._injectRuntime();
       return null;
     }
-    if (this._runtimeInjected && !hasRuntime) return null;
+    if (runtimeInjectedOrLinked && !hasRuntime) return null;
     const result = this._resolveReadyResult(win, doc);
     return result ? { kind: "ready", result } : null;
   }

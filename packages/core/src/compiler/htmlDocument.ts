@@ -1,6 +1,6 @@
 import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
 import { findSceneTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   escapeInlineScriptSource,
   indexOfLower,
@@ -429,6 +429,44 @@ export function injectTagsAtHeadStart(html: string, tags: string): string {
     return `${html.slice(0, headOpenEnd + 1)}\n${tags}${html.slice(headOpenEnd + 1)}`;
   }
   return insertBeforeDocumentTag(html, "<body", `${tags}\n`) ?? `${tags}\n${html}`;
+}
+
+const BYTE_ORDER_MARK = 0xfeff;
+
+export function headContentStart(html: string): number {
+  let cursor = html.charCodeAt(0) === BYTE_ORDER_MARK ? 1 : 0;
+  let at = cursor;
+  for (;;) {
+    const prolog = skipProlog(html, cursor);
+    at = Math.max(at, prolog.doctypeEnd);
+    cursor = prolog.next;
+    const isHead = isTagAt(html, cursor, "<head");
+    if (!isHead && !isTagAt(html, cursor, "<html")) return at;
+    const end = findTagEnd(html, cursor + 1);
+    if (end === -1) return at;
+    if (isHead) return end + 1;
+    at = cursor = end + 1;
+  }
+}
+
+function skipProlog(html: string, from: number): { next: number; doctypeEnd: number } {
+  let doctypeEnd = 0;
+  let next = from;
+  while (next < html.length) {
+    const end = prologItemEnd(html, next);
+    if (end <= next) break;
+    if (startsWithLower(html, "<!doctype", next)) doctypeEnd = end;
+    next = end;
+  }
+  return { next, doctypeEnd };
+}
+
+function prologItemEnd(html: string, at: number): number {
+  if (isHtmlWhitespace(html.charAt(at))) return at + 1;
+  if (html.startsWith("<!--", at)) return skipComment(html, at);
+  if (!html.startsWith("<!", at) && !html.startsWith("<?", at)) return at;
+  const close = html.indexOf(">", at);
+  return close === -1 ? -1 : close + 1;
 }
 
 export function injectScriptsAtHeadStart(html: string, scripts: readonly string[]): string {

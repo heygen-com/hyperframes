@@ -1622,6 +1622,20 @@ describe("WebAudioTransport", () => {
         expect(masterGain.connect).not.toHaveBeenCalledWith(busOut);
       });
 
+      // fails without the fix: the transport built its own context, which Safari keeps silent outside a tap.
+      it("plays on the context it is handed instead of making one", () => {
+        const made = vi.fn();
+        vi.stubGlobal("AudioContext", made);
+        const { ctx } = createMockAudioContext();
+        const transport = new WebAudioTransport({ context: ctx as unknown as AudioContext });
+
+        expect(transport.open()).toBe(true);
+
+        expect(transport.context).toBe(ctx);
+        expect(made).not.toHaveBeenCalled();
+        vi.unstubAllGlobals();
+      });
+
       it("reads no master chain from the page when it is given no bus document", async () => {
         document.body.innerHTML = `<div id="root" data-composition-id="main" data-fx-chain='${GAIN_CHAIN}'></div>`;
         const setup = setupGroupTransport(100, { busDocument: null });
@@ -1864,6 +1878,17 @@ describe("WebAudioTransport", () => {
 
     it("leaves a clip that has not loaded to its source", () => {
       expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
+    });
+
+    it("never fetches an hour-long source, too long to decode in the page, on a path that skips the budget", async () => {
+      vi.stubGlobal("mediaHeaderSeconds", () => 3600);
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const t = transport();
+      await expect(t.decodeAudioElement(audio("long.mp4", Number.NaN))).resolves.toBeNull();
+      await expect(t.decodeAudioElement(audio("hour.mp4", 3600))).resolves.toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
     });
   });
 

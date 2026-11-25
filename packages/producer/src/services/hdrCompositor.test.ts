@@ -1,9 +1,13 @@
 import { mkdtempSync, openSync, closeSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ElementStackingInfo } from "@hyperframes/engine";
-import { blitHdrVideoLayer, selectDomLayerShowIds } from "./hdrCompositor.js";
+import {
+  blitHdrVideoLayer,
+  sanitizeTransitionMeta,
+  selectDomLayerShowIds,
+} from "./hdrCompositor.js";
 
 function makeEl(id: string, overrides?: Partial<ElementStackingInfo>): ElementStackingInfo {
   return {
@@ -156,5 +160,28 @@ describe("blitHdrVideoLayer", () => {
         2,
       ),
     ).rejects.toThrow("HDR frame extraction failed");
+  });
+});
+
+describe("sanitizeTransitionMeta", () => {
+  it("keeps well-formed entries, drops malformed ones, and keeps only registered shaders", () => {
+    const warn = vi.fn();
+    const good = { time: 1, duration: 0.5, ease: "power2", fromScene: "a", toScene: "b" };
+    const kept = sanitizeTransitionMeta(
+      [
+        { ...good, shader: "crossfade" },
+        { ...good, shader: "constructor" },
+        { ...good, shader: "not-a-shader" },
+        { ...good, shader: 7 },
+        { ...good, time: Number.NaN },
+        { ...good, duration: "1" },
+        { ...good, fromScene: 3 },
+        null,
+        "x",
+      ],
+      warn,
+    );
+    expect(kept).toEqual([{ ...good, shader: "crossfade" }, good, good, good]);
+    expect(sanitizeTransitionMeta({ length: 1 }, warn)).toEqual([]);
   });
 });

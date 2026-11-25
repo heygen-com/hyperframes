@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, utimesSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
-import { mkdirOwnedWithinProject } from "../helpers/safePath.js";
+import { replaceFileAtomically, replaceFileAtomicallyAsync } from "@hyperframes/core/atomic-file";
+import { mkdirOwnedWithinProjectAsync } from "../helpers/safePath.js";
 
 export const ID_PATH = join(".hyperframes", "history-id");
 /** The only shape minted here; the id is project content and becomes a path, so nothing else is trusted. */
@@ -90,8 +90,8 @@ export async function projectHistoryId(projectDir: string, historyRoot: string):
     (existsSync(join(historyRoot, id)) && !isRecordedFolder(join(historyRoot, id), folder))
   ) {
     id = randomUUID();
-    mkdirOwnedWithinProject(dir, join(dir, ".hyperframes"));
-    replaceFileAtomically(join(dir, ID_PATH), `${id}\n`);
+    await mkdirOwnedWithinProjectAsync(dir, join(dir, ".hyperframes"));
+    await replaceFileAtomicallyAsync(join(dir, ID_PATH), `${id}\n`);
   }
   recordProject(join(historyRoot, id), dir, folder);
   return id;

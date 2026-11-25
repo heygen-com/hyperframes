@@ -232,10 +232,9 @@ describe("a paste is checked as the preview server serves the file", () => {
   });
 
   it("still pastes an svg whose title is plain text", () => {
-    const icon =
-      '<svg viewBox="0 0 4 4"><title>Icon &lt;/title&gt;</title><circle r="2"></circle></svg>';
+    const icon = '<svg viewBox="0 0 4 4"><title>Icon 1 &lt; 2</title><circle r="2"></circle></svg>';
     const file = pasteElementHtml(FILE, { html: icon, readFrom: null }, false, "index.html");
-    expect(file).toMatch(/<title [^>]*>Icon &lt;\/title&gt;<\/title><circle /);
+    expect(file).toMatch(/<title [^>]*>Icon 1 &lt; 2<\/title><circle /);
   });
 });
 
@@ -252,4 +251,29 @@ it("compares each pasted copy with only the elements that could be it", () => {
   pasteTimelineClips(FILE, clips, 0, [], false, "index.html");
   expect(compared.mock.calls.length).toBeLessThanOrEqual(clips.length * 2);
   compared.mockRestore();
+});
+
+// fails without the fix: a copy kept data-composition-file, and Studio then wrote this element's edits to that file.
+describe("a copy from another file cannot choose which file its edits go to", () => {
+  const marked = (mark: string) =>
+    `<div id="moved" class="clip" data-start="0" data-duration="1" data-track-index="1"><p ${mark}="compositions/b.html">x</p></div>`;
+  const MARKS = ["data-composition-file", "data-composition-id", "data-hf-original-composition-id"];
+
+  it.each(MARKS)("refuses a copy carrying %s, as an element or a clip", (mark) => {
+    const html = marked(mark);
+    const readFrom = "compositions/recv.html";
+    expect(() => pasteElementHtml(FILE, { html, readFrom }, false, "index.html")).toThrow(
+      /Couldn't paste/,
+    );
+    const clip = { html, readFrom, start: 0, duration: 1, track: 1 };
+    expect(() => pasteTimelineClips(FILE, [clip], 0, [], false, "index.html")).toThrow(
+      /Couldn't paste/,
+    );
+  });
+
+  it.each(MARKS)("keeps %s on a copy pasted into the file it was read from", (mark) => {
+    const html = marked(mark);
+    const pasted = pasteElementHtml(FILE, { html, readFrom: "index.html" }, true, "index.html");
+    expect(pasted).toContain(`${mark}="compositions/b.html"`);
+  });
 });

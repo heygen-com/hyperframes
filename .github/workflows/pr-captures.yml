@@ -12,16 +12,20 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
     branches: [main]
+  # Runs this file from main, never the PR's code: it only re-runs the PR's own check, which reads the comments.
+  issue_comment:
+    types: [created, edited, deleted]
 
+# A comment run gets a group of its own: anyone's comment starts one, and only the recheck job's group may cancel.
 concurrency:
-  group: pr-captures-${{ github.event.pull_request.number || github.ref }}
+  group: pr-captures-${{ github.event.pull_request.number || (github.event_name == 'issue_comment' && github.run_id) || github.ref }}
   cancel-in-progress: true
 
 jobs:
   captures:
     name: Studio and player captures
     # A merge group has no PR body to read; the queued PR passed this check already.
-    if: github.event_name != 'merge_group'
+    if: github.event_name != 'merge_group' && github.event_name != 'issue_comment'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -40,4 +44,48 @@ jobs:
           HEAD_REPO: ${{ fromJSON(steps.pr.outputs.pr).head.repo.full_name }}
           BASE_REPO: ${{ github.repository }}
           HEAD_SHA: ${{ fromJSON(steps.pr.outputs.pr).head.sha }}
-        run: node scripts/check-pr-captures.mjs --base "origin/$BASE_REF" --head "$HEAD_SHA"
+          PR_AUTHOR: ${{ fromJSON(steps.pr.outputs.pr).user.login }}
+          PR_COMMENTS_FILE: ${{ runner.temp }}/pr-comments.json
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate --slurp "repos/$BASE_REPO/issues/$PR_NUMBER/comments" > "$PR_COMMENTS_FILE"
+          node scripts/check-pr-captures.mjs --base "origin/$BASE_REF" --head "$HEAD_SHA"
+
+  recheck:
+    name: Re-check captures after an author comment
+    # The required check reports on the PR head only from a pull_request run, so the newest one for the head is re-run.
+    if: >-
+      github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+      github.event.comment.user.login == github.event.issue.user.login
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: pr-captures-recheck-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          # Only a run that ran: a fork PR's run waiting for approval is completed with conclusion action_required.
+          RERUNNABLE: >-
+            select(.status == "completed" and
+            (.conclusion == "success" or .conclusion == "failure" or .conclusion == "cancelled")) | .id
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
+          run=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/pr-captures.yml/runs" \
+            -f event=pull_request -f head_sha="$head" -f per_page=1 --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run" ]; then
+            echo "::notice::No pull_request run at $head yet; it reads the comments when it runs."
+            exit 0
+          fi
+          gh run watch "$run" -R "$GITHUB_REPOSITORY" > /dev/null || true
+          ran=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq "$RERUNNABLE")
+          if [ -z "$ran" ]; then
+            echo "::notice::Run $run did not finish a check (waiting for approval, or skipped); not re-run."
+            exit 0
+          fi
+          gh run rerun "$ran" -R "$GITHUB_REPOSITORY"
+          echo "Re-ran run $ran, which reports on $head."

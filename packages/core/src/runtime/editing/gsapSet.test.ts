@@ -1,4 +1,6 @@
+import { gsap as realGsap } from "gsap";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { drawDrafts } from "../editingDraft";
 import { handleFor } from "../editingHandles";
 import { gsapSet, parseGsapSet } from "./gsapSet";
 
@@ -45,4 +47,22 @@ describe("gsap-set", () => {
     expect(parseGsapSet({ handle: "#box", props: { x: 1 } })).toBeNull();
     expect(parseGsapSet({ handle, props: { x: 1 }, extra: true })).toBeNull();
   });
+
+  // fails without the fix: the draft's end put the layer's CSS translate back under the x/y committed from it, so a
+  // sealed resize handed to GSAP drew 50 px off (translate 40px 30px) where an open preview leaves translate none.
+  it.each(["keep-size", "restore"] as const)(
+    "leaves the CSS translate GSAP's committed x/y now carry cleared when the draft ends (%s)",
+    (end) => {
+      Object.assign(window, { gsap: realGsap });
+      const el = box();
+      el.style.translate = "40px 30px";
+      const handle = handleFor(el);
+      drawDrafts([{ handle, translate: { x: -10, y: -4, route: "gsap" }, size: null }]);
+
+      gsapSet({ handle, props: { x: -10.073, y: -3.715 } });
+      drawDrafts([{ handle, end }]);
+
+      expect(el.style.translate).toBe("none");
+    },
+  );
 });

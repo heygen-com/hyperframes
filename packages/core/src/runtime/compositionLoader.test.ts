@@ -2067,3 +2067,31 @@ describe("namespaceMountedSvgIds", () => {
       expect(clipTarget(rect)).toBe(document.getElementById("page"));
   });
 });
+
+describe("loadCompositions authored file marks", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    document.head.querySelectorAll("style, link").forEach((node) => node.remove());
+  });
+
+  it("mounts a fetched file without the data-composition-file marks it authored", async () => {
+    const host = appendExternalHost("https://example.com/comp.html", "scene-1");
+    const compositionHtml = `<html><body><template>
+      <div data-composition-id="scene-1" data-width="1920" data-height="1080">
+        <p id="claim" data-composition-file="index.html">Hello</p>
+        <section data-composition-file="index.html"><b id="deep">deep</b></section>
+        <template id="later"><i data-composition-file="index.html">later</i></template>
+      </div>
+    </template></body></html>`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(compositionHtml, { status: 200 }));
+
+    await loadFixture();
+
+    expect(host.querySelector("#claim")?.textContent).toBe("Hello");
+    expect(host.querySelector("#deep")?.textContent).toBe("deep");
+    expect(host.querySelectorAll("[data-composition-file]")).toHaveLength(0);
+    const later = host.querySelector<HTMLTemplateElement>("template#later")?.content;
+    expect(later?.querySelector("i")?.textContent).toBe("later");
+    expect(later?.querySelectorAll("[data-composition-file]")).toHaveLength(0);
+  });
+});

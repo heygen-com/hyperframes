@@ -80,6 +80,7 @@ interface WebGlProbeInfo {
   hasWebGL: boolean;
   vendor: string;
   renderer: string;
+  driver?: string;
 }
 
 export const SOFTWARE_WEBGL_RENDERER_TOKENS: readonly string[] = [
@@ -146,8 +147,12 @@ async function probeHardwareWebGlInfo(
         ? options.probeLifecycle.launch(ppt, launchOptions)
         : ppt.launch(launchOptions);
     });
+    const browser = probeBrowser;
     return await rejectAfter(
-      readWebGlInfo(probeBrowser),
+      readWebGlInfo(browser).then(async (info) => ({
+        ...info,
+        driver: await readGpuDriver(browser),
+      })),
       GPU_PROBE_TIMEOUT_MS,
       `GPU probe page did not answer within ${GPU_PROBE_TIMEOUT_MS}ms`,
     );
@@ -187,6 +192,18 @@ async function readWebGlInfo(browser: Browser): Promise<WebGlProbeInfo> {
       renderer: renderer == null ? "" : String(renderer),
     };
   });
+}
+
+async function readGpuDriver(browser: Browser): Promise<string> {
+  try {
+    const cdp = await browser.target().createCDPSession();
+    const { gpu } = await cdp.send("SystemInfo.getInfo");
+    const device = gpu.devices[0];
+    return device ? `${device.driverVendor} ${device.driverVersion}`.trim() : "";
+  } catch {
+    // expected: a Chrome build without SystemInfo; the GPU's name still identifies it
+    return "";
+  }
 }
 
 export type AcquiredBrowser = BrowserLease;
@@ -548,6 +565,7 @@ interface GpuProbeOutcome {
   wslAccess?: string[];
   /** Under WSL, Chrome reached the GPU only without WSLg's WAYLAND_DISPLAY. */
   withoutWaylandDisplay?: boolean;
+  gpu?: string;
 }
 
 /**
@@ -617,7 +635,7 @@ async function probeAutoBrowserGpuMode(options: GpuProbeOptions): Promise<GpuPro
   if (detectWsl(options.wslHost) && process.env.WAYLAND_DISPLAY !== undefined) {
     const env = envWithoutWaylandDisplay();
     const retried = await probeWebGlMode(ppt, options, env, "without WAYLAND_DISPLAY: ");
-    if (retried.mode === "hardware") return { mode: "hardware", withoutWaylandDisplay: true };
+    if (retried.mode === "hardware") return { ...retried, withoutWaylandDisplay: true };
   }
   return { ...probed, ...wslAccess(options) };
 }
@@ -641,7 +659,9 @@ async function probeWebGlMode(
     });
     const resolved = resolveWebGlProbeMode(info);
     logResolvedBrowserGpuMode(resolved, label + describeWebGlProbe(info));
-    return resolved === "hardware" ? { mode: "hardware" } : { mode: "software", cause: "no-gpu" };
+    return resolved === "hardware"
+      ? { mode: "hardware", gpu: [info.renderer, info.driver].filter(Boolean).join(" | ") }
+      : { mode: "software", cause: "no-gpu" };
   } catch (err) {
     logResolvedBrowserGpuMode("software", label + formatProbeFailure(err));
     const aborted = err instanceof Error && err.name === "AbortError";
@@ -670,6 +690,11 @@ function launchEnv(fingerprint: Readonly<BrowserLaunchFingerprint>): NodeJS.Proc
   );
   if (swiftShader) for (const name of VULKAN_VARS_THAT_OVERRIDE_SWIFTSHADER) delete env[name];
   return env;
+}
+
+export async function probedHardwareGpu(): Promise<string | undefined> {
+  const outcome = await _autoBrowserGpuModeCache;
+  return outcome?.mode === "hardware" ? outcome.gpu || undefined : undefined;
 }
 
 /** True when a `resolvedMode` render must launch without WAYLAND_DISPLAY to reach the GPU. */

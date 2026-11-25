@@ -21,6 +21,7 @@ const { execFileSyncMock, getCapturedArgv, resetCapturedArgv } = vi.hoisted(() =
     if (cmd === "which" || cmd === "where") return "/usr/bin/python3\n";
     // Anything else is the real synthesis script invocation — capture it.
     capturedArgv = args;
+    process.getBuiltinModule("node:fs").writeFileSync(args[6]!, "stub audio");
     return JSON.stringify({
       outputPath: args[6],
       sampleRate: 24000,
@@ -60,7 +61,7 @@ vi.mock("./manager.js", async (importOriginal) => {
 const { synthesize } = await import("./synthesize.js");
 const { SUPPORTED_LANGS } = await import("./manager.js");
 
-// argv passed to execFileSync: [scriptPath, modelPath, voicesPath, text, voice, speed, outputPath, lang]
+// argv passed to execFileSync: [scriptPath, modelPath, voicesPath, text, voice, speed, stagedOutput, lang]
 const LANG_ARGV_INDEX = 7;
 
 const EXPECTED_ESPEAK_LANGS = {

@@ -1,10 +1,18 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { noDrops } from "./assetDownloader.js";
 import { createPartialCaptureState } from "./partialCapture.js";
-import { runPostExtraction } from "./postExtractionPhase.js";
+import { runPostExtraction, withoutCompositionMarker } from "./postExtractionPhase.js";
 import { createCaptureDownloadBudget } from "./readBoundedResponse.js";
 
 // Only a test that sets `fonts.read` replaces the font reading; the others get the real one.
@@ -72,7 +80,10 @@ describe("runPostExtraction", () => {
     },
   );
 
-  async function runWithFonts(read: () => unknown): Promise<void> {
+  async function runWithFonts(
+    read: () => unknown,
+    bodyHtml?: string,
+  ): Promise<{ outputDir: string }> {
     const root = mkdtempSync(join(tmpdir(), "hyperframes-post-extraction-"));
     onTestFinished(() => rmSync(root, { recursive: true, force: true }));
     const outputDir = join(root, "capture");
@@ -80,6 +91,7 @@ describe("runPostExtraction", () => {
       mkdirSync(join(outputDir, dir), { recursive: true });
     }
     const state = createPartialCaptureState({ url: "https://example.com", outputDir });
+    if (bodyHtml !== undefined) state.extracted.bodyHtml = bodyHtml;
     fonts.read = read;
     await runPostExtraction({
       state,
@@ -102,7 +114,22 @@ describe("runPostExtraction", () => {
       fontDrops: noDrops(),
       canWrite: () => true,
     });
+    return { outputDir };
   }
+
+  // fails without the fix: a captured site that carries the composition marker was saved with it, so Studio listed
+  // extracted/page.html as a composition and ran its scripts on its own origin
+  it("saves the captured page without the composition marker", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { outputDir } = await runWithFonts(
+      () => ({ files: [], families: [], unidentified: [] }),
+      `<div data-composition-id="x"><script>fetch("/api/projects")</script></div><i DATA-COMPOSITION-ID = 'y'></i>`,
+    );
+
+    const saved = readFileSync(join(outputDir, "extracted", "page.html"), "utf-8");
+    expect(saved).toContain(`<script>fetch("/api/projects")</script>`);
+    expect(saved).not.toMatch(/data-composition-id/i);
+  });
 
   const printed = (spy: { mock: { calls: unknown[][] } }): string =>
     spy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
@@ -133,5 +160,27 @@ describe("runPostExtraction", () => {
       "Font metadata extraction failed (non-fatal): bad name table in a\\x07.woff2\nsecond line",
     );
     expect(printed(warn)).not.toContain("\u0007");
+  });
+});
+
+describe("withoutCompositionMarker", () => {
+  // fails without the fix: the old replacement ended in "d", which joined the page text after it into the marker again.
+  it.each([
+    '<div data-composition-id="x"></div>',
+    '<div data-composition-idata-composition-id="x"></div>',
+    '<div data-composition-iddata-composition-idata-composition-id="x"></div>',
+    '<div DATA-Composition-IData-composition-ID="x"></div>',
+    `<div data-composition-id${"ata-composition-id".repeat(50)}="x"></div>`,
+    '<div data-composition-data-composition-idid="x"></div>',
+  ])("leaves no marker in any letter case: %s", (html) => {
+    const saved = withoutCompositionMarker(html);
+    expect(saved.toLowerCase()).not.toContain("data-composition-id");
+    expect(withoutCompositionMarker(saved)).toBe(saved);
+  });
+
+  it("changes nothing else on the page", () => {
+    expect(withoutCompositionMarker('<p id="a">data-composition</p>')).toBe(
+      '<p id="a">data-composition</p>',
+    );
   });
 });

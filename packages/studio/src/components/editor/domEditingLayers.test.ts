@@ -339,7 +339,7 @@ describe("liveLayerElement", () => {
   it("finds a replaced layer again in its own file when a sub-composition repeats its id", () => {
     document.body.innerHTML =
       '<div data-composition-id="main">' +
-      '<div data-composition-id="strip" data-composition-src="compositions/strip.html">' +
+      '<div data-composition-id="strip" data-composition-src="compositions/strip.html" data-composition-file="compositions/strip.html">' +
       '<div id="card-1">strip</div></div><div id="card-1">root</div></div>';
     const stale = document.createElement("div");
     const layer = {

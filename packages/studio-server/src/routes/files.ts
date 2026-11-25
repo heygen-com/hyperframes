@@ -31,11 +31,13 @@ import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
   folderGone,
   isInHiddenOrVendorDir,
+  isPrivateProjectFile,
   isSafePath,
   isWritableProjectFile,
   mkdirWithinProject,
   pinWithinProject,
   pinWritableWithinProject,
+  projectRelativePath,
   protectedEntryWithin,
   resolveWithinProject,
   resolveWritableWithinProject,
@@ -105,7 +107,7 @@ import {
   type SplitRefusal,
 } from "../helpers/sourceMutation.js";
 import { ensureStudioFontFaceCss, isStudioFontFaceCss } from "../helpers/studioFontFace.js";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
   CompositionInsertionError,
@@ -203,7 +205,7 @@ async function resolveProjectPath(
   c: RouteContext,
   adapter: StudioApiAdapter,
   route: string,
-  opts?: { mustExist?: boolean; pin?: boolean; write?: boolean },
+  opts?: { mustExist?: boolean; pin?: boolean; write?: WriteTarget; markup?: boolean },
 ) {
   const id = c.req.param("id");
   const project = await adapter.resolveProject(id);
@@ -237,8 +239,11 @@ async function resolveProjectPath(
     }
     return { error: c.json({ error: "forbidden", why: "outside_project" }, 403) } as const;
   }
-  if (opts?.write && !isWritableProjectFile(project.dir, absPath)) {
+  if (opts?.write && !writableAs(project.dir, absPath, opts.write)) {
     return { error: c.json({ error: "forbidden", why: "protected_path" }, 403) } as const;
+  }
+  if (opts?.markup && !isMarkupFile(absPath)) {
+    return { error: c.json({ error: "forbidden", why: "not_html" }, 403) } as const;
   }
 
   if (opts?.mustExist && !existsSync(absPath)) {
@@ -248,16 +253,35 @@ async function resolveProjectPath(
   return { project, filePath, absPath } as const;
 }
 
+const protectedPath = (c: RouteContext) =>
+  c.json({ error: "forbidden", why: "protected_path" }, 403);
+
+type WriteTarget = "file" | "file-or-folder";
+
+const writableAs = (projectDir: string, absPath: string, target: WriteTarget) =>
+  isWritableProjectFile(projectDir, absPath, target === "file" ? "file" : undefined);
+
+const isMarkupFile = (path: string) => /\.html?$/i.test(path);
+
+const pinMarkupFile = (projectDir: string, path: string) => {
+  const absPath = pinWritableWithinProject(projectDir, path);
+  return absPath && isMarkupFile(absPath) ? absPath : null;
+};
+
 function resolveProjectFile(
   c: RouteContext,
   adapter: StudioApiAdapter,
-  opts?: { mustExist?: boolean; pin?: boolean; write?: boolean },
+  opts?: { mustExist?: boolean; pin?: boolean; write?: WriteTarget },
 ) {
   return resolveProjectPath(c, adapter, "files", opts);
 }
 
 function resolveFileMutationContext(c: RouteContext, adapter: StudioApiAdapter, operation: string) {
-  return resolveProjectPath(c, adapter, `file-mutations/${operation}`, { pin: true, write: true });
+  return resolveProjectPath(c, adapter, `file-mutations/${operation}`, {
+    pin: true,
+    write: "file",
+    markup: true,
+  });
 }
 
 type MutationTarget = {
@@ -455,7 +479,7 @@ function foldAndCommitElementPatchBatches(
   }> = [];
 
   for (const batch of batches) {
-    const absPath = pinWritableWithinProject(projectDir, batch.sourceFile);
+    const absPath = pinMarkupFile(projectDir, batch.sourceFile);
     if (!absPath) return { error: "forbidden", sourceFile: batch.sourceFile };
     if (resolvedPaths.has(absPath)) return { error: "duplicate", sourceFile: batch.sourceFile };
     resolvedPaths.add(absPath);
@@ -744,23 +768,27 @@ function updateReferences(
   oldPath: string,
   newPath: string,
   isDirectory: boolean,
-): number {
+): { updated: number; unchanged: string[] } {
   const textFiles = walkFiles(projectDir, canNameFiles);
 
   const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
   let updatedCount = 0;
+  const unchanged: string[] = [];
   for (const file of textFiles) {
-    if (!isSafePath(projectDir, file) || !isWritableProjectFile(projectDir, file)) continue;
+    if (!isSafePath(projectDir, file) || isPrivateProjectFile(projectDir, file)) continue;
     const content = readableText(file);
     if (content === null) continue;
 
     const updated = rewrite(content, referenceSyntax(file));
-    if (updated !== content) {
-      replaceFileAtomically(file, updated, statSync(file).mode);
-      updatedCount++;
+    if (updated === content) continue;
+    if (!isWritableProjectFile(projectDir, file)) {
+      unchanged.push(projectRelativePath(projectDir, file));
+      continue;
     }
+    replaceFileAtomically(file, updated, statSync(file).mode);
+    updatedCount++;
   }
-  return updatedCount;
+  return { updated: updatedCount, unchanged };
 }
 
 // ── GSAP script extraction ──────────────────────────────────────────────────
@@ -2624,10 +2652,11 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Write (overwrite) ──
 
   api.put("/projects/:id/files/*", async (c) => {
-    const res = await resolveProjectFile(c, adapter, { pin: true, write: true });
+    const res = await resolveProjectFile(c, adapter, { pin: true, write: "file" });
     if ("error" in res) return res.error;
 
     const body = Buffer.from(await c.req.arrayBuffer());
+    if (!writableAs(res.project.dir, res.absPath, "file")) return protectedPath(c);
     const expectedVersion = c.req.header("If-Match")?.trim() ?? null;
     const createOnly = c.req.header("If-None-Match")?.trim() === "*";
     if (expectedVersion === null && !createOnly) {
@@ -2733,11 +2762,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Create (fail if exists) ──
 
   api.post("/projects/:id/files/*", async (c) => {
-    const res = await resolveProjectFile(c, adapter, { write: true });
+    const res = await resolveProjectFile(c, adapter, { write: "file" });
     if ("error" in res) return res.error;
 
-    ensureDir(res.project.dir, res.absPath);
     const body = Buffer.from(await c.req.arrayBuffer());
+    if (!writableAs(res.project.dir, res.absPath, "file")) return protectedPath(c);
+    ensureDir(res.project.dir, res.absPath);
     try {
       createFileAtomically(res.absPath, body);
     } catch (error) {
@@ -2753,7 +2783,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Delete ──
 
   api.delete("/projects/:id/files/*", async (c) => {
-    const res = await resolveProjectFile(c, adapter, { mustExist: true, write: true });
+    const res = await resolveProjectFile(c, adapter, { mustExist: true, write: "file-or-folder" });
     if ("error" in res) return res.error;
 
     const stat = statSync(res.absPath);
@@ -2938,7 +2968,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const seen = new Set<string>();
       const prepared: FoldedAtomicCutFile[] = [];
       for (const file of files) {
-        const absPath = pinWritableWithinProject(project.dir, file.path);
+        const absPath = pinMarkupFile(project.dir, file.path);
         if (!absPath) return c.json({ error: `forbidden path: ${file.path}` }, 403);
         if (seen.has(absPath)) return c.json({ error: `duplicate path: ${file.path}` }, 400);
         seen.add(absPath);
@@ -3435,7 +3465,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Rename / Move ──
 
   api.patch("/projects/:id/files/*", async (c) => {
-    const res = await resolveProjectFile(c, adapter, { mustExist: true, write: true });
+    const res = await resolveProjectFile(c, adapter, { mustExist: true, write: "file-or-folder" });
     if ("error" in res) return res.error;
 
     const body: unknown = await c.req.json();
@@ -3450,13 +3480,17 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "newPath required" }, 400);
     }
 
-    const newAbs = resolveWritableWithinProject(res.project.dir, newPath);
+    const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
+    const newAbs = resolveWritableWithinProject(
+      res.project.dir,
+      newPath,
+      isDirectory ? "folder" : "file",
+    );
     if (!newAbs) return forbiddenWriteTarget(c, res.project.dir, newPath);
     if (existsSync(newAbs)) {
       return c.json({ error: "already exists" }, 409);
     }
 
-    const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
     if (isDirectory && protectedEntryWithin(res.project.dir, res.absPath, newAbs)) {
       return c.json({ error: "forbidden", why: "protected_path" }, 403);
     }
@@ -3464,9 +3498,14 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     renameSync(res.absPath, newAbs);
 
     // Update references to the old path across all project files
-    const updatedFiles = updateReferences(res.project.dir, res.filePath, newPath, isDirectory);
+    const references = updateReferences(res.project.dir, res.filePath, newPath, isDirectory);
 
-    return c.json({ ok: true, path: newPath, updatedReferences: updatedFiles });
+    return c.json({
+      ok: true,
+      path: newPath,
+      updatedReferences: references.updated,
+      unchangedReferences: references.unchanged,
+    });
   });
 
   // ── Duplicate ──
@@ -3517,7 +3556,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
       // Optional subdirectory within the project (e.g. "assets/audio")
       const subDir = c.req.query("dir") ?? "";
-      const targetDir = subDir ? resolveWritableWithinProject(project.dir, subDir) : project.dir;
+      const targetDir = subDir
+        ? resolveWritableWithinProject(project.dir, subDir, "folder")
+        : project.dir;
       if (!targetDir) return c.json({ error: "forbidden" }, 403);
 
       const formData = await c.req.formData();
@@ -3577,7 +3618,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectPath(c, adapter, "gsap-mutations", {
       mustExist: true,
       pin: true,
-      write: true,
+      write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 
@@ -3592,7 +3634,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectPath(c, adapter, "gsap-mutations-batch", {
       mustExist: true,
       pin: true,
-      write: true,
+      write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 
@@ -3616,7 +3659,8 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectPath(c, adapter, "gsap-mutation-rollback", {
       mustExist: true,
       pin: true,
-      write: true,
+      write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 

@@ -939,8 +939,11 @@ describe("media metadata cache invalidation", () => {
     const { extractMediaMetadata } = await import("./ffprobe.js");
     try {
       const failed = expect(extractMediaMetadata(file)).rejects.toThrow(/code 1/);
+      // Each probe first walks the file for a playlist leaving its folder, so it spawns a tick later.
+      await vi.waitFor(() => expect(processes).toHaveLength(1));
       writeFileSync(file, "updated file with different dimensions");
       const replacement = extractMediaMetadata(file);
+      await vi.waitFor(() => expect(processes).toHaveLength(2));
       processes[0]?.emit("close", 1);
       await failed;
       const shared = extractMediaMetadata(file);
@@ -2182,12 +2185,14 @@ describe("final video frame timestamp probes", () => {
       metadata,
       firstController.signal,
     );
+    // Each probe walks its file before it spawns; wait so the first probe owns processes[0].
+    await vi.waitFor(() => expect(processes).toHaveLength(1));
     const second = extractFinalVideoFrameTimestamp(
       "/tmp/shared-source.mp4",
       metadata,
       secondController.signal,
     );
-    expect(processes).toHaveLength(2);
+    await vi.waitFor(() => expect(processes).toHaveLength(2));
 
     firstController.abort();
     await expect(first).rejects.toThrow(/ffprobe abort/);

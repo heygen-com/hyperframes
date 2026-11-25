@@ -80,7 +80,7 @@ ENV CONTAINER=true
 # baselines in packages/producer/tests/*/output/output.mp4 stay reproducible.
 # Each Chrome stable bump shifts pixel output enough to fail PSNR. Bump this
 # version together with regenerating baselines via `docker:test:update`.
-RUN npx --yes @puppeteer/browsers install chrome-headless-shell@158.0.8127.36 \
+RUN npx --yes @puppeteer/browsers install chrome-headless-shell@158.0.8127.88 \
       --path /root/.cache/puppeteer \
     && find /root/.cache/puppeteer/chrome-headless-shell -name "chrome-headless-shell" -type f \
     && echo "chrome-headless-shell installed"
@@ -97,6 +97,8 @@ ENV PATH="/root/.bun/bin:$PATH"
 # lockfile change and fails.
 COPY package.json bun.lock ./
 COPY packages/parsers/package.json packages/parsers/package.json
+# The share workspace typechecks this subpath during bun install.
+COPY packages/parsers/src/privatePath.ts packages/parsers/src/privatePath.ts
 COPY packages/lint/package.json packages/lint/package.json
 COPY packages/studio-server/package.json packages/studio-server/package.json
 COPY packages/core/package.json packages/core/package.json

@@ -11,14 +11,17 @@ writeFileSync(
   join(projectDir, "index.html"),
   '<div data-composition-id="main" data-width="320" data-height="180"></div>',
 );
-writeFileSync(join(projectDir, "page.html"), "<script>document.title = 'ran'</script>");
+writeFileSync(
+  join(projectDir, "page.html"),
+  `<div data-composition-id="page"></div><script>document.title = 'ran'</script>`,
+);
 writeFileSync(
   join(projectDir, "icon.svg"),
   '<svg xmlns="http://www.w3.org/2000/svg"><script>void 0</script></svg>',
 );
 writeFileSync(
   join(projectDir, "clip.html"),
-  '<video id="local" src="clip.mp4"></video><video id="remote" src="https://cdn.example/a.mp4"></video>',
+  '<div data-composition-id="clip"><video id="local" src="clip.mp4"></video><video id="remote" src="https://cdn.example/a.mp4"></video></div>',
 );
 afterAll(() => rmSync(projectDir, { recursive: true, force: true }));
 
@@ -88,6 +91,40 @@ describe("a preview document answered to another site", () => {
   it("leaves a file that is not a document as served", async () => {
     const res = await get("/projects/demo/preview/icon.svg", "cross-site");
     expect(await res.text()).not.toContain(MARK);
+  });
+});
+
+describe.each(routes)("%s opened by direct navigation", (_name, path, type) => {
+  const guarded = createStudioApi(adapter, { sandboxDirectOpens: true });
+  const open = (app: typeof api, headers: Record<string, string> = {}) =>
+    app.request(`http://localhost${path}`, {
+      headers: { "sec-fetch-site": "none", "sec-fetch-dest": "document", ...headers },
+    });
+
+  it("is sandboxed, marked and never sniffed when the host asks for it", async () => {
+    const res = await open(guarded);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain(type);
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await res.text()).includes("hyperframes-preview-for-another-site")).toBe(
+      type === "text/html",
+    );
+  });
+
+  it("is answered in full, not from the copy a Studio frame cached", async () => {
+    const etag = (await get(path, "same-origin")).headers.get("etag");
+    const res = await open(guarded, etag ? { "if-none-match": etag } : {});
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+  });
+
+  it("keeps its origin in a Studio frame, and for a host that does not ask", async () => {
+    const framed = await guarded.request(`http://localhost${path}`, {
+      headers: { "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" },
+    });
+    expect(framed.headers.get("content-security-policy")).toBeNull();
+    expect((await open(api)).headers.get("content-security-policy")).toBeNull();
   });
 });
 

@@ -35,6 +35,7 @@ import {
   transcribe as transcribeWithWhisper,
   type TranscribeProgress,
 } from "../whisper/transcribe.js";
+import { PLAYLIST_LEAVES_FOLDER, playlistLeavingItsFolder } from "../utils/playlistInput.js";
 
 // Smallest accepted whisper timeout. Below it the whisper spawn has no realistic chance of
 // finishing even on the fastest hardware for the shortest clip.
@@ -177,6 +178,9 @@ export async function runTranscribe(options: TranscribeRequest): Promise<Transcr
   const inputPath = resolve(options.input);
   if (!existsSync(inputPath)) {
     throw new TranscribeError("input_not_found", `File not found: ${options.input}`);
+  }
+  if (await playlistLeavingItsFolder([inputPath])) {
+    throw new TranscribeError("failed", `${options.input} ${PLAYLIST_LEAVES_FOLDER}`);
   }
 
   // Default to the directory containing the input file so transcript.json

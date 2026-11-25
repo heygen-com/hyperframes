@@ -1,5 +1,7 @@
 /** A gesture on a frame Studio cannot script starts from one `gesture-start` read (core `editingGestureStart.ts`). */
 import type { EditingGestureStart } from "@hyperframes/core/runtime/editing-port";
+import { measureGrowResponse } from "@hyperframes/core/drawn-box";
+import { settleGsapSnapshot } from "../../hooks/gsapFrameSnapshot";
 import { previewGestureStart } from "../../player/lib/previewElements";
 import { previewRootHasNoSize, whenPreviewStageSized } from "../../player/lib/bridgePlayback";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
@@ -18,6 +20,7 @@ export interface PreviewGestureStart {
   screenToOffset: ManualOffsetDragMatrix | null;
   /** GSAP's x/y when it owns the element's position, and whether a tween with a duration moves it. */
   gsap: { x: number; y: number; moving: boolean; drawsTranslate?: true } | null;
+  gsapAt?: { x: number; y: number };
   gsapRotation?: number | null;
   grow?: { a: number; b: number; c: number; d: number };
   cssRotation?: EditingGestureStart["cssRotation"];
@@ -31,6 +34,23 @@ export interface PreviewGestureStarts {
 const startLayouts = new Map<string, PreviewGestureStart["layout"]>();
 
 export const gestureStartLayout = (handle: string) => startLayouts.get(handle) ?? null;
+
+type Grow = NonNullable<EditingGestureStart["grow"]>;
+
+function growOnOverlay(grow: Grow, sx: number, sy: number): Grow {
+  return { a: grow.a * sx, b: grow.b * sy, c: grow.c * sx, d: grow.d * sy };
+}
+
+export function measureLiveGrow(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): Grow | null {
+  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
+  const layout = { width: element.offsetWidth, height: element.offsetHeight };
+  const grow = scale && measureGrowResponse(element, layout);
+  return grow ? growOnOverlay(grow, scale.rootScaleX, scale.rootScaleY) : null;
+}
 
 /** Everything a gesture on `handles` reads from the frame, in one request; null when it cannot answer. */
 export async function measurePreviewGestureStart(
@@ -73,15 +93,9 @@ export async function measurePreviewGestureStart(
             layout: start.layout,
             screenToOffset: screenToOffset(start.move),
             gsap: start.gsap,
+            gsapAt: start.gsapAt,
             gsapRotation: start.gsapRotation,
-            grow: start.grow
-              ? {
-                  a: start.grow.a * sx,
-                  b: start.grow.b * sy,
-                  c: start.grow.c * sx,
-                  d: start.grow.d * sy,
-                }
-              : undefined,
+            grow: start.grow ? growOnOverlay(start.grow, sx, sy) : undefined,
             cssRotation: start.cssRotation,
           },
         },
@@ -109,6 +123,7 @@ export async function askShownGestureStarts(
   overlay: HTMLDivElement | null,
   path: string | null,
   selections: DomEditSelection[],
+  routeFromSnapshot = false,
 ): Promise<OverChannel | null | typeof UNANSWERED> {
   const found = await Promise.all(
     selections.map((selection) => findPreviewElementForSelection(iframe, selection, path)),
@@ -117,8 +132,11 @@ export async function askShownGestureStarts(
   const handles = found.map((element) => element?.handle);
   if (!overlay || !handles.length || !handles.every(Boolean)) return null;
   await whenPreviewStageSized(iframe, PRESS_WAIT_MAX_MS);
-  const read = await measurePreviewGestureStart(iframe, overlay, handles as string[]);
-  if (!read) return UNANSWERED;
+  const [read, gsapRouteReadable] = await Promise.all([
+    measurePreviewGestureStart(iframe, overlay, handles as string[]),
+    routeFromSnapshot ? settleGsapSnapshot(iframe) : true,
+  ]);
+  if (!read || !gsapRouteReadable) return UNANSWERED;
   const shown = selections.flatMap((selection, i) => {
     const start = read.elements[i];
     const onFrame = found[i];

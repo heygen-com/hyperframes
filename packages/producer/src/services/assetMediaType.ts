@@ -114,7 +114,7 @@ export function dropMediaOutsideProject(input: {
   const staysInside = ({ id, src }: { id: string; src: string }) => {
     if (!src || isHttpUrl(src)) return true;
     const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
-    if (isPrivateUnderAssetRoots(path, roots)) {
+    if (isPrivateUnderAssetRoots(path, roots, input.allowOutsideProjectAssets)) {
       log.warn(`[Render] Media "${id}" source is missing: it is a private project file`, { src });
       return false;
     }

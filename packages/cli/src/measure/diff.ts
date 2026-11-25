@@ -603,7 +603,10 @@ async function captureProject(
   return {
     dir: seq,
     clip: {
-      input: ["-framerate", ref.fpsText, "-i", join(seq, "%06d.png")],
+      input: [
+        ...["-framerate", ref.fpsText, "-protocol_whitelist", "file", "-f", "image2"],
+        ...["-i", join(seq, "%06d.png")],
+      ],
       filters: [],
       width: ref.width,
       height: ref.height,
@@ -1434,7 +1437,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
     const ledgerText =
       opts.ledger && existsSync(opts.ledger) ? readFileSync(opts.ledger, "utf8") : undefined;
     const people = new Map<Segment, PersonVerdict>();
-    let clips: ReturnType<typeof placeClips> = [];
+    let clips: Awaited<ReturnType<typeof placeClips>> = [];
     const regenerated = opts.segments?.some((s) => s.regenerated || s.pixels === "regenerated");
     if (offset && regenerated && yoursInfo)
       warnings.push(
@@ -1450,7 +1453,9 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       const uses = project
         ? await clipUses(project).catch(() => new Map<string, never[]>())
         : new Map<string, never[]>();
-      clips = ledgerText ? placeClips(generatedClips(ledgerText), project, ref, refCuts, uses) : [];
+      clips = ledgerText
+        ? await placeClips(generatedClips(ledgerText), project, ref, refCuts, uses)
+        : [];
       if (clips.length && clips.every((c) => !c.info))
         warnings.push(
           "the ledger's generated clips are not found, so text carried in them is not checked: pass --project <folder>",

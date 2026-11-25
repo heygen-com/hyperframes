@@ -18,7 +18,9 @@ try {
       "build",
       "packages/studio/src/components/editor/colorValue.ts",
       "packages/studio/src/components/editor/gradientValue.ts",
-      "packages/studio/src/components/editor/inlineTextStyleRead.ts",
+      "packages/core/src/utils/inlineTextStyleRead.ts",
+      "--root",
+      "packages",
       "--target",
       "browser",
       "--outdir",
@@ -26,8 +28,8 @@ try {
     ],
     { cwd: resolve(dirname(fileURLToPath(import.meta.url)), "../../../..") },
   );
-  const moduleUrl = (name) =>
-    `data:text/javascript;base64,${readFileSync(join(output, `${name}.js`)).toString("base64")}`;
+  const moduleUrl = (path) =>
+    `data:text/javascript;base64,${readFileSync(join(output, `${path}.js`)).toString("base64")}`;
   browser = await puppeteer.launch({
     executablePath: resolveChromeExecutable(),
     headless: true,
@@ -102,9 +104,9 @@ try {
         alphaGradient: insertGradientStop(alphaGradient, 50).stops[1].color,
       };
     },
-    moduleUrl("colorValue"),
-    moduleUrl("gradientValue"),
-    moduleUrl("inlineTextStyleRead"),
+    moduleUrl("studio/src/components/editor/colorValue"),
+    moduleUrl("studio/src/components/editor/gradientValue"),
+    moduleUrl("core/src/utils/inlineTextStyleRead"),
   );
   const expected = [
     [255, 255, 255, 1],
@@ -145,7 +147,11 @@ try {
     }
     assert.ok(Math.abs(actual.alpha - channels[3]) < 0.000001, `color ${index} alpha`);
   }
-  assert.equal(results.darkParse, null, "light-dark() needs the element's colour scheme");
+  assert.deepEqual(
+    results.darkParse,
+    { red: 255, green: 0, blue: 0, alpha: 1 },
+    "the swatch reads light-dark() as it paints in the element's colour scheme",
+  );
   assert.equal(results.darkPicker, "#ff0000", "dark-scheme light-dark() picks what it paints");
   assert.equal(results.mixedPicker, "#ff0000", "the picker reads the element its colour came from");
   assert.equal(results.picker, "#00b9c3");

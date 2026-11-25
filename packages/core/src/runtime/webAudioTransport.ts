@@ -26,6 +26,7 @@ import { assetUrl } from "./assetUrl.js";
 import { mediaElementTime } from "./mediaClock.js";
 import { sourceLengthOf } from "./sourceLength.js";
 import { clampFadesToDuration, fadeGain, readElementFades } from "../audioFade.js";
+import { AudioTooLong, assertDecodeFits, unreadFits } from "../audioDecode.js";
 
 const MASTER_FX_ATTRS: FxAttributes = { automation: null };
 
@@ -244,6 +245,7 @@ export class WebAudioTransport {
   /** Request options for every decode fetch, over `cache: "no-store"`. */
   private readonly _fetchInit: RequestInit;
   private readonly _busDocument: Document | null | undefined;
+  private _givenContext: AudioContext | null;
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
@@ -307,16 +309,21 @@ export class WebAudioTransport {
     return this.open();
   }
 
-  constructor(opts: { fetchInit?: RequestInit; busDocument?: Document | null } = {}) {
+  /** `context`: one the caller opened inside a tap, which Safari only lets sound when made there. */
+  constructor(
+    opts: { fetchInit?: RequestInit; busDocument?: Document | null; context?: AudioContext } = {},
+  ) {
     this._fetchInit = opts.fetchInit ?? {};
     this._busDocument = opts.busDocument;
+    this._givenContext = opts.context ?? null;
   }
 
   /** Builds the context on the calling thread: on Windows that opens the audio device and can block seconds. */
   open(): boolean {
     if (this._ctx) return true;
     try {
-      this._ctx = new AudioContext();
+      this._ctx = this._givenContext ?? new AudioContext();
+      this._givenContext = null;
       this._ctx.onstatechange = () => this.rest();
       this._masterGain = this._ctx.createGain();
       this._busOut = this._ctx.createGain();
@@ -414,17 +421,23 @@ export class WebAudioTransport {
     return bytes;
   }
 
-  private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
-    if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
+  /** Whether its length was read, for a source that has not failed for good and is not too long to decode. */
+  private async mayDecode(src: string, el: HTMLMediaElement): Promise<"read" | "unread" | null> {
     if (this._failedSrcs.has(src)) return null;
-    if (!this._ctx) return null;
+    try {
+      return await assertDecodeFits(src, el.duration);
+    } catch (err) {
+      if (!(err instanceof AudioTooLong)) throw err;
+      this._failedSrcs.add(src);
+      return null;
+    }
+  }
 
-    // Fetch the bytes. A network error or non-OK status (e.g. a 404 for an
-    // asset that simply has not been uploaded yet) is TRANSIENT — return null
-    // WITHOUT blacklisting, so the next play/seek generation retries once the
-    // asset becomes available. (Previously these were added to `_failedSrcs`,
-    // which is never cleared, permanently silencing a merely-late track.)
-    let arrayBuffer: ArrayBuffer;
+  // Fetch the bytes. A network error or non-OK status (e.g. a 404 for an
+  // asset that simply has not been uploaded yet) is TRANSIENT — return null
+  // WITHOUT blacklisting, so the next play/seek generation retries once the
+  // asset becomes available.
+  private async fetchBytes(src: string, el: HTMLMediaElement): Promise<ArrayBuffer | null> {
     try {
       // `no-store`: a retry must actually re-request the asset — not replay a
       // cached 404/stale response from the failed attempt that we chose not to
@@ -435,16 +448,40 @@ export class WebAudioTransport {
         reportMediaLoadFailure(el, "fetch", response.status);
         return null;
       }
-      arrayBuffer = await response.arrayBuffer();
+      return await response.arrayBuffer();
     } catch (err) {
       swallow("webAudioTransport.fetch", err);
       reportMediaLoadFailure(el, "fetch", null);
       return null;
     }
+  }
 
-    // A decode failure means the bytes themselves are unusable (corrupt or an
-    // unsupported codec) — that IS permanent, so blacklist to avoid re-decoding
-    // the same bad payload on every generation.
+  private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
+    if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
+    if (!this._ctx) return null;
+    const length = await this.mayDecode(src, el);
+    if (!length) return null;
+
+    const arrayBuffer = await this.fetchBytes(src, el);
+    if (!arrayBuffer) return null;
+
+    // A source whose length can't be read and whose bytes could pass the budget plays through its element.
+    if (length === "unread" && !unreadFits(arrayBuffer.byteLength)) {
+      this._failedSrcs.add(src);
+      return null;
+    }
+    return this.decode(src, el, arrayBuffer);
+  }
+
+  // A decode failure means the bytes themselves are unusable (corrupt or an
+  // unsupported codec) — that IS permanent, so blacklist to avoid re-decoding
+  // the same bad payload on every generation.
+  private async decode(
+    src: string,
+    el: HTMLMediaElement,
+    arrayBuffer: ArrayBuffer,
+  ): Promise<AudioBuffer | null> {
+    if (!this._ctx) return null;
     try {
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
       // A file whose container timescale disagrees with its stream decodes short; its element plays it whole.

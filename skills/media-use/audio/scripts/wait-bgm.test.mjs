@@ -116,6 +116,38 @@ test("records locally made music as generated once it is ready", () => {
   }
 });
 
+// fails without the fix: any file at the track name counted as the finished track.
+test("the track that was there when the job started is not the finished track; a file put there since is", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  try {
+    mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+    const track = join(dir, "assets/bgm/track.wav");
+    writeFileSync(track, "last run's track");
+    const old = lstatSync(track);
+    const wait = (replaces) => {
+      writeFileSync(
+        join(dir, "audio_meta.json"),
+        JSON.stringify({
+          bgm: { path: "assets/bgm/track.wav" },
+          bgm_pending: true,
+          bgm_replaces: replaces,
+        }),
+      );
+      const script = new URL("./wait-bgm.mjs", import.meta.url).pathname;
+      const args = ["--audio-meta", join(dir, "audio_meta.json"), "--hyperframes", dir];
+      const run = spawnSync(process.execPath, [script, ...args, "--timeout-ms", "0"]);
+      assert.equal(run.status, 0, String(run.stderr));
+      return JSON.parse(readFileSync(join(dir, "bgm_status.json"), "utf8")).status;
+    };
+
+    assert.equal(wait({ ino: old.ino, size: old.size, mtime_ms: old.mtimeMs }), "timeout");
+    assert.equal(wait({ ino: old.ino + 1, size: old.size, mtime_ms: old.mtimeMs }), "ready");
+    assert.equal(wait(null), "ready");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // A finished-but-missing track with no live renderer, so wait-bgm reports on the log at once.
 function waitWithLog(bgmLog, files = {}) {
   const base = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));

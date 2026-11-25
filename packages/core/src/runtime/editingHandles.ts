@@ -212,6 +212,18 @@ export function ancestorHandles(
   });
 }
 
+export function readEveryMatch<T>(
+  selector: string,
+  read: (element: Element) => T,
+): { matches: Array<T | null>; truncated: boolean } {
+  const matches: Array<T | null> = [];
+  for (const element of document.querySelectorAll(selector)) {
+    if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
+    matches.push(boundedSource(element) ? read(element) : null);
+  }
+  return { matches, truncated: false };
+}
+
 export function queryElements(selector: string): {
   matches: EditingElementMatch[];
   truncated: boolean;
