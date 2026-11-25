@@ -135,15 +135,3 @@ export function resizeRemainderShift(
   const kh = (sv * (wanted.height - written.height)) / (2 * written.height);
   return { x: u.x * kw + v.x * kh, y: u.y * kw + v.y * kh };
 }
-
-/** Per-frame anchored-resize center accumulator: ADD the residual center correction
- *  (fixedStart − fixedNow) onto the previous anchor so the pin CONVERGES instead of
- *  oscillating (fa4f39168). Pure; exported for the release-shift characterization tests. */
-export function computeNextResizeAnchor(
-  prev: { dx: number; dy: number } | undefined,
-  fixedStart: { x: number; y: number },
-  fixedNow: { x: number; y: number },
-): { dx: number; dy: number } {
-  const base = prev ?? { dx: 0, dy: 0 };
-  return { dx: base.dx + (fixedStart.x - fixedNow.x), dy: base.dy + (fixedStart.y - fixedNow.y) };
-}

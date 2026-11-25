@@ -19,7 +19,7 @@
  * can stretch the terminal packet in the final MP4.
  */
 
-import { localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegCwd, localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import {
@@ -718,6 +718,7 @@ async function spawnFfprobeJson<T>(
   const proc = spawn(getFfprobeBinary(), args, {
     ...(env && { env }),
     stdio: ["ignore", "pipe", "pipe"],
+    cwd: ffmpegCwd(),
     windowsHide: true,
   });
   trackChildProcess(proc);

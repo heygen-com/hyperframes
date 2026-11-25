@@ -42,6 +42,7 @@ export {
   parsesAsScript,
 } from "./htmlBundler";
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+export { dropAuthoredCompositionFiles } from "../compositionSource";
 export { boundMediaSrc } from "../runtime/applyVariableBindings";
 
 export {

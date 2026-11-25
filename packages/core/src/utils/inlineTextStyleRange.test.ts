@@ -657,7 +657,7 @@ describe("readInlineStyleSpread", () => {
     expect(readInlineStyleSpread(rangeOver(host, 0, 12), "color")).toEqual(["red", "lime"]);
   });
 
-  it("is empty when the characters carry no colour of their own", () => {
+  it("is empty when nothing gives the characters a colour", () => {
     const host = mount("Hello world");
 
     expect(readInlineStyleSpread(rangeOver(host, 0, 5), "color")).toEqual([]);

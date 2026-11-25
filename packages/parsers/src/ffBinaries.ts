@@ -1,14 +1,18 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import {
   accessSync,
   closeSync,
   constants,
   existsSync,
+  mkdtempSync,
   openSync,
   readSync,
+  rmdirSync,
   statSync,
 } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Readable } from "node:stream";
 import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js";
@@ -338,6 +342,30 @@ export function _setDemuxerListingForTests(listing?: string): void {
   listingOverride = listing;
   demuxerLists.clear();
 }
+
+let workingDir: string | undefined;
+
+/** Empty folder ffmpeg runs from, so a name it opens as written finds no project file. Callers pass absolute paths. */
+export function ffmpegWorkingDir(): string {
+  if (workingDir && existsSync(workingDir)) return workingDir;
+  if (!workingDir) {
+    process.once("exit", () => {
+      try {
+        rmdirSync(workingDir!);
+      } catch {}
+    });
+  }
+  workingDir = mkdtempSync(join(tmpdir(), "hf-ffmpeg-cwd-"));
+  return workingDir;
+}
+
+const emptyFolderScope = new AsyncLocalStorage<true>();
+
+/** Runs `work` with ffmpeg spawned from {@link ffmpegWorkingDir}; every path it hands ffmpeg must be absolute. */
+export const fromEmptyFolder = <T>(work: () => T): T => emptyFolderScope.run(true, work);
+
+export const ffmpegCwd = (): string | undefined =>
+  emptyFolderScope.getStore() ? ffmpegWorkingDir() : undefined;
 
 export function localContainerInputArgs(container: "mov" | "matroska" | undefined): string[] {
   return container ? ["-protocol_whitelist", "file", "-format_whitelist", container] : [];
