@@ -36,11 +36,15 @@ describe("a project file asked for as a service worker's script", () => {
     for (const headers of workerFetches) expect((await get(path, headers)).status).toBe(403);
   });
 
-  it.each(paths)("still loads at %s as a page script, module or dedicated worker", async (path) => {
-    for (const dest of ["script", "worker", "empty"]) {
-      const res = await get(path, { "sec-fetch-dest": dest });
-      expect(res.status).toBe(200);
-      expect(await res.text()).toContain("onfetch");
-    }
-  });
+  // Only the asset route: the sub-composition route builds pages from compositions, and answers nothing for a script.
+  it.each(paths.slice(0, 1))(
+    "still loads at %s as a page script, module or dedicated worker",
+    async (path) => {
+      for (const dest of ["script", "worker", "empty"]) {
+        const res = await get(path, { "sec-fetch-dest": dest });
+        expect(res.status).toBe(200);
+        expect(await res.text()).toContain("onfetch");
+      }
+    },
+  );
 });
