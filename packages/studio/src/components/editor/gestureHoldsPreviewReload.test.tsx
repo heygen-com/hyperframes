@@ -214,6 +214,7 @@ afterEach(() => {
   layout.group = [];
   document.body.innerHTML = "";
   resetPlayerStore();
+  vi.restoreAllMocks();
 });
 
 describe("a reload during a drag", () => {
@@ -761,11 +762,20 @@ describe("an outside change during a drag, on a preview that can swap scenes in 
 
 type Editor = ReturnType<typeof mountEditor>;
 
+const escape = () => new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+function hideTab() {
+  vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
 describe("every way a drag ends without a drop clears its mark and promotes the held reload", () => {
   it.each([
     ["pointercancel", (e: Editor) => pointer(e.overlay, "pointercancel", 0, 0)],
     ["lostpointercapture", (e: Editor) => pointer(e.box, "lostpointercapture", 0, 0)],
     ["window blur", () => act(() => void window.dispatchEvent(new Event("blur")))],
+    // fails without the fix: Escape and a hidden tab left the drag held.
+    ["Escape", () => act(() => void window.dispatchEvent(escape()))],
+    ["the tab going hidden", () => act(hideTab)],
     ["a switch to read-only", (e: Editor) => e.render(true)],
     ["overlay unmount", () => act(() => overlayRoot.unmount())],
   ])("%s", async (_, end) => {
@@ -784,6 +794,37 @@ describe("every way a drag ends without a drop clears its mark and promotes the 
     expect(api().iframeRef.current, "nothing was saved, so the held copy is current").toBe(
       held.shadow,
     );
+  });
+
+  it("lets go after Escape without saving, and leaves Escape alone when nothing is held", async () => {
+    const editor = mountEditor(false);
+    const others = vi.fn();
+    window.addEventListener("keydown", others);
+    try {
+      const idle = escape();
+      act(() => void window.dispatchEvent(idle));
+      expect(idle.defaultPrevented).toBe(false);
+      expect(others).toHaveBeenCalledTimes(1);
+
+      pointer(editor.box, "pointerdown", 150, 150);
+      pointer(editor.overlay, "pointermove", 190, 170);
+      const held = escape();
+      act(() => void window.dispatchEvent(held));
+      expect(held.defaultPrevented).toBe(true);
+      expect(others, "a held drag owns Escape").toHaveBeenCalledTimes(1);
+      pointer(editor.overlay, "pointermove", 210, 180);
+      pointer(editor.overlay, "pointerup", 210, 180);
+      act(() => void editor.box.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      await settle();
+      expect(
+        editor.onCanvasMouseDown,
+        "the release is not a click on the canvas",
+      ).not.toHaveBeenCalled();
+      expect(editor.onPathOffsetCommit).not.toHaveBeenCalled();
+      expect(byId(editor.live, "title").style.getPropertyValue("translate")).not.toBe("60px 30px");
+    } finally {
+      window.removeEventListener("keydown", others);
+    }
   });
 
   it.each([
