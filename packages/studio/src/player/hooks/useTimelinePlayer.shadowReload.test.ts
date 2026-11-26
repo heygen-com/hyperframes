@@ -809,8 +809,8 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
-  // fails without the fix: a host's error tracker, which strips the error's text, kept only its class, so a reload broken
-  // by the project's own script could not be told from one broken by the runtime or Studio.
+  // fails without the fix: a host's error tracker strips the error's text and kept only its class, so a reload
+  // broken by the project's own script could not be told from one broken by the runtime or Studio.
   it("logs where the page's first error came from, and keeps it out of the message people see", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const onPreviewReloadFailed = vi.fn();
