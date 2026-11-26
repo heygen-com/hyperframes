@@ -15,6 +15,7 @@ import { DomEditCropHandles } from "./DomEditCropHandles";
 import { rememberFrameClipPath } from "./domEditOverlayCrop";
 import { previewStandIn } from "./previewDrafts";
 import { standInFor } from "./previewSelection";
+import { beginStudioManualEditGesture, endStudioManualEditGesture } from "./manualEditGesture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -266,5 +267,59 @@ it("redraws a sealed crop frame at the turn the card has after a scrub, once a p
   show({ left: 12, top: 44, width: 200, height: 100, angle: 50 });
 
   expect(turn()).toBe("rotate(50deg)");
+  act(() => root.unmount());
+});
+
+/** Counts the size reads Studio's crop handles send the frame while a resize of the card is live; `end` ends it. */
+async function sizeReadsDuringResize(clip?: string) {
+  const tap = answerTap();
+  let reads = 0;
+  tap.hold(({ kind }) => {
+    if (kind === "gesture-start") reads += 1;
+    return false;
+  });
+  const [card] = await sealedCards(
+    [{ id: "card", transform: "matrix(2, 0, 0, 2, 0, 0)", painted: [0, 0, 400, 200], clip }],
+    { wrapHandedOverPort: tap.wrapHandedOverPort },
+  );
+  const { root, show, outline } = cropHandles(card!);
+  show({ left: 0, top: 0, width: 400, height: 200 });
+  await vi.waitFor(() => expect(reads).toBe(1));
+  const token = beginStudioManualEditGesture(card!, "resize");
+  for (const width of [450, 500, 600]) {
+    paint(document.getElementById("card")!, [width / 2, 100], [0, 0, width, 200]);
+    show({ left: 0, top: 0, width, height: 200 });
+    await previewGeometry(previewStandIn(card!)!.iframe, [previewStandIn(card!)!.handle]);
+  }
+  const live = reads;
+  const end = () => act(() => endStudioManualEditGesture(card!, token));
+  return { card: card!, live, reads: () => reads, end, outline, root };
+}
+
+// fails without the fix: each resize step changed the card's shown size, so the crop handles sent the frame a size
+// read per step for a card with no crop, whose handles draw the same at any measured size.
+it("sends a sealed uncropped card no size read while a resize is live, and one when it ends", async () => {
+  const { live, reads, end, root } = await sizeReadsDuringResize();
+  expect(live).toBe(1);
+  end();
+  await vi.waitFor(() => expect(reads()).toBe(2));
+  act(() => root.unmount());
+});
+
+// fails without the fix: crop handles closed during the resize still read the card's size when it ended.
+it("sends no size read when a resize ends after the sealed card's crop handles closed", async () => {
+  const { card, reads, end, root } = await sizeReadsDuringResize();
+  act(() => root.unmount());
+  end();
+  // The frame answers in order, so a read the end sent would be counted before this one is answered.
+  const { iframe, handle } = previewStandIn(card)!;
+  await previewGeometry(iframe, [handle]);
+  expect(reads()).toBe(1);
+});
+
+it("keeps reading a sealed cropped card's size while a resize is live, so its insets draw at its own scale", async () => {
+  const { live, outline, root } = await sizeReadsDuringResize("inset(0px 20px 0px 0px)");
+  expect(live).toBeGreaterThan(1);
+  await vi.waitFor(() => expect(outline()).toBe("560px"));
   act(() => root.unmount());
 });
