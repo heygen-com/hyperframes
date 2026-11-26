@@ -50,6 +50,7 @@ import { isPlainProjectPath, projectPath } from "./lib/project-path.mjs";
 import { assertLiteralMediaPath } from "../../scripts/lib/literal-media-input.mjs";
 import { replaceFileWith } from "../../scripts/lib/link-safe-write.mjs";
 import { readRegularFile } from "../../scripts/lib/recipe-store.mjs";
+import { terminalLines, terminalText as shown } from "../../scripts/lib/terminal-text.mjs";
 
 /** Sample rate the analysis runs at. Matches Studio's own decode rate, so the
  *  bands and envelopes come out the same either way. */
@@ -72,7 +73,7 @@ export function parseArgs(argv) {
     const flag = argv[i];
     const next = () => {
       const value = argv[i + 1];
-      if (value === undefined) fail(`${flag} needs a value`);
+      if (value === undefined) fail(`${shown(flag)} needs a value`);
       i += 1;
       return value;
     };
@@ -82,7 +83,7 @@ export function parseArgs(argv) {
     else if (flag === "--strength") args.strength = Number(next());
     else if (flag === "--dry-run") args.dryRun = true;
     else if (flag === "-h" || flag === "--help") fail(usage, 0);
-    else fail(`unknown flag: ${flag}\n\n${usage}`);
+    else fail(`unknown flag: ${shown(flag)}\n\n${usage}`);
   }
   if (!args.comp) fail(`--comp is required\n\n${usage}`);
   if (!Number.isFinite(args.strength) || args.strength < 0 || args.strength > 1) {
@@ -91,8 +92,10 @@ export function parseArgs(argv) {
   return args;
 }
 
+// Ids, group names and paths come from the composition, so each is escaped where it enters a message;
+// every line is escaped again here for error text written elsewhere.
 function fail(message, code = 1) {
-  process.stderr.write(`${message}\n`);
+  process.stderr.write(`${terminalLines(message)}\n`);
   process.exit(code);
 }
 
@@ -222,10 +225,12 @@ function decode(path) {
   const format = probeFormat(path);
   if (!format)
     fail(
-      `could not decode ${path}: it is not media in an accepted container (${ACCEPTED_CONTAINERS})`,
+      `could not decode ${shown(path)}: it is not media in an accepted container (${ACCEPTED_CONTAINERS})`,
     );
   if (isIndirectFormat(format)) {
-    fail(`${path} is a ${format} list that points at other files; give the media file itself`);
+    fail(
+      `${shown(path)} is a ${shown(format)} list that points at other files; give the media file itself`,
+    );
   }
   let raw;
   try {
@@ -247,9 +252,9 @@ function decode(path) {
       { maxBuffer: 1 << 30 },
     );
   } catch (error) {
-    fail(`could not decode ${path}\n  ${error.message.split("\n")[0]}`);
+    fail(`could not decode ${shown(path)}\n  ${shown(error.message.split("\n")[0])}`);
   }
-  if (raw.length === 0) fail(`no audio in ${path}`);
+  if (raw.length === 0) fail(`no audio in ${shown(path)}`);
   return new Float32Array(raw.buffer, raw.byteOffset, raw.length / 4);
 }
 
@@ -304,7 +309,7 @@ function detectTracks(html, given, classify, overlaps) {
   };
   const pick = (id, what) => {
     const found = all.find((el) => el.id === id);
-    if (!found) fail(`no <audio>/<video> with id="${id}" in the composition`);
+    if (!found) fail(`no <audio>/<video> with id="${shown(id)}" in the composition`);
     return { ...found, why: `--${what}` };
   };
 
@@ -316,15 +321,13 @@ function detectTracks(html, given, classify, overlaps) {
     const music = others.filter((el) => kindOf(el) === "music");
     if (music.length === 1) bed = { ...music[0], why: "name looks like music" };
     else if (music.length > 1) {
-      fail(
-        `several tracks look like music (${music.map((el) => el.id).join(", ")}) — name one with --bed`,
-      );
+      fail(`several tracks look like music (${idList(music)}) — name one with --bed`);
     } else if (others.length === 1) {
       bed = { ...others[0], why: "only track left" };
     } else {
       fail(
         `cannot tell which track is the music bed\n` +
-          `  media in the composition: ${all.map((el) => el.id).join(", ") || "none"}\n` +
+          `  media in the composition: ${idList(all) || "none"}\n` +
           `  name it with --bed`,
       );
     }
@@ -350,13 +353,15 @@ function detectTracks(html, given, classify, overlaps) {
   const usable = voices.filter((el) => attrOf(el.tag, "src"));
   if (usable.length === 0) {
     fail(
-      `no voice to make room for on ${bed.id}\n` +
-        `  media in the composition: ${all.map((el) => el.id).join(", ") || "none"}\n` +
+      `no voice to make room for on ${shown(bed.id)}\n` +
+        `  media in the composition: ${idList(all) || "none"}\n` +
         `  name one with --voice`,
     );
   }
   return { bed, voices: usable, all };
 }
+
+const idList = (elements) => elements.map((el) => shown(el.id)).join(", ");
 
 const startOf = (tag) => {
   const raw = Number(attrOf(tag, "data-start"));
@@ -412,6 +417,34 @@ export function saveComposition(compPath, html, written = () => {}) {
   });
 }
 
+/** The bed's existing effect chain; a malformed one stops the carve with nothing written. */
+function chainNodes(text) {
+  try {
+    return carveApi.parseAudioFxChain(text).nodes;
+  } catch {
+    return fail(
+      "the bed's data-fx-chain is not a valid effect chain; fix or remove it, then carve again",
+    );
+  }
+}
+
+/** The bed's existing automation lanes; malformed automation stops the carve with nothing written. */
+function automationLanes(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return fail("the bed's data-automation is not valid JSON; fix or remove it, then carve again");
+  }
+  const lanes = parsed?.lanes ?? [];
+  if (!Array.isArray(lanes) || !lanes.every((lane) => lane && typeof lane === "object")) {
+    return fail(
+      "the bed's data-automation has no list of lanes; fix or remove it, then carve again",
+    );
+  }
+  return lanes;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const compPath = resolve(args.comp);
@@ -441,8 +474,8 @@ async function main() {
   const bedTag = bedEl.tag;
   const bedSrc = attrOf(bedTag, "src");
   process.stdout.write(
-    `bed    ${bedEl.id} (${bedEl.why})\n` +
-      voices.map((v) => `voice  ${v.id} (${v.why})`).join("\n") +
+    `bed    ${shown(bedEl.id)} (${bedEl.why})\n` +
+      voices.map((v) => `voice  ${shown(v.id)} (${v.why})`).join("\n") +
       "\n",
   );
 
@@ -478,9 +511,7 @@ async function main() {
   // Anything the author built by hand survives a carve; only the previous
   // carve's own nodes are replaced. That is what `fromCarve` is for.
   const existingChain = attrOf(bedTag, "data-fx-chain");
-  const existingNodes = existingChain
-    ? carveApi.parseAudioFxChain(unescapeAttr(existingChain)).nodes
-    : [];
+  const existingNodes = existingChain ? chainNodes(unescapeAttr(existingChain)) : [];
   const kept = existingNodes.filter((n) => !n.fromCarve);
   // Lanes belonging to the carve being replaced, addressed by the ids the OLD
   // nodes had. Taken before anything is minted: those ids are freed by the
@@ -540,7 +571,7 @@ async function main() {
   // the ones that addressed the previous carve's nodes.
   const existingAutomation = attrOf(bedTag, "data-automation");
   const carriedLanes = existingAutomation
-    ? (JSON.parse(unescapeAttr(existingAutomation)).lanes ?? []).filter(
+    ? automationLanes(unescapeAttr(existingAutomation)).filter(
         (lane) => !stalePrefixes.some((prefix) => String(lane.target).startsWith(prefix)),
       )
     : [];
@@ -557,10 +588,10 @@ async function main() {
   if (refusal) {
     process.stderr.write(
       refusal.reason === "bed"
-        ? `note   bed ${bedEl.id} is in group "${refusal.group}" with the voices, so\n` +
+        ? `note   bed ${shown(bedEl.id)} is in group "${shown(refusal.group)}" with the voices, so\n` +
             `       sources are clip ids: naming that group would carve the bed\n` +
             `       against itself on the next analysis. Move the bed to its own group.\n`
-        : `note   group "${refusal.group}" also holds ${refusal.ids.join(", ")}, which this run\n` +
+        : `note   group "${shown(refusal.group)}" also holds ${refusal.ids.map(shown).join(", ")}, which this run\n` +
             `       did not analyse (music/sfx by name), so sources are clip ids: naming\n` +
             `       the group would pull them into the sidechain on the next analysis.\n` +
             `       Move them out of the voice group.\n`,
@@ -599,13 +630,17 @@ async function main() {
   try {
     saveComposition(compPath, html.replace(bedTag, nextTag));
   } catch (error) {
-    fail(`could not save ${args.comp}: ${error.message}`);
+    fail(`could not save ${shown(args.comp)}: ${error.message}`);
   }
-  process.stdout.write(`wrote ${args.comp} (id="${bedEl.id}")\n`);
+  process.stdout.write(`wrote ${shown(args.comp)} (id="${shown(bedEl.id)}")\n`);
 }
 
 // Only run as a CLI. Guarded so the pure helpers above can be unit-tested by
 // importing this module (`skills/**/*.test.mjs`, run by `bun run test:skills`).
 if (isMainModule(import.meta.url)) {
-  await main();
+  try {
+    await main();
+  } catch (error) {
+    fail(`carve stopped: ${error?.message ?? error}`);
+  }
 }
