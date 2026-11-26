@@ -96,7 +96,9 @@ move or copy a project, its next explicit sync creates a new cloud composition.
 The first sync after upgrading from a version that kept the record inside
 the project also starts a new composition. Previously shared versions retain
 their snapshots. If the first sync cannot confirm that it created the destination,
-it stops before uploading files. Retry to use a fresh destination.
+it stops before uploading files. Retry to use a fresh destination. If the service
+created the first composition but its reply was lost, that composition still counts
+toward your workspace limit. A fresh sync needs an available composition slot.
 
 If source changed, conflicts with another snapshot, or remains under verification,
 the command explains why it stopped. Retry after resolving the problem, or pass

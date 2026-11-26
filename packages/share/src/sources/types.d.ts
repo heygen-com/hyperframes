@@ -299,7 +299,7 @@ export interface InflightUpload {
 
 export interface Binding extends BindingKey {
   version: 1;
-  /** Client-generated, kept before the first request so a retried create names the same composition. */
+  /** Client-generated destination ID, saved after the service confirms creation. */
   compositionId: string;
   ownerSpaceId: string;
   /** The owner workspace as the account's list last named it, so a project whose workspace the account left can
