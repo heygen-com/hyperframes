@@ -80,10 +80,8 @@ export function frameDisplayScale(frame: HTMLElement): number | null {
   return layoutWidth > 0 && shownWidth > 0 ? shownWidth / layoutWidth : null;
 }
 
-/** The most entries a message's list may hold: clips, scenes, capabilities. */
 export const MAX_MESSAGE_LIST = 1000;
 
-/** An array from a message, safe to walk. A clone keeps a declared length that no entries back. */
 export function isMessageList(value: unknown): value is unknown[] {
   if (!Array.isArray(value) || value.length > MAX_MESSAGE_LIST) return false;
   for (let i = 0; i < value.length; i++) if (!(i in value)) return false;
