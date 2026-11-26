@@ -197,7 +197,7 @@ export interface RenderPlan {
   hfEnvOverrides: readonly string[];
 }
 
-function formatFpsParseError(
+export function formatFpsParseError(
   input: string,
   reason: Exclude<FpsParseResult, { ok: true }>["reason"],
 ): string {
