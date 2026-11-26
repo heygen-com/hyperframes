@@ -8,7 +8,7 @@ import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures
 import { applyRotationDraft } from "./rotationDraft";
 import { applyStudioBoxSizeDraft } from "./manualEdits";
 import { armSealedRawSteps } from "./gestureSteps";
-import { startGesture } from "./domEditOverlayStartGesture";
+import { startGesture, startGroupDrag } from "./domEditOverlayStartGesture";
 
 vi.mock("../../player/lib/previewChannel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../player/lib/previewChannel")>()),
@@ -145,6 +145,44 @@ describe("a sealed drag's step reaches the frame before the paint of its pointer
       20,
       4,
     );
+  });
+
+  // fails without the fix: a group press armed nothing, so its first step waited for pointermove.
+  it("draws a group's first step from the raw update, before any pointermove", () => {
+    const ref = <T>(current: T) => ({ current });
+    const items = [0, 1].map((i) => {
+      const element = document.createElement("div");
+      document.body.append(element);
+      const selection = { element, capabilities: { canApplyManualOffset: true } };
+      const rect = { left: 0, top: 0, width: 240, height: 160, editScaleX: 1, editScaleY: 1 };
+      return { key: `m${i}`, selection, element, rect };
+    });
+    const opts = {
+      ...{ groupOverlayItemsRef: ref(items), overlayRef: ref(null), boxRef: ref(null) },
+      ...{ iframeRef: ref(document.createElement("iframe")), selectionRef: ref(null) },
+      ...{ gestureRef: ref(null), groupGestureRef: ref(null), rafPausedRef: ref(false) },
+      ...{ snapGuidesRef: ref(null), blockedMoveRef: ref(null), waitingPressRef: ref(null) },
+      ...{ onManualDragStartRef: ref(vi.fn()), onBlockedMoveRef: ref(vi.fn()) },
+    };
+    harnesses.push(opts as never);
+    const press = { clientX: 10, clientY: 10, pointerId: 1, button: 0 };
+    const started = startGroupDrag(
+      {
+        ...press,
+        preventDefault() {},
+        stopPropagation() {},
+        currentTarget: { setPointerCapture() {} },
+      } as never,
+      opts as never,
+    );
+    expect(started).toBe(true);
+    const members = (opts.groupGestureRef.current as { members: unknown[] } | null)?.members;
+    vi.mocked(applyManualOffsetDragDraft).mockClear();
+    rawUpdate(30, 14);
+    expect(vi.mocked(applyManualOffsetDragDraft).mock.calls).toEqual(
+      members?.map((member) => [member, 20, 4]),
+    );
+    opts.groupGestureRef.current = null;
   });
 
   it("draws from pointermove when no raw update came first", () => {
