@@ -1412,6 +1412,57 @@ describe("HyperframesPlayer seek() sync path", () => {
     }
   });
 
+  // fails without nextAwaitingPlay: in-flight playing state at N cleared N+1 before seek's paused state at N arrived.
+  it("keeps the playSeq latch across stale playing states during seek(t, { keepPlaying: true })", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    vi.spyOn(audio, "play").mockImplementation(() => {});
+    const pause = vi.spyOn(audio, "pause");
+    const posted: Array<Record<string, unknown>> = [];
+    stubContentWindow({
+      postMessage: vi.fn((msg: Record<string, unknown>) => {
+        posted.push(msg);
+      }),
+    });
+    const sendState = (isPlaying: boolean, playSeq: number) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: {
+            source: "hf-preview",
+            type: "state",
+            frame: 10,
+            isPlaying,
+            ended: false,
+            playSeq,
+          },
+        }),
+      );
+
+    player.play();
+    const firstSeq = posted.find((m) => m["action"] === "play")?.["playSeq"] as number;
+    sendState(true, firstSeq);
+    pause.mockClear();
+
+    player.seek(2, { keepPlaying: true });
+    const nextSeq = posted.filter((m) => m["action"] === "play").at(-1)?.["playSeq"] as number;
+    expect(nextSeq).toBeGreaterThan(firstSeq);
+    pause.mockClear();
+
+    sendState(true, firstSeq);
+    sendState(false, firstSeq);
+    expect(pause).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(true, nextSeq);
+    sendState(false, nextSeq);
+    expect(pause).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
+  });
+
   it("stopMedia pauses iframe-realm media elements", () => {
     const post = vi.fn();
     const { doc, video, audio } = createForeignFrameMediaDocument();
