@@ -793,6 +793,8 @@ describe("a press on a settled preview", () => {
       waitingPressRef: { current: null },
       boxRef: { current: null },
       rafPausedRef: { current: false },
+      gestureRef: { current: null },
+      groupGestureRef: { current: null },
       iframeRef: { current: iframe },
       overlayRef: { current: sized(document.createElement("div"), [20, 10, 1200, 800]) },
       activeCompositionPathRef: { current: "index.html" },
