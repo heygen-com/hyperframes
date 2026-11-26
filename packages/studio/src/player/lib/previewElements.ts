@@ -142,7 +142,7 @@ export async function describePreviewElements(
   if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
   const reply = await previewRequest(iframe, "describe", { handles: [...handles] });
   const elements: unknown = reply?.elements;
-  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   return elements.map((entry, index) => {
     const element = readPreviewElement(entry);
     return element?.handle === handles[index] ? element : null;
@@ -157,7 +157,7 @@ export async function previewAncestors(
   if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
   const reply = await previewRequest(iframe, "ancestors", { handles: [...handles] });
   const chains: unknown = reply?.ancestors;
-  if (!Array.isArray(chains) || chains.length !== handles.length) return null;
+  if (!isList(chains, handles.length) || chains.length !== handles.length) return null;
   return chains.map((chain) =>
     isList(chain, MAX_DESCRIBE_HANDLES) && chain.every(isHandle) ? (chain as string[]) : null,
   );
@@ -254,7 +254,7 @@ export async function previewGeometry(
   const params = { handles: [...handles], ...(children ? { children } : {}) };
   const reply = await previewRequest(iframe, "geometry", params);
   const elements: unknown = reply?.elements;
-  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   const boxes: unknown = reply?.children;
   const childrenOk = isList(boxes, MAX_GEOMETRY_CHILDREN) && boxes.every(isBox);
   return {
@@ -329,7 +329,7 @@ export async function previewGestureStart(
   const reply = await previewRequest(iframe, "gesture-start", { handles: [...handles] });
   const elements: unknown = reply?.elements;
   const snap: unknown = reply?.snap;
-  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   if (!isList(snap, MAX_SNAP_TARGETS) || !snap.every(isBox)) return null;
   return { elements: elements.map(readGestureStart), snap };
 }
@@ -342,7 +342,7 @@ export async function previewGestureBase(
   const elements: unknown = (
     await previewRequest(iframe, "gesture-base", { handles: [...handles] })
   )?.elements;
-  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   return elements.map((base) =>
     isFiniteFields(base, ["x", "y", "opacity", "scale"]) ? (base as EditingGestureBase) : null,
   );

@@ -1,5 +1,6 @@
 import type { StoreApi } from "zustand";
 import { isPreviewQuality, type PreviewQuality } from "@hyperframes/core/preview-quality";
+import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import type { PlaybackHealthReport } from "@hyperframes/core";
 import type { MediaLoadFailure } from "@hyperframes/core/runtime/protocol";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
@@ -149,7 +150,7 @@ export function parsePreviewFacts(value: unknown): PreviewFacts | null {
   const numbers = [sceneCount, mountedElementCount, durationSeconds].every(
     (n) => typeof n === "number",
   );
-  if (!numbers || !Array.isArray(videos) || typeof copiesReady !== "boolean") return null;
+  if (!numbers || !isMessageList(videos) || typeof copiesReady !== "boolean") return null;
   const grouped = videos.flatMap((video: unknown) => {
     if (typeof video !== "object" || video === null) return [];
     const { codec, width, height, bitDepth, count } = video as Record<string, unknown>;
@@ -169,7 +170,7 @@ export function parsePreviewFacts(value: unknown): PreviewFacts | null {
       : [];
   });
   return {
-    lighterAt: Array.isArray(lighterAt) ? lighterAt.filter(isPreviewQuality) : [],
+    lighterAt: isMessageList(lighterAt) ? lighterAt.filter(isPreviewQuality) : [],
     sceneCount: sceneCount as number,
     mountedElementCount: mountedElementCount as number,
     durationSeconds: durationSeconds as number,

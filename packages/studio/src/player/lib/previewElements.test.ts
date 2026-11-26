@@ -17,6 +17,8 @@ import { gestureStart } from "../../../../core/src/runtime/editingGestureStart";
 import { handleFor } from "../../../../core/src/runtime/editingHandles";
 import {
   describePreviewElements,
+  previewGestureBase,
+  previewGeometry,
   editPreviewElement,
   previewElementSelectorIndex,
   previewElementSourceFile,
@@ -440,5 +442,18 @@ describe("a list in a frame's reply", () => {
     const gap = Array(MAX_EDIT_ENTRIES).fill(entry);
     delete gap[1];
     expect(await putBacks(gap)).toBe(0);
+  });
+
+  it.each([
+    ["describe", (list: unknown[]) => ({ elements: list }), describePreviewElements],
+    ["ancestors", (list: unknown[]) => ({ ancestors: list }), previewAncestors],
+    ["geometry", (list: unknown[]) => ({ elements: list, children: null }), previewGeometry],
+    ["gesture-start", (list: unknown[]) => ({ elements: list, snap: [] }), previewGestureStart],
+    ["gesture-base", (list: unknown[]) => ({ elements: list }), previewGestureBase],
+  ] as const)("one entry per handle, for %s, is refused with a gap", async (_kind, reply, read) => {
+    const list: unknown[] = [null, null, null];
+    delete list[1];
+    const { iframe } = opaqueFrame(() => reply(list));
+    expect(await read(iframe, [h(1), h(2), h(3)])).toBeNull();
   });
 });

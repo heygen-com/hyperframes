@@ -2,11 +2,11 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_FONT_FACES, MAX_QUERY_MATCHES } from "@hyperframes/core/runtime/editing-port";
+import { MAX_FRAME_CLIPS } from "./manifestClips";
 import {
   AGENT_PROBE_MS,
   PREVIEW_REJECTED,
   previewAnswer,
-  MAX_FRAME_CLIPS,
   previewComputedStylesOfEvery,
   previewConsoleErrors,
   previewFontFaces,
@@ -265,6 +265,22 @@ describe("the clip lists in a runtime snapshot", () => {
     delete clips[0];
     expect(await previewClipParents(iframe)).toEqual(new Map());
     expect(await previewClipManifest(iframe)).toBeNull();
+  });
+
+  it("hand on a manifest's scenes only when they are a list Studio can bound", async () => {
+    const scene = { id: "s", label: "S", start: 0, duration: 1 };
+    let scenes: unknown[] = [scene];
+    const { iframe } = servedFrame(() => ({
+      clipManifest: { clips: [], durationInFrames: 30, scenes },
+    }));
+    expect((await previewClipManifest(iframe))?.scenes).toEqual([scene]);
+    scenes = [scene, scene, scene];
+    delete scenes[1];
+    expect((await previewClipManifest(iframe))?.scenes).toEqual([]);
+    scenes = new Array(2 ** 32 - 1);
+    const started = performance.now();
+    expect((await previewClipManifest(iframe))?.scenes).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   it("are refused at once when their length has no entries", async () => {

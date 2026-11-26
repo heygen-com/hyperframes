@@ -13,7 +13,7 @@ import {
 } from "@hyperframes/core/runtime/editing-port";
 import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
-import { wellFormedClips } from "./manifestClips";
+import { MAX_FRAME_CLIPS, wellFormedClips } from "./manifestClips";
 
 const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
@@ -198,17 +198,17 @@ export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: 
   await previewRequest(iframe, "wait-for-seek", {}, timeoutMs);
 }
 
-export const MAX_FRAME_CLIPS = 100_000;
-
 /** The reply is frame data, so its shape is checked. */
 export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<ClipManifest | null> {
   const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
   const manifest: unknown = snapshot?.clipManifest;
   if (typeof manifest !== "object" || manifest === null) return null;
-  const { clips, durationInFrames } = manifest as Partial<ClipManifest>;
-  if (!isMessageList(clips, MAX_FRAME_CLIPS) || typeof durationInFrames !== "number") return null;
+  const { clips, durationInFrames, scenes } = manifest as Record<string, unknown>;
+  const wellFormed = wellFormedClips(clips);
+  if (!wellFormed || typeof durationInFrames !== "number") return null;
   if (!Number.isFinite(durationInFrames)) return null;
-  return { ...(manifest as ClipManifest), clips: wellFormedClips(clips) };
+  const listedScenes = (isMessageList(scenes) ? scenes : []) as ClipManifest["scenes"];
+  return { ...(manifest as ClipManifest), clips: wellFormed, scenes: listedScenes };
 }
 
 export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map<string, string>> {
