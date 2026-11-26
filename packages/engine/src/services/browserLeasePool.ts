@@ -32,6 +32,7 @@ interface BrowserPoolEntry {
   refCount: number;
   closeRequested: boolean;
   result?: BrowserLaunchResult;
+  readonly launchController: AbortController;
   launchPromise: Promise<BrowserLaunchResult>;
   closePromise?: Promise<void>;
   forceCloseRequested: boolean;
@@ -39,9 +40,16 @@ interface BrowserPoolEntry {
 }
 
 export interface BrowserLeasePoolOptions {
-  launch(fingerprint: Readonly<BrowserLaunchFingerprint>): Promise<BrowserLaunchResult>;
+  launch(
+    fingerprint: Readonly<BrowserLaunchFingerprint>,
+    signal?: AbortSignal,
+  ): Promise<BrowserLaunchResult>;
   close(browser: Browser): Promise<void>;
   forceClose(browser: Browser): void;
+}
+
+function browserAcquireAbortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error("Browser acquisition aborted");
 }
 
 function freezeFingerprint(
@@ -80,9 +88,12 @@ export class BrowserLeasePool {
   async acquire(
     fingerprintInput: BrowserLaunchFingerprint,
     pooled: boolean,
+    signal?: AbortSignal,
   ): Promise<BrowserLease> {
+    if (signal?.aborted) throw browserAcquireAbortError(signal);
     if (this.closed) throw new Error("Browser pool is closed; no new browsers can be acquired");
     if (this.drainPromise) await this.drainPromise;
+    if (signal?.aborted) throw browserAcquireAbortError(signal);
     // Re-check: close() can land while this call was awaiting an unrelated,
     // already-resolving drain -- drainPromise resets to null on completion,
     // so only `closed` (permanent) still catches a request that raced it.
@@ -90,19 +101,47 @@ export class BrowserLeasePool {
 
     const fingerprint = freezeFingerprint(fingerprintInput);
     const entry = this.reserveEntry(fingerprint, pooled);
-    return this.issueLease(entry);
+    return this.issueLease(entry, signal);
   }
 
-  private async issueLease(entry: BrowserPoolEntry): Promise<BrowserLease> {
+  private async issueLease(entry: BrowserPoolEntry, signal?: AbortSignal): Promise<BrowserLease> {
+    let released = false;
+    const releaseReservation = (abortLaunch: boolean) => {
+      if (released) return;
+      released = true;
+      entry.refCount = Math.max(0, entry.refCount - 1);
+      if (abortLaunch && entry.refCount === 0) {
+        this.requestClose(entry, true);
+        entry.launchController.abort(signal?.reason);
+      }
+    };
+    let onAbort: (() => void) | undefined;
     try {
-      const result = await entry.launchPromise;
+      const result = await (signal
+        ? new Promise<BrowserLaunchResult>((resolve, reject) => {
+            if (signal.aborted) {
+              reject(browserAcquireAbortError(signal));
+              return;
+            }
+            onAbort = () => reject(browserAcquireAbortError(signal));
+            signal.addEventListener("abort", onAbort, { once: true });
+            entry.launchPromise.then(resolve, reject);
+          })
+        : entry.launchPromise);
+      if (signal?.aborted) {
+        releaseReservation(true);
+        throw browserAcquireAbortError(signal);
+      }
       if (entry.state !== "ready") {
+        releaseReservation(false);
         throw new Error("Browser pool drained during acquisition");
       }
       return this.createLease(entry, result);
     } catch (error) {
-      entry.refCount = Math.max(0, entry.refCount - 1);
+      releaseReservation(signal?.aborted === true);
       throw error;
+    } finally {
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
     }
   }
 
@@ -190,6 +229,7 @@ export class BrowserLeasePool {
     fingerprint: Readonly<BrowserLaunchFingerprint>,
     pooled: boolean,
   ): BrowserPoolEntry {
+    const launchController = new AbortController();
     const entry: BrowserPoolEntry = {
       key,
       fingerprint,
@@ -198,9 +238,10 @@ export class BrowserLeasePool {
       refCount: 1,
       closeRequested: false,
       forceCloseRequested: false,
+      launchController,
       launchPromise: undefined as unknown as Promise<BrowserLaunchResult>,
     };
-    entry.launchPromise = this.options.launch(fingerprint).then(
+    entry.launchPromise = this.options.launch(fingerprint, launchController.signal).then(
       (result) => {
         entry.result = result;
         if (entry.closeRequested) {

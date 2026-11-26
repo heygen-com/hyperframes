@@ -178,11 +178,9 @@ function stallBudgetMs(
  * caller fails fast to the exactly-once fresh-session fallback instead of
  * waiting out the ~5min CDP protocol timeout.
  *
- * `signal` is read only at trip time to label the rejection, never to cancel
- * the race early — a parent abort during a wedge still has to wait out the
- * same deadline (nothing can unstick the underlying call), but the message
- * must say "aborted", not "stalled", so downstream logs/telemetry don't
- * misreport a deliberate cancellation as a capture failure.
+ * `signal` rejects the race as soon as it aborts so the caller's finally
+ * closes the browser immediately instead of waiting out the stall deadline,
+ * and labels the rejection as aborted rather than stalled.
  */
 function captureModeLabel(mode: CaptureSession["captureMode"]): string {
   if (mode === "drawelement") return "drawElement";
@@ -196,6 +194,18 @@ export const OPENING_CAPTURE_SESSION: StalledSession = {
   captureMode: "screenshot",
   captureStep: "opening the capture session",
 };
+
+export async function openCaptureSessionWithinBudget(
+  withinInitBudget: ReturnType<typeof createSessionInitBudget>,
+  opening: Promise<CaptureSession>,
+): Promise<CaptureSession> {
+  try {
+    return await withinInitBudget(opening, OPENING_CAPTURE_SESSION);
+  } catch (error) {
+    void opening.then(closeCaptureSession).catch(() => {});
+    throw error;
+  }
+}
 
 const OPENING_RISK_SESSION: StalledSession = {
   captureMode: "screenshot",
@@ -234,14 +244,36 @@ export function raceAgainstStall<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    const abortError = () =>
+      new Error(
+        `[Render] Sequential ${captureModeLabel(input.session.captureMode)} capture aborted ` +
+          `while a capture call was in flight (frame ${input.frameIndex}/${input.totalFrames}).`,
+      );
+    if (signal?.aborted) {
+      promise.catch(() => {});
+      reject(abortError());
+      return;
+    }
     const clock = createStallClock();
-    const trip = () =>
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(abortError());
+    };
+    const trip = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
       reject(
         signal?.aborted
-          ? new Error(
-              `[Render] Sequential ${captureModeLabel(input.session.captureMode)} capture aborted ` +
-                `while a capture call was in flight (frame ${input.frameIndex}/${input.totalFrames}).`,
-            )
+          ? abortError()
           : new SequentialCaptureStallError(
               input.session,
               input.stallTimeoutMs,
@@ -249,9 +281,10 @@ export function raceAgainstStall<T>(
               input.totalFrames,
             ),
       );
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
     const deadline = Math.max(0, deadlineMs);
     let wait = Math.min(deadline, DE_STALL_POLL_MS);
-    let timer: ReturnType<typeof setTimeout>;
     const look = () => {
       const idle = clock.idle(wait);
       if (idle >= deadline) return trip();
@@ -261,11 +294,15 @@ export function raceAgainstStall<T>(
     timer = setTimeout(look, wait);
     promise.then(
       (value) => {
-        clearTimeout(timer);
+        if (settled) return;
+        settled = true;
+        cleanup();
         resolve(value);
       },
       (error) => {
-        clearTimeout(timer);
+        if (settled) return;
+        settled = true;
+        cleanup();
         reject(error);
       },
     );
@@ -1069,19 +1106,14 @@ export async function runCaptureStreamingStage(
           abortSignal,
         });
         const openSession = async (): Promise<CaptureSession> => {
-          const opening = createCaptureSession(
-            fileServer.url,
-            framesDir,
-            buildCaptureOptions(),
-            videoInjector,
-            captureCfg,
+          assertNotAborted();
+          return openCaptureSessionWithinBudget(
+            withinInitBudget,
+            createCaptureSession(fileServer.url, framesDir, buildCaptureOptions(), videoInjector, {
+              ...captureCfg,
+              signal: abortSignal,
+            }),
           );
-          try {
-            return await withinInitBudget(opening, OPENING_CAPTURE_SESSION);
-          } catch (error) {
-            void opening.then(closeCaptureSession, () => {});
-            throw error;
-          }
         };
         const session = probeSession ?? (await openSession());
         captureBeyondViewport = session.options.captureBeyondViewport;
@@ -1105,6 +1137,7 @@ export async function runCaptureStreamingStage(
               useDrawElement: false,
               staticFrameDedup: false,
               enableBrowserPool: false,
+              signal: abortSignal,
             },
           );
           if (attemptClosed) {
