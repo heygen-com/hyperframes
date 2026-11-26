@@ -109,10 +109,19 @@ export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | n
 export const AGENT_PROBE_MS = 1_000;
 
 const agents = new WeakMap<EditingPortClient, boolean>();
+const pendingProbes = new WeakMap<EditingPortClient, Promise<boolean>>();
 
-async function agentConnected(client: EditingPortClient): Promise<boolean> {
+function agentConnectedInCallOrder(client: EditingPortClient): boolean | Promise<boolean> {
+  const pending = pendingProbes.get(client);
+  if (pending) return pending;
   const known = agents.get(client);
   if (known !== undefined) return known;
+  const probe = probeAgent(client).finally(() => pendingProbes.delete(client));
+  pendingProbes.set(client, probe);
+  return probe;
+}
+
+async function probeAgent(client: EditingPortClient): Promise<boolean> {
   client.ready.then(
     () => agents.set(client, true),
     () => agents.set(client, false),
@@ -145,7 +154,8 @@ export async function previewAnswer<K extends EditingRequestKind>(
   admit?: () => boolean,
 ): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | typeof PREVIEW_STALE | null> {
   const client = previewEditingClient(iframe);
-  if (!(await agentConnected(client))) return null;
+  const connected = agentConnectedInCallOrder(client);
+  if (!(typeof connected === "boolean" ? connected : await connected)) return null;
   if (admit && !admit()) return PREVIEW_STALE;
   return client.request(kind, params, { timeoutMs }).catch((err: unknown) => {
     const noReply =
