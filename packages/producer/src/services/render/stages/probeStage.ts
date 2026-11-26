@@ -97,6 +97,7 @@ import {
 } from "../../assetMediaType.js";
 import { resolveCaptureSurface } from "../captureImageFormat.js";
 import { computeCompositionObservabilityHash } from "../observability.js";
+import { materializeBlobAudioSources, materializeDataAudioSources } from "./runtimeAudio.js";
 
 export interface ProbeStageInput {
   projectDir: string;
@@ -454,6 +455,7 @@ export function hasRuntimeMediaChanges(html: string): boolean {
 
   const managed = managedMediaElements(document, false);
   if (managed.length === 0) return false;
+  if (scriptBodies.some((script) => /\bcreateObjectURL\s*\(/.test(script))) return true;
   const managedIds = new Set(managed.map((m) => m.element.getAttribute("id")).filter(Boolean));
   const selectors = new Set<string>();
   let work = 0;
@@ -993,6 +995,21 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         }
       }
 
+      if (fileServer && composition.audios.length > 0) {
+        const compiledDir = join(workDir, "compiled");
+        const serverUrl = fileServer.url;
+        await probeStep("reading runtime audio from the browser", () =>
+          materializeBlobAudioSources({
+            page: session.page,
+            fileServerUrl: serverUrl,
+            audios: composition.audios,
+            compiledDir,
+            log,
+            assertNotAborted,
+          }),
+        );
+      }
+
       if (composition.audios.length > 0) {
         log.info("Discovering audio volume automation...", {
           audioCount: composition.audios.length,
@@ -1043,6 +1060,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         }
       }
     }
+
+    materializeDataAudioSources({
+      audios: composition.audios,
+      compiledDir: join(workDir, "compiled"),
+      log,
+    });
 
     dropMediaOutsideProject({
       projectDir,
