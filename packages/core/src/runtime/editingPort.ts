@@ -227,6 +227,7 @@ export const EDITING_REQUEST_KINDS = [
   "mark-scenes-stale",
   "swap-scenes",
   "live-retime",
+  "rebind-timing",
   "assets-unloaded",
   "text-edit",
   "serve-paused-frames",
@@ -422,6 +423,7 @@ export interface EditingRequests {
   "mark-scenes-stale": { params: MarkScenesStaleParams; result: { marked: true } };
   "swap-scenes": { params: SwapScenesParams; result: SwapScenesResult };
   "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
+  "rebind-timing": { params: { time: number }; result: { rebound: boolean } };
   "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
@@ -731,6 +733,11 @@ const PARAM_PARSERS: {
   "mark-scenes-stale": parseMarkScenesStale,
   "swap-scenes": parseSwapScenes,
   "live-retime": parseLiveRetime,
+  "rebind-timing": (params) => {
+    if (!isPlainRecord(params) || Object.keys(params).join() !== "time") return null;
+    const { time } = params;
+    return typeof time === "number" && Number.isFinite(time) && time >= 0 ? { time } : null;
+  },
   "assets-unloaded": noParams,
   "text-edit": parseTextEdit,
   "serve-paused-frames": (params) =>

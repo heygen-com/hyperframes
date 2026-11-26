@@ -112,7 +112,10 @@ once per capture. Pass the resulting `ignored` function to the inventory walk as
 even when an ignore rule re-includes a path.
 
 Editable source includes referenced WOFF, WOFF2, TTF and OTF files with dot-prefixed names, such as
-`.brand/.Atlas.woff2`. The same private-path and ignore rules apply to these fonts.
+`.brand/.Atlas.woff2`. The same private-path and ignore rules apply to these fonts. Preview and render servers can call
+`referencedFontResponse(projectDir, relativePath, method)` from `@hyperframes/share/projectSnapshot.mjs`
+to serve a selected dot-prefixed font. It returns a streaming response for a verified file and
+`null` if the file cannot be served.
 
 The adapter uses the portable-source-v13 capture/manifest rules and
 multipart transport. The pinned policy, Unicode 15.1 registry (with its license),

@@ -5,7 +5,6 @@
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
 import {
   applySoftReload,
-  applySoftReloadFinalization,
   extractGsapScriptText,
   readNestedFiles,
   settleNestedReads,
@@ -30,6 +29,7 @@ import {
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { moveLiveTweens } from "../utils/gsapLiveRetime";
+import { rebindIframeTiming } from "./sealedTimingQueue";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
   if (targetPath.includes("\0") || targetPath.includes("..")) {
@@ -48,12 +48,6 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
     throw new Error(`Missing file contents for ${targetPath}`);
   }
   return data.content;
-}
-
-/** Re-derive live timing windows without re-executing composition scripts.
- * Works for zero-GSAP compositions; false asks the caller to full-reload. */
-function rebindPreviewTiming(iframe: HTMLIFrameElement | null, currentTime: number): boolean {
-  return applySoftReloadFinalization(iframe, currentTime);
 }
 
 /**
@@ -81,7 +75,7 @@ function rebindPreviewTiming(iframe: HTMLIFrameElement | null, currentTime: numb
  *   REWRITE (the clip has no domId so no id-addressed tweens, the delta was
  *   zero, or the server confirmed a no-op). Every script is unchanged and the
  *   timing attributes are already live-patched, so (when `rebindWhenUnmutated`
- *   allows it) `rebindPreviewTiming` re-seeks + rebinds and the runtime
+ *   allows it) `rebindIframeTiming` re-seeks + rebinds and the runtime
  *   re-derives the clip windows from the live DOM — no script re-execution,
  *   no full-reload blink. This covers comps with zero GSAP scripts too; only
  *   a missing iframe/runtime hook falls back to the full reload.
@@ -99,7 +93,7 @@ async function syncTimingEditPreview(
 ): Promise<void> {
   const currentTime = () => usePlayerStore.getState().currentTime;
   if (!outcome.mutated && rebindWhenUnmutated) {
-    if (!rebindPreviewTiming(iframe, currentTime())) reloadPreview();
+    rebindIframeTiming(iframe, currentTime, reloadPreview);
     return;
   }
   const { scriptText } = outcome;

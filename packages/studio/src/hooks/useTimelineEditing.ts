@@ -29,6 +29,8 @@ import { useBlockedTimelineEditToast } from "./useBlockedTimelineEditToast";
 import { useTimelineEditGate, type TimelineEditOutcome } from "./timelineEditPermission";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 
+export type { ApplyMarqueeSelection } from "./useTimelineEditingTypes";
+
 export function useTimelineEditing({
   projectId,
   activeCompPath,
@@ -39,6 +41,8 @@ export function useTimelineEditing({
   recordEdit,
   reloadPreview,
   previewIframeRef,
+  canvasSelectionsRef,
+  applyMarqueeSelectionRef,
   pendingTimelineEditPathRef,
   uploadProjectFiles,
   isRecordingRef,
@@ -174,6 +178,8 @@ export function useTimelineEditing({
     isRecordingRef,
     forceReloadSdkSession,
     previewIframeRef,
+    canvasSelectionsRef,
+    applyMarqueeSelectionRef,
     editQueueRef,
     handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
   });

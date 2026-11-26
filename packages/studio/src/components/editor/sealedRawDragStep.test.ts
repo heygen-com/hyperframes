@@ -44,6 +44,7 @@ function sealedDrag() {
     iframeRef: { current: document.createElement("iframe") },
     selectionRef: { current: null },
     boxRef: { current: null },
+    handlesRef: { current: null },
     blockedMoveRef: { current: null },
     waitingPressRef: { current: null },
     rafPausedRef: { current: true },

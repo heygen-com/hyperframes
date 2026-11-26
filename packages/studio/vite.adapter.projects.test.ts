@@ -69,6 +69,7 @@ describe("Studio's dev server keeps each project's history", () => {
     mkdirSync(join(data, "demo"));
     writeFileSync(join(data, "demo", "index.html"), "A");
     const old = await adapter.history!(adapter.resolveProject("demo")!);
+    await old?.flush();
     renameSync(join(data, "demo"), join(data, "demo-moved"));
     mkdirSync(join(data, "demo"));
     writeFileSync(join(data, "demo", "index.html"), "new");

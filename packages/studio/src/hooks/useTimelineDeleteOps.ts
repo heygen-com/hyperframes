@@ -8,7 +8,13 @@ import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
 import { saveServerRewriteWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
-import { deletedNotice, getTimelineElementLabel } from "../utils/studioHelpers";
+import {
+  deletedNotice,
+  getTimelineElementLabel,
+  resolveTimelineIdForSelection,
+} from "../utils/studioHelpers";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { ApplyMarqueeSelection } from "./useTimelineEditingTypes";
 import { buildPatchTarget, syncCompositionDurationWithEnd } from "./timelineEditingHelpers";
 import { timingGestureStep } from "./timelineTimingSync";
 import { captureDurationRollback, removeIframeTimelineElements } from "./previewTimingPatch";
@@ -70,6 +76,9 @@ interface UseTimelineDeleteOpsOptions {
   isRecordingRef?: MutableRefObject<boolean>;
   forceReloadSdkSession?: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
+  /** The canvas selections (primary and group) when the delete starts. */
+  canvasSelectionsRef?: RefObject<readonly DomEditSelection[]>;
+  applyMarqueeSelectionRef?: RefObject<ApplyMarqueeSelection>;
   editQueueRef: TimelineEditQueue;
   /** The same atomic multi-clip move commit the track-gap menu uses, reused
    *  to ripple the main track after a delete, folded into the delete's own
@@ -78,6 +87,26 @@ interface UseTimelineDeleteOpsOptions {
     changes: TimelineGroupMoveChange[],
     options?: TimelineGroupCommitOptions,
   ) => Promise<void>;
+}
+
+/** Each deleted element's canvas selection element, so a sealed frame can remove it without a lookup. */
+function selectedElementsFor(
+  deleted: readonly TimelineElement[],
+  selections: readonly DomEditSelection[],
+  elements: TimelineElement[],
+  activeCompPath: string | null,
+): Map<TimelineElement, Element> {
+  const byKey = new Map<string, Element>();
+  for (const selection of selections) {
+    const key = resolveTimelineIdForSelection(selection, elements, activeCompPath);
+    if (key) byKey.set(key, selection.element);
+  }
+  return new Map(
+    deleted.flatMap((te) => {
+      const element = byKey.get(te.key ?? te.id);
+      return element ? [[te, element] as const] : [];
+    }),
+  );
 }
 
 function unlinkInSource(source: string, survivors: readonly TimelineElement[]): string {
@@ -94,6 +123,8 @@ export function useTimelineDeleteOps({
   isRecordingRef,
   forceReloadSdkSession,
   previewIframeRef,
+  canvasSelectionsRef,
+  applyMarqueeSelectionRef,
   editQueueRef,
   handleTimelineGroupMove,
 }: UseTimelineDeleteOpsOptions) {
@@ -140,10 +171,25 @@ export function useTimelineDeleteOps({
           usePlayerStore.getState().rippleEditEnabled,
         );
         const rippleChanges = rippleShifts ? resolveShiftedElements(survivors, rippleShifts) : null;
-        // Timeline and preview follow at once, so the next edit starts from this result.
-        usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
+        // Timeline and preview follow at once, so the next edit starts from this result. The preview goes
+        // first: the timeline's re-render would hold back a sealed frame's removal.
         const rollbackDuration = captureDurationRollback(previewIframeRef.current);
-        removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
+        const selectedElements = selectedElementsFor(
+          sameFile,
+          canvasSelectionsRef?.current ?? [],
+          elements,
+          activeCompPath,
+        );
+        removeIframeTimelineElements(
+          previewIframeRef.current,
+          sameFile,
+          activeCompPath,
+          selectedElements,
+        );
+        const removed = new Set(selectedElements.values());
+        const gone = (canvasSelectionsRef?.current ?? []).filter((s) => removed.has(s.element));
+        if (gone.length > 0) applyMarqueeSelectionRef?.current(gone, "subtract");
+        usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         const deleted = enqueueTimelineEdit(editQueueRef, async (pid) => {
           await saveServerRewriteWithHistory({
             projectId: pid,
@@ -271,6 +317,8 @@ export function useTimelineDeleteOps({
       isRecordingRef,
       forceReloadSdkSession,
       previewIframeRef,
+      canvasSelectionsRef,
+      applyMarqueeSelectionRef,
       editQueueRef,
       handleTimelineGroupMove,
     ],

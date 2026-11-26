@@ -214,7 +214,11 @@ try {
   // fails without the fix: the old document's timeline, landing after a switch, made the new load skip its probe.
   const switched = await browser.newPage();
   await switched.evaluateOnNewDocument(() => {
+    const playerFrame = () =>
+      document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe")
+        ?.contentWindow;
     addEventListener("message", (event) => {
+      if (event.source !== playerFrame()) return;
       const data = event.data as { source?: string; type?: string } | null;
       if (data?.source === "hf-preview" && data.type === "timeline")
         (window as { __lastTimeline?: unknown }).__lastTimeline = data;
@@ -255,6 +259,46 @@ try {
   assert.ok(
     lateError,
     "a sealed player switched to a film with no runtime must fail, even after a late old timeline",
+  );
+  // fails without the fix: a click inside a sealed film let the film take the screen.
+  const fullscreenAfterClick = async (sealed: boolean) => {
+    const page = await browser.newPage();
+    await page.evaluateOnNewDocument(() => {
+      const playerFrame = () =>
+        document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe")
+          ?.contentWindow;
+      const w = window as { __fullscreen?: string[] };
+      w.__fullscreen = [];
+      addEventListener("message", (event) => {
+        if (event.source !== playerFrame()) return;
+        if (event.data?.source === "hf-fullscreen-probe") w.__fullscreen!.push(event.data.result);
+      });
+    });
+    await page.goto(
+      `${server.origin}/host.html?fixture=fullscreen-probe${sealed ? "&sealed=1" : ""}`,
+      { waitUntil: "domcontentloaded" },
+    );
+    const results = () => page.evaluate(() => (window as { __fullscreen?: string[] }).__fullscreen);
+    await page.waitForFunction(() =>
+      (window as { __fullscreen?: string[] }).__fullscreen?.includes("loaded"),
+    );
+    await page.evaluate(() =>
+      document.querySelector("hyperframes-player")!.setAttribute("interactive", ""),
+    );
+    const box = await (await page.$("hyperframes-player"))!.boundingBox();
+    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.waitForFunction(
+      () => ((window as { __fullscreen?: string[] }).__fullscreen?.length ?? 0) >= 2,
+    );
+    const result = (await results())!.at(-1);
+    await page.close();
+    return result;
+  };
+  assert.equal(await fullscreenAfterClick(false), "granted", "an unsealed film keeps fullscreen");
+  assert.notEqual(
+    await fullscreenAfterClick(true),
+    "granted",
+    "a click inside a sealed film must not let it go fullscreen",
   );
 } finally {
   await browser.close();

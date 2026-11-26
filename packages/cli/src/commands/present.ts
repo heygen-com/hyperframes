@@ -1,3 +1,4 @@
+import { referencedFontResponse } from "@hyperframes/share/referencedFont.mjs";
 import { failUsage, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -325,16 +326,20 @@ export async function registerPresentCompositionRoute(
 ): Promise<void> {
   const { isSafePath } = await import("@hyperframes/core/studio-api");
   sandboxForAnotherSite(app, "/composition/*");
-  app.get("/composition/*", (ctx) => {
+  app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
     if (reqPath === null) return ctx.text("Not found", 404);
     const filePath = resolve(project.dir, reqPath);
     // Security: canonicalizes symlinks + guards the trailing separator so neither
     // an in-project symlink nor a sibling dir sharing the prefix can escape.
     if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
-    if (isPrivateCompositionFile(project.dir, filePath) || !existsSync(filePath)) {
-      return ctx.text("Not found", 404);
+    if (isPrivateCompositionFile(project.dir, filePath)) {
+      return (
+        (await referencedFontResponse(project.dir, reqPath, ctx.req.raw.method)) ??
+        ctx.text("Not found", 404)
+      );
     }
+    if (!existsSync(filePath)) return ctx.text("Not found", 404);
     if (filePath.endsWith(".html")) return ctx.html(readFileSync(filePath, "utf-8"));
     return ctx.body(readFileSync(filePath), 200, { "Content-Type": assetContentType(filePath) });
   });

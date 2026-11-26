@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/producer",
-  "version": "0.9.98",
+  "version": "0.9.99",
   "description": "HTML-to-video rendering engine using Chrome's BeginFrame API",
   "repository": {
     "type": "git",
@@ -79,6 +79,7 @@
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
+    "@hyperframes/share": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
     "hono": "^4.13.16",
     "linkedom": "^0.18.12",

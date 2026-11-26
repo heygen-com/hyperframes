@@ -12,6 +12,8 @@ vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
 }));
 
 import { finishTimelineTimingFallback } from "./timelineTimingSync";
+import { inOrder } from "./sealedTimingQueue";
+import { usePlayerStore } from "../player/store/playerStore";
 
 const script = (at: number) =>
   `var tl = gsap.timeline({ paused: true }); tl.to("#clip", { x: 100, duration: 1 }, ${at}); window.__timelines["main"] = tl;`;
@@ -54,5 +56,30 @@ it("takes a sealed timing edit's saved clip and film timing to the frame with th
       ["data-duration", "2"],
     ],
   ]);
+  expect(reloadPreview).not.toHaveBeenCalled();
+});
+
+it("a queued rebind takes the playhead the person scrubbed to while it waited", async () => {
+  previewRequest.mockReset();
+  previewRequest.mockImplementation(async () => ({ rebound: true }));
+  const iframe = document.createElement("iframe");
+  let release = () => {};
+  inOrder(iframe, () => new Promise<void>((done) => (release = done)));
+  usePlayerStore.setState({ currentTime: 1 });
+  const reloadPreview = vi.fn();
+
+  await finishTimelineTimingFallback({
+    iframe,
+    projectId: null,
+    reloadPreview,
+    onGsapError: vi.fn(),
+    rebindWhenUnmutated: true,
+  });
+  usePlayerStore.setState({ currentTime: 4 });
+  release();
+
+  await vi.waitFor(() =>
+    expect(previewRequest).toHaveBeenCalledWith(iframe, "rebind-timing", { time: 4 }),
+  );
   expect(reloadPreview).not.toHaveBeenCalled();
 });

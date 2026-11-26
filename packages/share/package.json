@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/share",
-  "version": "0.9.98",
+  "version": "0.9.99",
   "description": "Shared review identity, version upload and sharing state for HyperFrames hosts",
   "license": "Apache-2.0",
   "repository": {
@@ -45,6 +45,10 @@
     "./projectSnapshot.mjs": {
       "import": "./src/projectSnapshot.mjs",
       "types": "./dist/projectSnapshot.d.mts"
+    },
+    "./referencedFont.mjs": {
+      "import": "./src/referencedFont.mjs",
+      "types": "./dist/sources/referencedFont.d.mts"
     },
     "./reviewAudience.mjs": {
       "import": "./src/reviewAudience.mjs",

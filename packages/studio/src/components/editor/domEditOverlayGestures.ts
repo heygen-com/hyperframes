@@ -110,6 +110,18 @@ export function movesGesture(
   return e.pointerId === gesture.pointerId && (e.buttons & 1) === 1;
 }
 
+export function drawOutline(
+  outline: (HTMLElement | null)[],
+  rect: { left?: number; top?: number; width?: number; height?: number },
+) {
+  for (const el of outline) {
+    for (const side of ["left", "top", "width", "height"] as const) {
+      const v = rect[side];
+      if (el && v !== undefined) el.style[side] = `${v}px`;
+    }
+  }
+}
+
 export interface BlockedMoveState {
   pointerId: number;
   startX: number;
@@ -120,6 +132,9 @@ export interface BlockedMoveState {
 export const PRESS_WAITING_ATTR = "data-dom-edit-press-waiting";
 
 /** A press that landed while the preview reloads: it starts once the new preview shows what it pressed. */
+export const pressStillHeld = (press: WaitingPressState | null): press is WaitingPressState =>
+  press !== null && !press.released;
+
 export interface WaitingPressState {
   pointerId: number;
   startX: number;
@@ -242,6 +257,7 @@ export type UseDomEditOverlayGesturesOptions = {
   overlayRef: RefObject<HTMLDivElement | null>;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   boxRef: RefObject<HTMLDivElement | null>;
+  handlesRef: RefObject<HTMLDivElement | null>;
   selectionRef: RefObject<DomEditSelection | null>;
   hoverSelectionRef: RefObject<DomEditSelection | null>;
   overlayRectRef: RefObject<OverlayRect | null>;

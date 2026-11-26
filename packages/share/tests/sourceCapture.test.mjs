@@ -536,3 +536,38 @@ test("aliases of portable hidden metadata stay local without refusing the projec
     ["index.html"],
   );
 });
+
+test("font reads follow current Sync references, exclusions and file identities", async (t) => {
+  const { referencedFontResponse } = await import("@hyperframes/share/referencedFont.mjs");
+  const css = '@font-face{font-family:Face;src:url("../.brand/.Face.woff2")}';
+  const root = await project({
+    "index.html": '<link rel="stylesheet" href="styles/a.css">',
+    "styles/a.css": css,
+    ".brand/.Face.woff2": "selected font",
+    ".brand/.Unused.woff2": "unused",
+    ".env.woff2": "private fixture",
+    ".brand/.Other.js": "script fixture",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const read = (path) => referencedFontResponse(root, path, "GET");
+  const font = await read(".brand/.Face.woff2");
+  assert.equal(font.headers.has("content-length"), false);
+  assert.equal(await font.text(), "selected font");
+  const head = await referencedFontResponse(root, ".brand/.Face.woff2", "HEAD");
+  assert.equal(head?.headers.get("content-length"), String("selected font".length));
+  assert.equal(head?.body, null);
+  await writeFile(join(root, "styles/a.css"), "");
+  assert.equal(await read(".brand/.Face.woff2"), null);
+  await writeFile(
+    join(root, "styles/a.css"),
+    css + 'a{src:url("../.env.woff2"),url("../.brand/.Other.js")}',
+  );
+  for (const path of [".brand/.Unused.woff2", ".env.woff2", ".brand/.Other.js"])
+    assert.equal(await read(path), null);
+  await writeFile(join(root, ".hyperframesignore"), "/.brand/");
+  assert.equal(await read(".brand/.Face.woff2"), null);
+  await rm(join(root, ".hyperframesignore"));
+  await rm(join(root, ".brand/.Face.woff2"));
+  await symlink(join(root, ".brand/.Unused.woff2"), join(root, ".brand/.Face.woff2"));
+  assert.equal(await read(".brand/.Face.woff2"), null);
+});

@@ -1365,3 +1365,34 @@ describe("createFileServer names the file system refuses", () => {
     }
   });
 });
+
+it("loads the authored dot-font from the project even with a compiled overlay", async () => {
+  const projectDir = mkdtempSync(join(tmpdir(), "hf-render-font-"));
+  const compiledDir = mkdtempSync(join(tmpdir(), "hf-compiled-font-"));
+  try {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<link rel="preload" as="font" href=".My%20Font.woff2">',
+    );
+    writeFileSync(join(projectDir, ".My Font.woff2"), "authored font");
+    writeFileSync(join(compiledDir, ".My Font.woff2"), "different file");
+    const server = await createFileServer({
+      projectDir,
+      compiledDir,
+      headScripts: [],
+      bodyScripts: [],
+    });
+    try {
+      const response = await fetch(server.url + "/.My%20Font.woff2");
+      expect(response.headers.get("content-type")).toBe("font/woff2");
+      expect(await response.text()).toBe("authored font");
+      writeFileSync(join(projectDir, "index.html"), "<html></html>");
+      expect((await fetch(server.url + "/.My%20Font.woff2")).status).toBe(404);
+    } finally {
+      server.close();
+    }
+  } finally {
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(compiledDir, { recursive: true, force: true });
+  }
+});

@@ -45,3 +45,25 @@ describe("a sub-composition preview", () => {
     expect(html).not.toContain("onmouseover");
   });
 });
+
+it("serves a referenced dot-prefixed font through the preview route", async () => {
+  const root = mkdtempSync(join(tmpdir(), "hf-preview-font-"));
+  try {
+    writeFileSync(
+      join(root, "index.html"),
+      '<style>@font-face{font-family:F;src:url(".Face.ttf")}</style>',
+    );
+    writeFileSync(join(root, ".Face.ttf"), "selected font");
+    writeFileSync(join(root, ".Unused.ttf"), "unused");
+    const studio = createStudioApi({
+      ...adapter,
+      resolveProject: async (id) => ({ id, dir: root }),
+    });
+    const response = await studio.request("/projects/test/preview/.Face.ttf");
+    expect(response.headers.get("content-type")).toBe("font/ttf");
+    expect(await response.text()).toBe("selected font");
+    expect((await studio.request("/projects/test/preview/.Unused.ttf")).status).toBe(404);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
