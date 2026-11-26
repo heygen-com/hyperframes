@@ -192,7 +192,7 @@ export interface ProjectHistory {
   /** Takes in every pending write and commits every open window and the outside group. */
   checkpoint(): Promise<void>;
   flush(): Promise<void>;
-  /** True once another project stood at the folder's path when the last operation began. */
+  /** True when another project stands at the folder's path now, asked on this thread. */
   replacedAtPath(): boolean;
   replacedNow(): Promise<boolean>;
   close(): Promise<void>;
@@ -691,7 +691,7 @@ class Engine {
     return run;
   }
 
-  /** whereFolder off the main thread; folderNow keeps its answer for the sync reads (assertOpen, replacedAtPath). */
+  /** whereFolder off the main thread; folderNow keeps its answer for assertOpen's sync read. */
   async lookAtFolder(): Promise<void> {
     const now = await statOffThread(this.dir);
     if (!now) return void (this.folderNow = "gone");
@@ -2156,7 +2156,7 @@ class Engine {
       },
       checkpoint: () => this.queue(() => this.settle()),
       flush: () => this.queue(() => this.settleAll()),
-      replacedAtPath: () => this.folderNow === "replaced",
+      replacedAtPath: () => this.whereFolder() === "replaced",
       replacedNow: async () => (await this.folderAnswer()) === "replaced",
       close: () =>
         (this.closing ??= (async () => {
