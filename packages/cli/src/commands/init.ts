@@ -1089,7 +1089,7 @@ export default defineCommand({
           ? c.accent(command)
           : `${c.accent(`cd ${shownName}`)} && ${c.accent(command)}`;
       const renderToolsWarning = missingRenderToolsWarning();
-      if (renderToolsWarning) console.log(c.warn(renderToolsWarning));
+      if (renderToolsWarning) console.log(c.warn(terminalText(renderToolsWarning)));
 
       console.log();
       console.log(shownName === null ? "Get started, from the project folder:" : "Get started:");
@@ -1337,7 +1337,7 @@ export default defineCommand({
     }
 
     const renderToolsWarning = missingRenderToolsWarning();
-    if (renderToolsWarning) clack.log.warn(renderToolsWarning);
+    if (renderToolsWarning) clack.log.warn(terminalText(renderToolsWarning));
 
     // Auto-launch studio preview
     clack.log.info("Opening studio preview...");
