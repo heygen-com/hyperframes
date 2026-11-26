@@ -48,6 +48,12 @@ export interface AvatarVEngineConfig {
   more_blinking?: boolean;
 }
 
+export interface AvatarVIEngineConfig {
+  type: "heygen-avatar-6" | "heygen-avatar-6-turbo";
+  motion_expressiveness?: "default" | "less";
+  reference_look_id?: string | null;
+}
+
 export interface AvatarVideoScene {
   type: "avatar_video";
   input: StudioAvatarInput;
@@ -78,6 +84,11 @@ export interface CaptionSetting {
 }
 
 export type CaptionStyle = "default";
+
+export interface CartesiaEngineSettings {
+  engine_type: "cartesia";
+  model?: "sonic-3.6" | "sonic-3.5" | null;
+}
 
 export type ChargedPool = "api_credits" | "hyperframes_credits" | "web_credits" | "free_images";
 
@@ -129,7 +140,7 @@ export interface CreateBackgroundRemovalRequest {
 
 export interface CreateHyperframesRenderRequest {
   project: AssetUrl | AssetId | AssetBase64;
-  fps?: number | null;
+  fps?: number | "24000/1001" | "30000/1001" | "60000/1001" | null;
   quality?: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   crf?: number | null;
@@ -139,6 +150,7 @@ export interface CreateHyperframesRenderRequest {
   aspect_ratio?: HyperframesAspectRatio;
   composition?: string | null;
   variables?: Record<string, unknown> | null;
+  strict_variables?: boolean;
   title?: string | null;
   callback_id?: string | null;
   callback_url?: string | null;
@@ -207,6 +219,7 @@ export interface CreateSpeechV3ResponseData {
   request_id?: string | null;
   word_timestamps?: Array<WordWithTimestamp> | null;
   engine: SpeechEngine;
+  heygen_request_id?: string | null;
 }
 
 export interface CreateVideoFromAvatar {
@@ -233,7 +246,12 @@ export interface CreateVideoFromAvatar {
   brand_glossary_id?: string | null;
   motion_prompt?: string | null;
   expressiveness?: Expressiveness | null;
-  engine?: AvatarVEngineConfig | AvatarIVEngineConfig | AvatarIIIEngineConfig | null;
+  engine?:
+    | AvatarVEngineConfig
+    | AvatarIVEngineConfig
+    | AvatarIIIEngineConfig
+    | AvatarVIEngineConfig
+    | null;
 }
 
 export interface CreateVideoFromCinematicAvatar {
@@ -275,6 +293,7 @@ export interface CreateVideoFromImage {
   brand_glossary_id?: string | null;
   motion_prompt?: string | null;
   expressiveness?: Expressiveness | null;
+  engine?: AvatarIVEngineConfig | AvatarVIEngineConfig | null;
 }
 
 export interface CreateVideoFromStudio {
@@ -323,20 +342,13 @@ export type DeliveryErrorCode =
 export type DeliveryStatus = "pending" | "in_progress" | "succeeded" | "failed";
 
 export interface ElevenLabsEngineSettings {
-  model?: ElevenLabsModel | null;
+  model?: "eleven_multilingual_v2" | "eleven_turbo_v2_5" | "eleven_v3" | "eleven_v4" | null;
   similarity_boost?: number | null;
   stability?: number | null;
   style?: number | null;
   use_speaker_boost?: boolean | null;
   engine_type: "elevenlabs";
 }
-
-export type ElevenLabsModel =
-  | "eleven_multilingual_v2"
-  | "eleven_turbo_v2_5"
-  | "eleven_flash_v2_5"
-  | "eleven_v3"
-  | "eleven_v4";
 
 export interface ElevenLabsSpeechSettings {
   model_id:
@@ -360,13 +372,11 @@ export interface FileDeliveryStatus {
 }
 
 export interface FishEngineSettings {
-  model?: FishModel | null;
+  model?: "s2.1-pro" | "s2-pro" | null;
   stability?: number | null;
   similarity?: number | null;
   engine_type: "fish";
 }
-
-export type FishModel = "s1" | "s2-pro" | "s2.1-pro";
 
 export interface GptImage25Request {
   model: "gpt-image-2.5";
@@ -393,10 +403,15 @@ export interface GptImage26Request {
 }
 
 export interface HeyGenVoiceEngineSettings {
+  model?: "heygen-voice-1" | null;
+  similarity?: "medium" | "high" | "extra_high" | "max" | null;
+  expressiveness?: number | null;
+  pitch?: number | null;
+  inflection?: number | null;
   engine_type: "heygen_voice" | "orca";
 }
 
-export type HyperframesAspectRatio = "16:9" | "9:16" | "1:1";
+export type HyperframesAspectRatio = "16:9" | "9:16" | "1:1" | "4:5";
 
 export interface HyperframesReferenceBackground {
   kind: "solid" | "none" | "unsupported_non_solid" | "unknown";
@@ -412,6 +427,7 @@ export interface HyperframesRenderDetail {
   thumbnail_url?: string | null;
   duration?: number | null;
   fps?: number | null;
+  fps_exact?: "24000/1001" | "30000/1001" | "60000/1001" | null;
   quality?: "draft" | "standard" | "high" | null;
   format: "mp4" | "webm" | "mov";
   resolution?: HyperframesResolution | null;
@@ -422,18 +438,30 @@ export interface HyperframesRenderDetail {
   completed_at?: number | null;
   failure_message?: string | null;
   failure_code?: string | null;
+  failure_detail?: string | null;
 }
 
 export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "failed";
 
 export type HyperframesResolution = "1080p" | "4k";
 
+export interface Ideogram46Request {
+  model: "ideogram-4.6";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "16:9" | "9:16" | "1:1" | "4:3" | "3:4" | "21:9" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
 export type ImageCreateRequest =
   | GptImage25Request
   | GptImage26Request
   | GptImage26FlareRequest
   | NanoBanana2Request
-  | NanoBanana21Request;
+  | NanoBanana21Request
+  | MinimaxH3ImageRequest
+  | MinimaxH3Image4kRequest
+  | Ideogram46Request;
 
 export interface ImageScene {
   type: "image";
@@ -451,7 +479,7 @@ export interface ImageToVideoRequest {
   mode: "image_to_video";
   model: "heygen-video-1";
   prompt: string;
-  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  prompt_enhancement?: "turbo" | "quality" | "disabled" | "ultraquality";
   resolution?: "480p" | "768p" | "1080p" | "2k";
   duration?: number | "auto";
   aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "adaptive" | null;
@@ -493,6 +521,22 @@ export interface LyriaMusicRequest {
   lyrics?: string | null;
 }
 
+export interface MinimaxH3Image4kRequest {
+  model: "minimax-h3-image-4k";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "16:9" | "9:16" | "1:1" | "4:3" | "3:4" | "21:9" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface MinimaxH3ImageRequest {
+  model: "minimax-h3-image";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "16:9" | "9:16" | "1:1" | "4:3" | "3:4" | "21:9" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
 export interface MintPartUrlsRequest {
   multipart_upload_id: string;
   part_numbers: Array<number>;
@@ -501,6 +545,10 @@ export interface MintPartUrlsRequest {
 export interface MintPartUrlsResponse {
   parts: Array<PartUrl>;
   expires_in_seconds: number;
+}
+
+export interface MockingbirdEngineSettings {
+  engine_type: "mockingbird";
 }
 
 export interface ModelVideoResponse {
@@ -595,7 +643,7 @@ export interface ReferenceToVideoRequest {
   mode: "reference_to_video";
   model: "heygen-video-1";
   prompt: string;
-  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  prompt_enhancement?: "turbo" | "quality" | "disabled" | "ultraquality";
   resolution?: "480p" | "768p" | "1080p" | "2k";
   duration?: number | "auto";
   aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "adaptive";
@@ -616,7 +664,7 @@ export interface ScribeV2TranscriptionRequest {
   num_speakers?: number | null;
 }
 
-export type SpeechEngine = "starfish" | "orca" | "elevenlabs" | "elevenlabs_v3";
+export type SpeechEngine = "starfish" | "heygen_voice" | "orca" | "elevenlabs" | "elevenlabs_v3";
 
 export interface StandardAPIError {
   code: string;
@@ -649,7 +697,12 @@ export interface StudioAvatarInput {
   avatar_id: string;
   motion_prompt?: string | null;
   expressiveness?: Expressiveness | null;
-  engine?: AvatarVEngineConfig | AvatarIVEngineConfig | AvatarIIIEngineConfig | null;
+  engine?:
+    | AvatarVEngineConfig
+    | AvatarIVEngineConfig
+    | AvatarIIIEngineConfig
+    | AvatarVIEngineConfig
+    | null;
   background?:
     | StudioColorBackgroundInput
     | StudioImageBackgroundInput
@@ -678,7 +731,7 @@ export interface TextToVideoRequest {
   mode: "text_to_video";
   model: "heygen-video-1";
   prompt: string;
-  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  prompt_enhancement?: "turbo" | "quality" | "disabled" | "ultraquality";
   resolution?: "480p" | "768p" | "1080p" | "2k";
   duration?: number | "auto";
   aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16";
@@ -833,6 +886,8 @@ export interface VoiceSettingsInput {
     | FishEngineSettings
     | StarfishEngineSettings
     | HeyGenVoiceEngineSettings
+    | CartesiaEngineSettings
+    | MockingbirdEngineSettings
     | null;
 }
 
