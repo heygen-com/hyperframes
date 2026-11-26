@@ -229,13 +229,16 @@ function isRenderRange(value: unknown): value is RenderRange {
   );
 }
 
-function assertRequestOptionObjects(options: Record<string, unknown>): void {
-  validateEngineConfigSnapshot(options.engineConfig);
+function assertRequestRange(options: Record<string, unknown>): void {
   if (options.range !== undefined && !isRenderRange(options.range)) {
     throw new Error(
       "Render request range must be { startSeconds, endSeconds? } in seconds, end after start",
     );
   }
+}
+
+function assertRequestOptionObjects(options: Record<string, unknown>): void {
+  validateEngineConfigSnapshot(options.engineConfig);
   if (
     options.expectedOutputDimensions !== undefined &&
     !isExpectedOutputDimensions(options.expectedOutputDimensions)
@@ -264,6 +267,7 @@ function assertRequestOptions(options: unknown): asserts options is RenderReques
   }
   assertRequestOptionScalars(options);
   assertRequestOptionObjects(options);
+  assertRequestRange(options);
 }
 
 function assertNonEmptyPath(value: unknown, field: "projectDir" | "outputPath"): void {
