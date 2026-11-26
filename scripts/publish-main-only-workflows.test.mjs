@@ -156,6 +156,19 @@ test("a job that reads a stored secret installs and builds nothing", () => {
   assert.deepEqual(violations, []);
 });
 
+test("a job that runs the catalog drift check checks out full history", () => {
+  // fails without the fix: the catalog build job's shallow checkout had no origin/main for check-docs-catalog.mjs.
+  const shallow = workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs ?? {})
+      .filter(([, job]) =>
+        (job.steps ?? []).some((step) => /check:catalog-drift/.test(step.run ?? "")),
+      )
+      .filter(([, job]) => (job.steps ?? []).find(isCheckout)?.with?.["fetch-depth"] !== 0)
+      .map(([name]) => `${file} ${name}`),
+  );
+  assert.deepEqual(shallow, []);
+});
+
 test("the catalog builds in a job with no secret and publishes from a job that runs no installed code", () => {
   const { doc } = workflows.find(({ file }) => file === "catalog-publish.yml");
   const { build, publish } = doc.jobs;
