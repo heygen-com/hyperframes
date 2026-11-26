@@ -38,22 +38,28 @@ let flushNudge = () => {};
 
 function Harness({
   selection,
+  groupSelections = EMPTY_GROUP_SELECTIONS,
+  overlayRect = REST_RECT,
   onPathOffsetCommit,
+  onGroupPathOffsetCommit = async () => {},
   onManualDragStart = () => {},
 }: {
   selection: DomEditSelection | null;
+  groupSelections?: DomEditSelection[];
+  overlayRect?: OverlayRect | null;
   onPathOffsetCommit: UseDomEditNudgeParams["onPathOffsetCommitRef"]["current"];
+  onGroupPathOffsetCommit?: UseDomEditNudgeParams["onGroupPathOffsetCommitRef"]["current"];
   onManualDragStart?: () => void;
 }) {
   flushNudge = useDomEditNudge({
     selection,
-    groupSelections: EMPTY_GROUP_SELECTIONS,
+    groupSelections,
     allowCanvasMovement: true,
     iframeRef: makeRef(null),
     overlayRef: makeRef(null),
     activeCompositionPathRef: makeRef(null),
     selectionRef: makeRef(selection),
-    overlayRectRef: makeRef(REST_RECT),
+    overlayRectRef: makeRef(overlayRect),
     groupOverlayItemsRef: makeRef([]),
     gestureRef: makeRef(null),
     groupGestureRef: makeRef(null),
@@ -62,7 +68,7 @@ function Harness({
     onManualDragStartRef: makeRef(onManualDragStart),
     onBlockedMoveRef: makeRef(() => {}),
     onPathOffsetCommitRef: makeRef(onPathOffsetCommit),
-    onGroupPathOffsetCommitRef: makeRef(async () => {}),
+    onGroupPathOffsetCommitRef: makeRef(onGroupPathOffsetCommit),
   }).flushNudge;
   return null;
 }
@@ -407,6 +413,70 @@ describe("useDomEditNudge pauses playback before it snapshots the timelines", ()
     act(() => dispatchArrowRight());
 
     expect(pause).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDomEditNudge — early nudge before overlay rects arrive", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetForTests();
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.useRealTimers();
+  });
+
+  // fails without the fix: resolveSingleNudgeTarget returned null while overlayRect was null.
+  it("nudges a single selection before its overlayRect is measured", () => {
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "early-single";
+    const commit = vi.fn();
+    act(() =>
+      root.render(
+        <Harness
+          selection={makeSelection("Early", element)}
+          overlayRect={null}
+          onPathOffsetCommit={commit}
+        />,
+      ),
+    );
+    act(() => dispatchArrowRight());
+    act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10));
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit.mock.calls[0]?.[1]).toEqual({ x: CANVAS_NUDGE_STEP_PX, y: 0 });
+    act(() => root.unmount());
+  });
+
+  // fails without the fix: groupOverlayItems was empty before measurement, dropping the group nudge.
+  it("nudges a group selection before groupOverlayItems are measured", () => {
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const a = document.body.appendChild(document.createElement("div"));
+    const b = document.body.appendChild(document.createElement("div"));
+    a.id = "early-a";
+    b.id = "early-b";
+    const selA = makeSelection("A", a);
+    const selB = makeSelection("B", b);
+    const groupCommit = vi.fn();
+    act(() =>
+      root.render(
+        <Harness
+          selection={selA}
+          groupSelections={[selA, selB]}
+          overlayRect={null}
+          onPathOffsetCommit={vi.fn()}
+          onGroupPathOffsetCommit={groupCommit}
+        />,
+      ),
+    );
+    act(() => dispatchArrowRight());
+    act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10));
+    expect(groupCommit).toHaveBeenCalledTimes(1);
+    expect(groupCommit.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({ selection: selA, next: { x: CANVAS_NUDGE_STEP_PX, y: 0 } }),
+      expect.objectContaining({ selection: selB, next: { x: CANVAS_NUDGE_STEP_PX, y: 0 } }),
+    ]);
+    act(() => root.unmount());
   });
 });
 
