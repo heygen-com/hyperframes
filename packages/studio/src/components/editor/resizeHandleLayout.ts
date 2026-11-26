@@ -32,3 +32,11 @@ export function resizeHandleLayout(
     anchor: { left: half - slideOutToFreeMiddleX, top: half - slideOutToFreeMiddleY },
   };
 }
+
+export function rotateHandleLayout(cropInset?: CropInset): CSSProperties {
+  const inset = cropInset ?? NO_CROP_INSET;
+  return {
+    left: `calc(${inset.left}px + max(0px, 100% - ${inset.left + inset.right}px) / 2)`,
+    top: `calc(100% - ${inset.bottom}px + 12px)`,
+  };
+}

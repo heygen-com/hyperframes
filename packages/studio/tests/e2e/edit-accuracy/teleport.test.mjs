@@ -487,6 +487,28 @@ describe("frameSamplerScript in a sealed preview", () => {
     }
   });
 
+  it("pairs a push with the raw step the preview drew, before that step's pointermove", async () => {
+    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { rec, tick, clock, settle, watching, move } = samplerFor(iframe, on);
+    try {
+      await watching(asked);
+      clock.now = 10;
+      move(150);
+      clock.now = 20;
+      // Studio posts the step on pointerrawupdate; the coalesced pointermove comes after the paint.
+      on.pointerrawupdate?.({ isTrusted: true, clientX: 160, clientY: 225, buttons: 1 });
+      push(1_025, 10);
+      clock.now = 30;
+      move(160);
+      await settle();
+      tick();
+      const measured = rec.samples.filter((s) => s.quad);
+      expect(measured.map((s) => [s.t, s.pointer[0], s.quad[0][0]])).toEqual([[25, 160, 110]]);
+    } finally {
+      close();
+    }
+  });
+
   it("leaves out a push painted before this drag started", async () => {
     const { iframe, on, asked, push, close } = sealedFrame([]);
     const { rec, tick, settle, watching, move } = samplerFor(iframe, on);

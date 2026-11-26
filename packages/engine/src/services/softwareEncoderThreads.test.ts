@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 
 const host = vi.hoisted(() => ({ quota: 6, cores: 8 }));
+vi.mock("fs", async () => (await import("./__fixtures__/noCgroupFs.js")).fsWithoutCgroup());
 vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
   availableParallelism: () => host.quota,

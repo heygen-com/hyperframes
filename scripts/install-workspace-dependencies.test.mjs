@@ -72,3 +72,11 @@ test("stops after three failed Bun install attempts", () => {
   assert.equal(result.attempts, 3);
   assert.match(result.stdout, /failed after 3 attempts/);
 });
+
+// fails without the fix: with no list, Bun runs the install scripts of any of its ~370 default-trusted packages.
+test("installs run the scripts of listed packages only", () => {
+  const { trustedDependencies } = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(trustedDependencies, ["esbuild", "ffmpeg-static", "lefthook", "puppeteer"]);
+});

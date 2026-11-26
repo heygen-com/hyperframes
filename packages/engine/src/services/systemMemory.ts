@@ -15,7 +15,7 @@ import { availableParallelism, cpus, freemem, platform, totalmem } from "os";
 
 const BYTES_PER_MIB = 1024 * 1024;
 const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
-// These are the paths as seen from INSIDE a container, where the runtime
+// These memory paths are as seen from INSIDE a container, where the runtime
 // mounts the container's own cgroup at the namespace root — the case this
 // probe exists for. They are deliberately not resolved via /proc/self/cgroup:
 // on a bare host under systemd the process's real limit may live in a nested
@@ -28,7 +28,7 @@ const CGROUP_V1_MEMORY_LIMIT_PATH = "/sys/fs/cgroup/memory/memory.limit_in_bytes
 // Kernel no-limit sentinel is page-rounded 2^63-1 (~9223372036854771712); >= 2^60 is implausible as a real limit.
 const CGROUP_V1_NO_LIMIT_CUTOFF_BYTES = 2n ** 60n;
 
-const CGROUP_V2_CPU_MAX_PATH = "/sys/fs/cgroup/cpu.max";
+const CGROUP_V2_MOUNT = "/sys/fs/cgroup";
 const CGROUP_V1_CPU_QUOTA_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us";
 const CGROUP_V1_CPU_PERIOD_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_period_us";
 
@@ -113,13 +113,25 @@ export function getCgroupCpuLimit(): number | null {
   if (_cachedCgroupCpus !== undefined) return _cachedCgroupCpus;
   if (process.platform !== "linux") return (_cachedCgroupCpus = null);
   _cachedCgroupCpus = isCgroupV2()
-    ? parseCgroupCpus(readCgroupFile(CGROUP_V2_CPU_MAX_PATH), null, null)
+    ? cgroupV2CpuLimit()
     : parseCgroupCpus(
         null,
         readCgroupFile(CGROUP_V1_CPU_QUOTA_PATH),
         readCgroupFile(CGROUP_V1_CPU_PERIOD_PATH),
       );
   return _cachedCgroupCpus;
+}
+
+// Read like libuv clamps availableParallelism(): every cpu.max from the process's own cgroup up to the root.
+function cgroupV2CpuLimit(): number | null {
+  const own = readCgroupFile("/proc/self/cgroup")?.match(/^0::(\/.*)$/m)?.[1] ?? "/";
+  const quotas: number[] = [];
+  for (let dir = own.replace(/\/+$/, ""); ; dir = dir.slice(0, dir.lastIndexOf("/"))) {
+    const quota = parseCgroupCpus(readCgroupFile(`${CGROUP_V2_MOUNT}${dir}/cpu.max`), null, null);
+    if (quota !== null) quotas.push(quota);
+    if (dir === "") break;
+  }
+  return quotas.length > 0 ? Math.min(...quotas) : null;
 }
 
 /**

@@ -9,7 +9,11 @@ import type {
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
 import type { StudioElementLook } from "./gestureUndoRevert";
 import type { CssRotationTarget, RotationCommit } from "./rotationDraft";
-import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
+import {
+  resolveDomEditGroupOverlayRect,
+  type GroupOverlayItem,
+  type OverlayRect,
+} from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
@@ -110,7 +114,7 @@ export function movesGesture(
   return e.pointerId === gesture.pointerId && (e.buttons & 1) === 1;
 }
 
-export function drawOutline(
+function drawOutline(
   outline: (HTMLElement | null)[],
   rect: { left?: number; top?: number; width?: number; height?: number },
 ) {
@@ -122,14 +126,37 @@ export function drawOutline(
   }
 }
 
-export function drawChromeOrigin(
-  box: HTMLElement | null | undefined,
-  rect: { left: number; top: number; width: number; height: number },
-) {
-  const chrome = box?.closest<HTMLElement>("[data-dom-edit-chrome]");
-  if (chrome) {
-    chrome.style.transformOrigin = `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px`;
+export function drawGroupOutline(overlay: HTMLElement | null, items: GroupOverlayItem[]) {
+  if (!overlay) return;
+  const boxes = new Map<string, HTMLElement>();
+  for (const box of overlay.querySelectorAll<HTMLElement>("[data-dom-edit-group-member]")) {
+    boxes.set(box.dataset.domEditGroupMember ?? "", box);
   }
+  for (const item of items) drawOutline([boxes.get(item.key) ?? null], item.rect);
+  const bounds = resolveDomEditGroupOverlayRect(items.map((item) => item.rect));
+  const groupBox = overlay.querySelector<HTMLElement>("[data-dom-edit-group-box]");
+  if (bounds) drawOutline([groupBox], bounds);
+}
+
+export function drawSelectionOutline(
+  box: HTMLElement | null | undefined,
+  handles: HTMLElement | null | undefined,
+  rect: { left: number; top: number; width: number; height: number },
+  options?: { syncCropFrame?: boolean },
+) {
+  drawOutline([box ?? null, handles ?? null], rect);
+  const chrome = box?.closest<HTMLElement>("[data-dom-edit-chrome]");
+  if (!chrome) return;
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  chrome.style.transformOrigin = `${cx}px ${cy}px`;
+  if (!options?.syncCropFrame) return;
+  const cropFrame = chrome.parentElement?.querySelector<HTMLElement>("[data-dom-edit-crop-frame]");
+  if (!cropFrame) return;
+  const w = Number.parseFloat(cropFrame.style.width);
+  const h = Number.parseFloat(cropFrame.style.height);
+  cropFrame.style.left = `${Number.isFinite(w) ? cx - w / 2 : rect.left}px`;
+  cropFrame.style.top = `${Number.isFinite(h) ? cy - h / 2 : rect.top}px`;
 }
 
 export interface BlockedMoveState {

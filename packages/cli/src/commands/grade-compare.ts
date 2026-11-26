@@ -1,12 +1,4 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
@@ -30,7 +22,7 @@ import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
-import { insideProject, recordPathInProject } from "../media-use/lib/record-path.mjs";
+import { readFileInsideProject, recordPathInProject } from "../media-use/lib/record-path.mjs";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -431,17 +423,23 @@ function frameFileNameForPath(framePath: string): string {
   return "frame.png";
 }
 
-function lutSourcePath(projectDir: string, lutSrc: string, label: string, typed = false): string {
+function readLutSource(
+  projectDir: string,
+  lutSrc: string,
+  label: string,
+  typed = false,
+): { path: string; bytes: Buffer } {
   const outside = () =>
     new Error(`LUT for "${label}" must be a file inside the project: ${lutSrc}`);
-  const path = typed
-    ? resolveFromBase(projectDir, lutSrc)
-    : recordPathInProject(projectDir, lutSrc);
-  if (path === null) throw outside();
-  if (!existsSync(path)) throw new Error(`LUT file not found for "${label}": ${path}`);
-  if (!typed && (insideProject(projectDir, path) === null || !statSync(path).isFile()))
-    throw outside();
-  return path;
+  if (typed) {
+    const path = resolveFromBase(projectDir, lutSrc);
+    if (!existsSync(path)) throw new Error(`LUT file not found for "${label}": ${path}`);
+    return { path, bytes: readFileSync(path) };
+  }
+  const candidate = recordPathInProject(projectDir, lutSrc);
+  const result = candidate !== null ? readFileInsideProject(projectDir, candidate) : null;
+  if (result === null) throw outside();
+  return result;
 }
 
 export async function prepareGradeCompareTempProject(opts: {
@@ -464,15 +462,14 @@ export async function prepareGradeCompareTempProject(opts: {
       const lutSrc = lutSrcFromGrading(cell.grading);
       if (!lutSrc) return cell;
 
-      const sourcePath = lutSourcePath(
+      const { path: sourcePath, bytes: lutBytes } = readLutSource(
         opts.projectDir,
         lutSrc,
         cell.label,
         opts.lutPathsTypedWithLutsFlag,
       );
-      const lutText = readFileSync(sourcePath, "utf-8");
       try {
-        parseCubeLut(lutText);
+        parseCubeLut(lutBytes.toString("utf-8"));
       } catch (err) {
         throw new Error(
           `LUT for "${cell.label}" is not a valid .cube: ${normalizeErrorMessage(err)}`,
@@ -481,7 +478,7 @@ export async function prepareGradeCompareTempProject(opts: {
       const lutExt = extname(sourcePath) || ".cube";
       const stagedName = `lut-${lutIndex}${lutExt}`;
       lutIndex += 1;
-      copyFileSync(sourcePath, join(tempDir, stagedName));
+      writeFileSync(join(tempDir, stagedName), lutBytes);
       return {
         label: cell.label,
         grading: rewriteGradingLutSrc(cell.grading, stagedName),

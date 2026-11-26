@@ -90,6 +90,11 @@ import {
   type EditElementResult,
 } from "./editing/editElement";
 import {
+  parseStageMeasureParams,
+  type StageMeasureParams,
+  type StageMeasureResult,
+} from "./editing/stageMeasure";
+import {
   parseTextEdit,
   textEditEndedEvent,
   textEditSelectionEvent,
@@ -143,6 +148,14 @@ export type { EditingGestureBase, EditingGestureStart } from "./editingGestureSt
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export { MAX_EDIT_ENTRIES } from "./editing/editElement";
 export { MAX_FONT_FACES } from "./editing/textStyleReads";
+export {
+  MAX_STAGE_CLIP_KEYS,
+  MAX_STAGE_ITEMS,
+  type StageMeasuredItem,
+  type StageMeasureParams,
+  type StageMeasureResult,
+  type StageTextStart,
+} from "./editing/stageMeasure";
 export {
   MAX_SNAPSHOT_CHANNELS,
   MAX_SNAPSHOT_FIELDS,
@@ -232,6 +245,7 @@ export const EDITING_REQUEST_KINDS = [
   "text-edit",
   "serve-paused-frames",
   "frame-presented",
+  "stage-measure",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -430,6 +444,7 @@ export interface EditingRequests {
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
   "frame-presented": { params: NoParams; result: { presented: boolean } };
+  "stage-measure": { params: StageMeasureParams; result: StageMeasureResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -747,6 +762,7 @@ const PARAM_PARSERS: {
       ? { channel: params.channel }
       : null,
   "frame-presented": noParams,
+  "stage-measure": parseStageMeasureParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
