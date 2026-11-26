@@ -12,7 +12,7 @@ import {
 } from "./protocol";
 
 type BridgeDeps = {
-  onPlay: () => void;
+  onPlay: (playSeq?: number) => void;
   onPause: () => void;
   onStopMedia: () => void;
   onSeek: (timeSeconds: number, seekMode: "drag" | "commit") => void;
@@ -165,7 +165,12 @@ function dispatchColorGrading(
 // message when a field is invalid.
 const CONTROL_HANDLERS = new Map<string, ControlHandler>(
   Object.entries({
-    play: (_d, deps) => deps.onPlay(),
+    play: (data, deps) => {
+      if (data.playSeq == null) return deps.onPlay();
+      if (!isFiniteNumber(data.playSeq) || !Number.isInteger(data.playSeq) || data.playSeq < 1)
+        return;
+      deps.onPlay(data.playSeq);
+    },
     pause: (_d, deps) => deps.onPause(),
     "stop-media": (_d, deps) => deps.onStopMedia(),
     seek: (data, deps) => {
