@@ -24,6 +24,23 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
+// Windows can keep a folder busy for a moment after the git that ran in it has exited.
+const busyFolders = vi.hoisted(() => {
+  const retriesAsked: number[] = [];
+  return { prefix: "", retriesAsked };
+});
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs/promises")>();
+  const rm: typeof real.rm = async (path, options) => {
+    if (!busyFolders.prefix || !String(path).includes(busyFolders.prefix))
+      return real.rm(path, options);
+    busyFolders.retriesAsked.push(options?.maxRetries ?? 0);
+    await real.rm(path, options).catch(() => undefined);
+    throw Object.assign(new Error("EBUSY: resource busy or locked, rmdir"), { code: "EBUSY" });
+  };
+  return { ...real, rm };
+});
+
 const REMOTE = "https://github.com/heygen-com/hyperframes.git";
 const RAW = "https://raw.githubusercontent.com/heygen-com/hyperframes";
 
@@ -106,6 +123,7 @@ afterEach(() => {
   process.chdir(startDir);
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  busyFolders.prefix = "";
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -129,5 +147,18 @@ describe("the skills check's main lookup", () => {
     const fetched = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
     expect(fetched).toEqual([`${RAW}/${honest}/${MANIFEST_FILE}`]);
     expect(fetched.join(" ")).not.toContain(planted);
+  });
+
+  it("still finds main when its own temp folder cannot be removed", async () => {
+    const github = `${pathToFileURL(join(repos, "github")).href}/`;
+    rewrite(join(root, "person.gitconfig"), github, "https://github.com/");
+    busyFolders.prefix = "hyperframes-git-";
+    busyFolders.retriesAsked.length = 0;
+
+    await checkSkills({ home: join(root, "home"), canonical: true, cliVersion: "0.9.59-alpha.1" });
+
+    expect(busyFolders.retriesAsked).toEqual([3]);
+    const fetched = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+    expect(fetched).toEqual([`${RAW}/${honest}/${MANIFEST_FILE}`]);
   });
 });

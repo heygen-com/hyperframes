@@ -17,7 +17,8 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -667,7 +668,15 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
   } catch {
     return null;
   } finally {
-    if (noRepo) rmSync(noRepo, { recursive: true, force: true });
+    if (noRepo) await removeTempFolderIfPossible(noRepo);
+  }
+}
+
+async function removeTempFolderIfPossible(dir: string): Promise<void> {
+  try {
+    await rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch {
+    return;
   }
 }
 
