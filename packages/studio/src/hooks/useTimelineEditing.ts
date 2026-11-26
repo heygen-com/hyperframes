@@ -39,6 +39,7 @@ export function useTimelineEditing({
   recordEdit,
   reloadPreview,
   previewIframeRef,
+  canvasSelectionsRef,
   pendingTimelineEditPathRef,
   uploadProjectFiles,
   isRecordingRef,
@@ -174,6 +175,7 @@ export function useTimelineEditing({
     isRecordingRef,
     forceReloadSdkSession,
     previewIframeRef,
+    canvasSelectionsRef,
     editQueueRef,
     handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
   });

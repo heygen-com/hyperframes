@@ -27,9 +27,11 @@ import {
   PRESS_WAIT_MAX_MS,
   UNANSWERED,
   unansweredMoveReason,
+  shownFromRead,
   type OverChannel,
   type Shown,
 } from "./previewGestureStartRead";
+import { checkReadAheadWithFrame, gestureStartReadAhead } from "./gestureStartReadAhead";
 
 type ShownStart = (
   e: React.PointerEvent<HTMLElement>,
@@ -159,6 +161,27 @@ export function createPreviewGestureStarts(
     };
   };
 
+  const startNow = (
+    e: React.PointerEvent<HTMLElement>,
+    at: EditMoment,
+    iframe: HTMLIFrameElement | null,
+    channel: HTMLIFrameElement | null,
+    start: ShownStart,
+    targets: () => DomEditSelection[],
+    routeFromSnapshot: boolean,
+  ): boolean | null => {
+    if (opts.waitingPressRef.current) return null;
+    if (!channel)
+      return isPreviewChanging() ? null : start(e, at, namesReplacedPage(iframe, targets()));
+    const overlay = opts.overlayRef.current;
+    const selections = targets();
+    const read = overlay && gestureStartReadAhead(opts, channel, selections, routeFromSnapshot);
+    const shown = read && shownFromRead(read, channel, overlay, selections);
+    if (!read || typeof shown !== "object" || !shown) return null;
+    checkReadAheadWithFrame(channel, read);
+    return start(e, at, true, shown);
+  };
+
   // A press on the page a reload is replacing would edit it by its old rules: it starts on the new page instead.
   const startOnShownPreview = (
     e: React.PointerEvent<HTMLElement>,
@@ -171,8 +194,8 @@ export function createPreviewGestureStarts(
     const at = playheadMoment();
     const iframe = opts.iframeRef.current;
     const channel = iframe && previewFrameOpaque(iframe) ? iframe : null;
-    if (!channel && !isPreviewChanging() && !opts.waitingPressRef.current)
-      return start(e, at, namesReplacedPage(iframe, targets()));
+    const now = startNow(e, at, iframe, channel, start, targets, routeFromSnapshot);
+    if (now !== null) return now;
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
