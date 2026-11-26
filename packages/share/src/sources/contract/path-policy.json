@@ -1,5 +1,5 @@
 {
-  "policy_version": "portable-source-v12",
+  "policy_version": "portable-source-v13",
   "manifest": {
     "format_version": 1,
     "entrypoint": "index.html",
@@ -428,10 +428,10 @@
     },
     {
       "id": "hidden-asset",
-      "regex": "(?!.*(?:^|/)(?:\\.next|\\.nuxt|\\.output|\\.svelte-kit|\\.vercel|\\.netlify|\\.wrangler|\\.astro|\\.turbo|\\.venv|\\.github)(?:/|$))(?=(?:[^/]+/)*\\.[^/]+/)(?:[^/]+/)+[^./][^/]*\\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|heif|mp4|m4v|mov|webm|mkv|mxf|avi|mp3|wav|m4a|aac|ogg|oga|opus|flac|woff2?|ttf|otf|css|m?js|cjs)",
+      "regex": "(?!.*(?:^|/)(?:\\.next|\\.nuxt|\\.output|\\.svelte-kit|\\.vercel|\\.netlify|\\.wrangler|\\.astro|\\.turbo|\\.venv|\\.github)(?:/|$))(?=(?:[^/]+/)*\\.)(?:[^/]+/)*(?:[^./][^/]*\\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|heif|mp4|m4v|mov|webm|mkv|mxf|avi|mp3|wav|m4a|aac|ogg|oga|opus|flac|woff2?|ttf|otf|css|m?js|cjs)|\\.[^/]+\\.(?:woff2?|ttf|otf))",
       "client_action": "exclude",
       "server_action": "reject",
-      "basis": "A referenced project asset in a hidden directory may travel only with include_hidden: true. Both the folded path and parser spelling must match this rule. Earlier exclusions take precedence."
+      "basis": "A referenced asset in a hidden directory or a referenced dot-prefixed font may travel with include_hidden: true. Both path spellings must match. Earlier exclusions take precedence."
     },
     {
       "id": "unrecognized-hidden",

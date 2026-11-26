@@ -12,7 +12,7 @@ import {
   withoutIgnorable,
 } from "./unicode.mjs";
 
-const PATH_POLICY_VERSION = "portable-source-v12";
+const PATH_POLICY_VERSION = "portable-source-v13";
 
 /** @typedef {import("./types.js").PathRule} PathRule @typedef {import("./types.js").PolicyDocument} PolicyDocument */
 
