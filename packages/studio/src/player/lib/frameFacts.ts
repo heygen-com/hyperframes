@@ -26,6 +26,7 @@ const FRAME_READS: ReadonlySet<EditingRequestKind> = new Set<EditingRequestKind>
   "hello",
   "runtime-snapshot",
   "wait-for-seek",
+  "frame-presented",
   "computed-styles",
   "authored-styles",
   "font-faces",

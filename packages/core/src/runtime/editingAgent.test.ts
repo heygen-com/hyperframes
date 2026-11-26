@@ -236,6 +236,7 @@ describe("installEditingAgent", () => {
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
+          "frame-presented",
         ],
       },
     });
@@ -1043,6 +1044,102 @@ describe("installEditingAgent", () => {
       await watch(port, ["k"], 3);
       agent.dispose();
       expect(press("keydown", { key: "k", code: "KeyK" })).toBe(false);
+    });
+  });
+
+  // fails without the fix: frame-presented is an unknown request kind until editingPort + editingAgent implement it.
+  describe("frame-presented", () => {
+    function seekingVideo() {
+      const video = document.createElement("video");
+      let seeking = true;
+      Object.defineProperty(video, "seeking", { get: () => seeking, configurable: true });
+      document.body.append(video);
+      return {
+        video,
+        finish: (eventName: "seeked" | "error" | "abort" | "emptied") => {
+          seeking = false;
+          video.dispatchEvent(new Event(eventName));
+        },
+      };
+    }
+
+    it("waits for seeking videos to fire seeked and two animation frames", async () => {
+      const rafs: FrameRequestCallback[] = [];
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (rafs.push(cb), rafs.length));
+      try {
+        const port = connectedPort();
+        const { finish } = seekingVideo();
+        let reply: Record<string, unknown> | null = null;
+        const pending = ask(port, { v: 1, id: 50, kind: "frame-presented" }).then((r) => {
+          reply = r;
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(reply).toBeNull();
+        expect(rafs).toHaveLength(0);
+
+        finish("seeked");
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        expect(reply).toBeNull();
+        rafs.shift()!(16);
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        expect(reply).toBeNull();
+        rafs.shift()!(32);
+        await pending;
+        expect(reply).toEqual({ v: 1, id: 50, ok: true, result: { presented: true } });
+      } finally {
+        rafSpy.mockRestore();
+      }
+    });
+
+    it.each(["error", "abort", "emptied"] as const)(
+      "settles and removes listeners when a seeking video emits %s",
+      async (eventName) => {
+        const rafSpy = vi
+          .spyOn(window, "requestAnimationFrame")
+          .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+        try {
+          const port = connectedPort();
+          const { video, finish } = seekingVideo();
+          const addSpy = vi.spyOn(video, "addEventListener");
+          const removeSpy = vi.spyOn(video, "removeEventListener");
+          const pending = ask(port, { v: 1, id: 51, kind: "frame-presented" });
+          await vi.waitFor(() =>
+            expect(addSpy).toHaveBeenCalledWith("seeked", expect.any(Function), { once: true }),
+          );
+          finish(eventName);
+          expect(await pending).toEqual({ v: 1, id: 51, ok: true, result: { presented: true } });
+          expect(removeSpy).toHaveBeenCalledWith("seeked", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("error", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("emptied", expect.any(Function));
+        } finally {
+          rafSpy.mockRestore();
+        }
+      },
+    );
+
+    it("settles and removes listeners when a seeking video is disconnected from the document", async () => {
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+      try {
+        const port = connectedPort();
+        const { video } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const removeSpy = vi.spyOn(video, "removeEventListener");
+        const pending = ask(port, { v: 1, id: 52, kind: "frame-presented" });
+        await vi.waitFor(() =>
+          expect(addSpy).toHaveBeenCalledWith("seeked", expect.any(Function), { once: true }),
+        );
+        video.remove();
+        expect(await pending).toEqual({ v: 1, id: 52, ok: true, result: { presented: true } });
+        expect(removeSpy).toHaveBeenCalledWith("seeked", expect.any(Function));
+      } finally {
+        rafSpy.mockRestore();
+      }
     });
   });
 });

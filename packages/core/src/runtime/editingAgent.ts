@@ -176,6 +176,44 @@ function stylesOf(element: Element, properties: readonly string[]): Record<strin
   return styles;
 }
 
+const VIDEO_SETTLE_EVENTS = ["seeked", "error", "abort", "emptied"] as const;
+const activePresentedWaits = new Set<() => void>();
+
+/** Waits until a seeking video finishes seeking, errors, aborts, empties, or leaves the DOM. */
+function waitForVideoSettled(video: HTMLVideoElement): Promise<void> {
+  if (!video.seeking || !video.isConnected) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let observer: MutationObserver | null = null;
+    const done = () => {
+      for (const name of VIDEO_SETTLE_EVENTS) video.removeEventListener(name, done);
+      observer?.disconnect();
+      observer = null;
+      activePresentedWaits.delete(done);
+      resolve();
+    };
+    activePresentedWaits.add(done);
+    for (const name of VIDEO_SETTLE_EVENTS) video.addEventListener(name, done, { once: true });
+    if (typeof MutationObserver === "function" && document.documentElement) {
+      observer = new MutationObserver(() => {
+        if (!video.isConnected || !video.seeking) done();
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    }
+    if (!video.seeking || !video.isConnected) done();
+  });
+}
+
+async function waitForFramePresented(): Promise<{ presented: boolean }> {
+  const seeking = Array.from(document.querySelectorAll("video")).filter((video) => video.seeking);
+  if (seeking.length > 0) await Promise.all(seeking.map(waitForVideoSettled));
+  if (typeof window.requestAnimationFrame === "function") {
+    await new Promise<void>((done) =>
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => done())),
+    );
+  }
+  return { presented: true };
+}
+
 const HANDLERS: Handlers = {
   hello: () => ({ version: EDITING_PROTOCOL_VERSION, kinds: [...EDITING_REQUEST_KINDS] }),
   "runtime-snapshot": () => ({
@@ -261,6 +299,7 @@ const HANDLERS: Handlers = {
     return { served: true };
   },
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
+  "frame-presented": waitForFramePresented,
 };
 
 function serve(port: MessagePort): void {
@@ -344,6 +383,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       listenForKeys(false);
       stopWatchingGeometry();
       endTextEdit();
+      for (const settle of [...activePresentedWaits]) settle();
     },
   };
 }

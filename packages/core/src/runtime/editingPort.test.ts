@@ -119,6 +119,7 @@ describe("createEditingPortClient", () => {
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
+          "frame-presented",
         ],
       });
     } finally {

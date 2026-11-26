@@ -35,6 +35,8 @@ import {
   heldByMedia,
   notePlaybackFrame,
   noteDisplayScale,
+  readMotionBlurSummary,
+  readPreviewFrameShape,
   watchMediaFetches,
 } from "./playbackHealth";
 import { hasFrozenPicture } from "./frozenPicture";
@@ -6525,6 +6527,9 @@ export function initSandboxRuntimeModular(): void {
           mediaClipsInWindow.find(
             ({ el }) => el.tagName === "VIDEO" && !el.paused && el.readyState < 3,
           )?.el;
+        const audioEl = mediaClipsInWindow.find(
+          ({ el }) => el.tagName === "AUDIO" && !el.paused && !el.muted && el.volume > 0,
+        )?.el;
         notePlaybackFrame({
           nowMs,
           filmTime: t,
@@ -6537,6 +6542,8 @@ export function initSandboxRuntimeModular(): void {
           frozen: hasFrozenPicture(mediaClipsInWindow, t),
           clock: clock.followedClock(),
           layoutKey: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
+          audio: audioEl ? { el: audioEl, time: audioEl.currentTime } : null,
+          readMotionBlur: readMotionBlurSummary,
         });
       }
       // During a paused Studio manual-edit drag, the draft writer owns the
@@ -6981,6 +6988,7 @@ export function initSandboxRuntimeModular(): void {
           videos: describeVideoSources(),
           lighterAt: lighterLevels(),
           copiesReady: copiesReady(),
+          frameShape: readPreviewFrameShape(),
         },
       }),
     onSetPreviewQuality: (level) => {
