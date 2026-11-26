@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
-import { makeSelection } from "../../hooks/domSelectionTestHarness";
+import { installReactActEnvironment, makeSelection } from "../../hooks/domSelectionTestHarness";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { previewRequest } from "../../player/lib/previewChannel";
@@ -12,6 +14,16 @@ import type { UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures"
 import { gestureStartReadAhead, keepGestureStartReadAhead } from "./gestureStartReadAhead";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
 import { standInFor } from "./previewSelection";
+import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
+
+const frames = vi.hoisted(() => new Set<() => void>());
+vi.mock("./overlayFrameLoop", () => ({
+  subscribeOverlayFrame: (update: () => void) => {
+    frames.add(update);
+    return () => frames.delete(update);
+  },
+}));
+installReactActEnvironment();
 
 vi.mock("../../player/lib/previewChannel", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../player/lib/previewChannel")>();
@@ -150,5 +162,51 @@ it("starts a press made after an edit from where the edit left the layer, not fr
 
   await vi.waitFor(() => expect(opts.gestureRef.current).not.toBeNull());
   // Frame x 340 is page x 100 + 340 / 2 = 270, overlay x 250; the read before the edit had 230.
+  expect(opts.gestureRef.current!.originLeft).toBe(250);
+});
+
+/** The overlay's own rect loop over the sealed frame, as an overlay mount runs it; `frame` runs one of its frames. */
+function overlayLoopOn(opts: UseDomEditOverlayGesturesOptions) {
+  let shown: ReturnType<typeof useDomEditOverlayRects> | null = null;
+  function Harness() {
+    shown = useDomEditOverlayRects({
+      iframeRef: opts.iframeRef,
+      overlayRef: opts.overlayRef,
+      selectionRef: opts.selectionRef,
+      activeCompositionPathRef: opts.activeCompositionPathRef,
+      groupSelectionsRef: { current: [] },
+      hoverSelectionRef: { current: null },
+      rafPausedRef: opts.rafPausedRef,
+    });
+    return null;
+  }
+  const root = createRoot(document.createElement("div"));
+  act(() => root.render(React.createElement(Harness)));
+  onTestFinished(() => act(() => root.unmount()));
+  return {
+    shownLeft: () => shown!.overlayRectRef.current?.left,
+    frame: () => act(() => frames.forEach((update) => update())),
+  };
+}
+
+// fails without the fix: the press started at once from the read made before the frame moved the layer, at 230.
+it("starts a press made after the frame moved the layer on its own from where it moved it", async () => {
+  const { box, selection, opts } = await selectBoxOnSealedFrame();
+  const overlay = overlayLoopOn(opts);
+  await vi.waitFor(() => {
+    overlay.frame();
+    expect(overlay.shownLeft()).toBe(230);
+  });
+  // A timer in the composition moves the layer 40 frame px right; Studio sends the frame nothing.
+  box.style.translate = "40px 0px";
+  await vi.waitFor(() => {
+    overlay.frame();
+    expect(overlay.shownLeft()).toBe(250);
+  });
+
+  const starts = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
+  expect(starts.startGesture("drag", press(), { selection })).toBe(true);
+
+  await vi.waitFor(() => expect(opts.gestureRef.current).not.toBeNull());
   expect(opts.gestureRef.current!.originLeft).toBe(250);
 });

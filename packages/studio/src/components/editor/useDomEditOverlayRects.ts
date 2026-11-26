@@ -24,6 +24,7 @@ import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import { measurePreviewOverlay } from "./previewOverlayRects";
+import { frameFactsChanged } from "../../player/lib/frameFacts";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
   if (a.length !== b.length) return false;
@@ -164,6 +165,7 @@ export function useDomEditOverlayRects({
           groupSelectionsRef.current === group &&
           hoverShown(sel, group) === hover;
         if (!rects || !current || rafPausedRef.current || iframeRef.current !== iframe) return;
+        const [shown, shownGroup] = [overlayRectRef.current, groupOverlayItemsRef.current];
         setOverlayRect(rects.selection);
         setChildRects(rects.children);
         setGroupOverlayItems(
@@ -173,6 +175,9 @@ export function useDomEditOverlayRects({
           }),
         );
         setHoverRect(rects.hover);
+        // The frame can move what is selected with nothing sent from Studio: a timer, a CSS animation, a late load.
+        if (overlayRectRef.current !== shown || groupOverlayItemsRef.current !== shownGroup)
+          frameFactsChanged("geometry");
       })
       .finally(() => {
         channelReadRef.current = false;

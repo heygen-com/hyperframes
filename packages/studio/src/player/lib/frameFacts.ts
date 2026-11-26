@@ -15,8 +15,10 @@ export type FrameFactChange =
   | "history"
   /** A frame loaded, swapped scenes or was promoted (`sceneSwap`), or a new live frame (`frameFactsFromStores`). */
   | "load"
-  /** The selection changed (`DomEditOverlay`). */
+  /** The selection changed (`useGestureStartReadAhead`). */
   | "selection"
+  /** The selection's box the frame reports moved, by Studio or by the frame itself (`useDomEditOverlayRects`). */
+  | "geometry"
   /** The live frame's size changed (`frameFactsFromStores`). Zoom scales the frame without changing it. */
   | "size";
 

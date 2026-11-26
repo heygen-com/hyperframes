@@ -41,7 +41,9 @@ interface Held {
 
 /** Per overlay mount, keyed like `pressOutlineOf`. */
 const helds = new WeakMap<RefObject<unknown>, Held>();
-const asking = new WeakMap<RefObject<unknown>, number>();
+/** One read in flight per overlay, so a selection the frame keeps moving costs one read at a time. */
+const reading = new WeakSet<RefObject<unknown>>();
+const mounted = new WeakSet<RefObject<unknown>>();
 
 /** Nothing Studio knows of is changing the frame, so its answers hold until a frame fact changes. */
 const frameAtRest = () =>
@@ -87,20 +89,27 @@ function readAhead(refs: Refs): void {
   const now = readAheadFor(refs);
   const generation = frameFactsGeneration();
   const owner = refs.waitingPressRef;
-  if (!now || heldNow(owner, now.iframe, now.targets) || asking.get(owner) === generation) return;
-  asking.set(owner, generation);
+  if (!mounted.has(owner) || !now || heldNow(owner, now.iframe, now.targets)) return;
+  if (reading.has(owner)) return;
+  reading.add(owner);
   const { iframe, targets } = now;
   const elements = targets.map((target) => target.element);
   const path = refs.activeCompositionPathRef.current;
-  void readShownGestureStarts(iframe, refs.overlayRef.current, path, targets).then((read) => {
-    if (typeof read !== "object" || !read || frameFactsGeneration() !== generation) return;
-    helds.set(owner, { frame: iframe, elements, generation, read });
-  });
+  void readShownGestureStarts(iframe, refs.overlayRef.current, path, targets)
+    .then((read) => {
+      if (typeof read !== "object" || !read || frameFactsGeneration() !== generation) return;
+      helds.set(owner, { frame: iframe, elements, generation, read });
+    })
+    .finally(() => {
+      reading.delete(owner);
+      if (frameFactsGeneration() !== generation) readAhead(refs);
+    });
 }
 
 /** Keeps a read of what the next press would start from, made again after every frame fact change; stop ends it. */
 export function keepGestureStartReadAhead(refs: Refs): () => void {
   watchStoreFrameFacts();
+  mounted.add(refs.waitingPressRef);
   let frame = 0;
   const later = () => {
     cancelAnimationFrame(frame);
@@ -112,7 +121,8 @@ export function keepGestureStartReadAhead(refs: Refs): () => void {
     stop();
     cancelAnimationFrame(frame);
     helds.delete(refs.waitingPressRef);
-    asking.delete(refs.waitingPressRef);
+    reading.delete(refs.waitingPressRef);
+    mounted.delete(refs.waitingPressRef);
   };
 }
 
