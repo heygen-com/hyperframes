@@ -236,6 +236,7 @@ describe("installEditingAgent", () => {
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
+          "stage-measure",
         ],
       },
     });

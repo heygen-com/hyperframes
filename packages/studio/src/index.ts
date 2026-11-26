@@ -66,6 +66,15 @@ export {
   type PreviewElementHit,
 } from "./player/lib/previewElements";
 export {
+  MAX_STAGE_CLIP_KEYS,
+  MAX_STAGE_ITEMS,
+  measurePreviewStage,
+  type MeasurePreviewStageOptions,
+  type StageMeasuredItem,
+  type StageMeasureResult,
+  type StageTextStart,
+} from "./player/lib/previewStageMeasure";
+export {
   editSealedSelection,
   findPreviewElementForSelection,
   findPreviewElementForTimelineElement,

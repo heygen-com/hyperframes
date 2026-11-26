@@ -119,8 +119,13 @@ describe("createEditingPortClient", () => {
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
+          "stage-measure",
         ],
       });
+      document.body.innerHTML = `<div id="hero" data-hf-id="hf-hero">Hi</div>`;
+      const measured = await client.request("stage-measure", { maxItems: 10 });
+      expect(measured.truncated).toBe(false);
+      expect(measured.items.map((item) => [item.key, item.text])).toEqual([["hf-hero", "Hi"]]);
     } finally {
       agent.dispose();
     }
