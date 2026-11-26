@@ -89,7 +89,10 @@ export interface VideoFrameCoverageReport {
 
 const s3 = (seconds: number) => seconds.toFixed(3);
 
-/** "; source h264, 60 fps, variable frame rate, plays to 4.000 s; clip 0.000-1.133 s reads source 2.500-3.633 s at 1x" */
+/**
+ * "; source h264, 60 fps, variable frame rate, plays to 4.000 s;
+ * clip 0.000-1.133 s reads source 2.500-3.633 s at 1x"
+ */
 function sourceWords(report: VideoFrameCoverageReport): string {
   const s = report.source;
   if (!s) return "";
