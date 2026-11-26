@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
+import { MAX_MESSAGE_LIST } from "@hyperframes/core/runtime/protocol";
 import { ParentMediaManager, type ProxyEntry } from "./parent-media";
 
 // A fake media element whose paused state is driven by play()/pause() stubs.
@@ -778,6 +779,15 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
       ],
       film,
     );
+    expect(mgr.entries).toHaveLength(0);
+  });
+
+  // fails without the fix: the list was walked to whatever length the film declared.
+  it("copies nothing from a list too long to walk", () => {
+    const { mgr } = makeSealedManager();
+    mgr.setupFromList(Array(MAX_MESSAGE_LIST + 1).fill(clip("https://films.test/f/a.m4a")), film);
+    expect(mgr.entries).toHaveLength(0);
+    mgr.setupFromList(new Array(2 ** 32 - 1), film);
     expect(mgr.entries).toHaveLength(0);
   });
 

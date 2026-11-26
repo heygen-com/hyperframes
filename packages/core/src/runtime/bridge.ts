@@ -6,6 +6,7 @@ import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
   inspectRuntimeProtocol,
+  isMessageList,
   runtimeProtocolFpsToNumber,
   runtimeProtocolMetadata,
   type RuntimeProtocolV1,
@@ -95,7 +96,6 @@ const FLASH_DEFAULT_DURATION_MS = 800;
 const FLASH_MAX_DURATION_MS = 5000;
 const MAX_FLASH_SELECTORS = 100;
 const MAX_SELECTOR_LENGTH = 1000;
-const MAX_PARENT_AUDIO_CLIPS = 1000;
 const MAX_PARENT_AUDIO_KEY = 8192;
 
 function isFiniteNumber(value: unknown): value is number {
@@ -191,7 +191,7 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
       deps.onSetWebAudioMediaDisabled(data.disabled === true),
     "set-parent-audio": (data, deps) => {
       const clips = data.clips;
-      if (!Array.isArray(clips) || clips.length > MAX_PARENT_AUDIO_CLIPS) return;
+      if (!isMessageList(clips)) return;
       if (!clips.every((clip) => typeof clip === "string" && clip.length <= MAX_PARENT_AUDIO_KEY))
         return;
       deps.onSetParentAudio?.(clips);
