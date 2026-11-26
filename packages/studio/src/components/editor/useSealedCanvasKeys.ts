@@ -83,6 +83,7 @@ function forwardCombosFor(keys: StudioKeys, excluded: ReadonlySet<string>): stri
     if (!excluded.has(combo)) unique.add(combo);
   }
   if (!excluded.has("Escape")) unique.add("Escape");
+  if (!excluded.has("Enter")) unique.add("Enter");
   return [...unique];
 }
 
@@ -231,6 +232,8 @@ function startSealedCanvasSession(input: {
   iframe: HTMLIFrameElement;
   overlayRef: React.RefObject<HTMLDivElement | null>;
   armedRef: React.MutableRefObject<{ revision: number; selection: DomEditSelection } | null>;
+  armedReadyRef: React.MutableRefObject<boolean>;
+  pointerDownRef: React.RefObject<boolean>;
   onDeleteRef: React.RefObject<CanvasDeleteHandler | undefined>;
   applyNudgeRef: React.RefObject<(step: RuntimeNudgeStep) => void>;
   selection: DomEditSelection;
@@ -238,14 +241,22 @@ function startSealedCanvasSession(input: {
   studioKeys: StudioKeys;
   allowNudge: boolean;
   allowDelete: boolean;
-  shouldFocus: boolean;
 }): () => void {
-  const { iframe, overlayRef, armedRef, onDeleteRef, applyNudgeRef } = input;
+  const {
+    iframe,
+    overlayRef,
+    armedRef,
+    armedReadyRef,
+    pointerDownRef,
+    onDeleteRef,
+    applyNudgeRef,
+  } = input;
   const revision = ++lastCanvasKeyRevision;
   armedRef.current = { revision, selection: input.selection };
+  armedReadyRef.current = false;
   const params = buildArmParams({
     revision,
-    focus: input.shouldFocus,
+    focus: !pointerDownRef.current,
     selection: input.selection,
     groupSelections: input.groupSelections,
     studioKeys: input.studioKeys,
@@ -262,9 +273,15 @@ function startSealedCanvasSession(input: {
     onDeleteRef,
     applyNudgeRef,
   });
-  if (input.shouldFocus) focusSealedIframe(iframe);
-  void previewRequest(iframe, "arm-canvas-keys", params);
+  let cancelled = false;
+  void previewRequest(iframe, "arm-canvas-keys", params).then((res) => {
+    if (cancelled || !sameLoad() || !res?.armed) return;
+    armedReadyRef.current = true;
+    if (!pointerDownRef.current && hasSealedCanvasKeyboardHold(iframe)) focusSealedIframe(iframe);
+  });
   return () => {
+    cancelled = true;
+    armedReadyRef.current = false;
     stopPort();
     releaseHold();
     if (armedRef.current?.revision === revision) armedRef.current = null;
@@ -296,6 +313,7 @@ function eventInsideCanvas(
 function useCanvasFocusOwnership(
   iframeRef: React.RefObject<HTMLIFrameElement | null>,
   overlayRef: React.RefObject<HTMLDivElement | null>,
+  armedReadyRef: React.RefObject<boolean>,
   blocked: boolean,
 ): { canvasFocused: boolean; pointerDownRef: React.RefObject<boolean> } {
   const [canvasFocused, setCanvasFocused] = useState(false);
@@ -311,7 +329,12 @@ function useCanvasFocusOwnership(
       if (!pointerDownRef.current) return;
       pointerDownRef.current = false;
       const iframe = iframeRef.current;
-      if (iframe && previewFrameOpaque(iframe) && hasSealedCanvasKeyboardHold(iframe)) {
+      if (
+        iframe &&
+        armedReadyRef.current &&
+        previewFrameOpaque(iframe) &&
+        hasSealedCanvasKeyboardHold(iframe)
+      ) {
         focusSealedIframe(iframe);
       }
     };
@@ -326,13 +349,27 @@ function useCanvasFocusOwnership(
       window.removeEventListener("pointerup", onPointerUp, true);
       document.removeEventListener("focusin", onFocusIn, true);
     };
-  }, [iframeRef, overlayRef]);
+  }, [armedReadyRef, iframeRef, overlayRef]);
 
   useEffect(() => {
     if (blocked) setCanvasFocused(false);
   }, [blocked]);
 
   return { canvasFocused, pointerDownRef };
+}
+
+function useSealedCanvasPermissions(
+  allowCanvasMovement: boolean,
+  nudgeSaving: boolean,
+  hasDeleteHandler: boolean,
+): { allowNudge: boolean; allowDelete: boolean } {
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const hasKeyframes = usePlayerStore((s) => s.selectedKeyframes.size > 0);
+  const hasAutomation = usePlayerStore((s) => s.automationSelection !== null);
+  return {
+    allowNudge: !isPlaying && !nudgeSaving && allowCanvasMovement,
+    allowDelete: !hasKeyframes && !hasAutomation && hasDeleteHandler,
+  };
 }
 
 export function useSealedCanvasKeys({
@@ -347,18 +384,22 @@ export function useSealedCanvasKeys({
   applyRuntimeNudge,
   onNudgeSavingChangeRef,
 }: UseSealedCanvasKeysParams): void {
+  const armedReadyRef = useRef(false);
   const { canvasFocused, pointerDownRef } = useCanvasFocusOwnership(
     iframeRef,
     overlayRef,
+    armedReadyRef,
     readOnly || inlineTextEditing,
   );
   const [nudgeSaving, setNudgeSaving] = useState(false);
   const [nudgeEpoch, setNudgeEpoch] = useState(0);
   const armedRef = useRef<{ revision: number; selection: DomEditSelection } | null>(null);
   const studioKeys = useStudioKeys();
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const hasKeyframes = usePlayerStore((s) => s.selectedKeyframes.size > 0);
-  const hasAutomation = usePlayerStore((s) => s.automationSelection !== null);
+  const { allowNudge, allowDelete } = useSealedCanvasPermissions(
+    allowCanvasMovement,
+    nudgeSaving,
+    Boolean(onDeleteSelection),
+  );
 
   const onDeleteRef = useRef(onDeleteSelection);
   onDeleteRef.current = onDeleteSelection;
@@ -371,8 +412,6 @@ export function useSealedCanvasKeys({
   };
 
   const canArm = canvasFocused && selection !== null && !readOnly && !inlineTextEditing;
-  const allowNudge = !isPlaying && !nudgeSaving && allowCanvasMovement;
-  const allowDelete = !hasKeyframes && !hasAutomation && Boolean(onDeleteSelection);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -381,6 +420,8 @@ export function useSealedCanvasKeys({
       iframe,
       overlayRef,
       armedRef,
+      armedReadyRef,
+      pointerDownRef,
       onDeleteRef,
       applyNudgeRef,
       selection,
@@ -388,7 +429,6 @@ export function useSealedCanvasKeys({
       studioKeys,
       allowNudge,
       allowDelete,
-      shouldFocus: !pointerDownRef.current,
     });
   }, [
     allowDelete,

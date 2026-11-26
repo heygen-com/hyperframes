@@ -2,7 +2,7 @@
 // It edits only an element it handed a handle for, and lets out nothing but text markup.
 import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingElement";
 import { elementForHandle } from "../editingHandles";
-import { isStylableElement, type StylableElement } from "../domRealm";
+import { isDomNode, isStylableElement, type StylableElement } from "../domRealm";
 import { sanitizeRichTextChildren } from "../../utils/richTextSanitize";
 import { openTextEdits, isTextMarkup, MAX_EDIT_VALUE } from "./editElement";
 import { isEditableText } from "./textMarkup";
@@ -190,7 +190,7 @@ let session: Session | null = null;
 const NOTHING: TextEditResult = { applied: false, html: null, previous: null };
 
 export function isActiveTextEditTarget(target: EventTarget | null): boolean {
-  return Boolean(session && target instanceof Node && session.element.contains(target));
+  return Boolean(session && isDomNode(target) && session.element.contains(target));
 }
 
 function clearSelectionWithin(element: Element): void {

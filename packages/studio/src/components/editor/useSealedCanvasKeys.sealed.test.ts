@@ -178,13 +178,13 @@ it("acquires canvas focus hold on canvas click, releases on timeline click, and 
 
   expect(hasSealedCanvasKeyboardHold(iframe)).toBe(false);
 
-  // Clicking the canvas overlay arms runtime keys and focuses the sealed iframe.
+  // Clicking the canvas overlay arms runtime keys and focuses the sealed iframe once armed.
   act(() => {
     overlay.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
   });
   await vi.waitFor(() => expect(hasSealedCanvasKeyboardHold(iframe)).toBe(true));
-  expect(focusSpy).toHaveBeenCalled();
+  await vi.waitFor(() => expect(focusSpy).toHaveBeenCalled());
 
   // Clicking the timeline releases the canvas hold and disarms the runtime.
   const timelineBtn = document.getElementById("tl-clip")!;

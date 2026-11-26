@@ -67,28 +67,40 @@ try {
       while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
       return el?.tagName !== "IFRAME";
     });
+  const assertKeyReachesStudioNotField = async (key, message) => {
+    await page.evaluate(() => {
+      window.__studioKeys = [];
+    });
+    await page.keyboard.press(key);
+    await page.waitForFunction((k) => window.__studioKeys.includes(k), {}, key);
+    assert.equal(
+      await inPreview((f) => f.evaluate(() => document.getElementById("field").value)),
+      "",
+      message,
+    );
+  };
   // The frame's own script puts focus on an ordinary input in it, as a composition may.
   await inPreview((f) => f.evaluate(() => document.getElementById("field").focus()));
   await keyboardBackInStudio();
-  await page.keyboard.press("y");
-  await page.waitForFunction(() => window.__studioKeys.includes("y"));
-  assert.equal(
-    await inPreview((f) => f.evaluate(() => document.getElementById("field").value)),
-    "",
-    "the frame got no key",
-  );
+  await assertKeyReachesStudioNotField("y", "the frame got no key");
 
-  // A clip picked on the canvas, then a real Delete: Studio deletes it.
+  // A clip picked on the canvas: even if the film focuses its own input, keys still reach Studio and not #field;
+  // a real Delete deletes the clip immediately and returns keyboard focus to Studio once selection clears.
   assert.ok(saved().includes('id="plain"'));
   await inPreview((f) => clickInPreview(page, f, "#plain"));
   await page.waitForFunction(
     () => new URLSearchParams(location.hash.split("?")[1]).get("selId") === "plain",
   );
-  await keyboardBackInStudio();
+  await inPreview((f) => f.evaluate(() => document.getElementById("field").focus()));
+  await assertKeyReachesStudioNotField(
+    "y",
+    "the film input got no key while a canvas clip was picked",
+  );
   await page.keyboard.press("Delete");
   for (let i = 0; i < 100 && saved().includes('id="plain"'); i++)
     await new Promise((r) => setTimeout(r, 100));
   assert.ok(!saved().includes('id="plain"'), "a real Delete after a canvas click deletes the clip");
+  await keyboardBackInStudio();
 
   // The heading picked on the canvas, Enter opens its text edit in the frame, typing goes on at its end.
   const typeInHeading = async (text) => {
@@ -122,7 +134,6 @@ try {
           () => false,
         );
       if (!picked) continue;
-      await keyboardBackInStudio();
       await page.keyboard.press("Enter");
       open = await opened();
     }

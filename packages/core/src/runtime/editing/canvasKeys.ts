@@ -1,7 +1,7 @@
 // Capture-first preview key handler: runs armed Delete/nudge in-frame and forwards Studio shortcuts.
 import { matchCombo, parseCombo, type Combo } from "../../keyCombo";
 import { capturePageIn, markedForStudio } from "../../studioPreviewMark";
-import { isStylableElement } from "../domRealm";
+import { isDomNode, isElementNode, isStylableElement } from "../domRealm";
 import { drawDrafts } from "../editingDraft";
 import {
   EDITING_ELEMENT_HANDLE,
@@ -408,14 +408,27 @@ function handleTrustedKeyDown(state: ArmedState, event: KeyboardEvent): void {
   forwardTrustedKey(state, event);
 }
 
+function isFilmEditableTarget(target: EventTarget | null): boolean {
+  if (!isElementNode(target)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return (target as HTMLElement).isContentEditable === true;
+}
+
+function handleShieldKey(event: KeyboardEvent): void {
+  if (event.type === "keydown") {
+    if (isFilmEditableTarget(event.target)) preventEvent(event);
+    if (armed) handleTrustedKeyDown(armed, event);
+    return;
+  }
+  if (armed && armed.down.delete(event.code || event.key)) forwardTrustedKey(armed, event);
+}
+
 function onShieldEvent(event: Event): void {
   if (!isTrustedEvent(event) || isActiveTextEditTarget(event.target)) return;
   stopEvent(event);
   if (event.type !== "keydown" && event.type !== "keyup") return preventEvent(event);
-  if (!armed) return;
-  const keyEvent = event as KeyboardEvent;
-  if (event.type === "keydown") handleTrustedKeyDown(armed, keyEvent);
-  else if (armed.down.delete(keyEvent.code || keyEvent.key)) forwardTrustedKey(armed, keyEvent);
+  handleShieldKey(event as KeyboardEvent);
 }
 
 function isExportRenderEnvironment(): boolean {
@@ -425,16 +438,18 @@ function isExportRenderEnvironment(): boolean {
 }
 
 /**
- * Installs capture-first window key listeners in Studio preview frames only (never in renders,
- * captures, exports, or third-party pages). Idempotent; returns its disposer.
+ * Installs capture-first window key listeners in opaque-origin Studio preview frames only (never
+ * in same-origin previews, renders, captures, exports, or third-party pages). Idempotent.
  */
 export function installPreviewKeyShield(
   targetWindow: Window = window,
   parentWindow: Window = targetWindow.parent,
+  allowSameOrigin = false,
 ): () => void {
   if (shieldDispose) return shieldDispose;
   if (
     parentWindow === targetWindow ||
+    (!allowSameOrigin && targetWindow.origin !== "null") ||
     !markedForStudio(targetWindow.document) ||
     capturePageIn(targetWindow.document) ||
     isExportRenderEnvironment()
@@ -480,7 +495,7 @@ export function armCanvasKeys(
     if (armed?.port === port) armed = null;
     return { armed: false, revision: params.revision };
   }
-  installPreviewKeyShield(window, parentWindow);
+  installPreviewKeyShield(window, parentWindow, true);
   ensureBodyFocusable();
   const down = armed?.port === port ? armed.down : new Set<string>();
   armed = {
@@ -528,7 +543,7 @@ function restoreDetachedNode({
   index,
 }: DetachedNode): boolean {
   if (!parent || element.isConnected) return false;
-  if (parent instanceof Node && !parent.isConnected) return false;
+  if (isDomNode(parent) && !parent.isConnected) return false;
   parent.insertBefore(element, restoreAnchorFor(parent, previousSibling, nextSibling, index));
   return true;
 }

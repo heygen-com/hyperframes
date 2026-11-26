@@ -76,12 +76,14 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     disposeAgent?.();
     disposeAgent = null;
     resetCanvasKeys(true);
+    vi.unstubAllGlobals();
     delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
     delete (window as { gsap?: unknown }).gsap;
     delete (window as { __timelines?: unknown }).__timelines;
   });
 
   it("blocks film listeners, ignores untrusted keys, and removes armed targets in the same frame", async () => {
+    vi.stubGlobal("origin", "null");
     markStudio();
     document.body.innerHTML = `<div data-composition-id="main"><div id="target">box</div><input id="film-input" /></div>`;
     const shieldStop = installPreviewKeyShield(window, fakeParent);
@@ -120,12 +122,20 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     expect(document.getElementById("target")).not.toBeNull();
     expect(events).toHaveLength(0);
 
-    // Trusted key on a film-owned <input> must be blocked (never carved out).
+    // Trusted key and beforeinput on a film-owned <input> must be blocked (never carved out).
+    filmSaw.length = 0;
     const filmInput = document.getElementById("film-input")!;
     const blockedInput = new Event("beforeinput", { bubbles: true, cancelable: true });
     Object.defineProperty(blockedInput, "isTrusted", { value: true });
     filmInput.dispatchEvent(blockedInput);
     expect(blockedInput.defaultPrevented).toBe(true);
+    const blockedKey = trustedKey("keydown", { key: "y", code: "KeyY" });
+    filmInput.dispatchEvent(blockedKey);
+    expect(blockedKey.defaultPrevented).toBe(true);
+    expect(filmSaw).toEqual([]);
+    await vi.waitFor(() => expect(events).toHaveLength(1));
+    expect(events[0]).toMatchObject({ event: "key", key: { type: "keydown", key: "y" } });
+    events.length = 0;
 
     // Trusted Delete removes #target immediately and posts canvas-key-action.
     filmSaw.length = 0;
@@ -346,9 +356,22 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     await vi.waitFor(() => expect(ended).toHaveLength(1));
   });
 
-  it("never installs the key shield in render, capture, or non-studio pages", () => {
+  it("never installs the key shield in same-origin, render, capture, or non-studio pages", () => {
     const spy = vi.spyOn(window, "addEventListener");
-    // Unmarked page (export/standalone).
+    // Same-origin Studio preview: direct inline text editing must stay untouched.
+    vi.stubGlobal("origin", "http://localhost:5316");
+    markStudio();
+    document.body.innerHTML = `<h1 id="title" contenteditable="true">Hi</h1>`;
+    installPreviewKeyShield(window, fakeParent);
+    expect(spy).not.toHaveBeenCalled();
+    const typing = new Event("beforeinput", { bubbles: true, cancelable: true });
+    Object.defineProperty(typing, "isTrusted", { value: true });
+    document.getElementById("title")!.dispatchEvent(typing);
+    expect(typing.defaultPrevented).toBe(false);
+
+    // Opaque origin but unmarked page (export/standalone).
+    vi.stubGlobal("origin", "null");
+    document.head.innerHTML = "";
     installPreviewKeyShield(window, fakeParent);
     expect(spy).not.toHaveBeenCalled();
 

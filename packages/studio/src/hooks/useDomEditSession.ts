@@ -322,7 +322,11 @@ export function useDomEditSession({
       // A selection that is itself timeline rows shares the context menu's delete op.
       const timelineTargets = timelineElementsForDelete(members, timelineElements);
       if (timelineTargets) {
-        await handleTimelineElementsDelete(timelineTargets, [], options?.onSettled);
+        if (options?.onSettled) {
+          await handleTimelineElementsDelete(timelineTargets, [], options.onSettled);
+        } else {
+          await handleTimelineElementsDelete(timelineTargets);
+        }
         return;
       }
       const outcome = await handleDomEditElementsDelete(members);
