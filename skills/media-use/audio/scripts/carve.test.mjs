@@ -610,3 +610,99 @@ for (const [kind, plant] of [
       );
     }));
 }
+
+// ESC, BEL, CR and LF from the composition must print only as visible escapes.
+const CONTROLS = "\x1b]0;owned\x07\x1b[2J\r\nforged";
+const hasControl = (text) =>
+  [...text].some((ch) => {
+    const code = ch.charCodeAt(0);
+    return (code < 0x20 && ch !== "\n" && ch !== "\t") || (code >= 0x7f && code <= 0x9f);
+  });
+const assertShownSafely = (text) => {
+  assert.equal(hasControl(text), false, JSON.stringify(text));
+  assert.equal(/^forged/m.test(text), false, JSON.stringify(text));
+  assert.match(text, /\\x1b\]0;owned\\x07\\x1b\[2J\\x0d\\x0aforged/);
+};
+
+test(
+  "ids and group names with control characters print as escapes when the carve succeeds",
+  { skip: process.platform === "win32" && "control characters in file names" },
+  () =>
+    inTempDir((dir) => {
+      assert.equal(tone(join(dir, "bed.wav"), 3, 220).status, 0);
+      assert.equal(tone(join(dir, "voice.wav"), 3, 1000).status, 0);
+      const group = `grp${CONTROLS}`;
+      writeFileSync(
+        join(dir, "index.html"),
+        `<audio id="music-bed${CONTROLS}" data-audio-group="${group}" src="bed.wav" data-start="0"></audio>\n` +
+          `<audio id="narration${CONTROLS}" data-audio-group="${group}" src="voice.wav" data-start="0"></audio>\n`,
+      );
+      const run = runCarve(dir);
+      assert.equal(run.status, 0, run.stderr);
+      assertShownSafely(run.stdout);
+      assertShownSafely(run.stderr);
+      assert.match(run.stderr, /^note {3}bed /m);
+      assert.match(readFileSync(join(dir, "index.html"), "utf8"), /data-fx-carve=/);
+    }),
+);
+
+test(
+  "ids and media names with control characters print as escapes when the carve refuses",
+  { skip: process.platform === "win32" && "control characters in file names" },
+  () =>
+    inTempDir((dir) => {
+      const refusals = [
+        [
+          `<audio id="music-a${CONTROLS}" src="a.wav"></audio>\n<audio id="music-b${CONTROLS}" src="b.wav"></audio>\n`,
+          /several tracks look like music/,
+        ],
+        [`<audio id="music-bed${CONTROLS}" src="bed.wav"></audio>\n`, /no voice to make room for/],
+      ];
+      for (const [html, reason] of refusals) {
+        writeFileSync(join(dir, "index.html"), html);
+        const run = runCarve(dir);
+        assert.equal(run.status, 1, run.stderr);
+        assert.match(run.stderr, reason);
+        assertShownSafely(run.stderr);
+      }
+
+      const named = spawnSync(
+        process.execPath,
+        [join(SCRIPTS_DIR, "carve.mjs"), "--comp", "index.html", "--bed", `gone${CONTROLS}`],
+        { cwd: dir, encoding: "utf8" },
+      );
+      assert.equal(named.status, 1);
+      assertShownSafely(named.stderr);
+
+      assert.equal(tone(join(dir, "bed.wav"), 3, 220).status, 0);
+      const media = `voice${CONTROLS}.wav`;
+      writeFileSync(join(dir, media), "not media");
+      writeComposition(dir, media);
+      const decode = runCarve(dir);
+      assert.equal(decode.status, 1);
+      assert.match(decode.stderr, /could not decode/);
+      assertShownSafely(decode.stderr);
+    }),
+);
+
+test("a malformed JSON attribute on the bed stops the carve through its own message, writing nothing", () =>
+  inTempDir((dir) => {
+    assert.equal(tone(join(dir, "bed.wav"), 3, 220).status, 0);
+    assert.equal(tone(join(dir, "voice.wav"), 3, 1000).status, 0);
+    for (const [attr, reason] of [
+      ['data-automation="{not json\x1b[2J"', /data-automation is not valid JSON/],
+      ['data-automation="{&quot;lanes&quot;:7}"', /data-automation has no list of lanes/],
+      ['data-fx-chain="[oops\x07"', /data-fx-chain is not a valid effect chain/],
+    ]) {
+      const html =
+        `<audio id="music-bed" ${attr} src="bed.wav" data-start="0"></audio>\n` +
+        `<audio id="narration" src="voice.wav" data-start="0"></audio>\n`;
+      writeFileSync(join(dir, "index.html"), html);
+      const run = runCarve(dir);
+      assert.equal(run.status, 1, run.stderr);
+      assert.match(run.stderr, reason);
+      assert.doesNotMatch(run.stderr, /SyntaxError|\n\s+at /);
+      assert.equal(hasControl(run.stderr), false);
+      assert.equal(readFileSync(join(dir, "index.html"), "utf8"), html);
+    }
+  }));
