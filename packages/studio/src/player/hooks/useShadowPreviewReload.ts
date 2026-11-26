@@ -8,7 +8,10 @@ import {
   isStudioManualEditGestureLiveIn,
   studioManualEditSavesIn,
 } from "../../components/editor/manualEditGesture";
-import { refusedPreviewStatus } from "@hyperframes/core/studio-preview-mark";
+import {
+  refusedPreviewStatus,
+  STUDIO_PREVIEW_ERROR_KINDS,
+} from "@hyperframes/core/studio-preview-mark";
 import { gestureDocumentOf } from "../../components/editor/previewSelection";
 import { logReload } from "../../utils/reloadDebug";
 import {
@@ -94,6 +97,17 @@ function pageGotTo(iframe: HTMLIFrameElement | null): string {
     return phase ? ` Its page had got to: ${phase}.` : "";
   const given = /^(about:blank)?$/.test(iframe!.getAttribute("src") ?? "") ? "was never" : "was";
   return ` Its page had got to: ${phase}. Its frame ${given} given a page address and was added ${Date.now() - frameAddedAt.get(iframe!)!} ms ago.`;
+}
+
+function firstErrorFrom(iframe: HTMLIFrameElement | null): string {
+  if (!iframe?.contentDocument) return "";
+  const kinds = (iframe.contentWindow as Record<string, unknown> | null)?.[
+    STUDIO_PREVIEW_ERROR_KINDS
+  ];
+  const origin = Array.isArray(kinds)
+    ? (kinds[0] as { origin?: unknown } | undefined)?.origin
+    : null;
+  return typeof origin === "string" ? ` Its first page error came from: ${origin}.` : "";
 }
 
 function hyperframesPlayerOf(iframe: HTMLIFrameElement): Element | null {
@@ -230,6 +244,7 @@ export function useShadowPreviewReload({
                 ? "its runtime to report a timeline"
                 : "its timeline to be ready";
       const got = sealed ? " Its page had got to: sealed." : pageGotTo(shadow);
+      const errorFrom = sealed ? "" : firstErrorFrom(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();
@@ -245,7 +260,7 @@ export function useShadowPreviewReload({
       logReload("shadow-failed", { cause, waitingFor });
       const refused = refusedPreviewStatus(cause);
       const pageMissingNow = refused !== null && refused < 500;
-      (pageMissingNow ? console.warn : console.error)(`[studio] ${message}`);
+      (pageMissingNow ? console.warn : console.error)(`[studio] ${message}${errorFrom}`);
       onReloadFailedRef.current?.(message);
       retry.afterFailure(cause, failedGen);
     },

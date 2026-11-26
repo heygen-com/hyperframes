@@ -5,7 +5,10 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPreviewReload";
-import { refusedPreviewMessage } from "@hyperframes/core/studio-preview-mark";
+import {
+  refusedPreviewMessage,
+  STUDIO_PREVIEW_ERROR_KINDS,
+} from "@hyperframes/core/studio-preview-mark";
 import { usePlayerStore } from "../store/playerStore";
 import { isPreviewChanging } from "../previewReloading";
 import { studioWriteHeaders } from "../../utils/studioFileVersion";
@@ -803,6 +806,42 @@ describe("shadow reload readiness and failure", () => {
     expect(onPreviewReloadFailed).toHaveBeenCalledWith(
       expect.stringContaining("still waiting for the page and its runtime to load"),
     );
+    unmount(root);
+  });
+
+  // fails without the fix: a host's error tracker strips the error's text and kept only its class, so a reload
+  // broken by the project's own script could not be told from one broken by the runtime or Studio.
+  it("logs where the page's first error came from, and keeps it out of the message people see", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const thrown = makeFakeIframe({
+      [STUDIO_PREVIEW_ERROR_KINDS]: [
+        { name: "TypeError", origin: "project" },
+        { name: "TypeError", origin: "runtime" },
+      ],
+    });
+    act(() => getApi().setShadowIframeNode(thrown));
+
+    act(() => getApi().onShadowError(gen, "Uncaught TypeError: x is not a function"));
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\[studio\] The preview did not reload \(Uncaught TypeError: x is not a function\)\..* Its first page error came from: project\.$/,
+      ),
+    );
+    expect(onPreviewReloadFailed.mock.calls[0]![0]).not.toContain("came from");
+    unmount(root);
+  });
+
+  it("logs no error origin for a page that recorded none", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getApi, gen, root } = beginReload();
+    act(() => getApi().setShadowIframeNode(makeFakeIframe({})));
+
+    act(() => getApi().onShadowError(gen, "Composition timeline not found after 8s"));
+
+    expect(consoleError.mock.calls[0]![0]).not.toContain("came from");
     unmount(root);
   });
 
