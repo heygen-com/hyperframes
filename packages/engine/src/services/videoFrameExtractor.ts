@@ -577,7 +577,7 @@ const FFMPEG_REASON_LINES = 3;
 const FFMPEG_REASON_CHARS = 300;
 
 const FFMPEG_LINE_THAT_NEVER_SAYS_WHY =
-  /^(?:\s|Input #|Output #|Stream mapping:|Press \[q\]|(?:frame|size)=|Conversion failed!)|\] (?:video:\S+ audio:|Task finished with error code|Terminating thread with return code)/;
+  /^(?:\s|ffmpeg version |Input #|Output #|Stream mapping:|Press \[q\]|(?:frame|size)=|Conversion failed!)|\] (?:video:\S+ audio:|Task finished with error code|Terminating thread with return code)/;
 
 /** ffmpeg's last lines saying why, for an error that leaves this host: no local path, file name or URL. */
 function ffmpegReasonFrom(stderr: string, paths: readonly string[]): string {

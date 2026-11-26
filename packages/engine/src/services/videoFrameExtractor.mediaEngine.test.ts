@@ -149,6 +149,12 @@ describe.skipIf(process.platform === "win32")("extraction decode on the Mac's me
   it("keeps ffmpeg's last lines when it said nothing but its summary", async () => {
     probe.hasVideoToolbox = false;
     const stderr = [
+      "ffmpeg version 6.1.1 Copyright (c) 2000-2023 the FFmpeg developers",
+      "  built with gcc 13.3.0",
+      "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':",
+      "Stream mapping:",
+      "  Stream #0:0 -> #0:0 (h264 (native) -> mjpeg (native))",
+      "Press [q] to stop, [?] for help",
       "[out#0/image2 @ 0x2] video:12kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: unknown",
       "frame=    1 fps=0.3 q=2.0 Lsize=N/A time=00:00:00.03 bitrate=N/A speed=0.0111x    ",
       "Conversion failed!",
