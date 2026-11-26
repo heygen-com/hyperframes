@@ -2,6 +2,7 @@
 // decodes. An ask names a path on the frame's own server and the proxy options it played, never a URL: Studio
 // resolves it against its own project before reading anything.
 import { sourceFactsOfSrc } from "../mediaSourceLookup";
+import { isMessageList } from "../protocol";
 import type {
   PausedVideoFrame,
   PausedVideoFrameProvider,
@@ -85,7 +86,7 @@ export function parsePausedFrameAsk(data: unknown): PausedFrameAskMessage | null
   if (data.type === "close") return { type: "close" };
   if (!isId(data.id)) return null;
   if (data.type === "abort" || data.type === "suspend") return { type: data.type, id: data.id };
-  if (data.type !== "decode" || !Array.isArray(data.asks)) return null;
+  if (data.type !== "decode" || !isMessageList(data.asks, PAUSED_FRAME_SOURCES)) return null;
   const asks = data.asks.map(parseAsk);
   return asks.every((ask): ask is PausedFrameAsk => ask !== null)
     ? { type: "decode", id: data.id, asks }
@@ -156,6 +157,7 @@ export function portPausedVideoProvider(port: MessagePort): PausedVideoFrameProv
   const provider: PausedVideoFrameProvider = {
     async decode(requests, signal) {
       signal.throwIfAborted();
+      if (requests.length > PAUSED_FRAME_SOURCES) throw new Error("Preview decode over budget");
       const asks = requests.map(pausedFrameAsk);
       if (asks.some((a) => a === null))
         throw new Error("Preview source is not on the preview server");
