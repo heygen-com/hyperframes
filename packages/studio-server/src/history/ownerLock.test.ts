@@ -13,7 +13,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { link, rename, writeFile } from "node:fs/promises";
+import { link, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir, uptime } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -52,6 +52,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     open,
     link: vi.fn(actual.link),
     rename: vi.fn(actual.rename),
+    rm: vi.fn(actual.rm),
     writeFile: vi.fn(actual.writeFile),
   };
 });
@@ -59,6 +60,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 const {
   link: realLink,
   rename: realRename,
+  rm: realRm,
   writeFile: realWriteFile,
 } = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
 
@@ -70,6 +72,7 @@ const canRefuseRead = process.platform !== "win32" && process.getuid?.() !== 0;
 afterEach(() => {
   vi.mocked(link).mockImplementation(realLink);
   vi.mocked(rename).mockImplementation(realRename);
+  vi.mocked(rm).mockImplementation(realRm);
   vi.mocked(writeFile).mockImplementation(realWriteFile);
   stall.ms = 0;
   stall.spans = [];
@@ -453,3 +456,42 @@ describe.skipIf(process.platform === "win32")(
     });
   },
 );
+
+describe.skipIf(!startable)("takeHistoryOwnership handing a lock on within one process", () => {
+  // fails without the fix: the release removed owner.pid before its start record, so a claim taken in the gap
+  // wrote its own record and the late removal deleted it.
+  it("keeps the next owner's start record when a release's removal of the old one is slow", async () => {
+    const home = newHome();
+    const record = join(home, "owner.pid.start");
+    const first = await takeHistoryOwnership(home, 1_000);
+    let slowed = false;
+    vi.mocked(rm).mockImplementation(async (path, options) => {
+      if (!slowed && String(path) === record) {
+        slowed = true;
+        await new Promise((settle) => setTimeout(settle, 150));
+      }
+      return realRm(path, options);
+    });
+    const releasing = first();
+    const next = await takeHistoryOwnership(home, 2_000);
+    await releasing;
+    expect(slowed).toBe(true);
+    expect(readFileSync(record, "utf-8").split("\n")[0]).toBe(String(process.pid));
+    await next();
+  });
+
+  // fails without the fix: the failed release was kept, so every later call answered with the same failure and
+  // owner.pid stayed behind naming this live process.
+  it("lets a release that failed be tried again", async () => {
+    const home = newHome();
+    const lock = join(home, "owner.pid");
+    const release = await takeHistoryOwnership(home, 1_000);
+    vi.mocked(rm).mockImplementationOnce(async () => {
+      throw Object.assign(new Error("EBUSY: resource busy or locked, unlink"), { code: "EBUSY" });
+    });
+    await expect(release()).rejects.toThrow(/EBUSY/);
+    expect(existsSync(lock)).toBe(true);
+    await release();
+    expect(existsSync(lock)).toBe(false);
+  });
+});

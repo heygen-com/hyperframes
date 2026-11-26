@@ -177,8 +177,8 @@ async function recordOwnership(file: string): Promise<true> {
 /** Removes `file` only while it names this process, so a release never takes a later owner's lock. */
 async function releaseOwn(file: string): Promise<void> {
   if ((await ownerOf(file)) !== process.pid) return;
-  await rm(file, { force: true });
   await rm(`${file}.start`, { force: true });
+  await rm(file, { force: true });
 }
 
 /**
@@ -195,8 +195,8 @@ async function evictDeadOwner(file: string): Promise<boolean> {
   try {
     const pid = await ownerOf(file);
     if (pid !== null && (await deadHolder(file, pid))) {
-      await rm(file, { force: true });
       await rm(`${file}.start`, { force: true });
+      await rm(file, { force: true });
     }
     return true;
   } finally {
@@ -274,10 +274,14 @@ export async function takeHistoryOwnership(
     await releaseOwn(file);
     throw error;
   }
+  const release = async () => {
+    if (await servedBy(file, urlFile, process.pid)) await rm(urlFile, { force: true });
+    await releaseOwn(file);
+  };
   let released: Promise<void> | undefined;
   return () =>
-    (released ??= (async () => {
-      if (await servedBy(file, urlFile, process.pid)) await rm(urlFile, { force: true });
-      await releaseOwn(file);
-    })());
+    (released ??= release().catch((error: unknown) => {
+      released = undefined;
+      throw error;
+    }));
 }
