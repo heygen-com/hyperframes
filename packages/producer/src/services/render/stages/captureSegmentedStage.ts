@@ -208,17 +208,23 @@ async function captureSegmentFrames(
   for (let i = segment.startFrame; i < segment.endFrame; i++) {
     ctx.assertNotAborted();
     const time = (i * ctx.job.config.fps.den) / ctx.job.config.fps.num;
-    const { buffer } = await raceAgainstStall(
-      ctx.captureFrame(ctx.session, i, time),
-      ctx.stallTimeoutMs - (Date.now() - lastProgressAt),
-      {
-        session: ctx.session,
-        frameIndex: i,
-        totalFrames: ctx.totalFrames,
-        stallTimeoutMs: ctx.stallTimeoutMs,
-      },
-      ctx.abortSignal,
-    );
+    let buffer: Buffer;
+    try {
+      ({ buffer } = await raceAgainstStall(
+        ctx.captureFrame(ctx.session, i, time),
+        ctx.stallTimeoutMs - (Date.now() - lastProgressAt),
+        {
+          session: ctx.session,
+          frameIndex: i,
+          totalFrames: ctx.totalFrames,
+          stallTimeoutMs: ctx.stallTimeoutMs,
+        },
+        ctx.abortSignal,
+      ));
+    } catch (error) {
+      if (ctx.abortSignal?.aborted) ctx.assertNotAborted();
+      throw error;
+    }
     await verifyDrawElementSample(ctx.session, i, buffer, {
       log: ctx.log,
       verifyMinDb: ctx.verifyMinDb,
