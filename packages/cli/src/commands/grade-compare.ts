@@ -1,10 +1,13 @@
 import {
-  copyFileSync,
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
@@ -30,7 +33,7 @@ import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
-import { insideProject, recordPathInProject } from "../media-use/lib/record-path.mjs";
+import { recordPathInProject, resolveInsideProject } from "../media-use/lib/record-path.mjs";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -431,16 +434,44 @@ function frameFileNameForPath(framePath: string): string {
   return "frame.png";
 }
 
-function lutSourcePath(projectDir: string, lutSrc: string, label: string, typed = false): string {
+const READ_LUT_FLAGS =
+  constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+function readVerifiedProjectFile(verified: string): Buffer | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(verified, READ_LUT_FLAGS);
+    const stat = fstatSync(fd);
+    const named = lstatSync(verified);
+    if (!stat.isFile() || !named.isFile() || stat.ino !== named.ino || stat.dev !== named.dev) {
+      return null;
+    }
+    return readFileSync(fd);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+function readLutSource(
+  projectDir: string,
+  lutSrc: string,
+  label: string,
+  typed = false,
+): { path: string; bytes: Buffer } {
   const outside = () =>
     new Error(`LUT for "${label}" must be a file inside the project: ${lutSrc}`);
-  const path = typed
-    ? resolveFromBase(projectDir, lutSrc)
-    : recordPathInProject(projectDir, lutSrc);
-  if (path === null || (!typed && insideProject(projectDir, path) === null)) throw outside();
-  if (!existsSync(path)) throw new Error(`LUT file not found for "${label}": ${path}`);
-  if (!typed && !statSync(path).isFile()) throw outside();
-  return path;
+  if (typed) {
+    const path = resolveFromBase(projectDir, lutSrc);
+    if (!existsSync(path)) throw new Error(`LUT file not found for "${label}": ${path}`);
+    return { path, bytes: readFileSync(path) };
+  }
+  const candidate = recordPathInProject(projectDir, lutSrc);
+  const verified = candidate !== null ? resolveInsideProject(projectDir, candidate) : null;
+  const bytes = verified !== null ? readVerifiedProjectFile(verified) : null;
+  if (verified === null || bytes === null) throw outside();
+  return { path: verified, bytes };
 }
 
 export async function prepareGradeCompareTempProject(opts: {
@@ -463,15 +494,14 @@ export async function prepareGradeCompareTempProject(opts: {
       const lutSrc = lutSrcFromGrading(cell.grading);
       if (!lutSrc) return cell;
 
-      const sourcePath = lutSourcePath(
+      const { path: sourcePath, bytes: lutBytes } = readLutSource(
         opts.projectDir,
         lutSrc,
         cell.label,
         opts.lutPathsTypedWithLutsFlag,
       );
-      const lutText = readFileSync(sourcePath, "utf-8");
       try {
-        parseCubeLut(lutText);
+        parseCubeLut(lutBytes.toString("utf-8"));
       } catch (err) {
         throw new Error(
           `LUT for "${cell.label}" is not a valid .cube: ${normalizeErrorMessage(err)}`,
@@ -480,7 +510,7 @@ export async function prepareGradeCompareTempProject(opts: {
       const lutExt = extname(sourcePath) || ".cube";
       const stagedName = `lut-${lutIndex}${lutExt}`;
       lutIndex += 1;
-      copyFileSync(sourcePath, join(tempDir, stagedName));
+      writeFileSync(join(tempDir, stagedName), lutBytes);
       return {
         label: cell.label,
         grading: rewriteGradingLutSrc(cell.grading, stagedName),
