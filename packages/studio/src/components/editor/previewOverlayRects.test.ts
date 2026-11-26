@@ -11,6 +11,7 @@ import type { DomEditSelection } from "./domEditing";
 import { orientedGroupAwareOverlayRect, type OverlayRect } from "./domEditOverlayGeometry";
 import {
   PRESS_WAITING_ATTR,
+  type GestureState,
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
@@ -425,6 +426,8 @@ describe("a press held across a preview change on an opaque frame", () => {
       waitingPressRef: { current: null },
       boxRef: { current: box },
       rafPausedRef: { current: false },
+      gestureRef: { current: null },
+      groupGestureRef: { current: null },
       iframeRef: { current: iframe },
       overlayRef: { current: overlay },
       activeCompositionPathRef: { current: "index.html" },
@@ -477,6 +480,27 @@ describe("a press held across a preview change on an opaque frame", () => {
     held.get(iframe)!();
     await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
     expect(opts.rafPausedRef.current).toBe(false);
+  });
+
+  // fails without the fix: the frame's answer let the box re-measure while the replayed drag was still held, and a
+  // read sent before the drag's newest draw put the box back a step (sealed, 4x CPU: 7 of 10 drags).
+  it("leaves a replayed drag still held to draw its own box when the frame answers", async () => {
+    const held = holdDraws();
+    const turned = document.getElementById("turned")!;
+    const stale = { ...makeSelection("turned", turned), handle: `${"f".repeat(16)}:1` };
+    const box = document.createElement("div");
+    const iframe = opaqueFrame();
+    press.start.mockImplementationOnce((...args: unknown[]) => {
+      const opts = args[2] as UseDomEditOverlayGesturesOptions;
+      opts.gestureRef.current = {} as GestureState;
+      opts.rafPausedRef.current = true;
+      return true;
+    });
+    const { opts } = await pressDuringChange(stale, { box, iframe });
+    await vi.waitFor(() => expect(held.has(iframe)).toBe(true));
+    held.get(iframe)!();
+    await vi.waitFor(() => expect(box.hasAttribute(PRESS_WAITING_ATTR)).toBe(false));
+    expect(opts.rafPausedRef.current, "the held drag draws the box").toBe(true);
   });
 
   // fails without the fix: the outline waited on the frame pressed, which a reload had replaced, so it went while
@@ -769,6 +793,8 @@ describe("a press on a settled preview", () => {
       waitingPressRef: { current: null },
       boxRef: { current: null },
       rafPausedRef: { current: false },
+      gestureRef: { current: null },
+      groupGestureRef: { current: null },
       iframeRef: { current: iframe },
       overlayRef: { current: sized(document.createElement("div"), [20, 10, 1200, 800]) },
       activeCompositionPathRef: { current: "index.html" },
