@@ -294,7 +294,8 @@ export async function previewConsoleErrors(
   const errors: unknown = reply?.errors;
   if (!isMessageList(errors, MAX_QUERY_MATCHES) || typeof reply?.truncated !== "boolean")
     return null;
-  return { errors: errors.map(String), truncated: reply.truncated };
+  if (!errors.every((error): error is string => typeof error === "string")) return null;
+  return { errors, truncated: reply.truncated };
 }
 
 /** The runtime's computed `properties` for the element `target` names; null when it has none. */

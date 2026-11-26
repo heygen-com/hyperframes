@@ -350,6 +350,17 @@ describe("a list in a frame's runtime reply", () => {
   });
 });
 
+// fails without the fix: the reader turned each entry into a string, walking a nested list's every slot.
+it("refuses a frame's console errors at once when an entry is not a string", async () => {
+  const { iframe } = servedFrame(() => ({
+    errors: ["boom", new Array(2 ** 32 - 1)],
+    truncated: false,
+  }));
+  const started = performance.now();
+  expect(await previewConsoleErrors(iframe, 0)).toBeNull();
+  expect(performance.now() - started).toBeLessThan(1000);
+});
+
 describe("bridge playback for a frame Studio cannot script", () => {
   const refs = () => ({ cache: { current: null }, warned: { current: false } });
 
