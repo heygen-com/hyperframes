@@ -180,6 +180,7 @@ const commandLoaders = {
   usage: () => import("./commands/usage.js").then((m) => m.default),
   models: () => import("./commands/models.js").then((m) => m.default),
   tts: () => import("./commands/tts.js").then((m) => m.default),
+  narration: () => import("./commands/narration.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
   clean: () => import("./commands/clean.js").then((m) => m.default),

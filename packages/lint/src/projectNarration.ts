@@ -249,7 +249,7 @@ export function lintProjectNarration(
         "narration_manifest_invalid",
         "warning",
         `${NARRATION_FILE} is not a narration manifest: ${parsed.problems.slice(0, 5).join("; ")}${parsed.problems.length > 5 ? ` (and ${parsed.problems.length - 5} more)` : ""}.`,
-        "Fix the listed fields.",
+        "Fix the listed fields, or recreate the file with `hyperframes narration init`.",
       ),
     ];
   }
