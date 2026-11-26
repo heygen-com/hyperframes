@@ -27,10 +27,10 @@ const MODELS = {
       tier: "medium",
       sizeMB: 330,
       needs: { ramMB: 2048, gpu: false },
-      wordTimestamps: "native",
+      wordTimestamps: "transcribe", // `hyperframes tts` returns none; run `hyperframes transcribe` over output
       install: "pip install kokoro",
       invoke: "python -m kokoro --text {text} --voice {voice} --out {out}",
-      notes: "CPU, faster-than-realtime, native per-word timestamps. Default floor.",
+      notes: "CPU, faster-than-realtime. Word timing via `hyperframes transcribe`. Default floor.",
     },
     {
       id: "fish-speech",
