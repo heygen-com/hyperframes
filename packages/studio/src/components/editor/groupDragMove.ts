@@ -66,17 +66,21 @@ function snapGroupDelta(
 }
 
 /** A group drag's step for this pointer: axis lock, then edge snapping; sets the snap guides. */
-export const groupDragDelta = (
+export function groupDragDelta(
   groupG: GroupGestureState,
   e: PointerLike,
   snapGuidesRef: UseDomEditOverlayGesturesOptions["snapGuidesRef"],
-) =>
-  snapGroupDelta(
+) {
+  const delta = snapGroupDelta(
     groupG,
     e,
     lockDragToDominantAxis(e.clientX - groupG.startX, e.clientY - groupG.startY, e.shiftKey),
     snapGuidesRef,
   );
+  groupG.lastSnappedDx = delta.dx;
+  groupG.lastSnappedDy = delta.dy;
+  return delta;
+}
 
 /**
  * One frame of a group drag, kept out of onPointerMove — which already handles
@@ -98,8 +102,6 @@ export function createGroupDragMover(
       lastGroupPositions = {};
     }
     const { dx, dy } = groupDragDelta(groupG, e, opts.snapGuidesRef);
-    groupG.lastSnappedDx = dx;
-    groupG.lastSnappedDy = dy;
 
     setDraftGroupOverlayItems(
       groupG.originItems.map((i) => ({

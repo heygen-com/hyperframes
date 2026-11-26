@@ -290,7 +290,7 @@ export type UseDomEditOverlayGesturesOptions = {
 
 export function isDomEditGestureTap(
   g: { startX: number; startY: number; travelled?: boolean },
-  e: React.PointerEvent,
+  e: Pick<PointerEvent, "clientX" | "clientY">,
 ) {
   return (
     !g.travelled &&

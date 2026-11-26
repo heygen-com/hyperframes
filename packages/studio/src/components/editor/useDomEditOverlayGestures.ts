@@ -159,8 +159,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (g.kind === "drag") {
       ({ dx, dy } = snappedDragDelta(g, e, opts.snapGuidesRef));
-      g.lastSnappedDx = dx;
-      g.lastSnappedDy = dy;
 
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;

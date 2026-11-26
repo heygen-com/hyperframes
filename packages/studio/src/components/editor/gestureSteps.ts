@@ -1,4 +1,5 @@
 import {
+  isDomEditGestureTap,
   movesGesture,
   resolveDomEditRotationGesture,
   type GestureState,
@@ -65,6 +66,7 @@ function drawSealedRawStep(opts: UseDomEditOverlayGesturesOptions, e: PointerEve
   const held = groupG ?? g;
   if (!held) return false;
   if (opts.waitingPressRef.current || !movesGesture(held, e)) return true;
+  if (!isDomEditGestureTap(held, e)) held.travelled = true;
   if (groupG) {
     const { dx, dy } = groupDragDelta(groupG, e, opts.snapGuidesRef);
     for (const member of groupG.members) applyManualOffsetDragDraft(member, dx, dy);

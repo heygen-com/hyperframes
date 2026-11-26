@@ -1,8 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
-import type { GestureState } from "./domEditOverlayGestures";
-import { applyManualOffsetDragDraft, type ManualOffsetDragMember } from "./manualOffsetDrag";
+import type { GestureState, GroupGestureState } from "./domEditOverlayGestures";
+import {
+  applyManualOffsetDragDraft,
+  createManualOffsetDragMember,
+  type ManualOffsetDragMember,
+} from "./manualOffsetDrag";
 import { previewFrameOpaque, releaseEndedGestureHolds } from "../../player/lib/previewChannel";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { applyRotationDraft } from "./rotationDraft";
@@ -34,7 +38,30 @@ vi.mock("./manualOffsetDrag", async (importOriginal) => ({
 
 (window as unknown as { onpointerrawupdate: null }).onpointerrawupdate = null;
 const member = {} as ManualOffsetDragMember;
-const harnesses: Array<{ gestureRef: { current: unknown } }> = [];
+const harnesses: Array<{
+  gestureRef: { current: unknown };
+  groupGestureRef?: { current: unknown };
+}> = [];
+
+function realMember(key: string) {
+  const element = document.createElement("div");
+  document.body.append(element);
+  const selection = {
+    element,
+    capabilities: { canApplyManualOffset: true },
+  } as unknown as DomEditSelection;
+  const rect = { left: 10, top: 20, width: 50, height: 40, editScaleX: 1, editScaleY: 1 };
+  const built = createManualOffsetDragMember({ key, selection, element, rect, gesture: "drag" });
+  if (!built.ok) throw new Error(built.reason);
+  return { member: built.member, selection, element, rect };
+}
+
+const snapTargetAt42 = {
+  snapEnabled: true,
+  targets: [{ id: "t", left: 42, top: 200, right: 92, bottom: 300, centerX: 67, centerY: 250 }],
+  compositionTarget: null,
+  gridEdges: null,
+};
 
 function sealedDrag(kind: GestureState["kind"] = "drag") {
   const opts = {
@@ -57,18 +84,23 @@ function sealedDrag(kind: GestureState["kind"] = "drag") {
         pathOffsetMember: member,
       } as Partial<GestureState> | null,
     },
-    groupGestureRef: { current: null },
+    groupGestureRef: { current: null as GroupGestureState | null },
     iframeRef: { current: document.createElement("iframe") },
     selectionRef: { current: null },
+    hoverSelectionRef: { current: null },
     boxRef: { current: null },
     blockedMoveRef: { current: null },
     waitingPressRef: { current: null },
     rafPausedRef: { current: true },
+    suppressNextBoxClickRef: { current: false },
     snapGuidesRef: { current: null },
     setOverlayRect: vi.fn(),
     setGroupOverlayItems: vi.fn(),
     overlayRef: { current: null },
+    onCanvasMouseDown: vi.fn(),
     onCanvasPointerMoveRef: { current: vi.fn() },
+    onPathOffsetCommitRef: { current: vi.fn() },
+    onGroupPathOffsetCommitRef: { current: vi.fn() },
   };
   harnesses.push(opts);
   const handlers = createDomEditOverlayGestureHandlers(opts as never);
@@ -76,15 +108,18 @@ function sealedDrag(kind: GestureState["kind"] = "drag") {
   return { opts, handlers };
 }
 
-const pointer = (clientX: number, clientY: number) =>
-  ({ clientX, clientY, shiftKey: false, altKey: false, pointerId: 1, buttons: 1 }) as never;
+const pointer = (clientX: number, clientY: number, buttons = 1) =>
+  ({ clientX, clientY, shiftKey: false, altKey: false, pointerId: 1, buttons }) as never;
 const rawUpdate = (clientX: number, clientY: number) =>
   window.dispatchEvent(
     new PointerEvent("pointerrawupdate", { clientX, clientY, pointerId: 1, buttons: 1 }),
   );
 
 afterEach(() => {
-  for (const opts of harnesses.splice(0)) opts.gestureRef.current = null;
+  for (const opts of harnesses.splice(0)) {
+    opts.gestureRef.current = null;
+    if (opts.groupGestureRef) opts.groupGestureRef.current = null;
+  }
   rawUpdate(0, 0);
   vi.mocked(applyManualOffsetDragDraft).mockClear();
   vi.mocked(applyRotationDraft).mockClear();
@@ -275,5 +310,101 @@ describe("a sealed gesture's end", () => {
     const seen = flushesSeeing(opts);
     handlers.clearPointerState(opts.selectionRef as never);
     expect(seen).toEqual([null]);
+  });
+});
+
+function singleSnappedDrag() {
+  const item = realMember("single");
+  const { opts, handlers } = sealedDrag();
+  opts.gestureRef.current = {
+    ...opts.gestureRef.current,
+    selection: item.selection,
+    pathOffsetMember: item.member,
+    initialPathOffset: item.member.initialPathOffset,
+    manualEditDragToken: item.member.gestureToken,
+    snapContext: snapTargetAt42 as never,
+  };
+  return { opts, handlers, item };
+}
+
+function groupSnappedDrag() {
+  const items = [realMember("a"), realMember("b")];
+  const { opts, handlers } = sealedDrag();
+  opts.gestureRef.current = null;
+  opts.groupGestureRef.current = {
+    pointerId: 1,
+    startX: 100,
+    startY: 100,
+    originItems: items.map((i, idx) => ({
+      key: i.member.key,
+      selection: i.selection,
+      element: i.element,
+      rect: { ...i.rect, top: 20 + idx * 50 },
+    })),
+    members: items.map((i) => i.member),
+    snapContext: snapTargetAt42 as never,
+  };
+  return { opts, handlers, items };
+}
+
+describe("releasing right after a raw update commits what the raw update drew", () => {
+  it("single move commits the raw snapped delta instead of the earlier pointermove", () => {
+    const { opts, handlers, item } = singleSnappedDrag();
+    handlers.onPointerMove(pointer(110, 100));
+    rawUpdate(130, 104);
+    expect(applyManualOffsetDragDraft).toHaveBeenLastCalledWith(item.member, 32, 4);
+    handlers.onPointerUp(pointer(130, 104, 0));
+    expect(opts.onPathOffsetCommitRef.current).toHaveBeenCalledWith(
+      item.selection,
+      { x: 32, y: 4 },
+      expect.anything(),
+    );
+    expect(opts.setOverlayRect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ left: 42, top: 24 }),
+    );
+  });
+
+  it("single move with no prior pointermove commits the raw snapped delta, not the unsnapped pointer", () => {
+    const { opts, handlers, item } = singleSnappedDrag();
+    rawUpdate(130, 104);
+    expect(applyManualOffsetDragDraft).toHaveBeenLastCalledWith(item.member, 32, 4);
+    handlers.onPointerUp(pointer(130, 104, 0));
+    expect(opts.onPathOffsetCommitRef.current).toHaveBeenCalledWith(
+      item.selection,
+      { x: 32, y: 4 },
+      expect.anything(),
+    );
+  });
+
+  it("group move commits the raw snapped delta instead of the earlier pointermove", () => {
+    const { opts, handlers, items } = groupSnappedDrag();
+    handlers.onPointerMove(pointer(110, 100));
+    rawUpdate(130, 104);
+    handlers.onPointerUp(pointer(130, 104, 0));
+    expect(opts.onGroupPathOffsetCommitRef.current).toHaveBeenCalledWith(
+      items.map((i) => expect.objectContaining({ selection: i.selection, next: { x: 32, y: 4 } })),
+    );
+  });
+
+  it("group move with no prior pointermove commits the raw snapped delta, not the unsnapped pointer", () => {
+    const { opts, handlers, items } = groupSnappedDrag();
+    rawUpdate(130, 104);
+    handlers.onPointerUp(pointer(130, 104, 0));
+    expect(opts.onGroupPathOffsetCommitRef.current).toHaveBeenCalledWith(
+      items.map((i) => expect.objectContaining({ selection: i.selection, next: { x: 32, y: 4 } })),
+    );
+  });
+
+  it("a drag that travelled on raw updates and returned near start still commits instead of tapping", () => {
+    const { opts, handlers, item } = singleSnappedDrag();
+    rawUpdate(130, 100);
+    rawUpdate(101, 100);
+    handlers.onPointerUp(pointer(101, 100, 0));
+    expect(opts.onCanvasMouseDown).not.toHaveBeenCalled();
+    expect(opts.onPathOffsetCommitRef.current).toHaveBeenCalledWith(
+      item.selection,
+      { x: 1, y: 0 },
+      expect.anything(),
+    );
   });
 });
