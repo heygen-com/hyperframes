@@ -97,16 +97,22 @@ export function commitBatches(changes) {
   return batches.filter((entry) => entry.additions.length + entry.deletions.length > 0);
 }
 
-function api(endpoint, method = "GET", body, jq) {
+function api(endpoint, method = "GET", body, jq, token) {
   const args = ["api", endpoint, "--method", method];
   if (body !== undefined) args.push("--input", "-");
   if (jq) args.push("--jq", jq);
   return execFileSync("gh", args, {
     input: body === undefined ? undefined : JSON.stringify(body),
     encoding: "utf8",
+    env: token === undefined ? undefined : { ...process.env, GH_TOKEN: token },
     maxBuffer: 16 * 1024 * 1024,
     timeout: 60_000,
   }).trim();
+}
+
+// PR writes go through the app token: GITHUB_TOKEN can open a PR only while Actions may also approve them.
+function prApi(endpoint, method, body) {
+  return api(endpoint, method, body, undefined, process.env.CATALOG_PR_TOKEN);
 }
 
 function commitOid(value) {
@@ -178,12 +184,12 @@ function openPublishPr(repository, base) {
   const body =
     `Generated catalog snapshot from ${base}.\n\n` +
     "Item sources are reviewed in their own PRs. This PR publishes the registry index, search vectors, docs pages, payloads and navigation together.\n\n" +
-    "Required workflows are dispatched on this snapshot. Review and merge after checks pass. Publication uses GITHUB_TOKEN and GitHub-signed API commits; branch protection remains in effect.";
+    "Required workflows are dispatched on this snapshot. Review and merge after checks pass. Commits are GitHub-signed API commits; branch protection remains in effect.";
   if (number !== undefined) {
     if (api(`${endpoint}/${number}`, "GET", undefined, ".body") !== body)
-      api(`${endpoint}/${number}`, "PATCH", { title: TITLE, body });
+      prApi(`${endpoint}/${number}`, "PATCH", { title: TITLE, body });
   } else {
-    api(endpoint, "POST", { title: TITLE, body, head: BRANCH, base: "main" });
+    prApi(endpoint, "POST", { title: TITLE, body, head: BRANCH, base: "main" });
   }
 }
 
@@ -226,6 +232,8 @@ function actionEnvironment() {
   const { GITHUB_REPOSITORY: repository = "", GITHUB_RUN_ID: run = "" } = process.env;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !/^\d+$/.test(run))
     throw new Error("Run publication in GitHub Actions.");
+  if (!process.env.CATALOG_PR_TOKEN)
+    throw new Error("CATALOG_PR_TOKEN must hold the app token that opens the publish PR.");
   return { repository, run, endpoint: `repos/${repository}/git` };
 }
 
@@ -249,7 +257,7 @@ function clearObsoletePublication(repository, base, exists) {
   const number = openPublishPrNumber(repository);
   assertCurrentMain(endpoint, base);
   if (number !== undefined)
-    api(`repos/${repository}/pulls/${number}`, "PATCH", { state: "closed" });
+    prApi(`repos/${repository}/pulls/${number}`, "PATCH", { state: "closed" });
   if (exists) updateStandingBranch(endpoint, true, base);
   console.log("No unpublished catalog changes; obsolete publication cleared.");
 }

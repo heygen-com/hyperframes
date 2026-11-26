@@ -115,7 +115,7 @@ const args = process.argv.slice(2);
 const endpoint = args[1];
 const method = args[args.indexOf("--method") + 1];
 const body = args.includes("--input") ? JSON.parse(fs.readFileSync(0, "utf8")) : undefined;
-fs.appendFileSync(process.env.API_CALLS, JSON.stringify({ endpoint, method, body }) + "\\n");
+fs.appendFileSync(process.env.API_CALLS, JSON.stringify({ endpoint, method, body, token: process.env.GH_TOKEN }) + "\\n");
 const mainAdvanced = () =>
   process.env.MAIN_ADVANCES === "before" ||
   (process.env.MAIN_ADVANCES === "after-commit" && fs.readFileSync(process.env.API_CALLS, "utf8").includes('"graphql"'));
@@ -160,6 +160,8 @@ catch (error) {
           GITHUB_REPOSITORY: "test/catalog",
           GITHUB_RUN_ID: "123",
           GITHUB_RUN_ATTEMPT: "1",
+          GH_TOKEN: "actions-token",
+          CATALOG_PR_TOKEN: "app-token",
           ...apiEnv,
         },
         stdio: ["pipe", "pipe", "pipe"],
@@ -184,14 +186,52 @@ test("reverting unpublished sources closes the obsolete PR and resets its branch
   assert.deepEqual(
     fixture.calls().filter((call) => call.method !== "GET"),
     [
-      { endpoint: "repos/test/catalog/pulls/42", method: "PATCH", body: { state: "closed" } },
+      {
+        endpoint: "repos/test/catalog/pulls/42",
+        method: "PATCH",
+        body: { state: "closed" },
+        token: "app-token",
+      },
       {
         endpoint: "repos/test/catalog/git/refs/heads/bot/catalog-publish",
         method: "PATCH",
         body: { sha: fixture.base, force: true },
+        token: "actions-token",
       },
     ],
   );
+});
+
+test("the app opens the publish PR and the Actions token makes every other write", (t) => {
+  const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1", NO_OPEN_PR: "1" });
+  fixture.run();
+  const writes = fixture.calls().filter((call) => call.method !== "GET");
+  const prWrites = writes.filter((call) => /\/pulls(\/\d+)?$/.test(call.endpoint));
+  assert.deepEqual(
+    prWrites.map(({ endpoint, method, token }) => ({ endpoint, method, token })),
+    [{ endpoint: "repos/test/catalog/pulls", method: "POST", token: "app-token" }],
+  );
+  assert.ok(writes.length > prWrites.length);
+  for (const call of writes.filter((write) => !prWrites.includes(write)))
+    assert.equal(call.token, "actions-token", call.endpoint);
+});
+
+test("the app edits a standing PR whose body is out of date", (t) => {
+  const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1" });
+  fixture.run();
+  const edit = fixture
+    .calls()
+    .find((call) => call.endpoint === "repos/test/catalog/pulls/42" && call.method === "PATCH");
+  assert.equal(edit.token, "app-token");
+});
+
+test("a run without the app token fails before any write", (t) => {
+  const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1", CATALOG_PR_TOKEN: "" });
+  assert.throws(fixture.run, (error) => {
+    assert.match(error.stdout, /CATALOG_PR_TOKEN must hold the app token/);
+    return true;
+  });
+  assert.equal(existsSync(join(fixture.root, "calls.jsonl")), false);
 });
 
 test("a run that main overtook before it started ends clean and writes nothing", (t) => {
@@ -446,6 +486,7 @@ test("vector noise over a standing branch already in main opens no empty PR", (t
       endpoint: "repos/test/catalog/git/refs/heads/bot/catalog-publish",
       method: "PATCH",
       body: { sha: fixture.git("rev-parse", "HEAD"), force: true },
+      token: "actions-token",
     },
   ]);
 });
