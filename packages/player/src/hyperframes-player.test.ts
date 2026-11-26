@@ -3,6 +3,7 @@ import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 import { ParentAudio, type ParentAudioHost } from "./parent-audio.js";
+import { PLAY_START_GRACE_MS } from "./playback-state.js";
 
 type SealedAudioReader = {
   _sealedAudio(): ParentAudio | null;
@@ -1310,6 +1311,105 @@ describe("HyperframesPlayer seek() sync path", () => {
 
     expect(pauseAll).toHaveBeenCalledOnce();
     expect(player.paused).toBe(true);
+  });
+
+  // fails without the bound: a frame that never starts playing would drop every paused heartbeat forever.
+  it("settles back to paused and stops sealed audio if the frame never answers play", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+      );
+      player.setAttribute("sandbox-origin", "");
+      const audio = await loadedSealedAudio(player);
+      vi.spyOn(audio, "play").mockImplementation(() => {});
+      const pause = vi.spyOn(audio, "pause");
+      const sendPaused = () =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: player.iframe.contentWindow,
+            data: { source: "hf-preview", type: "state", frame: 0, isPlaying: false, ended: false },
+          }),
+        );
+
+      player.play();
+      vi.advanceTimersByTime(50);
+      sendPaused();
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      vi.advanceTimersByTime(PLAY_START_GRACE_MS);
+      sendPaused();
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // fails without playSeq keying: slow frame (>200 ms) drops stale playSeq=0, answered playSeq settles now.
+  it("keys the play latch on echoed playSeq across slow starts and immediate refusals", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+      );
+      player.setAttribute("sandbox-origin", "");
+      const audio = await loadedSealedAudio(player);
+      vi.spyOn(audio, "play").mockImplementation(() => {});
+      const pause = vi.spyOn(audio, "pause");
+      const posted: Array<Record<string, unknown>> = [];
+      stubContentWindow({
+        postMessage: vi.fn((msg: Record<string, unknown>) => {
+          posted.push(msg);
+        }),
+      });
+      const sendState = (isPlaying: boolean, playSeq: number) =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: player.iframe.contentWindow,
+            data: {
+              source: "hf-preview",
+              type: "state",
+              frame: 0,
+              isPlaying,
+              ended: false,
+              playSeq,
+            },
+          }),
+        );
+
+      player.play();
+      const firstSeq = posted.find((m) => m["action"] === "play")?.["playSeq"] as number;
+      expect(firstSeq).toBeGreaterThanOrEqual(1);
+
+      // Slow frame past the legacy grace window: stale pre-play heartbeat (playSeq < firstSeq) is still ignored.
+      vi.advanceTimersByTime(PLAY_START_GRACE_MS + 500);
+      sendState(false, firstSeq - 1);
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      // Frame handled this play and refused/stayed paused (playSeq === firstSeq): settles immediately.
+      sendState(false, firstSeq);
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+
+      // Second play increments playSeq; stale paused reply is ignored, then isPlaying:true clears.
+      pause.mockClear();
+      player.play();
+      const secondSeq = posted.filter((m) => m["action"] === "play").at(-1)?.["playSeq"] as number;
+      expect(secondSeq).toBeGreaterThan(firstSeq);
+      sendState(false, firstSeq);
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      sendState(true, secondSeq);
+      sendState(false, secondSeq);
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stopMedia pauses iframe-realm media elements", () => {

@@ -150,6 +150,7 @@ export function handleRuntimeMessage(
           ended: typeof data["ended"] === "boolean" ? data["ended"] : undefined,
           isPlaying: !!data["isPlaying"],
           ownsRange: ownsPlayRange,
+          playSeq: typeof data["playSeq"] === "number" ? data["playSeq"] : undefined,
         },
         protocol.fps,
         callbacks.getPlaybackState(),
