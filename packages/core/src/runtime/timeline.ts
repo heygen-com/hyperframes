@@ -355,7 +355,8 @@ export function collectRuntimeTimelinePayload(params: {
   const mediaWindowDuration =
     mediaWindowEnd != null ? Math.max(0, mediaWindowEnd - Math.max(0, rootCompositionStart)) : null;
   const rootDurationFromTimeline = resolveTimelineDurationSeconds(rootCompositionId);
-  const rootDurationFromAttr = parseElementDurationAttr(root ?? document.body);
+  const rootDurationNode = root ?? document.body ?? document.documentElement;
+  const rootDurationFromAttr = rootDurationNode ? parseElementDurationAttr(rootDurationNode) : null;
   const compositionWindowEnd = maxDefinedNumber(
     ...compositionNodes
       .filter((node) => node !== root)
