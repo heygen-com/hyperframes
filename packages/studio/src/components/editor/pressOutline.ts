@@ -21,11 +21,11 @@ function createPressOutline({
   groupGestureRef,
 }: OutlineRefs) {
   let drawWait: ReplayDrawWait | null = null;
+  const heldDragDrawsBox = () => !!(gestureRef.current || groupGestureRef.current);
   const idle = () => {
     drawWait = null;
     boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-    // A drag still held draws the box itself, as an unsealed one does; its release measures again.
-    rafPausedRef.current = !!(gestureRef.current || groupGestureRef.current);
+    rafPausedRef.current = heldDragDrawsBox();
   };
   const confirm = (wait: ReplayDrawWait): void =>
     void previewDraftsSent(wait.frame).then(() => {
