@@ -38,6 +38,7 @@ import {
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
+  drawChromeOrigin,
   drawOutline,
   type GestureState,
   type GroupGestureState,
@@ -212,6 +213,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       readout.updateGestureReadout(g.readout, draftRect);
       setDraftOverlayRect(draftRect);
       drawOutline(outline, { left: nextBoxLeft, top: nextBoxTop });
+      drawChromeOrigin(outline[0], draftRect);
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
       if (sealedDragMember(g)) armRawPointerSteps(opts.gestureRef, drawRawDragStep);
     } else {
@@ -247,6 +249,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         liveInlineStyle: sel.element.getAttribute("style"),
       });
       drawOutline(outline, draftRect);
+      drawChromeOrigin(outline[0], draftRect);
       readout.updateGestureReadoutSize(g.readout, draftRect, writtenSize);
       setDraftOverlayRect(draftRect);
     }
