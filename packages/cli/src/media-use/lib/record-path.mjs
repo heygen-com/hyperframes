@@ -77,6 +77,18 @@ function parseTarget(target, roots, isWin32) {
   return null;
 }
 
+function initialQueue(candidate, root, resolvedProject, roots, pathApi, isWin32) {
+  const isRooted = isWin32 ? ROOTED.test(candidate) : candidate.startsWith("/");
+  if (isRooted) {
+    const parsed = parseTarget(candidate, roots, isWin32);
+    return parsed === null ? null : parsed.parts;
+  }
+  const full = pathApi.resolve(candidate);
+  const initial =
+    relativeInside(root, full, pathApi) ?? relativeInside(resolvedProject, full, pathApi);
+  return initial === null ? null : rawSegments(initial, isWin32);
+}
+
 /**
  * Walk `candidate` component by component from `realpathSync(projectDir)` using `lstat` and `readlink`,
  * failing closed on any unresolved component, link target outside the project, or link loop.
@@ -85,42 +97,31 @@ function walkInsideProject(projectDir, candidate, { fs = nodeFs, pathApi = nodeP
   if (typeof candidate !== "string" || !candidate) return null;
   const isWin32 = pathApi.sep === "\\";
   let root;
+  let rootStat;
   try {
     root = fs.realpathSync(projectDir);
+    rootStat = fs.lstatSync(root);
   } catch {
     return null;
   }
+  if (!rootStat.isDirectory()) return null;
   const resolvedProject = pathApi.resolve(projectDir);
   const roots = root === resolvedProject ? [root] : [root, resolvedProject];
+  const queue = initialQueue(candidate, root, resolvedProject, roots, pathApi, isWin32);
+  if (queue === null) return null;
 
-  let queue;
-  const isRooted = isWin32 ? ROOTED.test(candidate) : candidate.startsWith("/");
-  if (isRooted) {
-    const parsed = parseTarget(candidate, roots, isWin32);
-    if (parsed === null) return null;
-    queue = parsed.parts;
-  } else {
-    const full = pathApi.resolve(candidate);
-    const initial =
-      relativeInside(root, full, pathApi) ?? relativeInside(resolvedProject, full, pathApi);
-    if (initial === null) return null;
-    queue = rawSegments(initial, isWin32);
-  }
-
-  const stack = [];
+  const entries = [];
   let links = 0;
-  let lastStat = null;
 
   while (queue.length > 0) {
     const part = queue.shift();
     if (part === ".") continue;
     if (part === "..") {
-      if (stack.length === 0) return null;
-      stack.pop();
-      lastStat = null;
+      if (entries.length === 0) return null;
+      entries.pop();
       continue;
     }
-    const at = pathApi.join(root, ...stack, part);
+    const at = pathApi.join(root, ...entries.map((entry) => entry.part), part);
     let stat;
     try {
       stat = fs.lstatSync(at);
@@ -139,36 +140,112 @@ function walkInsideProject(projectDir, candidate, { fs = nodeFs, pathApi = nodeP
       if (typeof target !== "string" || !target) return null;
       const parsed = parseTarget(target, roots, isWin32);
       if (parsed === null) return null;
-      if (parsed.rooted) stack.length = 0;
+      if (parsed.rooted) entries.length = 0;
       queue.unshift(...parsed.parts);
-      lastStat = null;
       continue;
     }
     if (queue.length > 0 && !stat.isDirectory()) return null;
-    stack.push(part);
-    lastStat = stat;
+    entries.push({ part, path: at, stat });
   }
 
-  if (stack.length === 0) return null;
-  const verified = pathApi.join(root, ...stack);
-  if (lastStat === null) {
+  if (entries.length === 0) return null;
+  const leaf = entries.at(-1);
+  return {
+    root,
+    rootStat,
+    entries,
+    full: leaf.path,
+    relative: entries.map((entry) => entry.part).join(pathApi.sep),
+    stat: leaf.stat,
+  };
+}
+
+const sameNode = (a, b) => a.dev === b.dev && a.ino === b.ino;
+
+function closeAll(fds, fs) {
+  for (const fd of fds) {
     try {
-      lastStat = fs.lstatSync(verified);
-      if (lastStat.isSymbolicLink()) return null;
+      fs.closeSync(fd);
     } catch {
-      return null;
+      // best-effort cleanup
     }
   }
-  return {
-    full: verified,
-    relative: stack.join(pathApi.sep),
-    stat: lastStat,
-  };
+}
+
+function openVerifiedDirs(root, rootStat, dirEntries, fs) {
+  const constants = fs.constants ?? nodeFs.constants;
+  if (!constants?.O_DIRECTORY || !constants?.O_NOFOLLOW) return [];
+  const dirFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+  const fds = [];
+  try {
+    for (const entry of [{ path: root, stat: rootStat }, ...dirEntries]) {
+      const fd = fs.openSync(entry.path, dirFlags);
+      fds.push(fd);
+      const stat = fs.fstatSync(fd);
+      if (!stat.isDirectory() || !sameNode(stat, entry.stat)) {
+        closeAll(fds, fs);
+        return null;
+      }
+    }
+    return fds;
+  } catch {
+    closeAll(fds, fs);
+    return null;
+  }
+}
+
+function fdResolvesTo(fd, expectedFull, fs, pathApi) {
+  if (process.platform !== "linux" || pathApi.sep !== "/") return true;
+  try {
+    return fs.readlinkSync(`/proc/self/fd/${fd}`) === expectedFull;
+  } catch {
+    return false;
+  }
+}
+
+function sameChain(before, after, fdStat) {
+  if (!after || after.full !== before.full) return false;
+  if (!sameNode(before.rootStat, after.rootStat)) return false;
+  if (before.entries.length !== after.entries.length) return false;
+  if (!after.stat.isFile() || !sameNode(after.stat, fdStat)) return false;
+  return before.entries.every((entry, i) => sameNode(entry.stat, after.entries[i].stat));
+}
+
+/**
+ * Open and read a verified regular file inside `projectDir`, pinning parent directories with
+ * `O_DIRECTORY | O_NOFOLLOW` where supported and verifying the opened descriptor stays confined to `root`.
+ */
+export function readFileInsideProject(
+  projectDir,
+  candidate,
+  { fs = nodeFs, pathApi = nodePath } = {},
+) {
+  const walked = walkInsideProject(projectDir, candidate, { fs, pathApi });
+  if (!walked || !walked.stat.isFile()) return null;
+  const dirFds = openVerifiedDirs(walked.root, walked.rootStat, walked.entries.slice(0, -1), fs);
+  if (dirFds === null) return null;
+  let fd;
+  try {
+    const constants = fs.constants ?? nodeFs.constants;
+    const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+    fd = fs.openSync(walked.full, flags);
+    const fdStat = fs.fstatSync(fd);
+    if (!fdStat.isFile() || !sameNode(fdStat, walked.stat)) return null;
+    if (!fdResolvesTo(fd, walked.full, fs, pathApi)) return null;
+    const after = walkInsideProject(projectDir, walked.full, { fs, pathApi });
+    if (!sameChain(walked, after, fdStat)) return null;
+    return { path: walked.full, bytes: fs.readFileSync(fd) };
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeAll([fd], fs);
+    closeAll(dirFds, fs);
+  }
 }
 
 /**
  * The verified destination path of `path` inside the real project root once links are read, or null when
- * it is the project itself, has an unresolved component, or leaves the project. Callers must open this path.
+ * it is the project itself, has an unresolved component, or leaves the project.
  */
 export function resolveInsideProject(projectDir, path, options) {
   return walkInsideProject(projectDir, path, options)?.full ?? null;

@@ -1,15 +1,4 @@
-import {
-  closeSync,
-  constants,
-  existsSync,
-  fstatSync,
-  lstatSync,
-  mkdtempSync,
-  openSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
@@ -33,7 +22,7 @@ import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
-import { recordPathInProject, resolveInsideProject } from "../media-use/lib/record-path.mjs";
+import { readFileInsideProject, recordPathInProject } from "../media-use/lib/record-path.mjs";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -434,26 +423,6 @@ function frameFileNameForPath(framePath: string): string {
   return "frame.png";
 }
 
-const READ_LUT_FLAGS =
-  constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
-
-function readVerifiedProjectFile(verified: string): Buffer | null {
-  let fd: number | undefined;
-  try {
-    fd = openSync(verified, READ_LUT_FLAGS);
-    const stat = fstatSync(fd);
-    const named = lstatSync(verified);
-    if (!stat.isFile() || !named.isFile() || stat.ino !== named.ino || stat.dev !== named.dev) {
-      return null;
-    }
-    return readFileSync(fd);
-  } catch {
-    return null;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
-}
-
 function readLutSource(
   projectDir: string,
   lutSrc: string,
@@ -468,10 +437,9 @@ function readLutSource(
     return { path, bytes: readFileSync(path) };
   }
   const candidate = recordPathInProject(projectDir, lutSrc);
-  const verified = candidate !== null ? resolveInsideProject(projectDir, candidate) : null;
-  const bytes = verified !== null ? readVerifiedProjectFile(verified) : null;
-  if (verified === null || bytes === null) throw outside();
-  return { path: verified, bytes };
+  const result = candidate !== null ? readFileInsideProject(projectDir, candidate) : null;
+  if (result === null) throw outside();
+  return result;
 }
 
 export async function prepareGradeCompareTempProject(opts: {
