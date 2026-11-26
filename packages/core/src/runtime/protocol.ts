@@ -82,8 +82,8 @@ export function frameDisplayScale(frame: HTMLElement): number | null {
 
 export const MAX_MESSAGE_LIST = 1000;
 
-export function isMessageList(value: unknown): value is unknown[] {
-  if (!Array.isArray(value) || value.length > MAX_MESSAGE_LIST) return false;
+export function isMessageList(value: unknown, max = MAX_MESSAGE_LIST): value is unknown[] {
+  if (!Array.isArray(value) || value.length > max) return false;
   for (let i = 0; i < value.length; i++) if (!(i in value)) return false;
   return true;
 }

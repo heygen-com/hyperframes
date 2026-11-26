@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   inspectRuntimeProtocol,
+  isMessageList,
   MAX_MESSAGE_LIST,
   runtimeProtocolFpsFromNumber,
   runtimeProtocolFpsToNumber,
@@ -71,5 +72,10 @@ describe("runtime protocol", () => {
     expect(inspect(Array(MAX_MESSAGE_LIST).fill("seconds-time"))).toMatchObject({
       status: "supported",
     });
+  });
+
+  it("reads a list against the cap its reader names", () => {
+    expect(isMessageList([1, 2, 3], 3)).toBe(true);
+    expect(isMessageList([1, 2, 3, 4], 3)).toBe(false);
   });
 });
