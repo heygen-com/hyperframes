@@ -72,7 +72,10 @@ import { reportFrameProgress, reportWorkerStartup } from "../shared.js";
 import { withWorkerPageErrors } from "../perfSummary.js";
 import type { SdrDiskCapturePlan } from "../capturePlan.js";
 import type { OpenStallAttempt } from "../observability.js";
-import { createSessionInitBudget } from "./captureStreamingStage.js";
+import {
+  createSessionInitBudget,
+  openCaptureSessionWithinBudget,
+} from "./captureStreamingStage.js";
 
 export interface CaptureStageInput {
   fileServer: FileServerHandle;
@@ -484,16 +487,21 @@ async function runSequentialDiskCapture(
       assertNotAborted();
       attempt?.throwIfAborted();
     };
+    const attemptSignal = combineAbortSignals(abortSignal, attempt);
+    const initBudget = { frameIndex: resumeFrom, totalFrames, abortSignal: attemptSignal };
     const videoInjector = createRenderVideoFrameInjector();
     const session =
       probeSession ??
-      (await createCaptureSession(
-        fileServer.url,
+      (await openSequentialDiskSession({
+        assertAttemptActive,
+        initBudget,
+        fileServerUrl: fileServer.url,
         framesDir,
         captureOptions,
         videoInjector,
         captureCfg,
-      ));
+        attemptSignal,
+      }));
     captureBeyondViewport = session.options.captureBeyondViewport;
 
     try {
@@ -503,11 +511,7 @@ async function runSequentialDiskCapture(
         await prepareCaptureSessionForReuse(session, framesDir, videoInjector);
         probeSession = null;
       }
-      await ensureSessionReady(session, {
-        frameIndex: resumeFrom,
-        totalFrames,
-        abortSignal: input.abortSignal,
-      });
+      await ensureSessionReady(session, initBudget);
       assertAttemptActive();
       lastBrowserConsole = session.browserConsoleBuffer;
 
@@ -582,12 +586,40 @@ function planTransientResume(
     : null;
 }
 
+function combineAbortSignals(first?: AbortSignal, second?: AbortSignal): AbortSignal | undefined {
+  if (first && second) return AbortSignal.any([first, second]);
+  return second ?? first;
+}
+
+async function openSequentialDiskSession(args: {
+  assertAttemptActive: () => void;
+  initBudget: Parameters<typeof createSessionInitBudget>[0];
+  fileServerUrl: string;
+  framesDir: string;
+  captureOptions: CaptureOptions;
+  videoInjector: ReturnType<CaptureStageInput["createRenderVideoFrameInjector"]>;
+  captureCfg: EngineConfig;
+  attemptSignal?: AbortSignal;
+}): Promise<CaptureSession> {
+  args.assertAttemptActive();
+  return openCaptureSessionWithinBudget(
+    createSessionInitBudget(args.initBudget),
+    createCaptureSession(
+      args.fileServerUrl,
+      args.framesDir,
+      args.captureOptions,
+      args.videoInjector,
+      { ...args.captureCfg, signal: args.attemptSignal },
+    ),
+  );
+}
+
 async function ensureSessionReady(
   session: CaptureSession,
   budget: Parameters<typeof createSessionInitBudget>[0],
 ): Promise<void> {
   if (!session.isInitialized) {
-    await initializeSession(session);
+    await createSessionInitBudget(budget)(initializeSession(session), session);
     return;
   }
   // Deferred drawElement init (probe-initialized video comps). The disk path has no

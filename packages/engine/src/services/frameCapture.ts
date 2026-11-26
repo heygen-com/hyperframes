@@ -1527,13 +1527,21 @@ async function installMediaPageHooks(page: Page, options: CaptureOptions): Promi
   }
 }
 
+function throwIfCaptureAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Capture session creation aborted");
+}
+
 export async function createCaptureSession(
   serverUrl: string,
   outputDir: string,
   options: CaptureOptions,
   onBeforeCapture: BeforeCaptureHook | null = null,
-  config?: Partial<EngineConfig>,
+  config?: Partial<EngineConfig> & { signal?: AbortSignal },
 ): Promise<CaptureSession> {
+  throwIfCaptureAborted(config?.signal);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
   // Determine capture mode before building args — BeginFrame flags only apply on Linux.
@@ -1607,10 +1615,15 @@ export async function createCaptureSession(
   // still fails loudly if the server is actually down.
   const requiresWebGpu =
     options.requiresWebGpu ??
-    (await fetch(`${serverUrl}/index.html`, { signal: AbortSignal.timeout(5_000) })
+    (await fetch(`${serverUrl}/index.html`, {
+      signal: config?.signal
+        ? AbortSignal.any([AbortSignal.timeout(5_000), config.signal])
+        : AbortSignal.timeout(5_000),
+    })
       .then((res) => res.text())
       .then(compositionRequiresWebGpu)
       .catch(() => false));
+  throwIfCaptureAborted(config?.signal);
   const gpuConfig = { ...config, browserGpuMode: resolvedGpuMode };
   const chromeArgs = buildChromeArgs(
     { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
@@ -1642,7 +1655,7 @@ interface CaptureSessionConstructionInput {
   outputDir: string;
   options: CaptureOptions;
   onBeforeCapture: BeforeCaptureHook | null;
-  config?: Partial<EngineConfig>;
+  config?: Partial<EngineConfig> & { signal?: AbortSignal };
   useDrawElement: boolean;
   requiresWebGpu?: boolean;
   softwareWebGpu?: boolean;
@@ -1653,6 +1666,7 @@ async function constructCaptureSessionWithRollback(
 ): Promise<CaptureSession> {
   let page: Page | undefined;
   try {
+    throwIfCaptureAborted(input.config?.signal);
     return await constructCaptureSession({
       ...input,
       onPageCreated: (createdPage) => {

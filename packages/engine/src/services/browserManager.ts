@@ -859,7 +859,7 @@ function logResolvedBrowserGpuMode(resolved: "hardware" | "software", reason: st
 
 type BrowserLaunchConfig = Partial<
   Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot">
-> & { withoutWaylandDisplay?: boolean; pageServerUrl?: string };
+> & { withoutWaylandDisplay?: boolean; pageServerUrl?: string; signal?: AbortSignal };
 
 function createBrowserLaunchFingerprint(
   chromeArgs: string[],
@@ -910,7 +910,11 @@ export async function acquireBrowser(
   config?: BrowserLaunchConfig & Partial<Pick<EngineConfig, "enableBrowserPool">>,
 ): Promise<AcquiredBrowser> {
   const enablePool = config?.enableBrowserPool ?? DEFAULT_CONFIG.enableBrowserPool;
-  return browserLeasePool.acquire(createBrowserLaunchFingerprint(chromeArgs, config), enablePool);
+  return browserLeasePool.acquire(
+    createBrowserLaunchFingerprint(chromeArgs, config),
+    enablePool,
+    config?.signal,
+  );
 }
 
 /** An agent's macOS seatbelt allows one launch shape only: Chrome in one process over a pipe. */
@@ -947,8 +951,15 @@ async function publicOnlyNetwork(pageServerHost: string | undefined) {
 // fallow-ignore-next-line complexity
 async function launchBrowser(
   fingerprint: Readonly<BrowserLaunchFingerprint>,
+  signal?: AbortSignal,
 ): Promise<{ browser: Browser; captureMode: CaptureMode }> {
+  const throwIfAborted = () => {
+    if (!signal?.aborted) return;
+    throw signal.reason instanceof Error ? signal.reason : new Error("Browser launch aborted");
+  };
+  throwIfAborted();
   const ppt = await getPuppeteerCore();
+  throwIfAborted();
   const env = launchEnv(fingerprint);
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
@@ -957,8 +968,10 @@ async function launchBrowser(
     : undefined;
   const browserArgs = network ? [...fingerprint.args, ...network.args] : fingerprint.args;
   const launch = (args: readonly string[]) => {
+    throwIfAborted();
     let attempted = args;
     return launchWithChromeSandboxFallback(args, (launchArgs) => {
+      throwIfAborted();
       attempted = launchArgs;
       return launchInsideSandbox(ppt, {
         ...ownedLaunchOptions(),
@@ -970,8 +983,10 @@ async function launchBrowser(
         env,
         timeout: fingerprint.browserTimeoutMs,
         protocolTimeout: fingerprint.protocolTimeoutMs,
+        signal,
       });
     }).catch(async (error: unknown) => {
+      throwIfAborted();
       const remediation =
         process.platform === "darwin" &&
         sandboxDeniedRemediation(error instanceof Error ? error.message : "");
@@ -991,9 +1006,12 @@ async function launchBrowser(
       timedOut: false,
     }));
   try {
+    throwIfAborted();
     browser = await launch(browserArgs);
+    throwIfAborted();
 
     const browserVersion = await browser.version().catch(() => "unknown");
+    throwIfAborted();
     const gpuFlags = fingerprint.args.filter(
       (a) => a.startsWith("--use-gl=") || a.startsWith("--use-angle="),
     );
@@ -1004,6 +1022,7 @@ async function launchBrowser(
 
     if (captureMode === "beginframe") {
       let result = await probe(browser);
+      throwIfAborted();
       if (!result.supported && result.timedOut) {
         console.warn(
           `[BrowserManager] HeadlessExperimental.beginFrame probe timed out after ${result.durationMs}ms: ` +
@@ -1012,6 +1031,7 @@ async function launchBrowser(
         await closeBrowserAfterFailedProbe(browser);
         browser = await launch(browserArgs);
         result = await probe(browser, BEGINFRAME_PROBE_RETRY_TIMEOUT_MS);
+        throwIfAborted();
       }
       if (!result.supported) {
         await closeBrowserAfterFailedProbe(browser);
@@ -1025,6 +1045,7 @@ async function launchBrowser(
       }
     }
 
+    throwIfAborted();
     if (network) browser.once("disconnected", () => void network.close());
     return { browser, captureMode };
   } catch (error) {
