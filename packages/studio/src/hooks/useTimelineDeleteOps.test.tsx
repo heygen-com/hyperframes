@@ -15,6 +15,7 @@ import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
 import { persistMoveEdits, type DragCommitDeps } from "../player/components/timelineClipDragCommit";
 import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
 import { keyHint } from "../player/components/studioShortcuts";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 
 installReactActEnvironment();
 
@@ -626,5 +627,58 @@ describe("useTimelineDeleteOps: live preview", () => {
 
     expect(preview.querySelector('[data-hf-id="hf-b"]')).toBeNull();
     expect(preview.querySelector('[data-hf-id="hf-a"]')).not.toBeNull();
+  });
+
+  // fails without the fix: the deleted clip's selection outline stayed until Studio re-read the preview, which a
+  // sealed preview answers frames later (R77: outline gone at 128-228 ms after the clip, against 91-111 unsealed).
+  it("drops the deleted clip's canvas selection in the same step that takes it out of the preview", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    const preview = document.implementation.createHTMLDocument();
+    preview.documentElement.innerHTML = html;
+    const iframe = { contentDocument: preview } as unknown as HTMLIFrameElement;
+    const clip = (id: string, start: number): TimelineElement => ({
+      id,
+      tag: "div",
+      start,
+      duration: 2,
+      track: 0,
+      hfId: id,
+      sourceFile: "index.html",
+    });
+    const elements = [clip("hf-a", 0), clip("hf-b", 2)];
+    usePlayerStore.getState().setElements(elements);
+    const selected = (hfId: string) =>
+      ({
+        element: preview.querySelector(`[data-hf-id="${hfId}"]`)!,
+        hfId,
+        sourceFile: "index.html",
+      }) as unknown as DomEditSelection;
+    const [kept, deleted] = [selected("hf-a"), selected("hf-b")];
+    const applyMarqueeSelection = vi.fn();
+    let hook: ReturnType<typeof useTimelineDeleteOps> | null = null;
+    function Harness() {
+      hook = useTimelineDeleteOps({
+        activeCompPath: "index.html",
+        showToast: vi.fn(),
+        writeProjectFile: vi.fn().mockResolvedValue(undefined),
+        recordEdit: vi.fn().mockResolvedValue(undefined),
+        reloadPreview: vi.fn(),
+        previewIframeRef: { current: iframe },
+        canvasSelectionsRef: { current: [deleted, kept] },
+        applyMarqueeSelectionRef: { current: applyMarqueeSelection },
+        editQueueRef: { current: Promise.resolve(), projectId: "test-project" },
+        handleTimelineGroupMove: vi.fn().mockResolvedValue(undefined),
+      });
+      return null;
+    }
+    mountReactHarness(<Harness />);
+
+    void hook!.handleTimelineElementDelete(elements[1]);
+
+    expect(preview.querySelector('[data-hf-id="hf-b"]')).toBeNull();
+    expect(applyMarqueeSelection).toHaveBeenCalledExactlyOnceWith([deleted], "subtract");
   });
 });

@@ -14,6 +14,7 @@ import {
   resolveTimelineIdForSelection,
 } from "../utils/studioHelpers";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { ApplyMarqueeSelection } from "./useTimelineEditingTypes";
 import { buildPatchTarget, syncCompositionDurationWithEnd } from "./timelineEditingHelpers";
 import { timingGestureStep } from "./timelineTimingSync";
 import { captureDurationRollback, removeIframeTimelineElements } from "./previewTimingPatch";
@@ -77,6 +78,7 @@ interface UseTimelineDeleteOpsOptions {
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
   /** The canvas selections (primary and group) when the delete starts. */
   canvasSelectionsRef?: RefObject<readonly DomEditSelection[]>;
+  applyMarqueeSelectionRef?: RefObject<ApplyMarqueeSelection>;
   editQueueRef: TimelineEditQueue;
   /** The same atomic multi-clip move commit the track-gap menu uses, reused
    *  to ripple the main track after a delete, folded into the delete's own
@@ -122,6 +124,7 @@ export function useTimelineDeleteOps({
   forceReloadSdkSession,
   previewIframeRef,
   canvasSelectionsRef,
+  applyMarqueeSelectionRef,
   editQueueRef,
   handleTimelineGroupMove,
 }: UseTimelineDeleteOpsOptions) {
@@ -183,6 +186,9 @@ export function useTimelineDeleteOps({
           activeCompPath,
           selectedElements,
         );
+        const removed = new Set(selectedElements.values());
+        const gone = (canvasSelectionsRef?.current ?? []).filter((s) => removed.has(s.element));
+        if (gone.length > 0) applyMarqueeSelectionRef?.current(gone, "subtract");
         usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         const deleted = enqueueTimelineEdit(editQueueRef, async (pid) => {
           await saveServerRewriteWithHistory({
@@ -312,6 +318,7 @@ export function useTimelineDeleteOps({
       forceReloadSdkSession,
       previewIframeRef,
       canvasSelectionsRef,
+      applyMarqueeSelectionRef,
       editQueueRef,
       handleTimelineGroupMove,
     ],
