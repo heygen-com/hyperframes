@@ -150,7 +150,8 @@ describe("Studio catalog install", () => {
         id: "link",
         title: "link",
       } as never);
-      await history?.flush();
+      expect(history).toBeTruthy();
+      await history!.flush();
       renameSync(real, `${real}-renamed`);
     }));
 
