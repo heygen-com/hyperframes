@@ -1355,6 +1355,7 @@ async function executeLocalRender(
       quiet: options.quiet,
       format: options.format,
       perf: job.perfSummary,
+      outputDurationSeconds: outputDurationSeconds(job),
       requestedGpuMode: options.browserGpuMode,
     }),
   );
@@ -1370,9 +1371,8 @@ async function executeLocalRender(
     );
   }
   if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
-  const durationMs = job.perfSummary
-    ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
-    : undefined;
+  const outputSeconds = outputDurationSeconds(job);
+  const durationMs = outputSeconds != null ? Math.round(outputSeconds * 1000) : undefined;
   const outcome =
     job.outcome === "completed_with_warnings" ? "completed_with_warnings" : "completed";
   return {
@@ -2140,6 +2140,13 @@ export function wantsDesktopHint(options: Pick<RenderOptions, "desktopHint">): b
   return options.desktopHint !== false;
 }
 
+/** A `--start/--end` render writes only its window, which `job.duration` measures; the perf summary keeps the whole film's length. */
+function outputDurationSeconds(
+  job: Pick<RenderJob, "duration" | "perfSummary">,
+): number | undefined {
+  return job.duration ?? job.perfSummary?.compositionDurationSeconds;
+}
+
 function printRenderComplete(input: {
   outputPath: string;
   projectDir: string;
@@ -2149,6 +2156,7 @@ function printRenderComplete(input: {
   quiet: boolean;
   format: RenderFormat;
   perf?: RenderPerfSummary;
+  outputDurationSeconds?: number;
   requestedGpuMode?: "auto" | "hardware" | "software";
 }): void {
   if (input.quiet) return;
@@ -2156,7 +2164,7 @@ function printRenderComplete(input: {
   const { fileSize, isDirectory } = readOutputFootprint(outputPath);
   const detail = formatRenderSummaryDetail({
     elapsedMs,
-    outputDurationSeconds: perf?.compositionDurationSeconds,
+    outputDurationSeconds: input.outputDurationSeconds,
     isDirectory,
     frameCount: perf?.totalFrames,
     playlistDirectory: input.format === "hls",
