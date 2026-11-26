@@ -17,6 +17,7 @@ export interface PlaybackState {
   paused: boolean;
   lastUpdateMs: number;
   enteringRange?: boolean;
+  awaitingPlay?: boolean;
 }
 
 export interface PlaybackStateCallbacks {
@@ -153,16 +154,31 @@ export function applyRuntimeStateMessage(
   const nextPaused = !data.isPlaying;
   const completedPlayback = atEnd && playing;
 
+  // A paused heartbeat sent before the frame handled `play` is not a stop.
+  if (current.awaitingPlay && nextPaused && !completedPlayback) return current;
+
   if (completedPlayback && callbacks.getLoop()) {
     if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
     callbacks.seek(loopStart);
     callbacks.play();
     // play() sets paused=false; reflect that in the returned state so the
     // caller's destructure doesn't overwrite it with the stale nextPaused value.
-    return { ...current, currentTime: loopStart, paused: false, enteringRange: true };
+    return {
+      ...current,
+      currentTime: loopStart,
+      paused: false,
+      enteringRange: true,
+      awaitingPlay: true,
+    };
   }
 
-  const next = { ...current, currentTime, paused: nextPaused, enteringRange: bounds.entering };
+  const next = {
+    ...current,
+    currentTime,
+    paused: nextPaused,
+    enteringRange: bounds.entering,
+    awaitingPlay: false,
+  };
   if (wasPlaying && (nextPaused || completedPlayback)) callbacks.onRuntimeStopped?.();
 
   mirrorParentMedia(callbacks, wasPlaying, nextPaused, currentTime);

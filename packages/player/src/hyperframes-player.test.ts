@@ -1253,6 +1253,65 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(sealed._parentAudioLoad).toBeNull();
   });
 
+  // fails without the fix: a pre-play parked heartbeat paused ParentAudio and aborted its decode.
+  it("ignores a paused heartbeat before the frame answers play, keeping sealed audio alive", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    vi.spyOn(audio, "play").mockImplementation(() => {});
+    const pause = vi.spyOn(audio, "pause");
+    const sendState = (frame: number, isPlaying: boolean) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame, isPlaying, ended: false },
+        }),
+      );
+
+    player.play();
+    sendState(0, false);
+
+    expect(pause).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(1, true);
+    sendState(10, false);
+
+    expect(pause).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
+  });
+
+  // fails without the fix: the same pre-play heartbeat called pauseAll on parent-owned media before the frame started.
+  it("ignores a paused heartbeat before the frame answers play without bouncing parent media", () => {
+    const media = (
+      player as unknown as { _media: { _audioOwner: string; pauseAll(): void; playAll(): void } }
+    )._media;
+    media._audioOwner = "parent";
+    const pauseAll = vi.spyOn(media, "pauseAll").mockImplementation(() => {});
+    vi.spyOn(media, "playAll").mockImplementation(() => {});
+    const sendState = (frame: number, isPlaying: boolean) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame, isPlaying, ended: false },
+        }),
+      );
+
+    player.play();
+    sendState(0, false);
+
+    expect(pauseAll).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(1, true);
+    sendState(10, false);
+
+    expect(pauseAll).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
+  });
+
   it("stopMedia pauses iframe-realm media elements", () => {
     const post = vi.fn();
     const { doc, video, audio } = createForeignFrameMediaDocument();

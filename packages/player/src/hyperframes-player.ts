@@ -217,6 +217,7 @@ class HyperframesPlayer extends HTMLElement {
   private _videoSource: VideoSource | null = null;
   private _runtimeOwnsPlayRange = false;
   private _enteringRange = false;
+  private _awaitingPlay = false;
   private _rangeClampReported = "";
 
   constructor() {
@@ -330,6 +331,7 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
+    this._awaitingPlay = false;
     this._pendingPlay = false;
     this._abandonComposition("Player disconnected before runtime data was applied");
   }
@@ -500,6 +502,7 @@ class HyperframesPlayer extends HTMLElement {
     } else if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
     // Must be set before _startParentTickClock so the RAF loop's `_paused`
     // check doesn't immediately self-terminate on the first callback.
+    const wasPaused = this._paused;
     this._paused = false;
     const directTimelineStarted = this._tryDirectTimelinePlay();
     // Set when the probe hasn't resolved yet: retried from _onProbeReady /
@@ -509,6 +512,7 @@ class HyperframesPlayer extends HTMLElement {
     let queuedForReady = false;
     this._sendDisplayScale();
     if (!directTimelineStarted) {
+      if (wasPaused) this._awaitingPlay = true;
       this._sendControl("play");
       // Only start the parent tick clock once the composition is ready and
       // confirmed on the runtime bridge path (not the direct-timeline path).
@@ -549,6 +553,7 @@ class HyperframesPlayer extends HTMLElement {
     if (this._media.audioOwner === "parent") this._media.pauseAll();
     this._parentAudio?.pause();
     this._paused = true;
+    this._awaitingPlay = false;
     this.controlsApi?.updatePlaying(false);
     this._emit(new Event("pause"));
   }
@@ -558,6 +563,7 @@ class HyperframesPlayer extends HTMLElement {
     this._stopIframeMedia();
     this._media.stopAdoptedMedia();
     this._parentAudio?.pause();
+    this._awaitingPlay = false;
   }
 
   seek(timeInSeconds: number, options?: { keepPlaying?: boolean }) {
@@ -596,6 +602,7 @@ class HyperframesPlayer extends HTMLElement {
       }
     }
     this._paused = true;
+    this._awaitingPlay = false;
     this.controlsApi?.updatePlaying(false);
     this.controlsApi?.updateTime(this._currentTime, this._duration);
     if (playOn) this._play(false);
@@ -1188,6 +1195,7 @@ class HyperframesPlayer extends HTMLElement {
   private _pauseForVideoSwitch(): void {
     if (!this._videoSource && !this._wantsVideo()) return;
     this._paused = true;
+    this._awaitingPlay = false;
     this.controlsApi?.updatePlaying(false);
   }
 
@@ -1488,9 +1496,18 @@ class HyperframesPlayer extends HTMLElement {
         paused: this._paused,
         lastUpdateMs: this._lastUpdateMs,
         enteringRange: this._enteringRange,
+        awaitingPlay: this._awaitingPlay,
       }),
-      setPlaybackState: ({ currentTime, duration, paused, lastUpdateMs, enteringRange }) => {
+      setPlaybackState: ({
+        currentTime,
+        duration,
+        paused,
+        lastUpdateMs,
+        enteringRange,
+        awaitingPlay,
+      }) => {
         this._enteringRange = enteringRange === true;
+        this._awaitingPlay = awaitingPlay === true;
         this._currentTime = currentTime;
         this._setDuration(duration);
         this._paused = paused;
@@ -1742,6 +1759,7 @@ class HyperframesPlayer extends HTMLElement {
   private _releaseDocument(): void {
     this._runtimeOwnsPlayRange = false;
     this._enteringRange = false;
+    this._awaitingPlay = false;
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
