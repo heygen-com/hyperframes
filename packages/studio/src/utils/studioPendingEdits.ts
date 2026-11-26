@@ -1,5 +1,6 @@
 import { StudioFileConflictError, type StudioSaveDrainResult } from "./studioSaveDiagnostics";
 import { isTypingTarget } from "@hyperframes/core/typing-target";
+import { frameFactsChanged } from "../player/lib/frameFacts";
 
 const STUDIO_FLUSH_PENDING_EDITS_EVENT = "hf-studio-flush-pending-edits";
 
@@ -100,6 +101,7 @@ export function isStudioEditSaving(): boolean {
 }
 
 function markEditsSavingOnPage(): void {
+  frameFactsChanged("save");
   globalThis.document?.documentElement.toggleAttribute(
     "data-studio-edits-saving",
     isStudioEditSaving(),

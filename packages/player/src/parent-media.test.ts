@@ -791,6 +791,25 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
     expect(mgr.entries).toHaveLength(0);
   });
 
+  // fails without the fix: a refused clip list read as none, with nothing logged.
+  it("logs a clip list it refuses for a missing entry", () => {
+    vi.useFakeTimers({ now: Date.now() + 3_600_000 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { mgr } = makeSealedManager();
+    const media: unknown[] = [clip("https://films.test/f/a.m4a")];
+    media[2] = clip("https://films.test/f/b.m4a");
+    try {
+      mgr.setupFromList(media, film);
+      expect(mgr.entries).toHaveLength(0);
+      expect(warn).toHaveBeenCalledWith(
+        "[hyperframes-player] ignored the film's media list: a missing entry among 3",
+      );
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("gives each clip on one file its own copy, and follows the list as it changes", () => {
     const { mgr } = makeSealedManager();
     mgr.setupFromList(

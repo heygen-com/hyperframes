@@ -1,6 +1,7 @@
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { studioFileRevision } from "../utils/studioFileVersion";
 import { logReload } from "../utils/reloadDebug";
+import { frameFactsChanged } from "./lib/frameFacts";
 import { afterStudioPendingEdits } from "../utils/studioPendingEdits";
 import { whileScriptWrites } from "./previewReloading";
 import { markScenesStaleIn } from "@hyperframes/core/runtime/scenes";
@@ -17,6 +18,7 @@ export const SCENE_SWAP_MS = 5000;
 const PREVIEW_DOCUMENT_LOADED = "hf-preview-document-loaded";
 
 export function announcePreviewDocumentLoaded(iframe: HTMLIFrameElement): void {
+  frameFactsChanged("load");
   iframe.dispatchEvent(new Event(PREVIEW_DOCUMENT_LOADED));
 }
 
@@ -31,7 +33,10 @@ export function onPreviewDocumentLoaded(
 const RESTORED_IN_PLACE = "hf-preview-restored-in-place";
 
 export function announcePreviewRestoredInPlace(iframe: HTMLIFrameElement): void {
-  const announce = () => iframe.dispatchEvent(new Event(RESTORED_IN_PLACE));
+  const announce = () => {
+    frameFactsChanged("history");
+    iframe.dispatchEvent(new Event(RESTORED_IN_PLACE));
+  };
   queueMicrotask(() => afterStudioPendingEdits(announce));
 }
 
@@ -56,6 +61,7 @@ const PREVIEW_PROMOTED = "hf-preview-promoted";
 export type PreviewPromotion = { retired: HTMLIFrameElement | null; live: HTMLIFrameElement };
 
 export function announcePreviewPromoted(promotion: PreviewPromotion): void {
+  frameFactsChanged("load");
   if (promotion.retired) notePreviewPromoted(promotion.retired, promotion.live);
   promotion.live.ownerDocument.dispatchEvent(
     new CustomEvent(PREVIEW_PROMOTED, { detail: promotion }),
@@ -175,6 +181,7 @@ export function sceneSwapFor(
       clearTimeout(timer);
       cancel?.removeEventListener("abort", onCancel);
     }
+    frameFactsChanged("load");
     iframe.dispatchEvent(new Event(SCENES_SWAPPED));
   };
 }

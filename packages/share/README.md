@@ -111,7 +111,10 @@ once per capture. Pass the resulting `ignored` function to the inventory walk as
 `listReferencedHiddenSourceAssets(projectPath, observed, { ignored })`. Private-path rules apply
 even when an ignore rule re-includes a path.
 
-The adapter uses the portable-source-v12 capture/manifest rules and
+Editable source includes referenced WOFF, WOFF2, TTF and OTF files with dot-prefixed names, such as
+`.brand/.Atlas.woff2`. The same private-path and ignore rules apply to these fonts.
+
+The adapter uses the portable-source-v13 capture/manifest rules and
 multipart transport. The pinned policy, Unicode 15.1 registry (with its license),
 and manifest test vectors are checked into this repository. Source is captured through
 verified file handles; upload bytes are streamed and checked against their hash.

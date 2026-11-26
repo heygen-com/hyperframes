@@ -990,13 +990,17 @@ test("editable sharing sends just the reachable hidden assets, with exact bytes"
   const html =
     '<link rel="stylesheet" href="styles/brand.css"><img src="brand/.fonts/link.png"><img src=".config/gh/secret.png"><img src="ignore/.assets/other.png">';
   const css = '@import "../brand/.fonts/face.css";';
-  const face = '@font-face{font-family:Inter;src:url("Inter%20Regular.woff2?v=1")}';
+  const face =
+    '@font-face{font-family:Inter;src:url("Inter%20Regular.woff2?v=1"),url(".Atlas.woff")}';
+  const dotFont = "brand/.fonts/.Atlas.woff";
   const font = "brand/.fonts/Inter Regular.woff2";
   const f = await fixture(t, {
     "index.html": html,
     "styles/brand.css": css,
     "brand/.fonts/face.css": face,
     [font]: "font bytes",
+    [dotFont]: "fallback bytes",
+    "brand/.fonts/.Unused.woff": "unused fallback",
     "brand/.fonts/unused.woff2": "unreferenced",
     ".config/gh/secret.png": "private",
     ".hyperframesignore": "ignore/.assets/\n",
@@ -1004,7 +1008,7 @@ test("editable sharing sends just the reachable hidden assets, with exact bytes"
   });
   await symlink(join(f.root, font), join(f.root, "brand/.fonts/link.png"));
   const paths = await listReferencedHiddenSourceAssets(f.root);
-  assert.deepEqual(paths, [font, "brand/.fonts/face.css"]);
+  assert.deepEqual(paths, [dotFont, font, "brand/.fonts/face.css"]);
   const server = fakeServer();
   const options = {
     access: async () => signed,
@@ -1034,7 +1038,7 @@ test("editable sharing sends just the reachable hidden assets, with exact bytes"
   );
   assert.deepEqual(
     server.calls.puts.map((bytes) => bytes.toString()).sort(),
-    [html, css, face, "font bytes", "ignore/.assets/\n"].sort(),
+    [html, css, face, "font bytes", "fallback bytes", "ignore/.assets/\n"].sort(),
   );
   assert.ok(await run.filesForExport(f.root, f.rendered));
   await writeFile(join(f.root, font), "new font bytes");

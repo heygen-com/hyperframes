@@ -35,6 +35,7 @@ import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { useGestureStartReadAhead } from "./gestureStartReadAhead";
 import { countStudioManualEditSave as counted } from "./manualEditGesture";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
@@ -279,7 +280,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     activeCompositionPath,
   });
 
-  const gestures = createDomEditOverlayGestureHandlers({
+  const gestureOptions = {
     activeCompositionPathRef,
     overlayRef,
     iframeRef,
@@ -305,7 +306,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     onCanvasPointerMoveRef,
     onCanvasMouseDown,
     snapGuidesRef,
-  });
+  };
+  const gestures = createDomEditOverlayGestureHandlers(gestureOptions);
+  useGestureStartReadAhead(gestureOptions);
 
   useEffect(() => {
     if (readOnly) gestures.clearPointerState(selectionRef, true);

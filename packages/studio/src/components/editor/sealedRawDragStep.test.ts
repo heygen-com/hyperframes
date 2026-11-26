@@ -3,12 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState } from "./domEditOverlayGestures";
 import { applyManualOffsetDragDraft, type ManualOffsetDragMember } from "./manualOffsetDrag";
-import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { previewFrameOpaque, releaseEndedGestureHolds } from "../../player/lib/previewChannel";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 
 vi.mock("../../player/lib/previewChannel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../player/lib/previewChannel")>()),
   previewFrameOpaque: vi.fn(() => true),
+  releaseEndedGestureHolds: vi.fn(),
 }));
 vi.mock("./manualOffsetDrag", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./manualOffsetDrag")>()),
@@ -102,5 +103,32 @@ describe("a sealed drag's step reaches the frame before the paint of its pointer
     vi.mocked(applyManualOffsetDragDraft).mockClear();
     rawUpdate(130, 100);
     expect(applyManualOffsetDragDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe("a sealed gesture's end", () => {
+  /** The gesture each flush saw: it must already be gone, or the port still finds it held. */
+  function flushesSeeing(opts: { gestureRef: { current: Partial<GestureState> | null } }) {
+    opts.gestureRef.current = { ...opts.gestureRef.current, selection: undefined };
+    const seen: unknown[] = [];
+    vi.mocked(releaseEndedGestureHolds).mockReset();
+    vi.mocked(releaseEndedGestureHolds).mockImplementation(() =>
+      seen.push(opts.gestureRef.current),
+    );
+    return seen;
+  }
+
+  it("lets the display reads it held go when the drag is let go", () => {
+    const { opts, handlers } = sealedDrag();
+    const seen = flushesSeeing(opts);
+    handlers.onPointerUp(pointer(110, 100));
+    expect(seen).toEqual([null]);
+  });
+
+  it("lets them go when the drag is cancelled", () => {
+    const { opts, handlers } = sealedDrag();
+    const seen = flushesSeeing(opts);
+    handlers.clearPointerState(opts.selectionRef as never);
+    expect(seen).toEqual([null]);
   });
 });

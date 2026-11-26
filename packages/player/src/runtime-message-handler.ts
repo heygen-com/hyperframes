@@ -12,7 +12,8 @@ import {
 } from "./playback-state.js";
 import type { ShaderLoaderState } from "./shader-loader-state.js";
 import type { ShaderTransitionState } from "./shader-options.js";
-import { inspectRuntimeProtocol, isMessageList } from "@hyperframes/core/runtime/protocol";
+import { inspectRuntimeProtocol } from "@hyperframes/core/runtime/protocol";
+import { readFrameList } from "./frame-list.js";
 import { STUDIO_PREVIEW_ERROR_MESSAGE } from "@hyperframes/core/studio-preview-mark";
 import {
   parseStaticComposition,
@@ -23,8 +24,7 @@ import {
 type SceneRecord = { id: string; start: number; duration: number };
 
 function extractScenes(raw: unknown): SceneRecord[] {
-  if (!isMessageList(raw)) return [];
-  return raw.filter(
+  return readFrameList("scenes", raw).filter(
     (s): s is SceneRecord =>
       typeof s === "object" &&
       s !== null &&

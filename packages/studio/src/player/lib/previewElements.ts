@@ -34,7 +34,7 @@ import {
 } from "@hyperframes/core/runtime/editing-port";
 import { isMessageList as isList } from "@hyperframes/core/runtime/protocol";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
-import { previewRequest } from "./previewChannel";
+import { previewRequest, type ReadPriority } from "./previewChannel";
 
 declare const checked: unique symbol;
 /** A description that passed `readPreviewElement`. Only that function makes one. */
@@ -138,9 +138,16 @@ export async function previewPointerTargets(
 export async function describePreviewElements(
   iframe: HTMLIFrameElement,
   handles: readonly string[],
+  priority: ReadPriority = "now",
 ): Promise<Array<PreviewElement | null> | null> {
   if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
-  const reply = await previewRequest(iframe, "describe", { handles: [...handles] });
+  const reply = await previewRequest(
+    iframe,
+    "describe",
+    { handles: [...handles] },
+    undefined,
+    priority,
+  );
   const elements: unknown = reply?.elements;
   if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   return elements.map((entry, index) => {
@@ -249,10 +256,11 @@ export async function previewGeometry(
   iframe: HTMLIFrameElement,
   handles: readonly string[],
   children?: string,
+  priority: ReadPriority = "now",
 ): Promise<PreviewGeometry | null> {
   if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
   const params = { handles: [...handles], ...(children ? { children } : {}) };
-  const reply = await previewRequest(iframe, "geometry", params);
+  const reply = await previewRequest(iframe, "geometry", params, undefined, priority);
   const elements: unknown = reply?.elements;
   if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   const boxes: unknown = reply?.children;
@@ -368,9 +376,10 @@ export async function previewLayers(
   iframe: HTMLIFrameElement,
   group?: string,
   offset = 0,
+  priority: ReadPriority = "now",
 ): Promise<PreviewLayers | null> {
   const params = { ...(group ? { group } : {}), ...(offset ? { offset } : {}) };
-  const reply = await previewRequest(iframe, "layers", params);
+  const reply = await previewRequest(iframe, "layers", params, undefined, priority);
   const layers: unknown = reply?.layers;
   const { truncated, missingGroup } = reply ?? {};
   if (!isList(layers, MAX_QUERY_MATCHES) || typeof truncated !== "boolean") return null;

@@ -4,6 +4,7 @@ import {
   type EditingElementGeometry,
 } from "@hyperframes/core/runtime/editing-port";
 import { describePreviewElements, previewGeometry } from "../../player/lib/previewElements";
+import type { ReadPriority } from "../../player/lib/previewChannel";
 import type { OffCanvasRect } from "./OffCanvasIndicators";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import { resolveDomEditSelection } from "./domEditingLayers";
@@ -18,10 +19,11 @@ import {
   type PreviewSelectionOptions,
 } from "./previewSelection";
 
-async function geometryOf(iframe: HTMLIFrameElement, handles: string[]) {
+async function geometryOf(iframe: HTMLIFrameElement, handles: string[], priority: ReadPriority) {
   const boxes: Array<EditingElementGeometry | null> = [];
   for (let at = 0; at < handles.length; at += MAX_DESCRIBE_HANDLES) {
-    const reply = await previewGeometry(iframe, handles.slice(at, at + MAX_DESCRIBE_HANDLES));
+    const handlesNow = handles.slice(at, at + MAX_DESCRIBE_HANDLES);
+    const reply = await previewGeometry(iframe, handlesNow, undefined, priority);
     if (!reply) return null;
     boxes.push(...reply.elements);
   }
@@ -34,16 +36,19 @@ export async function measurePreviewOffCanvas(
   overlay: HTMLDivElement,
   comp: { left: number; top: number; width: number; height: number },
   activeCompositionPath: string | null,
+  priority: ReadPriority = "now",
 ): Promise<{ rects: OffCanvasRect[]; elements: Map<string, HTMLElement> } | null> {
   const rects: OffCanvasRect[] = [];
   const elements = new Map<string, HTMLElement>();
   if (comp.width <= 0) return { rects, elements };
-  const items = await collectAllPreviewLayerItems(iframe, activeCompositionPath ?? "index.html");
+  const path = activeCompositionPath ?? "index.html";
+  const items = await collectAllPreviewLayerItems(iframe, path, priority);
   const boxes =
     items &&
     (await geometryOf(
       iframe,
       items.map((item) => item.preview!.handle),
+      priority,
     ));
   const scale = boxes && computeOverlayRootScale(overlay, iframe, null);
   if (!items || !boxes || !scale) return null;
