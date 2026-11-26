@@ -4,11 +4,11 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { renameWithRetry, renameWithRetryAsync } from "@hyperframes/core/rename-retry";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type AddressInfo } from "node:net";
@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 /** A project behind a symlink whose hyperframes.json points at a stubbed registry; `fetched` logs every URL. */
-function projectWithRegistry(onItemFetch?: () => void): {
+function projectWithRegistry(onItemFetch?: () => Promise<void>): {
   link: string;
   real: string;
   registry: string;
@@ -92,7 +92,7 @@ function projectWithRegistry(onItemFetch?: () => void): {
       }
       const item = ITEMS.find((candidate) => url.includes(`/${candidate.name}/`));
       if (item && url.endsWith("/registry-item.json")) {
-        onItemFetch?.();
+        await onItemFetch?.();
         return new Response(JSON.stringify(item));
       }
       if (item && url.endsWith(".html")) {
@@ -142,7 +142,8 @@ describe("Studio catalog install", () => {
 
   it("answers that the project folder is gone when it is renamed while the item downloads", async () => {
     let real = "";
-    ({ real } = projectWithRegistry(() => renameSync(real, `${real}-renamed`)));
+    // On Windows the history's look at the folder holds a file open for a moment; a person's rename waits it out.
+    ({ real } = projectWithRegistry(() => renameWithRetryAsync(real, `${real}-renamed`)));
 
     const response = await server!.app.request("/api/projects/link/registry/install", {
       method: "POST",
@@ -157,7 +158,7 @@ describe("Studio catalog install", () => {
 
   it("answers that the project folder is gone, and does not recreate it, after a rename", async () => {
     const { real } = projectWithRegistry();
-    renameSync(real, `${real}-renamed`);
+    renameWithRetry(real, `${real}-renamed`);
 
     const response = await server!.app.request("/api/projects/link/registry/install", {
       method: "POST",
