@@ -1,5 +1,5 @@
 {
-  "policy_version": "portable-source-v12",
+  "policy_version": "portable-source-v13",
   "about": "Golden vectors for the composition sync manifest. valid: build the canonical bytes from `manifest`; UTF-8 encoding `canonical` gives those bytes and `manifest_sha256` is their SHA-256. invalid: validating `manifest` fails with `error.code` (and `error.rule` for path-policy rules). limits: with `limits`, the first exceeded limit in the order file_count, file_size, project_size, manifest_size is `limit` (null: admitted). stored: base64 `body` is stored manifest bytes; reading them requires they are already canonical.",
   "valid": [
     {
@@ -688,6 +688,49 @@
       "manifest_sha256": "0a5db825473663a3446821f01b6dfa28ed2fa97bd68f12adb622ea1c9e78cf63",
       "file_count": 2,
       "project_bytes": 12
+    },
+    {
+      "name": "referenced-dot-prefixed-fonts",
+      "description": "Marked font files with dot-prefixed names at the root and in visible and hidden directories.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".Atlas.woff2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": ".brand/.Atlas.woff",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "fonts/.Display.OTF",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "fonts/.Serif.ttf",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"include_hidden\":true,\"path\":\".Atlas.woff2\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"size\":2},{\"include_hidden\":true,\"path\":\".brand/.Atlas.woff\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"size\":2},{\"include_hidden\":true,\"path\":\"fonts/.Display.OTF\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"size\":2},{\"include_hidden\":true,\"path\":\"fonts/.Serif.ttf\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"size\":2},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10}],\"format_version\":1}",
+      "manifest_sha256": "13e0f81bcb059bbdcf47e6df09e664f3a0aa41403107d3706287892502e58276",
+      "file_count": 5,
+      "project_bytes": 18
     }
   ],
   "invalid": [
@@ -6220,6 +6263,125 @@
         "files": [
           {
             "path": ".tool/state.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unrecognized-hidden"
+      }
+    },
+    {
+      "name": "unmarked-dot-font",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "fonts/.Atlas.woff2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "hidden-asset"
+      }
+    },
+    {
+      "name": "marked-dot-font-env",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".env.woff2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "marked-dot-font-sidecar",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "fonts/._Atlas.ttf",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "marked-dot-font-build",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".wrangler/.Atlas.otf",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unrecognized-hidden"
+      }
+    },
+    {
+      "name": "marked-dot-script",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "fonts/.loader.js",
             "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "size": 2,
             "include_hidden": true
