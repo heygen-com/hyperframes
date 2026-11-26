@@ -155,6 +155,32 @@ function measureElement(
   };
 }
 
+/** Whether `element` shows on the stage now: what a hold waits for before borrowing its look. */
+export function paintedOnStage(element: Element): boolean {
+  const view = element.ownerDocument.defaultView;
+  if (!view) return false;
+  return isElementVisible(
+    element,
+    view.getComputedStyle(element),
+    element.getBoundingClientRect().width,
+  );
+}
+
+/** The element `measureStageDocument` named `key`: by its `data-hf-id`, else by its child-index path. */
+export function locateStageKey(
+  doc: Document,
+  target: { key: string; hfId: string | null },
+): Element | null {
+  const byId = (id: string) => doc.querySelector(`[data-hf-id="${CSS.escape(id)}"]`);
+  if (target.hfId) return byId(target.hfId);
+  const [anchor = "", ...steps] = target.key.split(">");
+  let element: Element | null = /^\d+$/.test(anchor)
+    ? (doc.body?.children[Number(anchor)] ?? null)
+    : byId(anchor);
+  for (const step of steps) element = element?.children[Number(step)] ?? null;
+  return element;
+}
+
 /** Walks `doc.body` in document order up to `maxItems`, capturing layout, styles, visibility, and clip keys. */
 export function measureStageDocument(
   doc: Document = document,
