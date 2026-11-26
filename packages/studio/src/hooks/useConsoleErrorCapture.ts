@@ -47,7 +47,7 @@ export function useConsoleErrorCapture(previewIframe: HTMLIFrameElement | null) 
       let timer: ReturnType<typeof setTimeout> | undefined;
       const poll = async () => {
         for (;;) {
-          const page = await previewConsoleErrors(iframe, read);
+          const page = await previewConsoleErrors(iframe, read, "behind-drafts");
           if (!live) return;
           if (!page) break;
           read += page.errors.length;

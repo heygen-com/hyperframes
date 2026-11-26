@@ -11,6 +11,7 @@ import {
   type EditingRect,
 } from "@hyperframes/core/runtime/editing-port";
 import { previewGeometry } from "../../player/lib/previewElements";
+import type { ReadPriority } from "../../player/lib/previewChannel";
 import { computeOverlayRootScale, type OverlayRootScale } from "./domEditOverlayBasis";
 import { hugRectForClipPath } from "./domEditOverlayCrop";
 import {
@@ -105,13 +106,14 @@ export async function measurePreviewOverlay(
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
   targets: PreviewOverlayTargets,
+  priority: ReadPriority = "now",
 ): Promise<PreviewOverlayRects | null> {
   const handles = [...new Set([targets.selection, targets.hover, ...targets.group])].filter(
     (handle): handle is string => Boolean(handle),
   );
   // A selection with no handle is not in this frame; it draws nothing, as one not found there.
   const reply = handles.length
-    ? await previewGeometry(iframe, handles, targets.selection ?? undefined)
+    ? await previewGeometry(iframe, handles, targets.selection ?? undefined, priority)
     : { elements: [], children: null };
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;

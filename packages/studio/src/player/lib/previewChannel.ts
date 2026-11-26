@@ -153,17 +153,76 @@ export async function previewAnswer<K extends EditingRequestKind>(
   params: EditingParams<K>,
   timeoutMs?: number,
   admit?: () => boolean,
+  priority: ReadPriority = "now",
 ): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | typeof PREVIEW_STALE | null> {
   const client = previewEditingClient(iframe);
   const connected = agentConnectedInCallOrder(client);
   const earlier = turnsWaiting.get(client);
   if (typeof connected === "boolean" && !earlier)
-    return connected ? sendForAnswer(client, kind, params, timeoutMs, admit) : null;
+    return connected ? sendInTurn(client, kind, params, timeoutMs, admit, priority) : null;
   const turn = (earlier ?? Promise.resolve()).then(() => connected);
   turnsWaiting.set(client, turn);
   const ready = await turn;
   if (turnsWaiting.get(client) === turn) turnsWaiting.delete(client);
-  return ready ? sendForAnswer(client, kind, params, timeoutMs, admit) : null;
+  return ready ? sendInTurn(client, kind, params, timeoutMs, admit, priority) : null;
+}
+
+export type ReadPriority = "now" | "behind-drafts";
+const gestureHolds = new Set<() => boolean>();
+const heldReads = new Map<EditingPortClient, Array<() => void>>();
+
+export function holdRefreshReadsWhile(held: () => boolean): void {
+  gestureHolds.add(held);
+}
+
+function gestureHeld(): boolean {
+  for (const held of gestureHolds) {
+    if (held()) return true;
+    gestureHolds.delete(held);
+  }
+  return false;
+}
+
+export function releaseEndedGestureHolds(): void {
+  if (gestureHeld()) return;
+  for (const client of [...heldReads.keys()]) releaseHeldReads(client);
+}
+
+function releaseHeldReads(client: EditingPortClient): void {
+  const queue = heldReads.get(client);
+  heldReads.delete(client);
+  queue?.forEach((send) => send());
+}
+
+type Answer<K extends EditingRequestKind> =
+  | EditingResult<K>
+  | typeof PREVIEW_REJECTED
+  | typeof PREVIEW_STALE
+  | null;
+
+function sendInTurn<K extends EditingRequestKind>(
+  client: EditingPortClient,
+  kind: K,
+  params: EditingParams<K>,
+  timeoutMs: number | undefined,
+  admit: (() => boolean) | undefined,
+  priority: ReadPriority,
+): Answer<K> | Promise<Answer<K>> {
+  if (priority === "now" || !gestureHeld()) {
+    const sent = sendForAnswer(client, kind, params, timeoutMs, admit);
+    if (kind === "draft") releaseHeldReads(client);
+    return sent;
+  }
+  let queue = heldReads.get(client);
+  if (!queue) {
+    const waiting: Array<() => void> = [];
+    heldReads.set(client, (queue = waiting));
+    requestAnimationFrame(() => heldReads.get(client) === waiting && releaseHeldReads(client));
+  }
+  const held = queue;
+  return new Promise<Answer<K>>((resolve) =>
+    held.push(() => resolve(sendForAnswer(client, kind, params, timeoutMs, admit))),
+  );
 }
 
 function sendForAnswer<K extends EditingRequestKind>(
@@ -186,8 +245,9 @@ export async function previewRequest<K extends EditingRequestKind>(
   kind: K,
   params: EditingParams<K>,
   timeoutMs?: number,
+  priority: ReadPriority = "now",
 ): Promise<EditingResult<K> | null> {
-  const answer = await previewAnswer(iframe, kind, params, timeoutMs);
+  const answer = await previewAnswer(iframe, kind, params, timeoutMs, undefined, priority);
   return answer === PREVIEW_REJECTED || answer === PREVIEW_STALE ? null : answer;
 }
 
@@ -221,8 +281,9 @@ export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map
 export async function previewConsoleErrors(
   iframe: HTMLIFrameElement,
   from: number,
+  priority: ReadPriority = "now",
 ): Promise<{ errors: string[]; truncated: boolean } | null> {
-  const reply = await previewRequest(iframe, "console-errors", { from });
+  const reply = await previewRequest(iframe, "console-errors", { from }, undefined, priority);
   const errors: unknown = reply?.errors;
   if (!Array.isArray(errors) || typeof reply?.truncated !== "boolean") return null;
   return { errors: errors.map(String), truncated: reply.truncated };
