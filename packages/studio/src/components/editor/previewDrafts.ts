@@ -143,7 +143,6 @@ export function previewDraftRidingGsapSet(
   return next.op;
 }
 
-/** A draw equal to the one the frame already has or is getting, with no save waiting on it. */
 function drawsNothingNew(element: Element, part: Partial<Drawn>): boolean {
   const target = standIns.get(element);
   const prior = target && queues.get(target.iframe)?.drawn.get(target.handle);
