@@ -7,17 +7,25 @@ import { previewDraftsSent } from "./previewDrafts";
 
 type OutlineRefs = Pick<
   UseDomEditOverlayGesturesOptions,
-  "boxRef" | "rafPausedRef" | "iframeRef" | "waitingPressRef"
+  "boxRef" | "rafPausedRef" | "iframeRef" | "waitingPressRef" | "gestureRef" | "groupGestureRef"
 >;
 type ReplayDrawWait = { frame: HTMLIFrameElement };
 type PressWait = "frame" | "save";
 
-function createPressOutline({ boxRef, rafPausedRef, iframeRef, waitingPressRef }: OutlineRefs) {
+function createPressOutline({
+  boxRef,
+  rafPausedRef,
+  iframeRef,
+  waitingPressRef,
+  gestureRef,
+  groupGestureRef,
+}: OutlineRefs) {
   let drawWait: ReplayDrawWait | null = null;
   const idle = () => {
     drawWait = null;
     boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-    rafPausedRef.current = false;
+    // A drag still held draws the box itself, as an unsealed one does; its release measures again.
+    rafPausedRef.current = !!(gestureRef.current || groupGestureRef.current);
   };
   const confirm = (wait: ReplayDrawWait): void =>
     void previewDraftsSent(wait.frame).then(() => {
