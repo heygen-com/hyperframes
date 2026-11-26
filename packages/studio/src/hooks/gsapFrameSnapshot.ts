@@ -82,6 +82,13 @@ export function rereadGsapSnapshot(iframe: HTMLIFrameElement): void {
   void refreshGsapSnapshot(iframe);
 }
 
+/** Whether `settleGsapSnapshot` would answer true now without asking the frame. */
+export function gsapSnapshotSettled(iframe: HTMLIFrameElement | null): boolean {
+  if (!iframe || !previewFrameOpaque(iframe)) return true;
+  const snapshot = held.get(previewEditingClient(iframe));
+  return !!snapshot && fresh(snapshot);
+}
+
 /** Reads the frame again unless the held read is at the paused playhead; false if an opaque frame holds none. */
 export async function settleGsapSnapshot(iframe: HTMLIFrameElement | null): Promise<boolean> {
   if (!iframe || !previewFrameOpaque(iframe)) return true;

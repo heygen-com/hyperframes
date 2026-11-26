@@ -11,6 +11,7 @@ import {
 } from "@hyperframes/core/runtime/editing-port";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
 import { wellFormedClips } from "./manifestClips";
+import { frameRequestSent } from "./frameFacts";
 
 const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
@@ -144,6 +145,7 @@ export async function previewAnswer<K extends EditingRequestKind>(
   timeoutMs?: number,
   admit?: () => boolean,
 ): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | typeof PREVIEW_STALE | null> {
+  frameRequestSent(kind);
   const client = previewEditingClient(iframe);
   if (!(await agentConnected(client))) return null;
   if (admit && !admit()) return PREVIEW_STALE;
