@@ -85,6 +85,7 @@ export function DomEditGroupChrome({
       {groupOverlayItems.map((item) => (
         <div
           key={item.key}
+          data-dom-edit-group-member={item.key}
           aria-hidden="true"
           className="pointer-events-none absolute rounded-xl border border-studio-accent/70"
           style={{
@@ -97,6 +98,7 @@ export function DomEditGroupChrome({
       ))}
       <div
         data-dom-edit-selection-box="true"
+        data-dom-edit-group-box="true"
         className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
         style={{
           left: groupBounds.left,

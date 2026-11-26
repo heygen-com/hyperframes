@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
-import type { GestureState } from "./domEditOverlayGestures";
+import type { GestureState, GroupGestureState } from "./domEditOverlayGestures";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 
 const ref = <T>(current: T) => ({ current });
@@ -74,4 +74,51 @@ it("a resize move sizes the resize handles in the same write as the box", () => 
   handlers.onPointerMove(pointer(300, 220) as never);
   expect(box.style.width).not.toBe("");
   expect(rectOf(handles)).toEqual(rectOf(box));
+});
+
+// fails without the fix: the group's boxes were placed only by React's later commit, a frame after the layers.
+it("a group drag move places every member box and the group box in the same write", () => {
+  const chrome = document.createElement("div");
+  chrome.innerHTML =
+    '<div data-dom-edit-group-member="a"></div><div data-dom-edit-group-member="b"></div>' +
+    '<div data-dom-edit-group-box="true"></div>';
+  const rect = (left: number, top: number) => ({
+    left,
+    top,
+    width: 40,
+    height: 30,
+    editScaleX: 1,
+    editScaleY: 1,
+  });
+  const group = {
+    pointerId: 1,
+    startX: 100,
+    startY: 100,
+    originItems: [
+      { key: "a", rect: rect(10, 20) },
+      { key: "b", rect: rect(70, 50) },
+    ],
+    members: [],
+  } as unknown as GroupGestureState;
+  const handlers = createDomEditOverlayGestureHandlers({
+    gestureRef: ref(null),
+    groupGestureRef: ref(group),
+    overlayRef: ref(chrome),
+    boxRef: ref(null),
+    handlesRef: ref(null),
+    selectionRef: ref(null),
+    waitingPressRef: ref(null),
+    blockedMoveRef: ref(null),
+    snapGuidesRef: ref(null),
+    setGroupOverlayItems: vi.fn(),
+    onCanvasPointerMoveRef: ref(vi.fn()),
+  } as never);
+  handlers.onPointerMove(pointer(130, 112) as never);
+  const at = (selector: string) => {
+    const el = chrome.querySelector<HTMLElement>(selector)!;
+    return [el.style.left, el.style.top, el.style.width, el.style.height];
+  };
+  expect(at('[data-dom-edit-group-member="a"]')).toEqual(["40px", "32px", "40px", "30px"]);
+  expect(at('[data-dom-edit-group-member="b"]')).toEqual(["100px", "62px", "40px", "30px"]);
+  expect(at("[data-dom-edit-group-box]")).toEqual(["40px", "32px", "100px", "60px"]);
 });
