@@ -46,6 +46,10 @@
       "import": "./src/projectSnapshot.mjs",
       "types": "./dist/projectSnapshot.d.mts"
     },
+    "./referencedFont.mjs": {
+      "import": "./src/referencedFont.mjs",
+      "types": "./dist/sources/referencedFont.d.mts"
+    },
     "./reviewAudience.mjs": {
       "import": "./src/reviewAudience.mjs",
       "types": "./dist/reviewAudience.d.mts"

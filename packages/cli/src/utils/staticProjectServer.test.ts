@@ -156,6 +156,17 @@ async function serveWith(bytes: Buffer, name = "tone.wav"): Promise<{ url: strin
   return { url: server.url };
 }
 
+it("loads the dot-font referenced by the editable project", async () => {
+  dir = mkdtempSync(join(tmpdir(), "hf-static-font-"));
+  const html = '<style>@font-face{font-family:F;src:url(".Face.otf")}</style>';
+  writeFileSync(join(dir, "index.html"), html);
+  writeFileSync(join(dir, ".Face.otf"), "project font");
+  server = await serveStaticProjectHtml(dir, html);
+  const response = await fetch(new URL(".Face.otf", server.url));
+  expect(response.headers.get("content-type")).toBe("font/otf");
+  expect(await response.text()).toBe("project font");
+});
+
 describe("serveStaticProjectHtml colour-tagged PNGs", () => {
   it("serves a BT.709-tagged PNG without the tag, so check and snapshot see the file's values", async () => {
     const { url } = await serveWith(TAGGED_PNG, "tagged.png");

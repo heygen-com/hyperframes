@@ -192,6 +192,7 @@ COPY packages/producer/ packages/producer/
 COPY packages/gcp-cloud-run/ packages/gcp-cloud-run/
 COPY packages/lint/ packages/lint/
 COPY packages/parsers/ packages/parsers/
+COPY packages/share/ packages/share/
 COPY packages/sdk/ packages/sdk/
 COPY packages/sdk-playground/ packages/sdk-playground/
 COPY packages/studio-server/ packages/studio-server/
@@ -201,6 +202,7 @@ COPY packages/studio-server/ packages/studio-server/
 # resolution otherwise fails on parsers/core compiler entrypoints. Core's build
 # also generates the embedded font data, so glyph layout matches production.
 RUN bun run --cwd packages/parsers build \
+    && bun run --cwd packages/share build \
     && bun run --cwd packages/lint build \
     && bun run --cwd packages/studio-server build \
     && bun run --cwd packages/core build \

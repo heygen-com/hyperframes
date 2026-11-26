@@ -117,6 +117,7 @@
     "@hono/node-server": "^2.1.6",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
+    "@hyperframes/share": "workspace:^",
     "hono": "^4.13.16",
     "linkedom": "^0.18.12",
     "puppeteer": "~25.13.0",

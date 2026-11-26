@@ -152,17 +152,11 @@ async function selectDependencies(root, walk) {
   return retainReferencedFiles(root, walk, openListed);
 }
 
-/** Paths included by a normal editable Share or Send. A host can reuse the project rules from its inventory walk.
- * @param {string} root @param {Map<string,string>} [observed]
+/** Eligible referenced files and the disk identities observed by the scan.
+ * @param {string} dir @param {Map<string,string>} [observed]
  * @param {{ignored: import("../sourceIgnore.mjs").SourceIgnore, ignoreSyntax?: never} |
  * {ignored?: never, ignoreSyntax?: import("../sourceIgnore.mjs").SourceIgnoreSyntax}} [options] */
-export async function listReferencedHiddenSourceAssets(
-  root,
-  observed,
-  { ignored, ignoreSyntax } = {},
-) {
-  observed?.clear();
-  const dir = await realpath(root);
+export async function referencedHiddenSourceFiles(dir, observed, { ignored, ignoreSyntax } = {}) {
   const walk = await walkProject(
     dir,
     await readRenderOutputs(dir),
@@ -172,10 +166,18 @@ export async function listReferencedHiddenSourceAssets(
   const hashes = await selectDependencies(dir, walk);
   if (walk.problems.length > before) throw new Error("Cannot verify project asset references");
   if (observed) for (const [path, hash] of hashes) observed.set(path, hash);
-  return walk.files
-    .filter((file) => file.include_hidden)
-    .map((file) => file.path)
-    .sort();
+  return walk.files.filter((file) => file.include_hidden);
+}
+
+/** Paths included by a normal editable Share or Send. A host can reuse the project rules from its inventory walk.
+ * @param {string} root @param {Map<string,string>} [observed]
+ * @param {{ignored: import("../sourceIgnore.mjs").SourceIgnore, ignoreSyntax?: never} |
+ * {ignored?: never, ignoreSyntax?: import("../sourceIgnore.mjs").SourceIgnoreSyntax}} [options] */
+export async function listReferencedHiddenSourceAssets(root, observed, options = {}) {
+  observed?.clear();
+  const dir = await realpath(root);
+  const files = await referencedHiddenSourceFiles(dir, observed, options);
+  return files.map((file) => file.path).sort();
 }
 
 /** The manifest's canonical length, from paths and sizes alone: every SHA-256 is 64 characters.
@@ -220,12 +222,13 @@ export function hashMemo(now = Date.now) {
  * for a link after the walk is refused rather than followed. Null when it is not. @param {string} root
  * @param {Found} file @param {typeof realpath} [resolve] */
 export async function openListed(root, file, resolve = realpath) {
-  const handle = await open(file.full, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)).catch(
-    (/** @type {NodeJS.ErrnoException} */ error) => {
-      if (error.code === "ELOOP" || error.code === "EMLINK") return null;
-      throw error;
-    },
-  );
+  const handle = await open(
+    file.full,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+  ).catch((/** @type {NodeJS.ErrnoException} */ error) => {
+    if (error.code === "ELOOP" || error.code === "EMLINK") return null;
+    throw error;
+  });
   if (!handle) return null;
   try {
     const opened = await handle.stat();
