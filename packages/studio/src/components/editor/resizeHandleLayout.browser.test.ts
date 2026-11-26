@@ -24,6 +24,7 @@ const BOXES = [
   { width: 14, height: 8, inset: { top: 0, right: 0, bottom: 0, left: 0 } },
   { width: 24, height: 40, inset: { top: 0, right: 0, bottom: 0, left: 0 } },
   { width: 40, height: 40, inset: { top: 12, right: 12, bottom: 12, left: 12 } },
+  { width: 10, height: 10, inset: { top: 0, right: 8, bottom: 4, left: 6 } },
   { width: 240, height: 160, inset: { top: 0, right: 0, bottom: 0, left: 0 } },
 ];
 
@@ -43,7 +44,7 @@ function placedByPixels(
 it("lays every handle out where its pixel slide put it, for small and large boxes", async () => {
   const bundle = await build({
     stdin: {
-      contents: `export { resizeHandleLayout } from "./resizeHandleLayout";`,
+      contents: `export { resizeHandleLayout, rotateHandleLayout } from "./resizeHandleLayout";`,
       resolveDir: import.meta.dirname,
       loader: "ts",
     },
@@ -65,7 +66,7 @@ it("lays every handle out where its pixel slide put it, for small and large boxe
         const wrapper = document.createElement("div");
         wrapper.style.cssText = `position:absolute;left:300px;top:300px;width:${box.width}px;height:${box.height}px`;
         document.body.append(wrapper);
-        return corners.map((corner) => {
+        const cornerPos = corners.map((corner) => {
           const handle = document.createElement("div");
           handle.style.cssText = "position:absolute;width:16px;height:16px";
           const { style } = api.resizeHandleLayout!(corner, box, box.inset);
@@ -76,6 +77,15 @@ it("lays every handle out where its pixel slide put it, for small and large boxe
           const r = handle.getBoundingClientRect();
           return [r.left - 300, r.top - 300];
         });
+        const rotate = document.createElement("div");
+        rotate.style.cssText =
+          "position:absolute;width:22px;height:22px;transform:translateX(-50%)";
+        const rotStyle = api.rotateHandleLayout!(box.inset);
+        rotate.style.setProperty("left", String(rotStyle.left));
+        rotate.style.setProperty("top", String(rotStyle.top));
+        wrapper.append(rotate);
+        const rr = rotate.getBoundingClientRect();
+        return { corners: cornerPos, rotate: [rr.left + rr.width / 2 - 300, rr.top - 300] };
       });
     },
     BOXES,
@@ -86,8 +96,13 @@ it("lays every handle out where its pixel slide put it, for small and large boxe
     for (const [c, corner] of CORNERS.entries()) {
       const [x, y] = placedByPixels(corner, box);
       const at = `${box.width}x${box.height} ${corner.y}-${corner.x}`;
-      expect(placed[b]![c]![0], at).toBeCloseTo(x, 3);
-      expect(placed[b]![c]![1], at).toBeCloseTo(y, 3);
+      expect(placed[b]!.corners[c]![0], at).toBeCloseTo(x, 3);
+      expect(placed[b]!.corners[c]![1], at).toBeCloseTo(y, 3);
     }
+    const { width, height, inset } = box;
+    const expectedRotX = inset.left + Math.max(0, width - inset.left - inset.right) / 2;
+    const expectedRotY = height - inset.bottom + 12;
+    expect(placed[b]!.rotate[0], `rotate x ${width}x${height}`).toBeCloseTo(expectedRotX, 3);
+    expect(placed[b]!.rotate[1], `rotate y ${width}x${height}`).toBeCloseTo(expectedRotY, 3);
   }
 });

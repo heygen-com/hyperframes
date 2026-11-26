@@ -1,0 +1,178 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { installEditingAgent } from "../editingAgent";
+import { STUDIO_PREVIEW_MARK_META } from "../../studioPreviewMark";
+import { MAX_STAGE_ITEMS, measureStageDocument, parseStageMeasureParams } from "./stageMeasure";
+
+afterEach(() => {
+  document.body.innerHTML = "";
+  document.head.innerHTML = "";
+});
+
+describe("parseStageMeasureParams", () => {
+  it("accepts empty params or an integer maxItems in range and rejects anything else", () => {
+    expect(parseStageMeasureParams(undefined)).toEqual({});
+    expect(parseStageMeasureParams({})).toEqual({});
+    expect(parseStageMeasureParams({ maxItems: 1 })).toEqual({ maxItems: 1 });
+    expect(parseStageMeasureParams({ maxItems: MAX_STAGE_ITEMS })).toEqual({
+      maxItems: MAX_STAGE_ITEMS,
+    });
+    for (const bad of [
+      null,
+      [],
+      "1",
+      { maxItems: 0 },
+      { maxItems: -1 },
+      { maxItems: 1.5 },
+      { maxItems: MAX_STAGE_ITEMS + 1 },
+      { maxItems: "10" },
+      { extra: true },
+      { maxItems: 10, extra: true },
+    ]) {
+      expect(parseStageMeasureParams(bad)).toBeNull();
+    }
+  });
+});
+
+describe("measureStageDocument", () => {
+  it("walks body in document order, skips non-visual tags, and captures keys, own text, styles, and clip keys", () => {
+    document.body.innerHTML = `
+      <script>window.__ignored = 1;</script>
+      <style>.x { color: red; }</style>
+      <div data-composition-id="scene-1" data-composition-file="scenes/intro.html">
+        <div class="clip" id="hero" data-hf-id="hf-hero" style="position: absolute; font-size: 32px; color: rgb(10, 20, 30); background-color: rgb(255, 255, 255); background-image: linear-gradient(red, blue)">
+          Outer   words
+          <span id="sub">Inner text</span>
+        </div>
+      </div>
+    `;
+    const hero = document.getElementById("hero")!;
+    const sub = document.getElementById("sub")!;
+    vi.spyOn(hero, "getBoundingClientRect").mockReturnValue({
+      x: 10,
+      y: 20,
+      width: 300,
+      height: 80,
+      top: 20,
+      left: 10,
+      right: 310,
+      bottom: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+    vi.spyOn(sub, "getBoundingClientRect").mockReturnValue({
+      x: 12,
+      y: 24,
+      width: 100,
+      height: 20,
+      top: 24,
+      left: 12,
+      right: 112,
+      bottom: 44,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const { items, truncated } = measureStageDocument(document);
+    expect(truncated).toBe(false);
+    expect(items.map((item) => item.key)).toEqual(["2", "hf-hero", "hf-hero>0"]);
+
+    const heroItem = items[1]!;
+    expect(heroItem).toMatchObject({
+      key: "hf-hero",
+      hfId: "hf-hero",
+      id: "hero",
+      tag: "div",
+      parent: "2",
+      text: "Outer words",
+      box: { x: 10, y: 20, width: 300, height: 80 },
+      fontSize: "32px",
+      placed: true,
+      visible: true,
+      clipKeys: ["scenes/intro.html#hero", "scenes/intro.html#hf-hero"],
+      hasElementChildren: true,
+      hasBackgroundImage: true,
+    });
+
+    const subItem = items[2]!;
+    expect(subItem).toMatchObject({
+      key: "hf-hero>0",
+      hfId: null,
+      id: "sub",
+      tag: "span",
+      parent: "hf-hero",
+      text: "Inner text",
+      box: { x: 12, y: 24, width: 100, height: 20 },
+      placed: false,
+      visible: true,
+      clipKeys: ["scenes/intro.html#hero", "scenes/intro.html#hf-hero"],
+      hasElementChildren: false,
+      hasBackgroundImage: false,
+    });
+  });
+
+  it("caps output at maxItems, ignores trailing skipped tags, and clamps non-finite limits", () => {
+    document.body.innerHTML = `<p>A</p><p>B</p><script>1</script>`;
+    const exact = measureStageDocument(document, 2);
+    expect(exact.items.map((item) => item.text)).toEqual(["A", "B"]);
+    expect(exact.truncated).toBe(false);
+
+    document.body.innerHTML = `<p>A</p><p>B</p><p>C</p>`;
+    const result = measureStageDocument(document, 2);
+    expect(result.items.map((item) => item.text)).toEqual(["A", "B"]);
+    expect(result.truncated).toBe(true);
+
+    const fallback = measureStageDocument(document, Number.NaN);
+    expect(fallback.items).toHaveLength(3);
+    expect(fallback.truncated).toBe(false);
+  });
+
+  it("reports hidden or zero-width elements as not visible", () => {
+    document.body.innerHTML = `<div id="off" style="visibility: hidden">Off</div><div id="zero">Zero</div>`;
+    vi.spyOn(document.getElementById("off")!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 50,
+      height: 20,
+      top: 0,
+      left: 0,
+      right: 50,
+      bottom: 20,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const { items } = measureStageDocument(document);
+    expect(items.map((item) => [item.id, item.visible])).toEqual([
+      ["off", false],
+      ["zero", false],
+    ]);
+  });
+
+  it("is not exposed when the document has no Studio preview mark (render pages)", () => {
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    const parent = iframe.contentWindow!;
+    const handoff = vi.fn();
+    parent.postMessage = handoff as unknown as Window["postMessage"];
+    const agent = installEditingAgent(parent);
+    try {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: parent,
+          data: { source: "hf-parent", type: "editing-connect", v: 1 },
+        }),
+      );
+      expect(handoff).not.toHaveBeenCalled();
+
+      const mark = document.createElement("meta");
+      mark.name = STUDIO_PREVIEW_MARK_META;
+      document.head.append(mark);
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: parent,
+          data: { source: "hf-parent", type: "editing-connect", v: 1 },
+        }),
+      );
+      expect(handoff).toHaveBeenCalledOnce();
+      for (const call of handoff.mock.calls) (call[2] as MessagePort[])[0]?.close();
+    } finally {
+      agent.dispose();
+    }
+  });
+});

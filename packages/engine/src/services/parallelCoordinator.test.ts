@@ -189,6 +189,7 @@ describe("calculateOptimalWorkers", () => {
   });
 });
 
+vi.mock("fs", async () => (await import("./__fixtures__/noCgroupFs.js")).fsWithoutCgroup());
 vi.mock("os", async (importOriginal) => {
   const os = await importOriginal<typeof import("os")>();
   return {

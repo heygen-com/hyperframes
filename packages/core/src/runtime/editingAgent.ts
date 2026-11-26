@@ -76,6 +76,7 @@ import {
   resetCanvasKeys,
   resolveCanvasKeyAction,
 } from "./editing/canvasKeys";
+import { measureStageDocument } from "./editing/stageMeasure";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -270,6 +271,7 @@ const HANDLERS: Handlers = {
   "arm-canvas-keys": (params, port) =>
     armCanvasKeys(port, params, EDITING_PROTOCOL_VERSION, activeAgentParent),
   "resolve-canvas-key-action": resolveCanvasKeyAction,
+  "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
 };
 
 let activeAgentParent: Window = window.parent;

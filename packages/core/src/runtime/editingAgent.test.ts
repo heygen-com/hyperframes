@@ -238,6 +238,7 @@ describe("installEditingAgent", () => {
           "serve-paused-frames",
           "arm-canvas-keys",
           "resolve-canvas-key-action",
+          "stage-measure",
         ],
       },
     });

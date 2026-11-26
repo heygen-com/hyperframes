@@ -53,6 +53,7 @@ export function DomEditGroupChrome({
       {groupOverlayItems.map((item) => (
         <div
           key={item.key}
+          data-dom-edit-group-member={item.key}
           aria-hidden="true"
           className="pointer-events-none absolute rounded-xl border border-studio-accent/70"
           style={{
@@ -65,6 +66,7 @@ export function DomEditGroupChrome({
       ))}
       <div
         data-dom-edit-selection-box="true"
+        data-dom-edit-group-box="true"
         className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
         style={{
           left: groupBounds.left,
@@ -98,12 +100,14 @@ function DomEditResizeHandles({
   overlayRect,
   cropInset,
   corners,
+  showRotate,
   gestures,
 }: {
   handlesRef: RefObject<HTMLDivElement | null>;
   overlayRect: OverlayRect;
   cropInset?: CropInset;
   corners: (typeof RESIZE_HANDLE_DEFS)[number][];
+  showRotate: boolean;
   gestures: GestureHandlers;
 }) {
   return (
@@ -118,6 +122,15 @@ function DomEditResizeHandles({
         height: overlayRect.height,
       }}
     >
+      {showRotate && (
+        <DomEditRotateHandle
+          cropOutlineInsetPx={cropInset}
+          onStartRotate={(e) => {
+            e.stopPropagation();
+            gestures.startGesture("rotate", e);
+          }}
+        />
+      )}
       {corners.map((def) => {
         const layout = resizeHandleLayout(def, overlayRect, cropInset);
         return (
@@ -220,16 +233,6 @@ export function DomEditSelectionChrome({
           transform: overlayRect.angle ? `rotate(${overlayRect.angle}deg)` : undefined,
         }}
       >
-        {canManipulate && !editing && selection.capabilities.canApplyManualRotation && (
-          <DomEditRotateHandle
-            overlayRect={overlayRect}
-            cropOutlineInsetPx={cropOutlineInsetPx}
-            onStartRotate={(e) => {
-              e.stopPropagation();
-              gestures.startGesture("rotate", e);
-            }}
-          />
-        )}
         <div
           key={selectionKey}
           ref={boxRef}
@@ -284,6 +287,7 @@ export function DomEditSelectionChrome({
           overlayRect={overlayRect}
           cropInset={cropOutlineInsetPx}
           corners={resizeCorners(selection, canManipulate, editing)}
+          showRotate={canManipulate && !editing && selection.capabilities.canApplyManualRotation}
           gestures={gestures}
         />
       </div>

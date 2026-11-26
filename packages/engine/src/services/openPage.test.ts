@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import type { Browser, Page } from "puppeteer-core";
@@ -109,5 +110,99 @@ describe("openPage", () => {
     );
     expect((error as PageTabLostError).browserRunning).toBe(false);
     expect(browser.newPage).toHaveBeenCalledTimes(1);
+  });
+
+  // fails without the fix: reads child.exitCode before Node's exit event lands, reporting "exit code unknown".
+  it("waits briefly for a real Chrome child process to finish exiting so its exit code is reported", async () => {
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        'process.stdin.resume(); process.stdout.write("ready\\n"); process.stdin.on("end", () => process.exit(42));',
+      ],
+      { stdio: ["pipe", "pipe", "ignore"] },
+    );
+    try {
+      await new Promise<void>((resolve) => child.stdout!.once("data", () => resolve()));
+      let connected = true;
+      const browser = {
+        get connected() {
+          return connected;
+        },
+        process: () => child,
+        newPage: vi.fn(async () => {
+          connected = false;
+          child.stdin!.end();
+          const page = await cdpPage(true);
+          vi.spyOn(page, "close").mockResolvedValue();
+          return page;
+        }),
+      } as unknown as Browser;
+
+      const error = await openPage(browser).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(PageTabLostError);
+      expect((error as Error).message).toBe(
+        "Chrome exited while opening a render page (exit code 42, signal none)",
+      );
+      expect(child.listenerCount("exit")).toBe(0);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+    }
+  });
+
+  it("reports a delayed signal exit and cleans up its exit listener when Chrome hangs", async () => {
+    vi.useFakeTimers();
+    try {
+      const signalled = Object.assign(new EventEmitter(), {
+        exitCode: null as number | null,
+        signalCode: null as NodeJS.Signals | null,
+      });
+      const browserWithSignal = {
+        connected: false,
+        process: () => signalled,
+        newPage: vi.fn(async () => {
+          setTimeout(() => {
+            signalled.signalCode = "SIGKILL";
+            signalled.emit("exit", null, "SIGKILL");
+          }, 50);
+          const page = await cdpPage(true);
+          vi.spyOn(page, "close").mockResolvedValue();
+          return page;
+        }),
+      } as unknown as Browser;
+
+      const sigPending = openPage(browserWithSignal).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(50);
+      const sigErr = await sigPending;
+      expect((sigErr as Error).message).toBe(
+        "Chrome exited while opening a render page (exit code unknown, signal SIGKILL)",
+      );
+      expect(signalled.listenerCount("exit")).toBe(0);
+
+      const hung = Object.assign(new EventEmitter(), {
+        exitCode: null as number | null,
+        signalCode: null as NodeJS.Signals | null,
+      });
+      const browserHung = {
+        connected: false,
+        process: () => hung,
+        newPage: vi.fn(async () => {
+          const page = await cdpPage(true);
+          vi.spyOn(page, "close").mockResolvedValue();
+          return page;
+        }),
+      } as unknown as Browser;
+
+      const pending = openPage(browserHung).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const hungErr = await pending;
+      expect((hungErr as Error).message).toBe(
+        "Chrome exited while opening a render page (exit code unknown, signal none)",
+      );
+      expect(hung.listenerCount("exit")).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

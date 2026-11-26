@@ -39,6 +39,7 @@ let afterMediaPreflight: (() => void) | null = null;
 let fileServerCloseCallCount = 0;
 let browserMediaResults: unknown[] = [];
 let browserMediaError: Error | null = null;
+let pageEvaluateHandler: ((fn: unknown, ...args: unknown[]) => Promise<unknown>) | null = null;
 // Media sizes the mocked FFmpeg probe reports, by resolved path; any other path fails to probe.
 const mediaSizes = new Map<string, { width: number; height: number }>();
 
@@ -99,6 +100,7 @@ function resetRetryMocks() {
   afterMediaPreflight = null;
   fileServerCloseCallCount = 0;
   browserMediaResults = [];
+  pageEvaluateHandler = null;
   mediaSizes.clear();
 }
 
@@ -147,13 +149,16 @@ mock.module("@hyperframes/engine", () => ({
       browserConsoleBuffer: [],
       page: {
         sessionId,
-        evaluate: async () => ({
-          timelineKeys: [],
-          hfDuration: 5,
-          gsapLoaded: false,
-          totalDurationMs: 5000,
-          __hf: {},
-        }),
+        evaluate: async (fn?: unknown, ...args: unknown[]) => {
+          if (pageEvaluateHandler) return pageEvaluateHandler(fn, ...args);
+          return {
+            timelineKeys: [],
+            hfDuration: 5,
+            gsapLoaded: false,
+            totalDurationMs: 5000,
+            __hf: {},
+          };
+        },
       },
       launchCaptureMode: (cfg as { forceScreenshot?: boolean }).forceScreenshot
         ? "screenshot"
@@ -1973,6 +1978,125 @@ describe("runProbeStage — a page call that never answers", () => {
       await expect(runProbeStage(makeProbeInput({}))).rejects.toThrow(/^Out of memory$/);
     } finally {
       browserMediaError = null;
+    }
+  });
+});
+
+describe("runProbeStage — runtime blob and inline data audio", () => {
+  const SAMPLE_WAV_BYTES = Buffer.from("RIFF$\x00\x00\x00WAVEfmt ", "binary");
+
+  // fails without the fix: a helper function that assigns URL.createObjectURL(...) to an audio element
+  // escaped static selector resolution, so static-duration compositions skipped the browser probe.
+  it("probes when a script calls createObjectURL on a page with media elements", () => {
+    const withAudio = `<html><body><audio id="ambience" data-start="0" data-duration="5"></audio><script>
+      function attach(el, blob) { el.src = URL.createObjectURL(blob); }
+      attach(document.getElementById("ambience"), new Blob([]));
+    </script></body></html>`;
+    const withoutMedia = `<html><body><canvas id="c"></canvas><script>URL.createObjectURL(new Blob([]));</script></body></html>`;
+    expect(hasRuntimeMediaChanges(withAudio)).toBe(true);
+    expect(hasRuntimeMediaChanges(withoutMedia)).toBe(false);
+  });
+
+  // fails without the fix: browser-discovered blob: audio stayed as a blob: URL in composition.audios,
+  // which audioMixer cannot open on disk ("Source not found for audio element ... src=\"blob:...\"").
+  it("materializes same-origin blob audio from the probe page into compiledDir and deduplicates shared blobs", async () => {
+    resetRetryMocks();
+    const { existsSync, readFileSync } = await import("node:fs");
+    const stageDir = mkdtempSync(join(tmpdir(), "hf-probe-blob-"));
+    const blobUrl = "blob:http://127.0.0.1:0/11111111-2222-3333-4444-555555555555";
+    let fetchCalls = 0;
+    pageEvaluateHandler = async (_fn, url) => {
+      fetchCalls += 1;
+      expect(url).toBe(blobUrl);
+      return { ok: true, base64: SAMPLE_WAV_BYTES.toString("base64"), mimeType: "audio/wav" };
+    };
+    browserMediaResults = [
+      {
+        id: "audio-morning-ambience",
+        tagName: "audio",
+        src: blobUrl,
+        start: 0,
+        end: 5,
+        duration: 5,
+        durationInferred: false,
+        mediaStart: 0,
+        playbackRate: 1,
+        loop: false,
+        hasAudio: true,
+        volume: 1,
+        muted: false,
+      },
+      {
+        id: "audio-morning-ambience-copy",
+        tagName: "audio",
+        src: blobUrl,
+        start: 2,
+        end: 5,
+        duration: 3,
+        durationInferred: false,
+        mediaStart: 0,
+        playbackRate: 1,
+        loop: false,
+        hasAudio: true,
+        volume: 1,
+        muted: false,
+      },
+    ];
+    try {
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      input.projectDir = stageDir;
+      input.workDir = stageDir;
+      await runProbeStage(input);
+
+      expect(fetchCalls).toBe(1);
+      expect(input.composition.audios).toHaveLength(2);
+      const [first, second] = input.composition.audios as Array<{ src: string }>;
+      expect(first!.src).toMatch(/^__hf_runtime_audio\/[0-9a-f]{16}\.wav$/);
+      expect(second!.src).toBe(first!.src);
+      const onDisk = join(stageDir, "compiled", first!.src);
+      expect(existsSync(onDisk)).toBe(true);
+      expect(readFileSync(onDisk).equals(SAMPLE_WAV_BYTES)).toBe(true);
+    } finally {
+      rmSync(stageDir, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: static data:audio/... URIs stayed raw in composition.audios and failed audioMixer.
+  it("materializes inline data: audio even when no browser probe runs", async () => {
+    resetRetryMocks();
+    const { existsSync, readFileSync } = await import("node:fs");
+    const stageDir = mkdtempSync(join(tmpdir(), "hf-probe-data-audio-"));
+    try {
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      input.projectDir = stageDir;
+      input.workDir = stageDir;
+      input.composition.duration = 5;
+      input.compiled.html = "<div>static</div>";
+      input.composition.audios = [
+        {
+          id: "sfx-click",
+          src: `data:audio/wav;base64,${SAMPLE_WAV_BYTES.toString("base64")}`,
+          start: 0,
+          end: 1,
+          mediaStart: 0,
+          loop: false,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ] as never[];
+
+      await runProbeStage(input);
+
+      const [clip] = input.composition.audios as Array<{ src: string }>;
+      expect(clip!.src).toMatch(/^__hf_runtime_audio\/[0-9a-f]{16}\.wav$/);
+      const onDisk = join(stageDir, "compiled", clip!.src);
+      expect(existsSync(onDisk)).toBe(true);
+      expect(readFileSync(onDisk).equals(SAMPLE_WAV_BYTES)).toBe(true);
+    } finally {
+      rmSync(stageDir, { recursive: true, force: true });
     }
   });
 });

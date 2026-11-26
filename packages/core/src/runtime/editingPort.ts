@@ -90,6 +90,11 @@ import {
   type EditElementResult,
 } from "./editing/editElement";
 import {
+  parseStageMeasureParams,
+  type StageMeasureParams,
+  type StageMeasureResult,
+} from "./editing/stageMeasure";
+import {
   parseTextEdit,
   textEditEndedEvent,
   textEditSelectionEvent,
@@ -153,6 +158,14 @@ export type { EditingGestureBase, EditingGestureStart } from "./editingGestureSt
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export { MAX_EDIT_ENTRIES } from "./editing/editElement";
 export { MAX_FONT_FACES } from "./editing/textStyleReads";
+export {
+  MAX_STAGE_CLIP_KEYS,
+  MAX_STAGE_ITEMS,
+  type StageMeasuredItem,
+  type StageMeasureParams,
+  type StageMeasureResult,
+  type StageTextStart,
+} from "./editing/stageMeasure";
 export {
   MAX_SNAPSHOT_CHANNELS,
   MAX_SNAPSHOT_FIELDS,
@@ -243,6 +256,7 @@ export const EDITING_REQUEST_KINDS = [
   "serve-paused-frames",
   "arm-canvas-keys",
   "resolve-canvas-key-action",
+  "stage-measure",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -445,6 +459,7 @@ export interface EditingRequests {
     params: ResolveCanvasKeyActionParams;
     result: ResolveCanvasKeyActionResult;
   };
+  "stage-measure": { params: StageMeasureParams; result: StageMeasureResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -763,6 +778,7 @@ const PARAM_PARSERS: {
       : null,
   "arm-canvas-keys": parseArmCanvasKeys,
   "resolve-canvas-key-action": parseResolveCanvasKeyAction,
+  "stage-measure": parseStageMeasureParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
