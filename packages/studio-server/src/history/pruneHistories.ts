@@ -127,10 +127,10 @@ async function pruneOne(
   try {
     taken = await recheckAndMoveAway(historyRoot, id, run);
   } catch (error) {
-    release();
+    await release();
     throw error;
   }
-  if (!taken?.trash) release();
+  if (!taken?.trash) await release();
   if (!taken) return null;
   const bytes = await clearAway(taken.trash, home, run.measure);
   return { id, projectDir: taken.projectDir, bytes };
@@ -143,7 +143,7 @@ async function clearAway(trash: string | null, home: string, measure: boolean): 
   return bytes;
 }
 
-async function takeUnlessBusy(home: string): Promise<(() => void) | null> {
+async function takeUnlessBusy(home: string): Promise<(() => Promise<void>) | null> {
   try {
     return await takeHistoryOwnership(home, 0);
   } catch (error) {
@@ -224,9 +224,9 @@ async function bytesIn(dir: string): Promise<number> {
   return total;
 }
 
-function prunedWithinADay(stamp: string, now: number): boolean {
+async function prunedWithinADay(stamp: string, now: number): Promise<boolean> {
   try {
-    const last = Number(readPlainFile(stamp) ?? "");
+    const last = Number((await readPlainFile(stamp)) ?? "");
     return last <= now && now - last < DAY_MS;
   } catch {
     return false;
@@ -242,11 +242,20 @@ export function pruneGoneProjectHistoriesDaily(
   { onError, budgetMs }: Pick<PruneOptions, "onError" | "budgetMs"> = {},
 ): void {
   const stamp = join(historyRoot, LAST_PRUNE_FILE);
-  if (pruning.has(historyRoot) || prunedWithinADay(stamp, now)) return;
+  if (pruning.has(historyRoot)) return;
   pruning.add(historyRoot);
   setImmediate(() => {
-    pruneWithin(historyRoot, { now, onError, budgetMs, measure: false })
-      .then(({ finished }) => finished && replaceOwnFile(stamp, String(now)))
+    prunedWithinADay(stamp, now)
+      .then(async (recent) => {
+        if (recent) return;
+        const { finished } = await pruneWithin(historyRoot, {
+          now,
+          onError,
+          budgetMs,
+          measure: false,
+        });
+        if (finished) await replaceOwnFile(stamp, String(now));
+      })
       .catch((error) => onError?.(error))
       .finally(() => pruning.delete(historyRoot));
   });
