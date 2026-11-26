@@ -80,8 +80,16 @@ export function frameDisplayScale(frame: HTMLElement): number | null {
   return layoutWidth > 0 && shownWidth > 0 ? shownWidth / layoutWidth : null;
 }
 
+export const MAX_MESSAGE_LIST = 1000;
+
+export function isMessageList(value: unknown, max = MAX_MESSAGE_LIST): value is unknown[] {
+  if (!Array.isArray(value) || value.length > max) return false;
+  for (let i = 0; i < value.length; i++) if (!(i in value)) return false;
+  return true;
+}
+
 function hasDeclaredCapabilities(value: unknown): boolean {
-  return Array.isArray(value) && value.every((capability) => typeof capability === "string");
+  return isMessageList(value) && value.every((capability) => typeof capability === "string");
 }
 
 export function inspectRuntimeProtocol(value: unknown, legacyFps = 30): RuntimeProtocolInspection {

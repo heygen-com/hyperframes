@@ -12,7 +12,7 @@ import {
 } from "./playback-state.js";
 import type { ShaderLoaderState } from "./shader-loader-state.js";
 import type { ShaderTransitionState } from "./shader-options.js";
-import { inspectRuntimeProtocol } from "@hyperframes/core/runtime/protocol";
+import { inspectRuntimeProtocol, isMessageList } from "@hyperframes/core/runtime/protocol";
 import { STUDIO_PREVIEW_ERROR_MESSAGE } from "@hyperframes/core/studio-preview-mark";
 import {
   parseStaticComposition,
@@ -23,7 +23,7 @@ import {
 type SceneRecord = { id: string; start: number; duration: number };
 
 function extractScenes(raw: unknown): SceneRecord[] {
-  if (!Array.isArray(raw)) return [];
+  if (!isMessageList(raw)) return [];
   return raw.filter(
     (s): s is SceneRecord =>
       typeof s === "object" &&
@@ -150,6 +150,7 @@ export function handleRuntimeMessage(
           ended: typeof data["ended"] === "boolean" ? data["ended"] : undefined,
           isPlaying: !!data["isPlaying"],
           ownsRange: ownsPlayRange,
+          playSeq: typeof data["playSeq"] === "number" ? data["playSeq"] : undefined,
         },
         protocol.fps,
         callbacks.getPlaybackState(),
