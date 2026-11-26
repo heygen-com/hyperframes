@@ -106,6 +106,13 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("play"));
     expect(deps.onPlay).toHaveBeenCalledOnce();
+    expect(deps.onPlay).toHaveBeenCalledWith();
+    handler(makeControlMessage("play", { playSeq: 3 }));
+    expect(deps.onPlay).toHaveBeenLastCalledWith(3);
+    for (const bad of [0, -1, 1.5, "2", Number.NaN]) {
+      handler(makeControlMessage("play", { playSeq: bad }));
+    }
+    expect(deps.onPlay).toHaveBeenCalledTimes(2);
   });
 
   it("dispatches pause command", () => {

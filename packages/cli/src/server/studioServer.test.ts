@@ -28,6 +28,7 @@ import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+import { historyWritesSettled } from "./studioServerTestFixture.js";
 
 // Forces loadStudioProducer() down its production import branch (real
 // isDevMode() is true for a .ts test file, which instead throws a
@@ -322,6 +323,7 @@ describe("createStudioServer project history (D-491)", () => {
     server = createStudioServer({ projectDir, historyRoot: tmpProject() });
     const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
     expect((await server.app.request(historyUrl)).status).toBe(200);
+    await historyWritesSettled(server, projectDir);
     renameSync(projectDir, `${projectDir}-moved`);
     dirs.push(`${projectDir}-moved`);
     mkdirSync(projectDir);

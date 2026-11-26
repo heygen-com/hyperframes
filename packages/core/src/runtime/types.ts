@@ -65,6 +65,7 @@ type RuntimeBridgeControlMessageBase = {
   clips?: string[];
   rate?: number;
   at?: number;
+  playSeq?: number;
 };
 
 export type RuntimeStateMessage = {
@@ -77,6 +78,7 @@ export type RuntimeStateMessage = {
   buffering: boolean;
   muted: boolean;
   playbackRate: number;
+  playSeq?: number;
 };
 
 export type RuntimeTimelineClipIdentity = {

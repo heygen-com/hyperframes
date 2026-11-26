@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createServer, type AddressInfo } from "node:net";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+import { historyWritesSettled } from "./studioServerTestFixture.js";
 
 vi.mock("../telemetry/events.js", () => ({ trackRegistryItemAdded: vi.fn() }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -68,7 +69,7 @@ afterEach(() => {
 });
 
 /** A project behind a symlink whose hyperframes.json points at a stubbed registry; `fetched` logs every URL. */
-function projectWithRegistry(onItemFetch?: () => void): {
+function projectWithRegistry(onItemFetch?: () => void | Promise<void>): {
   link: string;
   real: string;
   registry: string;
@@ -92,7 +93,7 @@ function projectWithRegistry(onItemFetch?: () => void): {
       }
       const item = ITEMS.find((candidate) => url.includes(`/${candidate.name}/`));
       if (item && url.endsWith("/registry-item.json")) {
-        onItemFetch?.();
+        await onItemFetch?.();
         return new Response(JSON.stringify(item));
       }
       if (item && url.endsWith(".html")) {
@@ -142,7 +143,11 @@ describe("Studio catalog install", () => {
 
   it("answers that the project folder is gone when it is renamed while the item downloads", async () => {
     let real = "";
-    ({ real } = projectWithRegistry(() => renameSync(real, `${real}-renamed`)));
+    let link = "";
+    ({ link, real } = projectWithRegistry(async () => {
+      await historyWritesSettled(server!, link);
+      renameSync(real, `${real}-renamed`);
+    }));
 
     const response = await server!.app.request("/api/projects/link/registry/install", {
       method: "POST",
