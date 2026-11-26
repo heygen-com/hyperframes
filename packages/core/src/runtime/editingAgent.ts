@@ -70,6 +70,7 @@ import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
 import { portPausedVideoProvider } from "./editing/pausedFrames";
+import { measureStageDocument } from "./editing/stageMeasure";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -261,6 +262,7 @@ const HANDLERS: Handlers = {
     return { served: true };
   },
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
+  "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
 };
 
 function serve(port: MessagePort): void {

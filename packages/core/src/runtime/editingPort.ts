@@ -90,6 +90,11 @@ import {
   type EditElementResult,
 } from "./editing/editElement";
 import {
+  parseStageMeasureParams,
+  type StageMeasureParams,
+  type StageMeasureResult,
+} from "./editing/stageMeasure";
+import {
   parseTextEdit,
   textEditEndedEvent,
   textEditSelectionEvent,
@@ -143,6 +148,14 @@ export type { EditingGestureBase, EditingGestureStart } from "./editingGestureSt
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export { MAX_EDIT_ENTRIES } from "./editing/editElement";
 export { MAX_FONT_FACES } from "./editing/textStyleReads";
+export {
+  MAX_STAGE_CLIP_KEYS,
+  MAX_STAGE_ITEMS,
+  type StageMeasuredItem,
+  type StageMeasureParams,
+  type StageMeasureResult,
+  type StageTextStart,
+} from "./editing/stageMeasure";
 export {
   MAX_SNAPSHOT_CHANNELS,
   MAX_SNAPSHOT_FIELDS,
@@ -231,6 +244,7 @@ export const EDITING_REQUEST_KINDS = [
   "assets-unloaded",
   "text-edit",
   "serve-paused-frames",
+  "stage-measure",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -428,6 +442,8 @@ export interface EditingRequests {
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
+  /** Document-order layout, style, visibility, and clip-key snapshot for stage change tracking. */
+  "stage-measure": { params: StageMeasureParams; result: StageMeasureResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -744,6 +760,7 @@ const PARAM_PARSERS: {
     hasKeys(params, "channel") && params.channel instanceof MessagePort
       ? { channel: params.channel }
       : null,
+  "stage-measure": parseStageMeasureParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
