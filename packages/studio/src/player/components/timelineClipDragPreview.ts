@@ -348,12 +348,12 @@ export function computeResizePreview(
   const originScrollLeft = resize.originScrollLeft ?? scroll?.scrollLeft ?? 0;
   const effectiveClientX = clientX + ((scroll?.scrollLeft ?? originScrollLeft) - originScrollLeft);
 
-  // A looping clip replays its source, so the source length never limits it.
+  const limitingSourceDuration = resize.element.loop ? undefined : resize.element.sourceDuration;
   const sourceRemaining =
-    resize.element.sourceDuration != null && !resize.element.loop
+    limitingSourceDuration != null
       ? Math.max(
           0,
-          (resize.element.sourceDuration - (resize.element.playbackStart ?? 0)) /
+          (limitingSourceDuration - (resize.element.playbackStart ?? 0)) /
             Math.max(resize.element.playbackRate ?? 1, 0.1),
         )
       : Number.POSITIVE_INFINITY;
@@ -366,19 +366,13 @@ export function computeResizePreview(
   // rightward and, after a far move, collapsed a clip to the sliver between its
   // start and the comp end (the 8s→0.95s audio incident). Images/text/shapes
   // have no source, so they extend freely.
-  // The limit only stops a clip growing: it never sits before the clip's
-  // current end. A clip already longer than its remaining source (authored
-  // that way, or a late in-point) would otherwise jump down to the source end
-  // on the first pixel of an end trim.
   const video = ctx.elements
     ? heldPartnerVideoBounds(resize.element, ctx.elements, ctx.gestureKeys ?? new Set())
     : null;
   const minStart = Math.max(clampToHostStart(resize.element, 0), video?.start ?? 0);
+  const growthLimit = Math.min(resize.element.start + sourceRemaining, video?.end ?? Infinity);
   const currentEnd = resize.element.start + resize.element.duration;
-  const maxEnd = Math.max(
-    currentEnd,
-    Math.min(resize.element.start + sourceRemaining, video?.end ?? Infinity),
-  );
+  const maxEnd = Math.max(currentEnd, growthLimit);
   let nextResize = resolveTimelineResize(
     {
       start: resize.element.start,
