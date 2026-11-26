@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 /** A project behind a symlink whose hyperframes.json points at a stubbed registry; `fetched` logs every URL. */
-function projectWithRegistry(onItemFetch?: () => void): {
+function projectWithRegistry(onItemFetch?: () => void | Promise<void>): {
   link: string;
   real: string;
   registry: string;
@@ -92,7 +92,7 @@ function projectWithRegistry(onItemFetch?: () => void): {
       }
       const item = ITEMS.find((candidate) => url.includes(`/${candidate.name}/`));
       if (item && url.endsWith("/registry-item.json")) {
-        onItemFetch?.();
+        await onItemFetch?.();
         return new Response(JSON.stringify(item));
       }
       if (item && url.endsWith(".html")) {
@@ -142,7 +142,17 @@ describe("Studio catalog install", () => {
 
   it("answers that the project folder is gone when it is renamed while the item downloads", async () => {
     let real = "";
-    ({ real } = projectWithRegistry(() => renameSync(real, `${real}-renamed`)));
+    let link = "";
+    ({ link, real } = projectWithRegistry(async () => {
+      // Windows refuses to rename a folder while a file in it is open: let the request's history finish writing.
+      const history = await server!.adapter.history?.({
+        dir: link,
+        id: "link",
+        title: "link",
+      } as never);
+      await history?.flush();
+      renameSync(real, `${real}-renamed`);
+    }));
 
     const response = await server!.app.request("/api/projects/link/registry/install", {
       method: "POST",
