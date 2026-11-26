@@ -32,6 +32,8 @@ export default defineConfig({
     timeSpans: "src/timeSpans.ts",
     mediaTiming: "src/mediaTiming.ts",
     referenceResolver: "src/referenceResolver.ts",
+    narration: "src/narration.ts",
+    captionArray: "src/captionArray.ts",
   },
   format: ["esm"],
   outDir: "dist",

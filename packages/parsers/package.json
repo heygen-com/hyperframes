@@ -195,6 +195,18 @@
       "node": "./dist/compositionDuration.js",
       "import": "./src/compositionDuration.ts",
       "types": "./src/compositionDuration.ts"
+    },
+    "./narration": {
+      "bun": "./src/narration.ts",
+      "node": "./dist/narration.js",
+      "import": "./src/narration.ts",
+      "types": "./src/narration.ts"
+    },
+    "./caption-array": {
+      "bun": "./src/captionArray.ts",
+      "node": "./dist/captionArray.js",
+      "import": "./src/captionArray.ts",
+      "types": "./src/captionArray.ts"
     }
   },
   "publishConfig": {
@@ -320,6 +332,14 @@
       "./composition-duration": {
         "import": "./dist/compositionDuration.js",
         "types": "./dist/compositionDuration.d.ts"
+      },
+      "./narration": {
+        "import": "./dist/narration.js",
+        "types": "./dist/narration.d.ts"
+      },
+      "./caption-array": {
+        "import": "./dist/captionArray.js",
+        "types": "./dist/captionArray.d.ts"
       }
     },
     "main": "./dist/index.js",

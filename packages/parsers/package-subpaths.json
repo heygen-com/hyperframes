@@ -187,6 +187,18 @@
       "runtime": "./dist/compositionDuration.js",
       "types": "./dist/compositionDuration.d.ts",
       "environments": ["browser", "bun", "node"]
+    },
+    "./narration": {
+      "source": "./src/narration.ts",
+      "runtime": "./dist/narration.js",
+      "types": "./dist/narration.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./caption-array": {
+      "source": "./src/captionArray.ts",
+      "runtime": "./dist/captionArray.js",
+      "types": "./dist/captionArray.d.ts",
+      "environments": ["browser", "bun", "node"]
     }
   }
 }
