@@ -110,8 +110,6 @@ export function movesGesture(
   return e.pointerId === gesture.pointerId && (e.buttons & 1) === 1;
 }
 
-/** The selection box and its resize handles move in one write, in the move's own task; React's commit writes the
- *  same rect a frame later. */
 export function drawOutline(
   outline: (HTMLElement | null)[],
   rect: { left?: number; top?: number; width?: number; height?: number },
