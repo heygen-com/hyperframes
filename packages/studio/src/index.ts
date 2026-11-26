@@ -252,6 +252,7 @@ export { useDomEditSession } from "./hooks/useDomEditSession";
 export type { UseDomEditSessionParams } from "./hooks/useDomEditSession";
 export { useLivePreviewIframe } from "./hooks/useLivePreviewIframe";
 export { announcePreviewDocumentLoaded } from "./player/sceneSwap";
+export { shownPreviewFrame } from "./player/lib/previewChannel";
 export type { PreviewPromotion } from "./player/sceneSwap";
 export { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 export type { UsePreviewPersistenceParams } from "./hooks/usePreviewPersistence";
