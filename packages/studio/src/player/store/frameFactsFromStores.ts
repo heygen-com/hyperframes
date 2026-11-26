@@ -5,8 +5,7 @@ import { usePreviewIframeStore } from "./previewIframeStore";
 let watching = false;
 let sized: ResizeObserver | null = null;
 
-/** Raises the frame facts the stores own: the playhead and playback, the live frame and its size. Installed once,
- *  by the first cache of frame reads, so module load order cannot reach a store before it exists. */
+/** The stores' frame facts. Installed at runtime by the first cache, so load order never reaches a store early. */
 export function watchStoreFrameFacts(): void {
   if (watching) return;
   watching = true;
@@ -19,9 +18,10 @@ export function watchStoreFrameFacts(): void {
     frameFactsChanged("load");
     sized?.disconnect();
     if (!iframe || typeof ResizeObserver === "undefined") return void (sized = null);
-    let first = true;
-    // Its first report is the size the frame already had.
-    sized = new ResizeObserver(() => (first ? (first = false) : frameFactsChanged("size")));
+    let alreadySized = true;
+    sized = new ResizeObserver(() =>
+      alreadySized ? (alreadySized = false) : frameFactsChanged("size"),
+    );
     sized.observe(iframe);
   });
 }

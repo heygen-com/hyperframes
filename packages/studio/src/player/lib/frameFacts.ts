@@ -3,23 +3,14 @@ import type { EditingRequestKind } from "@hyperframes/core/runtime/editing-port"
 /** Anything Studio knows of that can change what a sealed frame answers about its elements. A cache of frame reads
  *  is current while `frameFactsGeneration()` is unchanged; it calls `watchStoreFrameFacts()` once for the stores. */
 export type FrameFactChange =
-  /** A draft was sent to the frame (`previewChannel`). */
   | "draft"
-  /** Any other request that may change the frame was sent: an edit, a soft reload, a scene swap (`previewChannel`). */
   | "write"
-  /** An edit started or finished saving (`studioPendingEdits`). */
   | "save"
-  /** The playhead moved or playback started or stopped (`frameFactsFromStores`). */
   | "time"
-  /** Undo or redo started or finished (`useEditHistoryActions`), or the frame reran one in place (`sceneSwap`). */
   | "history"
-  /** A frame loaded, swapped scenes or was promoted (`sceneSwap`), or a new live frame (`frameFactsFromStores`). */
   | "load"
-  /** The selection changed (`useGestureStartReadAhead`). */
   | "selection"
-  /** The selection's box the frame reports moved, by Studio or by the frame itself (`useDomEditOverlayRects`). */
   | "geometry"
-  /** The live frame's size changed (`frameFactsFromStores`). Zoom scales the frame without changing it. */
   | "size";
 
 let generation = 0;
@@ -59,7 +50,6 @@ const FRAME_READS: ReadonlySet<EditingRequestKind> = new Set<EditingRequestKind>
   "stacking-family",
 ]);
 
-/** Called for every request Studio sends a frame. */
 export function frameRequestSent(kind: EditingRequestKind): void {
   if (FRAME_READS.has(kind)) return;
   frameFactsChanged(kind === "draft" ? "draft" : "write");

@@ -175,7 +175,6 @@ export function useDomEditOverlayRects({
           }),
         );
         setHoverRect(rects.hover);
-        // The frame can move what is selected with nothing sent from Studio: a timer, a CSS animation, a late load.
         if (overlayRectRef.current !== shown || groupOverlayItemsRef.current !== shownGroup)
           frameFactsChanged("geometry");
       })

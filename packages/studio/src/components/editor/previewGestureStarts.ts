@@ -161,8 +161,6 @@ export function createPreviewGestureStarts(
     };
   };
 
-  /** Starts a press in its own step when nothing is waiting: an open frame is read in place, a sealed one from
-   *  the read made ahead of the press. Null when the press has to wait for the frame. */
   const startNow = (
     e: React.PointerEvent<HTMLElement>,
     at: EditMoment,

@@ -308,7 +308,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     snapGuidesRef,
   };
   const gestures = createDomEditOverlayGestureHandlers(gestureOptions);
-  // A sealed preview is asked ahead what a press here would start from, so the press starts at once.
   useGestureStartReadAhead(gestureOptions);
 
   useEffect(() => {

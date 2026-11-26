@@ -70,7 +70,6 @@ export async function measurePreviewGestureStart(
   );
 }
 
-/** The frame's gesture-start reply in overlay px, scaled as the frame is shown now. */
 function gestureStartsOnOverlay(
   reply: PreviewGestureStartReply | null,
   iframe: HTMLIFrameElement,
@@ -136,7 +135,6 @@ export const unansweredMoveReason = (iframe: HTMLIFrameElement) =>
     ? "This composition has no size, so Studio can't move its layers. Give its root a width and height."
     : "The preview didn't answer, so Studio can't move this layer. Try again.";
 
-/** What the frame answered for a gesture on `selections`, before it is placed on the overlay. */
 export interface ShownStartsRead {
   found: PreviewElement[];
   handles: string[];
@@ -156,7 +154,6 @@ export async function askShownGestureStarts(
     : read;
 }
 
-/** The frame's answers a gesture on `selections` starts from, in its own px. */
 export async function readShownGestureStarts(
   iframe: HTMLIFrameElement,
   overlay: HTMLDivElement | null,
@@ -179,7 +176,6 @@ export async function readShownGestureStarts(
   return { found: found as PreviewElement[], handles: handles as string[], reply };
 }
 
-/** A read placed on the overlay as the frame is shown now: the same answer `askShownGestureStarts` gives. */
 export function shownFromRead(
   { found, handles, reply }: ShownStartsRead,
   iframe: HTMLIFrameElement,
