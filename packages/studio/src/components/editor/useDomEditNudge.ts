@@ -47,10 +47,14 @@ import { selectionElementLive } from "./previewSelection";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import {
   askShownGestureStarts,
+  shownFromRead,
   UNANSWERED,
   unansweredMoveReason,
   type PreviewGestureStart,
 } from "./previewGestureStartRead";
+import { checkReadAheadWithFrame, gestureStartReadAhead } from "./gestureStartReadAhead";
+import { frameDraftTranslate, noteFrameDrawnDraft, previewStandInHandle } from "./previewDrafts";
+import type { RuntimeNudgeStep } from "./useSealedCanvasKeys";
 
 interface NudgeSession {
   members: ManualOffsetDragMember[];
@@ -65,6 +69,7 @@ interface NudgeSession {
 interface SealedStartRead {
   accum: { x: number; y: number };
   dropped: boolean;
+  runtimeDrafts?: Record<string, number>;
 }
 
 export interface UseDomEditNudgeParams {
@@ -93,6 +98,7 @@ export interface UseDomEditNudgeParams {
   onGroupPathOffsetCommitRef: RefObject<
     (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void
   >;
+  onNudgeSavingChangeRef?: RefObject<((saving: boolean) => void) | undefined>;
 }
 
 type NudgeTarget = {
@@ -163,7 +169,28 @@ function shouldIgnoreNudgeKey(p: UseDomEditNudgeParams, event: KeyboardEvent): b
   return ownsPlainKeys(event.target);
 }
 
-export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: () => void } {
+function recordRuntimeDrafts(
+  members: readonly ManualOffsetDragMember[],
+  accum: { x: number; y: number },
+  drafts: Record<string, number> | undefined,
+): void {
+  if (!drafts) return;
+  for (const member of members) {
+    const handle = previewStandInHandle(member.element) ?? member.selection.handle;
+    const draftId = handle ? drafts[handle] : undefined;
+    const offset = { x: member.initialOffset.x + accum.x, y: member.initialOffset.y + accum.y };
+    noteFrameDrawnDraft(
+      member.element,
+      { translate: frameDraftTranslate(member, offset) },
+      draftId,
+    );
+  }
+}
+
+export function useDomEditNudge(params: UseDomEditNudgeParams): {
+  flushNudge: () => void;
+  applyRuntimeNudge: (step: RuntimeNudgeStep) => void;
+} {
   const sessionRef = useRef<NudgeSession | null>(null);
   const readingRef = useRef<SealedStartRead | null>(null);
   const paramsRef = useRef(params);
@@ -196,6 +223,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       if (session.edit.reverted())
         for (const member of session.members)
           restoreStudioPathOffset(member.element, member.initialPathOffset);
+      p.onNudgeSavingChangeRef?.current?.(true);
       saved = Promise.resolve(commit)
         .then((result) => trackPreviewEditResult("nudge", "keyboard", result))
         .catch(() => {
@@ -205,7 +233,10 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
             }
           }
         })
-        .finally(() => endManualOffsetDragMembers(session.members));
+        .finally(() => {
+          endManualOffsetDragMembers(session.members);
+          paramsRef.current.onNudgeSavingChangeRef?.current?.(false);
+        });
       return saved;
     } finally {
       session.edit.settle(saved);
@@ -305,10 +336,56 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       const session = beginSession({ targets, isGroup: found.isGroup }, false);
       if (!session || session === "refused") return;
       session.accum = read.accum;
+      recordRuntimeDrafts(session.members, session.accum, read.runtimeDrafts);
       startBurst(session);
     };
     return read;
   };
+
+  const startRuntimeNudgeFromReadAhead = (
+    iframe: HTMLIFrameElement,
+    found: { targets: NudgeTarget[]; isGroup: boolean },
+    step: RuntimeNudgeStep,
+  ): boolean => {
+    const p = paramsRef.current;
+    const overlay = p.overlayRef.current;
+    if (!overlay) return false;
+    const selections = found.targets.map((target) => target.selection);
+    const ahead = gestureStartReadAhead(p, iframe, selections, false);
+    const shown = ahead && shownFromRead(ahead, iframe, overlay, selections);
+    if (!ahead || typeof shown !== "object" || !shown) return false;
+    checkReadAheadWithFrame(iframe, ahead);
+    const targets = found.targets.map((target, i) => ({ ...target, ...shown.shown[i] }));
+    const session = beginSession({ targets, isGroup: found.isGroup }, false);
+    if (!session || session === "refused") return true;
+    session.accum = { x: step.totalDx, y: step.totalDy };
+    recordRuntimeDrafts(session.members, session.accum, step.drafts);
+    startBurst(session);
+    return true;
+  };
+
+  const applyRuntimeNudge = useCallback((step: RuntimeNudgeStep) => {
+    const p = paramsRef.current;
+    if (!p.allowCanvasMovement) return;
+    if (sessionRef.current) {
+      sessionRef.current.accum = { x: step.totalDx, y: step.totalDy };
+      recordRuntimeDrafts(sessionRef.current.members, sessionRef.current.accum, step.drafts);
+      return startBurst(sessionRef.current);
+    }
+    if (readingRef.current) {
+      readingRef.current.accum = { x: step.totalDx, y: step.totalDy };
+      readingRef.current.runtimeDrafts = step.drafts;
+      return;
+    }
+    const iframe = p.iframeRef.current;
+    const found = nudgeTargets();
+    if (!iframe || !found || startRuntimeNudgeFromReadAhead(iframe, found, step)) return;
+    const read = readSealedStart();
+    if (!read) return;
+    readingRef.current = read;
+    read.accum = { x: step.totalDx, y: step.totalDy };
+    read.runtimeDrafts = step.drafts;
+  }, []);
 
   const joinSealedRead = (delta: { dx: number; dy: number }): boolean => {
     const reading = readingRef.current ?? (sessionRef.current ? null : readSealedStart());
@@ -383,5 +460,5 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
   // pointerdown-capture so the drag's member snapshot starts from the nudged,
   // committed position.
   const flushNudge = useCallback(() => commitSessionRef.current(), []);
-  return { flushNudge };
+  return { flushNudge, applyRuntimeNudge };
 }

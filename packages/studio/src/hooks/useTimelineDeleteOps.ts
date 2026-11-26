@@ -135,14 +135,25 @@ export function useTimelineDeleteOps({
   // fallow-ignore-next-line complexity
   const handleTimelineElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (selection: TimelineElement[], alsoUnlink: readonly TimelineElement[] = []) => {
+    async (
+      selection: TimelineElement[],
+      alsoUnlink: readonly TimelineElement[] = [],
+      onSettled?: (ok: boolean) => void,
+    ) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
+        onSettled?.(false);
         return;
       }
-      if (!editQueueRef.projectId) throw new Error("No active project");
+      if (!editQueueRef.projectId) {
+        onSettled?.(false);
+        throw new Error("No active project");
+      }
       const [element] = selection;
-      if (!element) return;
+      if (!element) {
+        onSettled?.(false);
+        return;
+      }
       const label =
         selection.length === 1 ? getTimelineElementLabel(element) : `${selection.length} clips`;
 
@@ -285,11 +296,15 @@ export function useTimelineDeleteOps({
           }
         }
 
-        if (isClosed(editQueueRef)) return;
+        if (isClosed(editQueueRef)) {
+          onSettled?.(true);
+          return;
+        }
         usePlayerStore.getState().setSelectedElementId(null);
         usePlayerStore.getState().setSelectedElementIds(new Set());
         forceReloadSdkSession?.();
         reloadPreview();
+        onSettled?.(true);
         // A failed ripple already showed its own toast above; the user did one
         // thing (delete), so they get one message, not this generic follow-up too.
         if (!rippleFailed) {
@@ -304,6 +319,7 @@ export function useTimelineDeleteOps({
           );
         }
       } catch (error) {
+        onSettled?.(false);
         const message = error instanceof Error ? error.message : "Failed to delete timeline clip";
         showToast(message);
       }

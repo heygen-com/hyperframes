@@ -1,5 +1,10 @@
 const holds = new WeakMap<HTMLIFrameElement, Set<symbol>>();
+const canvasHolds = new WeakMap<HTMLIFrameElement, Set<symbol>>();
 const reclaims = new WeakMap<HTMLIFrameElement, () => void>();
+
+export function hasSealedCanvasKeyboardHold(iframe: HTMLIFrameElement): boolean {
+  return Boolean(canvasHolds.get(iframe)?.size);
+}
 
 export function keepKeyboardOutOfSealedFrame(iframe: HTMLIFrameElement): () => void {
   const studioWindow = iframe.ownerDocument.defaultView;
@@ -16,7 +21,10 @@ export function keepKeyboardOutOfSealedFrame(iframe: HTMLIFrameElement): () => v
   return () => {
     attached = false;
     // Studio re-attaches on the same frame as it re-syncs; only a frame that left the page drops its edit's hold.
-    if (!iframe.isConnected) holds.delete(iframe);
+    if (!iframe.isConnected) {
+      holds.delete(iframe);
+      canvasHolds.delete(iframe);
+    }
     if (reclaims.get(iframe) === reclaim) reclaims.delete(iframe);
     studioWindow?.removeEventListener("blur", reclaim);
   };
@@ -38,6 +46,21 @@ export function holdSealedFrameKeyboard(iframe: HTMLIFrameElement): () => void {
       opener.isConnected
     )
       opener.focus({ preventScroll: true });
+    reclaims.get(iframe)?.();
+  };
+  iframe.addEventListener("load", release, { once: true });
+  return release;
+}
+
+/** Holds keyboard focus in the sealed iframe for an active canvas selection; releases on blur/clear/load. */
+export function holdSealedCanvasKeyboard(iframe: HTMLIFrameElement): () => void {
+  const session = Symbol("sealed canvas keys");
+  holds.set(iframe, (holds.get(iframe) ?? new Set()).add(session));
+  canvasHolds.set(iframe, (canvasHolds.get(iframe) ?? new Set()).add(session));
+  const release = () => {
+    iframe.removeEventListener("load", release);
+    canvasHolds.get(iframe)?.delete(session);
+    if (!holds.get(iframe)?.delete(session)) return;
     reclaims.get(iframe)?.();
   };
   iframe.addEventListener("load", release, { once: true });

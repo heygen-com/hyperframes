@@ -189,6 +189,10 @@ interface Session {
 let session: Session | null = null;
 const NOTHING: TextEditResult = { applied: false, html: null, previous: null };
 
+export function isActiveTextEditTarget(target: EventTarget | null): boolean {
+  return Boolean(session && target instanceof Node && session.element.contains(target));
+}
+
 function clearSelectionWithin(element: Element): void {
   const selection = element.ownerDocument.defaultView?.getSelection();
   if (!selection || selection.rangeCount === 0) return;
