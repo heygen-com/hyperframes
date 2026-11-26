@@ -1366,6 +1366,14 @@ describe("openProjectHistory", () => {
     expect(read("index.html")).toBe("new project");
   });
 
+  it("says at once that a folder whose history id is gone was replaced, so a caller reopens before it writes", async () => {
+    const { history, write, projectDir } = await project({ "index.html": "v1" });
+    await change(history, you, "Second", () => write("index.html", "v2"));
+    rmSync(join(projectDir, ".hyperframes"), { recursive: true });
+
+    expect(history.replacedAtPath()).toBe(true);
+  });
+
   it.each([["the copy"], ["the moved original"]])(
     "gives a copy put where the original was its own history, and the moved original keeps its own, %s opened first",
     async (first) => {
