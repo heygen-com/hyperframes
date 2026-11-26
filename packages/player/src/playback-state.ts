@@ -135,6 +135,32 @@ function reportTime(
   callbacks.dispatchEvent(new CustomEvent("timeupdate", { detail: { currentTime } }));
 }
 
+function isStalePrePlayState(data: RuntimeStateData, current: PlaybackState, now: number): boolean {
+  const awaitingSeq = current.awaitingPlaySeq ?? 0;
+  if (awaitingSeq <= 0) return false;
+  if (typeof data.playSeq === "number") return data.playSeq < awaitingSeq;
+  return current.awaitingPlayUntilMs !== undefined && current.awaitingPlayUntilMs > now;
+}
+
+function restartLoopedPlayback(
+  current: PlaybackState,
+  loopStart: number,
+  now: number,
+  callbacks: PlaybackStateCallbacks,
+): PlaybackState {
+  if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
+  callbacks.seek(loopStart);
+  const nextSeq = callbacks.play();
+  return {
+    ...current,
+    currentTime: loopStart,
+    paused: false,
+    enteringRange: true,
+    awaitingPlaySeq: typeof nextSeq === "number" ? nextSeq : (current.awaitingPlaySeq ?? 0),
+    awaitingPlayUntilMs: now + PLAY_START_GRACE_MS,
+  };
+}
+
 /**
  * Process a `state` message from the runtime and return the next state.
  * Side effects (controls updates, events, media mirroring) are fired through
@@ -159,28 +185,9 @@ export function applyRuntimeStateMessage(
   const completedPlayback = atEnd && playing;
 
   // Drop pre-play paused heartbeats until the runtime echoes playSeq (or legacy grace expires).
-  const awaitingSeq = current.awaitingPlaySeq ?? 0;
-  const awaitingPlay =
-    awaitingSeq > 0 &&
-    (typeof data.playSeq === "number"
-      ? data.playSeq < awaitingSeq
-      : current.awaitingPlayUntilMs !== undefined && current.awaitingPlayUntilMs > now);
-  if (awaitingPlay && nextPaused && !completedPlayback) return current;
-
+  if (nextPaused && !completedPlayback && isStalePrePlayState(data, current, now)) return current;
   if (completedPlayback && callbacks.getLoop()) {
-    if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
-    callbacks.seek(loopStart);
-    const nextSeq = callbacks.play();
-    // play() sets paused=false; reflect that in the returned state so the
-    // caller's destructure doesn't overwrite it with the stale nextPaused value.
-    return {
-      ...current,
-      currentTime: loopStart,
-      paused: false,
-      enteringRange: true,
-      awaitingPlaySeq: typeof nextSeq === "number" ? nextSeq : awaitingSeq,
-      awaitingPlayUntilMs: now + PLAY_START_GRACE_MS,
-    };
+    return restartLoopedPlayback(current, loopStart, now, callbacks);
   }
 
   const next = {
