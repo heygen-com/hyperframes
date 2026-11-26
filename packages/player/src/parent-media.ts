@@ -12,7 +12,7 @@
 import { selectMediaObserverTargets } from "./mediaObserverScope.js";
 import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { isInClipWindow } from "@hyperframes/core/runtime/clip-window";
-import { isMessageList } from "@hyperframes/core/runtime/protocol";
+import { readFrameList } from "./frame-list.js";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { readLinkTiming } from "@hyperframes/core/media-link";
 import { wrapLoopedSourceTime } from "@hyperframes/core/media-timing";
@@ -651,8 +651,7 @@ function urlAudio(src: string): ParentCopy {
 
 /** The well-formed clips of a list from the film; the frame is not trusted. */
 function readCopies(list: unknown): ParentCopy[] {
-  if (!isMessageList(list)) return [];
-  return list.filter((item): item is ParentCopy => {
+  return readFrameList("media", list).filter((item): item is ParentCopy => {
     if (typeof item !== "object" || item === null) return false;
     const c = item as Record<string, unknown>;
     return isCopyTiming(c) && isCopyExtras(c);
