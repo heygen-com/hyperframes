@@ -1,7 +1,6 @@
 // @ts-check
 import { decodeWellFormedEscapes } from "@hyperframes/parsers/asset-paths";
-import { lstat, realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { realpath } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { referencedHiddenSourceFiles, openListed } from "./capture.mjs";
 import { isEligibleHiddenSourcePath } from "./pathPolicy.mjs";
@@ -35,8 +34,6 @@ export async function referencedFontResponse(projectDir, requested, method) {
     return null;
   try {
     const root = await realpath(projectDir);
-    const full = join(root, path);
-    if (!(await lstat(full)).isFile()) return null;
     const file = (await referencedFiles(root)).find((entry) => entry.path === path);
     if (!file) return null;
     const { size } = file;
