@@ -18,6 +18,7 @@ import {
   type GestureState,
   type GroupGestureState,
   focusDomEditOverlayElement,
+  pressStillHeld,
   resolveShiftClickCandidate,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
@@ -34,7 +35,7 @@ import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
-import { useMountEffect } from "../../hooks/useMountEffect";
+import { useHeldGestureCancel } from "./useHeldGestureCancel";
 import { useGestureStartReadAhead } from "./gestureStartReadAhead";
 import { countStudioManualEditSave as counted } from "./manualEditGesture";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
@@ -316,14 +317,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // A gesture that loses its pointer, the window or the overlay is cancelled, so its mark goes too.
   const cancelGestureRef = useRef((_dropQueued?: boolean) => {});
   cancelGestureRef.current = (dropQueued) => gestures.clearPointerState(selectionRef, dropQueued);
-  useMountEffect(() => {
-    const cancel = () => cancelGestureRef.current();
-    window.addEventListener("blur", cancel);
-    return () => {
-      window.removeEventListener("blur", cancel);
-      cancelGestureRef.current(true);
-    };
-  });
+  const holdsPress = () =>
+    Boolean(gestureRef.current || groupGestureRef.current) ||
+    pressStillHeld(waitingPressRef.current);
+  useHeldGestureCancel(cancelGestureRef, holdsPress, suppressNextBoxClickRef);
 
   // Arrow-key nudge (1px, Shift = 10px) — commits through the same
   // path-offset callbacks as a drag, one undo entry per key burst.
