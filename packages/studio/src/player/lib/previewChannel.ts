@@ -171,7 +171,6 @@ export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: 
   await previewRequest(iframe, "wait-for-seek", {}, timeoutMs);
 }
 
-// ponytail: the runtime sets no clip cap; this one is far past any real film and bounds a reply's walk.
 export const MAX_FRAME_CLIPS = 100_000;
 
 /** The reply is frame data, so its shape is checked. */
