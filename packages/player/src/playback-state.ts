@@ -142,6 +142,21 @@ function isStalePrePlayState(data: RuntimeStateData, current: PlaybackState, now
   return current.awaitingPlayUntilMs !== undefined && current.awaitingPlayUntilMs > now;
 }
 
+function nextAwaitingPlay(
+  data: RuntimeStateData,
+  current: PlaybackState,
+  completedPlayback: boolean,
+): { awaitingPlaySeq: number; awaitingPlayUntilMs: number } {
+  const awaitingSeq = current.awaitingPlaySeq ?? 0;
+  if (!completedPlayback && typeof data.playSeq === "number" && data.playSeq < awaitingSeq) {
+    return {
+      awaitingPlaySeq: awaitingSeq,
+      awaitingPlayUntilMs: current.awaitingPlayUntilMs ?? 0,
+    };
+  }
+  return { awaitingPlaySeq: 0, awaitingPlayUntilMs: 0 };
+}
+
 function restartLoopedPlayback(
   current: PlaybackState,
   loopStart: number,
@@ -195,8 +210,7 @@ export function applyRuntimeStateMessage(
     currentTime,
     paused: nextPaused,
     enteringRange: bounds.entering,
-    awaitingPlaySeq: 0,
-    awaitingPlayUntilMs: 0,
+    ...nextAwaitingPlay(data, current, completedPlayback),
   };
   if (wasPlaying && (nextPaused || completedPlayback)) callbacks.onRuntimeStopped?.();
 
