@@ -446,11 +446,9 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _applySandboxOriginPolicy(reloadActiveDocument = false): void {
-    if (this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
-      this.iframe.sandbox.remove("allow-same-origin");
-    } else {
-      this.iframe.sandbox.add("allow-same-origin");
-    }
+    const sealed = this.hasAttribute(SANDBOX_ORIGIN_ATTR);
+    this.iframe.sandbox.toggle("allow-same-origin", !sealed);
+    this.iframe.allow = sealed ? "autoplay" : "autoplay; fullscreen";
     if (reloadActiveDocument) this._reloadForSandboxOriginPolicy();
   }
 

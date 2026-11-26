@@ -4258,6 +4258,14 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
   });
 
+  it("offers fullscreen to an unsealed film only", () => {
+    expect(player.iframeElement.allow).toBe("autoplay; fullscreen");
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.allow).toBe("autoplay");
+    player.removeAttribute("sandbox-origin");
+    expect(player.iframeElement.allow).toBe("autoplay; fullscreen");
+  });
+
   it("names its frame, the one mark a composition in an opaque sandbox can still read", () => {
     player.setAttribute("sandbox-origin", "opaque");
     expect(player.iframeElement.name).toBe(PLAYER_FRAME_NAME);
