@@ -41,9 +41,7 @@ import {
   type GestureState,
   type GroupGestureState,
   type UseDomEditOverlayGesturesOptions,
-  ROTATED_SNAP_BYPASS_DEGREES,
   hasDomEditRotationChanged,
-  lockDragToDominantAxis,
   movesGesture,
   isDomEditGestureTap,
   resolveDomEditRotationGesture,
@@ -51,18 +49,14 @@ import {
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
 import { endResizeWithoutMember, resolveResizeDraftRect } from "./resizeDraft";
 import { notifyBlockedPress } from "./domEditOverlayStartGesture";
-import { hugRectForElement } from "./domEditOverlayCrop";
-import {
-  resolveSnapAdjustment,
-  resolveEquidistanceGuides,
-  snapEngagedForTravel,
-  SNAP_THRESHOLD_PX,
-} from "./snapEngine";
 import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDebug";
 import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug";
 import { createGroupDragMover } from "./groupDragMove";
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { armRawPointerSteps } from "./rawPointerSteps";
+import { snappedDragDelta } from "./snappedDragDelta";
 
 function logGestureCommitFailure(message: string, error: unknown): void {
   if (error instanceof DomEditSaveQueueOpenError) return;
@@ -123,6 +117,28 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     moveActiveGesture(e);
   };
 
+  const sealedDragMember = (g: GestureState | null) => {
+    if (g?.kind !== "drag" || !g.pathOffsetMember) return null;
+    const iframe = opts.iframeRef.current;
+    return iframe && previewFrameOpaque(iframe) ? g.pathOffsetMember : null;
+  };
+
+  const drawRawDragStep = (e: PointerEvent) => {
+    const g = opts.gestureRef.current;
+    if (!g) return false;
+    const member = sealedDragMember(g);
+    if (
+      member &&
+      !opts.groupGestureRef.current &&
+      !opts.waitingPressRef.current &&
+      movesGesture(g, e)
+    ) {
+      const { dx, dy } = snappedDragDelta(g, e, opts.snapGuidesRef);
+      applyManualOffsetDragDraft(member, dx, dy);
+    }
+    return true;
+  };
+
   // fallow-ignore-next-line complexity
   const moveActiveGesture = (e: React.PointerEvent<HTMLDivElement>) => {
     const g = opts.gestureRef.current;
@@ -175,60 +191,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     if (g.kind === "drag") {
-      const lock = lockDragToDominantAxis(dx, dy, e.shiftKey);
-      dx = lock.dx;
-      dy = lock.dy;
-      const sc = g.snapContext;
-      // Bypass edge-snapping for rotated elements — the snap targets and the
-      // snapped rect are axis-aligned, so snapping a rotated box's AABB shifts it
-      // unpredictably. Rotation ~0 keeps snapping exactly as before.
-      const dragRotated = Math.abs(g.actualRotation) >= ROTATED_SNAP_BYPASS_DEGREES;
-      if (!dragRotated && sc?.snapEnabled && sc.targets.length > 0) {
-        // Snap the element's VISIBLE (crop-hugged) edges, not the full bounds.
-        const movingRect = hugRectForElement(
-          {
-            left: g.originLeft,
-            top: g.originTop,
-            width: g.originWidth,
-            height: g.originHeight,
-            editScaleX: g.editScaleX,
-            editScaleY: g.editScaleY,
-          },
-          g.selection.element,
-        );
-        const allTargets = sc.compositionTarget
-          ? [...sc.targets, sc.compositionTarget]
-          : sc.targets;
-        const snap = resolveSnapAdjustment({
-          movingRect,
-          proposedDx: dx,
-          proposedDy: dy,
-          // Same reason as the group path: a snap on a drag that has not travelled
-          // yet moves the element while the pointer is still.
-          disabledForTravel: !snapEngagedForTravel(dx, dy),
-          targets: allTargets,
-          gridEdges: sc.gridEdges ?? undefined,
-          threshold: SNAP_THRESHOLD_PX,
-          disabled: e.altKey,
-          lockedAxis: lock.lockedAxis,
-        });
-        dx = snap.dx;
-        dy = snap.dy;
-        const movedRect = {
-          left: movingRect.left + dx,
-          top: movingRect.top + dy,
-          width: movingRect.width,
-          height: movingRect.height,
-        };
-        const spacingGuides = e.altKey
-          ? []
-          : resolveEquidistanceGuides({
-              movingRect: movedRect,
-              targets: allTargets,
-              threshold: SNAP_THRESHOLD_PX,
-            });
-        opts.snapGuidesRef.current = { guides: snap.guides, spacingGuides };
-      }
+      ({ dx, dy } = snappedDragDelta(g, e, opts.snapGuidesRef));
       g.lastSnappedDx = dx;
       g.lastSnappedDy = dy;
 
@@ -250,6 +213,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         box.style.top = `${nextBoxTop}px`;
       }
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
+      if (sealedDragMember(g)) armRawPointerSteps(opts.gestureRef, drawRawDragStep);
     } else {
       // Corner resize scales proportionally about the center, without edge snapping.
       const grab = g.resizePressFromCorner ?? { x: 0, y: 0 };

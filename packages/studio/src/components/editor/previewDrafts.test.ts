@@ -205,6 +205,20 @@ describe("gesture drafts on an opaque frame", () => {
     expect(draftRequests()).toHaveLength(2);
   });
 
+  // fails without the fix: a sealed drag draws each step from its raw update and again from pointermove.
+  it("posts a step drawn twice once", async () => {
+    const member = dragMember(await standIn(sealedPreviewFrame().iframe, "#card"));
+    vi.mocked(previewRequest).mockClear();
+    applyManualOffsetDragDraft(member, 10, 0);
+    await vi.waitFor(() => expect(shown(card())).toEqual([20, 0]));
+    applyManualOffsetDragDraft(member, 10, 0);
+    await settled();
+    expect(draftRequests()).toHaveLength(1);
+    applyManualOffsetDragDraft(member, 12, 0);
+    await vi.waitFor(() => expect(shown(card())).toEqual([24, 0]));
+    expect(draftRequests()).toHaveLength(2);
+  });
+
   // fails without the fix: the step's offset left alone with the old size, and the frame painted that half state.
   it("sends a resize step's offset and size in one message, so the frame never shows one without the other", async () => {
     const iframe = sealedPreviewFrame().iframe;
