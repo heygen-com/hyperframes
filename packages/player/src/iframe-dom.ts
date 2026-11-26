@@ -48,7 +48,6 @@ export function createCompositionIframe(): {
   const iframe = document.createElement("iframe");
   iframe.className = "hfp-iframe";
   iframe.sandbox.add("allow-scripts", "allow-same-origin");
-  iframe.allow = "autoplay; fullscreen";
   iframe.referrerPolicy = "same-origin";
   iframe.title = "HyperFrames Composition";
   iframe.setAttribute(PLAYER_FRAME_ATTR, "");

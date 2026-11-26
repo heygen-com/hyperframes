@@ -10,6 +10,7 @@ import {
 } from "@hyperframes/core";
 import {
   deferScriptsUntilFonts,
+  dropAuthoredCompositionFiles,
   RUNTIME_BOOTSTRAP_ATTR,
   stripEmbeddedRuntimeScripts,
 } from "@hyperframes/core/compiler";
@@ -135,6 +136,8 @@ function extractFullDocumentParts(
   bodyAttrs: string;
 } {
   const { document: doc } = parseHTML(rawHtml);
+  // Its <html> and <body> attributes are copied onto the page as text below, past the content-only drop.
+  dropAuthoredCompositionFiles(doc as unknown as Document);
 
   const rewriteTargets = [doc.head, doc.body].filter(Boolean);
   for (const target of rewriteTargets) {
@@ -328,11 +331,12 @@ export function buildSubCompositionHtml(
   const compFile = resolveWithinProject(projectDir, compPath);
   if (!compFile || !existsSync(compFile)) return null;
 
-  // rawOverride lets the preview route thread the hf-id-stamped content in
-  // directly, so the build uses ids minted from the raw file, which is never
-  // written by serving.
-  const rawComp = rawOverride ?? readFileSync(compFile, "utf-8");
-  if (!isCompositionSource(rawComp)) return null;
+  // rawOverride is the preview route's hf-id-stamped content, so the build uses ids minted from the
+  // raw file, which serving never writes. Stamping parses and rewrites the page, so the file's own
+  // text decides whether it is a composition.
+  const fileText = readFileSync(compFile, "utf-8");
+  if (!isCompositionSource(fileText)) return null;
+  const rawComp = rawOverride ?? fileText;
 
   let compHeadContent = "";
   let rewrittenContent: string;
@@ -375,6 +379,7 @@ export function buildSubCompositionHtml(
   );
   deferScriptsUntilFonts(scriptsDoc as unknown as Document);
   chargeMountsTheBrowserFetches(projectDir, scriptsDoc as unknown as Document);
+  dropAuthoredCompositionFiles(scriptsDoc as unknown as Document);
   rewrittenContent = scriptsDoc.body.innerHTML;
 
   // The comp's root carries data-composition-id but (unlike inlined sub-comps,

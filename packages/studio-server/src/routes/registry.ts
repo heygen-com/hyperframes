@@ -30,7 +30,7 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
       const result = await adapter.installRegistryBlock({ project, blockName: body.blockName });
       return c.json(result);
     } catch (err) {
-      if (isProjectRootMissing(err)) return projectDirMissing(c);
+      if (isProjectRootMissing(err) || folderGone(project.dir)) return projectDirMissing(c);
       const message = err instanceof Error ? err.message : "Install failed";
       return c.json({ error: message }, 500);
     }

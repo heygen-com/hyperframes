@@ -487,6 +487,12 @@ export async function findOpaqueTimelineElement(
 
 export const standInHandle = (element: Element) => standInHandles.get(element);
 
+export function currentLoadHandle(iframe: HTMLIFrameElement, standIn: Element): string | undefined {
+  const handle = standInHandles.get(standIn);
+  if (handle === undefined) return undefined;
+  return standIns.get(previewEditingClient(iframe))?.get(handle) === standIn ? handle : undefined;
+}
+
 export function ancestorIds(element: Element): string[] {
   const described = standInAncestors.get(element);
   if (described) return described.map((node) => node.id ?? "");

@@ -162,6 +162,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   });
   const invalidateGsapCacheRef = useRef<() => void>(() => {});
   const invalidateGsapCache = useCallback(() => invalidateGsapCacheRef.current(), []);
+  const canvasSelectionsRef = useRef<readonly DomEditSelection[]>([]);
   const timelineEditing = useTimelineEditing({
     projectId,
     activeCompPath,
@@ -172,6 +173,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     recordEdit: editHistory.recordEdit,
     reloadPreview,
     previewIframeRef,
+    canvasSelectionsRef,
     pendingTimelineEditPathRef,
     uploadProjectFiles: fileManager.uploadProjectFiles,
     isRecordingRef: isGestureRecordingRef,
@@ -319,6 +321,10 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   });
   const domEditSession = useStableHandlers(domEditSessionResult, projectId);
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
+  canvasSelectionsRef.current = [
+    ...(domEditSession.domEditSelection ? [domEditSession.domEditSelection] : []),
+    ...domEditSession.domEditGroupSelections,
+  ];
   const { handleDomEditElementDelete: del } = domEditSession;
   clearDomSelectionRef.current = domEditSession.clearDomSelection;
   handleDomEditElementDeleteRef.current = trackedStudioEdit(del);

@@ -206,12 +206,12 @@ function closestWithAny(el: Element, names: readonly string[]): Element | null {
 }
 
 export function readElementSource(el: Element): EditingElementSource {
-  const [fileAttr, srcAttr] = SOURCE_HOST_ATTRS;
+  const [fileAttr] = SOURCE_HOST_ATTRS;
   const [idAttr, originalIdAttr] = COMPOSITION_ROOT_ATTRS;
-  const host = closestWithAny(el, SOURCE_HOST_ATTRS);
+  const host = closestWithAny(el, [fileAttr]);
   const root = closestWithAny(el, [idAttr]);
   return {
-    file: host?.getAttribute(fileAttr) ?? host?.getAttribute(srcAttr) ?? null,
+    file: host?.getAttribute(fileAttr) || null,
     compositionId: root?.getAttribute(idAttr) ?? null,
     originalCompositionId: root?.getAttribute(originalIdAttr) ?? null,
   };

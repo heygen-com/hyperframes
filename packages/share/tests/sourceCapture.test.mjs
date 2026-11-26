@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { utimesSync, writeFileSync } from "node:fs";
 import {
   lstat,
   mkdir,
@@ -202,6 +203,57 @@ test("a file over 4 MiB is hashed as a bounded stream, to the same digest", asyn
   });
 });
 
+test("capture rejects a source file edited between dependency discovery and manifest hashing", async (t) => {
+  const root = await project({
+    "index.html": '<img src=".art/one.png">',
+    ".art/one.png": "first asset",
+    ".art/two.png": "second asset",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const time = new Date("2024-01-01T00:00:00Z");
+  await utimes(join(root, "index.html"), time, time);
+  // The memo lookup is the start of manifest hashing. Preserve size, inode and mtime
+  // so only the comparison against the bytes used for discovery can catch the edit.
+  const memo = hashMemo();
+  t.mock.method(memo, "get", (file) => {
+    if (file.path === "index.html") {
+      writeFileSync(file.full, '<img src=".art/two.png">');
+      utimesSync(file.full, time, time);
+    }
+    return null;
+  });
+  assert.deepEqual(await captureProject(root, { memo }), {
+    at: "problems",
+    problems: [{ path: "index.html", problem: "changed" }],
+  });
+  const retry = captured(await captureProject(root));
+  assert.deepEqual(
+    retry.manifest.document.files.filter((f) => f.include_hidden).map((f) => f.path),
+    [".art/two.png"],
+  );
+});
+
+test("a hidden asset summary rejects an incomplete dependency scan", async (t) => {
+  const { listReferencedHiddenSourceAssets } =
+    await import("@hyperframes/share/projectSnapshot.mjs");
+  const root = await project({
+    "index.html": '<img src=".art/poster.png"><script src="scene.js"></script>',
+    "scene.js": "const =",
+    ".art/poster.png": "poster",
+    ".art/scene.png": "scene",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await assert.rejects(
+    listReferencedHiddenSourceAssets(root),
+    /Cannot verify project asset references/,
+  );
+  await writeFile(join(root, "scene.js"), 'fetch(".art/scene.png")');
+  assert.deepEqual(await listReferencedHiddenSourceAssets(root), [
+    ".art/poster.png",
+    ".art/scene.png",
+  ]);
+});
+
 test("a kept hash is reused only while the file's size and time are unchanged", async () => {
   const root = await project({ "index.html": "one" });
   const memo = hashMemo();
@@ -356,7 +408,7 @@ test("scratch files and wildcard exclusions do not change the snapshot", async (
   assert.notEqual(await projectFingerprint(root), before);
 });
 
-test("editable source omits credential stores while preserving authored assets", async (t) => {
+test("editable source omits credential stores and unrecognized hidden files while completed media travels", async (t) => {
   const root = await project({
     "index.html": "page",
     ".config/gh/hosts.yml": "fixture",
@@ -365,22 +417,14 @@ test("editable source omits credential stores while preserving authored assets",
     ".gnupg/keys/data": "fixture",
     ".kube/config": "fixture",
     ".azure/settings": "fixture",
-    ".fonts/Inter.woff2": "font",
-    ".Gitignore": "output/",
-    ".GitHub/workflows/ci.yml": "workflow",
+    ".config/themes/colors.json": "{}",
     "assets/deck.key": "slides",
     ".media/video/clip.mp4": "clip",
   });
   t.after(() => rm(root, { recursive: true, force: true }));
   assert.deepEqual(
     captured(await captureProject(root)).manifest.document.files.map(({ path }) => path),
-    [
-      ".GitHub/workflows/ci.yml",
-      ".Gitignore",
-      ".fonts/Inter.woff2",
-      ".media/video/clip.mp4",
-      "index.html",
-    ],
+    [".media/video/clip.mp4", "index.html"],
   );
   await symlink(".config/gh/hosts.yml", join(root, "notes.txt"));
   assert.deepEqual(await captureProject(root), {
@@ -401,4 +445,129 @@ test("a host can use the package snapshot entry point for private names and stri
   const ignored = await readSourceIgnore(root);
   assert.equal(ignored("scratch/draft.txt"), true);
   assert.equal(ignored("assets/voice.wav"), false);
+});
+
+test("hosts can reuse gitignore rules for inventory and referenced assets", async (t) => {
+  const { listReferencedHiddenSourceAssets, readSourceIgnore } =
+    await import("@hyperframes/share/projectSnapshot.mjs");
+  const paths = [
+    ".brand/private/ambience.mp3",
+    "scene/.brand/private/ambience.mp3",
+    "scene/.brand/thumbs/skip.png",
+    "scene/.brand/thumbs/keep.png",
+    ".ssh/keep.png",
+    ".brand/unreferenced.png",
+  ];
+  const root = await project({
+    "index.html": paths
+      .slice(0, -1)
+      .map((path) => `<img src="${path}">`)
+      .join(""),
+    ".hyperframesignore":
+      "/.brand/private/\n**/thumbs/*.png\n!**/thumbs/keep.png\n!.ssh/keep.png\n!*.swp\ndraft.txt\n",
+    ...Object.fromEntries(paths.map((path) => [path, path])),
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const ignored = await readSourceIgnore(root, { syntax: "gitignore" });
+  assert.equal(ignored(".brand/private", true), true);
+  assert.equal(ignored(".brand/private", false), false);
+  assert.equal(ignored("scratch/edit.swp"), true);
+  assert.equal(ignored("draft.txt"), true);
+  assert.equal(ignored("other/draft.txt"), true);
+  assert.equal(ignored("scene/.brand/thumbs/skip.png"), true);
+  assert.equal(ignored("scene/.brand/thumbs/keep.png"), false);
+  await assert.rejects(captureProject(root), /project-relative/);
+  const observed = new Map();
+  assert.deepEqual(await listReferencedHiddenSourceAssets(root, observed, { ignored }), [
+    "scene/.brand/private/ambience.mp3",
+    "scene/.brand/thumbs/keep.png",
+  ]);
+  assert.ok(observed.has("index.html"));
+});
+
+test("gitignore rules use the verified ignore file and must leave the root entrypoint included", async (t) => {
+  const { readSourceIgnore } = await import("@hyperframes/share/projectSnapshot.mjs");
+  const root = await project({ ".hyperframesignore": "*.html\n!/index.html\n" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const read = () => readSourceIgnore(root, { syntax: "gitignore" });
+  const ignored = await read();
+  assert.equal(ignored("index.html"), false);
+  assert.equal(ignored("views/index.html"), true);
+  const file = join(root, ".hyperframesignore");
+  await writeFile(file, "/index.html\n");
+  await assert.rejects(read(), /must include index.html/);
+  await writeFile(file, "a".repeat(65536));
+  await assert.rejects(read(), /regular file/);
+  await rm(file);
+  await symlink("missing", file);
+  await assert.rejects(read(), /regular file/);
+});
+
+test("nested asset resolution respects ignored and symlinked siblings before falling back to the root", async (t) => {
+  const root = await project({
+    "index.html": '<div data-composition-src="scenes/intro.html"></div>',
+    "scenes/intro.html":
+      '<img src="art/.icons/a.png"><img src="brand/.icons/b.png"><img src="spare/.icons/c.png">',
+    ".hyperframesignore": "scenes/art/\n",
+    "scenes/art/.icons/a.png": "ignored sibling",
+    "art/.icons/a.png": "root alternate",
+    "brand/.icons/b.png": "also shadowed",
+    "spare/.icons/c.png": "actual root fallback",
+    "scenes/brand/.icons/keep.txt": "not a source",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await symlink(join(root, "index.html"), join(root, "scenes/brand/.icons/b.png"));
+  const capture = captured(await captureProject(root));
+  assert.deepEqual(
+    capture.manifest.document.files.filter((f) => f.include_hidden).map((f) => f.path),
+    ["spare/.icons/c.png"],
+  );
+});
+
+test("aliases of portable hidden metadata stay local without refusing the project", async (t) => {
+  const root = await project({
+    "index.html": "page",
+    ".Gitignore": "ignore",
+    ".GitHub/workflows/ci.yml": "workflow",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.deepEqual(
+    captured(await captureProject(root)).manifest.document.files.map((file) => file.path),
+    ["index.html"],
+  );
+});
+
+test("font reads follow current Sync references, exclusions and file identities", async (t) => {
+  const { referencedFontResponse } = await import("@hyperframes/share/referencedFont.mjs");
+  const css = '@font-face{font-family:Face;src:url("../.brand/.Face.woff2")}';
+  const root = await project({
+    "index.html": '<link rel="stylesheet" href="styles/a.css">',
+    "styles/a.css": css,
+    ".brand/.Face.woff2": "selected font",
+    ".brand/.Unused.woff2": "unused",
+    ".env.woff2": "private fixture",
+    ".brand/.Other.js": "script fixture",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const read = (path) => referencedFontResponse(root, path, "GET");
+  const font = await read(".brand/.Face.woff2");
+  assert.equal(font.headers.has("content-length"), false);
+  assert.equal(await font.text(), "selected font");
+  const head = await referencedFontResponse(root, ".brand/.Face.woff2", "HEAD");
+  assert.equal(head?.headers.get("content-length"), String("selected font".length));
+  assert.equal(head?.body, null);
+  await writeFile(join(root, "styles/a.css"), "");
+  assert.equal(await read(".brand/.Face.woff2"), null);
+  await writeFile(
+    join(root, "styles/a.css"),
+    css + 'a{src:url("../.env.woff2"),url("../.brand/.Other.js")}',
+  );
+  for (const path of [".brand/.Unused.woff2", ".env.woff2", ".brand/.Other.js"])
+    assert.equal(await read(path), null);
+  await writeFile(join(root, ".hyperframesignore"), "/.brand/");
+  assert.equal(await read(".brand/.Face.woff2"), null);
+  await rm(join(root, ".hyperframesignore"));
+  await rm(join(root, ".brand/.Face.woff2"));
+  await symlink(join(root, ".brand/.Unused.woff2"), join(root, ".brand/.Face.woff2"));
+  assert.equal(await read(".brand/.Face.woff2"), null);
 });

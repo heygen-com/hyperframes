@@ -4,6 +4,12 @@ import type { DomEditSelection } from "./domEditing";
 import type { GestureState } from "./domEditOverlayGestures";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 
+const liveGrow = vi.hoisted(() => ({ a: 0.19, b: 0, c: 0, d: 0.19 }));
+vi.mock("./previewGestureStartRead", async (actual) => ({
+  ...(await actual<typeof import("./previewGestureStartRead")>()),
+  measureLiveGrow: vi.fn(() => liveGrow),
+}));
+
 afterEach(() => {
   delete (window as { gsap?: unknown }).gsap;
   delete (window as { __timelines?: unknown }).__timelines;
@@ -240,5 +246,26 @@ describe("a rotate press on an element a GSAP tween turns", () => {
     expect(opts.gestureRef.current?.plainRotation).toBeNull();
     expect(opts.gestureRef.current?.actualRotation).toBe(40);
     expect(getProperty).toHaveBeenCalledWith(element, "rotation");
+  });
+});
+
+describe("a corner resize on a frame Studio scripts", () => {
+  it("pins its centre by the grow the sealed frame would report, so both modes save the same offset", async () => {
+    const { measureLiveGrow } = await import("./previewGestureStartRead");
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const element = iframe.contentDocument!.createElement("div");
+    iframe.contentDocument!.body.append(element);
+    const overlay = document.createElement("div");
+    const opts = {
+      ...pressOptions(element),
+      overlayRef: { current: overlay },
+      iframeRef: { current: iframe },
+    };
+    expect(
+      createDomEditOverlayGestureHandlers(opts as never).startGesture("resize", PRESS as never),
+    ).toBe(true);
+    expect(measureLiveGrow).toHaveBeenCalledWith(overlay, iframe, element);
+    expect(opts.gestureRef.current?.resizeGrow).toEqual(liveGrow);
   });
 });

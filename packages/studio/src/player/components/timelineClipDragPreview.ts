@@ -348,11 +348,12 @@ export function computeResizePreview(
   const originScrollLeft = resize.originScrollLeft ?? scroll?.scrollLeft ?? 0;
   const effectiveClientX = clientX + ((scroll?.scrollLeft ?? originScrollLeft) - originScrollLeft);
 
+  const limitingSourceDuration = resize.element.loop ? undefined : resize.element.sourceDuration;
   const sourceRemaining =
-    resize.element.sourceDuration != null
+    limitingSourceDuration != null
       ? Math.max(
           0,
-          (resize.element.sourceDuration - (resize.element.playbackStart ?? 0)) /
+          (limitingSourceDuration - (resize.element.playbackStart ?? 0)) /
             Math.max(resize.element.playbackRate ?? 1, 0.1),
         )
       : Number.POSITIVE_INFINITY;
@@ -369,7 +370,9 @@ export function computeResizePreview(
     ? heldPartnerVideoBounds(resize.element, ctx.elements, ctx.gestureKeys ?? new Set())
     : null;
   const minStart = Math.max(clampToHostStart(resize.element, 0), video?.start ?? 0);
-  const maxEnd = Math.min(resize.element.start + sourceRemaining, video?.end ?? Infinity);
+  const growthLimit = Math.min(resize.element.start + sourceRemaining, video?.end ?? Infinity);
+  const currentEnd = resize.element.start + resize.element.duration;
+  const maxEnd = Math.max(currentEnd, growthLimit);
   let nextResize = resolveTimelineResize(
     {
       start: resize.element.start,

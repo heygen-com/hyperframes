@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs"
 import { dirname, extname, join, resolve } from "node:path";
 import { text } from "node:stream/consumers";
 import { parseArgs } from "node:util";
-import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
+import { assertLiteralMediaPath, selfContainedInput } from "./lib/literal-media-input.mjs";
 import {
   ERROR_DIFFUSION_ALGORITHMS,
   applyErrorDiffusionRgba,
@@ -124,7 +124,10 @@ async function run() {
 function probe(filePath) {
   const raw = execFileSync(
     "ffprobe",
-    ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", "--", filePath],
+    [
+      ...["-v", "error", ...selfContainedInput(filePath), "-print_format", "json"],
+      ...["-show_streams", "-show_format", "--", filePath],
+    ],
     { encoding: "utf8", timeout: 10_000 },
   );
   const parsed = JSON.parse(raw);
@@ -149,6 +152,7 @@ function processImage(inputPath, outPath, metadata, options) {
       "-loglevel",
       "error",
       "-nostdin",
+      ...selfContainedInput(inputPath),
       "-i",
       inputPath,
       "-frames:v",
@@ -206,6 +210,7 @@ async function processVideo(inputPath, outPath, metadata, options) {
     "-loglevel",
     "error",
     "-nostdin",
+    ...selfContainedInput(inputPath),
     "-i",
     inputPath,
     "-map",
@@ -231,6 +236,7 @@ async function processVideo(inputPath, outPath, metadata, options) {
     metadata.fps,
     "-i",
     "-",
+    ...selfContainedInput(inputPath),
     "-i",
     inputPath,
     "-map",

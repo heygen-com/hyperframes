@@ -43,7 +43,7 @@ import { useLayerRevealOverride } from "./useLayerRevealOverride";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import { describePreviewElements, editPreviewElement } from "../../player/lib/previewElements";
 import {
-  collectPreviewLayerItems,
+  collectPreviewLayerRows,
   layerDataAttribute,
   previewStackingFamily,
 } from "./previewLayers";
@@ -164,7 +164,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       const read = { again: false };
       opaqueRead.current = read;
       const scope = { activeCompositionPath: activeCompPath, activeGroupElement };
-      void collectPreviewLayerItems(iframe, scope, LAYERS_PANEL_MAX_ROWS).then((reply) => {
+      void collectPreviewLayerRows(iframe, scope, LAYERS_PANEL_MAX_ROWS).then((reply) => {
         if (opaqueRead.current !== read) return;
         opaqueRead.current = null;
         // A reload took the drilled-into group; leave it as same-origin does below.

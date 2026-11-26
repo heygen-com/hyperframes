@@ -1351,6 +1351,24 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.format).toBe("png-sequence");
   });
 
+  it("renders --start/--end as a normal render job, at any format and frame rate", async () => {
+    await renderLocal(PROJECT_DIR, "/tmp/part.webm", {
+      fps: { num: 30000, den: 1001 },
+      quality: "standard",
+      format: "webm",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      range: { startSeconds: 2.5, endSeconds: 4 },
+    });
+
+    expect(producerState.createdJobs[0]).toMatchObject({
+      format: "webm",
+      range: { startSeconds: 2.5, endSeconds: 4 },
+    });
+  });
+
   it("forwards format: hls and hlsSegmentSeconds through to createRenderJob", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/stream", {
       fps: { num: 30, den: 1 },

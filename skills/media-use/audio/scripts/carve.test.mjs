@@ -2,9 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  chmodSync,
+  closeSync,
   existsSync,
+  fstatSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -20,6 +27,8 @@ import {
   groupSourceRefusal,
   mediaSource,
   parseArgs,
+  readComposition,
+  saveComposition,
 } from "./carve.mjs";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -430,4 +439,270 @@ test("a composition whose media are files in its folder still carves", () =>
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /wrote index.html/);
     assert.match(readFileSync(join(dir, "index.html"), "utf8"), /data-fx-chain=/);
+  }));
+
+// fails without the fix: main() read the composition with readFileSync, which follows a link at the name.
+test("a link at the composition name stops the carve before anything is read or written", () =>
+  inTempDir((dir) => {
+    const project = join(dir, "project");
+    mkdirSync(project);
+    const outside = join(dir, "outside.html");
+    const before = '<audio id="music-bed" src="bed.wav" data-start="0"></audio>\n';
+    writeFileSync(outside, before);
+    symlinkSync(outside, join(project, "index.html"));
+    assert.throws(() => readComposition(join(project, "index.html")), /is a link/);
+    const run = runCarve(project);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /index\.html is a link or is reached through one/);
+    assert.equal(readFileSync(outside, "utf-8"), before);
+    assert.equal(lstatSync(join(project, "index.html")).isSymbolicLink(), true);
+  }));
+
+// fails without the fix: only the last name was looked at, so a linked folder led the read and the save outside.
+test("a linked folder on the way to the composition stops the carve", () =>
+  inTempDir((dir) => {
+    const project = join(dir, "project");
+    const outside = join(dir, "outside");
+    mkdirSync(project);
+    mkdirSync(outside);
+    const before = '<audio id="music-bed" src="bed.wav" data-start="0"></audio>\n';
+    writeFileSync(join(outside, "index.html"), before);
+    symlinkSync(outside, join(project, "scenes"), "junction");
+    const comp = join(project, "scenes", "index.html");
+    assert.throws(() => readComposition(comp, project), /is reached through one/);
+    const run = spawnSync(process.execPath, [join(SCRIPTS_DIR, "carve.mjs"), "--comp", comp], {
+      cwd: project,
+      encoding: "utf8",
+    });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /is a link or is reached through one/);
+    assert.equal(readFileSync(join(outside, "index.html"), "utf-8"), before);
+  }));
+
+// fails without the fix: a folder whose name begins with two dots read as outside the project, so its link was followed.
+test("a linked folder whose name begins with two dots stops the carve like any other", () =>
+  inTempDir((dir) => {
+    const project = join(dir, "project");
+    const outside = join(dir, "outside");
+    mkdirSync(project);
+    mkdirSync(outside);
+    const before = '<audio id="music-bed" src="bed.wav" data-start="0"></audio>\n';
+    writeFileSync(join(outside, "index.html"), before);
+    for (const name of ["..drafts", "...", "..a..b"]) {
+      symlinkSync(outside, join(project, name), "junction");
+      const comp = join(project, name, "index.html");
+      assert.throws(() => readComposition(comp, project), /is reached through one/, name);
+    }
+    const run = spawnSync(
+      process.execPath,
+      [join(SCRIPTS_DIR, "carve.mjs"), "--comp", join("..drafts", "index.html")],
+      { cwd: project, encoding: "utf8" },
+    );
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /is a link or is reached through one/);
+    assert.equal(readFileSync(join(outside, "index.html"), "utf-8"), before);
+    // a plain folder of such a name is a project folder like any other
+    mkdirSync(join(project, "..plain"));
+    writeFileSync(join(project, "..plain", "index.html"), "<audio></audio>");
+    assert.equal(
+      readComposition(join(project, "..plain", "index.html"), project),
+      "<audio></audio>",
+    );
+  }));
+
+test("a composition that is a plain file reads, from its own folder or from outside the working folder", () =>
+  inTempDir((dir) => {
+    const comp = join(dir, "project", "index.html");
+    mkdirSync(join(dir, "project"));
+    writeFileSync(comp, "<audio></audio>");
+    assert.equal(readComposition(comp, join(dir, "project")), "<audio></audio>");
+    assert.equal(readComposition(comp, join(dir, "elsewhere")), "<audio></audio>");
+    assert.throws(() => readComposition(join(dir, "project", "none.html"), dir), /does not exist/);
+    assert.throws(() => readComposition(join(dir, "project"), dir), /not a regular file/);
+  }));
+
+// One handle for both, so the mode and the text are the same file's.
+function modeAndText(path) {
+  const file = openSync(path, "r");
+  try {
+    return [fstatSync(file).mode & 0o777, readFileSync(file, "utf-8")];
+  } finally {
+    closeSync(file);
+  }
+}
+
+// Guards the save itself: a plain rename would put a default-mode file in place and overwrite a read-only one.
+test(
+  "saving keeps the composition's permissions and refuses one that may not be written",
+  { skip: process.platform === "win32" && "POSIX permission bits" },
+  () =>
+    inTempDir((dir) => {
+      const comp = join(dir, "index.html");
+      writeFileSync(comp, "old");
+      chmodSync(comp, 0o600);
+      saveComposition(comp, "new");
+      assert.deepEqual(modeAndText(comp), [0o600, "new"]);
+      chmodSync(comp, 0o444);
+      if (process.getuid?.() !== 0) {
+        assert.throws(() => saveComposition(comp, "newer"), { code: "EACCES" });
+        assert.deepEqual(modeAndText(comp), [0o444, "new"]);
+      }
+      assert.deepEqual(readdirSync(dir), ["index.html"]);
+    }),
+);
+
+// fails without the fix: the new file held the composition under default permissions until a later chmod.
+test(
+  "while the new file holds the composition and is not yet in place, only its owner can read it",
+  { skip: process.platform === "win32" && "POSIX permission bits" },
+  () =>
+    inTempDir((dir) => {
+      const comp = join(dir, "index.html");
+      for (const mode of [0o644, 0o600]) {
+        writeFileSync(comp, "old");
+        chmodSync(comp, mode);
+        const seen = [];
+        saveComposition(comp, "new", (temp) => seen.push(modeAndText(temp), modeAndText(comp)));
+        assert.deepEqual(seen, [
+          [0o600, "new"],
+          [mode, "old"],
+        ]);
+        assert.deepEqual(modeAndText(comp), [mode, "new"]);
+      }
+      rmSync(comp);
+      saveComposition(comp, "first");
+      assert.deepEqual(modeAndText(comp), [0o666 & ~process.umask(), "first"]);
+      assert.throws(
+        () =>
+          saveComposition(comp, "never", () => {
+            throw new Error("stopped before the rename");
+          }),
+        /stopped before the rename/,
+      );
+      assert.equal(readFileSync(comp, "utf-8"), "first");
+      assert.deepEqual(readdirSync(dir), ["index.html"]);
+    }),
+);
+
+for (const [kind, plant] of [
+  ["symbolic link", (target, at) => symlinkSync(target, at)],
+  ["dangling symbolic link", (target, at) => symlinkSync(`${target}.missing`, at)],
+  ["hard link", (target, at) => linkSync(target, at)],
+]) {
+  // fails without the fix: main() saved with writeFileSync, which writes into the target of a link at the name.
+  test(`saving the composition replaces a ${kind} at its name, never the target`, () =>
+    inTempDir((dir) => {
+      const outside = join(dir, "outside.html");
+      writeFileSync(outside, "outside");
+      const comp = join(dir, "index.html");
+      plant(outside, comp);
+      saveComposition(comp, "<audio></audio>");
+      assert.equal(readFileSync(outside, "utf-8"), "outside");
+      assert.equal(readFileSync(comp, "utf-8"), "<audio></audio>");
+      const entry = lstatSync(comp);
+      assert.equal(entry.isFile(), true);
+      assert.equal(entry.nlink, 1);
+      assert.deepEqual(
+        readdirSync(dir)
+          .filter((name) => name !== "outside.html")
+          .sort(),
+        ["index.html"],
+      );
+    }));
+}
+
+// ESC, BEL, CR and LF from the composition must print only as visible escapes.
+const CONTROLS = "\x1b]0;owned\x07\x1b[2J\r\nforged";
+const hasControl = (text) =>
+  [...text].some((ch) => {
+    const code = ch.charCodeAt(0);
+    return (code < 0x20 && ch !== "\n" && ch !== "\t") || (code >= 0x7f && code <= 0x9f);
+  });
+const assertShownSafely = (text) => {
+  assert.equal(hasControl(text), false, JSON.stringify(text));
+  assert.equal(/^forged/m.test(text), false, JSON.stringify(text));
+  assert.match(text, /\\x1b\]0;owned\\x07\\x1b\[2J\\x0d\\x0aforged/);
+};
+
+test(
+  "ids and group names with control characters print as escapes when the carve succeeds",
+  { skip: process.platform === "win32" && "control characters in file names" },
+  () =>
+    inTempDir((dir) => {
+      assert.equal(tone(join(dir, "bed.wav"), 3, 220).status, 0);
+      assert.equal(tone(join(dir, "voice.wav"), 3, 1000).status, 0);
+      const group = `grp${CONTROLS}`;
+      writeFileSync(
+        join(dir, "index.html"),
+        `<audio id="music-bed${CONTROLS}" data-audio-group="${group}" src="bed.wav" data-start="0"></audio>\n` +
+          `<audio id="narration${CONTROLS}" data-audio-group="${group}" src="voice.wav" data-start="0"></audio>\n`,
+      );
+      const run = runCarve(dir);
+      assert.equal(run.status, 0, run.stderr);
+      assertShownSafely(run.stdout);
+      assertShownSafely(run.stderr);
+      assert.match(run.stderr, /^note {3}bed /m);
+      assert.match(readFileSync(join(dir, "index.html"), "utf8"), /data-fx-carve=/);
+    }),
+);
+
+test(
+  "ids and media names with control characters print as escapes when the carve refuses",
+  { skip: process.platform === "win32" && "control characters in file names" },
+  () =>
+    inTempDir((dir) => {
+      const refusals = [
+        [
+          `<audio id="music-a${CONTROLS}" src="a.wav"></audio>\n<audio id="music-b${CONTROLS}" src="b.wav"></audio>\n`,
+          /several tracks look like music/,
+        ],
+        [`<audio id="music-bed${CONTROLS}" src="bed.wav"></audio>\n`, /no voice to make room for/],
+      ];
+      for (const [html, reason] of refusals) {
+        writeFileSync(join(dir, "index.html"), html);
+        const run = runCarve(dir);
+        assert.equal(run.status, 1, run.stderr);
+        assert.match(run.stderr, reason);
+        assertShownSafely(run.stderr);
+      }
+
+      const named = spawnSync(
+        process.execPath,
+        [join(SCRIPTS_DIR, "carve.mjs"), "--comp", "index.html", "--bed", `gone${CONTROLS}`],
+        { cwd: dir, encoding: "utf8" },
+      );
+      assert.equal(named.status, 1);
+      assertShownSafely(named.stderr);
+
+      assert.equal(tone(join(dir, "bed.wav"), 3, 220).status, 0);
+      const media = `voice${CONTROLS}.wav`;
+      writeFileSync(join(dir, media), "not media");
+      writeComposition(dir, media);
+      const decode = runCarve(dir);
+      assert.equal(decode.status, 1);
+      assert.match(decode.stderr, /could not decode/);
+      assertShownSafely(decode.stderr);
+    }),
+);
+
+test("a malformed JSON attribute on the bed stops the carve through its own message, writing nothing", () =>
+  inTempDir((dir) => {
+    assert.equal(tone(join(dir, "bed.wav"), 3, 220).status, 0);
+    assert.equal(tone(join(dir, "voice.wav"), 3, 1000).status, 0);
+    for (const [attr, reason] of [
+      ['data-automation="{not json\x1b[2J"', /data-automation is not valid JSON/],
+      ['data-automation="{&quot;lanes&quot;:7}"', /data-automation has no list of lanes/],
+      ['data-fx-chain="[oops\x07"', /data-fx-chain is not a valid effect chain/],
+    ]) {
+      const html =
+        `<audio id="music-bed" ${attr} src="bed.wav" data-start="0"></audio>\n` +
+        `<audio id="narration" src="voice.wav" data-start="0"></audio>\n`;
+      writeFileSync(join(dir, "index.html"), html);
+      const run = runCarve(dir);
+      assert.equal(run.status, 1, run.stderr);
+      assert.match(run.stderr, reason);
+      assert.doesNotMatch(run.stderr, /SyntaxError|\n\s+at /);
+      assert.equal(hasControl(run.stderr), false);
+      assert.equal(readFileSync(join(dir, "index.html"), "utf8"), html);
+    }
   }));

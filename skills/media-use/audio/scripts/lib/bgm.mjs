@@ -13,7 +13,7 @@
 
 import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, closeSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { downloadTo, noteProjectProviderKey, searchSounds } from "./heygen.mjs";
@@ -105,6 +105,13 @@ export function inferBgmPrompt({ blob = "", archetype = "", arc = "", userPrompt
   return `${base}, BPM ${bpm}, MAJOR`;
 }
 
+/** The file at a track name when a job starts, or null. The job leaves it there until its own track is
+ * complete, so wait-bgm takes the track as finished only once the file is no longer this one. */
+export function trackAtStart(abs) {
+  const file = lstatSync(abs, { throwIfNoEntry: false });
+  return file ? { ino: file.ino, size: file.size, mtime_ms: file.mtimeMs } : null;
+}
+
 // ── generation (Lyria → MusicGen, detached) ──────────────────────────────────
 // Returns a bgmMeta the caller folds into audio_meta:
 //   { path, mode, volume, provider, pid, log, target_duration_s, seed_duration_s,
@@ -123,7 +130,13 @@ export function generateBgmDetached({
   mkdirSync(join(hyperframesDir, "assets", "bgm"), { recursive: true });
   const log = join(hyperframesDir, "assets", "bgm", `bgm-${Date.now()}.log`);
   const targetS = Math.max(1, durationS);
-  const baseMeta = { path: rel, mode: null, volume: bgmDefaultVolume(hasVoice), pending: true };
+  const baseMeta = {
+    path: rel,
+    mode: null,
+    volume: bgmDefaultVolume(hasVoice),
+    pending: true,
+    replaces: trackAtStart(abs),
+  };
 
   const lyriaConfigured = !!lyriaKey() && !!lyriaRecipe && existsSync(lyriaRecipe);
 
@@ -148,7 +161,6 @@ export function generateBgmDetached({
       "--prompt",
       prompt,
     ]);
-    rmSync(abs, { force: true }); // wait-bgm takes any file here as the finished track
     const proc = spawn(cmd, args, { detached: true, stdio: ["ignore", fd, fd] });
     proc.unref();
     closeSync(fd);
@@ -167,7 +179,6 @@ export function generateBgmDetached({
     const loops = targetS > seedS ? Math.ceil(targetS / seedS) : 1;
     const script = musicgenScript({ prompt, abs, targetS, seedS });
     const { cmd, args } = pythonInvocation(["-c", script]);
-    rmSync(abs, { force: true });
     // transformers reads "facebook/musicgen-small" as a folder when one exists in the working
     // directory, so the model is never looked up in the project.
     const proc = spawn(cmd, args, { cwd: homedir(), detached: true, stdio: ["ignore", fd, fd] });
@@ -194,6 +205,52 @@ export function generateBgmDetached({
   };
 }
 
+// Python that puts a finished track at its name: written under a temp name beside it, then renamed
+// over, so the name never holds a half-written track and whatever sat at the name is replaced.
+// A track already there keeps its permissions, one that may not be written is refused, and until it
+// has its permissions the new file is readable by its owner only. Kept in step with write_wav in
+// lyria-recipe.py; the temp name is core's atomicTempPath shape, which Studio's project history skips.
+export const SAVE_TRACK_PY = `
+import errno, os, secrets, stat, time
+
+def mode_of_writable_file(out_path):
+    try:
+        old = os.lstat(out_path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(old.st_mode):
+        return None
+    if not os.access(out_path, os.W_OK):
+        raise PermissionError(errno.EACCES, "Permission denied", str(out_path))
+    return stat.S_IMODE(old.st_mode)
+
+def save_track(out_path, write):
+    kept = mode_of_writable_file(out_path)
+    temp = f"{out_path}.hf{secrets.token_hex(3)}.tmp"
+    umask = os.umask(0o077)
+    try:
+        f = open(temp, "xb")
+    finally:
+        os.umask(umask)
+    try:
+        with f:
+            write(f)
+            f.flush()
+            mode = 0o666 & ~umask if kept is None else kept
+            if hasattr(os, "fchmod"): os.fchmod(f.fileno(), mode)
+            else: os.chmod(temp, mode)
+        for wait_ms in (10, 20, 40, 80, 160, 320, 640, None):
+            try:
+                os.replace(temp, out_path); break
+            except PermissionError:
+                if os.name != "nt" or wait_ms is None: raise
+                time.sleep(wait_ms / 1000)
+    except BaseException:
+        try: os.unlink(temp)
+        except OSError: pass
+        raise
+`;
+
 // Inline MusicGen: generate ONE seed clip (≤30s to stay under the decoder's
 // positional limit), then trim it down or crossfade-loop it up to the target.
 function musicgenScript({ prompt, abs, targetS, seedS }) {
@@ -203,7 +260,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 from transformers import MusicgenForConditionalGeneration, AutoProcessor
-
+${SAVE_TRACK_PY}
 prompt = ${JSON.stringify(prompt)}
 out_path = ${JSON.stringify(abs)}
 target_s = float(${targetS.toFixed(3)})
@@ -256,7 +313,7 @@ try:
     final = apply_fade(final, sr)
     peak = float(np.max(np.abs(final)))
     if peak > 1.0: final = final / peak
-    sf.write(out_path, final, sr)
+    save_track(out_path, lambda f: sf.write(f, final, sr, format="WAV"))
     print(f"[musicgen] wrote {out_path} samples={final.shape[0]} sr={sr}", flush=True)
 except Exception:
     traceback.print_exc(); sys.exit(1)

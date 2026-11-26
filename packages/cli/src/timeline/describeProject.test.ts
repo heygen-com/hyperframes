@@ -15,7 +15,7 @@ import { MEDIA_DURATION_FIXTURES } from "@hyperframes/parsers/media-duration-fix
 import { fileURLToPath } from "node:url";
 import { format } from "node:util";
 import { runInNewContext } from "node:vm";
-import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
+import { beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
 import {
   createProbeGate,
@@ -25,6 +25,19 @@ import {
   type TimelineRow,
 } from "./describeProject.js";
 import { formatTimeline } from "./formatTimeline.js";
+
+// A process start can take seconds on a busy Windows runner, so the jq checks count theirs.
+const jqStarts = vi.hoisted(() => ({ n: 0 }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...real,
+    execFileSync: ((file: string, ...rest: unknown[]) => {
+      if (file === "jq") jqStarts.n++;
+      return (real.execFileSync as (...a: unknown[]) => unknown)(file, ...rest);
+    }) as typeof real.execFileSync,
+  };
+});
 
 const REAL_AUDIO = fileURLToPath(
   new URL("../../../../skills/media-use/audio/assets/sfx/pop.mp3", import.meta.url),
@@ -908,10 +921,9 @@ const hasJq = (() => {
 const argvOf = (line: string) =>
   [...line.slice(0, -HERE_TL.length).matchAll(/'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2]!);
 
-/** Runs a documented line on `tl` with no shell: jq as a process, a `node -e` program in-process. */
+/** Runs a documented `node -e` line on `tl` in-process, with no shell. */
 const runOneLiner = (line: string, tl: string): string => {
   const [cmd, ...args] = argvOf(line);
-  if (cmd === "jq") return execFileSync("jq", args, { input: tl, encoding: "utf8" });
   expect([cmd, args[0], args.length]).toEqual(["node", "-e", 2]);
   const out: string[] = [];
   const fs = {
@@ -926,9 +938,33 @@ const runOneLiner = (line: string, tl: string): string => {
   });
   return out.join("");
 };
+type Rows = { id: string }[];
+/** Runs documented jq lines on `tl` in one jq process; each line's output stream comes back as one array. */
+const runJq = (lines: string[], tl: string): unknown[][] => {
+  const bound = new Map<string, string>();
+  const programs = lines.map((line) => {
+    const [cmd, ...args] = argvOf(line);
+    expect(cmd).toBe("jq");
+    const program = args.pop()!;
+    for (let i = 0; i < args.length; i += 3) {
+      const name = `${args[i]} ${args[i + 1]}`;
+      expect(bound.get(name) ?? args[i + 2]).toBe(args[i + 2]);
+      bound.set(name, args[i + 2]!);
+    }
+    return `[${program}]`;
+  });
+  const flags = [...bound].flatMap(([name, value]) => [...name.split(" "), value]);
+  const out = execFileSync("jq", ["-c", ...flags, programs.join(", ")], {
+    input: tl,
+    encoding: "utf8",
+  });
+  return out
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+};
 const timelineJson = async (timeline: Promise<ProjectTimeline>) =>
   JSON.stringify({ timeline: await timeline });
-const parseStream = (out: string) => JSON.parse(`[${out.replace(/}\s*{/g, "},{")}]`);
 
 describe("skill query one-liners", () => {
   it("documents five node one-liners, each answering from the fixture", async () => {
@@ -950,8 +986,9 @@ describe("skill query one-liners", () => {
     const lines = oneLiners("jq");
     expect(lines).toHaveLength(5);
     const tl = await timelineJson(describeProject(inversionProject()));
-    const [at, find, track, gaps, nth] = lines.map((l) => parseStream(runOneLiner(l, tl)));
-    expect(at[0].map((r: { id: string }) => r.id)).toEqual(["nested", "host"]);
+    const before = jqStarts.n;
+    const [at, find, track, gaps, nth] = runJq(lines, tl);
+    expect((at as Rows[])[0]!.map((r) => r.id)).toEqual(["nested", "host"]);
     expect(find).toEqual([
       { file: "compositions/scene.html", trackKind: "video", absStart: 6, absEnd: 8 },
     ]);
@@ -959,10 +996,11 @@ describe("skill query one-liners", () => {
       { id: "nested", absStart: 6, absEnd: 8 },
       { id: "direct", absStart: 20, absEnd: 25 },
     ]);
-    expect(gaps[0]).toEqual([{ a: "nested", b: "direct", delta: 12 }]);
+    expect(gaps?.[0]).toEqual([{ a: "nested", b: "direct", delta: 12 }]);
     expect(nth).toEqual([
       { index: 1, id: "direct", absStart: 20, file: "index.html", nested: false },
     ]);
+    expect(jqStarts.n - before).toBe(1);
   });
 
   it("answers the eval questions exactly on the eval fixture, counting no clip twice", async () => {
@@ -984,14 +1022,13 @@ describe("skill query one-liners", () => {
     ).toEqual(ids);
     expect(nth).toBe("1 tmus-pet1 13 compositions/terminal-music.html\n");
     if (!hasJq) return;
-    const [jqAt = "", , jqTrack = "", , jqNth = ""] = docLines("jq").map(run);
-    expect(parseStream(jqAt)[0].map((r: { id: string }) => r.id)).toEqual([
-      "tsfx-pet2",
-      "sec-sfx",
-      "sec-music",
-    ]);
-    expect(parseStream(jqTrack).map((r: { id: string }) => r.id)).toEqual(ids);
-    expect(parseStream(jqNth)).toEqual([
+    const before = jqStarts.n;
+    const jqLines = docLines("jq").map((l) => l.replace("12.5", "15.7"));
+    const [jqAt, , jqTrack, , jqNth] = runJq(jqLines, tl);
+    expect(jqStarts.n - before).toBe(1);
+    expect((jqAt as Rows[])[0]!.map((r) => r.id)).toEqual(["tsfx-pet2", "sec-sfx", "sec-music"]);
+    expect((jqTrack as Rows).map((r) => r.id)).toEqual(ids);
+    expect(jqNth).toEqual([
       {
         index: 1,
         id: "tmus-pet1",

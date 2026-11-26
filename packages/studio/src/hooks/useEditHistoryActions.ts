@@ -4,6 +4,7 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import { whileScriptWrites } from "../player/previewReloading";
+import { frameFactsChanged } from "../player/lib/frameFacts";
 import {
   beginStudioShownRestore,
   cancelNewestStudioWaitingPress,
@@ -154,8 +155,20 @@ export function useEditHistoryActions({
     ],
   );
 
-  const undo = useCallback(() => whileScriptWrites(() => apply("undo")), [apply]);
-  const redo = useCallback(() => whileScriptWrites(() => apply("redo")), [apply]);
+  const step = useCallback(
+    (direction: "undo" | "redo") =>
+      whileScriptWrites(async () => {
+        frameFactsChanged("history");
+        try {
+          return await apply(direction);
+        } finally {
+          frameFactsChanged("history");
+        }
+      }),
+    [apply],
+  );
+  const undo = useCallback(() => step("undo"), [step]);
+  const redo = useCallback(() => step("redo"), [step]);
   return useMemo(() => ({ undo, redo }), [undo, redo]);
 }
 

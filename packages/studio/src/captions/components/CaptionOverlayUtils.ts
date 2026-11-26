@@ -1,10 +1,12 @@
 // DOM helpers for CaptionOverlay — word box reading, transform I/O, wrapper management
 import {
+  MAX_QUERY_MATCHES,
   isPlainRecord,
   MAX_CAPTION_TRANSFORM,
   MAX_DESCRIBE_HANDLES,
   type EditingParams,
 } from "@hyperframes/core/runtime/editing-port";
+import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import { previewFrameOpaque, previewRequest } from "../../player/lib/previewChannel";
 
 export interface WordBox {
@@ -347,7 +349,7 @@ export async function readFrameWordBoxes(
   const words = model.groupOrder.map((id) => model.groups.get(id)?.segmentIds.length ?? 0);
   const reply = await previewRequest(iframe, "caption-words", { words });
   const boxes: unknown = reply?.boxes;
-  if (!Array.isArray(boxes)) return null;
+  if (!isMessageList(boxes, MAX_QUERY_MATCHES)) return null;
   const place = overlayPlacement(iframe, overlayEl);
   return boxes.flatMap((box: unknown): WordBox[] => {
     if (!isPlainRecord(box) || !allFinite(box.rect, ["x", "y", "width", "height"])) return [];

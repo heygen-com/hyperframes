@@ -422,9 +422,7 @@ function studioManualEditsRenderRuntime(
   const sourceFileForElement = (element: HTMLElement): string => {
     let current: HTMLElement | null = element;
     while (current) {
-      const sourceFile =
-        current.getAttribute("data-composition-file") ??
-        current.getAttribute("data-composition-src");
+      const sourceFile = current.getAttribute("data-composition-file");
       if (sourceFile) return sourceFile;
       current = current.parentElement;
     }

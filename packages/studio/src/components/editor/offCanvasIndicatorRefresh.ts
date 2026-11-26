@@ -112,7 +112,8 @@ export function startOffCanvasIndicatorRefresh(
     lastRecomputeAt = now;
     reading = true;
     const comp = options.compRectRef.current;
-    void measurePreviewOffCanvas(iframe, overlayEl, comp, options.activeCompositionPathRef.current)
+    const path = options.activeCompositionPathRef.current;
+    void measurePreviewOffCanvas(iframe, overlayEl, comp, path, "behind-drafts")
       .then((read) => {
         if (!read || stopped || options.iframeRef.current !== iframe) return;
         publishOffCanvasRects(

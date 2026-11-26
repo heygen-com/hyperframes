@@ -324,6 +324,18 @@
             "href": "https://hyperframes.heygen.com/lessons"
           },
           {
+            "item": "Blog",
+            "icon": "newspaper",
+            "description": "Guides, comparisons and how we build",
+            "href": "https://hyperframes.studio/blog?src=docs-navbar"
+          },
+          {
+            "item": "Tools",
+            "icon": "wand-magic-sparkles",
+            "description": "Captions, motion graphics, HTML to video and more",
+            "href": "https://hyperframes.studio/tools?src=docs-navbar"
+          },
+          {
             "item": "Community",
             "icon": "users",
             "description": "Videos people made",
@@ -1060,6 +1072,14 @@
           {
             "label": "Download the app",
             "href": "https://hyperframes.studio/studio/download?src=docs-footer"
+          },
+          {
+            "label": "Blog",
+            "href": "https://hyperframes.studio/blog?src=docs-footer"
+          },
+          {
+            "label": "Tools",
+            "href": "https://hyperframes.studio/tools?src=docs-footer"
           },
           {
             "label": "GitHub",

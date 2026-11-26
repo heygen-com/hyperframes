@@ -206,4 +206,72 @@ describe("BrowserLeasePool", () => {
       vi.useRealTimers();
     }
   });
+
+  it("aborts an in-flight launch immediately when its sole caller aborts, and evicts the entry", async () => {
+    const first = browser("aborted");
+    const recovered = browser("recovered");
+    let launchSignal: AbortSignal | undefined;
+    let resolveFirst!: (result: { browser: Browser; captureMode: "screenshot" }) => void;
+    const launch = vi
+      .fn()
+      .mockImplementationOnce((_fp: BrowserLaunchFingerprint, signal?: AbortSignal) => {
+        launchSignal = signal;
+        return new Promise((resolve) => {
+          resolveFirst = resolve;
+        });
+      })
+      .mockResolvedValueOnce({ browser: recovered, captureMode: "screenshot" as const });
+    const forceClose = vi.fn();
+    const pool = new BrowserLeasePool({
+      launch,
+      close: async (v) => v.close(),
+      forceClose,
+    });
+
+    const controller = new AbortController();
+    const acquiring = pool.acquire(fingerprint(), true, controller.signal);
+    controller.abort(new Error("caller aborted"));
+
+    await expect(acquiring).rejects.toThrow("caller aborted");
+    expect(launchSignal?.aborted).toBe(true);
+
+    // Even if the cancelled launch still settles late, its browser is closed and never reused.
+    resolveFirst({ browser: first, captureMode: "screenshot" });
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(forceClose).toHaveBeenCalledWith(first);
+
+    const next = await pool.acquire(fingerprint(), true);
+    expect(next.browser).toBe(recovered);
+    await next.release();
+  });
+
+  it("keeps a shared in-flight launch alive when only one of two callers aborts", async () => {
+    const shared = browser("shared");
+    let launchSignal: AbortSignal | undefined;
+    let resolveLaunch!: (result: { browser: Browser; captureMode: "screenshot" }) => void;
+    const launch = vi.fn((_fp: BrowserLaunchFingerprint, signal?: AbortSignal) => {
+      launchSignal = signal;
+      return new Promise<{ browser: Browser; captureMode: "screenshot" }>((resolve) => {
+        resolveLaunch = resolve;
+      });
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    const pool = new BrowserLeasePool({ launch, close, forceClose: vi.fn() });
+
+    const firstController = new AbortController();
+    const first = pool.acquire(fingerprint(), true, firstController.signal);
+    const second = pool.acquire(fingerprint(), true);
+
+    firstController.abort(new Error("first cancelled"));
+    await expect(first).rejects.toThrow("first cancelled");
+    expect(launchSignal?.aborted).toBe(false);
+
+    resolveLaunch({ browser: shared, captureMode: "screenshot" });
+    const lease = await second;
+    expect(lease.browser).toBe(shared);
+    expect(close).not.toHaveBeenCalled();
+
+    await lease.release();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
 });

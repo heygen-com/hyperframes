@@ -7,6 +7,7 @@ import {
   ffmpegBin,
   frameAt,
   guardedLimitReason,
+  guardedCwd,
   round,
   runFfmpeg,
   sumOf,
@@ -59,7 +60,7 @@ function decode(info: VideoInfo, args: string[]): Buffer {
   const formats = mediaInputArgs(ffmpegBin(), info.path, { playlists: info.guarded });
   if (!info.guarded) return runFfmpeg([...formats, ...args]);
   try {
-    return runFfmpeg([...formats, ...args], undefined, undefined, GUARDED_RUN_MS);
+    return runFfmpeg([...formats, ...args], undefined, guardedCwd(info), GUARDED_RUN_MS);
   } catch (err) {
     const stopped = guardedLimitReason(err);
     throw stopped ? new Error(`ffmpeg cannot read ${info.path}: ${stopped}`) : err;

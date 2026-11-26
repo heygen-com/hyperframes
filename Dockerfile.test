@@ -97,8 +97,8 @@ ENV PATH="/root/.bun/bin:$PATH"
 # lockfile change and fails.
 COPY package.json bun.lock ./
 COPY packages/parsers/package.json packages/parsers/package.json
-# The share workspace typechecks this subpath during bun install.
-COPY packages/parsers/src/privatePath.ts packages/parsers/src/privatePath.ts
+# The share prepare script typechecks its parser imports during bun install.
+COPY packages/parsers/src/ packages/parsers/src/
 COPY packages/lint/package.json packages/lint/package.json
 COPY packages/studio-server/package.json packages/studio-server/package.json
 COPY packages/core/package.json packages/core/package.json

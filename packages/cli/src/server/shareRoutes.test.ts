@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
 import type { ShareService, ShareState } from "../share/service.js";
 import { mountShareRoutes } from "./shareRoutes.js";
@@ -20,7 +23,7 @@ const state: ShareState = {
   reviewId: null,
   reviewTitle: null,
 };
-function fixture() {
+function fixture(dir = "/fixed/project") {
   const service: ShareService = {
     checkSession: vi.fn(async () => ({
       token: "secret",
@@ -29,6 +32,8 @@ function fixture() {
       heygenApi: "https://api.heygen.com",
     })),
     status: vi.fn(async () => state),
+    sourceStatus: vi.fn(async () => "needs_sync" as const),
+    syncProjectFiles: vi.fn(async () => state),
     run: vi.fn(async () => state),
     spaces: vi.fn(async () => []),
     capabilities: vi.fn(async () => ({ versionSharing: true, shareFiles: false })),
@@ -40,7 +45,7 @@ function fixture() {
   const create = vi.fn(async () => service);
   const login = vi.fn(async () => {});
   const track = vi.fn();
-  mountShareRoutes(app, "/fixed/project", create, login, track);
+  mountShareRoutes(app, dir, create, login, track);
   return { app, service, create, login, track };
 }
 const LOCAL_PEER = { incoming: { socket: { remoteAddress: "127.0.0.1" } } };
@@ -457,17 +462,27 @@ it("shows a completed login's admission failure to its initiating panel", async 
   });
 });
 
-it.each([undefined, true])("forwards only explicit source consent (%s)", async (includeSource) => {
+it("only the sync action can upload project files", async () => {
   const { app, service } = fixture();
   const csrf = await token(app);
-  const response = await request(app, "actions", csrf, {
-    action: "share",
-    audience: "public",
-    includeSource,
-  });
-  expect(response.status).toBe(202);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(service.run).toHaveBeenCalledWith(expect.objectContaining({ includeSource }));
+  const digest = "a".repeat(64);
+  for (const body of [
+    { action: "share", audience: "public", includeSource: true },
+    { action: "update", expectedReferencedHiddenDigest: digest },
+    { action: "sync", space: "team1" },
+  ])
+    expect((await request(app, "actions", csrf, body)).status).toBe(400);
+  expect(
+    (
+      await request(app, "actions", csrf, {
+        action: "sync",
+        space: "team1",
+        expectedReferencedHiddenDigest: digest,
+      })
+    ).status,
+  ).toBe(202);
+  await vi.waitFor(() => expect(service.syncProjectFiles).toHaveBeenCalledWith("team1", digest));
+  expect(service.run).not.toHaveBeenCalled();
 });
 
 describe("share actions need the review the person confirmed", () => {
@@ -542,4 +557,41 @@ describe("share actions need the review the person confirmed", () => {
     expect((await request(app, "actions", csrf, { action: "login" })).status).toBe(202);
     await vi.waitFor(() => expect(login).toHaveBeenCalled());
   });
+});
+
+it("lists referenced hidden assets only in the local sharing session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hf-share-summary-"));
+  try {
+    const font = "brand/.fonts/Inter.woff2";
+    const logo = "brand/.images/logo.png";
+    for (const path of ["brand/.fonts", "brand/.images", "styles", "modules"])
+      await mkdir(join(dir, path), { recursive: true });
+    await mkdir(join(dir, ".ssh"));
+    await writeFile(join(dir, font), "font");
+    await writeFile(join(dir, logo), "logo");
+    await writeFile(
+      join(dir, "styles/theme.css"),
+      `@font-face{font-family:Inter;src:url("../${font}")}`,
+    );
+    await writeFile(join(dir, "modules/brand.mjs"), `new URL("../${logo}", import.meta.url)`);
+    await writeFile(join(dir, "brand/.fonts/Unused.woff2"), "unused");
+    await writeFile(join(dir, ".ssh/photo.png"), "private");
+    await writeFile(
+      join(dir, "index.html"),
+      '<link rel="stylesheet" href="styles/theme.css"><script type="module" src="modules/brand.mjs"></script><img src=".ssh/photo.png">',
+    );
+    const { app } = fixture(dir);
+    expect((await request(app, "project-files?space=team1", "")).status).toBe(403);
+    const csrf = await token(app);
+    const summary = await (await request(app, "project-files?space=team1", csrf)).json();
+    expect(summary).toEqual({
+      state: "needs_sync",
+      paths: [font, logo],
+      digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    const missing = await request(app, "actions", csrf, { action: "update", includeSource: true });
+    expect(missing.status).toBe(400);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

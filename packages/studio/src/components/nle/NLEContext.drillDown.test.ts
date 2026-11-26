@@ -64,9 +64,13 @@ describe("hostCompositionSrc", () => {
     expect(vi.mocked(previewRequest)).toHaveBeenCalledWith(iframe, "query", {
       selector: `[data-composition-id="in\\"tro"][data-composition-src]`,
     });
-    expect(vi.mocked(previewRequest)).toHaveBeenCalledWith(iframe, "describe", {
-      handles: [HANDLE],
-    });
+    expect(vi.mocked(previewRequest)).toHaveBeenCalledWith(
+      iframe,
+      "describe",
+      { handles: [HANDLE] },
+      undefined,
+      "now",
+    );
   });
 
   it("answers nothing for a reply the frame got wrong, rather than passing it on", async () => {

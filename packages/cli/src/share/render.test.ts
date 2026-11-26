@@ -49,28 +49,32 @@ describe("local sharing render boundary", () => {
     );
     expect(latestShareRender(dir)).toEqual({ id, path: output, fingerprint: "f" });
   });
-  it.each([".media/voice.mp3", ".hyperframes/studio-manual-edits.json"])(
-    "invalidates a cached render when %s changes",
-    async (path) => {
-      const dir = folder();
-      writeFileSync(join(dir, "index.html"), '<audio src=".media/voice.mp3"></audio>');
-      mkdirSync(dirname(join(dir, path)), { recursive: true });
-      writeFileSync(join(dir, path), "original");
-      rendering.execute.mockImplementation(async ({ output }: { output: string }) => {
-        writeFileSync(output, "rendered video");
-      });
-      await prepareShareRender(dir);
-      const original = latestShareRender(dir);
-      const watcher = await projectFingerprint(dir);
-      await prepareShareRender(dir);
-      expect(latestShareRender(dir)?.id).toBe(original?.id);
-      writeFileSync(join(dir, path), "changed");
-      expect(await projectFingerprint(dir)).toBe(watcher);
-      expect(await shareContentFingerprint(dir)).not.toBe(original?.contentFingerprint);
-      await prepareShareRender(dir);
-      expect(latestShareRender(dir)?.id).not.toBe(original?.id);
-    },
-  );
+  it.each([
+    ".media/voice.mp3",
+    ".hyperframes/studio-manual-edits.json",
+    "brand/.fonts/Inter.woff2",
+  ])("invalidates a cached render when %s changes", async (path) => {
+    const dir = folder();
+    writeFileSync(
+      join(dir, "index.html"),
+      `<style>@font-face{font-family:test;src:url("${path}")}</style>`,
+    );
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), "original");
+    rendering.execute.mockImplementation(async ({ output }: { output: string }) => {
+      writeFileSync(output, "rendered video");
+    });
+    await prepareShareRender(dir);
+    const original = latestShareRender(dir);
+    const watcher = await projectFingerprint(dir);
+    await prepareShareRender(dir);
+    expect(latestShareRender(dir)?.id).toBe(original?.id);
+    writeFileSync(join(dir, path), "changed");
+    expect(await projectFingerprint(dir)).toBe(watcher);
+    expect(await shareContentFingerprint(dir)).not.toBe(original?.contentFingerprint);
+    await prepareShareRender(dir);
+    expect(latestShareRender(dir)?.id).not.toBe(original?.id);
+  });
 });
 
 it("reuses the video when only a scratch log is added", async () => {

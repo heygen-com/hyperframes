@@ -6,6 +6,8 @@ vi.mock("./activity.js", () => ({
 }));
 const mocks = vi.hoisted(() => ({
   source: vi.fn(),
+  adapter: vi.fn(),
+  prepareFiles: vi.fn(),
   activity: vi.fn(),
   status: vi.fn(),
   version: vi.fn(),
@@ -23,6 +25,8 @@ const mocks = vi.hoisted(() => ({
   setAccess: vi.fn(),
 }));
 vi.mock("@hyperframes/share", () => ({
+  projectFingerprint: async () => "current-project",
+  shareSources: mocks.adapter,
   reviewClient: () => ({ project: mocks.project, spaces: mocks.spaces, reviewFlags: mocks.flags }),
   reviewStatus: mocks.status,
   reviewVersion: mocks.version,
@@ -386,6 +390,10 @@ describe("share rollout signals", () => {
       request.onProgress({ step: "processing", sent: 2, total: 2 });
       request.onAdded();
     });
+    mocks.source.mockResolvedValue({
+      source: { at: "video_only", reason: "source_sync_required" },
+      requireSource: false,
+    });
     await createShareService("/private/project", undefined, { surface: "local_studio" }).run({
       action: "update",
     });
@@ -395,6 +403,12 @@ describe("share rollout signals", () => {
       "share_mutation_admitted",
       "share_video_ready",
     ]);
+    expect(mocks.source).toHaveBeenCalledWith(
+      "/private/project",
+      expect.any(Function),
+      expect.any(String),
+      expect.objectContaining({ reuseOnly: true }),
+    );
     expect(mocks.event.mock.calls.every(([, data]) => data.client_surface === "local_studio")).toBe(
       true,
     );
@@ -577,3 +591,37 @@ it.each([false, true])(
     expect(mocks.source).toHaveBeenCalledTimes(includeSource ? 1 : 0);
   },
 );
+
+describe("Studio project file sync", () => {
+  beforeEach(() => {
+    mocks.flags.mockResolvedValue({ versionSharing: true, shareFiles: true });
+    mocks.adapter.mockReturnValue({ prepare: mocks.prepareFiles });
+  });
+  it("checks for an existing snapshot without uploading, then syncs only the requested workspace", async () => {
+    const service = createShareService("/project", undefined, { surface: "local_studio" });
+    mocks.prepareFiles.mockResolvedValueOnce({ at: "unavailable", reason: "source_sync_required" });
+    expect(await service.sourceStatus("space")).toBe("needs_sync");
+    expect(mocks.adapter).toHaveBeenLastCalledWith(
+      expect.objectContaining({ spaceId: "space", reuseOnly: true }),
+    );
+    mocks.prepareFiles.mockResolvedValue({ at: "ready" });
+    await service.syncProjectFiles("space", "a".repeat(64));
+    expect(mocks.adapter).toHaveBeenLastCalledWith({
+      spaceId: "space",
+      access: mocks.access,
+      expectedReferencedHiddenDigest: "a".repeat(64),
+    });
+    expect(await service.sourceStatus("space")).toBe("synced");
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.render).not.toHaveBeenCalled();
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+  it("refuses sync when source sharing is disabled or the workspace is unavailable", async () => {
+    const service = createShareService("/project");
+    await expect(service.syncProjectFiles("other", "a".repeat(64))).rejects.toThrow("unavailable");
+    mocks.flags.mockResolvedValue({ versionSharing: true, shareFiles: false });
+    expect(await service.sourceStatus("space")).toBe("off");
+    await expect(service.syncProjectFiles("space", "a".repeat(64))).rejects.toThrow("unavailable");
+    expect(mocks.adapter).not.toHaveBeenCalled();
+  });
+});

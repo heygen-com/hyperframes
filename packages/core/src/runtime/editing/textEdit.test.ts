@@ -9,11 +9,18 @@ import {
   textEditResult,
   textEditSelectionEvent,
 } from "./textEdit";
+import { caretColorOf } from "./textCaret";
 
 const V = 1;
 const HANDLE = "0123456789abcdef:1";
 
+// jsdom lays nothing out and has no Range.getClientRects; a browser always has it.
+beforeEach(() => {
+  Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, value: () => [] });
+});
+
 afterEach(() => {
+  Reflect.deleteProperty(Range.prototype, "getClientRects");
   endTextEdit();
   parent = port();
   document.body.innerHTML = "";
@@ -45,6 +52,15 @@ describe("text-edit", () => {
     expect(parseTextEdit({ handle: HANDLE, action: "end", keep: "yes" })).toBeNull();
     expect(parseTextEdit({ handle: HANDLE, action: "start", caret: null, html: "x" })).toBeNull();
     expect(parseTextEdit({ handle: "#title", action: "end", keep: true })).toBeNull();
+  });
+
+  it("opens with the caret at the end of the last text, inside it, not at the element's edge", () => {
+    const { element, handle } = page("Go <b>bold</b> today");
+    start(handle);
+    const selection = getSelection()!;
+    expect(selection.isCollapsed).toBe(true);
+    expect(selection.anchorNode).toBe(element.lastChild);
+    expect(selection.anchorOffset).toBe(" today".length);
   });
 
   it("opens the element for typing and closes it keeping clean markup", () => {
@@ -293,11 +309,12 @@ describe("text-edit selection and style", () => {
     document.dispatchEvent(new Event("selectionchange"));
     expect(selectionEvents().at(-1)).toEqual({
       handle,
+      caret: null,
       selection: {
         rect: { x: 10, y: 20, width: 30, height: 40 },
         viewportWidth: innerWidth,
         styles: {},
-        colours: [],
+        colours: [getComputedStyle(element).color],
         painted: getComputedStyle(element).color,
       },
     });
@@ -327,11 +344,37 @@ describe("text-edit selection and style", () => {
     selectWord(element, "day");
     getSelection()!.collapseToStart();
     document.dispatchEvent(new Event("selectionchange"));
-    expect(selectionEvents().at(-1)).toEqual({ handle, selection: null });
+    expect(selectionEvents().at(-1)).toMatchObject({ handle, selection: null });
     end(handle, true);
     const posted = parent.postMessage.mock.calls.length;
     document.dispatchEvent(new Event("selectionchange"));
     expect(parent.postMessage.mock.calls.length).toBe(posted);
+  });
+
+  it("posts the caret's box, in the frame's px, when the selection is a caret in the text", () => {
+    const { element, handle } = page("Launch day news");
+    const caretBox = { left: 12, top: 20, right: 12, bottom: 60, width: 0, height: 40 } as DOMRect;
+    Object.defineProperty(Range.prototype, "getClientRects", {
+      configurable: true,
+      value: () => [caretBox],
+    });
+    {
+      const color = caretColorOf(element);
+      start(handle);
+      selectWord(element, "day");
+      getSelection()!.collapseToStart();
+      document.dispatchEvent(new Event("selectionchange"));
+      expect(selectionEvents().at(-1)?.caret).toEqual({
+        left: 12,
+        top: 20,
+        height: 40,
+        color,
+        viewportWidth: innerWidth,
+      });
+      selectWord(element, "day");
+      document.dispatchEvent(new Event("selectionchange"));
+      expect(selectionEvents().at(-1)?.caret).toBeNull();
+    }
   });
 
   it("reads a selection event only in its exact, bounded shape", () => {
@@ -342,10 +385,15 @@ describe("text-edit selection and style", () => {
       colours: ["red"],
       painted: "rgb(255, 0, 0)",
     };
+    const caret = { left: 5, top: 6, height: 20, color: "rgb(0, 0, 0)", viewportWidth: 1920 };
     const read = (over: Record<string, unknown>) =>
-      textEditSelectionEvent({ v: V, event: "text-edit-selection", handle: HANDLE, ...over }, V);
-    expect(read({ selection })).toEqual({ handle: HANDLE, selection });
-    expect(read({ selection: null })).toEqual({ handle: HANDLE, selection: null });
+      textEditSelectionEvent(
+        { v: V, event: "text-edit-selection", handle: HANDLE, caret: null, ...over },
+        V,
+      );
+    expect(read({ selection })).toEqual({ handle: HANDLE, selection, caret: null });
+    expect(read({ selection: null })).toEqual({ handle: HANDLE, selection: null, caret: null });
+    expect(read({ selection: null, caret })).toEqual({ handle: HANDLE, selection: null, caret });
     expect(read({ selection: { ...selection, styles: { background: "red" } } })).toBeNull();
     expect(read({ selection: { ...selection, colours: Array(17).fill("red") } })).toBeNull();
     expect(
@@ -354,5 +402,16 @@ describe("text-edit selection and style", () => {
     expect(read({ selection: { ...selection, viewportWidth: 0 } })).toBeNull();
     expect(read({ selection: { ...selection, html: "<b>" } })).toBeNull();
     expect(read({ selection, extra: 1 })).toBeNull();
+    expect(read({ selection: null, caret: { ...caret, left: NaN } })).toBeNull();
+    expect(read({ selection: null, caret: { ...caret, viewportWidth: 0 } })).toBeNull();
+    expect(read({ selection: null, caret: { ...caret, color: "#".repeat(257) } })).toBeNull();
+    expect(read({ selection: null, caret: { ...caret, extra: 1 } })).toBeNull();
+    const { caret: _gone, ...withoutCaret } = { caret: null, selection: null };
+    expect(
+      textEditSelectionEvent(
+        { v: V, event: "text-edit-selection", handle: HANDLE, ...withoutCaret },
+        V,
+      ),
+    ).toBeNull();
   });
 });

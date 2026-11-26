@@ -1,3 +1,4 @@
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { MutableRefObject, RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
@@ -35,6 +36,7 @@ export interface UseTimelineEditingOptions {
   recordEdit: (input: RecordEditInput) => Promise<void>;
   reloadPreview: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
+  canvasSelectionsRef?: RefObject<readonly DomEditSelection[]>;
   pendingTimelineEditPathRef: MutableRefObject<Set<string>>;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
   isRecordingRef?: RefObject<boolean>;

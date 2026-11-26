@@ -17,6 +17,7 @@ import {
   planCompositionAssembly,
 } from "./compositionAssembly";
 import { SCENE_FONTS_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+import { dropAuthoredCompositionFiles } from "../compositionSource";
 import { stripSdrPngColourTags } from "./pngColourTags";
 import {
   ensureExternalScriptTag,
@@ -1280,6 +1281,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       ].map((text) => (isLibraryCopy(text) ? "" : text))
     : [];
 
+  dropAuthoredCompositionFiles(document);
   // Inline sub-compositions (via shared function)
   const trackedCompositionHosts = getBundledTrackedCompositionHosts(document);
   const hostIdentityByElement = assignBundledRuntimeCompositionIds(trackedCompositionHosts);

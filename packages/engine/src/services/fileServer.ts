@@ -114,6 +114,13 @@ function resolveContainedPaths(
   return { projectPath, compiledPath };
 }
 
+function readProjectFile(paths: { projectPath: string; compiledPath: string | null }) {
+  return (
+    (paths.compiledPath ? readRegularFile(paths.compiledPath) : null) ??
+    readRegularFile(paths.projectPath)
+  );
+}
+
 const OFFER_NO_FRAMING_SITE_AN_EDITING_PORT = `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`;
 
 function nameInHost(host: string): string {
@@ -176,20 +183,20 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     return c.text("Forbidden", 403);
   });
 
-  app.get("/*", (c) => {
-    let requestPath = c.req.path;
-    if (requestPath === "/") requestPath = "/index.html";
-
-    // Remove leading slash
-    const relativePath = requestPath.replace(/^\//, "");
+  app.get("/*", async (c) => {
+    const relativePath = c.req.path.slice(1) || "index.html";
     // Percent escapes can decode into separators and dot segments before the
     // join, so a hostile request can name files above either root -- see
     // resolveContainedPaths for why the check stays lexical, not realpath.
     const resolved = resolveContainedPaths(projectDir, compiledDir, relativePath);
-    if (!resolved) return c.text("Not found", 404);
-    const content =
-      (resolved.compiledPath ? readRegularFile(resolved.compiledPath) : null) ??
-      readRegularFile(resolved.projectPath);
+    if (!resolved) {
+      const { referencedFontResponse } = await import("@hyperframes/share/referencedFont.mjs");
+      return (
+        (await referencedFontResponse(projectDir, new URL(c.req.url), c.req.raw.method)) ??
+        c.text("Not found", 404)
+      );
+    }
+    const content = readProjectFile(resolved);
     if (content === null) return c.text("Not found", 404);
 
     const ext = extname(relativePath).toLowerCase();

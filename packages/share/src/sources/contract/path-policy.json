@@ -1,5 +1,5 @@
 {
-  "policy_version": "portable-source-v12",
+  "policy_version": "portable-source-v13",
   "manifest": {
     "format_version": 1,
     "entrypoint": "index.html",
@@ -13,6 +13,9 @@
       "sha256",
       "size"
     ],
+    "optional_file_fields": {
+      "include_hidden": "The literal true on a hidden-asset entry marks that exact hidden path as a project dependency included in this upload. Omit this field on every other entry."
+    },
     "sha256": "64 lowercase hex characters: the SHA-256 of the file's exact bytes",
     "size": "the file's byte length, an integer from 0 to 9007199254740991 (2^53 - 1, the largest integer every JSON client reads exactly)",
     "same_digest_same_size": "two entries with the same sha256 must have the same size",
@@ -327,7 +330,7 @@
     },
     {
       "id": "portable-transcripts",
-      "regex": "\\.hyperframes/transcripts/(?:[^/]+/)*[^/]+\\.json",
+      "regex": "\\.hyperframes/transcripts/(?:[^./][^/]*/)*[^./][^/]*\\.json",
       "client_action": "include",
       "server_action": "allow",
       "basis": "Completed transcripts, keyed by media hash; costly to regenerate"
@@ -362,7 +365,7 @@
     },
     {
       "id": "portable-podcast-media",
-      "regex": "\\.hyperframes/prepared-assets/podcast/(?:[^/]+/)*[^./][^/]*",
+      "regex": "\\.hyperframes/prepared-assets/podcast/(?:[^./][^/]*/)*[^./][^/]*",
       "client_action": "include",
       "server_action": "allow",
       "basis": "Desktop's podcast camera and recorder transcodes (media/, proxies/), which the page plays by this path and a receiving client cannot regenerate without the original files; a dotfile there stays out"
@@ -417,6 +420,27 @@
       "basis": "Third-party reference video, large and re-downloadable"
     },
     {
+      "id": "portable-hidden-sources",
+      "regex": "(?:[^./][^/]*/)*(?:\\.gitignore|\\.vsignore|\\.hyperframesignore)|\\.media/(?:[^./][^/]*/)*[^./][^/]*|\\.github/(?:agents\\.md|workflows/(?:[^./][^/]*/)*[^./][^/]*\\.ya?ml|instructions/(?:[^./][^/]*/)*[^./][^/]*\\.md)",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "Portable project ignore files, root media assets and authored GitHub metadata."
+    },
+    {
+      "id": "hidden-asset",
+      "regex": "(?!.*(?:^|/)(?:\\.next|\\.nuxt|\\.output|\\.svelte-kit|\\.vercel|\\.netlify|\\.wrangler|\\.astro|\\.turbo|\\.venv|\\.github)(?:/|$))(?=(?:[^/]+/)*\\.)(?:[^/]+/)*(?:[^./][^/]*\\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|heif|mp4|m4v|mov|webm|mkv|mxf|avi|mp3|wav|m4a|aac|ogg|oga|opus|flac|woff2?|ttf|otf|css|m?js|cjs)|\\.[^/]+\\.(?:woff2?|ttf|otf))",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "A referenced asset in a hidden directory or a referenced dot-prefixed font may travel with include_hidden: true. Both path spellings must match. Earlier exclusions take precedence."
+    },
+    {
+      "id": "unrecognized-hidden",
+      "regex": "(?:[^/]+/)*\\.[^/]*(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Hidden paths stay local unless a portable HyperFrames rule names them, or they are ordinary media-library files, ignore files or recognized GitHub project metadata. This file rule must not prune directories containing allowed descendants."
+    },
+    {
       "id": "default-authored-file",
       "regex": ".+",
       "client_action": "include",
@@ -455,7 +479,12 @@
       "git-directory-head": "(?!)",
       "nested-hyperframes-state": "(?!)",
       "credential-files": "(?:[^/]+/)*(?:\\.netrc|\\.pypirc|\\.git-credentials|[^/]*\\.(?:pem|p12|pfx)|id_rsa[^/]*|id_ed25519[^/]*|(?:\\.ssh|\\.aws)(?:/.*)?)",
-      "private-source": "(?!)"
+      "private-source": "(?!)",
+      "hidden-asset": "(?!)",
+      "unrecognized-hidden": "(?!)",
+      "portable-hidden-sources": "(?!)",
+      "portable-transcripts": "\\.hyperframes/transcripts/(?:[^/]+/)*[^/]+\\.json",
+      "portable-podcast-media": "\\.hyperframes/prepared-assets/podcast/(?:[^/]+/)*[^./][^/]*"
     },
     "legacy_short_name_alias_names": [
       ".agent",

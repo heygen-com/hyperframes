@@ -9,7 +9,7 @@ export function historyCache(open: (projectDir: string) => Opened) {
     let cached = histories.get(projectDir);
     if (!cached) histories.set(projectDir, (cached = open(projectDir)));
     const opened = await cached;
-    if (!opened?.replacedAtPath()) return opened;
+    if (!opened || !(await opened.replacedNow())) return opened;
     const reopen = () => open(projectDir);
     if (histories.get(projectDir) === cached)
       histories.set(projectDir, opened.close().then(reopen, reopen));
