@@ -157,7 +157,7 @@ export function useDomEditOverlayRects({
       return;
     }
     channelReadRef.current = true;
-    void measurePreviewOverlay(iframe, overlayEl, targets)
+    void measurePreviewOverlay(iframe, overlayEl, targets, "behind-drafts")
       .then((rects) => {
         const current =
           selectionRef.current === sel &&

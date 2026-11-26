@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AGENT_PROBE_MS,
+  holdRefreshReadsWhile,
   PREVIEW_REJECTED,
   previewAnswer,
   previewClipManifest,
@@ -369,5 +370,67 @@ describe("bridge playback for a frame Studio cannot script", () => {
     expect(adapter.getDuration()).toBe(12);
     expect(adapter.getTime()).toBe(3.5);
     expect(adapter.isPlaying()).toBe(true);
+  });
+});
+
+describe("a display read asked while a gesture is held", () => {
+  /** A frame whose agent is known, so each request leaves in its caller's step; returns the kinds in arrival order. */
+  async function connectedFrame() {
+    const { iframe, handed } = servedFrame((kind) =>
+      kind === "draft" ? { drafts: {} } : { errors: [], truncated: false },
+    );
+    await previewRequest(iframe, "set-loop-start", { seconds: 0 });
+    handed.mockClear();
+    const arrived = () =>
+      handed.mock.calls.map(([kind, params]) =>
+        kind === "draft" ? "draft" : `read ${(params as { from: number }).from}`,
+      );
+    return { iframe, arrived };
+  }
+  const gestures: Array<{ held: boolean }> = [];
+  afterEach(() => gestures.splice(0).forEach((gesture) => (gesture.held = false)));
+  const holdFor = (gesture: { held: boolean }) => {
+    gestures.push(gesture);
+    holdRefreshReadsWhile(() => gesture.held);
+  };
+  const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
+  // fails without the fix: the refresh read went out first and the frame answered it before the draft.
+  it("leaves just after the gesture's next draft", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    holdFor({ held: true });
+    const read = previewRequest(iframe, "console-errors", { from: 0 }, undefined, "behind-drafts");
+    const draft = previewRequest(iframe, "draft", { drafts: [] });
+    await Promise.all([read, draft]);
+    expect(arrived()).toEqual(["draft", "read 0"]);
+  });
+
+  it("does not hold a read its caller did not mark: it leaves at once, ahead of a held one", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    holdFor({ held: true });
+    const held = previewRequest(iframe, "console-errors", { from: 1 }, undefined, "behind-drafts");
+    const now = previewRequest(iframe, "console-errors", { from: 2 });
+    await Promise.all([held, now]);
+    expect(arrived()).toEqual(["read 2", "read 1"]);
+  });
+
+  it("still leaves on the next frame when no draft comes, so a panel never freezes", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    holdFor({ held: true });
+    const read = previewRequest(iframe, "console-errors", { from: 0 }, undefined, "behind-drafts");
+    await nextFrame();
+    await read;
+    expect(arrived()).toEqual(["read 0"]);
+  });
+
+  it("is not held once the gesture ends", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    const gesture = { held: true };
+    holdFor(gesture);
+    gesture.held = false;
+    const read = previewRequest(iframe, "console-errors", { from: 0 }, undefined, "behind-drafts");
+    const draft = previewRequest(iframe, "draft", { drafts: [] });
+    await Promise.all([read, draft]);
+    expect(arrived()).toEqual(["read 0", "draft"]);
   });
 });
