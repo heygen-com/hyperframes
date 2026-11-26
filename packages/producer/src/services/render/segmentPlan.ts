@@ -37,8 +37,8 @@ export function planSegments(totalFrames: number, segmentFrames: number): Segmen
 }
 
 /** Zero-padded so lexical order equals frame order in the concat list and on disk. */
-export function segmentOutputPath(segmentDir: string, index: number): string {
-  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.mp4`);
+export function segmentOutputPath(segmentDir: string, index: number, extension: string): string {
+  return join(segmentDir, `segment_${String(index).padStart(5, "0")}${extension}`);
 }
 
 export function resolveSegmentFrames(env: NodeJS.ProcessEnv): number {

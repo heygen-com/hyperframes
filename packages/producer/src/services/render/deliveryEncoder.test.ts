@@ -137,6 +137,7 @@ describe("computeSegmentPlanHash", () => {
     gopSize: undefined,
     pixelFormat: "yuv420p",
     imageFormat: "jpeg",
+    containerExtension: ".mp4",
     useGpu: false,
     outputWidth: 1920,
     outputHeight: 1080,

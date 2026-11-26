@@ -2,7 +2,7 @@
  * Segmented capture (spec §5 Phase 2a).
  *
  * The frame range is split into fixed-size segments; each one gets its own
- * closed-GOP ffmpeg process writing `segments/segment_NNNNN.mp4`, and the
+ * closed-GOP ffmpeg process writing segments in the output container, and the
  * segments are concat-copied into the video-only file the assemble stage
  * muxes. Against the single-encoder streaming path this buys two things on a
  * long render: scratch is encoded video rather than one open pipe's worth of
@@ -13,7 +13,7 @@
  * recycling and retry are 2c, multi-worker is 2d.
  */
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import {
   captureFrameToBuffer,
   closeCaptureSession,
@@ -185,6 +185,7 @@ interface SegmentCaptureContext {
   totalFrames: number;
   segmentCount: number;
   segmentDir: string;
+  segmentExtension: string;
   skipped: number;
   streamingEncoderOptions: StreamingEncoderOptions;
   spawnEncoder: SegmentedStageDeps["spawnEncoder"];
@@ -275,7 +276,7 @@ async function captureSegmentToEncoder(
   ctx: SegmentCaptureContext,
   segment: SegmentSlice,
 ): Promise<StreamingEncoderResult> {
-  const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index);
+  const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index, ctx.segmentExtension);
   rmSync(segmentPath, { force: true });
   let encoder: StreamingEncoder;
   try {
@@ -469,6 +470,7 @@ interface SegmentRun {
   segments: readonly SegmentSlice[];
   pending: readonly SegmentSlice[];
   segmentDir: string;
+  segmentExtension: string;
   skipSize: number;
   workerCount: number;
   recycleEvery: number;
@@ -492,6 +494,7 @@ async function createSegmentWorker(run: SegmentRun, id: number): Promise<Segment
       totalFrames: input.totalFrames,
       segmentCount: run.segments.length,
       segmentDir: run.segmentDir,
+      segmentExtension: run.segmentExtension,
       skipped: run.skipSize,
       streamingEncoderOptions: input.streamingEncoderOptions,
       spawnEncoder: deps.spawnEncoder,
@@ -601,7 +604,7 @@ async function runOneSegment(
   worker: SegmentWorker,
   segment: SegmentSlice,
 ): Promise<"done" | "fallback"> {
-  const segmentPath = segmentOutputPath(run.segmentDir, segment.index);
+  const segmentPath = segmentOutputPath(run.segmentDir, segment.index, run.segmentExtension);
   if (run.recycleEvery > 0 && worker.sessionSegments >= run.recycleEvery) {
     await recycleWorkerSession(run, worker, "cadence");
   }
@@ -660,6 +663,7 @@ export async function runCaptureSegmentedStage(
 
   const segments = planSegments(input.totalFrames, input.segmentFrames);
   const segmentDir = input.segmentDir ?? join(input.workDir, "segments");
+  const segmentExtension = extname(input.videoOnlyPath);
   mkdirSync(segmentDir, { recursive: true });
   const skip = input.completedSegments ?? new Set<number>();
   const pending = segments.filter((s) => !skip.has(s.index));
@@ -671,6 +675,7 @@ export async function runCaptureSegmentedStage(
     segments,
     pending,
     segmentDir,
+    segmentExtension,
     skipSize: skip.size,
     workerCount: Math.max(1, input.workerCount ?? 1),
     recycleEvery: input.browserRecycleEverySegments ?? 0,
@@ -679,7 +684,9 @@ export async function runCaptureSegmentedStage(
   const queue = createSegmentQueue(pending);
   // Built from the plan, not from completion order: workers finish out of
   // order, so the concat list must not depend on who finished when.
-  const segmentPaths = segments.map((s) => segmentOutputPath(segmentDir, s.index));
+  const segmentPaths = segments.map((s) =>
+    segmentOutputPath(segmentDir, s.index, segmentExtension),
+  );
   if (pending.length === 0) return concatResumedRun(run, segmentPaths);
   let fellBackToStreaming = false;
 

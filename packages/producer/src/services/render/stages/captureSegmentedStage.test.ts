@@ -269,11 +269,94 @@ function fakeStageInput(overrides: { totalFrames: number }) {
 
 describe("segmentOutputPath", () => {
   it("zero-pads so lexical order equals frame order", () => {
-    expect(segmentOutputPath("/w/segments", 7)).toBe("/w/segments/segment_00007.mp4");
+    expect(segmentOutputPath("/w/segments", 7, ".mp4")).toBe("/w/segments/segment_00007.mp4");
   });
 });
 
 describe("runCaptureSegmentedStage", () => {
+  it.each(["mov", "webm"])(
+    "uses the resolved %s container for capture, retry, manifest and concat",
+    async (format) => {
+      const segmentDir = join(fixtureRoot, `container-${format}`);
+      const expected = [
+        join(segmentDir, `segment_00000.${format}`),
+        join(segmentDir, `segment_00001.${format}`),
+      ];
+      const spawned: string[] = [];
+      const removed: string[] = [];
+      const completed: string[] = [];
+      let failed = false;
+      let nextSession = 0;
+      const concat = mock(async () => ({ success: true as const }));
+      const input = fakeStageInput({ totalFrames: 4 });
+      const result = await runCaptureSegmentedStage({
+        ...input,
+        outputFormat: format,
+        videoOnlyPath: join(fixtureRoot, `video-only.${format}`),
+        segmentFrames: 2,
+        segmentDir,
+        sessionFactory: { create: async () => fakeSession(nextSession++) },
+        onSegmentComplete: (entry) => completed.push(entry.path),
+        deps: {
+          spawnEncoder: mock(async (path: string) => {
+            spawned.push(path);
+            return okEncoder();
+          }),
+          captureFrame: mock(async (_session: unknown, frame: number) => {
+            if (frame === 2 && !failed) {
+              failed = true;
+              throw new Error("Protocol error (Page.captureScreenshot): Target closed");
+            }
+            return { buffer: Buffer.alloc(1) };
+          }),
+          removeFile: (path) => removed.push(path),
+          closeSession: mock(async () => {}),
+          concat,
+        },
+      });
+      expect(result.success).toBe(true);
+      if (!result.success) throw new Error("Expected segmented capture to complete");
+      expect(spawned).toEqual([expected[0], expected[1], expected[1]]);
+      expect(removed).toEqual([expected[1]!]);
+      expect(completed).toEqual(expected);
+      expect(result.segmentPaths).toEqual(expected);
+      expect(concat).toHaveBeenCalledWith(
+        expected,
+        join(fixtureRoot, `video-only.${format}`),
+        undefined,
+        input.cfg,
+      );
+    },
+  );
+
+  it.each(["mov", "webm"])(
+    "resumes completed %s segments without capturing again",
+    async (format) => {
+      const segmentDir = join(fixtureRoot, `resume-${format}`);
+      const concat = mock(async () => ({ success: true as const }));
+      const create = mock(async () => fakeSession(0));
+      const input = fakeStageInput({ totalFrames: 2 });
+      const result = await runCaptureSegmentedStage({
+        ...input,
+        outputFormat: format,
+        videoOnlyPath: join(fixtureRoot, `video-only.${format}`),
+        segmentFrames: 1,
+        segmentDir,
+        completedSegments: new Set([0, 1]),
+        sessionFactory: { create },
+        deps: { concat },
+      });
+      expect(result.success).toBe(true);
+      expect(create).not.toHaveBeenCalled();
+      expect(concat).toHaveBeenCalledWith(
+        [join(segmentDir, `segment_00000.${format}`), join(segmentDir, `segment_00001.${format}`)],
+        join(fixtureRoot, `video-only.${format}`),
+        undefined,
+        input.cfg,
+      );
+    },
+  );
+
   it("spawns one encoder per segment, writes every frame once in order, then concats", async () => {
     const written: Array<{ segment: string; frame: number }> = [];
     const encoders: string[] = [];
@@ -309,9 +392,9 @@ describe("runCaptureSegmentedStage", () => {
     expect(result.encodeMs).toBe(15);
     expect(result.encoderDrainWaitMs).toBe(6);
     expect(encoders).toEqual([
-      segmentOutputPath(join(fixtureRoot, "segments"), 0),
-      segmentOutputPath(join(fixtureRoot, "segments"), 1),
-      segmentOutputPath(join(fixtureRoot, "segments"), 2),
+      segmentOutputPath(join(fixtureRoot, "segments"), 0, ".mp4"),
+      segmentOutputPath(join(fixtureRoot, "segments"), 1, ".mp4"),
+      segmentOutputPath(join(fixtureRoot, "segments"), 2, ".mp4"),
     ]);
     // Every frame exactly once, in order, across the segment boundaries.
     expect(written.map((w) => w.frame)).toEqual([0, 1, 2, 3, 4, 5, 6]);
@@ -400,14 +483,17 @@ describe("runCaptureSegmentedStage", () => {
     expect(result.success).toBe(true);
     // Segment 0's frames are not re-captured, and no encoder is spawned for it.
     expect(captured).toEqual([3, 4, 5, 6, 7, 8]);
-    expect(spawned).toEqual([segmentOutputPath(stableDir, 1), segmentOutputPath(stableDir, 2)]);
+    expect(spawned).toEqual([
+      segmentOutputPath(stableDir, 1, ".mp4"),
+      segmentOutputPath(stableDir, 2, ".mp4"),
+    ]);
     expect(completed).toEqual([1, 2]);
     // The skipped segment is still concatenated, in order.
     expect(concat).toHaveBeenCalledWith(
       [
-        segmentOutputPath(stableDir, 0),
-        segmentOutputPath(stableDir, 1),
-        segmentOutputPath(stableDir, 2),
+        segmentOutputPath(stableDir, 0, ".mp4"),
+        segmentOutputPath(stableDir, 1, ".mp4"),
+        segmentOutputPath(stableDir, 2, ".mp4"),
       ],
       join(fixtureRoot, "video-only.mp4"),
       undefined,
@@ -434,7 +520,7 @@ describe("runCaptureSegmentedStage", () => {
     // The probe handed in by the orchestrator is still closed on this path.
     expect(closeSession).toHaveBeenCalledWith(input.probeSession);
     expect(concat).toHaveBeenCalledWith(
-      [0, 1, 2].map((i) => segmentOutputPath(stableDir, i)),
+      [0, 1, 2].map((i) => segmentOutputPath(stableDir, i, ".mp4")),
       join(fixtureRoot, "video-only.mp4"),
       undefined,
       expect.anything(),
@@ -709,7 +795,7 @@ describe("runCaptureSegmentedStage", () => {
     // Segment 1 restarts from its first frame on the fresh session.
     expect(captured).toEqual([0, 1, 2, 3]);
     // The partial segment file is deleted so a later resume cannot see it.
-    expect(removed).toEqual([segmentOutputPath(join(fixtureRoot, "retry"), 1)]);
+    expect(removed).toEqual([segmentOutputPath(join(fixtureRoot, "retry"), 1, ".mp4")]);
     expect(next).toBe(2);
   });
 
@@ -805,7 +891,7 @@ describe("runCaptureSegmentedStage", () => {
     expect(perWorkerSessions.size).toBe(3);
     const concatInputs = concat.mock.calls[0]?.[0];
     expect(concatInputs).toEqual(
-      Array.from({ length: 7 }, (_, i) => segmentOutputPath(stableDir, i)),
+      Array.from({ length: 7 }, (_, i) => segmentOutputPath(stableDir, i, ".mp4")),
     );
   });
 
@@ -1381,7 +1467,7 @@ describe("runCaptureSegmentedStage with segmentVideoFrames", () => {
 
     expect(events).toEqual([
       "concat",
-      ...[0, 1, 2].map((i) => `remove ${segmentOutputPath(segmentDir, i)}`),
+      ...[0, 1, 2].map((i) => `remove ${segmentOutputPath(segmentDir, i, ".mp4")}`),
     ]);
   });
 
@@ -1398,7 +1484,7 @@ describe("runCaptureSegmentedStage with segmentVideoFrames", () => {
       deps: stageDeps({ removeFile: (path: string) => removed.push(path) }),
     });
 
-    expect(removed).toEqual([0, 1].map((i) => segmentOutputPath(segmentDir, i)));
+    expect(removed).toEqual([0, 1].map((i) => segmentOutputPath(segmentDir, i, ".mp4")));
   });
 
   it("a failed join removes no segment files", async () => {
@@ -1457,13 +1543,13 @@ describe("runCaptureSegmentedStage with segmentVideoFrames", () => {
         spawnEncoder: loggingEncoder([]),
         removeFile: (path: string) => {
           attempted.push(path);
-          if (path === segmentOutputPath(segmentDir, 0)) throw new Error("EPERM");
+          if (path === segmentOutputPath(segmentDir, 0, ".mp4")) throw new Error("EPERM");
         },
       }),
     });
 
     expect(result.success).toBe(true);
-    expect(attempted).toEqual([0, 1, 2].map((i) => segmentOutputPath(segmentDir, i)));
+    expect(attempted).toEqual([0, 1, 2].map((i) => segmentOutputPath(segmentDir, i, ".mp4")));
     expect(warnings).toEqual(["[Render] could not remove a joined segment file"]);
   });
 
