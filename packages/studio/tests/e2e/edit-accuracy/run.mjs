@@ -3,6 +3,9 @@
 // bun run --cwd packages/studio test:edit-accuracy -- --grid full|pr --jobs N [--shard i/n] [--filter re]
 //   [--lock path: the suite lock, taken per chunk] [--rerun: a confirmation run for the gate, with screenshots]
 //   [--shots: screenshots on a first run too]
+//   [--frames isolated|shared: the sealed preview in its own process, as Chrome runs it, or in Studio's;
+//   isolated by default with --chrome, shared otherwise]
+//   [--cpu N: slow every renderer N times] [--chrome path: isolated needs full Chrome; headless shell shares]
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { loadavg, tmpdir } from "node:os";
@@ -35,8 +38,20 @@ const { values: opt } = parseArgs({
     // Marks a confirmation run of cases that regressed, so the gate keeps it out of the banked baseline.
     rerun: { type: "boolean", default: false },
     shots: { type: "boolean", default: false },
+    frames: { type: "string" },
+    cpu: { type: "string", default: "1" },
+    chrome: { type: "string" },
   },
 });
+// Headless shell keeps every frame in one process, so isolated is the default only where it can hold.
+const frames = opt.frames ?? (opt.chrome ? "isolated" : "shared");
+if (!["isolated", "shared"].includes(frames) || !(Number(opt.cpu) >= 1)) {
+  console.error("usage: --frames isolated|shared, --cpu N >= 1");
+  process.exit(2);
+}
+// Puppeteer turns Chrome's own sandboxed-frame isolation off unless this is set.
+if (frames === "isolated") process.env.PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES = "true";
+else delete process.env.PUPPETEER_TEST_EXPERIMENTAL_CHROME_FEATURES;
 const [shard, shards] = opt.shard.split("/").map(Number);
 const filter = new RegExp(opt.filter);
 const cases = shardCases(
@@ -46,7 +61,7 @@ const cases = shardCases(
 );
 const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const out = resolve(opt.out ?? join(HERE, "../evidence/edit-accuracy", runId));
-const chrome = resolveHeadlessShellPath();
+const chrome = opt.chrome ?? resolveHeadlessShellPath();
 if (!chrome) throw new Error("no chrome-headless-shell: run `npx hyperframes browser ensure`");
 mkdirSync(out, { recursive: true });
 
@@ -128,6 +143,7 @@ async function runOne(spec, browser, decoder, port) {
       url: `http://127.0.0.1:${served.port}/#project/case`,
       evidence,
       shots: opt.rerun || opt.shots,
+      cpu: Number(opt.cpu),
     });
     await stopServer(server);
     server = null;
@@ -224,7 +240,9 @@ const load = loadavg()
 const started = Date.now();
 const results = [];
 const jobs = Math.max(1, Math.min(Number(opt.jobs), cases.length));
-console.log(`edit accuracy: ${cases.length} cases, ${jobs} jobs, chrome ${chrome}, out ${out}`);
+console.log(
+  `edit accuracy: ${cases.length} cases, ${jobs} jobs, frames ${frames}, chrome ${chrome}, out ${out}`,
+);
 const browsers = await Promise.all(
   Array.from({ length: jobs }, () =>
     puppeteer.launch({
@@ -270,8 +288,15 @@ const meta = {
   date: new Date().toISOString(),
   jobs,
   chrome,
+  frames,
+  cpu: Number(opt.cpu),
+  previewInOwnProcess: `${results.filter((r) => r.previewProcess === "own").length}/${results.length}`,
   load: `${load} to ${loadavg()
     .map((v) => v.toFixed(1))
     .join(" ")}`,
 };
 console.log(writeReport(out, meta, results, (Date.now() - started) / 1000));
+if (frames === "isolated" && results.length && !results.some((r) => r.previewProcess === "own"))
+  console.warn(
+    "--frames isolated, yet every preview shared Studio's process: pass --chrome <full Chrome>",
+  );

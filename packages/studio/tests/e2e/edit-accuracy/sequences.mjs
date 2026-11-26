@@ -502,7 +502,7 @@ const boxError = (state, m) =>
 /** One path or sequence case, end to end, against a Studio already serving `dir`. */
 export async function runSequence(args) {
   const drags = args.spec.steps.some((s) => s.do === "drag");
-  const control = await controlDrag(args.browser, drags ? "move" : "nudge");
+  const control = await controlDrag(args.browser, drags ? "move" : "nudge", args.cpu);
   let [watcher, history] = [null, null];
   try {
     return await inStudio(args, (session) => {

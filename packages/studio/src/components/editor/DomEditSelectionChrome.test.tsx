@@ -370,16 +370,29 @@ describe("DomEditSelectionChrome corner handles", () => {
       const corner = handle.querySelector<HTMLElement>("[data-resize-corner]")!;
       // On the overlay: a handle is pinned to its corner's edges of the handles' wrapper, which sits on the box.
       const wrap = handle.parentElement!.style;
-      const along = (start: string, end: string, size: string) =>
-        parseFloat(wrap[start as "left"]) +
-        (handle.style[start as "left"]
-          ? parseFloat(handle.style[start as "left"])
-          : parseFloat(wrap[size as "width"]) -
-            parseFloat(handle.style[end as "right"]) -
-            RESIZE_HANDLE_HIT_PX);
+      // A handle's offset is CSS arithmetic on the wrapper's size (100%); happy-dom does no layout, so read it here.
+      const offset = (value: string, size: number) =>
+        Number(
+          new Function(
+            `return ${value
+              .replace(/calc|px/g, "")
+              .replace(/max/g, "Math.max")
+              .replace(/100%/g, String(size))}`,
+          )(),
+        );
+      const along = (start: string, end: string, size: string) => {
+        const extent = parseFloat(wrap[size as "width"]);
+        return (
+          parseFloat(wrap[start as "left"]) +
+          (handle.style[start as "left"]
+            ? offset(handle.style[start as "left"], extent)
+            : extent - offset(handle.style[end as "right"], extent) - RESIZE_HANDLE_HIT_PX)
+        );
+      };
       const left = along("left", "right", "width");
       const top = along("top", "bottom", "height");
       return {
+        place: ["left", "right", "top", "bottom"].map((side) => handle.style[side as "left"]),
         left,
         top,
         corner: [left + parseFloat(corner.style.left), top + parseFloat(corner.style.top)],
@@ -433,13 +446,21 @@ describe("DomEditSelectionChrome corner handles", () => {
     },
   );
 
+  // fails without the fix: a small box's handles slid out by an amount React computed from its size, so during a
+  // resize they kept the last commit's slide for a frame after the move wrote the new size.
+  it("on a small box take their place from the wrapper's size alone, so a resize's write carries them", () => {
+    const places = (size: number) =>
+      cornerHits({ left: 100, top: 100, width: size, height: size }).map((hit) => hit.place);
+    expect(places(20)).toEqual(places(28));
+  });
+
   it("stay centred on the corners of a pick large enough to hold them", () => {
     expect(cornerHits({ left: 100, top: 100, width: 32, height: 40 })).toEqual(
       expect.arrayContaining([
-        { left: 92, top: 92, corner: [100, 100] },
-        { left: 124, top: 92, corner: [132, 100] },
-        { left: 92, top: 132, corner: [100, 140] },
-        { left: 124, top: 132, corner: [132, 140] },
+        expect.objectContaining({ left: 92, top: 92, corner: [100, 100] }),
+        expect.objectContaining({ left: 124, top: 92, corner: [132, 100] }),
+        expect.objectContaining({ left: 92, top: 132, corner: [100, 140] }),
+        expect.objectContaining({ left: 124, top: 132, corner: [132, 140] }),
       ]),
     );
   });

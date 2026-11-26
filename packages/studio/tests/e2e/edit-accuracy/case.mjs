@@ -209,18 +209,48 @@ async function findTarget(page, selector = "#target") {
 }
 
 // The handle's own session: remote object ids do not resolve in any other CDP session.
-async function contentQuad(handle) {
+export async function contentQuad(handle) {
   const { quads } = await handle.client.send("DOM.getContentQuads", {
     objectId: handle.remoteObject().objectId,
   });
   if (!quads.length) throw new Error("element has no rendered box");
-  return toPoints(quads[0]);
+  return inPage(handle.frame, toPoints(quads[0]));
+}
+
+// A frame in a process of its own reports quads in its own viewport; its iframe's quad maps them into page px.
+async function inPage(frame, quad) {
+  const parent = frame.parentFrame();
+  if (!parent || frame.client === parent.client) return quad;
+  const host = await frame.frameElement();
+  const [hostQuad, size] = await Promise.all([
+    contentQuad(host),
+    frame.evaluate(() => ({ width: innerWidth, height: innerHeight })),
+  ]);
+  return quad.map((p) => localToQuad(hostQuad, size, p));
+}
+
+/** Chrome throttles per process, so `rate` goes to the page and to each frame in a process of its own. */
+export async function throttleCpu(page, rate) {
+  if (!(rate > 1)) return;
+  const throttled = new WeakSet();
+  const throttle = (client) => {
+    if (throttled.has(client)) return;
+    throttled.add(client);
+    return client.send("Emulation.setCPUThrottlingRate", { rate });
+  };
+  page.on("frameattached", (f) => void throttle(f.client)?.catch(() => throttled.delete(f.client)));
+  page.on(
+    "framenavigated",
+    (f) => void throttle(f.client)?.catch(() => throttled.delete(f.client)),
+  );
+  await Promise.all(page.frames().map((f) => throttle(f.client)));
 }
 
 async function findHandles(ctx) {
   const found = await findTarget(ctx.page, ctx.selector);
   if (!found) throw new Error(`${ctx.selector ?? "#target"} not found in preview`);
   ctx.handles = { target: found.target, root: await found.frame.$('[data-composition-id="main"]') };
+  ctx.previewProcess = found.frame.client === ctx.page.mainFrame().client ? "page" : "own";
 }
 
 async function readQuads({ handles }) {
@@ -875,11 +905,11 @@ const CONTROL_PAGE = `data:text/html,<body style="margin:0;background:%23202020"
 const controls = new WeakMap();
 
 /** The case's drag schedule and per-frame reads on a blank page in the same Chrome: the machine's own frame drops. */
-export function controlDrag(browser, gesture) {
+export function controlDrag(browser, gesture, cpu = 1) {
   const byGesture = controls.get(browser) ?? new Map();
   controls.set(browser, byGesture);
   if (!byGesture.has(gesture)) {
-    const measured = measureControl(browser, gesture);
+    const measured = measureControl(browser, gesture, cpu);
     // A failed control is not cached, so one transient failure does not fail every later case.
     measured.catch(() => byGesture.get(gesture) === measured && byGesture.delete(gesture));
     byGesture.set(gesture, measured);
@@ -887,10 +917,11 @@ export function controlDrag(browser, gesture) {
   return byGesture.get(gesture);
 }
 
-async function measureControl(browser, gesture) {
+async function measureControl(browser, gesture, cpu) {
   const context = await browser.createBrowserContext();
   try {
     const page = await context.newPage();
+    await throttleCpu(page, cpu);
     await page.setViewport(VIEWPORT);
     await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
@@ -1079,9 +1110,13 @@ export function shooter(page, evidence, shots) {
  * `drive` measures the rest. A failure keeps a screenshot, and the context always closes.
  */
 // fallow-ignore-next-line complexity
-export async function inStudio({ browser, spec, dir, files, url, evidence, shots = true }, drive) {
+export async function inStudio(
+  { browser, spec, dir, files, url, evidence, shots = true, cpu = 1 },
+  drive,
+) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
+  await throttleCpu(page, cpu);
   await serveFixtureAssetsLocally(page);
   const ctx = {
     page,
@@ -1119,7 +1154,8 @@ export async function inStudio({ browser, spec, dir, files, url, evidence, shots
     pre = await settled(ctx);
     await selectTarget(ctx, pre);
     pre = await settled(ctx);
-    return await drive({ ctx, page, pre, zoom, shoot, consoleErrors, keysBefore });
+    const measured = await drive({ ctx, page, pre, zoom, shoot, consoleErrors, keysBefore });
+    return { ...measured, previewProcess: ctx.previewProcess };
   } catch (error) {
     await shoot("error").catch(() => undefined);
     throw error;
@@ -1130,7 +1166,7 @@ export async function inStudio({ browser, spec, dir, files, url, evidence, shots
 
 /** One case, end to end, against a Studio already serving `dir`. */
 export async function runCase(args) {
-  const control = await controlDrag(args.browser, args.spec.gesture);
+  const control = await controlDrag(args.browser, args.spec.gesture, args.cpu);
   return inStudio(args, (session) => measureCase(args, session, control));
 }
 

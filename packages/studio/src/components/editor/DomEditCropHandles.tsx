@@ -31,6 +31,10 @@ import { movesGesture } from "./domEditOverlayGestures";
 import { previewStandIn } from "./previewDrafts";
 import { onFrameShowsTime } from "../../player/lib/bridgePlayback";
 import { gestureStartLayout, readCropFrameStart } from "./previewGestureStartRead";
+import {
+  afterStudioManualEditGestures,
+  isStudioManualEditGestureActive,
+} from "./manualEditGesture";
 
 interface CropGestureState {
   edge: CropEdge | "move";
@@ -159,7 +163,16 @@ function insetsAfterDrag(gesture: CropGestureState, x: number, y: number): ClipP
   return resolveCropInsetFromEdgeDrag({ ...drag, edge, width, height });
 }
 
-type StartReads = { token: number; busy: boolean; again: boolean; element: HTMLElement };
+const isCropped = (crop: ReturnType<typeof readElementCropInsets>) =>
+  !!crop && (hasCropInsets(crop) || crop.radius > 0);
+
+type StartReads = {
+  token: number;
+  busy: boolean;
+  again: boolean;
+  element: HTMLElement;
+  held?: () => void;
+};
 
 /** A stand-in has no size of its own: the frame measures it while selected and when its overlay size changes, so its
  * insets draw at the element's own scale before any press, as an unsealed crop reads it live. One read at a time, one
@@ -171,6 +184,14 @@ function readStandInStart(
   const el = r.element;
   const standIn = previewStandIn(el);
   if (!standIn) return;
+  // An uncropped stand-in draws the same at any measured size, so another gesture's steps need no read.
+  if (isStudioManualEditGestureActive(el) && !isCropped(readElementCropInsets(el))) {
+    r.held ??= afterStudioManualEditGestures(el.ownerDocument, () => {
+      r.held = undefined;
+      readStandInStart(r, take);
+    });
+    return;
+  }
   if (r.busy) return void (r.again = true);
   r.busy = true;
   const token = r.token;
@@ -214,6 +235,7 @@ function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStar
         setState((prev) => (prev.element === el ? { ...prev, start } : prev)),
       );
   }, [element, shownSize, seeks, dragging, setState]);
+  useEffect(() => () => reads.current.held?.(), []);
   return reads;
 }
 

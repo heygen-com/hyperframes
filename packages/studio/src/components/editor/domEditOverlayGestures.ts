@@ -138,6 +138,16 @@ export function drawGroupOutline(overlay: HTMLElement | null, items: GroupOverla
   if (bounds) drawOutline([groupBox], bounds);
 }
 
+export function drawChromeOrigin(
+  box: HTMLElement | null | undefined,
+  rect: { left: number; top: number; width: number; height: number },
+) {
+  const chrome = box?.closest<HTMLElement>("[data-dom-edit-chrome]");
+  if (chrome) {
+    chrome.style.transformOrigin = `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px`;
+  }
+}
+
 export interface BlockedMoveState {
   pointerId: number;
   startX: number;
@@ -322,7 +332,7 @@ export type UseDomEditOverlayGesturesOptions = {
 
 export function isDomEditGestureTap(
   g: { startX: number; startY: number; travelled?: boolean },
-  e: React.PointerEvent,
+  e: Pick<PointerEvent, "clientX" | "clientY">,
 ) {
   return (
     !g.travelled &&

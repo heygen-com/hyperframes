@@ -69,6 +69,16 @@ it("a drag move places the resize handles in the same write as the box", () => {
   expect(rectOf(handles)).toEqual(rectOf(box));
 });
 
+// fails without the fix: a turned outline turned about its old centre until React's commit, a frame after the move.
+it("a drag move turns the outline about the box's new centre in the same write", () => {
+  const { handlers, box } = pressBox("drag");
+  const chrome = document.createElement("div");
+  chrome.setAttribute("data-dom-edit-chrome", "true");
+  chrome.append(box);
+  handlers.onPointerMove(pointer(130, 112) as never);
+  expect(chrome.style.transformOrigin).toBe("170px 122px");
+});
+
 it("a resize move sizes the resize handles in the same write as the box", () => {
   const { handlers, box, handles } = pressBox("resize");
   handlers.onPointerMove(pointer(300, 220) as never);

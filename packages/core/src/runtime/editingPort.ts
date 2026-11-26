@@ -141,6 +141,8 @@ export {
 } from "./editingGeometry";
 export type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
+export { MAX_EDIT_ENTRIES } from "./editing/editElement";
+export { MAX_FONT_FACES } from "./editing/textStyleReads";
 export {
   MAX_SNAPSHOT_CHANNELS,
   MAX_SNAPSHOT_FIELDS,

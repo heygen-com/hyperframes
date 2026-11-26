@@ -74,5 +74,7 @@ export function snappedDragDelta(
         });
     snapGuidesRef.current = { guides: snap.guides, spacingGuides };
   }
+  g.lastSnappedDx = dx;
+  g.lastSnappedDy = dy;
   return { dx, dy };
 }

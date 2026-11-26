@@ -39,6 +39,7 @@
     "packages/aws-lambda/scripts/*.ts",
     // Run inside the arm64 video image by the lambda-arm64-image workflow.
     "packages/aws-lambda/image/smoke-video.mjs",
+    "packages/studio/tests/e2e/edit-accuracy/frames-selftest.mjs",
     // Built as standalone IIFE for the browser-side sandbox runtime;
     // referenced by file path (not import) in build-hyperframes-runtime-artifact.ts.
     "packages/core/src/runtime/entry.ts",
