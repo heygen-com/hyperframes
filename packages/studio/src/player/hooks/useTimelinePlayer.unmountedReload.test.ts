@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
-// A reload asked of a player that is gone (its project closed while a refresh was on its way) starts nothing: no give-up
-// 45 s later against the preview open then, and that preview does not count as changing (a press would wait on it).
+// A reload asked of an unmounted player starts nothing: no late failure and no changing mark on the open preview.
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
