@@ -38,9 +38,8 @@ import {
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
-  drawChromeOrigin,
   drawGroupOutline,
-  drawOutline,
+  drawSelectionOutline,
   type GestureState,
   type GroupGestureState,
   type UseDomEditOverlayGesturesOptions,
@@ -65,20 +64,25 @@ function logGestureCommitFailure(message: string, error: unknown): void {
 }
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
-  const setDraftOverlayRect = (next: OverlayRect) => {
-    if (!opts.waitingPressRef.current) opts.setOverlayRect(next);
+  const setDraftOverlayRect = (next: OverlayRect, syncCropFrame = false) => {
+    if (opts.waitingPressRef.current) return;
+    opts.setOverlayRect(next);
+    drawSelectionOutline(opts.boxRef.current, opts.handlesRef.current, next, { syncCropFrame });
   };
   const restoreGestureOverlayRect = (g: GestureState) => {
-    setDraftOverlayRect({
-      left: g.originLeft,
-      top: g.originTop,
-      width: g.originWidth,
-      height: g.originHeight,
-      editScaleX: g.editScaleX,
-      editScaleY: g.editScaleY,
-      // Rotation keeps the chrome aligned with the element during its draft.
-      angle: g.actualRotation,
-    });
+    setDraftOverlayRect(
+      {
+        left: g.originLeft,
+        top: g.originTop,
+        width: g.originWidth,
+        height: g.originHeight,
+        editScaleX: g.editScaleX,
+        editScaleY: g.editScaleY,
+        // Rotation keeps the chrome aligned with the element during its draft.
+        angle: g.actualRotation,
+      },
+      g.kind === "drag",
+    );
   };
   const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
     if (opts.waitingPressRef.current) return;
@@ -125,9 +129,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const outline = opts.waitingPressRef.current
-      ? []
-      : [opts.boxRef.current, opts.handlesRef.current];
     const blockedMove = opts.blockedMoveRef.current;
     if (!blockedMove && !g && !groupG) {
       opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
@@ -179,9 +180,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         angle: g.actualRotation,
       };
       readout.updateGestureReadout(g.readout, draftRect);
-      setDraftOverlayRect(draftRect);
-      drawOutline(outline, { left: nextBoxLeft, top: nextBoxTop });
-      drawChromeOrigin(outline[0], draftRect);
+      setDraftOverlayRect(draftRect, true);
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
     } else {
       const nextSize = resizeSizeAt(g, e);
@@ -207,8 +206,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         draftRect,
         liveInlineStyle: sel.element.getAttribute("style"),
       });
-      drawOutline(outline, draftRect);
-      drawChromeOrigin(outline[0], draftRect);
       readout.updateGestureReadoutSize(g.readout, draftRect, writtenSize);
       setDraftOverlayRect(draftRect);
     }
@@ -230,9 +227,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const outline = opts.waitingPressRef.current
-      ? []
-      : [opts.boxRef.current, opts.handlesRef.current];
     opts.blockedMoveRef.current = null;
     opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
 
@@ -308,7 +302,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (g.kind === "drag" && isDomEditGestureTap(g, e)) {
       if (g.pathOffsetMember) restoreManualOffsetDragMembers([g.pathOffsetMember]);
-      drawOutline(outline, { left: g.originLeft, top: g.originTop });
       restoreGestureOverlayRect(g);
       opts.suppressNextBoxClickRef.current = true;
       opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
@@ -325,7 +318,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       } else {
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
       }
-      drawOutline(outline, { width: g.originWidth, height: g.originHeight });
       restoreGestureOverlayRect(g);
       opts.suppressNextBoxClickRef.current = true;
       return;
@@ -371,16 +363,18 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       const finalOffset = applyManualOffsetDragCommit(g.pathOffsetMember, dx, dy);
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;
-      setDraftOverlayRect({
-        left: nextBoxLeft,
-        top: nextBoxTop,
-        width: g.originWidth,
-        height: g.originHeight,
-        editScaleX: g.editScaleX,
-        editScaleY: g.editScaleY,
-        angle: g.actualRotation,
-      });
-      drawOutline(outline, { left: nextBoxLeft, top: nextBoxTop });
+      setDraftOverlayRect(
+        {
+          left: nextBoxLeft,
+          top: nextBoxTop,
+          width: g.originWidth,
+          height: g.originHeight,
+          editScaleX: g.editScaleX,
+          editScaleY: g.editScaleY,
+          angle: g.actualRotation,
+        },
+        true,
+      );
       const member = g.pathOffsetMember;
       const edit = beginStudioPendingEdit(manualOffsetMoveRevert([member]));
       const saved = Promise.resolve(

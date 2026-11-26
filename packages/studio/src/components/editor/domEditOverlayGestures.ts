@@ -114,7 +114,7 @@ export function movesGesture(
   return e.pointerId === gesture.pointerId && (e.buttons & 1) === 1;
 }
 
-export function drawOutline(
+function drawOutline(
   outline: (HTMLElement | null)[],
   rect: { left?: number; top?: number; width?: number; height?: number },
 ) {
@@ -138,14 +138,25 @@ export function drawGroupOutline(overlay: HTMLElement | null, items: GroupOverla
   if (bounds) drawOutline([groupBox], bounds);
 }
 
-export function drawChromeOrigin(
+export function drawSelectionOutline(
   box: HTMLElement | null | undefined,
+  handles: HTMLElement | null | undefined,
   rect: { left: number; top: number; width: number; height: number },
+  options?: { syncCropFrame?: boolean },
 ) {
+  drawOutline([box ?? null, handles ?? null], rect);
   const chrome = box?.closest<HTMLElement>("[data-dom-edit-chrome]");
-  if (chrome) {
-    chrome.style.transformOrigin = `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px`;
-  }
+  if (!chrome) return;
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  chrome.style.transformOrigin = `${cx}px ${cy}px`;
+  if (!options?.syncCropFrame) return;
+  const cropFrame = chrome.parentElement?.querySelector<HTMLElement>("[data-dom-edit-crop-frame]");
+  if (!cropFrame) return;
+  const w = Number.parseFloat(cropFrame.style.width);
+  const h = Number.parseFloat(cropFrame.style.height);
+  cropFrame.style.left = `${Number.isFinite(w) ? cx - w / 2 : rect.left}px`;
+  cropFrame.style.top = `${Number.isFinite(h) ? cy - h / 2 : rect.top}px`;
 }
 
 export interface BlockedMoveState {
