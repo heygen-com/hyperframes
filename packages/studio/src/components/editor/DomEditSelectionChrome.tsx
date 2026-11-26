@@ -1,10 +1,7 @@
 import type { RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
-import {
-  type GroupOverlayItem,
-  type OverlayRect,
-  RESIZE_HANDLE_HIT_PX,
-} from "./domEditOverlayGeometry";
+import { type GroupOverlayItem, type OverlayRect } from "./domEditOverlayGeometry";
+import { resizeHandleLayout, type CropInset } from "./resizeHandleLayout";
 import type { ResizeHandle } from "./domEditOverlayGestures";
 import type { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { DomEditCropHandles } from "./DomEditCropHandles";
@@ -26,35 +23,6 @@ const RESIZE_HANDLE_DEFS: Array<{
   { handle: "sw", cursor: "nesw-resize", x: "left", y: "bottom" },
   { handle: "se", cursor: "nwse-resize", x: "right", y: "bottom" },
 ];
-
-type CropInset = { top: number; right: number; bottom: number; left: number };
-const NO_CROP_INSET: CropInset = { top: 0, right: 0, bottom: 0, left: 0 };
-
-/** A handle's place in the handles' wrapper, which sits exactly over the box: each handle is pinned to the wrapper
- *  edges of its own corner, so a move that writes the wrapper's rect carries the handles with it. */
-function resizeHandleLayout(
-  def: (typeof RESIZE_HANDLE_DEFS)[number],
-  overlayRect: { width: number; height: number },
-  cropInset?: CropInset,
-): { style: React.CSSProperties; anchor: React.CSSProperties } {
-  const half = RESIZE_HANDLE_HIT_PX / 2;
-  const inset = cropInset ?? NO_CROP_INSET;
-  const slideOutToFreeMiddleX =
-    (def.x === "left" ? -1 : 1) *
-    Math.max(0, half - (overlayRect.width - inset.left - inset.right) / 4);
-  const slideOutToFreeMiddleY =
-    (def.y === "top" ? -1 : 1) *
-    Math.max(0, half - (overlayRect.height - inset.top - inset.bottom) / 4);
-  return {
-    style: {
-      cursor: def.cursor,
-      touchAction: "none",
-      [def.x]: inset[def.x] - half - Math.abs(slideOutToFreeMiddleX),
-      [def.y]: inset[def.y] - half - Math.abs(slideOutToFreeMiddleY),
-    },
-    anchor: { left: half - slideOutToFreeMiddleX, top: half - slideOutToFreeMiddleY },
-  };
-}
 
 type GestureHandlers = ReturnType<typeof createDomEditOverlayGestureHandlers>;
 
