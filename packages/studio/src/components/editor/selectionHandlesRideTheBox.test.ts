@@ -119,6 +119,24 @@ it("a resize move turns the outline about the box's new centre in the same write
   expect(oy).toBeCloseTo(cy, 3);
 });
 
+// fails without the fix: moving the crop frame without resizing it shifts it off the anchored edge during a resize.
+it("a resize move leaves the crop frame alone until React updates its size", () => {
+  const { handlers, box } = pressBox("resize");
+  const overlay = document.createElement("div");
+  const chrome = document.createElement("div");
+  chrome.setAttribute("data-dom-edit-chrome", "true");
+  chrome.append(box);
+  const cropFrame = document.createElement("div");
+  cropFrame.setAttribute("data-dom-edit-crop-frame", "true");
+  cropFrame.style.left = "20px";
+  cropFrame.style.top = "30px";
+  cropFrame.style.width = "240px";
+  cropFrame.style.height = "160px";
+  overlay.append(chrome, cropFrame);
+  handlers.onPointerMove(pointer(300, 190) as never);
+  expect([cropFrame.style.left, cropFrame.style.top]).toEqual(["20px", "30px"]);
+});
+
 // fails without the fix: the tap branch restored the box position without restoring the turn centre.
 it("a drag tap restores the box, handles and turn centre without waiting for React", () => {
   const { handlers, box, handles } = pressBox("drag");
