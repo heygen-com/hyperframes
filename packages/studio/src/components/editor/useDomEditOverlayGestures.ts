@@ -39,6 +39,7 @@ import {
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
   drawChromeOrigin,
+  drawGroupOutline,
   drawOutline,
   type GestureState,
   type GroupGestureState,
@@ -80,7 +81,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     });
   };
   const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
-    if (!opts.waitingPressRef.current) opts.setGroupOverlayItems(next);
+    if (opts.waitingPressRef.current) return;
+    opts.setGroupOverlayItems(next);
+    drawGroupOutline(opts.overlayRef.current, next);
   };
 
   const restoreGroupPathOffsets = (g: GroupGestureState) => {

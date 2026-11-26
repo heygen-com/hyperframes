@@ -9,7 +9,11 @@ import type {
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
 import type { StudioElementLook } from "./gestureUndoRevert";
 import type { CssRotationTarget, RotationCommit } from "./rotationDraft";
-import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
+import {
+  resolveDomEditGroupOverlayRect,
+  type GroupOverlayItem,
+  type OverlayRect,
+} from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
@@ -120,6 +124,18 @@ export function drawOutline(
       if (el && v !== undefined) el.style[side] = `${v}px`;
     }
   }
+}
+
+export function drawGroupOutline(overlay: HTMLElement | null, items: GroupOverlayItem[]) {
+  if (!overlay) return;
+  const boxes = new Map<string, HTMLElement>();
+  for (const box of overlay.querySelectorAll<HTMLElement>("[data-dom-edit-group-member]")) {
+    boxes.set(box.dataset.domEditGroupMember ?? "", box);
+  }
+  for (const item of items) drawOutline([boxes.get(item.key) ?? null], item.rect);
+  const bounds = resolveDomEditGroupOverlayRect(items.map((item) => item.rect));
+  const groupBox = overlay.querySelector<HTMLElement>("[data-dom-edit-group-box]");
+  if (bounds) drawOutline([groupBox], bounds);
 }
 
 export function drawChromeOrigin(
