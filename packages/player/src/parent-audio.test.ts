@@ -157,10 +157,10 @@ describe("ParentAudio", () => {
     audio.destroy();
   });
 
-  it("leaves on its native copy a clip from another host, one with processing, and one from a long file", async () => {
+  it("leaves on its native copy a clip from another host, one in an audio group, and one from a long file", async () => {
     const copies = [
       copy("https://elsewhere.test/bed.m4a"),
-      copy("fx.m4a", { "data-fx-chain": "[]" }),
+      copy("grouped.m4a", { "data-audio-group": "vo" }),
       copy("long-bed.m4a"),
     ];
     const { audio, sent } = player(copies);
@@ -184,6 +184,26 @@ describe("ParentAudio", () => {
 
     expect(transports[0]!.schedulePlayback).not.toHaveBeenCalled();
     expect(transports[0]!.opts).toMatchObject({ busDocument: null });
+    audio.destroy();
+  });
+
+  // fails without the fix: a clip with its own effects chain or automation stayed on its native copy, so it played dry.
+  it("plays a clip with its own effects chain or automation from a decoded buffer, attributes and all", async () => {
+    const copies = [
+      copy("fx.m4a", { "data-fx-chain": '{"version":1,"nodes":[]}' }),
+      copy("lane.m4a", { "data-automation": "{}" }),
+    ];
+    const { audio } = player(copies);
+
+    audio.play();
+    await settle();
+
+    const scheduled = transports[0]!.schedulePlayback.mock.calls.map(
+      ([el]) => el as HTMLMediaElement,
+    );
+    expect(
+      scheduled.map((el) => el.getAttribute("data-fx-chain") ?? el.getAttribute("data-automation")),
+    ).toEqual(['{"version":1,"nodes":[]}', "{}"]);
     audio.destroy();
   });
 

@@ -220,7 +220,7 @@
     },
     {
       "name": "portable-hidden-and-media",
-      "description": "Completed .media assets with unused alternatives, .media/index.md, the named portable .hyperframes files, and hidden authored files.",
+      "description": "Portable project metadata, completed media assets and authored files have stable manifest digests.",
       "manifest": {
         "format_version": 1,
         "entrypoint": "index.html",
@@ -612,16 +612,11 @@
     },
     {
       "name": "agent-config-look-alikes-that-travel",
-      "description": "Names beside the refused agent and editor folders travel: a dotfile that only starts like one, a file named like a refused folder, the same name without its dot, .github outside hooks, copilot and agents, and a tilde name that is not a short name.",
+      "description": "Authored files outside reserved tool paths, a supported workflow and a literal tilde filename remain portable.",
       "manifest": {
         "format_version": 1,
         "entrypoint": "index.html",
         "files": [
-          {
-            "path": ".gemini-notes.md",
-            "sha256": "444e0fffbd825e9610ff5b199485707a0c895339ae80c15cc8a8aee41b106fda",
-            "size": 6
-          },
           {
             "path": ".github/agents.md",
             "sha256": "38700dfad5711976e2f7aeab31013f04aed8c83118a1ef892f6d23bdfe944602",
@@ -631,6 +626,11 @@
             "path": ".github/workflows/ci.yml",
             "sha256": "b602f7ad4316adfd9f3e5ca998773702a5db1a1f1599a14516f40101665fb6d2",
             "size": 9
+          },
+          {
+            "path": "Gemini-notes.md",
+            "sha256": "444e0fffbd825e9610ff5b199485707a0c895339ae80c15cc8a8aee41b106fda",
+            "size": 6
           },
           {
             "path": "devcontainer.json",
@@ -659,10 +659,35 @@
           }
         ]
       },
-      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".gemini-notes.md\",\"sha256\":\"444e0fffbd825e9610ff5b199485707a0c895339ae80c15cc8a8aee41b106fda\",\"size\":6},{\"path\":\".github/agents.md\",\"sha256\":\"38700dfad5711976e2f7aeab31013f04aed8c83118a1ef892f6d23bdfe944602\",\"size\":7},{\"path\":\".github/workflows/ci.yml\",\"sha256\":\"b602f7ad4316adfd9f3e5ca998773702a5db1a1f1599a14516f40101665fb6d2\",\"size\":9},{\"path\":\"devcontainer.json\",\"sha256\":\"ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356\",\"size\":3},{\"path\":\"gemini/settings.json\",\"sha256\":\"ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356\",\"size\":3},{\"path\":\"index.html\",\"sha256\":\"1249db6aa735d011e95805686491f2a06d39bfd5b6fe2018d68e52aa17fbf956\",\"size\":8},{\"path\":\"scenes/roo.png\",\"sha256\":\"33d8344a7135c42aa3876706b908f95b702d83ff53e05e4aaff17c07bf67a98e\",\"size\":4},{\"path\":\"zed~draft.txt\",\"sha256\":\"7eb2ca55b87a4d45d66a63f76db11f9b4aa9106472a62b5865060f9fd8eadaaa\",\"size\":6}],\"format_version\":1}",
-      "manifest_sha256": "713b816daf6a2141dfc6dad3dae2e2408d1572362050f80ec4da1fc4cfc52409",
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".github/agents.md\",\"sha256\":\"38700dfad5711976e2f7aeab31013f04aed8c83118a1ef892f6d23bdfe944602\",\"size\":7},{\"path\":\".github/workflows/ci.yml\",\"sha256\":\"b602f7ad4316adfd9f3e5ca998773702a5db1a1f1599a14516f40101665fb6d2\",\"size\":9},{\"path\":\"Gemini-notes.md\",\"sha256\":\"444e0fffbd825e9610ff5b199485707a0c895339ae80c15cc8a8aee41b106fda\",\"size\":6},{\"path\":\"devcontainer.json\",\"sha256\":\"ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356\",\"size\":3},{\"path\":\"gemini/settings.json\",\"sha256\":\"ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356\",\"size\":3},{\"path\":\"index.html\",\"sha256\":\"1249db6aa735d011e95805686491f2a06d39bfd5b6fe2018d68e52aa17fbf956\",\"size\":8},{\"path\":\"scenes/roo.png\",\"sha256\":\"33d8344a7135c42aa3876706b908f95b702d83ff53e05e4aaff17c07bf67a98e\",\"size\":4},{\"path\":\"zed~draft.txt\",\"sha256\":\"7eb2ca55b87a4d45d66a63f76db11f9b4aa9106472a62b5865060f9fd8eadaaa\",\"size\":6}],\"format_version\":1}",
+      "manifest_sha256": "37a25e3b0b7d4fad3c1dfca551e7d569921dc5b0d923bde36621327a8bdd093d",
       "file_count": 8,
       "project_bytes": 46
+    },
+    {
+      "name": "approved-hidden-font",
+      "description": "A referenced project font in a hidden folder.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "brand/.fonts/Inter.woff2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"include_hidden\":true,\"path\":\"brand/.fonts/Inter.woff2\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"size\":2},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10}],\"format_version\":1}",
+      "manifest_sha256": "0a5db825473663a3446821f01b6dfa28ed2fa97bd68f12adb622ea1c9e78cf63",
+      "file_count": 2,
+      "project_bytes": 12
     }
   ],
   "invalid": [
@@ -6069,6 +6094,146 @@
       "error": {
         "code": "excluded_path",
         "rule": "private-source"
+      }
+    },
+    {
+      "name": "unrecognized-hidden-folder",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "assets/.tool/state.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unrecognized-hidden"
+      }
+    },
+    {
+      "name": "hidden-asset-without-marker",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "brand/.fonts/Inter.woff2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "hidden-asset"
+      }
+    },
+    {
+      "name": "hidden-asset-false-marker",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "brand/.fonts/Inter.woff2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": false
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_schema"
+      }
+    },
+    {
+      "name": "hidden-marker-on-visible-file",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "fonts/Inter.woff2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_schema"
+      }
+    },
+    {
+      "name": "hidden-marker-on-private-folder",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".aws/logo.png",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "hidden-marker-on-unknown-file",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".tool/state.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2,
+            "include_hidden": true
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unrecognized-hidden"
       }
     }
   ],

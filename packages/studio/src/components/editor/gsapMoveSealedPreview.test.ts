@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { gsap } from "gsap";
+import { MAX_SNAPSHOT_TEXT } from "@hyperframes/core/runtime/editing-port";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
@@ -51,9 +52,9 @@ ${tweens}
 window.__timelines["main"] = tl;`;
 const MOVES_BOX = `tl.to("#box", { x: 200, y: 80, duration: 1, ease: "none" }, 0);`;
 const SCRIPT = timeline(MOVES_BOX);
-// Split-text output: more tween targets than the frame's GSAP snapshot carries, so Studio gets none.
-const SPLIT_TEXT = `tl.to(".c", { opacity: 0, stagger: 0.001 }, 0);`;
-const SPANS = '<span class="c"></span>'.repeat(600);
+// A value past the text bound the frame's GSAP snapshot carries, so Studio gets none.
+const SPLIT_TEXT = `tl.set(".c", { attr: { "data-t": "${"t".repeat(MAX_SNAPSHOT_TEXT + 1)}" } }, 0);`;
+const SPANS = '<span class="c"></span>';
 
 /** Frame px of a translate the draft drew, e.g. "calc(0px + 20px) calc(0px + 0px)". */
 const drawnTranslate = (box: HTMLElement) =>

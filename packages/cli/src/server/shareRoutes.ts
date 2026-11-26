@@ -9,6 +9,10 @@ import type {
   LocalShareSnapshot,
 } from "@hyperframes/studio-server";
 import { ReviewFailed, type ReviewExportProgress } from "@hyperframes/share";
+import {
+  listReferencedHiddenSourceAssets,
+  referencedHiddenDigest,
+} from "@hyperframes/share/projectSnapshot.mjs";
 import type { ShareService } from "../share/service.js";
 import { shareError } from "../share/errors.js";
 import { localShareRequestAllowed } from "./shareBoundary.js";
@@ -27,20 +31,44 @@ function actionInput(value: unknown): LocalShareAction | null {
   if (
     Object.keys(record).some(
       (key) =>
-        !["action", "audience", "space", "videoOnly", "includeSource", "confirmedReview"].includes(
-          key,
-        ),
+        ![
+          "action",
+          "audience",
+          "space",
+          "videoOnly",
+          "expectedReferencedHiddenDigest",
+          "confirmedReview",
+        ].includes(key),
     )
   )
     return null;
-  const { action, audience, space, videoOnly, includeSource, confirmedReview } = record;
+  const { action, audience, space, videoOnly, confirmedReview } = record;
   if (!isAction(action)) return null;
   const chosen = AUDIENCES.find((mode) => mode === audience);
   if (audience !== undefined && !chosen) return null;
-  const options = actionOptions(space, videoOnly, includeSource);
+  const options = actionOptions(space, videoOnly);
   if (!options) return null;
   if (["share", "access"].includes(action) && !chosen) return null;
-  return withConfirmedReview({ action, audience: chosen, ...options }, confirmedReview);
+  return withHiddenSummary(
+    withConfirmedReview({ action, audience: chosen, ...options }, confirmedReview),
+    record.expectedReferencedHiddenDigest,
+  );
+}
+
+function withHiddenSummary(
+  input: LocalShareAction | null,
+  digest: unknown,
+): LocalShareAction | null {
+  if (input?.action !== "sync") return digest === undefined ? input : null;
+  if (
+    !input.space ||
+    input.audience ||
+    input.videoOnly ||
+    typeof digest !== "string" ||
+    !/^[0-9a-f]{64}$/.test(digest)
+  )
+    return null;
+  return { ...input, expectedReferencedHiddenDigest: digest };
 }
 
 function withConfirmedReview(input: LocalShareAction, review: unknown): LocalShareAction | null {
@@ -53,20 +81,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isAction(value: unknown): value is LocalShareAction["action"] {
-  return ["share", "update", "access", "off", "on", "login"].some((action) => action === value);
+  return ["share", "update", "access", "off", "on", "login", "sync"].some(
+    (action) => action === value,
+  );
 }
 function actionOptions(
   space: unknown,
   videoOnly: unknown,
-  includeSource: unknown,
-): Pick<LocalShareAction, "space" | "videoOnly" | "includeSource"> | null {
+): Pick<LocalShareAction, "space" | "videoOnly"> | null {
   if (!validSpace(space)) return null;
-  if (![videoOnly, includeSource].every(optionalBoolean)) return null;
-  if (includeSource === true && videoOnly === true) return null;
-  const options: Pick<LocalShareAction, "space" | "videoOnly" | "includeSource"> = {};
+  if (!optionalBoolean(videoOnly)) return null;
+  const options: Pick<LocalShareAction, "space" | "videoOnly"> = {};
   if (typeof space === "string") options.space = space;
   if (videoOnly === true) options.videoOnly = true;
-  if (includeSource === true) options.includeSource = true;
   return options;
 }
 function optionalBoolean(value: unknown): boolean {
@@ -131,6 +158,23 @@ export function mountShareRoutes(
   });
   routes.use("*", bodyLimit({ maxSize: 4096 }));
   routes.get("/bootstrap", (c) => c.json({ csrf: sessions.open() }));
+  routes.get("/project-files", async (c) => {
+    try {
+      const space = c.req.query("space");
+      if (!validId(space))
+        return c.json({ code: "invalid_space", message: "Choose a workspace." }, 400);
+      const sharing = await sessions.get(c.req.header("x-hyperframes-share-csrf")!)!.get();
+      const state = await sharing.sourceStatus(space);
+      const paths =
+        state === "needs_sync" ? await listReferencedHiddenSourceAssets(projectDir) : [];
+      return c.json({ state, paths, digest: referencedHiddenDigest(paths) });
+    } catch {
+      return c.json(
+        { code: "hidden_assets_unavailable", message: "Could not read the hidden asset summary." },
+        400,
+      );
+    }
+  });
   routes.post("/events", async (c) => {
     const event = shareEventInput(await c.req.json().catch(() => null));
     if (!event) return c.json({ code: "invalid_event", message: "Unknown sharing event." }, 400);
@@ -261,6 +305,8 @@ export function mountShareRoutes(
 
 function executeAction(sharing: ShareService, input: LocalShareAction) {
   if (input.action === "login") return sharing.status();
+  if (input.action === "sync")
+    return sharing.syncProjectFiles(input.space!, input.expectedReferencedHiddenDigest!);
   if (input.action === "access" && input.audience) return sharing.setAccess(input.audience);
   if (input.action === "off") return sharing.linkOff();
   if (input.action === "on") return sharing.linkOn();
@@ -269,7 +315,6 @@ function executeAction(sharing: ShareService, input: LocalShareAction) {
     audience: input.audience,
     space: input.space,
     videoOnly: input.videoOnly,
-    includeSource: input.includeSource,
     confirmedReview: input.confirmedReview,
   });
 }

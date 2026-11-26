@@ -15,6 +15,23 @@ export function terminalText(text: string): string {
   return shown;
 }
 
+export function quotedFilePath(path: string): string {
+  let result = "";
+  for (const ch of JSON.stringify(path)) {
+    const code = ch.charCodeAt(0);
+    const escape =
+      isControlCode(code) ||
+      reordersOrBreaksTextOnScreen(code) ||
+      /\p{Default_Ignorable_Code_Point}/u.test(ch) ||
+      ch.normalize("NFKC") !== ch;
+    if (escape) {
+      for (let index = 0; index < ch.length; index++)
+        result += `\\u${ch.charCodeAt(index).toString(16).padStart(4, "0")}`;
+    } else result += ch;
+  }
+  return result;
+}
+
 export function terminalLines(text: string): string {
   return text.split("\n").map(terminalText).join("\n");
 }

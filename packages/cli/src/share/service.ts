@@ -7,6 +7,8 @@ import {
 import { basename } from "node:path";
 import { CliUsageError } from "../utils/commandResult.js";
 import {
+  projectFingerprint,
+  shareSources,
   addVersion,
   pendingReviewExport,
   refreshReviewExport,
@@ -36,6 +38,7 @@ export interface ShareAction {
   waitSeconds?: number;
   videoOnly?: boolean;
   includeSource?: boolean;
+  expectedReferencedHiddenDigest?: string;
   confirmedReview?: string | null;
 }
 function linkState(share: ReviewShare | null, ready: boolean, failed: boolean): string {
@@ -332,13 +335,69 @@ export function createShareService(
       auth.access,
       target.spaceId,
       input,
-      flags.shareFiles,
+      await canAttachSource(target.spaceId, flags),
+      options.surface === "local_studio",
     );
     if (sources.requireSource) await checkPreparedTarget(target);
     await phase("uploading_video");
     return upload(input, target.projectId, sources, attempt, phase);
   };
+  async function canAttachSource(
+    spaceId: string | undefined,
+    flags: Awaited<ReturnType<typeof client.reviewFlags>>,
+  ) {
+    if (options.surface !== "local_studio" || !flags.shareFiles) return flags.shareFiles;
+    return Boolean(spaceId && (await sourceWorkspace(spaceId, flags).catch(() => null)));
+  }
+  async function sourceWorkspace(
+    requested?: string,
+    knownFlags?: Awaited<ReturnType<typeof client.reviewFlags>>,
+  ) {
+    const [flags, spaces, record] = await Promise.all([
+      knownFlags ?? client.reviewFlags(),
+      client.spaces(),
+      reviewRecord(dir),
+    ]);
+    const space = selectSpace(spaces, registrationSpace(record, requested));
+    if (
+      !flags.versionSharing ||
+      !flags.shareFiles ||
+      !space?.can_create_review ||
+      space.review_entitlements?.can_offer_edit === false
+    )
+      return null;
+    return space.space_id;
+  }
   return {
+    sourceStatus: async (requested?: string) => {
+      const spaceId = await sourceWorkspace(requested);
+      if (!spaceId) return "off" as const;
+      const source = shareSources({ access: auth.access, spaceId, reuseOnly: true });
+      const result = await source.prepare(dir, await projectFingerprint(dir));
+      if (result.at === "ready") return "synced" as const;
+      return ["source_sync_required", "source_render_changed"].includes(result.reason)
+        ? ("needs_sync" as const)
+        : ("off" as const);
+    },
+    syncProjectFiles: async (space: string, digest: string) => {
+      const spaceId = await sourceWorkspace(space);
+      if (!spaceId || space !== spaceId)
+        throw new Error("Project file sync is unavailable in this workspace.");
+      assertReviewUploadStorage();
+      const source = shareSources({
+        access: auth.access,
+        spaceId,
+        expectedReferencedHiddenDigest: digest,
+      });
+      const result = await source.prepare(dir, await projectFingerprint(dir));
+      if (result.at !== "ready")
+        throw new Error(
+          result.reason === "source_hidden_assets_changed"
+            ? "The referenced hidden files changed. Review the updated paths and sync again."
+            : `Project files could not be synced (${result.reason}).`,
+        );
+      return status();
+    },
     checkSession: (verifyIdentity = false) => auth.access(undefined, verifyIdentity),
     status,
     run: (input: ShareAction) =>
@@ -401,8 +460,14 @@ async function prepareSelectedSource(
   spaceId: string | undefined,
   input: ShareAction,
   shareFiles: boolean,
+  reuseOnly: boolean,
 ): Promise<PreparedShareSource> {
-  if (input.includeSource !== true || input.videoOnly)
+  if ((!reuseOnly && input.includeSource !== true) || input.videoOnly || (reuseOnly && !spaceId))
     return { source: { at: "video_only", reason: "requested" }, requireSource: false };
-  return prepareCliShareSource(dir, access, spaceId, { includeSource: true, shareFiles });
+  return prepareCliShareSource(dir, access, spaceId, {
+    includeSource: true,
+    reuseOnly,
+    shareFiles,
+    expectedReferencedHiddenDigest: input.expectedReferencedHiddenDigest,
+  });
 }
