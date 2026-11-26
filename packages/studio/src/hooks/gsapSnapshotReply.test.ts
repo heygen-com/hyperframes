@@ -45,4 +45,24 @@ describe("readGsapSnapshot", () => {
     // The vars alone are 3 fields under the bound; the target's handle and fields pass it.
     expect(readGsapSnapshot(reply(MAX_SNAPSHOT_FIELDS - 5))).toBeNull();
   });
+
+  it("refuses a vars list longer than the reply's field budget or with a gap", () => {
+    const withVars = (a: unknown[]) => ({
+      ...reply(0),
+      globalTweens: [{ ...reply(0).globalTweens[0], vars: { a } }],
+    });
+    expect(readGsapSnapshot(withVars(new Array(MAX_SNAPSHOT_FIELDS)))).toBeNull();
+    const gap = [1, 1, 1];
+    delete gap[1];
+    expect(readGsapSnapshot(withVars(gap))).toBeNull();
+  });
+
+  it("refuses at once a vars list whose length has no entries", () => {
+    const vars = { a: new Array(2 ** 32 - 1) };
+    const started = performance.now();
+    expect(
+      readGsapSnapshot({ ...reply(0), globalTweens: [{ ...reply(0).globalTweens[0], vars }] }),
+    ).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });

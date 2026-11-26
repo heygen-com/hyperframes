@@ -1,11 +1,17 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MAX_FONT_FACES, MAX_QUERY_MATCHES } from "@hyperframes/core/runtime/editing-port";
 import {
   AGENT_PROBE_MS,
   PREVIEW_REJECTED,
   previewAnswer,
+  MAX_FRAME_CLIPS,
+  previewComputedStylesOfEvery,
+  previewConsoleErrors,
+  previewFontFaces,
   previewClipManifest,
+  previewClipParents,
   previewEditingClient,
   previewFrameOpaque,
   previewRequest,
@@ -179,6 +185,93 @@ describe("previewEditingClient", () => {
     }
     reply = { clipManifest: { clips: [], durationInFrames: Infinity } };
     expect(await previewClipManifest(iframe)).toBeNull();
+  });
+});
+
+describe("the clip lists in a runtime snapshot", () => {
+  const pair = ["child", "parent"];
+  const manifest = (clips: unknown[]) => ({ clipManifest: { clips, durationInFrames: 30 } });
+
+  it("are read up to the clip cap", async () => {
+    const { iframe } = servedFrame(() => ({ clipParents: Array(MAX_FRAME_CLIPS).fill(pair) }));
+    expect(await previewClipParents(iframe)).toEqual(new Map([["child", "parent"]]));
+  });
+
+  it("are refused past the clip cap or with a gap", async () => {
+    let clipParents: unknown[] = Array(MAX_FRAME_CLIPS + 1).fill(pair);
+    let clips: unknown[] = [];
+    const { iframe } = servedFrame(() => ({ ...manifest(clips), clipParents }));
+    expect(await previewClipParents(iframe)).toEqual(new Map());
+    clipParents = [pair, pair, pair];
+    delete clipParents[1];
+    clips = [{}, {}];
+    delete clips[0];
+    expect(await previewClipParents(iframe)).toEqual(new Map());
+    expect(await previewClipManifest(iframe)).toBeNull();
+  });
+
+  it("are refused at once when their length has no entries", async () => {
+    const empty = new Array(2 ** 32 - 1);
+    const { iframe } = servedFrame(() => ({ ...manifest(empty), clipParents: empty }));
+    const started = performance.now();
+    expect(await previewClipParents(iframe)).toEqual(new Map());
+    expect(await previewClipManifest(iframe)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe("a list in a frame's runtime reply", () => {
+  const face = { family: "A", src: "url(a.woff2)" };
+  const readers = [
+    {
+      name: "console errors",
+      cap: MAX_QUERY_MATCHES,
+      entry: "boom",
+      reply: (list: unknown[]) => ({ errors: list, truncated: false }),
+      read: (iframe: HTMLIFrameElement) => previewConsoleErrors(iframe, 0),
+    },
+    {
+      name: "every match's styles",
+      cap: MAX_QUERY_MATCHES,
+      entry: { color: "red" },
+      reply: (list: unknown[]) => ({ styles: null, matches: list, truncated: false }),
+      read: (iframe: HTMLIFrameElement) => previewComputedStylesOfEvery(iframe, "p", ["color"]),
+    },
+    {
+      name: "font families",
+      cap: MAX_FONT_FACES,
+      entry: "A",
+      reply: (list: unknown[]) => ({ families: list, ownFaces: [face] }),
+      read: (iframe: HTMLIFrameElement) => previewFontFaces(iframe),
+    },
+    {
+      name: "the frame's own faces",
+      cap: MAX_FONT_FACES,
+      entry: face,
+      reply: (list: unknown[]) => ({ families: ["A"], ownFaces: list }),
+      read: (iframe: HTMLIFrameElement) => previewFontFaces(iframe),
+    },
+  ];
+
+  it.each(readers)("for $name is read up to the frame's own cap", async (r) => {
+    const { iframe } = servedFrame(() => r.reply(Array(r.cap).fill(r.entry)));
+    expect(await r.read(iframe)).not.toBeNull();
+  });
+
+  it.each(readers)("for $name is refused past the frame's cap or with a gap", async (r) => {
+    let list: unknown[] = Array(r.cap + 1).fill(r.entry);
+    const { iframe } = servedFrame(() => r.reply(list));
+    expect(await r.read(iframe)).toBeNull();
+    list = Array(r.cap).fill(r.entry);
+    delete list[1];
+    expect(await r.read(iframe)).toBeNull();
+  });
+
+  it.each(readers)("for $name is refused at once when its length has no entries", async (r) => {
+    const { iframe } = servedFrame(() => r.reply(new Array(2 ** 32 - 1)));
+    const started = performance.now();
+    expect(await r.read(iframe)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 

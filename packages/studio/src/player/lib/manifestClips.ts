@@ -1,3 +1,4 @@
+import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import { TRANSITION_LABEL_PREFIX } from "@hyperframes/core/studio-preview-mark";
 import type { ClipManifestClip } from "./playbackTypes";
 
@@ -23,7 +24,7 @@ const stringsOnly = (fields: Record<string, unknown>): boolean =>
   (fields.label == null || typeof fields.label === "string") &&
   (fields.assetUrl == null || typeof fields.assetUrl === "string") &&
   (fields.compositionAncestors == null ||
-    (Array.isArray(fields.compositionAncestors) &&
+    (isMessageList(fields.compositionAncestors) &&
       fields.compositionAncestors.every(
         (ancestor) => typeof ancestor === "string" && boundedId(ancestor),
       )));

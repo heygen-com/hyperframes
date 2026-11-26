@@ -2,6 +2,8 @@
 import {
   createEditingPortClient,
   EditingPortError,
+  MAX_FONT_FACES,
+  MAX_QUERY_MATCHES,
   type EditingParams,
   type EditingPortClient,
   type EditingRequestKind,
@@ -9,6 +11,7 @@ import {
   type TextEditSelection,
   type TextEditSelectionEvent,
 } from "@hyperframes/core/runtime/editing-port";
+import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
 import { wellFormedClips } from "./manifestClips";
 
@@ -168,13 +171,16 @@ export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: 
   await previewRequest(iframe, "wait-for-seek", {}, timeoutMs);
 }
 
+// ponytail: the runtime sets no clip cap; this one is far past any real film and bounds a reply's walk.
+export const MAX_FRAME_CLIPS = 100_000;
+
 /** The reply is frame data, so its shape is checked. */
 export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<ClipManifest | null> {
   const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
   const manifest: unknown = snapshot?.clipManifest;
   if (typeof manifest !== "object" || manifest === null) return null;
   const { clips, durationInFrames } = manifest as Partial<ClipManifest>;
-  if (!Array.isArray(clips) || typeof durationInFrames !== "number") return null;
+  if (!isMessageList(clips, MAX_FRAME_CLIPS) || typeof durationInFrames !== "number") return null;
   if (!Number.isFinite(durationInFrames)) return null;
   return { ...(manifest as ClipManifest), clips: wellFormedClips(clips) };
 }
@@ -183,7 +189,7 @@ export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map
   const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
   const pairs: unknown = snapshot?.clipParents;
   const parents = new Map<string, string>();
-  if (!Array.isArray(pairs)) return parents;
+  if (!isMessageList(pairs, MAX_FRAME_CLIPS)) return parents;
   for (const pair of pairs) {
     if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
       parents.set(pair[0], pair[1]);
@@ -197,7 +203,8 @@ export async function previewConsoleErrors(
 ): Promise<{ errors: string[]; truncated: boolean } | null> {
   const reply = await previewRequest(iframe, "console-errors", { from });
   const errors: unknown = reply?.errors;
-  if (!Array.isArray(errors) || typeof reply?.truncated !== "boolean") return null;
+  if (!isMessageList(errors, MAX_QUERY_MATCHES) || typeof reply?.truncated !== "boolean")
+    return null;
   return { errors: errors.map(String), truncated: reply.truncated };
 }
 
@@ -242,7 +249,8 @@ export async function previewComputedStylesOfEvery(
     properties,
   });
   const matches: unknown = reply?.matches;
-  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  if (!isMessageList(matches, MAX_QUERY_MATCHES) || typeof reply?.truncated !== "boolean")
+    return null;
   return {
     matches: matches.map((entry: unknown) => readStyles(entry, properties)),
     truncated: reply.truncated,
@@ -260,8 +268,8 @@ export async function previewFontFaces(iframe: HTMLIFrameElement): Promise<FontF
     face !== null &&
     isText((face as { family?: unknown }).family) &&
     isText((face as { src?: unknown }).src);
-  if (!Array.isArray(families) || !families.every(isText)) return null;
-  if (!Array.isArray(ownFaces) || !ownFaces.every(isFace)) return null;
+  if (!isMessageList(families, MAX_FONT_FACES) || !families.every(isText)) return null;
+  if (!isMessageList(ownFaces, MAX_FONT_FACES) || !ownFaces.every(isFace)) return null;
   return { families, ownFaces: ownFaces.map(({ family, src }) => ({ family, src })) };
 }
 
