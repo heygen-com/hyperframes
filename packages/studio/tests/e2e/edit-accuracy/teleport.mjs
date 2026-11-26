@@ -121,7 +121,8 @@ function frameSampler() {
   window.__editBenchFrames = rec;
   // The clock each preview stamps its geometry pushes on: the same instant reads the same in every document.
   const clock = () => performance.timeOrigin + performance.now();
-  for (const type of ["pointerdown", "pointermove", "pointerup"])
+  // Studio may post a sealed step on pointerrawupdate, so the frame can paint it before its coalesced pointermove.
+  for (const type of ["pointerdown", "pointerrawupdate", "pointermove", "pointerup"])
     window.addEventListener(
       type,
       (e) => {
