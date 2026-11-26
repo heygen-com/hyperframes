@@ -176,12 +176,14 @@ const useProcFd = (pathApi) => process.platform === "linux" && pathApi.sep === "
 
 function openDirChecked(target, expectedStat, dirFlags, fs) {
   const fd = fs.openSync(target, dirFlags);
-  const stat = fs.fstatSync(fd);
-  if (!stat.isDirectory() || !sameNode(stat, expectedStat)) {
-    closeAll([fd], fs);
-    return null;
+  try {
+    const stat = fs.fstatSync(fd);
+    if (stat.isDirectory() && sameNode(stat, expectedStat)) return fd;
+  } catch {
+    // closed below before failing closed
   }
-  return fd;
+  closeAll([fd], fs);
+  return null;
 }
 
 function openVerifiedDirs(root, rootStat, dirEntries, fs, pathApi) {

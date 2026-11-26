@@ -1,8 +1,9 @@
 import { strict as assert } from "node:assert";
-import { win32 } from "node:path";
+import { posix, win32 } from "node:path";
 import { test } from "node:test";
 import {
   insideProject,
+  readFileInsideProject,
   recordAvailable,
   recordPathInProject,
   resolveInsideProject,
@@ -212,4 +213,58 @@ test("recordAvailable does not query the original link after the check if the li
     true,
   );
   assert.ok(!fs.asked.includes(`exists ${link}`), `should not query original link: ${fs.asked}`);
+});
+
+// fails without the fix: openDirChecked leaked the opened directory fd when fstatSync threw.
+test("readFileInsideProject closes the directory descriptor if fstatSync throws", () => {
+  const root = "/work/proj";
+  const file = "/work/proj/looks/real.cube";
+  const openFds = new Set();
+  let nextFd = 100;
+  const dirStat = (ino) => ({
+    dev: 1,
+    ino,
+    isSymbolicLink: () => false,
+    isDirectory: () => true,
+    isFile: () => false,
+  });
+  const fileStat = {
+    dev: 1,
+    ino: 3,
+    isSymbolicLink: () => false,
+    isDirectory: () => false,
+    isFile: () => true,
+  };
+  const stats = new Map([
+    [root, dirStat(1)],
+    ["/work/proj/looks", dirStat(2)],
+    [file, fileStat],
+  ]);
+  const fs = {
+    constants: { O_RDONLY: 0, O_DIRECTORY: 1, O_NOFOLLOW: 2, O_NONBLOCK: 4 },
+    realpathSync: (p) => p,
+    lstatSync: (p) => {
+      const s = stats.get(p);
+      if (!s) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      return s;
+    },
+    openSync: () => {
+      const fd = nextFd++;
+      openFds.add(fd);
+      return fd;
+    },
+    fstatSync: (fd) => {
+      if (fd === 101) throw Object.assign(new Error("EIO"), { code: "EIO" });
+      return dirStat(1);
+    },
+    closeSync: (fd) => {
+      openFds.delete(fd);
+    },
+  };
+  assert.equal(readFileInsideProject(root, file, { fs, pathApi: posix }), null);
+  assert.deepEqual(
+    [...openFds],
+    [],
+    "every opened directory descriptor must be closed on fstat error",
+  );
 });
