@@ -54,7 +54,7 @@ jobs:
           set -euo pipefail
           echo "Measuring $(git rev-parse HEAD)"
           bun tests/e2e/edit-accuracy/run.mjs --grid "$BENCH_GRID" --filter "$BENCH_FILTER" \
-            --jobs 1 --port 5961 --cli "$GITHUB_WORKSPACE/packages/cli/dist/cli.js" \
+            --jobs 1 --port 5961 --frames shared --cli "$GITHUB_WORKSPACE/packages/cli/dist/cli.js" \
             --out "$RUNNER_TEMP/drag-frames/run-${{ matrix.run }}"
       - name: Require a quiet box (the blank page dropped no frame)
         run: |
