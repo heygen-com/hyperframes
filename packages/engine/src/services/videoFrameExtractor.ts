@@ -576,15 +576,13 @@ export class VideoSourceExtractionError extends Error {
 const FFMPEG_REASON_LINES = 3;
 const FFMPEG_REASON_CHARS = 300;
 
-// Lines that never say why: the banner and stream dumps (indented), progress (glued to the next line by \r), the
-// closing summary and FFmpeg 7's error-code echoes, which since FFmpeg 6.1 fill a failure's last lines.
-const FFMPEG_CHATTER =
+const FFMPEG_LINE_THAT_NEVER_SAYS_WHY =
   /^(?:\s|Input #|Output #|Stream mapping:|Press \[q\]|(?:frame|size)=|Conversion failed!)|\] (?:video:\S+ audio:|Task finished with error code|Terminating thread with return code)/;
 
 /** ffmpeg's last lines saying why, for an error that leaves this host: no local path, file name or URL. */
 function ffmpegReasonFrom(stderr: string, paths: readonly string[]): string {
   const lines = stderr.split(/[\r\n]+/);
-  const said = lines.filter((line) => line.trim() && !FFMPEG_CHATTER.test(line));
+  const said = lines.filter((line) => line.trim() && !FFMPEG_LINE_THAT_NEVER_SAYS_WHY.test(line));
   let text = (said.length > 0 ? said : lines).join("\n");
   for (const known of paths.filter(Boolean).sort((a, b) => b.length - a.length))
     text = text.split(known).join("<path>");
