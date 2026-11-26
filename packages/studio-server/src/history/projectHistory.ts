@@ -700,7 +700,7 @@ class Engine {
       same && (await readIdOffThread(this.dir)) === this.projectId ? "here" : "replaced";
   }
 
-  /** The folder now, asked on this thread: only a write's own check, made right before it writes to that folder. */
+  /** The folder now, asked on this thread: a write's own check right before it writes, and replacedAtPath. */
   whereFolder(): "here" | "gone" | "replaced" {
     const now = statSync(this.dir, { throwIfNoEntry: false });
     if (!now) return "gone";
