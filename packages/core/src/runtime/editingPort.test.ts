@@ -119,6 +119,8 @@ describe("createEditingPortClient", () => {
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
+          "arm-canvas-keys",
+          "resolve-canvas-key-action",
           "stage-measure",
         ],
       });

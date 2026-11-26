@@ -192,7 +192,7 @@ const readGsap = (element: Element, property: string) =>
   Number((window as GsapWindow).gsap?.getProperty?.(element, property)) || 0;
 
 /** GSAP's x/y when it owns the element's position: it renders its transform, or a tween writes it. */
-function gsapPosition(element: Element): EditingGestureStart["gsap"] {
+export function gsapPosition(element: Element): EditingGestureStart["gsap"] {
   const tweens = tweensOn(element).filter((tween) => tween.vars && carries(tween.vars, MOVES));
   if (!rendersTransform(element) && !tweens.length) return null;
   const moving = tweens.some((tween) => (tween.duration?.() ?? 0) > 0);

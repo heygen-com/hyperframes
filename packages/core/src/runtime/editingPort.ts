@@ -103,6 +103,16 @@ import {
   type TextEditParams,
   type TextEditResult,
 } from "./editing/textEdit";
+import {
+  canvasKeyActionEvent,
+  parseArmCanvasKeys,
+  parseResolveCanvasKeyAction,
+  type ArmCanvasKeysParams,
+  type ArmCanvasKeysResult,
+  type CanvasKeyActionEvent,
+  type ResolveCanvasKeyActionParams,
+  type ResolveCanvasKeyActionResult,
+} from "./editing/canvasKeys";
 
 export {
   buildStableSelector,
@@ -244,6 +254,8 @@ export const EDITING_REQUEST_KINDS = [
   "assets-unloaded",
   "text-edit",
   "serve-paused-frames",
+  "arm-canvas-keys",
+  "resolve-canvas-key-action",
   "stage-measure",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
@@ -442,6 +454,11 @@ export interface EditingRequests {
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
+  "arm-canvas-keys": { params: ArmCanvasKeysParams; result: ArmCanvasKeysResult };
+  "resolve-canvas-key-action": {
+    params: ResolveCanvasKeyActionParams;
+    result: ResolveCanvasKeyActionResult;
+  };
   "stage-measure": { params: StageMeasureParams; result: StageMeasureResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
@@ -759,6 +776,8 @@ const PARAM_PARSERS: {
     hasKeys(params, "channel") && params.channel instanceof MessagePort
       ? { channel: params.channel }
       : null,
+  "arm-canvas-keys": parseArmCanvasKeys,
+  "resolve-canvas-key-action": parseResolveCanvasKeyAction,
   "stage-measure": parseStageMeasureParams,
 };
 
@@ -802,6 +821,7 @@ export interface EditingPortClient {
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
   onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
+  onCanvasKeyAction(listener: (event: CanvasKeyActionEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -864,6 +884,7 @@ export function createEditingPortClient(options: {
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
   const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
+  const canvasKeyActionListeners = new Set<(event: CanvasKeyActionEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
@@ -892,7 +913,9 @@ export function createEditingPortClient(options: {
     const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
     if (ended) return textEditListeners.forEach((listener) => listener(ended));
     const selected = textEditSelectionEvent(data, EDITING_PROTOCOL_VERSION);
-    if (selected) selectionListeners.forEach((listener) => listener(selected));
+    if (selected) return selectionListeners.forEach((listener) => listener(selected));
+    const action = canvasKeyActionEvent(data, EDITING_PROTOCOL_VERSION);
+    if (action) canvasKeyActionListeners.forEach((listener) => listener(action));
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
@@ -968,6 +991,10 @@ export function createEditingPortClient(options: {
       selectionListeners.add(listener);
       return () => selectionListeners.delete(listener);
     },
+    onCanvasKeyAction(listener) {
+      canvasKeyActionListeners.add(listener);
+      return () => canvasKeyActionListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -975,6 +1002,7 @@ export function createEditingPortClient(options: {
       geometryListeners.clear();
       textEditListeners.clear();
       selectionListeners.clear();
+      canvasKeyActionListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
@@ -990,6 +1018,15 @@ export function createEditingPortClient(options: {
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
+export {
+  MAX_CANVAS_KEY_COMBOS,
+  type ArmCanvasKeysParams,
+  type ArmCanvasKeysResult,
+  type CanvasKeyActionEvent,
+  type CanvasKeyNudgeCombo,
+  type ResolveCanvasKeyActionParams,
+  type ResolveCanvasKeyActionResult,
+} from "./editing/canvasKeys";
 export {
   caretRangeAt,
   takePlainTextOnly,
