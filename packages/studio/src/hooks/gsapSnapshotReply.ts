@@ -7,6 +7,8 @@ import {
   MAX_SNAPSHOT_TEXT,
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
+  TARGET_FIELDS,
+  TIMELINE_FIELDS,
   type EditingResult,
 } from "@hyperframes/core/runtime/editing-port";
 import { isFields, isHandle } from "../player/lib/previewElements";
@@ -36,12 +38,13 @@ export function readGsapSnapshot(value: unknown): Snapshot | null {
     isList(globalTweens, MAX_SNAPSHOT_TWEENS) &&
     globalTweens.every((tween) => isTween(tween, budget)) &&
     isList(targets, MAX_SNAPSHOT_TARGETS) &&
-    targets.every(isTarget);
+    targets.every((target) => isTarget(target, budget));
   return ok ? (value as unknown as Snapshot) : null;
 }
 
 function isTimeline(value: unknown, budget: Budget): boolean {
   return (
+    (budget.fields -= TIMELINE_FIELDS) >= 0 &&
     isFields(value) &&
     isText(value.id) &&
     isNumberOrNull(value.time) &&
@@ -55,6 +58,7 @@ function isTween(value: unknown, budget: Budget): boolean {
   if ((budget.tweens -= 1) < 0 || !isFields(value)) return false;
   return (
     isTargetHandles(value.targets) &&
+    (budget.fields -= value.targets.length) >= 0 &&
     isFields(value.vars) &&
     isVars(value.vars, budget, 0) &&
     isTiming(value) &&
@@ -63,7 +67,7 @@ function isTween(value: unknown, budget: Budget): boolean {
   );
 }
 
-const isTargetHandles = (value: unknown) =>
+const isTargetHandles = (value: unknown): value is string[] =>
   isList(value, MAX_SNAPSHOT_TARGETS) && value.every(isHandle);
 
 const isTiming = (tween: Record<string, unknown>) =>
@@ -94,10 +98,11 @@ function isVars(value: unknown, budget: Budget, depth: number): boolean {
   );
 }
 
-function isTarget(value: unknown): boolean {
+function isTarget(value: unknown, budget: Budget): boolean {
   if (!isFields(value) || !isFields(value.values)) return false;
   const values = Object.entries(value.values);
   return (
+    (budget.fields -= TARGET_FIELDS + values.length) >= 0 &&
     isHandle(value.handle) &&
     isText(value.id) &&
     isText(value.className) &&
