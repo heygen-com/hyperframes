@@ -193,7 +193,8 @@ describe("LUT paths from a grades file", () => {
     expect(swapped).toBe(true);
   });
 
-  // fails without the fix: if a parent dir is swapped right after dir open and before leaf open, opening by absolute path contacts the outside file.
+  // fails without the fix: swapping the parent dir before leaf open lets an
+  // absolute-path open contact the outside file.
   it.skipIf(process.platform === "win32")(
     "refuses when a parent directory is swapped right before the leaf file is opened",
     async () => {
