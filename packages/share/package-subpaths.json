@@ -56,9 +56,9 @@
       "environments": ["bun", "node"]
     },
     "./referencedFont.mjs": {
-      "source": "./src/sources/referencedFont.mjs",
-      "runtime": "./src/sources/referencedFont.mjs",
-      "types": "./src/referencedFont.d.mts",
+      "source": "./src/referencedFont.mjs",
+      "runtime": "./src/referencedFont.mjs",
+      "types": "./dist/sources/referencedFont.d.mts",
       "environments": ["bun", "node"]
     },
     "./reviewAudience.mjs": {
