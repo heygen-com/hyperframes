@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { parse } from "yaml";
-import { catalogChanges, commitBatches } from "./publish-catalog.mjs";
+import { catalogChanges, commitBatches, copyGeneratedCatalog } from "./publish-catalog.mjs";
 import { GENERATED_CATALOG_PATHS } from "./catalog-generated-paths.mjs";
 import { committedCatalogOutputs } from "./check-catalog-source-pr.mjs";
 
@@ -59,6 +59,32 @@ test("publication includes changed, new and deleted generated files and excludes
     { path: "docs/public/catalog/blocks/new.json", kind: "write", contents: "AP8E" },
     { path: "registry/registry.json", kind: "write", contents: "bmV3" },
   ]);
+});
+
+test("the publisher takes only regular files under the generated paths from the build's output", (t) => {
+  const base = mkdtempSync(join(tmpdir(), "catalog-take-test-"));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const [built, root] = [join(base, "built"), join(base, "root")];
+  const write = (dir, path, content) => {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), content);
+  };
+  write(root, "registry/registry.json", "old");
+  write(root, "docs/public/catalog/blocks/gone.json", "old");
+  write(root, "scripts/publish-catalog.mjs", "first-party");
+  write(built, "registry/registry.json", "new");
+  write(built, "docs/public/catalog/blocks/new.json", "new");
+  write(built, "scripts/publish-catalog.mjs", "from the build");
+  copyGeneratedCatalog(built, root);
+  assert.equal(readFileSync(join(root, "registry/registry.json"), "utf8"), "new");
+  assert.equal(readFileSync(join(root, "docs/public/catalog/blocks/new.json"), "utf8"), "new");
+  assert.ok(!existsSync(join(root, "docs/public/catalog/blocks/gone.json")));
+  assert.equal(readFileSync(join(root, "scripts/publish-catalog.mjs"), "utf8"), "first-party");
+  symlinkSync(
+    join(root, "scripts/publish-catalog.mjs"),
+    join(built, "docs/public/catalog/blocks/link.json"),
+  );
+  assert.throws(() => copyGeneratedCatalog(built, root), /must be a regular file/);
 });
 
 test("signed API batches preserve deletions and limit each request to 100 changes", () => {
