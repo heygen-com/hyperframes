@@ -2,7 +2,11 @@
 import type { EditingGestureStart } from "@hyperframes/core/runtime/editing-port";
 import { measureGrowResponse } from "@hyperframes/core/drawn-box";
 import { settleGsapSnapshot } from "../../hooks/gsapFrameSnapshot";
-import { previewGestureStart } from "../../player/lib/previewElements";
+import {
+  previewGestureStart,
+  type PreviewElement,
+  type PreviewGestureStartReply,
+} from "../../player/lib/previewElements";
 import { previewRootHasNoSize, whenPreviewStageSized } from "../../player/lib/bridgePlayback";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import type { DomEditSelection } from "./domEditing";
@@ -58,7 +62,20 @@ export async function measurePreviewGestureStart(
   overlayEl: HTMLDivElement,
   handles: string[],
 ): Promise<PreviewGestureStarts | null> {
-  const reply = await previewGestureStart(iframe, handles);
+  return gestureStartsOnOverlay(
+    await previewGestureStart(iframe, handles),
+    iframe,
+    overlayEl,
+    handles,
+  );
+}
+
+function gestureStartsOnOverlay(
+  reply: PreviewGestureStartReply | null,
+  iframe: HTMLIFrameElement,
+  overlayEl: HTMLDivElement,
+  handles: string[],
+): PreviewGestureStarts | null {
   startLayouts.clear();
   reply?.elements.forEach((start, i) => {
     const { width = 0, height = 0 } = start?.layout ?? {};
@@ -118,6 +135,12 @@ export const unansweredMoveReason = (iframe: HTMLIFrameElement) =>
     ? "This composition has no size, so Studio can't move its layers. Give its root a width and height."
     : "The preview didn't answer, so Studio can't move this layer. Try again.";
 
+export interface ShownStartsRead {
+  found: PreviewElement[];
+  handles: string[];
+  reply: PreviewGestureStartReply;
+}
+
 export async function askShownGestureStarts(
   iframe: HTMLIFrameElement,
   overlay: HTMLDivElement | null,
@@ -125,6 +148,19 @@ export async function askShownGestureStarts(
   selections: DomEditSelection[],
   routeFromSnapshot = false,
 ): Promise<OverChannel | null | typeof UNANSWERED> {
+  const read = await readShownGestureStarts(iframe, overlay, path, selections, routeFromSnapshot);
+  return typeof read === "object" && read
+    ? shownFromRead(read, iframe, overlay!, selections)
+    : read;
+}
+
+export async function readShownGestureStarts(
+  iframe: HTMLIFrameElement,
+  overlay: HTMLDivElement | null,
+  path: string | null,
+  selections: DomEditSelection[],
+  routeFromSnapshot = false,
+): Promise<ShownStartsRead | null | typeof UNANSWERED> {
   const found = await Promise.all(
     selections.map((selection) => findPreviewElementForSelection(iframe, selection, path)),
   );
@@ -132,11 +168,22 @@ export async function askShownGestureStarts(
   const handles = found.map((element) => element?.handle);
   if (!overlay || !handles.length || !handles.every(Boolean)) return null;
   await whenPreviewStageSized(iframe, PRESS_WAIT_MAX_MS);
-  const [read, gsapRouteReadable] = await Promise.all([
-    measurePreviewGestureStart(iframe, overlay, handles as string[]),
+  const [reply, gsapRouteReadable] = await Promise.all([
+    previewGestureStart(iframe, handles as string[]),
     routeFromSnapshot ? settleGsapSnapshot(iframe) : true,
   ]);
-  if (!read || !gsapRouteReadable) return UNANSWERED;
+  if (!reply || !gsapRouteReadable) return UNANSWERED;
+  return { found: found as PreviewElement[], handles: handles as string[], reply };
+}
+
+export function shownFromRead(
+  { found, handles, reply }: ShownStartsRead,
+  iframe: HTMLIFrameElement,
+  overlay: HTMLDivElement,
+  selections: DomEditSelection[],
+): OverChannel | null | typeof UNANSWERED {
+  const read = gestureStartsOnOverlay(reply, iframe, overlay, handles);
+  if (!read) return UNANSWERED;
   const shown = selections.flatMap((selection, i) => {
     const start = read.elements[i];
     const onFrame = found[i];
