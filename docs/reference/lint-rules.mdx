@@ -906,19 +906,19 @@ Source: `packages/lint/src/projectNarration.ts`. These run only when the project
 
 **Warning.** A line's text, voice settings or WAV changed since it was voiced (its `voiced` record), or its audio file is missing, so the voice no longer says what the script says.
 
-**Fix:** Re-voice the line (with media-use, `--only tts` and just this line in the request), re-time its caption words, and update its `voiced` record.
+**Fix:** Run `hyperframes narration set <id>` to re-voice the line and update its captions.
 
 ### `narration_clip_timing_mismatch`
 
 **Warning.** The line's clip plays for more than 0.05 s longer or shorter than `audio_meta.json` says its voice lasts, so the voice is cut off or followed by silence. Checked only when `audio_meta.json` describes the line's own audio file.
 
-**Fix:** Set the clip's `data-duration` to the length `audio_meta.json` records for the line.
+**Fix:** Set the clip's `data-duration` to the length `audio_meta.json` records for the line, or run `hyperframes narration set <id>`.
 
 ### `narration_captions_out_of_sync`
 
 **Warning.** The caption words that show a line (tagged with `"line": "<id>"`, or untagged words inside its clip) differ in number from the voice's words in `audio_meta.json`, or one starts more than 0.1 s from where the voice says it. Without `audio_meta.json`: a tagged word starts outside the line's clip.
 
-**Fix:** Re-time the line's caption words from its voice.
+**Fix:** Run `hyperframes narration set <id>`, which re-times that line's caption words from its voice.
 
 ### `narration_transcript_mismatch`
 

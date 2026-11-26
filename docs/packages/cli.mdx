@@ -2006,6 +2006,8 @@ drift between them.
 npx hyperframes narration init                       # adopt a voiced project (media-use's audio_meta.json, or tagged clips)
 npx hyperframes narration list                       # each line and whether it is in sync
 npx hyperframes narration check                      # exits 1 when voice, clips and captions drifted
+npx hyperframes narration set l2 "Twenty renewals are due today."
+npx hyperframes narration set l2 --dry-run           # what would change, written nowhere
 ```
 
 | Command | What it does                                                                                                                                                                                                  |
@@ -2013,9 +2015,22 @@ npx hyperframes narration check                      # exits 1 when voice, clips
 | `init`  | Write `narration.json` from media-use's `audio_meta.json` and `audio_request.json`, or from clips already tagged with `data-narration-line`, and tag each line's clip. `--force` replaces an existing file. |
 | `list`  | Each line with its length and its narration findings, or "in sync".                                                                                                                                           |
 | `check` | The narration findings from `lint`; exits 1 when any warning remains.                                                                                                                                         |
+| `set <id> [text]` | Re-voice one line with Kokoro, transcribe that clip alone outside the project, then update the clip's `src` and `data-duration`, that line's caption words, `caption-overrides.json`, `narration.json` and the line's voice in `audio_meta.json` together, as one `history` entry. |
 
-Every command also takes `--dir` and `--json`; `init` takes `--who` (your agent name, for the
-`history` entry).
+| Flag (`set`)  | Description                                                                       |
+| ------------- | --------------------------------------------------------------------------------- |
+| `--voice`     | Kokoro voice for this line                                                        |
+| `--speed`     | Speech speed for this line (0.1 to 3)                                             |
+| `--dry-run`   | Show what would change; write nothing                                             |
+| `--no-retime` | Keep a longer take that runs into the next narration clip, instead of refusing it |
+| `--force`     | Re-voice even when the text, voice and WAV are unchanged                          |
+
+Every command also takes `--dir` and `--json`; `init` and `set` take `--who` (your agent name, for
+the `history` entry). `set` re-voices with Kokoro only: a local voice gives the same audio for the
+same text, so a re-voiced line still sounds like its neighbours. Lines voiced by a service whose
+voices may not repeat are refused; re-voice all of them with media-use instead. The new take is
+written as `assets/voice/<id>-<hash>.wav` and the old file is kept, so `history undo` always finds
+the audio it points back to.
 
 ### `history`
 

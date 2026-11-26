@@ -59,7 +59,7 @@ const finding = (
 ): HyperframeLintFinding => ({ code, severity, message, fixHint, file: NARRATION_FILE });
 
 const SET_FIX =
-  "Re-voice the line (with media-use, `--only tts` and just this line in the request) and re-time its caption words, then update the line's `voiced` record.";
+  "Run `hyperframes narration set <id>` to re-voice the line and update its captions.";
 
 function staleReasons(projectDir: string, manifest: NarrationManifest, line: NarrationLine) {
   const reasons: string[] = [];
@@ -213,7 +213,7 @@ function lineFindings(
         "narration_clip_timing_mismatch",
         "warning",
         `Narration line ${line.id} lasts ${seconds(timing.durationSeconds)}, but its clip plays for ${seconds(length)}.`,
-        `Set the clip's data-duration to ${timing.durationSeconds}, the length audio_meta.json records for the line.`,
+        `Set the clip's data-duration to ${timing.durationSeconds}, or run \`hyperframes narration set ${line.id}\`.`,
       ),
     );
   }

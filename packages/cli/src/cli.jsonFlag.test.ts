@@ -58,7 +58,7 @@ const WITH_JSON = names(`
   media-treatment, media-use adopt, media-use analyze, media-use avatars, media-use candidates,
   media-use doctor, media-use from, media-use generate, media-use params, media-use resolve,
   media-use reuse, media-use stats, media-use voices, models, narration check,
-  narration init, narration list, normalize-audio, open, preview,
+  narration init, narration list, narration set, normalize-audio, open, preview,
   remove-background, render, reverse start, share, skills check, skills update, snapshot,
   telemetry, timeline apply, timeline delete, timeline duplicate, timeline ids, timeline move,
   timeline set, timeline split, timeline trim, timeline undo, transcribe, tts, update, upgrade,

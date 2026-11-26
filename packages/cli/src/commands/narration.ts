@@ -12,6 +12,11 @@ export const examples: Example[] = [
   ["Adopt a voiced project into narration.json", "hyperframes narration init"],
   ["List each line and whether it is in sync", "hyperframes narration list"],
   ["Fail when voice, clips and captions have drifted", "hyperframes narration check"],
+  [
+    "Change one line: re-voice it and update its captions",
+    'hyperframes narration set l2 "Twenty renewals are due today."',
+  ],
+  ["See what a change would write, without writing", "hyperframes narration set l2 --dry-run"],
 ];
 
 const common = {
@@ -125,7 +130,91 @@ const subCommands = {
         );
       },
     ),
+  set: () =>
+    narrated<{
+      id: string;
+      text?: string;
+      dir?: string;
+      json: boolean;
+      voice?: string;
+      speed?: string;
+      "dry-run": boolean;
+      retime: boolean;
+      force: boolean;
+      who?: string;
+    }>(
+      {
+        meta: {
+          name: "set",
+          description:
+            "Re-voice one line and update its clip, captions and narration.json together",
+        },
+        args: {
+          id: { type: "positional", required: true, description: "The line's id, such as l2" },
+          text: {
+            type: "positional",
+            required: false,
+            description: "New text (default: keep the line's text)",
+          },
+          voice: { type: "string", description: "Kokoro voice for this line" },
+          speed: { type: "string", description: "Speech speed for this line (0.1 to 3)" },
+          "dry-run": {
+            type: "boolean",
+            default: false,
+            description: "Show what would change; write nothing",
+          },
+          retime: {
+            type: "boolean",
+            default: true,
+            description:
+              "Refuse a longer take that runs into the next narration clip (--no-retime keeps it)",
+          },
+          force: {
+            type: "boolean",
+            default: false,
+            description: "Re-voice even when nothing changed",
+          },
+          who: { type: "string", description: "Your agent name, for the history entry" },
+        },
+      },
+      async (args) => {
+        const speed = args.speed === undefined ? undefined : Number(args.speed);
+        if (speed !== undefined && !(speed >= 0.1 && speed <= 3)) {
+          throw new NarrationRefusal("--speed takes a number from 0.1 to 3");
+        }
+        const { runNarrationSet } = await import("../narration/set.js");
+        const result = await runNarrationSet({
+          dir: projectDir(args.dir),
+          line: args.id,
+          text: args.text,
+          voice: args.voice,
+          speed,
+          dryRun: args["dry-run"],
+          allowOverlap: !args.retime,
+          force: args.force,
+          who: args.who,
+        });
+        print(args.json, result, describeSet(result));
+      },
+    ),
 };
+
+function describeSet(
+  result: Awaited<ReturnType<typeof import("../narration/set.js").runNarrationSet>>,
+) {
+  if (result.kind === "unchanged") {
+    return `Line ${result.line} is already voiced from its text; pass --force to re-voice it anyway.`;
+  }
+  const verb = result.kind === "planned" ? "Would write" : "Wrote";
+  const captions = result.captions
+    ? ` ${result.captions.removed} caption words became ${result.captions.added} in ${result.captions.file}.`
+    : " No caption array was found.";
+  const dropped = result.overridesDropped
+    ? ` Dropped ${result.overridesDropped} caption override(s) on words that changed.`
+    : "";
+  const warnings = result.warnings.map((warning) => `\nWarning: ${warning}`).join("");
+  return `${verb} line ${result.line}: ${result.durationSeconds}s, ${result.words} words, ${result.audio}.${captions}${dropped}\nFiles: ${result.files.join(", ")}${warnings}`;
+}
 
 export default defineCommand({
   meta: {

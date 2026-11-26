@@ -21,6 +21,10 @@ import {
 /** A narration command that cannot go ahead; the command prints its message, never a stack. */
 export class NarrationRefusal extends Error {}
 
+export const CAPTION_OVERRIDES_FILE = "caption-overrides.json";
+
+export const round3 = (value: number) => Math.round(value * 1000) / 1000;
+
 export const fileHash = (path: string) =>
   createHash("sha256").update(readFileSync(path)).digest("hex");
 
