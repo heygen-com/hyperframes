@@ -15,6 +15,7 @@ beforeAll(async () => {
   browser = await launchTestChrome();
   studioBundle = await buildStudioBundle([
     `export { captureDurationRollback, patchIframeDomTiming, removeIframeTimelineElements, syncPreviewContentDuration } from "./hooks/previewTimingPatch";`,
+    `export { finishTimelineTimingFallback } from "./hooks/timelineTimingSync";`,
     `export { announcePreviewPromoted } from "./player/sceneSwap";`,
     `export { retirePreviewEditingClient } from "./player/lib/previewChannel";`,
     `export { findPreviewElementForSelection, standInFor, standInHandle } from "./components/editor/previewSelection";`,
@@ -59,6 +60,7 @@ type Studio = {
     handle: string,
     edit: object,
   ): { drawn: Promise<boolean> };
+  finishTimelineTimingFallback(input: object): Promise<void>;
   announcePreviewPromoted(promotion: { retired: HTMLIFrameElement; live: HTMLIFrameElement }): void;
   retirePreviewEditingClient(iframe: HTMLIFrameElement): void;
 };
@@ -155,6 +157,119 @@ it.each(MODES)(
   },
 );
 
+// A move whose save rewrites no script rebinds the clip windows in place; a full reload here is what let a delete
+// made right after it land on a frame that was still loading.
+async function moveThenDelete(mode: string) {
+  const preview = await openPreview(browser, studioBundle, previewHtml(), mode);
+  try {
+    await preview.frame.evaluate(() => ((window as unknown as { loadMark: number }).loadMark = 1));
+    await preview.page.evaluate(async () => {
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      const iframe = document.querySelector("iframe")!;
+      const reloads = { count: 0 };
+      (window as unknown as { reloads: { count: number } }).reloads = reloads;
+      const clip = {
+        id: "b",
+        domId: "b",
+        selector: "#b",
+        sourceFile: "index.html",
+        kind: "element",
+      };
+      studio.patchIframeDomTiming(iframe, clip, [["data-start", "3"]]);
+      await studio.finishTimelineTimingFallback({
+        iframe,
+        projectId: null,
+        reloadPreview: () => (reloads.count += 1),
+        onGsapError: () => {},
+        rebindWhenUnmutated: true,
+      });
+    });
+    const hidden = () =>
+      preview.frame.evaluate(() =>
+        document.getElementById("b")!.hasAttribute("data-hf-clip-hidden"),
+      );
+    await expect
+      .poll(hidden, { message: "the rebind hides #b, which now starts at 3 s" })
+      .toBe(true);
+    const reloads = () =>
+      preview.page.evaluate(
+        () => (window as unknown as { reloads: { count: number } }).reloads.count,
+      );
+    expect(await reloads(), "the frame keeps its load").toBe(0);
+
+    await preview.page.evaluate(() => {
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      const clip = {
+        id: "a",
+        domId: "a",
+        selector: "#a",
+        sourceFile: "index.html",
+        kind: "element",
+      };
+      studio.removeIframeTimelineElements(document.querySelector("iframe")!, [clip]);
+    });
+    const inFrame = () =>
+      preview.frame.evaluate(() => ({
+        load: (window as unknown as { loadMark?: number }).loadMark,
+        clips: ["root", "a", "b"].filter((id) => document.getElementById(id)),
+      }));
+    await expect.poll(inFrame).toEqual({ load: 1, clips: ["root", "b"] });
+    expect(await reloads()).toBe(0);
+  } finally {
+    await preview.page.close();
+  }
+}
+
+it.each(MODES)(
+  "a move that rewrites no script rebinds in place, and a delete right after it leaves the same load, in a %s preview",
+  async (mode) => {
+    await moveThenDelete(mode);
+  },
+);
+
+// A rebind rebuilds from the frame's attributes, so a move whose live patch did not land must reload the saved file.
+async function moveWithoutAPatch(mode: string) {
+  const preview = await openPreview(browser, studioBundle, previewHtml(), mode);
+  try {
+    await preview.page.evaluate(async () => {
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      const iframe = document.querySelector("iframe")!;
+      const reloads = { count: 0 };
+      (window as unknown as { reloads: { count: number } }).reloads = reloads;
+      const gone = {
+        id: "gone",
+        domId: "gone",
+        selector: "#gone",
+        sourceFile: "index.html",
+        kind: "element",
+      };
+      studio.patchIframeDomTiming(iframe, gone, [["data-start", "3"]]);
+      await studio.finishTimelineTimingFallback({
+        iframe,
+        projectId: null,
+        reloadPreview: () => (reloads.count += 1),
+        onGsapError: () => {},
+        rebindWhenUnmutated: true,
+      });
+    });
+    const reloads = () =>
+      preview.page.evaluate(
+        () => (window as unknown as { reloads: { count: number } }).reloads.count,
+      );
+    await expect
+      .poll(reloads, { message: "the frame never showed the move, so the saved file reloads" })
+      .toBe(1);
+  } finally {
+    await preview.page.close();
+  }
+}
+
+it.each(MODES)(
+  "a move whose live patch found no clip reloads the saved file, in a %s preview",
+  async (mode) => {
+    await moveWithoutAPatch(mode);
+  },
+);
 type Held = { __hold: boolean; __held: Array<() => void>; hfStudio: Studio };
 const clipB = { id: "b", domId: "b", selector: "#b", sourceFile: "index.html", kind: "element" };
 

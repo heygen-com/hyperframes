@@ -45,6 +45,7 @@ import { patchTweens } from "./editing/patchTween";
 import { preloadMotionPath, restoreAttributesOrRerun, softReload } from "./editing/softReload";
 import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
 import { liveRetime } from "./editing/liveRetime";
+import { rebindTiming } from "./editing/rebindTiming";
 import { previewAssetsUnloaded } from "../lottieReadiness";
 import {
   getLogicalOpacity,
@@ -248,6 +249,7 @@ const HANDLERS: Handlers = {
   "mark-scenes-stale": markScenesStale,
   "swap-scenes": swapScenes,
   "live-retime": liveRetime,
+  "rebind-timing": rebindTiming,
   "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
   "serve-paused-frames": ({ channel }) => {
     const install = window.__hf?.setPausedVideoFrameProvider;
