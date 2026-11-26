@@ -4085,6 +4085,9 @@ export function initSandboxRuntimeModular(): void {
     lastVisibilityPassSeconds = state.currentTime;
   };
 
+  let lastHandledPlaySeq = 0;
+  let lastPostedPlaySeq = 0;
+
   const postState = (force: boolean) => {
     // Every transport mutation — play, pause, seek, renderSeek, a control-bridge
     // command, the player's own state posts — ends in a forced post. That makes
@@ -4100,12 +4103,14 @@ export function initSandboxRuntimeModular(): void {
       frame !== state.bridgeLastPostedFrame ||
       (state.isPlaying || bufferingFor.length > 0) !== state.bridgeLastPostedPlaying ||
       state.bridgeMuted !== state.bridgeLastPostedMuted ||
+      lastHandledPlaySeq !== lastPostedPlaySeq ||
       now - state.bridgeLastPostedAt >= state.bridgeMaxPostIntervalMs;
     if (!shouldPost) return;
     state.bridgeLastPostedFrame = frame;
     state.bridgeLastPostedPlaying = state.isPlaying || bufferingFor.length > 0;
     state.bridgeLastPostedMuted = state.bridgeMuted;
     state.bridgeLastPostedAt = now;
+    lastPostedPlaySeq = lastHandledPlaySeq;
     postRuntimeMessage({
       source: "hf-preview",
       type: "state",
@@ -4116,6 +4121,7 @@ export function initSandboxRuntimeModular(): void {
       buffering: bufferingFor.length > 0,
       muted: state.bridgeMuted,
       playbackRate: state.playbackRate,
+      playSeq: lastHandledPlaySeq,
     });
   };
 
@@ -6829,8 +6835,10 @@ export function initSandboxRuntimeModular(): void {
   const scrubAudio = createScrubAudio({ lease: leasePausedMedia, release: releasePausedMedia });
   registerRuntimeCleanup(scrubAudio.stop);
   state.controlBridgeHandler = installRuntimeControlBridge({
-    onPlay: () => {
+    onPlay: (playSeq) => {
+      if (playSeq !== undefined) lastHandledPlaySeq = playSeq;
       player.play();
+      if (lastPostedPlaySeq !== lastHandledPlaySeq) postState(true);
       emitAnalyticsEvent("composition_played", { time: player.getTime() });
     },
     onPause: () => {
