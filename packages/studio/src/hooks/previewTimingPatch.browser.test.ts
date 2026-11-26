@@ -396,6 +396,56 @@ it("a sealed delete right after a pending edit of the clip reaches the frame aft
   }
 });
 
+type Swallowing = Selected & {
+  __swallow: Set<string>;
+  __rejecting: boolean;
+  __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
+};
+
+it.each([
+  ["the frame refuses", true, null],
+  ["comes back with nothing removed", false, { removed: 0 }],
+])(
+  "a sealed delete whose fast removal %s looks the clip up and removes it",
+  async (_case, rejecting, answer) => {
+    const preview = await openPreview(browser, studioBundle, previewHtml(), "sealed");
+    try {
+      await selectB(preview);
+      await preview.page.evaluate(
+        (clip, rejecting) => {
+          const w = window as unknown as Swallowing;
+          w.__swallow.add("remove-elements");
+          w.__rejecting = rejecting;
+          w.hfStudio.removeIframeTimelineElements(
+            document.querySelector("iframe")!,
+            [clip],
+            null,
+            new Map([[clip, w.__standIn]]),
+          );
+        },
+        clipB,
+        rejecting,
+      );
+      await expect
+        .poll(() =>
+          preview.page.evaluate(() => (window as unknown as Swallowing).__swallowed.length),
+        )
+        .toBe(1);
+      await preview.page.evaluate((answer) => {
+        const w = window as unknown as Swallowing;
+        w.__swallow.delete("remove-elements");
+        w.__rejecting = false;
+        w.__swallowed[0]!.answer(answer);
+      }, answer);
+      await expect
+        .poll(() => hasB(preview.frame), { message: "the lookup path removes the clip" })
+        .toBe(false);
+    } finally {
+      await preview.page.close();
+    }
+  },
+);
+
 it("a sealed delete holding a stand-in from the frame's previous load looks the clip up in the new one", async () => {
   const preview = await openPreview(browser, studioBundle, previewHtml(), "sealed");
   try {

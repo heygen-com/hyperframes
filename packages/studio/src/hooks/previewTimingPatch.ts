@@ -105,8 +105,9 @@ export function removeIframeTimelineElements(
     const sameLoad = samePreviewLoad(iframe);
     const removed = previewRequest(iframe, "remove-elements", { handles });
     inOrder(iframe, async () => {
-      await removed;
-      if (!sameLoad() || shownPreviewFrame(given) !== iframe)
+      const answer = await removed;
+      const allRemoved = answer?.removed === handles.length;
+      if (!allRemoved || !sameLoad() || shownPreviewFrame(given) !== iframe)
         return removeSealedElements(given, elements, activeCompositionPath, true);
       await syncContentDuration(iframe, await previewDocumentCopy(iframe));
     });
