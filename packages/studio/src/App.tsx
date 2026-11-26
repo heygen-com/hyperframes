@@ -18,7 +18,7 @@ import { usePanelLayout } from "./hooks/usePanelLayout";
 import { useFileManager } from "./hooks/useFileManager";
 import { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 import { usePreviewDocumentVersion } from "./hooks/usePreviewDocumentVersion";
-import { useTimelineEditing } from "./hooks/useTimelineEditing";
+import { useTimelineEditing, type ApplyMarqueeSelection } from "./hooks/useTimelineEditing";
 import { useTimelineMoveEditsHandler } from "./hooks/timelineMoveAdapter";
 import type { BlockPreviewInfo } from "./components/sidebar/BlocksTab";
 import { useDomEditSession } from "./hooks/useDomEditSession";
@@ -163,6 +163,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   const invalidateGsapCacheRef = useRef<() => void>(() => {});
   const invalidateGsapCache = useCallback(() => invalidateGsapCacheRef.current(), []);
   const canvasSelectionsRef = useRef<readonly DomEditSelection[]>([]);
+  const applyMarqueeSelectionRef = useRef<ApplyMarqueeSelection>(() => {});
   const timelineEditing = useTimelineEditing({
     projectId,
     activeCompPath,
@@ -174,6 +175,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     reloadPreview,
     previewIframeRef,
     canvasSelectionsRef,
+    applyMarqueeSelectionRef,
     pendingTimelineEditPathRef,
     uploadProjectFiles: fileManager.uploadProjectFiles,
     isRecordingRef: isGestureRecordingRef,
@@ -327,6 +329,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   ];
   const { handleDomEditElementDelete: del } = domEditSession;
   clearDomSelectionRef.current = domEditSession.clearDomSelection;
+  applyMarqueeSelectionRef.current = domEditSession.applyMarqueeSelection;
   handleDomEditElementDeleteRef.current = trackedStudioEdit(del);
   resetKeyframesRef.current = domEditSession.handleResetSelectedElementKeyframes;
   invalidateGsapCacheRef.current = domEditSession.invalidateGsapCache;
