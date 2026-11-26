@@ -148,6 +148,8 @@ export {
   MAX_SNAPSHOT_TEXT,
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
+  TARGET_FIELDS,
+  TIMELINE_FIELDS,
 } from "./editing/gsapSnapshotLimits";
 export {
   compositionPoint,
@@ -975,10 +977,19 @@ export {
   takePlainTextOnly,
   textEditResult,
   type TextEditEndedEvent,
+  type TextEditCaret,
   type TextEditResult,
   type TextEditSelection,
   type TextEditSelectionEvent,
 } from "./editing/textEdit";
+export {
+  caretBoxIn,
+  caretColorOf,
+  caretSideAfterKey,
+  placeCaretAtEnd,
+  type CaretBox,
+  type CaretSide,
+} from "./editing/textCaret";
 export {
   parsePausedFrameAsk,
   PAUSED_FRAME_BYTES,

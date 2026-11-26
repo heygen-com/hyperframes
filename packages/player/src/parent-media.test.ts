@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
+import { MAX_MESSAGE_LIST } from "@hyperframes/core/runtime/protocol";
 import { ParentMediaManager, type ProxyEntry } from "./parent-media";
 
 // A fake media element whose paused state is driven by play()/pause() stubs.
@@ -125,6 +126,19 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
     mgr.mirrorTime(20);
     expect(el.paused).toBe(true);
     source.remove();
+  });
+
+  // fails without the fix: a looping copy was aimed past its source's end, so it sat silent after one pass.
+  it("aims a looping copy back into its source once the playhead passes the source's end", () => {
+    const mgr = makeManager({ owner: "parent" });
+    const el = makeFakeAudio(true);
+    el.loop = true;
+    Object.defineProperty(el, "duration", { value: 4 });
+    mgr.entries.push({ el, start: 2, duration: 18, mediaStart: 0 });
+
+    mgr.scrubAll(11);
+
+    expect(el.currentTime).toBeCloseTo(mediaElementTime(1), 9);
   });
 
   it("scrubAll plays in-window proxies at the playhead and pauses out-of-window ones", () => {
@@ -766,6 +780,34 @@ describe("ParentMediaManager for a sealed film, from its runtime's list", () => 
       film,
     );
     expect(mgr.entries).toHaveLength(0);
+  });
+
+  // fails without the fix: the list was walked to whatever length the film declared.
+  it("copies nothing from a list too long to walk", () => {
+    const { mgr } = makeSealedManager();
+    mgr.setupFromList(Array(MAX_MESSAGE_LIST + 1).fill(clip("https://films.test/f/a.m4a")), film);
+    expect(mgr.entries).toHaveLength(0);
+    mgr.setupFromList(new Array(2 ** 32 - 1), film);
+    expect(mgr.entries).toHaveLength(0);
+  });
+
+  // fails without the fix: a refused clip list read as none, with nothing logged.
+  it("logs a clip list it refuses for a missing entry", () => {
+    vi.useFakeTimers({ now: Date.now() + 3_600_000 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { mgr } = makeSealedManager();
+    const media: unknown[] = [clip("https://films.test/f/a.m4a")];
+    media[2] = clip("https://films.test/f/b.m4a");
+    try {
+      mgr.setupFromList(media, film);
+      expect(mgr.entries).toHaveLength(0);
+      expect(warn).toHaveBeenCalledWith(
+        "[hyperframes-player] ignored the film's media list: a missing entry among 3",
+      );
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it("gives each clip on one file its own copy, and follows the list as it changes", () => {

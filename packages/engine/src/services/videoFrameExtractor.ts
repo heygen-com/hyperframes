@@ -576,15 +576,20 @@ export class VideoSourceExtractionError extends Error {
 const FFMPEG_REASON_LINES = 3;
 const FFMPEG_REASON_CHARS = 300;
 
-/** ffmpeg's last stderr lines for an error that leaves this host: no local path, file name or URL. */
+const FFMPEG_LINE_THAT_NEVER_SAYS_WHY =
+  /^(?:\s|ffmpeg version |Input #|Output #|Stream mapping:|Press \[q\]|(?:frame|size)=|Conversion failed!)|\] (?:video:\S+ audio:|Task finished with error code|Terminating thread with return code)/;
+
+/** ffmpeg's last lines saying why, for an error that leaves this host: no local path, file name or URL. */
 function ffmpegReasonFrom(stderr: string, paths: readonly string[]): string {
-  let text = stderr;
+  const lines = stderr.split(/[\r\n]+/);
+  const said = lines.filter((line) => line.trim() && !FFMPEG_LINE_THAT_NEVER_SAYS_WHY.test(line));
+  let text = (said.length > 0 ? said : lines).join("\n");
   for (const known of paths.filter(Boolean).sort((a, b) => b.length - a.length))
     text = text.split(known).join("<path>");
   return text
     .replace(/[a-z][a-z\d+.-]*:\/\/[^\s'"]+/gi, "<url>")
     .replace(/(?:[a-z]:)?(?:[\\/][^\s\\/:'"]+){2,}/gi, "<path>")
-    .split(/\r?\n/)
+    .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .slice(-FFMPEG_REASON_LINES)

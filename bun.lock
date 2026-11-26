@@ -172,6 +172,7 @@
         "@hono/node-server": "^2.1.6",
         "@hyperframes/core": "workspace:^",
         "@hyperframes/parsers": "workspace:^",
+        "@hyperframes/share": "workspace:^",
         "hono": "^4.13.16",
         "linkedom": "^0.18.12",
         "puppeteer": "~25.13.0",
@@ -296,6 +297,7 @@
         "@hyperframes/engine": "workspace:*",
         "@hyperframes/lint": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
+        "@hyperframes/share": "workspace:*",
         "@hyperframes/studio-server": "workspace:*",
         "hono": "^4.13.16",
         "linkedom": "^0.18.12",
@@ -361,8 +363,14 @@
       "version": "0.9.10",
       "dependencies": {
         "@hyperframes/parsers": "workspace:*",
+        "acorn": "^8.17.0",
+        "acorn-walk": "^8.3.5",
+        "css-tree": "^3.2.1",
+        "ignore": "^5.3.2",
+        "linkedom": "^0.18.12",
       },
       "devDependencies": {
+        "@types/css-tree": "^3.2.0",
         "@types/node": "^25.0.10",
         "typescript": "^5.0.0",
       },
@@ -427,6 +435,7 @@
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
+        "@hyperframes/share": "workspace:*",
         "hono": "^4.13.16",
         "linkedom": "^0.18.12",
         "parse5": "8.0.1",

@@ -7,7 +7,11 @@ import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { compileCutList } from "./lib/cutlist.mjs";
-import { assertLiteralMediaPath } from "./lib/literal-media-input.mjs";
+import {
+  assertLiteralMediaPath,
+  partsListInput,
+  selfContainedInput,
+} from "./lib/literal-media-input.mjs";
 import { ownFolder } from "./lib/manifest.mjs";
 import { fadeFilterFor } from "./lib/transcriptCutFade.mjs";
 import { track } from "./lib/telemetry.mjs";
@@ -91,6 +95,8 @@ function run() {
   const inputPath = resolve(args.input);
   const outPath = resolve(args.out);
   for (const path of [inputPath, outPath]) assertLiteralMediaPath(path);
+  // Probed before any folder is made, so an input ffmpeg refuses leaves nothing behind.
+  const totalSeconds = probeDuration(inputPath);
   // An --out inside the project (the folder this runs in) is written only into its real folders.
   const rel = relative(process.cwd(), dirname(outPath));
   const outsideProject = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
@@ -100,9 +106,15 @@ function run() {
   // The encode lands in a new private folder beside --out, so nothing already next to it is written through.
   let outDir = null;
   const keptSeconds = sumDurations(segments);
-  const totalSeconds = probeDuration(inputPath);
 
   try {
+    // Each part is read back only as the container it was written in: --copy keeps the input's packets as they
+    // came, so any other reader could take a part for a list of other files.
+    const part = args.copy
+      ? copyPart(outPath)
+      : isAudioOnly(outPath)
+        ? { ext: ".wav", reader: "wav" }
+        : { ext: ".mov", reader: "mov" };
     const parts = segments.map((segment, index) => {
       // Intermediates carry PCM audio, not the final codec. Encoding each
       // segment to a lossy codec separately makes the encoder pad every segment
@@ -112,8 +124,7 @@ function run() {
       // The video container is .mov, not .mkv: ffmpeg writes Matroska
       // timestamps in whole milliseconds, which moves frames off the source's
       // frame grid, and the concat copy below carries that into the output.
-      const ext = args.copy ? extname(outPath) || ".mp4" : isAudioOnly(outPath) ? ".wav" : ".mov";
-      const out = join(tmpDir, `segment-${String(index).padStart(4, "0")}${ext}`);
+      const out = join(tmpDir, `segment-${String(index).padStart(4, "0")}${part.ext}`);
       // --copy stays fade-free (stream copy cannot filter). A segment's true
       // start/end (index 0's start, the last segment's end) borders nothing
       // kept, so only an interior splice edge gets a ramp.
@@ -144,7 +155,7 @@ function run() {
         : ["-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"];
     execFileSync(
       "ffmpeg",
-      ["-y", "-f", "concat", "-safe", "0", "-i", listPath, ...concatCodecs, tmpOut],
+      ["-y", ...partsListInput(listPath, part.reader), ...concatCodecs, tmpOut],
       {
         stdio: "ignore",
       },
@@ -200,6 +211,7 @@ function cutSegment(inputPath, segment, outPath, copy, fade) {
   const argv = [
     "-y",
     "-nostdin",
+    ...selfContainedInput(inputPath),
     "-ss",
     seekTime(segment.start),
     "-i",
@@ -228,6 +240,46 @@ function cutSegment(inputPath, segment, outPath, copy, fade) {
   }
   argv.push(outPath);
   execFileSync("ffmpeg", argv, { stdio: "ignore" });
+}
+
+// The reader of a --copy part in --out's own container; a container with no reader listed here is copied as .mov.
+function copyPart(outPath) {
+  const readers = {
+    ".mp4": "mov",
+    ".mov": "mov",
+    ".m4a": "mov",
+    ".3gp": "mov",
+    ".mkv": "matroska",
+    ".webm": "matroska",
+    ".mka": "matroska",
+    ".wav": "wav",
+    ".flac": "flac",
+    ".mp3": "mp3",
+    ".aac": "aac",
+    ".ogg": "ogg",
+    ".oga": "ogg",
+    ".opus": "ogg",
+    ".ts": "mpegts",
+    ".m2ts": "mpegts",
+    ".mts": "mpegts",
+    ".mpg": "mpeg",
+    ".mpeg": "mpeg",
+    ".avi": "avi",
+    ".flv": "flv",
+    ".mxf": "mxf",
+    ".asf": "asf",
+    ".wmv": "asf",
+    ".wma": "asf",
+    ".aif": "aiff",
+    ".aiff": "aiff",
+    ".caf": "caf",
+    ".ac3": "ac3",
+    ".wv": "wv",
+    ".au": "au",
+  };
+  const ext = extname(outPath).toLowerCase();
+  const reader = readers[ext];
+  return reader ? { ext, reader } : { ext: ".mov", reader: "mov" };
 }
 
 // Codec set per output container. Audio-only outputs must not get the
@@ -261,6 +313,7 @@ function probeDuration(filePath) {
     [
       "-v",
       "error",
+      ...selfContainedInput(filePath),
       "-show_entries",
       "format=duration",
       "-of",

@@ -4,12 +4,12 @@
     "unpacked": 298000
   },
   "@hyperframes/cli": {
-    "packed": 8577627,
+    "packed": 9132424,
     "unpacked": 27395789
   },
   "@hyperframes/core": {
-    "packed": 1948041,
-    "unpacked": 5217372
+    "packed": 2128159,
+    "unpacked": 5455485
   },
   "@hyperframes/engine": {
     "packed": 522000,
@@ -32,8 +32,8 @@
     "unpacked": 930000
   },
   "@hyperframes/player": {
-    "packed": 437000,
-    "unpacked": 1396000
+    "packed": 540044,
+    "unpacked": 1712377
   },
   "@hyperframes/producer": {
     "packed": 1065767,
@@ -48,8 +48,8 @@
     "unpacked": 825937
   },
   "@hyperframes/share": {
-    "packed": 148738,
-    "unpacked": 575775
+    "packed": 162094,
+    "unpacked": 622749
   },
   "@hyperframes/studio": {
     "packed": 6589635,

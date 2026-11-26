@@ -3339,6 +3339,9 @@ async function executeRenderPipeline(input: {
     memSampler = createMemorySampler();
     const assertNotAborted = () => {
       execution.assertActive(() => new RenderCancelledError("render_cancelled"));
+      if (executionSignal.aborted) {
+        throw tooSlowError ?? audioFailure ?? new RenderCancelledError("render_cancelled");
+      }
     };
 
     job.startedAt = new Date();

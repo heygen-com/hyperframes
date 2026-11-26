@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -35,7 +35,7 @@ describe.skipIf(!HAS_FFMPEG)(
     it("encodes exactly one output frame per page frame when the video is shorter", async () => {
       const pageFrames = 74;
       const framesDir = join(dir, "page");
-      spawnSync("mkdir", ["-p", framesDir]);
+      mkdirSync(framesDir);
       const drew = spawnSync("ffmpeg", [
         ...["-f", "lavfi", "-i", `color=c=red@0.5:s=64x64:r=30,format=rgba`],
         ...["-frames:v", String(pageFrames), "-y", join(framesDir, "p%03d.png")],

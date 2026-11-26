@@ -11,6 +11,8 @@ import {
   MAX_SNAPSHOT_TEXT,
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
+  TARGET_FIELDS,
+  TIMELINE_FIELDS,
 } from "./gsapSnapshotLimits";
 
 export type SnapshotValue =
@@ -135,6 +137,7 @@ export async function gsapSnapshot(): Promise<GsapSnapshot> {
     const tweens = live.getChildren(true).filter((child) => typeof child.targets === "function");
     for (const tween of tweens) held.add(tween);
     if (timelines.length >= MAX_SNAPSHOT_TWEENS) throw new SnapshotBound("timelines");
+    reader.spend(TIMELINE_FIELDS);
     timelines.push({
       id: capped(id),
       time: typeof live.time === "function" ? finite(live.time()) : null,
@@ -163,6 +166,7 @@ class SnapshotReader {
   tween(live: LiveTween): GsapSnapshotTween {
     if (++this.tweens > MAX_SNAPSHOT_TWEENS) throw new SnapshotBound("tweens");
     const elements = (live.targets?.() ?? []).filter(isElementNode);
+    this.spend(elements.length);
     const vars = this.plain(live.vars, 0);
     const parsed = parsedChannels(live._pt);
     const parts = (live.timeline?.getChildren?.() ?? []).map((part) => this.tween(part));
@@ -175,8 +179,10 @@ class SnapshotReader {
     if (this.channels.size > MAX_SNAPSHOT_TARGETS) throw new SnapshotBound("targets");
     return [...this.channels].map(([element, channels]) => {
       if (channels.size > MAX_SNAPSHOT_CHANNELS) throw new SnapshotBound("channels");
+      this.spend(TARGET_FIELDS + channels.size);
       const values: Record<string, number> = {};
       const read = (channel: string) => {
+        if (isElementMethod(element, channel)) return;
         const value = Number(gsap?.getProperty?.(element, channel));
         if (Number.isFinite(value)) values[channel] = value;
       };
@@ -207,8 +213,12 @@ class SnapshotReader {
     for (const { p } of [...parsed, ...parts.flatMap((part) => part.parsed)]) channels.add(p);
   }
 
+  spend(fields: number) {
+    if ((this.fields += fields) > MAX_SNAPSHOT_FIELDS) throw new SnapshotBound("fields");
+  }
+
   private plain(value: unknown, depth: number): SnapshotValue | undefined {
-    if (++this.fields > MAX_SNAPSHOT_FIELDS) throw new SnapshotBound("tween fields");
+    this.spend(1);
     if (Array.isArray(value)) return this.list(value, depth);
     if (isLiteralRecord(value)) return this.record(value, depth);
     return scalar(value);
@@ -229,6 +239,9 @@ class SnapshotReader {
     return out;
   }
 }
+
+const isElementMethod = (element: Element, channel: string) =>
+  typeof Reflect.get(element, channel) === "function";
 
 function timing(live: LiveTween) {
   return {

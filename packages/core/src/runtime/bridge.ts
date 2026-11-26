@@ -6,13 +6,14 @@ import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
   inspectRuntimeProtocol,
+  isMessageList,
   runtimeProtocolFpsToNumber,
   runtimeProtocolMetadata,
   type RuntimeProtocolV1,
 } from "./protocol";
 
 type BridgeDeps = {
-  onPlay: () => void;
+  onPlay: (playSeq?: number) => void;
   onPause: () => void;
   onStopMedia: () => void;
   onSeek: (timeSeconds: number, seekMode: "drag" | "commit") => void;
@@ -22,6 +23,8 @@ type BridgeDeps = {
   onSetMediaOutputMuted: (muted: boolean) => void;
   onSetNativeMediaSyncDisabled: (disabled: boolean) => void;
   onSetWebAudioMediaDisabled: (disabled: boolean) => void;
+  onSetParentAudio?: (clips: string[]) => void;
+  onAudioClock?: (sample: { time: number; rate: number; at: number } | null) => void;
   onSetPlaybackRate: (rate: number) => void;
   onSetIdleHeartbeat: (slow: boolean) => void;
   onSetRootDuration: (durationSeconds: number) => void;
@@ -65,6 +68,8 @@ const ANOTHER_SITE_DRIVES = new Set<string>([
   "set-playback-rate",
   "set-idle-heartbeat",
   "set-display-scale",
+  "set-parent-audio",
+  "audio-clock",
 ]);
 
 let markedForAnotherSite = false;
@@ -91,6 +96,7 @@ const FLASH_DEFAULT_DURATION_MS = 800;
 const FLASH_MAX_DURATION_MS = 5000;
 const MAX_FLASH_SELECTORS = 100;
 const MAX_SELECTOR_LENGTH = 1000;
+const MAX_PARENT_AUDIO_KEY = 8192;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -159,7 +165,12 @@ function dispatchColorGrading(
 // message when a field is invalid.
 const CONTROL_HANDLERS = new Map<string, ControlHandler>(
   Object.entries({
-    play: (_d, deps) => deps.onPlay(),
+    play: (data, deps) => {
+      if (data.playSeq == null) return deps.onPlay();
+      if (!isFiniteNumber(data.playSeq) || !Number.isInteger(data.playSeq) || data.playSeq < 1)
+        return;
+      deps.onPlay(data.playSeq);
+    },
     pause: (_d, deps) => deps.onPause(),
     "stop-media": (_d, deps) => deps.onStopMedia(),
     seek: (data, deps) => {
@@ -178,6 +189,20 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
       deps.onSetNativeMediaSyncDisabled(data.disabled === true),
     "set-web-audio-media-disabled": (data, deps) =>
       deps.onSetWebAudioMediaDisabled(data.disabled === true),
+    "set-parent-audio": (data, deps) => {
+      const clips = data.clips;
+      if (!isMessageList(clips)) return;
+      if (!clips.every((clip) => typeof clip === "string" && clip.length <= MAX_PARENT_AUDIO_KEY))
+        return;
+      deps.onSetParentAudio?.(clips);
+    },
+    "audio-clock": (data, deps) => {
+      if (data.time === null) return deps.onAudioClock?.(null);
+      const { time, rate, at } = data;
+      if (!isFiniteNumber(time) || !isFiniteNumber(rate) || !isFiniteNumber(at) || rate <= 0)
+        return;
+      deps.onAudioClock?.({ time: Math.max(0, time), rate, at });
+    },
     "set-playback-rate": (data, deps) => {
       const rate = readNumber(data.playbackRate, 1);
       if (rate !== null) deps.onSetPlaybackRate(rate);

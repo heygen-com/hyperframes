@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.9.94",
+  "version": "0.9.98",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -117,6 +117,7 @@
     "@hono/node-server": "^2.1.6",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
+    "@hyperframes/share": "workspace:^",
     "hono": "^4.13.16",
     "linkedom": "^0.18.12",
     "puppeteer": "~25.13.0",

@@ -1,3 +1,4 @@
+import { referencedFontResponse } from "@hyperframes/share/referencedFont.mjs";
 import type { Hono } from "hono";
 import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
@@ -974,8 +975,18 @@ export function registerPreviewRoutes(
     // use resolveWithinProject because saves write their data-hf-id values.
     const candidate = resolve(project.dir, subPath);
     const file = isWithinProjectRoot(project.dir, candidate) ? candidate : null;
-    if (!file || (await isPrivateProjectFileOff(project.dir, file))) {
-      return c.text("not found", 404);
+    if (!file) return c.text("not found", 404);
+    if (await isPrivateProjectFileOff(project.dir, file)) {
+      if (new URL(c.req.url).searchParams.has(PREVIEW_PROXY_PARAM)) return c.text("not found", 404);
+      const font = await referencedFontResponse(project.dir, subPath, c.req.raw.method);
+      if (!font) return c.text("not found", 404);
+      try {
+        await recordPreviewReadsOff(project.dir, [file]);
+        return font;
+      } catch {
+        await font.body?.cancel();
+        return c.text("not found", 404);
+      }
     }
     const recorded = await recordPreviewReadsOff(project.dir, [file]).then(
       () => true,

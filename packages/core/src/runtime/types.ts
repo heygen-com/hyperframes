@@ -36,7 +36,9 @@ type RuntimeBridgeControlActionBase =
   | "set-play-range"
   | "stop-media"
   | "flash-elements"
-  | "scrub-audio";
+  | "scrub-audio"
+  | "set-parent-audio"
+  | "audio-clock";
 
 type RuntimeBridgeControlMessageBase = {
   source: "hf-parent";
@@ -60,6 +62,10 @@ type RuntimeBridgeControlMessageBase = {
   grading?: RuntimeJson;
   compare?: RuntimeJson;
   seekMode?: "drag" | "commit";
+  clips?: string[];
+  rate?: number;
+  at?: number;
+  playSeq?: number;
 };
 
 export type RuntimeStateMessage = {
@@ -72,6 +78,7 @@ export type RuntimeStateMessage = {
   buffering: boolean;
   muted: boolean;
   playbackRate: number;
+  playSeq?: number;
 };
 
 export type RuntimeTimelineClipIdentity = {
@@ -196,6 +203,13 @@ export type RuntimeMediaAutoplayBlockedMessage = {
   media: ParentCopy[];
 };
 
+/** The same list, asked for by a parent that plays the film's audio from decoded buffers (`set-parent-audio`). */
+export type RuntimeParentCopiesMessage = {
+  source: "hf-preview";
+  type: "parent-copies";
+  media: ParentCopy[];
+};
+
 /**
  * Posted by the runtime when `installRuntimeControlBridge` finishes registering
  * its message listener — signals that subsequent control messages
@@ -294,25 +308,28 @@ export type PlaybackHeldBy = {
   fetchMs: number | FetchNotSeenToStart;
 };
 
+/** How playback went over the last few seconds of play. */
+export type PlaybackHealthReport = {
+  droppedShare: number;
+  seconds: number;
+  choppy: boolean;
+  fps: number;
+  worstFrameMs: number;
+  skippedShare: number;
+  waitingShare: number;
+  frozenShare: number;
+  gapP50Ms: number;
+  gapP95Ms: number;
+  clockSource: "audio" | "webaudio" | "monotonic";
+  heldBy: PlaybackHeldBy | null;
+  mode: "play";
+};
+
 export type RuntimePreviewHealthMessage = {
   source: "hf-preview";
   type: "preview-health";
-  /** How playback went over the last few seconds of play; null while paused, seeking or warming up. */
-  health: {
-    droppedShare: number;
-    seconds: number;
-    choppy: boolean;
-    fps: number;
-    worstFrameMs: number;
-    skippedShare: number;
-    waitingShare: number;
-    frozenShare: number;
-    gapP50Ms: number;
-    gapP95Ms: number;
-    clockSource: "audio" | "webaudio" | "monotonic";
-    heldBy: PlaybackHeldBy | null;
-    mode: "play";
-  } | null;
+  /** Null while paused, seeking or warming up. */
+  health: PlaybackHealthReport | null;
 };
 
 export type RuntimePreviewFactsMessage = {
@@ -350,6 +367,7 @@ export type RuntimeOutboundMessage =
   | RuntimeStageSizeMessage
   | RuntimeStaticCompositionMessage
   | RuntimeMediaAutoplayBlockedMessage
+  | RuntimeParentCopiesMessage
   | RuntimeReadyMessage
   | RuntimeAssetsReadyMessage
   | RuntimeDataErrorMessage

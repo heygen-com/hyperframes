@@ -225,7 +225,8 @@ The composition runs in a sandboxed iframe inside the player's Shadow DOM. This
 isolates its styles, scales it to the player container, and lets the player
 communicate with the HyperFrames runtime through `postMessage`. Set
 `sandbox-origin="opaque"` to seal the frame, so the composition cannot read
-your page or its cookies. The player adds the runtime itself to a composition
+your page or its cookies, or take the screen with fullscreen; the player's own
+fullscreen button still works. The player adds the runtime itself to a composition
 from your own site; a composition from another site must include the runtime
 script.
 

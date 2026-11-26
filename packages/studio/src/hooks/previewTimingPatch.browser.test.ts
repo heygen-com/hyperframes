@@ -18,6 +18,8 @@ beforeAll(async () => {
     `export { finishTimelineTimingFallback } from "./hooks/timelineTimingSync";`,
     `export { announcePreviewPromoted } from "./player/sceneSwap";`,
     `export { retirePreviewEditingClient } from "./player/lib/previewChannel";`,
+    `export { findPreviewElementForSelection, standInFor, standInHandle } from "./components/editor/previewSelection";`,
+    `export { editPreviewElement } from "./player/lib/previewElements";`,
   ]);
 });
 
@@ -40,7 +42,24 @@ type Studio = {
   patchIframeDomTiming(...args: unknown[]): void;
   syncPreviewContentDuration(iframe: HTMLIFrameElement): void;
   captureDurationRollback(iframe: HTMLIFrameElement): () => void;
-  removeIframeTimelineElements(iframe: HTMLIFrameElement, elements: unknown[]): void;
+  removeIframeTimelineElements(
+    iframe: HTMLIFrameElement,
+    elements: unknown[],
+    activeCompositionPath?: string | null,
+    selected?: Map<unknown, Element>,
+  ): void;
+  findPreviewElementForSelection(
+    iframe: HTMLIFrameElement,
+    selection: object,
+    path: string | null,
+  ): Promise<unknown>;
+  standInFor(iframe: HTMLIFrameElement, element: unknown): HTMLElement;
+  standInHandle(element: Element): string | undefined;
+  editPreviewElement(
+    iframe: HTMLIFrameElement,
+    handle: string,
+    edit: object,
+  ): { drawn: Promise<boolean> };
   finishTimelineTimingFallback(input: object): Promise<void>;
   announcePreviewPromoted(promotion: { retired: HTMLIFrameElement; live: HTMLIFrameElement }): void;
   retirePreviewEditingClient(iframe: HTMLIFrameElement): void;
@@ -395,6 +414,184 @@ it("a sealed delete whose lookups answered just before the reload is promoted re
     await expect
       .poll(() => hasB(shadow), { message: "the new frame drops the deleted clip" })
       .toBe(false);
+  } finally {
+    await preview.page.close();
+  }
+});
+
+type Selected = Held & { __kinds: string[]; __standIn: HTMLElement; __loads: number };
+
+/** Holds clip b's canvas stand-in, as a click on it leaves it, and records each request kind Studio sends. */
+async function selectB(preview: Preview) {
+  await preview.page.evaluate(async () => {
+    const w = window as unknown as Selected;
+    const iframe = document.querySelector("iframe")!;
+    w.__loads = 0;
+    iframe.addEventListener("load", () => w.__loads++);
+    const found = await w.hfStudio.findPreviewElementForSelection(
+      iframe,
+      { id: "b", sourceFile: "index.html" },
+      null,
+    );
+    w.__standIn = w.hfStudio.standInFor(iframe, found);
+    w.__kinds = [];
+    const post = MessagePort.prototype.postMessage;
+    MessagePort.prototype.postMessage = function (
+      this: MessagePort,
+      data: unknown,
+      ...rest: never[]
+    ) {
+      const kind = (data as { id?: unknown; kind?: string } | null)?.kind;
+      if (typeof (data as { id?: unknown } | null)?.id === "number" && kind) w.__kinds.push(kind);
+      return post.call(this, data, ...rest);
+    };
+  });
+}
+
+// fails without the fix: a sealed delete of the selected clip asked the frame to look it up first (query, describe),
+// each hop waiting behind Studio's re-render, so the clip left a sealed frame ~50 ms after an unsealed one.
+it("a sealed delete of the selected clip sends only its removal, before the caller's task ends", async () => {
+  const preview = await openPreview(browser, studioBundle, previewHtml(), "sealed");
+  try {
+    await selectB(preview);
+    const sent = await preview.page.evaluate(async (clip) => {
+      const w = window as unknown as Selected;
+      w.hfStudio.removeIframeTimelineElements(
+        document.querySelector("iframe")!,
+        [clip],
+        null,
+        new Map([[clip, w.__standIn]]),
+      );
+      // Microtasks only: no task (a re-render's, a reply's) runs before these checks.
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      return [...w.__kinds];
+    }, clipB);
+    expect(sent).toEqual(["remove-elements"]);
+    await expect.poll(() => hasB(preview.frame)).toBe(false);
+  } finally {
+    await preview.page.close();
+  }
+});
+
+it("a sealed delete right after a pending edit of the clip reaches the frame after that edit", async () => {
+  const preview = await openPreview(browser, studioBundle, previewHtml(), "sealed");
+  try {
+    await selectB(preview);
+    await preview.frame.evaluate(() => {
+      const seen: string[] = [];
+      (window as unknown as { seen: string[] }).seen = seen;
+      const b = document.getElementById("b")!;
+      new MutationObserver((records) => {
+        for (const r of records) {
+          if (r.type === "attributes" && r.target === b) seen.push(`edit ${r.attributeName}`);
+          if (r.type === "childList" && [...r.removedNodes].includes(b)) seen.push("removed");
+        }
+      }).observe(document.documentElement, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["data-edited"],
+      });
+    });
+    await preview.page.evaluate((clip) => {
+      const w = window as unknown as Selected;
+      const iframe = document.querySelector("iframe")!;
+      void w.hfStudio.editPreviewElement(iframe, w.hfStudio.standInHandle(w.__standIn)!, {
+        attributes: [["data-edited", "1"]],
+      });
+      w.hfStudio.removeIframeTimelineElements(iframe, [clip], null, new Map([[clip, w.__standIn]]));
+    }, clipB);
+    const seen = () => preview.frame.evaluate(() => (window as unknown as { seen: string[] }).seen);
+    await expect.poll(seen).toEqual(["edit data-edited", "removed"]);
+    expect(await preview.page.evaluate(() => (window as unknown as Selected).__kinds)).toEqual(
+      expect.arrayContaining(["edit-element", "remove-elements"]),
+    );
+  } finally {
+    await preview.page.close();
+  }
+});
+
+type Swallowing = Selected & {
+  __swallow: Set<string>;
+  __rejecting: boolean;
+  __swallowed: Array<{ kind: string; answer: (result: unknown) => void }>;
+};
+
+it.each([
+  ["the frame refuses", true, null],
+  ["comes back with nothing removed", false, { removed: 0 }],
+])(
+  "a sealed delete whose fast removal %s looks the clip up and removes it",
+  async (_case, rejecting, answer) => {
+    const preview = await openPreview(browser, studioBundle, previewHtml(), "sealed");
+    try {
+      await selectB(preview);
+      await preview.page.evaluate(
+        (clip, rejecting) => {
+          const w = window as unknown as Swallowing;
+          w.__swallow.add("remove-elements");
+          w.__rejecting = rejecting;
+          w.hfStudio.removeIframeTimelineElements(
+            document.querySelector("iframe")!,
+            [clip],
+            null,
+            new Map([[clip, w.__standIn]]),
+          );
+        },
+        clipB,
+        rejecting,
+      );
+      await expect
+        .poll(() =>
+          preview.page.evaluate(() => (window as unknown as Swallowing).__swallowed.length),
+        )
+        .toBe(1);
+      await preview.page.evaluate((answer) => {
+        const w = window as unknown as Swallowing;
+        w.__swallow.delete("remove-elements");
+        w.__rejecting = false;
+        w.__swallowed[0]!.answer(answer);
+      }, answer);
+      await expect
+        .poll(() => hasB(preview.frame), { message: "the lookup path removes the clip" })
+        .toBe(false);
+    } finally {
+      await preview.page.close();
+    }
+  },
+);
+
+it("a sealed delete holding a stand-in from the frame's previous load looks the clip up in the new one", async () => {
+  const preview = await openPreview(browser, studioBundle, previewHtml(), "sealed");
+  try {
+    await selectB(preview);
+    await preview.page.evaluate(() => {
+      const iframe = document.querySelector("iframe")!;
+      iframe.setAttribute("srcdoc", iframe.getAttribute("srcdoc")!);
+    });
+    await expect
+      .poll(() => preview.page.evaluate(() => (window as unknown as Selected).__loads))
+      .toBe(1);
+    await preview.frame.waitForFunction(
+      () => "__player" in window && !!document.getElementById("b"),
+    );
+    await preview.page.evaluate((clip) => {
+      const w = window as unknown as Selected;
+      w.__kinds = [];
+      w.hfStudio.removeIframeTimelineElements(
+        document.querySelector("iframe")!,
+        [clip],
+        null,
+        new Map([[clip, w.__standIn]]),
+      );
+    }, clipB);
+    await expect
+      .poll(() => hasB(preview.frame), { message: "the new load drops the clip" })
+      .toBe(false);
+    const kinds = await preview.page.evaluate(() => (window as unknown as Selected).__kinds);
+    expect(kinds[0], "the old load's handle is never sent to the new load").not.toBe(
+      "remove-elements",
+    );
   } finally {
     await preview.page.close();
   }

@@ -13,6 +13,7 @@ import {
 import type { ShaderLoaderState } from "./shader-loader-state.js";
 import type { ShaderTransitionState } from "./shader-options.js";
 import { inspectRuntimeProtocol } from "@hyperframes/core/runtime/protocol";
+import { readFrameList } from "./frame-list.js";
 import { STUDIO_PREVIEW_ERROR_MESSAGE } from "@hyperframes/core/studio-preview-mark";
 import {
   parseStaticComposition,
@@ -23,8 +24,7 @@ import {
 type SceneRecord = { id: string; start: number; duration: number };
 
 function extractScenes(raw: unknown): SceneRecord[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(
+  return readFrameList("scenes", raw).filter(
     (s): s is SceneRecord =>
       typeof s === "object" &&
       s !== null &&
@@ -68,6 +68,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  Slideshow embeds keep iframe media under native element ownership because
    *  presenter/audience sync mirrors those media events directly. */
   shouldPromoteMediaAutoplayFallback?: () => boolean;
+  onParentCopies?: () => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -149,6 +150,7 @@ export function handleRuntimeMessage(
           ended: typeof data["ended"] === "boolean" ? data["ended"] : undefined,
           isPlaying: !!data["isPlaying"],
           ownsRange: ownsPlayRange,
+          playSeq: typeof data["playSeq"] === "number" ? data["playSeq"] : undefined,
         },
         protocol.fps,
         callbacks.getPlaybackState(),
@@ -156,6 +158,12 @@ export function handleRuntimeMessage(
       ),
     );
     callbacks.setBuffering?.(data["buffering"] === true);
+    return;
+  }
+
+  if (data["type"] === "parent-copies") {
+    callbacks.media.setupFromList(data["media"], callbacks.getCompositionUrl());
+    callbacks.onParentCopies?.();
     return;
   }
 

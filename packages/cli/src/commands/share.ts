@@ -13,6 +13,11 @@ import {
   type ShareState,
   type ShareService,
 } from "../share/service.js";
+import {
+  listReferencedHiddenSourceAssets,
+  referencedHiddenDigest,
+} from "@hyperframes/share/projectSnapshot.mjs";
+import { quotedFilePath, terminalLines } from "@hyperframes/core/terminal-text";
 import { shareError } from "../share/errors.js";
 import { jsonFailure } from "../utils/jsonError.js";
 import { parsePositiveIntegerArg } from "../utils/integerArg.js";
@@ -92,6 +97,8 @@ export default defineCommand({
       });
       await confirmNamedReview(input, args, service, project.dir);
       await chooseAudience(input, args, service);
+      if (input.includeSource)
+        input.expectedReferencedHiddenDigest = await showReferencedHiddenAssets(project.dir);
       const result = await service.run(input);
       await presentResult(result, input, Boolean(args.json));
     } catch (error) {
@@ -105,6 +112,18 @@ export default defineCommand({
     }
   },
 });
+
+async function showReferencedHiddenAssets(dir: string) {
+  const paths = await listReferencedHiddenSourceAssets(dir);
+  if (paths.length) {
+    const lines = [
+      "Editable source includes these referenced hidden assets",
+      ...paths.map(quotedFilePath),
+    ];
+    console.error(terminalLines(lines.join("\n")));
+  }
+  return referencedHiddenDigest(paths);
+}
 
 interface ShareArgs {
   public?: boolean;

@@ -1214,6 +1214,42 @@ export const CatalogDetail = ({
     return null;
   };
 
+  const SVG_GEOMETRY = {
+    svg: ["x", "y", "width", "height", "viewBox", "preserveAspectRatio"],
+    g: [],
+    path: ["d"],
+    rect: ["x", "y", "width", "height", "rx", "ry"],
+    circle: ["cx", "cy", "r"],
+    ellipse: ["cx", "cy", "rx", "ry"],
+    line: ["x1", "y1", "x2", "y2"],
+    polyline: ["points"],
+    polygon: ["points"],
+  };
+  // `a` and `switch` only group what they hold, so their shapes are drawn as a `g` would draw them.
+  const SVG_GROUPING = ["a", "switch"];
+  // Placement and visibility a shape can carry in its own inline style; none of them can name a resource.
+  const SVG_PLACEMENT_STYLE = ["display", "transform", "transform-origin", "transform-box"];
+
+  const geometryCopy = (source, doc) => {
+    const NS = "http://www.w3.org/2000/svg";
+    const tag = SVG_GROUPING.includes(source.localName) ? "g" : source.localName;
+    if (source.namespaceURI !== NS || !Object.hasOwn(SVG_GEOMETRY, tag)) return null;
+    const copy = doc.createElementNS(NS, tag);
+    for (const name of [...SVG_GEOMETRY[tag], "transform", "transform-origin", "display"]) {
+      const value = source.getAttribute(name);
+      if (value !== null) copy.setAttribute(name, value);
+    }
+    for (const property of SVG_PLACEMENT_STYLE) {
+      const value = source.style?.getPropertyValue(property);
+      if (value) copy.style.setProperty(property, value, source.style.getPropertyPriority(property));
+    }
+    for (const child of source.children) {
+      const childCopy = geometryCopy(child, doc);
+      if (childCopy) copy.appendChild(childCopy);
+    }
+    return copy;
+  };
+
   /**
    * An SVG file's text, in: path data fitted to `target`, out.
    *
@@ -1225,9 +1261,12 @@ export const CatalogDetail = ({
    * result is the file's own user space rather than screen pixels, and whatever
    * size the offscreen host happens to have cancels out.
    *
-   * Both of those need layout, which is why the file is parked in the document
-   * instead of measured in the detached tree `DOMParser` returns. It is removed
-   * again in a `finally`, so a throw does not leave it there.
+   * Both of those need layout, which the detached tree `DOMParser` returns does
+   * not have, so a copy is parked in the document. The copy is built from
+   * `SVG_GEOMETRY` and `SVG_PLACEMENT_STYLE` alone: the file's other elements
+   * and attributes (scripts, handlers, images, style sheets, links) never reach
+   * the page, so nothing in the file runs or loads there. It is removed again
+   * in a `finally`.
    *
    * Every failure is a throw carrying the sentence the panel shows. Importing
    * nothing quietly is the one outcome that is not allowed: it looks identical to
@@ -1239,7 +1278,8 @@ export const CatalogDetail = ({
     if (
       parsed.getElementsByTagName("parsererror").length > 0 ||
       !parsed.documentElement ||
-      parsed.documentElement.localName !== "svg"
+      parsed.documentElement.localName !== "svg" ||
+      parsed.documentElement.namespaceURI !== NS
     ) {
       throw new Error("That file is not an SVG, or its markup is malformed.");
     }
@@ -1248,7 +1288,7 @@ export const CatalogDetail = ({
     host.setAttribute("aria-hidden", "true");
     host.style.cssText =
       "position:fixed;left:-99999px;top:0;width:600px;height:600px;overflow:hidden;";
-    const svg = doc.importNode(parsed.documentElement, true);
+    const svg = geometryCopy(parsed.documentElement, doc);
     host.appendChild(svg);
     doc.body.appendChild(host);
 
@@ -1257,25 +1297,12 @@ export const CatalogDetail = ({
       svg.appendChild(reference);
       const rootMatrix = reference.getScreenCTM();
 
-      // Anything inside these is a definition, not a drawing. Matched by
-      // localName rather than a selector because a document that came from
-      // `image/svg+xml` matches `clipPath` case-sensitively and an HTML one
-      // does not.
-      const defining = ["defs", "clipPath", "mask", "symbol", "marker", "pattern"];
-      const isDefinition = (element) => {
-        for (let node = element.parentNode; node && node !== svg; node = node.parentNode) {
-          if (defining.includes(node.localName)) return true;
-        }
-        return false;
-      };
-
       const shapes = [...svg.querySelectorAll("path,rect,circle,ellipse,line,polyline,polygon")];
       const segments = [];
       let shapesUsed = 0;
       let firstProblem = null;
 
       for (const element of shapes) {
-        if (isDefinition(element)) continue;
         if (doc.defaultView.getComputedStyle(element).display === "none") continue;
         const attrs = {};
         for (const attribute of element.attributes) attrs[attribute.localName] = attribute.value;
@@ -1300,7 +1327,7 @@ export const CatalogDetail = ({
       if (segments.length === 0) {
         if (firstProblem) throw new Error(`This SVG has unreadable path data: ${firstProblem}.`);
         const untraceable = ["text", "image", "use"].find(
-          (tag) => svg.getElementsByTagName(tag).length > 0,
+          (tag) => parsed.getElementsByTagName(tag).length > 0,
         );
         throw new Error(
           untraceable

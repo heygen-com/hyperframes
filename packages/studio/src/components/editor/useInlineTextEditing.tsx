@@ -142,8 +142,6 @@ export function useInlineTextEditing(
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [enterFromWindow]);
 
-  // The caret scripts the frame's element and selection, which a sealed session keeps in the frame.
-  const liveSession = inlineText.session?.sealed ? null : inlineText.session;
   return {
     editing: inlineText.session !== null,
     toolbar: (
@@ -153,7 +151,7 @@ export function useInlineTextEditing(
           iframe={actions?.previewIframeRef?.current ?? null}
         />
         <InlineTextCaret
-          session={liveSession}
+          session={inlineText.session}
           iframe={actions?.previewIframeRef?.current ?? null}
         />
       </>

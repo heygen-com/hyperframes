@@ -6,9 +6,12 @@ import {
   type EditingPortClient,
   type EditingRequestKind,
   type EditingResult,
+  type TextEditSelection,
+  type TextEditSelectionEvent,
 } from "@hyperframes/core/runtime/editing-port";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
 import { wellFormedClips } from "./manifestClips";
+import { frameRequestSent } from "./frameFacts";
 
 const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
@@ -32,6 +35,9 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
   const open = clients.get(iframe);
   if (open) return open.client;
   const client = createEditingPortClient({ iframe });
+  const onTextEditSelection = client.onTextEditSelection;
+  client.onTextEditSelection = (listener) =>
+    onTextEditSelection((event) => listener(frameColoursOnly(event)));
   const retire = () => {
     iframe.removeEventListener("load", retire, beforeOtherLoadHandlers);
     client.dispose();
@@ -40,6 +46,29 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
   clients.set(iframe, { client, retire });
   iframe.addEventListener("load", retire, { ...beforeOtherLoadHandlers, once: true });
   return client;
+}
+
+function frameColoursOnly(event: TextEditSelectionEvent): TextEditSelectionEvent {
+  const { selection, caret } = event;
+  return {
+    ...event,
+    caret: caret && colourOnly(caret.color) ? caret : null,
+    selection: selection && selectionColoursOnly(selection),
+  };
+}
+
+const colourOnly = (value: string | null | undefined) =>
+  value && CSS.supports("color", value) ? value : null;
+
+function selectionColoursOnly(selection: TextEditSelection): TextEditSelection {
+  const { color, ...styles } = selection.styles;
+  const agreed = colourOnly(color);
+  return {
+    ...selection,
+    styles: agreed ? { ...styles, color: agreed } : styles,
+    colours: selection.colours.filter((value) => colourOnly(value) !== null),
+    painted: colourOnly(selection.painted),
+  };
 }
 
 export function samePreviewLoad(iframe: HTMLIFrameElement): () => boolean {
@@ -81,10 +110,20 @@ export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | n
 export const AGENT_PROBE_MS = 1_000;
 
 const agents = new WeakMap<EditingPortClient, boolean>();
+const pendingProbes = new WeakMap<EditingPortClient, Promise<boolean>>();
+const turnsWaiting = new WeakMap<EditingPortClient, Promise<boolean>>();
 
-async function agentConnected(client: EditingPortClient): Promise<boolean> {
+function agentConnectedInCallOrder(client: EditingPortClient): boolean | Promise<boolean> {
+  const pending = pendingProbes.get(client);
+  if (pending) return pending;
   const known = agents.get(client);
   if (known !== undefined) return known;
+  const probe = probeAgent(client).finally(() => pendingProbes.delete(client));
+  pendingProbes.set(client, probe);
+  return probe;
+}
+
+async function probeAgent(client: EditingPortClient): Promise<boolean> {
   client.ready.then(
     () => agents.set(client, true),
     () => agents.set(client, false),
@@ -115,9 +154,86 @@ export async function previewAnswer<K extends EditingRequestKind>(
   params: EditingParams<K>,
   timeoutMs?: number,
   admit?: () => boolean,
+  priority: ReadPriority = "now",
 ): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | typeof PREVIEW_STALE | null> {
+  frameRequestSent(kind);
   const client = previewEditingClient(iframe);
-  if (!(await agentConnected(client))) return null;
+  const connected = agentConnectedInCallOrder(client);
+  const earlier = turnsWaiting.get(client);
+  if (typeof connected === "boolean" && !earlier)
+    return connected ? sendInTurn(client, kind, params, timeoutMs, admit, priority) : null;
+  const turn = (earlier ?? Promise.resolve()).then(() => connected);
+  turnsWaiting.set(client, turn);
+  const ready = await turn;
+  if (turnsWaiting.get(client) === turn) turnsWaiting.delete(client);
+  return ready ? sendInTurn(client, kind, params, timeoutMs, admit, priority) : null;
+}
+
+export type ReadPriority = "now" | "behind-drafts";
+const gestureHolds = new Set<() => boolean>();
+const heldReads = new Map<EditingPortClient, Array<() => void>>();
+
+export function holdRefreshReadsWhile(held: () => boolean): void {
+  gestureHolds.add(held);
+}
+
+function gestureHeld(): boolean {
+  for (const held of gestureHolds) {
+    if (held()) return true;
+    gestureHolds.delete(held);
+  }
+  return false;
+}
+
+export function releaseEndedGestureHolds(): void {
+  if (gestureHeld()) return;
+  for (const client of [...heldReads.keys()]) releaseHeldReads(client);
+}
+
+function releaseHeldReads(client: EditingPortClient): void {
+  const queue = heldReads.get(client);
+  heldReads.delete(client);
+  queue?.forEach((send) => send());
+}
+
+type Answer<K extends EditingRequestKind> =
+  | EditingResult<K>
+  | typeof PREVIEW_REJECTED
+  | typeof PREVIEW_STALE
+  | null;
+
+function sendInTurn<K extends EditingRequestKind>(
+  client: EditingPortClient,
+  kind: K,
+  params: EditingParams<K>,
+  timeoutMs: number | undefined,
+  admit: (() => boolean) | undefined,
+  priority: ReadPriority,
+): Answer<K> | Promise<Answer<K>> {
+  if (priority === "now" || !gestureHeld()) {
+    const sent = sendForAnswer(client, kind, params, timeoutMs, admit);
+    if (kind === "draft") releaseHeldReads(client);
+    return sent;
+  }
+  let queue = heldReads.get(client);
+  if (!queue) {
+    const waiting: Array<() => void> = [];
+    heldReads.set(client, (queue = waiting));
+    requestAnimationFrame(() => heldReads.get(client) === waiting && releaseHeldReads(client));
+  }
+  const held = queue;
+  return new Promise<Answer<K>>((resolve) =>
+    held.push(() => resolve(sendForAnswer(client, kind, params, timeoutMs, admit))),
+  );
+}
+
+function sendForAnswer<K extends EditingRequestKind>(
+  client: EditingPortClient,
+  kind: K,
+  params: EditingParams<K>,
+  timeoutMs?: number,
+  admit?: () => boolean,
+): typeof PREVIEW_STALE | Promise<EditingResult<K> | typeof PREVIEW_REJECTED | null> {
   if (admit && !admit()) return PREVIEW_STALE;
   return client.request(kind, params, { timeoutMs }).catch((err: unknown) => {
     const noReply =
@@ -131,8 +247,9 @@ export async function previewRequest<K extends EditingRequestKind>(
   kind: K,
   params: EditingParams<K>,
   timeoutMs?: number,
+  priority: ReadPriority = "now",
 ): Promise<EditingResult<K> | null> {
-  const answer = await previewAnswer(iframe, kind, params, timeoutMs);
+  const answer = await previewAnswer(iframe, kind, params, timeoutMs, undefined, priority);
   return answer === PREVIEW_REJECTED || answer === PREVIEW_STALE ? null : answer;
 }
 
@@ -166,8 +283,9 @@ export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map
 export async function previewConsoleErrors(
   iframe: HTMLIFrameElement,
   from: number,
+  priority: ReadPriority = "now",
 ): Promise<{ errors: string[]; truncated: boolean } | null> {
-  const reply = await previewRequest(iframe, "console-errors", { from });
+  const reply = await previewRequest(iframe, "console-errors", { from }, undefined, priority);
   const errors: unknown = reply?.errors;
   if (!Array.isArray(errors) || typeof reply?.truncated !== "boolean") return null;
   return { errors: errors.map(String), truncated: reply.truncated };

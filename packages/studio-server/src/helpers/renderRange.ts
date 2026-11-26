@@ -26,6 +26,3 @@ export function parseRenderRange(body: { start?: unknown; end?: unknown }): Pars
     range: { startSeconds, ...(body.end === undefined ? {} : { endSeconds: body.end }) },
   };
 }
-
-export const RANGE_NOT_RENDERED =
-  "This Studio renders the whole film only; render without a start or end.";

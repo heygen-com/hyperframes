@@ -11,7 +11,7 @@ import {
   parseStoredManifest,
 } from "../src/sources/manifest.mjs";
 import { overLimit, V1_LIMITS } from "../src/sources/limits.mjs";
-import { excludedFolder, skippedSymlink } from "../src/sources/pathPolicy.mjs";
+import { excludedFolder, skippedSymlink, validatePath } from "../src/sources/pathPolicy.mjs";
 
 /** Reference vectors for the source manifest format. */
 const vectors = JSON.parse(
@@ -32,11 +32,11 @@ function refusal(run) {
   return null;
 }
 
-test("the vectors are portable-source-v12's, and there are vectors of every kind", () => {
-  assert.equal(vectors.policy_version, "portable-source-v12");
+test("the vectors are portable-source-v13's, and there are vectors of every kind", () => {
+  assert.equal(vectors.policy_version, "portable-source-v13");
   assert.deepEqual(
     [vectors.valid.length, vectors.invalid.length, vectors.limits.length, vectors.stored.length],
-    [13, 237, 5, 8],
+    [15, 248, 5, 8],
   );
 });
 
@@ -124,16 +124,37 @@ test("a capture skips only folders no included file can be under", () => {
   assert.equal(excludedFolder("assets/renders"), false);
 });
 
-function manifestWith(path) {
+function manifestWith(path, includeHidden = false) {
   const blob = { sha256: "0".repeat(64), size: 0 };
   return {
     format_version: 1,
     entrypoint: "index.html",
     files: [
       { path: "index.html", ...blob },
-      { path, ...blob },
+      { path, ...blob, ...(includeHidden && { include_hidden: true }) },
     ],
   };
+}
+
+for (const [name, path, rule] of [
+  [
+    "a hidden image with a fullwidth extension letter",
+    "art/.icons/logo.\uFF50ng",
+    "unrecognized-hidden",
+  ],
+  [
+    "a hidden image in a compatibility spelling of the render folder",
+    "\uFF52enders/.icons/logo.png",
+    "root-generated-output",
+  ],
+]) {
+  test(`a hidden marker refuses ${name}`, () => {
+    const expected = { code: "excluded_path", path, rule };
+    assert.throws(() => validatePath(path, "current", true), expected);
+    assert.deepEqual(refusal(() => parseManifest(manifestWith(path, true)))?.violations, [
+      expected,
+    ]);
+  });
 }
 
 test("a v4 base retains the digest of a path segment containing only a zero-width joiner", () => {

@@ -26,6 +26,18 @@ vi.mock("node:fs", async (importOriginal) => {
   }) as typeof original.statSync;
   return { ...original, statSync };
 });
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs/promises")>();
+  const stat = (async (path: string, options?: object) => {
+    const answer = await original.stat(path, options);
+    if (resolve(String(path)) !== hooks.recreated) return answer;
+    return new Proxy(answer, {
+      get: (target, key) =>
+        key === "birthtimeMs" ? target.birthtimeMs + 1000 : Reflect.get(target, key),
+    });
+  }) as typeof original.stat;
+  return { ...original, stat };
+});
 vi.mock("../helpers/fileVersion", async (importOriginal) => {
   const original = await importOriginal<typeof import("../helpers/fileVersion")>();
   return {
@@ -187,8 +199,8 @@ describe("a project folder swapped while the history is at work", () => {
     await window.close();
     hooks.recreated = resolve(projectDir);
 
-    expect(() => history.list()).toThrow(HistoryClosedError);
     await expect(history.restore(START, you)).rejects.toThrow(HistoryClosedError);
+    expect(() => history.list()).toThrow(HistoryClosedError);
     expect(texts(projectDir)).toEqual(["edited", "edited", "edited"]);
   });
 

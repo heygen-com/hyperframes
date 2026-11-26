@@ -81,6 +81,7 @@ import {
   listedInMessage,
   PAGE_LIST_MAX,
   PAGE_TEXT_MAX_CHARS,
+  SERVED_SCRIPTS_MAX,
   warningBudgetOf,
   type WarningBudget,
 } from "./pageTextBounds.js";
@@ -258,6 +259,8 @@ export interface CaptureSession {
   strictVariablesChecked?: boolean;
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
   vfxFailure?: string;
+  /** Set once the page loads more distinct scripts than SERVED_SCRIPTS_MAX; it stops the render. */
+  tooManyServedScripts?: boolean;
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
   /**
@@ -608,6 +611,7 @@ const BROWSER_CONSOLE_BUFFER_SIZE = 200;
 const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
 const THROW_SITE_LOOKUP_MAX = 10;
+const QUERY_OR_FRAGMENT = /[?#].*$/s;
 
 function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
   session.browserConsoleBuffer.push(boundedPageText(text));
@@ -1523,13 +1527,21 @@ async function installMediaPageHooks(page: Page, options: CaptureOptions): Promi
   }
 }
 
+function throwIfCaptureAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Capture session creation aborted");
+}
+
 export async function createCaptureSession(
   serverUrl: string,
   outputDir: string,
   options: CaptureOptions,
   onBeforeCapture: BeforeCaptureHook | null = null,
-  config?: Partial<EngineConfig>,
+  config?: Partial<EngineConfig> & { signal?: AbortSignal },
 ): Promise<CaptureSession> {
+  throwIfCaptureAborted(config?.signal);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
   // Determine capture mode before building args — BeginFrame flags only apply on Linux.
@@ -1603,10 +1615,15 @@ export async function createCaptureSession(
   // still fails loudly if the server is actually down.
   const requiresWebGpu =
     options.requiresWebGpu ??
-    (await fetch(`${serverUrl}/index.html`, { signal: AbortSignal.timeout(5_000) })
+    (await fetch(`${serverUrl}/index.html`, {
+      signal: config?.signal
+        ? AbortSignal.any([AbortSignal.timeout(5_000), config.signal])
+        : AbortSignal.timeout(5_000),
+    })
       .then((res) => res.text())
       .then(compositionRequiresWebGpu)
       .catch(() => false));
+  throwIfCaptureAborted(config?.signal);
   const gpuConfig = { ...config, browserGpuMode: resolvedGpuMode };
   const chromeArgs = buildChromeArgs(
     { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
@@ -1638,7 +1655,7 @@ interface CaptureSessionConstructionInput {
   outputDir: string;
   options: CaptureOptions;
   onBeforeCapture: BeforeCaptureHook | null;
-  config?: Partial<EngineConfig>;
+  config?: Partial<EngineConfig> & { signal?: AbortSignal };
   useDrawElement: boolean;
   requiresWebGpu?: boolean;
   softwareWebGpu?: boolean;
@@ -1649,6 +1666,7 @@ async function constructCaptureSessionWithRollback(
 ): Promise<CaptureSession> {
   let page: Page | undefined;
   try {
+    throwIfCaptureAborted(input.config?.signal);
     return await constructCaptureSession({
       ...input,
       onPageCreated: (createdPage) => {
@@ -2954,8 +2972,20 @@ export class VfxFailureError extends Error {
   }
 }
 
-function assertVfxIntact(session: CaptureSession): void {
+/** Thrown once the page loads more distinct scripts than a render tracks, so a throw could go unattributed. */
+class TooManyServedScriptsError extends Error {
+  constructor() {
+    super(
+      `The composition loaded more than ${SERVED_SCRIPTS_MAX.toLocaleString("en-US")} different scripts, ` +
+        "more than a render can track. Load fewer scripts.",
+    );
+    this.name = "TooManyServedScriptsError";
+  }
+}
+
+function assertCaptureIntact(session: CaptureSession): void {
   if (session.vfxFailure) throw new VfxFailureError(session.vfxFailure);
+  if (session.tooManyServedScripts) throw new TooManyServedScriptsError();
 }
 
 // A `vfx:` detail is a chain that cannot paint, so every frame is wrong; `vfx-frame:` is one frame, a page error.
@@ -3216,7 +3246,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
   const servedScriptUrlDigests = new Set<string>();
-  const digest = (url: string) => createHash("sha1").update(url).digest("base64");
+  const digest = (url: string) =>
+    createHash("sha1").update(url.replace(QUERY_OR_FRAGMENT, "")).digest("base64");
   const projectScripts = { has: (url: string) => servedScriptUrlDigests.has(digest(url)) };
   page.on("response", (response) => {
     const status = response.status();
@@ -3224,8 +3255,12 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const isScript = request.resourceType() === "script";
     const responseUrl = response.url();
     if (status < 400) {
-      if (isScript && responseUrl.startsWith(`${serverUrl}/`))
-        servedScriptUrlDigests.add(digest(responseUrl));
+      if (isScript && responseUrl.startsWith(`${serverUrl}/`)) {
+        const served = digest(responseUrl);
+        if (servedScriptUrlDigests.size < SERVED_SCRIPTS_MAX || servedScriptUrlDigests.has(served))
+          servedScriptUrlDigests.add(served);
+        else session.tooManyServedScripts = true;
+      }
       return;
     }
 
@@ -3332,7 +3367,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
-    assertVfxIntact(session);
+    assertCaptureIntact(session);
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
@@ -3479,7 +3514,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
-    assertVfxIntact(session);
+    assertCaptureIntact(session);
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
@@ -3684,7 +3719,7 @@ async function prepareFrameForCapture(
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");
   }
-  assertVfxIntact(session);
+  assertCaptureIntact(session);
 
   const quantizedTime = quantizeSeekTime(
     time,
@@ -5916,7 +5951,7 @@ export async function captureFramesBatchPipelined(
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");
   }
-  assertVfxIntact(session);
+  assertCaptureIntact(session);
   for (const frameIndex of frameIndices) assertNotRiskFrame(session, frameIndex);
   // The fused batch seeks inside the page, with no stop between frames to wait for a late image.
   if (session.lateImages?.size) {

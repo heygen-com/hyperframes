@@ -12,7 +12,7 @@ import {
   withoutIgnorable,
 } from "./unicode.mjs";
 
-const PATH_POLICY_VERSION = "portable-source-v12";
+const PATH_POLICY_VERSION = "portable-source-v13";
 
 /** @typedef {import("./types.js").PathRule} PathRule @typedef {import("./types.js").PolicyDocument} PolicyDocument */
 
@@ -113,14 +113,30 @@ const foldedPath = (path) => path.split("/").map(comparisonKey).join("/");
 /** @param {{ pattern: RegExp, rule: PathRule }} entry @param {string} folded @param {string} path */
 const matches = ({ pattern, rule }, folded, path) =>
   pattern.test(folded) ||
-  (rule.id === "private-source" && pattern.test(privateSourceSpelling(path)));
+  ((rule.id === "private-source" || rule.id === "unrecognized-hidden") &&
+    pattern.test(privateSourceSpelling(path)));
 
 /** The first rule matching a path's folded spelling. @param {string} path @returns {PathRule} */
 export function classifyPath(path) {
   const folded = foldedPath(path);
-  const found = policy().rules.find((entry) => matches(entry, folded, path));
+  const found = policy().rules.find((entry) =>
+    entry.rule.id === "portable-hidden-sources"
+      ? entry.pattern.test(path) && entry.pattern.test(folded)
+      : matches(entry, folded, path),
+  );
   if (!found) throw new Error("the path policy's catch-all rule did not match");
   return found.rule;
+}
+
+/** @param {string} path */
+export function isEligibleHiddenSourcePath(path) {
+  try {
+    validatePath(path, "current", true);
+    return true;
+  } catch (error) {
+    if (!(error instanceof PathViolation)) throw error;
+    return false;
+  }
 }
 
 /** Checks 1 to 10 of the registry's `path.checks`: the ones about the string itself. @param {string} path @param {boolean} localV4 */
@@ -162,8 +178,8 @@ function isShortNameAlias(key, stems) {
 
 /** `path` unchanged when every client can store it and the policy lets it travel; throws PathViolation otherwise,
  * naming the first failing check in the registry's order. @param {string} path
- * @param {PathMode} [mode] */
-export function validatePath(path, mode = "current") {
+ * @param {PathMode} [mode] @param {boolean} [includeHidden] */
+export function validatePath(path, mode = "current", includeHidden = false) {
   const segments = checkSpelling(path, mode === "localV4");
   const keys = segments.map(mode === "localV4" ? v4ComparisonKey : comparisonKey);
   const { reservedSegment, canonicalRoots } = policy();
@@ -177,10 +193,21 @@ export function validatePath(path, mode = "current") {
   const folded = keys.join("/");
   const found = rules.find((entry) => matches(entry, folded, path));
   if (!found) throw new Error("the path policy's catch-all rule did not match");
+  if (includeHidden && mode === "current") return validateHiddenSelection(path, found.rule);
   if (found.rule.server_action === "reject")
     throw new PathViolation("excluded_path", path, found.rule.id);
   if (!found.pattern.test(path))
     throw new PathViolation("reserved_path_alias", path, found.rule.id);
+  return path;
+}
+
+/** @param {string} path @param {PathRule} rule */
+function validateHiddenSelection(path, rule) {
+  if (rule.server_action === "allow") throw new PathViolation("invalid_schema", path);
+  if (rule.id !== "hidden-asset") throw new PathViolation("excluded_path", path, rule.id);
+  const normalized = classifyPath(privateSourceSpelling(path));
+  if (normalized.id !== "hidden-asset")
+    throw new PathViolation("excluded_path", path, normalized.id);
   return path;
 }
 
@@ -240,7 +267,10 @@ export function excludedFolder(dir) {
   const folded = foldedPath(dir);
   const at = policy().rules.findIndex(
     ({ pattern, rule }) =>
-      rule.client_action !== "include" && pattern.test(folded) && pattern.test(`${folded}/x`),
+      rule.id !== "unrecognized-hidden" &&
+      rule.client_action !== "include" &&
+      pattern.test(folded) &&
+      pattern.test(`${folded}/x`),
   );
   if (at < 0) return false;
   return policy()
@@ -252,11 +282,12 @@ export function excludedFolder(dir) {
     });
 }
 
-/** A stored manifest may contain paths that are no longer eligible for upload. @param {string} path */
-export function canUploadStoredPath(path) {
+/** Can an unconfirmed Begin replay this stored entry under today's rules?
+ * @param {import("./types.js").ManifestFile} file */
+export function canReplayUploadFile({ path, include_hidden }) {
   if (isPrivateSourcePath(path)) return false;
   try {
-    validatePath(path);
+    validatePath(path, "current", include_hidden === true);
     return true;
   } catch (error) {
     if (error instanceof PathViolation) return false;

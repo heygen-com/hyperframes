@@ -46,18 +46,20 @@ function fileOf(raw, out, policy) {
   if (!isObject(raw)) return (out.push({ code: "invalid_schema" }), null);
   const before = out.length;
   const { path, sha256, size } = raw;
+  if ("include_hidden" in raw && raw.include_hidden !== true) out.push({ code: "invalid_schema" });
+  const marker = raw.include_hidden === true ? { include_hidden: /** @type {const} */ (true) } : {};
   if (typeof path !== "string") out.push({ code: "invalid_schema" });
   else {
     try {
-      validatePath(path, policy.mode);
+      validatePath(path, policy.mode, marker.include_hidden);
     } catch (error) {
       policy.pathErrors.push(violationOf(error));
     }
   }
   checkBlob(sha256, size, out);
-  unknownFields(raw, ["path", "sha256", "size"], out);
+  unknownFields(raw, ["path", "sha256", "size", "include_hidden"], out);
   return out.length === before
-    ? { path: String(path), sha256: String(sha256), size: Number(size) }
+    ? { path: String(path), sha256: String(sha256), size: Number(size), ...marker }
     : null;
 }
 
@@ -109,8 +111,8 @@ function filesOf(raw, out, policy) {
 export function canonicalBytes(document) {
   const files = document.files
     .map(
-      ({ path, sha256, size }) =>
-        `{"path":${JSON.stringify(path)},"sha256":${JSON.stringify(sha256)},"size":${size}}`,
+      ({ path, sha256, size, include_hidden }) =>
+        `{${include_hidden ? '"include_hidden":true,' : ""}"path":${JSON.stringify(path)},"sha256":${JSON.stringify(sha256)},"size":${size}}`,
     )
     .join(",");
   const text = `{"entrypoint":${JSON.stringify(document.entrypoint)},"files":[${files}],"format_version":${document.format_version}}`;

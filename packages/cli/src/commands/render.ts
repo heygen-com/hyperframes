@@ -1,5 +1,4 @@
 import type { ReferenceBackgroundResult } from "@hyperframes/producer";
-import { fromEmptyFolder } from "@hyperframes/parsers/ff-binaries";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { recordRenderSuccess, registerRenderOutput } from "@hyperframes/studio-server/history";
 import { resolveGsapVendorDir } from "../server/gsapVendor.js";
@@ -288,12 +287,11 @@ export default defineCommand({
     start: {
       type: "string",
       description:
-        "Render from this second of the film (MP4). The clip starts at 0 and carries the audio of the span.",
+        "Render from this second of the film. The clip starts at 0 and carries the audio of that part.",
     },
     end: {
       type: "string",
-      description:
-        "Render up to this second of the film (default: the end). Needs MP4, a whole frame rate of 24, 25, 30 or 60, and SDR.",
+      description: "Render up to this second of the film (default: the end).",
     },
     "video-bitrate": {
       type: "string",
@@ -1275,26 +1273,9 @@ async function executeLocalRender(
       resumeSegments: options.resumeSegments,
       keepSegments: options.keepSegments,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
-      // plan() takes the film's own size; these only satisfy the request shape.
-      distributed: options.range ? { width: 1920, height: 1080 } : undefined,
+      range: options.range,
     },
   });
-  if (options.range) {
-    return renderRange({
-      producer,
-      request,
-      range: options.range,
-      projectDir,
-      outputPath,
-      options,
-      logger,
-      startTime,
-      cpu,
-      signal: cancellation.signal,
-      allowOutsideProjectAssets,
-      includeOutsideScripts,
-    });
-  }
   const job = producer.createRenderJob(
     producer.renderConfigFromRequest(request, {
       logger,
@@ -1404,66 +1385,6 @@ async function executeLocalRender(
       ...job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
       ...(audioLowered ? [audioLowered] : []),
     ],
-  };
-}
-
-async function renderRange(input: {
-  producer: Awaited<ReturnType<typeof loadProducer>>;
-  request: ReturnType<Awaited<ReturnType<typeof loadProducer>>["createRenderRequest"]>;
-  range: RenderRange;
-  projectDir: string;
-  outputPath: string;
-  options: RenderOptions;
-  logger: ProducerLogger;
-  startTime: number;
-  cpu: RenderCpuSampler;
-  signal: AbortSignal;
-  allowOutsideProjectAssets: boolean;
-  includeOutsideScripts: boolean;
-}): Promise<SingleRenderResult> {
-  const { producer, options } = input;
-  let framesEncoded = 0;
-  let reference = producer.referenceBackgroundResult(undefined);
-  try {
-    const config = producer.distributedConfigFromRequest(input.request, {
-      logger: input.logger,
-      abortSignal: input.signal,
-    });
-    const spanResult = await fromEmptyFolder(() =>
-      producer.renderSpan(
-        resolve(input.projectDir),
-        config,
-        input.range,
-        resolve(input.outputPath),
-        {
-          allowOutsideProjectAssets: input.allowOutsideProjectAssets,
-          includeOutsideScripts: input.includeOutsideScripts,
-        },
-      ),
-    );
-    framesEncoded = spanResult.framesEncoded;
-    reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);
-  } catch (error: unknown) {
-    handleRenderError(error, options, input.startTime, input.cpu, false, "");
-  }
-  if (!options.embedded) markRenderSucceeded();
-  const elapsed = Date.now() - input.startTime;
-  input.cpu.stop();
-  printRenderComplete({
-    outputPath: input.outputPath,
-    projectDir: input.projectDir,
-    desktopHint: wantsDesktopHint(options),
-    elapsedMs: elapsed,
-    quiet: options.quiet,
-    format: options.format,
-  });
-  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
-  return {
-    renderTimeMs: elapsed,
-    ...reference,
-    durationMs: Math.round((framesEncoded / fpsToNumber(options.fps)) * 1000),
-    outcome: "completed",
-    warnings: [],
   };
 }
 

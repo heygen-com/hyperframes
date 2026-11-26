@@ -2,6 +2,23 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
+import { ParentAudio, type ParentAudioHost } from "./parent-audio.js";
+import { PLAY_START_GRACE_MS } from "./playback-state.js";
+
+type SealedAudioReader = {
+  _sealedAudio(): ParentAudio | null;
+  _parentAudioLoad: Promise<void> | null;
+  _paused: boolean;
+};
+
+async function loadedSealedAudio(player: HTMLElement): Promise<ParentAudio> {
+  const sealed = player as unknown as SealedAudioReader;
+  sealed._sealedAudio();
+  await sealed._parentAudioLoad;
+  const audio = sealed._sealedAudio();
+  if (!audio) throw new Error("expected a sealed WebKit player to play audio from the parent");
+  return audio;
+}
 
 // Install a stubbed contentDocument getter on the given iframe element. The
 // new stopMedia / muted tests repeat this `Object.defineProperty(... { get })`
@@ -1121,6 +1138,329 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(iframeAudioPause).toHaveBeenCalledOnce();
     expect(slideProxyPause).toHaveBeenCalledOnce();
     expect(globalProxyPause).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: the parent's decoded copies and the clock it posts played on after stopMedia().
+  it("stopMedia stops a sealed film's decoded audio and the clock it posts", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    const pause = vi.spyOn(audio, "pause");
+
+    player.stopMedia();
+
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: a list without a removed clip left its claim standing, so the film kept a layer silent.
+  it("re-posts the parent's claims on every list from a sealed film, even while paused", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    const postClaims = vi.spyOn(audio, "postClaims");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: player.iframe.contentWindow,
+        data: { source: "hf-preview", type: "parent-copies", media: [] },
+      }),
+    );
+
+    expect(postClaims).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: every player carried the decoded-audio code, so nothing was left to load.
+  it("loads a sealed WebKit player's decoded audio on first need, and plays it if the film is playing", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const play = vi.spyOn(ParentAudio.prototype, "play").mockImplementation(() => {});
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._paused = false;
+
+    expect(sealed._sealedAudio()).toBeNull();
+    await sealed._parentAudioLoad;
+
+    expect(sealed._sealedAudio()).toBeInstanceOf(ParentAudio);
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: a tap before the code loaded made no context in the tap, so Safari kept the audio silent.
+  it("opens the audio context inside a tap that lands before the decoded-audio code", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    vi.spyOn(ParentAudio.prototype, "play").mockImplementation(() => {});
+    const resume = vi.fn(() => Promise.resolve());
+    const made: object[] = [];
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        resume = resume;
+        close = () => Promise.resolve();
+        constructor() {
+          made.push(this);
+        }
+      },
+    );
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._sealedAudio();
+
+    player.play();
+
+    expect(made).toHaveLength(1);
+    expect(resume).toHaveBeenCalledOnce();
+    await sealed._parentAudioLoad;
+    const host = (sealed._sealedAudio() as unknown as { _host: ParentAudioHost })._host;
+    expect(host.takeTapContext?.()).toBe(made[0]);
+    expect(host.takeTapContext?.()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("reports decoded-audio code that fails to load, and tries again on the next need", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.doMock("./parent-audio.js", () => {
+      throw new Error("chunk missing");
+    });
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._sealedAudio();
+    await sealed._parentAudioLoad;
+    vi.doUnmock("./parent-audio.js");
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("sealed audio code failed to load"),
+      expect.anything(),
+    );
+    expect(sealed._parentAudioLoad).toBeNull();
+  });
+
+  it("never loads the decoded-audio code for a player that isn't sealed", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const sealed = player as unknown as SealedAudioReader;
+
+    expect(sealed._sealedAudio()).toBeNull();
+    expect(sealed._parentAudioLoad).toBeNull();
+  });
+
+  // fails without the fix: a pre-play parked heartbeat paused ParentAudio and aborted its decode.
+  it("ignores a paused heartbeat before the frame answers play, keeping sealed audio alive", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    vi.spyOn(audio, "play").mockImplementation(() => {});
+    const pause = vi.spyOn(audio, "pause");
+    const sendState = (frame: number, isPlaying: boolean) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame, isPlaying, ended: false },
+        }),
+      );
+
+    player.play();
+    sendState(0, false);
+
+    expect(pause).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(1, true);
+    sendState(10, false);
+
+    expect(pause).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
+  });
+
+  // fails without the fix: the same pre-play heartbeat called pauseAll on parent-owned media before the frame started.
+  it("ignores a paused heartbeat before the frame answers play without bouncing parent media", () => {
+    const media = (
+      player as unknown as { _media: { _audioOwner: string; pauseAll(): void; playAll(): void } }
+    )._media;
+    media._audioOwner = "parent";
+    const pauseAll = vi.spyOn(media, "pauseAll").mockImplementation(() => {});
+    vi.spyOn(media, "playAll").mockImplementation(() => {});
+    const sendState = (frame: number, isPlaying: boolean) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame, isPlaying, ended: false },
+        }),
+      );
+
+    player.play();
+    sendState(0, false);
+
+    expect(pauseAll).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(1, true);
+    sendState(10, false);
+
+    expect(pauseAll).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
+  });
+
+  // fails without the bound: a frame that never starts playing would drop every paused heartbeat forever.
+  it("settles back to paused and stops sealed audio if the frame never answers play", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+      );
+      player.setAttribute("sandbox-origin", "");
+      const audio = await loadedSealedAudio(player);
+      vi.spyOn(audio, "play").mockImplementation(() => {});
+      const pause = vi.spyOn(audio, "pause");
+      const sendPaused = () =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: player.iframe.contentWindow,
+            data: { source: "hf-preview", type: "state", frame: 0, isPlaying: false, ended: false },
+          }),
+        );
+
+      player.play();
+      vi.advanceTimersByTime(50);
+      sendPaused();
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      vi.advanceTimersByTime(PLAY_START_GRACE_MS);
+      sendPaused();
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // fails without playSeq keying: slow frame (>200 ms) drops stale playSeq=0, answered playSeq settles now.
+  it("keys the play latch on echoed playSeq across slow starts and immediate refusals", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+      );
+      player.setAttribute("sandbox-origin", "");
+      const audio = await loadedSealedAudio(player);
+      vi.spyOn(audio, "play").mockImplementation(() => {});
+      const pause = vi.spyOn(audio, "pause");
+      const posted: Array<Record<string, unknown>> = [];
+      stubContentWindow({
+        postMessage: vi.fn((msg: Record<string, unknown>) => {
+          posted.push(msg);
+        }),
+      });
+      const sendState = (isPlaying: boolean, playSeq: number) =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: player.iframe.contentWindow,
+            data: {
+              source: "hf-preview",
+              type: "state",
+              frame: 0,
+              isPlaying,
+              ended: false,
+              playSeq,
+            },
+          }),
+        );
+
+      player.play();
+      const firstSeq = posted.find((m) => m["action"] === "play")?.["playSeq"] as number;
+      expect(firstSeq).toBeGreaterThanOrEqual(1);
+
+      // Slow frame past the legacy grace window: stale pre-play heartbeat (playSeq < firstSeq) is still ignored.
+      vi.advanceTimersByTime(PLAY_START_GRACE_MS + 500);
+      sendState(false, firstSeq - 1);
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      // Frame handled this play and refused/stayed paused (playSeq === firstSeq): settles immediately.
+      sendState(false, firstSeq);
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+
+      // Second play increments playSeq; stale paused reply is ignored, then isPlaying:true clears.
+      pause.mockClear();
+      player.play();
+      const secondSeq = posted.filter((m) => m["action"] === "play").at(-1)?.["playSeq"] as number;
+      expect(secondSeq).toBeGreaterThan(firstSeq);
+      sendState(false, firstSeq);
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      sendState(true, secondSeq);
+      sendState(false, secondSeq);
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // fails without nextAwaitingPlay: in-flight playing state at N cleared N+1 before seek's paused state at N arrived.
+  it("keeps the playSeq latch across stale playing states during seek(t, { keepPlaying: true })", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    vi.spyOn(audio, "play").mockImplementation(() => {});
+    const pause = vi.spyOn(audio, "pause");
+    const posted: Array<Record<string, unknown>> = [];
+    stubContentWindow({
+      postMessage: vi.fn((msg: Record<string, unknown>) => {
+        posted.push(msg);
+      }),
+    });
+    const sendState = (isPlaying: boolean, playSeq: number) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: {
+            source: "hf-preview",
+            type: "state",
+            frame: 10,
+            isPlaying,
+            ended: false,
+            playSeq,
+          },
+        }),
+      );
+
+    player.play();
+    const firstSeq = posted.find((m) => m["action"] === "play")?.["playSeq"] as number;
+    sendState(true, firstSeq);
+    pause.mockClear();
+
+    player.seek(2, { keepPlaying: true });
+    const nextSeq = posted.filter((m) => m["action"] === "play").at(-1)?.["playSeq"] as number;
+    expect(nextSeq).toBeGreaterThan(firstSeq);
+    pause.mockClear();
+
+    sendState(true, firstSeq);
+    sendState(false, firstSeq);
+    expect(pause).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(true, nextSeq);
+    sendState(false, nextSeq);
+    expect(pause).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
   });
 
   it("stopMedia pauses iframe-realm media elements", () => {
@@ -3916,6 +4256,14 @@ describe("HyperframesPlayer retained runtime data", () => {
 
     player.removeAttribute("sandbox-origin");
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
+  });
+
+  it("offers fullscreen to an unsealed film only", () => {
+    expect(player.iframeElement.allow).toBe("autoplay; fullscreen");
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.allow).toBe("autoplay");
+    player.removeAttribute("sandbox-origin");
+    expect(player.iframeElement.allow).toBe("autoplay; fullscreen");
   });
 
   it("names its frame, the one mark a composition in an opaque sandbox can still read", () => {

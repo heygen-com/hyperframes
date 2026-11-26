@@ -7,17 +7,25 @@ import { previewDraftsSent } from "./previewDrafts";
 
 type OutlineRefs = Pick<
   UseDomEditOverlayGesturesOptions,
-  "boxRef" | "rafPausedRef" | "iframeRef" | "waitingPressRef"
+  "boxRef" | "rafPausedRef" | "iframeRef" | "waitingPressRef" | "gestureRef" | "groupGestureRef"
 >;
 type ReplayDrawWait = { frame: HTMLIFrameElement };
 type PressWait = "frame" | "save";
 
-function createPressOutline({ boxRef, rafPausedRef, iframeRef, waitingPressRef }: OutlineRefs) {
+function createPressOutline({
+  boxRef,
+  rafPausedRef,
+  iframeRef,
+  waitingPressRef,
+  gestureRef,
+  groupGestureRef,
+}: OutlineRefs) {
   let drawWait: ReplayDrawWait | null = null;
+  const heldDragDrawsBox = () => !!(gestureRef.current || groupGestureRef.current);
   const idle = () => {
     drawWait = null;
     boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-    rafPausedRef.current = false;
+    rafPausedRef.current = heldDragDrawsBox();
   };
   const confirm = (wait: ReplayDrawWait): void =>
     void previewDraftsSent(wait.frame).then(() => {
