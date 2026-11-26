@@ -429,7 +429,6 @@ export interface EditingRequests {
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
-  /** Waits for seeking videos to settle and two animation frames to paint inside the preview. */
   "frame-presented": { params: NoParams; result: { presented: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];

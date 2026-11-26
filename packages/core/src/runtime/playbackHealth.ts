@@ -28,9 +28,7 @@ export type PlaybackHealthInput = {
   clock: "audio" | "webaudio" | "monotonic";
   /** Anything that changes how heavy a frame is to draw (window size, zoom). */
   layoutKey: string;
-  /** Playing, unmuted <audio> element and its currentTime, if any. */
   audio?: { el: HTMLMediaElement; time: number } | null;
-  /** Read only when a health report is emitted (never per frame). */
   readMotionBlur?: () => PlaybackMotionBlurReport | null;
 };
 

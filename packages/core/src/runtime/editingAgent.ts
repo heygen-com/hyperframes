@@ -179,7 +179,6 @@ function stylesOf(element: Element, properties: readonly string[]): Record<strin
 const VIDEO_SETTLE_EVENTS = ["seeked", "error", "abort", "emptied"] as const;
 const activePresentedWaits = new Set<() => void>();
 
-/** Waits until a seeking video finishes seeking, errors, aborts, empties, or leaves the DOM. */
 function waitForVideoSettled(video: HTMLVideoElement): Promise<void> {
   if (!video.seeking || !video.isConnected) return Promise.resolve();
   return new Promise<void>((resolve) => {
