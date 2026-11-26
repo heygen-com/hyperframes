@@ -46,6 +46,7 @@ import {
   readTextFile,
 } from "@hyperframes/parsers/asset-resolution";
 import { encodeUrlPath } from "@hyperframes/parsers";
+import { NARRATION_FILE, NARRATION_LINE_ATTR } from "@hyperframes/parsers/narration";
 import {
   collectLocalVideoCandidates,
   lintHevcPreviewCodec,
@@ -57,6 +58,7 @@ import { MAX_EXPANDED_COMPOSITION_BYTES } from "./sizeLimits.js";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/parsers/private-path";
 import { collectGoogleFontFamilies, extractFontFaceFamilies } from "./rules/fonts.js";
 import { lintProjectShaderScripts } from "./projectShaders.js";
+import { lintProjectNarration } from "./projectNarration.js";
 import type {
   HyperframeLintFinding,
   HyperframeLintResult,
@@ -489,6 +491,7 @@ export async function lintProject(
       ? lintBlankRootWithStandaloneComposition(rootHtml, [...allHtmlSources, ...unmountedSources])
       : []),
     ...lintDuplicateAudioTracks(projectDir, rootHtml),
+    ...lintNarration(projectDir, indexPath, rootHtml, allHtmlSources),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
     ...(await lintVideoMediaStartPastEof(projectDir, allHtmlSources)),
     ...(await lintHevcPreviewCodec(collectLocalVideoCandidates(projectDir, allHtmlSources))),
@@ -891,6 +894,7 @@ interface AudioSpan {
   start: number;
   end: number;
   src: string;
+  narrationLine?: string;
 }
 
 /** One parsed file: reference starts resolve within it, memoised. */
@@ -905,8 +909,15 @@ const localStart = (file: TimingFile, el: Element) =>
 const localDuration = (file: TimingFile, el: Element) =>
   resolveReferencedDuration(file.doc, el, file.starts, new Set());
 
-/** Audible media on the main timeline, walked from the root through the scenes it mounts. */
-function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSpan[] {
+/**
+ * Audible media on the main timeline, walked from the root through the scenes it mounts. `origins`,
+ * when given, gets each mounted file's local t=0 in global seconds.
+ */
+function collectMainTimelineAudio(
+  projectDir: string,
+  rootHtml: string,
+  origins?: Map<string, number>,
+): AudioSpan[] {
   const spans: AudioSpan[] = [];
   type Placement = { file: TimingFile; origin: number; slots: HostSlot[]; mounting: string[] };
   const mount = (html: string, at: Omit<Placement, "file">) => {
@@ -933,6 +944,7 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
       const file = src && !isUnresolvedAssetPlaceholder(src) && !isRemoteOrInlineUrl(src);
       const filePath = file ? resolveCompositionSrc(projectDir, src) : null;
       if (filePath && !at.mounting.includes(filePath)) {
+        if (!origins?.has(filePath)) origins?.set(filePath, inner.origin);
         const read = readLinkedProjectFile(projectDir, filePath);
         if (read.kind === "file")
           mount(read.text, { ...inner, mounting: [...at.mounting, filePath] });
@@ -983,7 +995,30 @@ function audioSpanOf(
   const duration = parseNumeric(el.getAttribute("data-duration")) ?? localDuration(file, el);
   const kept = cutToHostSlots({ start, end: start + (duration ?? Infinity) }, slots);
   if (kept.end <= kept.start) return null;
-  return { trackIndex: parseInt(trackStr, 10), ...kept, src: el.getAttribute("src") || "unknown" };
+  const narrationLine = el.getAttribute(NARRATION_LINE_ATTR)?.trim();
+  return {
+    trackIndex: parseInt(trackStr, 10),
+    ...kept,
+    src: el.getAttribute("src") || "unknown",
+    ...(narrationLine ? { narrationLine } : {}),
+  };
+}
+
+/** narration.json against the clips and captions the project actually has; nothing without one. */
+function lintNarration(
+  projectDir: string,
+  indexPath: string,
+  rootHtml: string,
+  sources: HtmlSource[],
+): HyperframeLintFinding[] {
+  if (!existsSync(join(projectDir, NARRATION_FILE))) return [];
+  const origins = new Map<string, number>([[indexPath, 0]]);
+  const clips = collectMainTimelineAudio(projectDir, rootHtml, origins);
+  const originOf = (compSrcPath: string | undefined) => {
+    const file = compSrcPath ? resolveCompositionSrc(projectDir, compSrcPath) : indexPath;
+    return file ? (origins.get(file) ?? null) : null;
+  };
+  return lintProjectNarration(projectDir, sources, clips, originOf);
 }
 
 const formatSeconds = (t: number) => (Number.isFinite(t) ? String(Number(t.toFixed(2))) : "end");

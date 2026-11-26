@@ -886,6 +886,46 @@ Source: `packages/lint/src/rules/linkedClips.ts`.
 
 **Fix:** Give every member the same `data-start`, `data-duration`, `data-media-start` and `data-playback-rate`, or remove `data-link` from all of them to unlink.
 
+## Narration
+
+Source: `packages/lint/src/projectNarration.ts`. These run only when the project has a `narration.json`: the script of a narrated video, listing each voiced line's text and voice, linked to the `<audio data-narration-line="...">` clip that speaks it and to the caption words that show it. Each line's length and word timings are read from media-use's `audio_meta.json` by the same line id; without that file, the length isn't checked and a line's captions only need to fall inside its clip. They are warnings and infos, so drift never blocks a render.
+
+### `narration_manifest_invalid`
+
+**Warning.** `narration.json` is not valid JSON, or a field has the wrong shape (a line without a plain id, text or audio file, or a `voiced` record without its hashes).
+
+**Fix:** Fix the listed fields.
+
+### `narration_line_unlinked`
+
+**Warning.** A line in `narration.json` has no `<audio data-narration-line>` clip on the timeline, is linked from more than one clip, or a clip names a line the manifest does not list.
+
+**Fix:** Put `data-narration-line="<id>"` on the one `<audio>` that plays the line, or remove it from the clip.
+
+### `narration_audio_stale`
+
+**Warning.** A line's text, voice settings or WAV changed since it was voiced (its `voiced` record), or its audio file is missing, so the voice no longer says what the script says.
+
+**Fix:** Re-voice the line (with media-use, `--only tts` and just this line in the request), re-time its caption words, and update its `voiced` record.
+
+### `narration_clip_timing_mismatch`
+
+**Warning.** The line's clip plays for more than 0.05 s longer or shorter than `audio_meta.json` says its voice lasts, so the voice is cut off or followed by silence. Checked only when `audio_meta.json` describes the line's own audio file.
+
+**Fix:** Set the clip's `data-duration` to the length `audio_meta.json` records for the line.
+
+### `narration_captions_out_of_sync`
+
+**Warning.** The caption words that show a line (tagged with `"line": "<id>"`, or untagged words inside its clip) differ in number from the voice's words in `audio_meta.json`, or one starts more than 0.1 s from where the voice says it. Without `audio_meta.json`: a tagged word starts outside the line's clip.
+
+**Fix:** Re-time the line's caption words from its voice.
+
+### `narration_transcript_mismatch`
+
+**Info.** A line's captions are in sync with its voice but read differently from its text, often because a transcriber wrote a number as digits (47 for forty-seven).
+
+**Fix:** Usually none. Edit the caption words if they should match the script.
+
 ## Project-level checks
 
 Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/src/hyperframeLinter.ts` and `packages/lint/src/hevcPreviewLint.ts`.
