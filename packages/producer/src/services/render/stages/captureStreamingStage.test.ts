@@ -1407,6 +1407,7 @@ describe("runCaptureStreamingStage", () => {
     const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
     let openLate: (session: unknown) => void = () => {};
     primaryOpen = new Promise((resolve) => (openLate = resolve));
+    lastCreateSessionSignal = undefined;
     closeCaptureSession.mockClear();
     const controller = new AbortController();
     const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
@@ -1520,6 +1521,7 @@ describe("runCaptureStage", () => {
     const { runCaptureStage } = await import("./captureStage.js");
     let openLate: (session: unknown) => void = () => {};
     primaryOpen = new Promise((resolve) => (openLate = resolve));
+    lastCreateSessionSignal = undefined;
     closeCaptureSession.mockClear();
     const controller = new AbortController();
     const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };

@@ -2072,6 +2072,19 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     expect(fallbackArgs).toContain("--disable-partial-raster");
     expect(fallbackArgs).not.toContain("--enable-begin-frame-control");
   });
+});
+
+describe("acquireBrowser abort signal", () => {
+  const base = {
+    version: vi.fn().mockResolvedValue("Chrome/test"),
+    close: vi.fn().mockResolvedValue(undefined),
+    once: vi.fn(),
+  };
+
+  afterEach(async () => {
+    await drainBrowserPool();
+    _setPuppeteerForTests(undefined);
+  });
 
   it("forwards signal to puppeteer.launch and rethrows abort without launch failure remediation", async () => {
     _resetBrowserPoolForTests();
