@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createServer, type AddressInfo } from "node:net";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+import { historyWritesSettled } from "./studioServerTestFixture.js";
 
 vi.mock("../telemetry/events.js", () => ({ trackRegistryItemAdded: vi.fn() }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -144,14 +145,7 @@ describe("Studio catalog install", () => {
     let real = "";
     let link = "";
     ({ link, real } = projectWithRegistry(async () => {
-      // Windows refuses to rename a folder while a file in it is open: let the request's history finish writing.
-      const history = await server!.adapter.history?.({
-        dir: link,
-        id: "link",
-        title: "link",
-      } as never);
-      expect(history).toBeTruthy();
-      await history!.flush();
+      await historyWritesSettled(server!, link);
       renameSync(real, `${real}-renamed`);
     }));
 
