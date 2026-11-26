@@ -169,7 +169,7 @@ export async function previewAnswer<K extends EditingRequestKind>(
 
 export type ReadPriority = "now" | "behind-drafts";
 const gestureHolds = new Set<() => boolean>();
-const heldReads = new WeakMap<EditingPortClient, Array<() => void>>();
+const heldReads = new Map<EditingPortClient, Array<() => void>>();
 
 export function holdRefreshReadsWhile(held: () => boolean): void {
   gestureHolds.add(held);
@@ -181,6 +181,11 @@ function gestureHeld(): boolean {
     gestureHolds.delete(held);
   }
   return false;
+}
+
+export function releaseEndedGestureHolds(): void {
+  if (gestureHeld()) return;
+  for (const client of [...heldReads.keys()]) releaseHeldReads(client);
 }
 
 function releaseHeldReads(client: EditingPortClient): void {

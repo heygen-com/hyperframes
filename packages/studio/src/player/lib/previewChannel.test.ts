@@ -5,6 +5,7 @@ import {
   AGENT_PROBE_MS,
   holdRefreshReadsWhile,
   PREVIEW_REJECTED,
+  releaseEndedGestureHolds,
   previewAnswer,
   previewClipManifest,
   previewEditingClient,
@@ -421,6 +422,22 @@ describe("a display read asked while a gesture is held", () => {
     await nextFrame();
     await read;
     expect(arrived()).toEqual(["read 0"]);
+  });
+
+  it("leaves when its gesture ends, without waiting for a frame that a hidden tab never runs", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 0);
+    const gesture = { held: true };
+    holdFor(gesture);
+    let sent = false;
+    void previewRequest(iframe, "console-errors", { from: 0 }, undefined, "behind-drafts").then(
+      () => (sent = true),
+    );
+    gesture.held = false;
+    releaseEndedGestureHolds();
+    await vi.waitFor(() => expect(sent).toBe(true), { timeout: 1000 });
+    expect(arrived()).toEqual(["read 0"]);
+    vi.mocked(window.requestAnimationFrame).mockRestore();
   });
 
   it("is not held once the gesture ends", async () => {
