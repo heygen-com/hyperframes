@@ -300,6 +300,15 @@ describe("DomEditSelectionChrome with body drag off", () => {
     cleanup();
   });
 
+  // fails without the fix: the rotate handle sat outside the handles wrapper, so it waited for React's commit.
+  it("places the rotate handle inside the handles wrapper so it rides the box's write", () => {
+    const { host, cleanup } = renderChrome(true);
+    const handles = host.querySelector<HTMLElement>('[data-dom-edit-selection-handles="true"]')!;
+    const rotate = handles.querySelector<HTMLElement>('[aria-label="Rotate selection"]');
+    expect(rotate).not.toBeNull();
+    cleanup();
+  });
+
   it("still drags the body by default", () => {
     const { box, gestures, cleanup } = renderChrome(true);
     press(box);

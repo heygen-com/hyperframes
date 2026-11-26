@@ -79,6 +79,26 @@ it("a drag move turns the outline about the box's new centre in the same write",
   expect(chrome.style.transformOrigin).toBe("170px 122px");
 });
 
+// fails without the fix: the crop frame waited for React's commit, leaving a dashed ghost box behind a drag.
+it("a drag move places the crop frame in the same write as the box", () => {
+  const { handlers, box } = pressBox("drag");
+  const overlay = document.createElement("div");
+  const chrome = document.createElement("div");
+  chrome.setAttribute("data-dom-edit-chrome", "true");
+  chrome.append(box);
+  const cropFrame = document.createElement("div");
+  cropFrame.setAttribute("data-dom-edit-crop-frame", "true");
+  cropFrame.style.left = "20px";
+  cropFrame.style.top = "30px";
+  cropFrame.style.width = "240px";
+  cropFrame.style.height = "160px";
+  overlay.append(chrome, cropFrame);
+  handlers.onPointerMove(pointer(130, 112) as never);
+  expect([cropFrame.style.left, cropFrame.style.top]).toEqual(["50px", "42px"]);
+  handlers.clearPointerState(ref(null) as never);
+  expect([cropFrame.style.left, cropFrame.style.top]).toEqual(["20px", "30px"]);
+});
+
 it("a resize move sizes the resize handles in the same write as the box", () => {
   const { handlers, box, handles } = pressBox("resize");
   handlers.onPointerMove(pointer(300, 220) as never);
@@ -86,8 +106,62 @@ it("a resize move sizes the resize handles in the same write as the box", () => 
   expect(rectOf(handles)).toEqual(rectOf(box));
 });
 
-// fails without the fix: the group's boxes were placed only by React's later commit, a frame after the layers.
-it("a group drag move places every member box and the group box in the same write", () => {
+it("a resize move turns the outline about the box's new centre in the same write", () => {
+  const { handlers, box } = pressBox("resize");
+  const chrome = document.createElement("div");
+  chrome.setAttribute("data-dom-edit-chrome", "true");
+  chrome.append(box);
+  handlers.onPointerMove(pointer(300, 220) as never);
+  const cx = Number.parseFloat(box.style.left) + Number.parseFloat(box.style.width) / 2;
+  const cy = Number.parseFloat(box.style.top) + Number.parseFloat(box.style.height) / 2;
+  const [ox, oy] = chrome.style.transformOrigin.split(" ").map((v) => Number.parseFloat(v));
+  expect(ox).toBeCloseTo(cx, 3);
+  expect(oy).toBeCloseTo(cy, 3);
+});
+
+// fails without the fix: the tap branch restored the box position without restoring the turn centre.
+it("a drag tap restores the box, handles and turn centre without waiting for React", () => {
+  const { handlers, box, handles } = pressBox("drag");
+  const chrome = document.createElement("div");
+  chrome.setAttribute("data-dom-edit-chrome", "true");
+  chrome.append(box, handles);
+  handlers.onPointerMove(pointer(102, 101) as never);
+  expect(chrome.style.transformOrigin).toBe("142px 111px");
+  handlers.onPointerUp(pointer(102, 101) as never);
+  expect(chrome.style.transformOrigin).toBe("140px 110px");
+  expect(rectOf(box)).toEqual(["20px", "30px", "240px", "160px"]);
+  expect(rectOf(handles)).toEqual(rectOf(box));
+});
+
+// fails without the fix: the resize tap branch left left, top and turn centre shifted until React rendered.
+it("a resize tap restores the box, handles and turn centre without waiting for React", () => {
+  const { handlers, box, handles } = pressBox("resize");
+  const chrome = document.createElement("div");
+  chrome.setAttribute("data-dom-edit-chrome", "true");
+  chrome.append(box, handles);
+  handlers.onPointerMove(pointer(262, 191) as never);
+  expect(chrome.style.transformOrigin).not.toBe("140px 110px");
+  handlers.onPointerUp(pointer(262, 191) as never);
+  expect(rectOf(box)).toEqual(["20px", "30px", "240px", "160px"]);
+  expect(rectOf(handles)).toEqual(rectOf(box));
+  expect(chrome.style.transformOrigin).toBe("140px 110px");
+});
+
+// fails without the fix: cancelling a drag updated React state without restoring the DOM outline or turn centre.
+it("cancelling a drag restores the box, handles and turn centre without waiting for React", () => {
+  const { handlers, box, handles } = pressBox("drag");
+  const chrome = document.createElement("div");
+  chrome.setAttribute("data-dom-edit-chrome", "true");
+  chrome.append(box, handles);
+  handlers.onPointerMove(pointer(130, 112) as never);
+  expect(chrome.style.transformOrigin).toBe("170px 122px");
+  handlers.clearPointerState(ref(null) as never);
+  expect(rectOf(box)).toEqual(["20px", "30px", "240px", "160px"]);
+  expect(rectOf(handles)).toEqual(rectOf(box));
+  expect(chrome.style.transformOrigin).toBe("140px 110px");
+});
+
+function groupOutlineHarness(waitingPress: unknown = null) {
   const chrome = document.createElement("div");
   chrome.innerHTML =
     '<div data-dom-edit-group-member="a"></div><div data-dom-edit-group-member="b"></div>' +
@@ -117,18 +191,29 @@ it("a group drag move places every member box and the group box in the same writ
     boxRef: ref(null),
     handlesRef: ref(null),
     selectionRef: ref(null),
-    waitingPressRef: ref(null),
+    waitingPressRef: ref(waitingPress),
     blockedMoveRef: ref(null),
     snapGuidesRef: ref(null),
     setGroupOverlayItems: vi.fn(),
     onCanvasPointerMoveRef: ref(vi.fn()),
   } as never);
+  const at = (selector: string) => rectOf(chrome.querySelector<HTMLElement>(selector)!);
+  return { handlers, at };
+}
+
+// fails without the fix: the group's boxes were placed only by React's later commit, a frame after the layers.
+it("a group drag move places every member box and the group box in the same write", () => {
+  const { handlers, at } = groupOutlineHarness();
   handlers.onPointerMove(pointer(130, 112) as never);
-  const at = (selector: string) => {
-    const el = chrome.querySelector<HTMLElement>(selector)!;
-    return [el.style.left, el.style.top, el.style.width, el.style.height];
-  };
   expect(at('[data-dom-edit-group-member="a"]')).toEqual(["40px", "32px", "40px", "30px"]);
   expect(at('[data-dom-edit-group-member="b"]')).toEqual(["100px", "62px", "40px", "30px"]);
   expect(at("[data-dom-edit-group-box]")).toEqual(["40px", "32px", "100px", "60px"]);
+});
+
+it("a waiting press keeps a group drag from writing the group outline", () => {
+  const { handlers, at } = groupOutlineHarness({ pointerId: 99 });
+  handlers.onPointerMove(pointer(130, 112) as never);
+  expect(at('[data-dom-edit-group-member="a"]')).toEqual(["", "", "", ""]);
+  expect(at('[data-dom-edit-group-member="b"]')).toEqual(["", "", "", ""]);
+  expect(at("[data-dom-edit-group-box]")).toEqual(["", "", "", ""]);
 });
