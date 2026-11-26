@@ -106,5 +106,11 @@
   },
   "engines": {
     "bun": "1.4.4"
-  }
+  },
+  "trustedDependencies": [
+    "esbuild",
+    "ffmpeg-static",
+    "lefthook",
+    "puppeteer"
+  ]
 }
