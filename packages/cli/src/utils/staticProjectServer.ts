@@ -6,7 +6,6 @@ import {
   type ServerResponse,
 } from "node:http";
 import { Duplex, Writable } from "node:stream";
-import { referencedFontResponse } from "@hyperframes/share/projectSnapshot.mjs";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
@@ -440,6 +439,7 @@ export async function serveStaticProjectHtml(
       }
     }
     if (proxyParam === null) {
+      const { referencedFontResponse } = await import("@hyperframes/share/referencedFont.mjs");
       const font = await referencedFontResponse(projectDir, requestPath, req.method ?? "GET");
       if (font) {
         res.writeHead(font.status, Object.fromEntries(font.headers));

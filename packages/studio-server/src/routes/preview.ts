@@ -1,4 +1,4 @@
-import { referencedFontResponse } from "@hyperframes/share/projectSnapshot.mjs";
+import { referencedFontResponse } from "@hyperframes/share/referencedFont.mjs";
 import type { Hono } from "hono";
 import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";

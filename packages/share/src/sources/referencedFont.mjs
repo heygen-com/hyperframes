@@ -1,4 +1,5 @@
 // @ts-check
+import { decodeWellFormedEscapes } from "@hyperframes/parsers/asset-paths";
 import { lstat, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -23,8 +24,12 @@ function referencedFiles(root) {
 
 /** A private-file route may serve this one project font from the descriptor checked against the
  * source inventory. A caller must never use the result to authorize a second open by pathname.
- * @param {string} projectDir @param {string} path @param {string} method */
-export async function referencedFontResponse(projectDir, path, method) {
+ * @param {string} projectDir @param {string | URL} requested @param {string} method */
+export async function referencedFontResponse(projectDir, requested, method) {
+  const path =
+    typeof requested === "string"
+      ? requested
+      : decodeWellFormedEscapes(requested.pathname.slice(1));
   const font = /(?:^|\/)\.[^/]+\.(woff2?|ttf|otf)$/i.exec(path);
   if (!font || (method !== "HEAD" && method !== "GET") || !isEligibleHiddenSourcePath(path))
     return null;
@@ -46,7 +51,10 @@ export async function referencedFontResponse(projectDir, path, method) {
       await handle.close();
       return new Response(null, { headers: { ...headers, "Content-Length": String(size) } });
     }
-    const body = Readable.toWeb(handle.createReadStream({ end: size - 1 }));
+    // Node and DOM stream declarations differ across supported TypeScript lib sets.
+    const body = /** @type {unknown} */ (
+      Readable.toWeb(handle.createReadStream({ end: size - 1 }))
+    );
     return new Response(/** @type {ReadableStream<Uint8Array<ArrayBuffer>>} */ (body), { headers });
   } catch {
     return null;

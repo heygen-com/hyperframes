@@ -538,7 +538,7 @@ test("aliases of portable hidden metadata stay local without refusing the projec
 });
 
 test("font reads follow current Sync references, exclusions and file identities", async (t) => {
-  const { referencedFontResponse } = await import("../src/projectSnapshot.mjs");
+  const { referencedFontResponse } = await import("@hyperframes/share/referencedFont.mjs");
   const css = '@font-face{font-family:Face;src:url("../.brand/.Face.woff2")}';
   const root = await project({
     "index.html": '<link rel="stylesheet" href="styles/a.css">',

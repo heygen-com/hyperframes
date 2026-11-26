@@ -9,7 +9,6 @@ import { createHash } from "node:crypto";
 import { isOutsideFilm } from "./appOwnedPaths.mjs";
 
 export { readSourceIgnore };
-export { referencedFontResponse } from "./sources/referencedFont.mjs";
 export { listReferencedHiddenSourceAssets } from "./sources/capture.mjs";
 export { isEligibleHiddenSourcePath } from "./sources/pathPolicy.mjs";
 export { isPrivateSourcePath, privateSourceSpelling } from "./sources/privateSource.mjs";

@@ -6,7 +6,6 @@
  * Framework-agnostic — the caller decides what scripts to inject.
  */
 
-import { referencedFontResponse } from "@hyperframes/share/projectSnapshot.mjs";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { readFileSync, openSync, fstatSync, closeSync, statSync, constants } from "node:fs";
@@ -19,7 +18,6 @@ import {
   serviceWorkerScriptFetch,
 } from "@hyperframes/core/studio-preview-mark";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
-import { decodeWellFormedEscapes } from "@hyperframes/parsers/asset-paths";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { answerOwnLoopbackHostOnly } from "../utils/loopbackOnly.js";
 
@@ -116,6 +114,13 @@ function resolveContainedPaths(
   return { projectPath, compiledPath };
 }
 
+function readProjectFile(paths: { projectPath: string; compiledPath: string | null }) {
+  return (
+    (paths.compiledPath ? readRegularFile(paths.compiledPath) : null) ??
+    readRegularFile(paths.projectPath)
+  );
+}
+
 const OFFER_NO_FRAMING_SITE_AN_EDITING_PORT = `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`;
 
 function nameInHost(host: string): string {
@@ -179,25 +184,19 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   });
 
   app.get("/*", async (c) => {
-    let requestPath = c.req.path;
-    if (requestPath === "/") requestPath = "/index.html";
-
-    // Remove leading slash
-    const relativePath = requestPath.replace(/^\//, "");
+    const relativePath = c.req.path.slice(1) || "index.html";
     // Percent escapes can decode into separators and dot segments before the
     // join, so a hostile request can name files above either root -- see
     // resolveContainedPaths for why the check stays lexical, not realpath.
     const resolved = resolveContainedPaths(projectDir, compiledDir, relativePath);
     if (!resolved) {
-      const fontPath = decodeWellFormedEscapes(new URL(c.req.url).pathname.slice(1));
+      const { referencedFontResponse } = await import("@hyperframes/share/referencedFont.mjs");
       return (
-        (await referencedFontResponse(projectDir, fontPath, c.req.raw.method)) ??
+        (await referencedFontResponse(projectDir, new URL(c.req.url), c.req.raw.method)) ??
         c.text("Not found", 404)
       );
     }
-    const content =
-      (resolved.compiledPath ? readRegularFile(resolved.compiledPath) : null) ??
-      readRegularFile(resolved.projectPath);
+    const content = readProjectFile(resolved);
     if (content === null) return c.text("Not found", 404);
 
     const ext = extname(relativePath).toLowerCase();

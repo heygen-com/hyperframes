@@ -1,4 +1,4 @@
-import { referencedFontResponse } from "@hyperframes/share/projectSnapshot.mjs";
+import { referencedFontResponse } from "@hyperframes/share/referencedFont.mjs";
 import { failUsage, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
