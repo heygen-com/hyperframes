@@ -116,6 +116,81 @@ test("the ClawHub token reaches only the pinned CLI login step", () => {
   assert.ok(sync.steps.indexOf(install) < sync.steps.indexOf(holders[0]));
 });
 
+// Every step of a job can read every secret the job references, so installed packages and workspace builds run
+// only in jobs that hold none. A pinned global CLI install (`npm i -g tool@x.y.z`) is the secret's own client.
+const RUNS_WORKSPACE_CODE =
+  /\b(?:bun|pnpm|yarn)\s+(?:install|i|add|run|x)\b|\bbunx\b|\bnpx\b|\bnpm\s+(?:ci|install|i|run|exec)\b(?!.*\s-g\b)|\btsx\b|install-workspace-dependencies/;
+const runsWorkspaceCode = (step) =>
+  Boolean(step.uses?.startsWith("./")) || RUNS_WORKSPACE_CODE.test(step.run ?? "");
+
+test("the workspace-code detector sees installs, builds and local actions, not pinned CLIs", () => {
+  for (const step of [
+    { run: "bash scripts/ci/install-workspace-dependencies.sh" },
+    { run: "bun install --frozen-lockfile" },
+    { run: "bun run --cwd packages/core build" },
+    { run: "npm ci" },
+    { run: "npx tsx scripts/x.ts" },
+    { run: "pnpm i" },
+    { uses: "./.github/actions/desktop-setup" },
+  ])
+    assert.ok(runsWorkspaceCode(step), JSON.stringify(step));
+  for (const step of [
+    { run: "npm i -g clawhub@0.23.1" },
+    { run: "node scripts/publish-catalog.mjs" },
+    { uses: "actions/checkout@11d5960a326750d5838078e36cf38b85af677262" },
+  ])
+    assert.ok(!runsWorkspaceCode(step), JSON.stringify(step));
+});
+
+test("a job that reads a stored secret installs and builds nothing", () => {
+  // fails without the fix: catalog-publish.yml publish held the app key while it ran bun install and the builds.
+  const violations = workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs ?? {})
+      .filter(([, job]) => usesPublishSecret(job) || usesPublishSecret(doc.env))
+      .flatMap(([name, job]) =>
+        (job.steps ?? [])
+          .filter(runsWorkspaceCode)
+          .map((step) => `${file} ${name}: ${step.run ?? step.uses}`),
+      ),
+  );
+  assert.deepEqual(violations, []);
+});
+
+test("a job that runs the catalog drift check checks out full history", () => {
+  // fails without the fix: the catalog build job's shallow checkout had no origin/main for check-docs-catalog.mjs.
+  const shallow = workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs ?? {})
+      .filter(([, job]) =>
+        (job.steps ?? []).some((step) => /check:catalog-drift/.test(step.run ?? "")),
+      )
+      .filter(([, job]) => (job.steps ?? []).find(isCheckout)?.with?.["fetch-depth"] !== 0)
+      .map(([name]) => `${file} ${name}`),
+  );
+  assert.deepEqual(shallow, []);
+});
+
+test("the catalog builds in a job with no secret and publishes from a job that runs no installed code", () => {
+  const { doc } = workflows.find(({ file }) => file === "catalog-publish.yml");
+  const { build, publish } = doc.jobs;
+  assert.equal(build.environment, undefined);
+  assert.ok(!usesPublishSecret(build) && !usesPublishSecret(doc.env));
+  assert.deepEqual(build.permissions, { contents: "read" });
+  assert.ok(build.steps.some(runsWorkspaceCode));
+  assert.equal(publish.needs, "build");
+  assert.equal(publish.if, MAIN_GUARD);
+  // The build's outputs are untrusted: the publisher checks out the pushed commit itself.
+  assert.equal(publish.outputs, undefined);
+  assert.equal(build.outputs, undefined);
+  for (const job of [build, publish])
+    assert.equal(job.steps.find(isCheckout).with.ref, "${{ github.sha }}");
+  const download = publish.steps.find((step) =>
+    step.uses?.startsWith("actions/download-artifact@"),
+  );
+  assert.equal(download.with.path, "${{ runner.temp }}/catalog");
+  const take = publish.steps.at(-1);
+  assert.equal(take.run, 'node scripts/publish-catalog.mjs --from "$RUNNER_TEMP/catalog"');
+});
+
 test("the catalog PR is the app's, its key reaches only the first step, and Actions cannot write PRs", () => {
   const { source, doc } = workflows.find(({ file }) => file === "catalog-publish.yml");
   const job = doc.jobs.publish;
@@ -137,7 +212,7 @@ test("the catalog PR is the app's, its key reaches only the first step, and Acti
     /steps\.pr-token\.outputs\.token/.test(JSON.stringify(step)),
   );
   assert.equal(holders.length, 1);
-  assert.equal(holders[0].run, "node scripts/publish-catalog.mjs");
+  assert.equal(holders[0].run, 'node scripts/publish-catalog.mjs --from "$RUNNER_TEMP/catalog"');
   assert.equal(holders[0].env.CATALOG_PR_TOKEN, "${{ steps.pr-token.outputs.token }}");
 });
 

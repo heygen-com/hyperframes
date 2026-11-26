@@ -2,13 +2,17 @@ import { execFileSync } from "node:child_process";
 import {
   closeSync,
   constants,
+  copyFileSync,
   fstatSync,
+  lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
+  readdirSync,
   readFileSync,
   rmSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { GENERATED_CATALOG_PATHS } from "./catalog-generated-paths.mjs";
@@ -380,6 +384,47 @@ function publishMain(root) {
   publishSnapshot(context, base, exists, batches);
 }
 
+// The build job ran installed code, so its output is data: only regular files under the generated paths cross over.
+export function copyGeneratedCatalog(from, to) {
+  for (const path of GENERATED_CATALOG_PATHS) {
+    rmSync(join(to, path), { recursive: true, force: true });
+    copyRegularFiles(join(from, path), join(to, path));
+  }
+}
+
+function copyRegularFiles(source, target) {
+  let stat;
+  try {
+    stat = lstatSync(source);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  if (stat.isDirectory()) {
+    for (const name of readdirSync(source))
+      copyRegularFiles(join(source, name), join(target, name));
+    return;
+  }
+  if (!stat.isFile()) throw new Error(`Generated artifact must be a regular file: ${source}`);
+  mkdirSync(dirname(target), { recursive: true });
+  copyFileSync(source, target);
+}
+
+function optionValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  if (!value) throw new Error(`${name} needs a folder.`);
+  return resolve(value);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  publish(fileURLToPath(new URL("..", import.meta.url)));
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const stage = optionValue("--stage");
+  const from = optionValue("--from");
+  if (stage) copyGeneratedCatalog(root, stage);
+  else {
+    if (from) copyGeneratedCatalog(from, root);
+    publish(root);
+  }
 }

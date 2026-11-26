@@ -18,24 +18,18 @@ env:
   HYPERFRAMES_NO_TELEMETRY: "1"
 
 jobs:
-  publish:
+  # Installs and runs the workspace's own and third-party code, so it holds no secret and only reads the repo.
+  build:
     if: github.ref == 'refs/heads/main'
-    environment: catalog-publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      # The app opens and edits the PR, so the repository need not let Actions create or approve pull requests.
-      # Minted before anything is installed, so no installed code runs while the app key is in reach.
-      - name: Mint the publish PR token
-        id: pr-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
-        with:
-          app-id: ${{ secrets.CI_SYNC_APP_ID }}
-          private-key: ${{ secrets.CI_SYNC_PRIVATE_KEY }}
-          permission-pull-requests: write
+      # Full history: the drift check's docs step diffs against origin/main.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -47,8 +41,46 @@ jobs:
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - run: bun run check:catalog-drift
+      - run: node scripts/publish-catalog.mjs --stage "$RUNNER_TEMP/catalog"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: catalog
+          path: ${{ runner.temp }}/catalog
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  # Holds the app key, so it runs only pinned first-party actions and the dependency-free publication script.
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment: catalog-publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The app opens and edits the PR, so the repository need not let Actions create or approve pull requests.
+      - name: Mint the publish PR token
+        id: pr-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.CI_SYNC_APP_ID }}
+          private-key: ${{ secrets.CI_SYNC_PRIVATE_KEY }}
+          permission-pull-requests: write
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      # Outside the checkout: the build's files are data, taken in only under the generated catalog paths.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: catalog
+          path: ${{ runner.temp }}/catalog
       - name: Refresh the standing publish PR
-        run: node scripts/publish-catalog.mjs
+        run: node scripts/publish-catalog.mjs --from "$RUNNER_TEMP/catalog"
         env:
           GH_TOKEN: ${{ github.token }}
           CATALOG_PR_TOKEN: ${{ steps.pr-token.outputs.token }}

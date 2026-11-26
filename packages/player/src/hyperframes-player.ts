@@ -7,6 +7,7 @@ import { ParentMediaManager } from "./parent-media.js";
 import type { ParentAudio } from "./parent-audio.js";
 import { isWebKit } from "@hyperframes/core/runtime/media-clock";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
+import { PLAY_START_GRACE_MS } from "./playback-state.js";
 import { handleRuntimeMessage } from "./runtime-message-handler.js";
 import {
   isOutsidePlayRange,
@@ -217,6 +218,9 @@ class HyperframesPlayer extends HTMLElement {
   private _videoSource: VideoSource | null = null;
   private _runtimeOwnsPlayRange = false;
   private _enteringRange = false;
+  private _playSeq = 0;
+  private _awaitingPlaySeq = 0;
+  private _awaitingPlayUntilMs = 0;
   private _rangeClampReported = "";
 
   constructor() {
@@ -330,6 +334,7 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
+    this._clearAwaitingPlay();
     this._pendingPlay = false;
     this._abandonComposition("Player disconnected before runtime data was applied");
   }
@@ -509,7 +514,10 @@ class HyperframesPlayer extends HTMLElement {
     let queuedForReady = false;
     this._sendDisplayScale();
     if (!directTimelineStarted) {
-      this._sendControl("play");
+      const playSeq = ++this._playSeq;
+      this._awaitingPlaySeq = playSeq;
+      this._awaitingPlayUntilMs = performance.now() + PLAY_START_GRACE_MS;
+      this._sendControl("play", { playSeq });
       // Only start the parent tick clock once the composition is ready and
       // confirmed on the runtime bridge path (not the direct-timeline path).
       if (this._ready && !this._directTimelineAdapter) {
@@ -549,6 +557,7 @@ class HyperframesPlayer extends HTMLElement {
     if (this._media.audioOwner === "parent") this._media.pauseAll();
     this._parentAudio?.pause();
     this._paused = true;
+    this._clearAwaitingPlay();
     this.controlsApi?.updatePlaying(false);
     this._emit(new Event("pause"));
   }
@@ -558,6 +567,7 @@ class HyperframesPlayer extends HTMLElement {
     this._stopIframeMedia();
     this._media.stopAdoptedMedia();
     this._parentAudio?.pause();
+    this._clearAwaitingPlay();
   }
 
   seek(timeInSeconds: number, options?: { keepPlaying?: boolean }) {
@@ -596,6 +606,7 @@ class HyperframesPlayer extends HTMLElement {
       }
     }
     this._paused = true;
+    this._clearAwaitingPlay();
     this.controlsApi?.updatePlaying(false);
     this.controlsApi?.updateTime(this._currentTime, this._duration);
     if (playOn) this._play(false);
@@ -1188,7 +1199,13 @@ class HyperframesPlayer extends HTMLElement {
   private _pauseForVideoSwitch(): void {
     if (!this._videoSource && !this._wantsVideo()) return;
     this._paused = true;
+    this._clearAwaitingPlay();
     this.controlsApi?.updatePlaying(false);
+  }
+
+  private _clearAwaitingPlay(): void {
+    this._awaitingPlaySeq = 0;
+    this._awaitingPlayUntilMs = 0;
   }
 
   private _loadSrc(src: string): void {
@@ -1488,9 +1505,21 @@ class HyperframesPlayer extends HTMLElement {
         paused: this._paused,
         lastUpdateMs: this._lastUpdateMs,
         enteringRange: this._enteringRange,
+        awaitingPlaySeq: this._awaitingPlaySeq,
+        awaitingPlayUntilMs: this._awaitingPlayUntilMs,
       }),
-      setPlaybackState: ({ currentTime, duration, paused, lastUpdateMs, enteringRange }) => {
+      setPlaybackState: ({
+        currentTime,
+        duration,
+        paused,
+        lastUpdateMs,
+        enteringRange,
+        awaitingPlaySeq,
+        awaitingPlayUntilMs,
+      }) => {
         this._enteringRange = enteringRange === true;
+        this._awaitingPlaySeq = awaitingPlaySeq ?? 0;
+        this._awaitingPlayUntilMs = awaitingPlayUntilMs ?? 0;
         this._currentTime = currentTime;
         this._setDuration(duration);
         this._paused = paused;
@@ -1546,7 +1575,10 @@ class HyperframesPlayer extends HTMLElement {
       updateControlsPlaying: (p) => this.controlsApi?.updatePlaying(p),
       dispatchEvent: (ev) => this._emit(ev),
       seek: (t) => this.seek(t),
-      play: () => this.play(),
+      play: () => {
+        this.play();
+        return this._awaitingPlaySeq;
+      },
       getLoop: () => this.loop,
       getPlayRange: () => this._playRange(),
       media: this._media,
@@ -1742,6 +1774,7 @@ class HyperframesPlayer extends HTMLElement {
   private _releaseDocument(): void {
     this._runtimeOwnsPlayRange = false;
     this._enteringRange = false;
+    this._clearAwaitingPlay();
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
