@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "puppeteer-core";
 import type { ProducerLogger } from "../../../logger.js";
@@ -103,7 +103,11 @@ function writeRuntimeAudio(compiledDir: string, bytes: Buffer, mimeType: string)
   const dir = join(compiledDir, RUNTIME_AUDIO_SUBDIR);
   mkdirSync(dir, { recursive: true });
   const target = join(dir, filename);
-  if (!existsSync(target)) writeFileSync(target, bytes);
+  try {
+    writeFileSync(target, bytes, { flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
   return `${RUNTIME_AUDIO_SUBDIR}/${filename}`;
 }
 
