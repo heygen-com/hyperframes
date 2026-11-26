@@ -152,6 +152,63 @@ describe("previewEditingClient", () => {
     expect(Date.now() - again).toBeLessThan(100);
   });
 
+  // fails without the fix: the request waited on the known agent first, and a re-render queued in that
+  // step ran before it went out (a sealed Delete's removal left 80 ms late at 4x CPU).
+  it("posts a request to a frame whose agent it knows in the caller's own step", async () => {
+    const { iframe, handed } = servedFrame((_kind, params) => params);
+    await previewRequest(iframe, "set-loop-start", { seconds: 0 });
+    handed.mockClear();
+    // The client's own request waits on nothing, so it leaves first unless previewRequest's went out at once.
+    const asked = previewRequest(iframe, "set-loop-start", { seconds: 1 });
+    const direct = previewEditingClient(iframe).request("set-loop-start", { seconds: 2 });
+    await Promise.all([asked, direct]);
+    expect(handed.mock.calls.map(([, params]) => params)).toEqual([{ seconds: 1 }, { seconds: 2 }]);
+  });
+
+  it("sends requests in call order when one is asked in the step the frame's agent connects", async () => {
+    const { iframe, handed } = servedFrame((_kind, params) => params);
+    const first = previewRequest(iframe, "set-loop-start", { seconds: 1 });
+    const second = previewEditingClient(iframe).ready.then(() =>
+      previewRequest(iframe, "set-loop-start", { seconds: 2 }),
+    );
+    await Promise.all([first, second]);
+    expect(handed.mock.calls.map(([, params]) => params)).toEqual([{ seconds: 1 }, { seconds: 2 }]);
+  });
+
+  it("keeps call order for requests asked in each microtask while the agent's probe settles", async () => {
+    const { iframe, handed } = servedFrame((_kind, params) => params);
+    const asked = [previewRequest(iframe, "set-loop-start", { seconds: 0 })];
+    await new Promise<void>((done) => {
+      void previewEditingClient(iframe).ready.then(async () => {
+        for (let seconds = 1; seconds <= 12; seconds++) {
+          asked.push(previewRequest(iframe, "set-loop-start", { seconds }));
+          await Promise.resolve();
+        }
+        done();
+      });
+    });
+    await Promise.all(asked);
+    const order = handed.mock.calls.map(([, params]) => (params as { seconds: number }).seconds);
+    expect(order).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it("sends a request asked while a reply is handled after that handling, with each answer its own", async () => {
+    const log: string[] = [];
+    const { iframe } = servedFrame((_kind, params) => {
+      log.push(`frame ${(params as { seconds: number }).seconds}`);
+      return params;
+    });
+    await previewRequest(iframe, "set-loop-start", { seconds: 0 });
+    log.length = 0;
+    const answers = await previewRequest(iframe, "set-loop-start", { seconds: 1 }).then((first) => {
+      const second = previewRequest(iframe, "set-loop-start", { seconds: 2 });
+      log.push("first handled");
+      return Promise.all([first, second]);
+    });
+    expect(log).toEqual(["frame 1", "first handled", "frame 2"]);
+    expect(answers).toEqual([{ seconds: 1 }, { seconds: 2 }]);
+  });
+
   it("keeps a frame's error answer apart from no answer; previewRequest answers null for both", async () => {
     const frame: Record<string, unknown> = {};
     const iframe = detachedFakeIframe(frame);

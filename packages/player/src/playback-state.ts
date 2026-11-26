@@ -10,6 +10,7 @@ import type { ParentMediaManager } from "./parent-media.js";
 import { type PlayRange, playRangeStopTime } from "./play-range.js";
 
 const UI_UPDATE_INTERVAL_MS = 100;
+export const PLAY_START_GRACE_MS = 200;
 
 export interface PlaybackState {
   currentTime: number;
@@ -17,6 +18,8 @@ export interface PlaybackState {
   paused: boolean;
   lastUpdateMs: number;
   enteringRange?: boolean;
+  awaitingPlaySeq?: number;
+  awaitingPlayUntilMs?: number;
 }
 
 export interface PlaybackStateCallbacks {
@@ -24,7 +27,7 @@ export interface PlaybackStateCallbacks {
   updateControlsPlaying: (playing: boolean) => void;
   dispatchEvent: (event: Event) => void;
   seek: (t: number) => void;
-  play: () => void;
+  play: () => number | void;
   getLoop: () => boolean;
   getPlayRange?: () => PlayRange | null;
   media: ParentMediaManager;
@@ -37,6 +40,7 @@ type RuntimeStateData = {
   currentTime?: number;
   ended?: boolean;
   ownsRange?: boolean;
+  playSeq?: number;
 };
 
 /** The runtime's exact time when it sends one (older runtimes send only the whole frame). */
@@ -121,14 +125,40 @@ function reportTime(
   next: PlaybackState,
   nextPaused: boolean,
   currentTime: number,
+  now: number,
 ): void {
-  const now = performance.now();
   const playStateChanged = nextPaused !== current.paused;
   if (now - current.lastUpdateMs <= UI_UPDATE_INTERVAL_MS && !playStateChanged) return;
   next.lastUpdateMs = now;
   callbacks.updateControlsTime(currentTime, current.duration);
   callbacks.updateControlsPlaying(!nextPaused);
   callbacks.dispatchEvent(new CustomEvent("timeupdate", { detail: { currentTime } }));
+}
+
+function isStalePrePlayState(data: RuntimeStateData, current: PlaybackState, now: number): boolean {
+  const awaitingSeq = current.awaitingPlaySeq ?? 0;
+  if (awaitingSeq <= 0) return false;
+  if (typeof data.playSeq === "number") return data.playSeq < awaitingSeq;
+  return current.awaitingPlayUntilMs !== undefined && current.awaitingPlayUntilMs > now;
+}
+
+function restartLoopedPlayback(
+  current: PlaybackState,
+  loopStart: number,
+  now: number,
+  callbacks: PlaybackStateCallbacks,
+): PlaybackState {
+  if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
+  callbacks.seek(loopStart);
+  const nextSeq = callbacks.play();
+  return {
+    ...current,
+    currentTime: loopStart,
+    paused: false,
+    enteringRange: true,
+    awaitingPlaySeq: typeof nextSeq === "number" ? nextSeq : (current.awaitingPlaySeq ?? 0),
+    awaitingPlayUntilMs: now + PLAY_START_GRACE_MS,
+  };
 }
 
 /**
@@ -142,6 +172,7 @@ export function applyRuntimeStateMessage(
   current: PlaybackState,
   callbacks: PlaybackStateCallbacks,
 ): PlaybackState {
+  const now = performance.now();
   const rawTime = runtimeTime(data, fps);
   const wasPlaying = !current.paused;
   const playing = wasPlaying || data.isPlaying;
@@ -153,20 +184,24 @@ export function applyRuntimeStateMessage(
   const nextPaused = !data.isPlaying;
   const completedPlayback = atEnd && playing;
 
+  // Drop pre-play paused heartbeats until the runtime echoes playSeq (or legacy grace expires).
+  if (nextPaused && !completedPlayback && isStalePrePlayState(data, current, now)) return current;
   if (completedPlayback && callbacks.getLoop()) {
-    if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
-    callbacks.seek(loopStart);
-    callbacks.play();
-    // play() sets paused=false; reflect that in the returned state so the
-    // caller's destructure doesn't overwrite it with the stale nextPaused value.
-    return { ...current, currentTime: loopStart, paused: false, enteringRange: true };
+    return restartLoopedPlayback(current, loopStart, now, callbacks);
   }
 
-  const next = { ...current, currentTime, paused: nextPaused, enteringRange: bounds.entering };
+  const next = {
+    ...current,
+    currentTime,
+    paused: nextPaused,
+    enteringRange: bounds.entering,
+    awaitingPlaySeq: 0,
+    awaitingPlayUntilMs: 0,
+  };
   if (wasPlaying && (nextPaused || completedPlayback)) callbacks.onRuntimeStopped?.();
 
   mirrorParentMedia(callbacks, wasPlaying, nextPaused, currentTime);
-  reportTime(callbacks, current, next, nextPaused, currentTime);
+  reportTime(callbacks, current, next, nextPaused, currentTime, now);
 
   if (completedPlayback) endPlayback(callbacks, next, bounds.stopRuntime, currentTime);
   return next;
