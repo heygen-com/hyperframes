@@ -550,7 +550,9 @@ test("font reads follow current Sync references, exclusions and file identities"
   });
   t.after(() => rm(root, { recursive: true, force: true }));
   const read = (path) => referencedFontResponse(root, path, "GET");
-  assert.equal(await (await read(".brand/.Face.woff2")).text(), "selected font");
+  const font = await read(".brand/.Face.woff2");
+  assert.equal(font.headers.has("content-length"), false);
+  assert.equal(await font.text(), "selected font");
   const head = await referencedFontResponse(root, ".brand/.Face.woff2", "HEAD");
   assert.equal(head?.headers.get("content-length"), String("selected font".length));
   assert.equal(head?.body, null);

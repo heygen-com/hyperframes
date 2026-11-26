@@ -39,13 +39,12 @@ export async function referencedFontResponse(projectDir, path, method) {
     if (!handle) return null;
     const headers = {
       "Content-Type": "font/" + font[1].toLowerCase(),
-      "Content-Length": String(size),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     };
     if (method === "HEAD" || !size) {
       await handle.close();
-      return new Response(null, { headers });
+      return new Response(null, { headers: { ...headers, "Content-Length": String(size) } });
     }
     const body = Readable.toWeb(handle.createReadStream({ end: size - 1 }));
     return new Response(/** @type {ReadableStream<Uint8Array<ArrayBuffer>>} */ (body), { headers });
