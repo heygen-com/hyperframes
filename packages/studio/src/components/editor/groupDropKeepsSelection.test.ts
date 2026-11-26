@@ -30,6 +30,7 @@ describe("dropping a dragged group eats the click that follows", () => {
       overlayRef: { current: null },
       iframeRef: { current: null },
       boxRef: { current: null },
+      handlesRef: { current: null },
       selectionRef: { current: null },
       hoverSelectionRef: { current: null },
       overlayRectRef: { current: null },

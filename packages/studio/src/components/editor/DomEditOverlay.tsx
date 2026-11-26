@@ -167,6 +167,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const bodyDrag = allowBodyDrag || !hostInput;
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const handlesRef = useRef<HTMLDivElement | null>(null);
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
   onMarqueeSelectRef.current = onMarqueeSelect;
 
@@ -286,6 +287,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     overlayRef,
     iframeRef,
     boxRef,
+    handlesRef,
     selectionRef,
     hoverSelectionRef,
     overlayRectRef,
@@ -529,6 +531,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           allowBodyDrag={bodyDrag}
           cropOutlineInsetPx={cropOutlineInsetPx ?? undefined}
           boxRef={boxRef}
+          handlesRef={handlesRef}
           boxChromeClass={boxChromeClass}
           boxClipPath={boxClipPath}
           selectionKey={selectionKey}
