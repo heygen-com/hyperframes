@@ -17,6 +17,7 @@ import {
   mkdirOwnedWithinProject,
   mkdirOwnedWithinProjectAsync,
   walkDir,
+  walkDirAsync,
 } from "./safePath.js";
 
 const COMPOSITION_ID_TEXT = /data-composition-id\s*=/i;
@@ -157,6 +158,7 @@ interface Opened {
 
 /** The file work a stamp asks for. The stamping rules live in the passes below; each driver only answers these. */
 type FileStep =
+  | { kind: "list"; dir: string }
   | { kind: "read"; path: string }
   | { kind: "open"; path: string }
   | { kind: "replace"; path: string; expected: string; content: string; mode: number }
@@ -206,7 +208,7 @@ function* stampPass(projectDir: string): Pass<void> {
     // first run, or an unreadable record: parse everything
   }
   const next: Record<string, string> = {};
-  for (const file of walkDir(projectDir)) {
+  for (const file of (yield { kind: "list", dir: projectDir }) as string[]) {
     if (!file.endsWith(".html") || isInHiddenOrVendorDir(file)) continue;
     const hash = yield* hashAfterStamp(join(projectDir, file), last[file]);
     if (hash !== null) next[file] = hash;
@@ -284,6 +286,8 @@ async function runAsync<T>(pass: Pass<T>): Promise<T> {
 
 function answerSync(step: FileStep): unknown {
   switch (step.kind) {
+    case "list":
+      return walkDir(step.dir);
     case "read":
       return readFileSync(step.path, "utf-8");
     case "open":
@@ -305,6 +309,8 @@ function answerSync(step: FileStep): unknown {
 
 async function answerAsync(step: FileStep): Promise<unknown> {
   switch (step.kind) {
+    case "list":
+      return walkDirAsync(step.dir);
     case "read":
       return readFile(step.path, "utf-8");
     case "open":

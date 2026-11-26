@@ -8,7 +8,7 @@ on:
 permissions:
   actions: write
   contents: write
-  pull-requests: write
+  pull-requests: read
 
 concurrency:
   group: catalog-publish
@@ -20,9 +20,19 @@ env:
 jobs:
   publish:
     if: github.ref == 'refs/heads/main'
+    environment: catalog-publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # The app opens and edits the PR, so the repository need not let Actions create or approve pull requests.
+      # Minted before anything is installed, so no installed code runs while the app key is in reach.
+      - name: Mint the publish PR token
+        id: pr-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.CI_SYNC_APP_ID }}
+          private-key: ${{ secrets.CI_SYNC_PRIVATE_KEY }}
+          permission-pull-requests: write
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: main
@@ -41,3 +51,4 @@ jobs:
         run: node scripts/publish-catalog.mjs
         env:
           GH_TOKEN: ${{ github.token }}
+          CATALOG_PR_TOKEN: ${{ steps.pr-token.outputs.token }}

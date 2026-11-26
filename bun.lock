@@ -361,8 +361,14 @@
       "version": "0.9.10",
       "dependencies": {
         "@hyperframes/parsers": "workspace:*",
+        "acorn": "^8.17.0",
+        "acorn-walk": "^8.3.5",
+        "css-tree": "^3.2.1",
+        "ignore": "^5.3.2",
+        "linkedom": "^0.18.12",
       },
       "devDependencies": {
+        "@types/css-tree": "^3.2.0",
         "@types/node": "^25.0.10",
         "typescript": "^5.0.0",
       },

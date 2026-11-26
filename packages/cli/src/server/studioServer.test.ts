@@ -293,7 +293,11 @@ describe("createStudioServer project history (D-491)", () => {
 
   it("waits for the history lock again once a history opened after a busy one", async () => {
     const waits: unknown[] = [];
-    const reopenable = { replacedAtPath: () => true, close: async () => {} };
+    const reopenable = {
+      replacedAtPath: () => true,
+      replacedNow: async () => true,
+      close: async () => {},
+    };
     let opens = 0;
     historyState.open = async (options) => {
       waits.push((options as { ownerWaitMs?: number }).ownerWaitMs);

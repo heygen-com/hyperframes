@@ -143,8 +143,8 @@ COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
 COPY packages/gcp-cloud-run/package.json packages/gcp-cloud-run/package.json
 COPY packages/lint/package.json packages/lint/package.json
 COPY packages/parsers/package.json packages/parsers/package.json
-# The share workspace typechecks this subpath during bun install.
-COPY packages/parsers/src/privatePath.ts packages/parsers/src/privatePath.ts
+# The share prepare script typechecks its parser imports during bun install.
+COPY packages/parsers/src/ packages/parsers/src/
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 COPY packages/inspector/package.json packages/inspector/package.json

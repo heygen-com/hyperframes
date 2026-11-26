@@ -41,7 +41,16 @@ function settingInteraction(value: object & { event: unknown }): LocalShareInter
       return destination === undefined ? null : { event: value.event, destination };
     }
     case "share_action_clicked": {
-      const action = choice(field("action"), "share", "update", "access", "off", "on", "login");
+      const action = choice(
+        field("action"),
+        "share",
+        "update",
+        "access",
+        "off",
+        "on",
+        "login",
+        "sync",
+      );
       return action === undefined ? null : { event: value.event, action };
     }
     default:
