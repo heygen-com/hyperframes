@@ -214,7 +214,11 @@ try {
   // fails without the fix: the old document's timeline, landing after a switch, made the new load skip its probe.
   const switched = await browser.newPage();
   await switched.evaluateOnNewDocument(() => {
+    const playerFrame = () =>
+      document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe")
+        ?.contentWindow;
     addEventListener("message", (event) => {
+      if (event.source !== playerFrame()) return;
       const data = event.data as { source?: string; type?: string } | null;
       if (data?.source === "hf-preview" && data.type === "timeline")
         (window as { __lastTimeline?: unknown }).__lastTimeline = data;
@@ -260,9 +264,13 @@ try {
   const fullscreenAfterClick = async (sealed: boolean) => {
     const page = await browser.newPage();
     await page.evaluateOnNewDocument(() => {
+      const playerFrame = () =>
+        document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe")
+          ?.contentWindow;
       const w = window as { __fullscreen?: string[] };
       w.__fullscreen = [];
       addEventListener("message", (event) => {
+        if (event.source !== playerFrame()) return;
         if (event.data?.source === "hf-fullscreen-probe") w.__fullscreen!.push(event.data.result);
       });
     });
