@@ -18,6 +18,7 @@ import {
   type GestureState,
   type GroupGestureState,
   focusDomEditOverlayElement,
+  pressStillHeld,
   resolveShiftClickCandidate,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
@@ -316,7 +317,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // A gesture that loses its pointer, the window or the overlay is cancelled, so its mark goes too.
   const cancelGestureRef = useRef((_dropQueued?: boolean) => {});
   cancelGestureRef.current = (dropQueued) => gestures.clearPointerState(selectionRef, dropQueued);
-  useHeldGestureCancel(cancelGestureRef, [gestureRef, groupGestureRef], suppressNextBoxClickRef);
+  const holdsPress = () =>
+    Boolean(gestureRef.current || groupGestureRef.current) ||
+    pressStillHeld(waitingPressRef.current);
+  useHeldGestureCancel(cancelGestureRef, holdsPress, suppressNextBoxClickRef);
 
   // Arrow-key nudge (1px, Shift = 10px) — commits through the same
   // path-offset callbacks as a drag, one undo entry per key burst.

@@ -5,13 +5,13 @@ import { matchesKey } from "../../player/components/studioShortcuts";
 /** Cancels a held gesture that loses the window, the tab or the overlay, or meets Escape. */
 export function useHeldGestureCancel(
   cancelRef: RefObject<(dropQueued?: boolean) => void>,
-  heldRefs: RefObject<unknown>[],
+  isHeld: () => boolean,
   suppressNextClickRef: RefObject<boolean>,
 ) {
   useMountEffect(() => {
     const cancel = () => cancelRef.current();
     const onEscape = (event: KeyboardEvent) => {
-      if (!matchesKey(event, "cancel") || !heldRefs.some((ref) => ref.current)) return;
+      if (!matchesKey(event, "cancel") || !isHeld()) return;
       event.preventDefault();
       event.stopPropagation();
       cancel();

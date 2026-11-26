@@ -678,6 +678,50 @@ describe("a press while a script write is out", () => {
   });
 });
 
+describe("Escape on a drag queued behind a write", () => {
+  /** A released drop whose write is still out, then a second press on the box. */
+  function secondPressBehindAWrite() {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    stuckWrites.push(() => land());
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    pointer(editor.box, "pointerdown", 190, 170);
+    pointer(editor.overlay, "pointermove", 220, 170);
+    const landWrite = () =>
+      act(async () => {
+        land();
+        await write;
+      });
+    return { editor, landWrite };
+  }
+
+  // fails without the fix: Escape missed the queued press, and its release saved a second drop.
+  it("drops the queued press still held and lands only the released drop", async () => {
+    const { editor, landWrite } = secondPressBehindAWrite();
+    const held = escape();
+    act(() => void window.dispatchEvent(held));
+    expect(held.defaultPrevented).toBe(true);
+    pointer(editor.overlay, "pointerup", 220, 170);
+    await landWrite();
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    await settle();
+    expect(file.title, "the dropped press saved nothing").toBe("translate: 40px 20px");
+  });
+
+  it("leaves Escape alone once the queued press is released, and lands both drops", async () => {
+    const { editor, landWrite } = secondPressBehindAWrite();
+    pointer(editor.overlay, "pointerup", 220, 170);
+    const after = escape();
+    act(() => void window.dispatchEvent(after));
+    expect(after.defaultPrevented).toBe(false);
+    await landWrite();
+    await waitFor(() => expect(file.title).toBe("translate: 70px 20px"));
+  });
+});
+
 describe("a drag moves only with its own pointer pressed", () => {
   it.each([
     ["no button held, as Chromium sends after a layout change", { buttons: 0 }],

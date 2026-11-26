@@ -11,6 +11,7 @@ import {
   type GestureKind,
   type ResizeHandle,
   type UseDomEditOverlayGesturesOptions,
+  pressStillHeld,
 } from "./domEditOverlayGestures";
 import {
   startGesture as _startGesture,
@@ -121,7 +122,7 @@ export function createPreviewGestureStarts(
   /** Ends the press still held, if any; presses already released are finished edits and still land. */
   const endHeldPress = () => {
     const held = opts.waitingPressRef.current;
-    if (held && !held.released) dropPress(held);
+    if (pressStillHeld(held)) dropPress(held);
   };
 
   const releaseWaitingPress = (press: WaitingPressState, e: React.PointerEvent<HTMLDivElement>) => {
