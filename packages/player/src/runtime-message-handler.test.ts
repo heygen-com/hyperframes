@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { handleRuntimeMessage, type MessageHandlerCallbacks } from "./runtime-message-handler.js";
 import type { ParentMediaManager } from "./parent-media.js";
 import type { ShaderLoaderState } from "./shader-loader-state.js";
-import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import { MAX_MESSAGE_LIST, runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 
 // Only the stage-size branch is exercised here; the rest of the callback
 // surface is satisfied with inert spies so the handler's type contract
@@ -243,6 +243,17 @@ describe("handleRuntimeMessage timeline ready", () => {
         ...metadata,
       },
     }) as unknown as MessageEvent;
+
+  // fails without the fix: the scene list was walked to whatever length the film declared.
+  it("reads no scenes from a list too long to walk", () => {
+    const frameWindow = {} as Window;
+    const scene = { id: "s", start: 0, duration: 1 };
+    for (const scenes of [Array(MAX_MESSAGE_LIST + 1).fill(scene), new Array(2 ** 32 - 1)]) {
+      const callbacks = makeCallbacks();
+      handleRuntimeMessage(timelineEvent(120, frameWindow, { scenes }), frameWindow, callbacks);
+      expect(callbacks.setScenes).toHaveBeenCalledWith([]);
+    }
+  });
 
   it("reports a finite positive timeline duration in seconds", () => {
     const frameWindow = {} as Window;
