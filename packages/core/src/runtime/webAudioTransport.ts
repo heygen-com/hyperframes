@@ -244,6 +244,8 @@ const BYTES_PER_SAMPLE = 4;
 export class WebAudioTransport {
   /** Request options for every decode fetch, over `cache: "no-store"`. */
   private readonly _fetchInit: RequestInit;
+  /** Aborted by `destroy()`, so a fetch or decode still in flight reports and keeps nothing for a gone player. */
+  private _fetches = new AbortController();
   private readonly _busDocument: Document | null | undefined;
   private _givenContext: AudioContext | null;
   private _ctx: AudioContext | null = null;
@@ -437,12 +439,18 @@ export class WebAudioTransport {
   // asset that simply has not been uploaded yet) is TRANSIENT — return null
   // WITHOUT blacklisting, so the next play/seek generation retries once the
   // asset becomes available.
-  private async fetchBytes(src: string, el: HTMLMediaElement): Promise<ArrayBuffer | null> {
+  private async fetchBytes(
+    src: string,
+    el: HTMLMediaElement,
+    signal: AbortSignal,
+  ): Promise<ArrayBuffer | null> {
+    if (signal.aborted) return null;
     try {
       // `no-store`: a retry must actually re-request the asset — not replay a
       // cached 404/stale response from the failed attempt that we chose not to
       // blacklist.
-      const response = await fetch(src, { cache: "no-store", ...this._fetchInit });
+      const response = await fetch(src, { cache: "no-store", ...this._fetchInit, signal });
+      if (signal.aborted) return null;
       if (!response.ok) {
         swallow("webAudioTransport.fetch", new Error(`${response.status} ${src}`));
         reportMediaLoadFailure(el, "fetch", response.status);
@@ -451,18 +459,19 @@ export class WebAudioTransport {
       return await response.arrayBuffer();
     } catch (err) {
       swallow("webAudioTransport.fetch", err);
-      reportMediaLoadFailure(el, "fetch", null);
+      if (!signal.aborted) reportMediaLoadFailure(el, "fetch", null);
       return null;
     }
   }
 
   private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
     if (this._bufferCache.has(src)) return this._bufferCache.get(src)!;
+    const { signal } = this._fetches;
     if (!this._ctx) return null;
     const length = await this.mayDecode(src, el);
     if (!length) return null;
 
-    const arrayBuffer = await this.fetchBytes(src, el);
+    const arrayBuffer = await this.fetchBytes(src, el, signal);
     if (!arrayBuffer) return null;
 
     // A source whose length can't be read and whose bytes could pass the budget plays through its element.
@@ -470,7 +479,7 @@ export class WebAudioTransport {
       this._failedSrcs.add(src);
       return null;
     }
-    return this.decode(src, el, arrayBuffer);
+    return this.decode(src, el, arrayBuffer, signal);
   }
 
   // A decode failure means the bytes themselves are unusable (corrupt or an
@@ -480,10 +489,12 @@ export class WebAudioTransport {
     src: string,
     el: HTMLMediaElement,
     arrayBuffer: ArrayBuffer,
+    signal: AbortSignal,
   ): Promise<AudioBuffer | null> {
     if (!this._ctx) return null;
     try {
       const audioBuffer = await this._ctx.decodeAudioData(arrayBuffer);
+      if (signal.aborted) return null;
       // A file whose container timescale disagrees with its stream decodes short; its element plays it whole.
       if (
         Number.isFinite(el.duration) &&
@@ -495,8 +506,9 @@ export class WebAudioTransport {
       this._bufferCache.set(src, audioBuffer);
       return audioBuffer;
     } catch (err) {
-      this._failedSrcs.add(src);
       swallow("webAudioTransport.decode", err);
+      if (signal.aborted) return null;
+      this._failedSrcs.add(src);
       reportMediaLoadFailure(el, "decode", null, arrayBuffer.byteLength);
       return null;
     }
@@ -1307,6 +1319,8 @@ export class WebAudioTransport {
   }
 
   destroy(): void {
+    this._fetches.abort();
+    this._fetches = new AbortController();
     this.stopAll();
     this.stopMetering();
     for (const group of this._groups.values()) group.dispose();
