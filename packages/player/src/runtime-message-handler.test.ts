@@ -255,6 +255,34 @@ describe("handleRuntimeMessage timeline ready", () => {
     }
   });
 
+  // fails without the fix: a refused scene list read as none, with nothing logged.
+  it("logs a refused scene list once, until 10 s have passed", () => {
+    vi.useFakeTimers({ now: Date.now() + 3_600_000 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const frameWindow = {} as Window;
+    const scenes = new Array(2 ** 32 - 1);
+    const post = () =>
+      handleRuntimeMessage(
+        timelineEvent(120, frameWindow, { scenes }),
+        frameWindow,
+        makeCallbacks(),
+      );
+    try {
+      post();
+      post();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn).toHaveBeenCalledWith(
+        "[hyperframes-player] ignored the film's scenes list: 4294967295 entries, over the 1000 it reads",
+      );
+      vi.advanceTimersByTime(10_000);
+      post();
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("reports a finite positive timeline duration in seconds", () => {
     const frameWindow = {} as Window;
     const callbacks = makeCallbacks();
