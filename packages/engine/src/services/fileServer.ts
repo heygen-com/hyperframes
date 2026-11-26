@@ -6,6 +6,7 @@
  * Framework-agnostic — the caller decides what scripts to inject.
  */
 
+import { referencedFontResponse } from "@hyperframes/share/projectSnapshot.mjs";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { readFileSync, openSync, fstatSync, closeSync, statSync, constants } from "node:fs";
@@ -18,6 +19,7 @@ import {
   serviceWorkerScriptFetch,
 } from "@hyperframes/core/studio-preview-mark";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
+import { decodeWellFormedEscapes } from "@hyperframes/parsers/asset-paths";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { answerOwnLoopbackHostOnly } from "../utils/loopbackOnly.js";
 
@@ -176,7 +178,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     return c.text("Forbidden", 403);
   });
 
-  app.get("/*", (c) => {
+  app.get("/*", async (c) => {
     let requestPath = c.req.path;
     if (requestPath === "/") requestPath = "/index.html";
 
@@ -186,7 +188,13 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     // join, so a hostile request can name files above either root -- see
     // resolveContainedPaths for why the check stays lexical, not realpath.
     const resolved = resolveContainedPaths(projectDir, compiledDir, relativePath);
-    if (!resolved) return c.text("Not found", 404);
+    if (!resolved) {
+      const fontPath = decodeWellFormedEscapes(new URL(c.req.url).pathname.slice(1));
+      return (
+        (await referencedFontResponse(projectDir, fontPath, c.req.raw.method)) ??
+        c.text("Not found", 404)
+      );
+    }
     const content =
       (resolved.compiledPath ? readRegularFile(resolved.compiledPath) : null) ??
       readRegularFile(resolved.projectPath);

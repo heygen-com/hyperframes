@@ -5,7 +5,8 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { Duplex } from "node:stream";
+import { Duplex, Writable } from "node:stream";
+import { referencedFontResponse } from "@hyperframes/share/projectSnapshot.mjs";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
@@ -369,7 +370,7 @@ export async function serveStaticProjectHtml(
     (inProcessHost !== undefined && host === inProcessHost);
 
   // fallow-ignore-next-line complexity
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     const workerScript = serviceWorkerScriptFetch({
       serviceWorker: req.headers["service-worker"] as string | undefined,
@@ -435,6 +436,15 @@ export async function serveStaticProjectHtml(
           if (!serveUntaggedPng(filePath, res))
             serveFileWithRange(filePath, req.headers.range, res);
         }
+        return;
+      }
+    }
+    if (proxyParam === null) {
+      const font = await referencedFontResponse(projectDir, requestPath, req.method ?? "GET");
+      if (font) {
+        res.writeHead(font.status, Object.fromEntries(font.headers));
+        if (!font.body) res.end();
+        else await font.body.pipeTo(Writable.toWeb(res)).catch(() => res.destroy());
         return;
       }
     }

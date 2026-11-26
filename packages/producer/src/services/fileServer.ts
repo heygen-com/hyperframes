@@ -8,6 +8,7 @@
  * all relative URLs (compositions, CSS, JS, assets) resolving correctly.
  */
 
+import { referencedFontResponse } from "@hyperframes/share/projectSnapshot.mjs";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import {
@@ -865,6 +866,12 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     }
 
     if (!file) {
+      const font = await referencedFontResponse(
+        projectDir,
+        servedPath(new URL(c.req.url).pathname),
+        c.req.raw.method,
+      );
+      if (font) return font;
       if (!/favicon\.ico$/i.test(requestPath)) {
         console.warn(`[FileServer] 404 Not Found: ${terminalText(boundedPageText(requestPath))}`);
       }
