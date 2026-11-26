@@ -20,6 +20,7 @@ import {
   type EditingElementSource,
 } from "./editingElement";
 import { buildElementLabel, NO_TEXT, renderedTextOf } from "./elementLabel";
+import { isEditableText } from "./editing/textMarkup";
 
 // Drawn on first use, not at load: a render seeds getRandomValues, and a draw here would shift the
 // composition's own random values.
@@ -179,6 +180,7 @@ function describeElement(element: Element): EditingElementDescription | null {
     text: renderedText(element, state),
     children: children(element, state),
     truncated: state.truncated,
+    textMarkup: isEditableText(element),
   };
 }
 
@@ -208,6 +210,18 @@ export function ancestorHandles(
     }
     return chain;
   });
+}
+
+export function readEveryMatch<T>(
+  selector: string,
+  read: (element: Element) => T,
+): { matches: Array<T | null>; truncated: boolean } {
+  const matches: Array<T | null> = [];
+  for (const element of document.querySelectorAll(selector)) {
+    if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
+    matches.push(boundedSource(element) ? read(element) : null);
+  }
+  return { matches, truncated: false };
 }
 
 export function queryElements(selector: string): {

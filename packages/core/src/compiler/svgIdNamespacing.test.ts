@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { JSDOM } from "jsdom";
 import { parseHTML } from "linkedom";
+import postcss from "postcss";
 
 const hashCalls = vi.hoisted(() => [] as string[]);
 vi.mock("../canary", async (importOriginal) => {
@@ -17,6 +18,7 @@ import {
   SVG_AUTHORED_ID_ATTR,
   namespaceCollidingSvgIds,
   rewriteSvgIdReferencesInCss,
+  sceneClipRoots,
   type SvgIdScope,
 } from "./svgIdNamespacing";
 
@@ -738,4 +740,201 @@ describe("rewriteSvgIdReferencesInCss charges its growth while it builds", () =>
     ).toBe(`[href="#b"] { fill: red; }`);
     expect(charge).not.toHaveBeenCalled();
   });
+});
+
+// fails without the fix: each opener with no closer rescanned the rest of the selector, quadratic in its length.
+it("rewriteSvgIdReferencesInCss scans a selector of 300000 unclosed brackets in time linear in its length", () => {
+  const references = [
+    { name: "href", localName: "href", namespaceURI: null, before: "#a", after: "#m-a" },
+  ];
+  const run = "[".repeat(300_000);
+  expect(
+    rewriteSvgIdReferencesInCss(`:is(${run}) { fill: red; }`, new Map(), references),
+  ).toContain(run);
+}, 10_000);
+
+// fails without the fix: every element of the root scope was checked against every excluded clip, one contains() each.
+it("checks a scope's elements against thousands of excluded clips in one walk each, not once per clip", () => {
+  const clips = Array.from(
+    { length: 2000 },
+    (_, i) => `<div data-start="${i}" data-duration="1"><svg><rect/></svg></div>`,
+  ).join("");
+  const { document } = parseHTML(
+    `<!DOCTYPE html><html><body><div data-composition-id="main"><svg><clipPath id="c"/><rect clip-path="url(#c)"/></svg><div data-composition-id="sub" data-composition-src="s.html"></div>${clips}</div></body></html>`,
+  );
+  const queryable = document as unknown as Parameters<typeof namespaceCollidingSvgIds>[0];
+  const root = document.querySelector('[data-composition-id="main"]')!;
+  const host = document.querySelector("[data-composition-src]")!;
+  const elements = root.querySelectorAll("*").length;
+  let owner = Object.getPrototypeOf(root);
+  while (!Object.hasOwn(owner, "contains")) owner = Object.getPrototypeOf(owner);
+  const contains = vi.spyOn(owner, "contains");
+  let checks: number;
+  let found: Element[];
+  try {
+    found = sceneClipRoots(queryable, [host]);
+    namespaceCollidingSvgIds(queryable, [
+      { root, namespace: "main", exclude: [host, ...found] },
+      ...found.map((clip, i) => ({ root: clip, namespace: `clip${i}` })),
+    ]);
+    checks = contains.mock.calls.length;
+  } finally {
+    contains.mockRestore();
+  }
+
+  expect(found).toHaveLength(2000);
+  expect(checks).toBeLessThan(elements);
+});
+
+// fails without the fix: each selector's comparison re-read rule.selectors, which splits the whole list again.
+it("splits a rule's selector list a fixed number of times, however many selectors it holds", () => {
+  const css = `${Array.from({ length: 2000 }, (_, i) => `#x${i}`).join(",")} { color: red; }`;
+  const alias = { name: "href", localName: "href", namespaceURI: null, before: "#a", after: "#a" };
+  const comma = vi.spyOn(postcss.list, "comma");
+  let splits: number;
+  try {
+    rewriteSvgIdReferencesInCss(css, new Map(), [alias]);
+    splits = comma.mock.calls.length;
+  } finally {
+    comma.mockRestore();
+  }
+
+  expect(splits).toBeGreaterThan(0);
+  expect(splits).toBeLessThan(10);
+});
+
+// fails without the fix: each mount sharing a namespace probed past every name the earlier mounts minted.
+it("mints names for many mounts sharing a namespace with probes linear in the renames", () => {
+  const ids = Array.from({ length: 20 }, (_, index) => `c${index}`);
+  const defs = ids.map((id) => `<clipPath id="${id}"/><rect clip-path="url(#${id})"/>`).join("");
+  const mounts = 1000;
+  const { document, scopes } = scopedDocument([
+    { namespace: "host", html: `<svg>${defs}</svg>` },
+    ...Array.from({ length: mounts }, () => ({ namespace: "scene", html: `<svg>${defs}</svg>` })),
+  ]);
+  const has = vi.spyOn(Set.prototype, "has");
+  let idMaps: ReturnType<typeof namespaceCollidingSvgIds>;
+  let probes: number;
+  try {
+    idMaps = namespaceCollidingSvgIds(document, scopes);
+    probes = has.mock.calls.length;
+  } finally {
+    has.mockRestore();
+  }
+
+  const minted = idMaps.slice(1).flatMap((idMap) => ids.map((id) => idMap.get(id)!));
+  expect(minted).toHaveLength(ids.length * mounts);
+  expect(new Set(minted).size).toBe(minted.length);
+  expect(probes).toBeLessThan(100 * minted.length);
+});
+
+// fails without the fix: every ^=, $=, ~= and |= predicate compared its value against every alias.
+it("looks up prefix, suffix, token and dash predicates without reading every alias", () => {
+  let reads = 0;
+  const references = Array.from({ length: 2000 }, (_, i) => ({
+    name: "href",
+    localName: "href",
+    namespaceURI: null,
+    get before() {
+      reads++;
+      return `#a${i}`;
+    },
+    after: `#m${i}`,
+  }));
+  const css = ["^=", "$=", "~=", "|="]
+    .flatMap((operator) =>
+      Array.from({ length: 200 }, (_, i) => `[href${operator}"none${i}"] { fill: red; }`),
+    )
+    .join("\n");
+
+  expect(rewriteSvgIdReferencesInCss(css, new Map(), references)).toBe(css);
+  expect(reads).toBeLessThan(10 * references.length);
+});
+
+// fails without the fix: a *= predicate that matched nothing scanned every alias uncharged.
+it("charges a substring predicate's scan to the budget, so it stops many non-matching ones", () => {
+  const references = Array.from({ length: 2000 }, (_, i) => ({
+    name: "href",
+    localName: "href",
+    namespaceURI: null,
+    before: `#a${i}`,
+    after: `#m${i}`,
+  }));
+  const css = Array.from({ length: 500 }, (_, i) => `[href*="none${i}"] { fill: red; }`).join("\n");
+  const limit = 1024 * 1024;
+  let charged = 0;
+  const charge = (bytes: number) => {
+    charged += bytes;
+    if (charged > limit) throw new Error("over budget");
+  };
+
+  expect(() => rewriteSvgIdReferencesInCss(css, new Map(), references, charge)).toThrow(
+    "over budget",
+  );
+});
+
+it("gives each attribute operator the same alternatives as matching every alias in turn", () => {
+  const befores = ["#a", "#a-b", "#ab", "#A", "x #a y", "#b", "#a", "url(#a)", "#A-B"];
+  const references = befores.map((before, i) => ({
+    name: "href",
+    localName: "href",
+    namespaceURI: null,
+    before,
+    after: `#m${i}`,
+  }));
+  const matchers: Record<string, (before: string, value: string) => boolean> = {
+    "=": (before, value) => before === value,
+    "~=": (before, value) => before.split(/[ \t\r\n\f]+/).includes(value),
+    "|=": (before, value) => before === value || before.startsWith(`${value}-`),
+    "^=": (before, value) => before.startsWith(value),
+    "$=": (before, value) => before.endsWith(value),
+    "*=": (before, value) => before.includes(value),
+  };
+  for (const [operator, matches] of Object.entries(matchers))
+    for (const value of ["#a", "#A", "a", "#a-", "b", ")", "#"])
+      for (const flag of ["", " i"]) {
+        const fold = (text: string) => (flag ? text.toLowerCase() : text);
+        const predicate = `[href${operator}"${value}"${flag}]`;
+        const alternatives = [
+          ...new Set(
+            references
+              .filter(({ before }) => matches(fold(before), fold(value)))
+              .map(({ after }) => `[href="${after}"${flag}]`),
+          ),
+        ];
+        const expected = alternatives.length
+          ? `:is(${[predicate, ...alternatives].join(", ")})`
+          : predicate;
+
+        expect(
+          rewriteSvgIdReferencesInCss(`${predicate} { fill: red; }`, new Map(), references),
+          predicate,
+        ).toBe(`${expected} { fill: red; }`);
+      }
+});
+
+// fails without the fix: each predicate visited every alias of its name in any namespace, then dropped them unpaid.
+it("reads only aliases in the predicate's namespace, so other-namespace matches cost nothing per predicate", () => {
+  let namespaceReads = 0;
+  const references = Array.from({ length: 2000 }, (_, i) => ({
+    name: "xlink:href",
+    localName: "href",
+    get namespaceURI() {
+      namespaceReads++;
+      return "http://www.w3.org/1999/xlink";
+    },
+    before: `#a${i}`,
+    after: `#m${i}`,
+  }));
+  const predicates = ['="#a1"', '^="#a"', '$="1"', '|="#a1"', '~="#a1"'].flatMap((match) => [
+    `[xlink\\:href${match}]`,
+    `[xlink\\:href${match} i]`,
+  ]);
+  const css = Array.from({ length: 100 }, () => predicates)
+    .flat()
+    .map((selector) => `${selector} { fill: red; }`)
+    .join("\n");
+
+  expect(rewriteSvgIdReferencesInCss(css, new Map(), references)).toBe(css);
+  expect(namespaceReads).toBeLessThan(10 * references.length);
 });

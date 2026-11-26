@@ -20,7 +20,12 @@ const makeCallbacks = (): MessageHandlerCallbacks => ({
   seek: vi.fn(),
   play: vi.fn(),
   getLoop: vi.fn(() => false),
-  media: { mirrorTime: vi.fn(), promoteToParentProxy: vi.fn() } as unknown as ParentMediaManager,
+  media: {
+    mirrorTime: vi.fn(),
+    promoteToParentProxy: vi.fn(),
+    setupFromList: vi.fn(),
+  } as unknown as ParentMediaManager,
+  getCompositionUrl: vi.fn(() => null),
   getPlaybackState: vi.fn(() => ({ currentTime: 0, duration: 0, paused: true, lastUpdateMs: 0 })),
   setPlaybackState: vi.fn(),
   setScenes: vi.fn(),
@@ -38,6 +43,23 @@ const stageSizeEvent = (width: unknown, height: unknown, source: object): Messag
   }) as unknown as MessageEvent;
 
 describe("handleRuntimeMessage stage-size", () => {
+  it("leaves the frame's size alone for a root's measured box, which follows the frame", () => {
+    const frameWindow = {} as Window;
+    const callbacks = makeCallbacks();
+    const measured = {
+      source: frameWindow,
+      data: {
+        source: "hf-preview",
+        type: "stage-size",
+        measuredSize: { width: 1280, height: 720 },
+      },
+    } as unknown as MessageEvent;
+
+    handleRuntimeMessage(measured, frameWindow, callbacks);
+
+    expect(callbacks.setCompositionSize).not.toHaveBeenCalled();
+  });
+
   it("applies a finite positive stage size", () => {
     const frameWindow = {} as Window;
     const callbacks = makeCallbacks();
@@ -121,16 +143,73 @@ describe("handleRuntimeMessage media autoplay fallback", () => {
       data: { source: "hf-preview", type: "media-autoplay-blocked" },
     }) as unknown as MessageEvent;
 
-  it("promotes and mutes iframe output by default", () => {
+  it("promotes, leaving the mute to the copies", () => {
     const frameWindow = {} as Window;
     const callbacks = makeCallbacks();
 
     handleRuntimeMessage(autoplayBlockedEvent(frameWindow), frameWindow, callbacks);
 
     expect(callbacks.media.promoteToParentProxy).toHaveBeenCalled();
-    expect(callbacks.sendControl).toHaveBeenCalledWith("set-media-output-muted", {
-      muted: true,
-    });
+    expect(callbacks.sendControl).not.toHaveBeenCalled();
+  });
+
+  it("builds a sealed film's copies from the runtime's list, against the composition's own address", () => {
+    const frameWindow = {} as Window;
+    const callbacks = {
+      ...makeCallbacks(),
+      getCompositionUrl: () => "https://films.test/f/index.html",
+    };
+    const media = [
+      { kind: "audio", src: "https://films.test/f/a.m4a", start: 0, duration: 5, mediaStart: 0 },
+    ];
+
+    handleRuntimeMessage(
+      {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "media-autoplay-blocked", media },
+      } as unknown as MessageEvent,
+      frameWindow,
+      callbacks,
+    );
+
+    expect(callbacks.media.setupFromList).toHaveBeenCalledWith(
+      media,
+      "https://films.test/f/index.html",
+    );
+    const order = (fn: unknown) => (fn as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!;
+    expect(order(callbacks.media.setupFromList)).toBeLessThan(
+      order(callbacks.media.promoteToParentProxy),
+    );
+  });
+
+  // fails without the fix: a player asking for the list to decode it had no answer to read.
+  it("builds a sealed film's copies from a list it asked for, and leaves them unpromoted for its buffers", () => {
+    const frameWindow = {} as Window;
+    const onParentCopies = vi.fn();
+    const callbacks = {
+      ...makeCallbacks(),
+      getCompositionUrl: () => "https://films.test/f/index.html",
+      onParentCopies,
+    };
+    const media = [
+      { kind: "audio", src: "https://films.test/f/a.m4a", start: 0, duration: 5, mediaStart: 0 },
+    ];
+
+    handleRuntimeMessage(
+      {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "parent-copies", media },
+      } as unknown as MessageEvent,
+      frameWindow,
+      callbacks,
+    );
+
+    expect(callbacks.media.setupFromList).toHaveBeenCalledWith(
+      media,
+      "https://films.test/f/index.html",
+    );
+    expect(onParentCopies).toHaveBeenCalledOnce();
+    expect(callbacks.media.promoteToParentProxy).not.toHaveBeenCalled();
   });
 
   it("does not promote or mute iframe output when the host vetoes the fallback", () => {

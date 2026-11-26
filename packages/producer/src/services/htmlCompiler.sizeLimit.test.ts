@@ -9,7 +9,8 @@ import {
   CompositionExpansionBudget,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
-} from "./compositionSizeLimit.js";
+  MAX_EXPANDED_ELEMENTS,
+} from "@hyperframes/core/compiler";
 import {
   compileForRender,
   inlineExternalScripts,
@@ -139,6 +140,25 @@ describe("composition expansion budget", () => {
     const budget = new CompositionExpansionBudget();
     for (let i = 0; i < 4; i += 1) budget.charge("scene.html", MAX_COMPOSITION_HTML_BYTES);
     expect(() => budget.charge("scene.html", 1)).toThrow(/64\.0 MB of composition HTML/);
+  });
+
+  // fails without the fix: the budget counted bytes, so a small scene mounted many times copied any number of elements.
+  it("refuses mounts whose copied elements pass the cap, before copying past it", async () => {
+    const perScene = 1000;
+    const scene = `<template><div data-composition-id="scene">${"<i></i>".repeat(perScene - 2)}</div></template>`;
+    const mounts = Math.floor(MAX_EXPANDED_ELEMENTS / perScene) + 1;
+    const entry = rootMounting("scene.html", mounts);
+    const entryElements = parseHTML(entry).document.querySelectorAll("*").length;
+    const copied = Math.floor((MAX_EXPANDED_ELEMENTS - entryElements) / perScene) + 1;
+    const error = await compileError(project({ "index.html": entry, "scene.html": scene }));
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({
+      publicMetadata: {
+        elements: entryElements + copied * perScene,
+        limitElements: MAX_EXPANDED_ELEMENTS,
+        exceeded: "elements",
+      },
+    });
   });
 
   it("refuses one large file mounted many times", async () => {
@@ -342,18 +362,32 @@ describe("variable-driven composition styles and media sources", () => {
   });
 
   // The `[src]` alias escapes `<` itself, so it can't end its style element even without postcss.
-  it("writes `<` in a bound media source's selector alias as a CSS escape itself", async () => {
-    const svg = `<svg><clipPath id="c"><rect/></clipPath></svg><div clip-path="url(#c)"></div>`;
+  const clip = "clip.mp4#url(#c)</style><script>window.ran = true</script>";
+
+  it("refuses a bound media source holding a raw `<`, keeping the authored one", async () => {
     const dir = project({
-      "index.html": withBody(
-        `<style>video[src*="url(#c)"] { opacity: 0.5; }</style>${svg}<video id="v1" data-var-src="clip" src="fallback.mp4"></video>`,
-      ),
-      "scene.html": SCENE.replace("<h1>Scene</h1>", svg),
+      "index.html": withBody(`<video id="v1" data-var-src="clip" src="fallback.mp4"></video>`),
+      "scene.html": SCENE,
     });
-    const clip = "clip.mp4#url(#c)</style><script>window.ran = true</script>";
     const compiled = await compileForRender(dir, join(dir, "index.html"), dir, {
       variables: { clip },
     });
+
+    const { document } = parseHTML(compiled.html);
+    expect(document.getElementById("v1")!.getAttribute("src")).toBe("fallback.mp4");
+    const scripts = [...document.querySelectorAll("script")].map((script) => script.textContent);
+    expect(scripts.filter((text) => text?.includes("window.ran"))).toEqual([]);
+  });
+
+  it("writes `<` in a media source's selector alias as a CSS escape itself", async () => {
+    const svg = `<svg><clipPath id="c"><rect/></clipPath></svg><div clip-path="url(#c)"></div>`;
+    const dir = project({
+      "index.html": withBody(
+        `<style>video[src*="url(#c)"] { opacity: 0.5; }</style>${svg}<video id="v1" src="${clip.replace(/</g, "&lt;")}"></video>`,
+      ),
+      "scene.html": SCENE.replace("<h1>Scene</h1>", svg),
+    });
+    const compiled = await compileForRender(dir, join(dir, "index.html"), dir);
 
     const { document } = parseHTML(compiled.html);
     const src = document.getElementById("v1")!.getAttribute("src")!;

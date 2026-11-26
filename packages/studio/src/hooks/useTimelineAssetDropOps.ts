@@ -9,6 +9,7 @@ import { resolveDropTrack } from "../utils/timelineDropTrackInsert";
 import {
   buildTimelineAssetId,
   buildTimelineAssetInsertHtml,
+  writtenTrackIndex,
   buildTimelineFileDropPlacements,
   fitTimelineAssetGeometry,
   getTimelineAssetKind,
@@ -152,7 +153,7 @@ export function useTimelineAssetDropOps({
               duration: normalizedDuration,
             },
           });
-          track = resolved.track;
+          track = writtenTrackIndex(resolved.track);
           start = resolved.start;
           return extendRootDurationInSource(
             insertTimelineAssetIntoSource(

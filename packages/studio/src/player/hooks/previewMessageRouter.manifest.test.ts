@@ -11,7 +11,11 @@ afterEach(() => {
   usePlayerStore.getState().reset();
 });
 
-const PORT_MANIFEST = { clips: [{ id: "a" }], durationInFrames: 60, scenes: [] };
+const PORT_MANIFEST = {
+  clips: [{ id: "a", start: 0, duration: 2, track: 0 }],
+  durationInFrames: 60,
+  scenes: [],
+};
 const GLOBAL_MANIFEST = { clips: [{ id: "x" }], durationInFrames: 30, scenes: [] };
 
 /** A frame whose globals and editing port carry different manifests, so a test sees which was read. */
@@ -34,8 +38,6 @@ function routeStateTicks(opaque: boolean) {
     processTimelineMessageRef: { current: processed },
     enrichMissingCompositionsRef: { current: vi.fn() },
     lastTimelineMessageRef: { current: Date.now() },
-    getAdapter: () => null,
-    syncTimelineElements: vi.fn(),
   });
   const tick = () =>
     handle(
@@ -65,4 +67,41 @@ describe("a state tick while the timeline is empty", () => {
     expect(asked).toHaveBeenCalledOnce();
     expect(processed).toHaveBeenCalledOnce();
   });
+});
+
+it("asks a live opaque frame it has not heard from once, though its film has no clips", async () => {
+  usePlayerStore
+    .getState()
+    .setElements([{ id: "a", domId: "a", tag: "p", start: 0, duration: 2, track: 0 }]);
+  const frame: Record<string, unknown> = {};
+  const iframe = detachedFakeIframe(frame);
+  Object.defineProperty(frame, "document", {
+    get: () => {
+      throw new DOMException("blocked", "SecurityError");
+    },
+  });
+  const asked = vi.fn(() => ({ clipManifest: { clips: [], durationInFrames: 60, scenes: [] } }));
+  closers.push(serveEditingRequests(frame, asked));
+  const processed = vi.fn();
+  const handle = createPreviewMessageHandler({
+    iframeRef: { current: iframe },
+    processTimelineMessageRef: { current: processed },
+    enrichMissingCompositionsRef: { current: vi.fn() },
+    lastTimelineMessageRef: { current: Date.now() },
+  });
+  const tick = () =>
+    handle(
+      new MessageEvent("message", {
+        source: frame as unknown as Window,
+        origin: window.location.origin,
+        data: { source: "hf-preview", type: "state", isPlaying: false },
+      }),
+    );
+  tick();
+  await vi.waitFor(() => expect(asked).toHaveBeenCalledOnce());
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  tick();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(asked).toHaveBeenCalledOnce();
+  expect(processed).not.toHaveBeenCalled();
 });

@@ -73,6 +73,24 @@ test("optedOut still honors the env opt-outs", () => {
   }
 });
 
+// fails without the fix: the skill took only "1", so DO_NOT_TRACK=true silenced the CLI and not it.
+for (const [name, value] of [
+  ["DO_NOT_TRACK", "true"],
+  ["DO_NOT_TRACK", "yes"],
+  ["DO_NOT_TRACK", " ON "],
+  ["HYPERFRAMES_NO_TELEMETRY", "TRUE"],
+]) {
+  test(`optedOut respects ${name}=${JSON.stringify(value)}, as the CLI does`, () => {
+    writeConfig(null);
+    process.env[name] = value;
+    try {
+      assert.equal(optedOut(), true);
+    } finally {
+      delete process.env[name];
+    }
+  });
+}
+
 test("optedOut reads the shared config from HYPERFRAMES_CONFIG_DIR when it is set", () => {
   writeConfig(null);
   const configDir = join(home, "elsewhere");

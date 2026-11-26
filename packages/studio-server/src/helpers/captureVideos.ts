@@ -1,5 +1,5 @@
 import { findStartTags } from "@hyperframes/core/compiler/html-document";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 
 const OTHER_HOST = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 

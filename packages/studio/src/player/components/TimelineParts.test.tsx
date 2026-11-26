@@ -58,7 +58,7 @@ describe("Timeline parts composition", () => {
           onDeleteKeyframe: vi.fn(),
           onDeleteAllKeyframes: vi.fn(),
           onMoveKeyframeToPlayhead: vi.fn(),
-          clipContextMenu: { x: 10, y: 10, element, sessionEpoch: 1 },
+          clipContextMenu: { anchor: { left: 10, top: 10, bottom: 10 }, element, sessionEpoch: 1 },
           setClipContextMenu: vi.fn(),
           currentTime: 1,
           onSplitElement,

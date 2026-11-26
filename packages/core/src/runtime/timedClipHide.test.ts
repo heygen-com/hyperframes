@@ -9,9 +9,15 @@ import {
   showHiddenClips,
 } from "./timedClipHide";
 
+const selectorsIn = (rules: CSSRuleList): string[] =>
+  Array.from(rules).flatMap((rule) =>
+    "selectorText" in rule
+      ? [(rule as CSSStyleRule).selectorText]
+      : selectorsIn((rule as CSSGroupingRule).cssRules),
+  );
 const injectedSelectors = () =>
   Array.from(document.head.querySelectorAll("style")).flatMap((style) =>
-    Array.from(style.sheet!.cssRules).map((rule) => (rule as CSSStyleRule).selectorText),
+    selectorsIn(style.sheet!.cssRules),
   );
 
 type ShaderWindow = Window & {
@@ -51,6 +57,20 @@ describe("hideTimedClipsUntilFirstPass", () => {
   it("keeps the contents rule at the weight of two attribute selectors", () => {
     hideTimedClipsUntilFirstPass();
     expect(injectedSelectors()).toContain(`[${CLIP_HIDDEN_ATTR}][${CLIP_HIDDEN_ATTR}] *`);
+  });
+
+  // A scene's rescoped `#id { visibility: visible !important }` outweighs any attribute-only selector;
+  // only a layered !important outranks it. jsdom cannot cascade layers, so the browser contract
+  // asserts the rendered result and this asserts the layered rule is there.
+  it("also places the contents rule in a cascade layer", () => {
+    hideTimedClipsUntilFirstPass();
+    const layers = Array.from(document.head.querySelectorAll("style")).flatMap((style) =>
+      Array.from(style.sheet!.cssRules).filter((rule) => rule.cssText.startsWith("@layer ")),
+    );
+    expect(layers).toHaveLength(1);
+    expect(selectorsIn((layers[0] as CSSGroupingRule).cssRules)).toContain(
+      `[${CLIP_HIDDEN_ATTR}][${CLIP_HIDDEN_ATTR}] *`,
+    );
   });
 });
 

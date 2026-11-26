@@ -986,6 +986,14 @@ export const ALLOWED_DELETIONS = new Map([
     "moved to scripts/rewrite-relative-import-extensions.mjs as plain ESM so packages without tsx can use it; now also rewrites .d.ts",
   ],
   [
+    "packages/studio/src/player/components/timelineLayerDrag.ts",
+    "its only importer was resolveTimelineMove's stacking mode, which no timeline drag reaches",
+  ],
+  [
+    "packages/studio/src/player/components/timelineLayerDrag.test.ts",
+    "tests for the removed timeline stacking-mode move",
+  ],
+  [
     "packages/studio/src/hooks/gsapTargetCache.ts",
     "its only caller was the deleted var-offset move writer; nothing imports isElementGsapTargeted",
   ],
@@ -2111,6 +2119,10 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/producer/src/services/audioExtractor.ts",
     "imported by nothing; its own ffmpeg spawn quoted stderr unredacted, outside ManagedChildProcess",
   ],
+  [
+    ".github/workflows/deprecate-mcp-github-name.yml",
+    "one-off manual workflow to retire the old io.github registry listing; it never ran and the maintainers no longer need it",
+  ],
   ["scripts/prune-fallow-audit-caches.mjs", FALLOW_PRUNE_REASON],
   ["scripts/prune-fallow-audit-caches.test.mjs", FALLOW_PRUNE_REASON],
   ...PLAN_V1_SAMPLE_FILES.map((path) => [path, PLAN_V1_SAMPLE_REASON]),
@@ -2150,6 +2162,22 @@ export const ALLOWED_DELETIONS = new Map([
   [
     "packages/studio/src/utils/authoredOpacity.ts",
     "its two authored-opacity helpers moved into core's colorGrading, which the frame's own tween patch now calls; Studio imports them from there",
+  ],
+  [
+    "packages/studio/src/utils/htmlAttrSafety.ts",
+    "Studio's hand-synced copy of core's html-attr-safety rules; Studio imports core's now, one source",
+  ],
+  ...[
+    "packages/cli/src/registry/envProxy.fixture.ts",
+    "packages/cli/src/registry/envProxy.process.test.ts",
+    "packages/cli/src/utils/envProxyFetch.ts",
+  ].map((path) => [
+    path,
+    "held for v0.10.0 with #8311, the change that added it; drop this entry when it re-lands",
+  ]),
+  [
+    "packages/studio/src/components/editor/anchoredResizeReleaseShift.test.ts",
+    "tested computeNextResizeAnchor, deleted with the per-frame convergence; the pin is now one measured formula",
   ],
 ]);
 

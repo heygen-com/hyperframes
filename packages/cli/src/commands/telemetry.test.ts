@@ -14,10 +14,12 @@ async function loadTelemetryCommand(options?: {
   configEnabled?: boolean;
   devMode?: boolean;
   apiKey?: string;
+  commandCount?: unknown;
 }) {
   const config = {
     ...baseConfig,
     telemetryEnabled: options?.configEnabled ?? true,
+    ...(options?.commandCount === undefined ? {} : { commandCount: options.commandCount }),
   };
   const writeConfigWithResult = vi.fn(() =>
     options?.writeSucceeds === false
@@ -180,5 +182,53 @@ describe("telemetry command", () => {
     const output = await runWithCapturedOutput(command, "status");
     expect(output).toContain("disabled");
     expect(output).toContain("telemetry_disabled_build");
+  });
+});
+
+describe("telemetry lines for people", () => {
+  const ESC = String.fromCharCode(27);
+  const ODD = `od${ESC}[2Jd\x07`;
+  const SHOWN = "od\\x1b[2Jd\\x07";
+
+  afterEach(() => {
+    vi.doUnmock("../telemetry/config.js");
+    vi.doUnmock("../utils/env.js");
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  function capture(): string[] {
+    const said: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      said.push(args.map(String).join(" "));
+    });
+    return said;
+  }
+
+  // fails without the fix: the word is repeated as it was typed.
+  it("shows control characters in an unknown subcommand as text", async () => {
+    const { command } = await loadTelemetryCommand();
+    const said = capture();
+    await expect(runSubcommand(command, ODD)).rejects.toThrow();
+    expect(said.join("\n")).toContain(SHOWN);
+    expect(said.join("\n")).not.toContain("\x07");
+  });
+
+  // fails without the fix: the reason the file could not be written is printed as it arrived.
+  it("shows control characters in a failed save as text", async () => {
+    const { command, writeConfigWithResult } = await loadTelemetryCommand();
+    writeConfigWithResult.mockReturnValue({ ok: false, error: `EACCES ${ODD}` } as never);
+    const said = capture();
+    await expect(runSubcommand(command, "disable")).rejects.toThrow();
+    expect(said.join("\n")).toContain(`EACCES ${SHOWN}`);
+    expect(said.join("\n")).not.toContain("\x07");
+  });
+
+  // fails without the fix: a count that is not a number in the settings file was printed as stored.
+  it("shows control characters in the tracked command count as text", async () => {
+    const { command } = await loadTelemetryCommand({ commandCount: "12\u0007" });
+    const output = await runWithCapturedOutput(command, "status");
+    expect(output).toContain("12\\x07");
+    expect(output).not.toContain("\u0007");
   });
 });

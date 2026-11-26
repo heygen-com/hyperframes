@@ -3,6 +3,7 @@ import type { PreviewTarget } from "../studioPreviewMark";
 import type { RuntimeAnalyticsEvent } from "./analytics";
 import type { TextLayerRead } from "./editingElement";
 import type { AudioFades } from "../audioFade";
+import type { ParentCopy } from "../audibleVideo";
 import type { RateSpec } from "../speedRamp";
 import type { VolumeKeyframe } from "./mediaVolumeEnvelope";
 
@@ -35,7 +36,9 @@ type RuntimeBridgeControlActionBase =
   | "set-play-range"
   | "stop-media"
   | "flash-elements"
-  | "scrub-audio";
+  | "scrub-audio"
+  | "set-parent-audio"
+  | "audio-clock";
 
 type RuntimeBridgeControlMessageBase = {
   source: "hf-parent";
@@ -59,6 +62,9 @@ type RuntimeBridgeControlMessageBase = {
   grading?: RuntimeJson;
   compare?: RuntimeJson;
   seekMode?: "drag" | "commit";
+  clips?: string[];
+  rate?: number;
+  at?: number;
 };
 
 export type RuntimeStateMessage = {
@@ -99,6 +105,8 @@ export type RuntimeTimelineClip = RuntimeTimelineClipIdentity & {
   timelineGroup: string | null;
   timelinePriority: number | null;
   text: TextLayerRead | null;
+  transitionLabel: string | null;
+  timelineDuration: number | null;
 };
 
 export type RuntimeTimelineScene = {
@@ -124,6 +132,7 @@ export type RuntimeTimelineMessage = RuntimeProtocolV1 & {
    * the composition's assets have settled yet. Absent on older runtimes, whose
    * parents must not wait for a message that never comes. */
   assetsReady?: boolean;
+  sceneSwap?: boolean;
 };
 
 export type RuntimeDiagnosticMessage = {
@@ -166,12 +175,18 @@ export type RuntimePickerCancelledMessage = {
   type: "pick-mode-cancelled";
 };
 
-export type RuntimeStageSizeMessage = {
+/** The document's own length and size, posted before the runtime boots (`compositionLength.readStaticComposition`). */
+export type RuntimeStaticCompositionMessage = {
   source: "hf-preview";
-  type: "stage-size";
-  width: number;
-  height: number;
+  type: "static-composition";
+  durationSeconds: number;
+  width: number | null;
+  height: number | null;
 };
+
+export type RuntimeStageSizeMessage =
+  | { source: "hf-preview"; type: "stage-size"; width: number; height: number }
+  | { source: "hf-preview"; type: "stage-size"; measuredSize: { width: number; height: number } };
 
 /**
  * Fired once per session when the runtime's attempt to play a timed media
@@ -183,6 +198,14 @@ export type RuntimeStageSizeMessage = {
 export type RuntimeMediaAutoplayBlockedMessage = {
   source: "hf-preview";
   type: "media-autoplay-blocked";
+  media: ParentCopy[];
+};
+
+/** The same list, asked for by a parent that plays the film's audio from decoded buffers (`set-parent-audio`). */
+export type RuntimeParentCopiesMessage = {
+  source: "hf-preview";
+  type: "parent-copies";
+  media: ParentCopy[];
 };
 
 /**
@@ -283,25 +306,28 @@ export type PlaybackHeldBy = {
   fetchMs: number | FetchNotSeenToStart;
 };
 
+/** How playback went over the last few seconds of play. */
+export type PlaybackHealthReport = {
+  droppedShare: number;
+  seconds: number;
+  choppy: boolean;
+  fps: number;
+  worstFrameMs: number;
+  skippedShare: number;
+  waitingShare: number;
+  frozenShare: number;
+  gapP50Ms: number;
+  gapP95Ms: number;
+  clockSource: "audio" | "webaudio" | "monotonic";
+  heldBy: PlaybackHeldBy | null;
+  mode: "play";
+};
+
 export type RuntimePreviewHealthMessage = {
   source: "hf-preview";
   type: "preview-health";
-  /** How playback went over the last few seconds of play; null while paused, seeking or warming up. */
-  health: {
-    droppedShare: number;
-    seconds: number;
-    choppy: boolean;
-    fps: number;
-    worstFrameMs: number;
-    skippedShare: number;
-    waitingShare: number;
-    frozenShare: number;
-    gapP50Ms: number;
-    gapP95Ms: number;
-    clockSource: "audio" | "webaudio" | "monotonic";
-    heldBy: PlaybackHeldBy | null;
-    mode: "play";
-  } | null;
+  /** Null while paused, seeking or warming up. */
+  health: PlaybackHealthReport | null;
 };
 
 export type RuntimePreviewFactsMessage = {
@@ -337,7 +363,9 @@ export type RuntimeOutboundMessage =
   | RuntimePickerPickedManyMessage
   | RuntimePickerCancelledMessage
   | RuntimeStageSizeMessage
+  | RuntimeStaticCompositionMessage
   | RuntimeMediaAutoplayBlockedMessage
+  | RuntimeParentCopiesMessage
   | RuntimeReadyMessage
   | RuntimeAssetsReadyMessage
   | RuntimeDataErrorMessage

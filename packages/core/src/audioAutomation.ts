@@ -646,7 +646,7 @@ export function isConstantLane(lane: HfAutomationLane): boolean {
 
 /**
  * Sample a lane onto evenly spaced times, for consumers that want a plain
- * curve rather than a breakpoint list: `setValueCurveAtTime`, the render-side
+ * curve rather than a breakpoint list: the AudioParam scheduler, the render-side
  * volume envelope, and the lane's own drawing code.
  */
 export function sampleAutomationCurve(

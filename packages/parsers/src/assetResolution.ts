@@ -87,6 +87,8 @@ export function cleanAssetUrl(url: string): string {
   return url.trim().split(/[?#]/, 1)[0] ?? "";
 }
 
+const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
+
 /**
  * `pathModule` defaults to the host's native `node:path`, so every existing
  * caller gets its actual OS's separator and drive-letter rules unchanged.
@@ -100,9 +102,7 @@ export function isWithinProjectRoot(
 ): boolean {
   const projectRoot = pathModule.resolve(projectDir);
   const relativePath = pathModule.relative(projectRoot, candidate);
-  return (
-    relativePath === "" || (!relativePath.startsWith("..") && !pathModule.isAbsolute(relativePath))
-  );
+  return !LEADING_PARENT_SEGMENT.test(relativePath) && !pathModule.isAbsolute(relativePath);
 }
 
 function addCandidate(candidates: string[], candidate: string): void {
@@ -151,20 +151,13 @@ export function srcOnAnotherNetworkRoot(projectDir: string, src: string): boolea
   return isAbsolute(path) && namesAnotherNetworkRoot(projectDir, path);
 }
 
-const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
-
-function staysInsideProject(projectDir: string, path: string): boolean {
-  const relativePath = relative(resolve(projectDir), path);
-  return !LEADING_PARENT_SEGMENT.test(relativePath) && !isAbsolute(relativePath);
-}
-
 /** The project file a data-composition-src names, as the preview reads it; null when it leaves the project. */
 export function resolveCompositionSrc(projectDir: string, src: string): string | null {
   const rooted = (value: string) => resolve(projectDir, value.replace(/^(?:\.?[\\/])+/, ""));
   const decoded = rooted(decodedUrlPath(src));
-  if (!staysInsideProject(projectDir, decoded)) return null;
+  if (!isWithinProjectRoot(projectDir, decoded)) return null;
   const raw = rooted(src);
-  return !existsSync(decoded) && staysInsideProject(projectDir, raw) && existsSync(raw)
+  return !existsSync(decoded) && isWithinProjectRoot(projectDir, raw) && existsSync(raw)
     ? raw
     : decoded;
 }
@@ -237,9 +230,11 @@ function gitBashFile(src: string): string | undefined {
 /** Resolves a media `src` like a browser URL (`..` clamps at the project root); a miss returns the base-dir join. */
 export function resolveProjectRelativeSrc(
   src: string,
-  baseDir: string,
-  compiledDir?: string,
+  relativeOrAbsoluteBase: string,
+  relativeOrAbsoluteCompiled?: string,
 ): string {
+  const baseDir = resolve(relativeOrAbsoluteBase);
+  const compiledDir = relativeOrAbsoluteCompiled && resolve(relativeOrAbsoluteCompiled);
   const cleanSrc = fileUrlAsPath(cleanAssetUrl(src));
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
@@ -255,7 +250,14 @@ export function resolveProjectRelativeSrc(
     if (compiledDir) candidates.add(join(compiledDir, variant));
     candidates.add(join(baseDir, variant));
   }
-  return [...candidates].find(existsSync) ?? gitBashFile(cleanSrc) ?? join(baseDir, cleanSrc);
+  const inside = (path: string) =>
+    isWithinProjectRoot(baseDir, path) ||
+    (compiledDir !== undefined && isWithinProjectRoot(compiledDir, path));
+  return (
+    [...candidates].filter(inside).find(existsSync) ??
+    gitBashFile(cleanSrc) ??
+    join(baseDir, cleanSrc)
+  );
 }
 
 function maskRange(src: string, pattern: RegExp): string {

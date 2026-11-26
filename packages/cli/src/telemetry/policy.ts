@@ -1,3 +1,4 @@
+import { telemetryOptOutVariable } from "../media-use/lib/telemetry-opt-out.mjs";
 import { isDevMode } from "../utils/env.js";
 import { POSTHOG_API_KEY } from "./posthogKey.js";
 
@@ -13,28 +14,13 @@ export type TelemetryStatus = {
   source: TelemetryStatusSource;
 };
 
-const ENV_OPT_OUT_VALUES = new Set(["1", "true", "yes", "on"]);
-
-/**
- * Parse privacy-control environment variables consistently at every CLI
- * surface. Be liberal about common affirmative spellings so an explicit
- * opt-out never silently becomes an opt-in.
- */
-function isEnvOptOutValue(value: string | undefined): boolean {
-  return value !== undefined && ENV_OPT_OUT_VALUES.has(value.trim().toLowerCase());
-}
-
 /**
  * Return the runtime/build override that suppresses telemetry before the
  * persisted preference is considered.
  */
 export function telemetryRuntimeOverride(): Exclude<TelemetryStatusSource, "config"> | null {
-  if (isEnvOptOutValue(process.env["HYPERFRAMES_NO_TELEMETRY"])) {
-    return "HYPERFRAMES_NO_TELEMETRY";
-  }
-  if (isEnvOptOutValue(process.env["DO_NOT_TRACK"])) {
-    return "DO_NOT_TRACK";
-  }
+  const envOptOut = telemetryOptOutVariable(process.env);
+  if (envOptOut) return envOptOut;
   if (isDevMode()) {
     return "dev_mode";
   }

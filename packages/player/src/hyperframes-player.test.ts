@@ -1,6 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
+import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
+import { ParentAudio, type ParentAudioHost } from "./parent-audio.js";
+
+type SealedAudioReader = {
+  _sealedAudio(): ParentAudio | null;
+  _parentAudioLoad: Promise<void> | null;
+  _paused: boolean;
+};
+
+async function loadedSealedAudio(player: HTMLElement): Promise<ParentAudio> {
+  const sealed = player as unknown as SealedAudioReader;
+  sealed._sealedAudio();
+  await sealed._parentAudioLoad;
+  const audio = sealed._sealedAudio();
+  if (!audio) throw new Error("expected a sealed WebKit player to play audio from the parent");
+  return audio;
+}
 
 // Install a stubbed contentDocument getter on the given iframe element. The
 // new stopMedia / muted tests repeat this `Object.defineProperty(... { get })`
@@ -1103,22 +1120,15 @@ describe("HyperframesPlayer seek() sync path", () => {
     stubIframeContentDocument(player.iframe, doc);
     stubContentWindow({ postMessage: post });
 
+    player.setAttribute("audio-src", "https://cdn.example.com/background.mp3");
+    const globalProxyPause = vi.spyOn(player._parentMedia[0]!.el, "pause");
     const slideProxyPause = vi.fn();
-    const globalProxyPause = vi.fn();
-    player._parentMedia.push(
-      {
-        el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
-        start: 0,
-        duration: 5,
-        source: iframeVideo,
-      },
-      {
-        el: { pause: globalProxyPause, src: "https://cdn.example.com/background.mp3" },
-        start: 0,
-        duration: Infinity,
-        source: null,
-      },
-    );
+    player._parentMedia.push({
+      el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
+      start: 0,
+      duration: 5,
+      source: iframeVideo,
+    });
 
     player.stopMedia();
 
@@ -1127,6 +1137,120 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(iframeAudioPause).toHaveBeenCalledOnce();
     expect(slideProxyPause).toHaveBeenCalledOnce();
     expect(globalProxyPause).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: the parent's decoded copies and the clock it posts played on after stopMedia().
+  it("stopMedia stops a sealed film's decoded audio and the clock it posts", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    const pause = vi.spyOn(audio, "pause");
+
+    player.stopMedia();
+
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: a list without a removed clip left its claim standing, so the film kept a layer silent.
+  it("re-posts the parent's claims on every list from a sealed film, even while paused", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    const postClaims = vi.spyOn(audio, "postClaims");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: player.iframe.contentWindow,
+        data: { source: "hf-preview", type: "parent-copies", media: [] },
+      }),
+    );
+
+    expect(postClaims).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: every player carried the decoded-audio code, so nothing was left to load.
+  it("loads a sealed WebKit player's decoded audio on first need, and plays it if the film is playing", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const play = vi.spyOn(ParentAudio.prototype, "play").mockImplementation(() => {});
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._paused = false;
+
+    expect(sealed._sealedAudio()).toBeNull();
+    await sealed._parentAudioLoad;
+
+    expect(sealed._sealedAudio()).toBeInstanceOf(ParentAudio);
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: a tap before the code loaded made no context in the tap, so Safari kept the audio silent.
+  it("opens the audio context inside a tap that lands before the decoded-audio code", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    vi.spyOn(ParentAudio.prototype, "play").mockImplementation(() => {});
+    const resume = vi.fn(() => Promise.resolve());
+    const made: object[] = [];
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        resume = resume;
+        close = () => Promise.resolve();
+        constructor() {
+          made.push(this);
+        }
+      },
+    );
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._sealedAudio();
+
+    player.play();
+
+    expect(made).toHaveLength(1);
+    expect(resume).toHaveBeenCalledOnce();
+    await sealed._parentAudioLoad;
+    const host = (sealed._sealedAudio() as unknown as { _host: ParentAudioHost })._host;
+    expect(host.takeTapContext?.()).toBe(made[0]);
+    expect(host.takeTapContext?.()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("reports decoded-audio code that fails to load, and tries again on the next need", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.doMock("./parent-audio.js", () => {
+      throw new Error("chunk missing");
+    });
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._sealedAudio();
+    await sealed._parentAudioLoad;
+    vi.doUnmock("./parent-audio.js");
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("sealed audio code failed to load"),
+      expect.anything(),
+    );
+    expect(sealed._parentAudioLoad).toBeNull();
+  });
+
+  it("never loads the decoded-audio code for a player that isn't sealed", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const sealed = player as unknown as SealedAudioReader;
+
+    expect(sealed._sealedAudio()).toBeNull();
+    expect(sealed._parentAudioLoad).toBeNull();
   });
 
   it("stopMedia pauses iframe-realm media elements", () => {
@@ -2430,7 +2554,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
 
     expect(player.ready).toBe(true);
     expect(player.duration).toBe(4);
-    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1920, compositionHeight: 1080 }]);
+    expect(readyEvents).toEqual([
+      {
+        duration: 4,
+        compositionWidth: 1920,
+        compositionHeight: 1080,
+        readyMs: null,
+        loadLimitMs: expect.any(Number),
+      },
+    ]);
   });
 
   it("reports the picture size in ready and as public properties", () => {
@@ -2441,7 +2573,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
 
     player._onMessage(timelineMessage(120, { compositionWidth: 1080, compositionHeight: 1920 }));
 
-    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(readyEvents).toEqual([
+      {
+        duration: 4,
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        readyMs: null,
+        loadLimitMs: expect.any(Number),
+      },
+    ]);
     expect(player.compositionWidth).toBe(1080);
     expect(player.compositionHeight).toBe(1920);
   });
@@ -2458,7 +2598,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
       compositionSize: { width: 1080, height: 1350 },
     });
 
-    expect(readyEvents).toEqual([{ duration: 5, compositionWidth: 1080, compositionHeight: 1350 }]);
+    expect(readyEvents).toEqual([
+      {
+        duration: 5,
+        compositionWidth: 1080,
+        compositionHeight: 1350,
+        readyMs: null,
+        loadLimitMs: expect.any(Number),
+      },
+    ]);
   });
 
   it("fires a timeline message's events only after the whole message is applied", () => {
@@ -3075,7 +3223,15 @@ describe("HyperframesPlayer video mode", () => {
 
     loadMetadata(videoOf(player));
 
-    expect(readies).toEqual([{ duration: 6, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(readies).toEqual([
+      {
+        duration: 6,
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        readyMs: null,
+        loadLimitMs: null,
+      },
+    ]);
     expect(player.ready).toBe(true);
   });
 
@@ -3892,6 +4048,11 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
   });
 
+  it("names its frame, the one mark a composition in an opaque sandbox can still read", () => {
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.name).toBe(PLAYER_FRAME_NAME);
+  });
+
   it("treats every non-null sandbox-origin value as restrictive", () => {
     player.setAttribute("sandbox-origin", "opaqu");
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(false);
@@ -4100,6 +4261,100 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     expect(readyAtHostLoad[1]).toBe(false);
     player.remove();
+  });
+
+  describe("a timeline between a navigation and the next document's load", () => {
+    const protocol = (capabilities: string[]) => ({
+      protocolVersion: 1,
+      fps: { numerator: 30, denominator: 1 },
+      capabilities,
+    });
+    async function navigatedUnreadable() {
+      const player = (await createConnectedPlayer()) as PlayerInternal & {
+        probe: { start(): void };
+        _abandonComposition(reason: string): void;
+        _getSameOriginIframeDocument(): Document | null;
+      };
+      const start = vi.spyOn(player.probe, "start");
+      const sent = vi.spyOn(player.iframe.contentWindow!, "postMessage");
+      vi.spyOn(player, "_getSameOriginIframeDocument").mockReturnValue(null);
+      player._abandonComposition("navigated");
+      return { player, start, sent };
+    }
+    const announced = (sent: { mock: { calls: unknown[][] } }) =>
+      sent.mock.calls.filter(
+        ([data]) => (data as { action?: string })?.action === "announce-timeline",
+      );
+
+    // fails without the fix: the old document's late timeline made the next sealed load skip its probe.
+    it("drops a late message the left document stamped, and takes the next document's before its load", async () => {
+      const { player, start } = await navigatedUnreadable();
+      const stamped = (documentId: string) => ({
+        type: "timeline",
+        durationInFrames: 60,
+        documentId,
+        ...protocol(["seconds-time", "announce-timeline"]),
+      });
+      post(player, stamped("old"));
+      player.iframe.dispatchEvent(new Event("load"));
+      post(player, stamped("old"));
+      expect(player._ready).toBe(true);
+      start.mockClear();
+
+      player._abandonComposition("navigated again");
+      post(player, stamped("old"));
+      expect(player._ready).toBe(false);
+      post(player, stamped("new"));
+      expect(player._ready).toBe(true);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).not.toHaveBeenCalled();
+      player.remove();
+    });
+
+    it("asks a document that never stamped a message again, and only its answer makes it ready", async () => {
+      const { player, start, sent } = await navigatedUnreadable();
+      const capable = protocol(["seconds-time", "announce-timeline"]);
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect(player._ready).toBe(false);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).toHaveBeenCalledOnce();
+      expect(announced(sent)).toHaveLength(1);
+      expect(player._ready).toBe(false);
+
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect(player._ready).toBe(true);
+      player.remove();
+    });
+
+    it("takes a runtime's timeline as today when the runtime cannot be asked again", async () => {
+      const { player, start, sent } = await navigatedUnreadable();
+      post(player, { type: "timeline", durationInFrames: 60, ...protocol(["seconds-time"]) });
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(player._ready).toBe(true);
+      expect(start).not.toHaveBeenCalled();
+      expect(announced(sent)).toHaveLength(0);
+      player.remove();
+    });
+
+    it("keeps a static-composition ready at load and still asks for the runtime's timeline", async () => {
+      const { player, sent } = await navigatedUnreadable();
+      const capable = protocol(["seconds-time", "announce-timeline"]);
+      post(player, { type: "static-composition", durationSeconds: 2, width: 640, height: 360 });
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(player._ready).toBe(true);
+      expect(announced(sent)).toHaveLength(1);
+
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect((player as unknown as { _readyBeforeRuntime: boolean })._readyBeforeRuntime).toBe(
+        false,
+      );
+      player.remove();
+    });
   });
 
   it("paints a document before its load when nothing first-frame is pending", async () => {

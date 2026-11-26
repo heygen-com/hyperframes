@@ -5,6 +5,7 @@ import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineKeyframeTarget } from "./timelineKeyframeIdentity";
 import { menuClasses } from "../../components/ui/menuStyle";
+import { placeMenu, pointAnchor } from "../../components/ui/menuPosition";
 
 export interface KeyframeDiamondContextMenuState {
   x: number;
@@ -76,8 +77,7 @@ export function KeyframeDiamondContextMenu({
     setTimeout(onClose, 700);
   };
 
-  const menuWidth = 200;
-  // Measured off the rendered rows, so the flip-up test below stays right as
+  // Measured off the rendered rows, so the placement below stays right as
   // optional entries drop out. The separator counts as roughly a third of a row.
   const rows =
     1 +
@@ -85,10 +85,10 @@ export function KeyframeDiamondContextMenu({
     (onEditEase ? 1 : 0) +
     (onCopyProperties ? 1 : 0) +
     (onDelete ? 1 : 0);
-  const menuHeight = 10 + rows * 30 + 9;
-  const overflowY = state.y + menuHeight - window.innerHeight;
-  const adjustedX = state.x + menuWidth > window.innerWidth ? state.x - menuWidth : state.x;
-  const adjustedY = Math.max(8, overflowY > 0 ? state.y - overflowY - 8 : state.y);
+  const { left, top } = placeMenu(pointAnchor(state.x, state.y), {
+    width: 200,
+    height: 10 + rows * 30 + 9,
+  });
 
   return createPortal(
     <div
@@ -96,7 +96,7 @@ export function KeyframeDiamondContextMenu({
       role="menu"
       aria-label="Keyframe actions"
       className={`${menuClasses.panel} fixed z-200 min-w-[180px] overflow-y-auto`}
-      style={{ left: adjustedX, top: adjustedY, maxHeight: `calc(100vh - ${adjustedY + 8}px)` }}
+      style={{ left, top, maxHeight: `calc(100vh - ${top + 8}px)` }}
     >
       {onMoveToPlayhead && (
         <button

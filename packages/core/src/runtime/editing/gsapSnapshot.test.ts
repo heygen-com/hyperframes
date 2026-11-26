@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { gsap as realGsap } from "gsap";
 import { handleFor } from "../editingHandles";
+import { gestureStart } from "../editingGestureStart";
 import { gsapSnapshot } from "./gsapSnapshot";
-import { MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshotLimits";
+import { MAX_SNAPSHOT_FIELDS, MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshotLimits";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -71,7 +72,27 @@ describe("gsapSnapshot", () => {
   it("refuses rather than cuts a timeline past the bound", async () => {
     const tween = { targets: () => [], vars: {}, startTime: () => 0, duration: () => 1 };
     frame(Array.from({ length: MAX_SNAPSHOT_TWEENS + 1 }, () => tween));
-    await expect(gsapSnapshot()).rejects.toThrow(/bound on tweens/);
+    await expect(gsapSnapshot()).rejects.toThrow(/past the snapshot bound/);
+  });
+
+  it("charges each target to the field bound, so a frame cannot pass it in targets", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const box = document.getElementById("box")!;
+    // The vars alone are 3 fields under the bound; the target's handle and fields pass it.
+    const vars = { a: Array.from({ length: MAX_SNAPSHOT_FIELDS - 5 }, () => 1) };
+    frame([{ targets: () => [box], vars, startTime: () => 0, duration: () => 1 }]);
+    await expect(gsapSnapshot()).rejects.toThrow(/bound on fields/);
+  });
+
+  it("charges each timeline to the field bound", async () => {
+    const timeline = { getChildren: () => [], time: () => 0 };
+    Object.assign(window, {
+      gsap: { getProperty: () => 0 },
+      __timelines: Object.fromEntries(
+        Array.from({ length: MAX_SNAPSHOT_FIELDS / 2 }, (_, k) => [`t${k}`, timeline]),
+      ),
+    });
+    await expect(gsapSnapshot()).rejects.toThrow(/bound on fields/);
   });
 
   it("refuses a tween value past the text bound", async () => {
@@ -134,6 +155,36 @@ describe("gsapSnapshot", () => {
 
   // fails without the fix: GSAP's own state on a keyframes tween's vars tripped the nesting bound, so a sealed preview
   // read no GSAP values and Add keyframe at playhead added nothing.
+  it("lists the tweens only GSAP's global timeline runs, once, beside the registered ones", async () => {
+    document.body.innerHTML = `<div id="a"></div><div id="b"></div>`;
+    realGsap.globalTimeline.clear();
+    const tl = realGsap.timeline({ paused: true });
+    tl.to("#a", { x: 100, duration: 1 }, 0);
+    realGsap.to("#b", { opacity: 0.5, duration: 1, paused: true });
+    Object.assign(window, { gsap: realGsap, __timelines: { main: tl } });
+
+    const snapshot = await gsapSnapshot();
+    realGsap.globalTimeline.clear();
+
+    const handle = (id: string) => handleFor(document.getElementById(id)!);
+    expect(snapshot.timelines[0]!.tweens.map((tween) => tween.targets)).toEqual([[handle("a")]]);
+    expect(snapshot.globalTweens.map((tween) => tween.targets)).toEqual([[handle("b")]]);
+    expect(snapshot.globalTweens[0]!.vars).toMatchObject({ opacity: 0.5 });
+  });
+
+  it("reads a film that sets an attribute, as a flickering grid does", async () => {
+    document.body.innerHTML = `<span id="cell"></span>`;
+    const tl = realGsap.timeline({ paused: true });
+    tl.set("#cell", { attr: { "data-b": 1 } }, 0.5);
+    tl.seek(1);
+    Object.assign(window, { gsap: realGsap, __timelines: { main: tl } });
+
+    const snapshot = await gsapSnapshot();
+
+    expect(snapshot.timelines[0]!.tweens).toHaveLength(1);
+    expect(document.getElementById("cell")!.getAttribute("data-b")).toBe("1");
+  });
+
   it("reads a real GSAP keyframes tween", async () => {
     document.body.innerHTML = `<div id="box"></div>`;
     const tl = realGsap.timeline({ paused: true });
@@ -149,5 +200,26 @@ describe("gsapSnapshot", () => {
 
     expect(snapshot.timelines[0]!.tweens).toHaveLength(1);
     expect(snapshot.targets[0]!.values.x).toBeCloseTo(600);
+  });
+
+  it.each([
+    ["only its opacity is tweened", { opacity: 0.5, duration: 10 }, 0],
+    ["its only tween is a scale that starts later", { scale: 1.4, duration: 1 }, 3],
+    ["its only tween is a rotation that starts later", { rotation: 30, duration: 1 }, 3],
+  ])("leaves a CSS-moved element's position to CSS when %s", async (_, vars, at) => {
+    document.body.innerHTML = `<h1 id="title" style="translate: 0 -200px">Title</h1>`;
+    const title = document.getElementById("title")!;
+    const tl = realGsap.timeline({ paused: true });
+    tl.to("#title", vars, at);
+    tl.seek(0);
+    Object.assign(window, { gsap: realGsap, __timelines: { main: tl } });
+    const drawn = () =>
+      ["translate", "transform"].map((name) => title.style.getPropertyValue(name));
+    const before = drawn();
+
+    await gsapSnapshot();
+
+    expect(gestureStart([handleFor(title)]).elements[0]!.gsap).toBeNull();
+    expect(drawn()).toEqual(before);
   });
 });

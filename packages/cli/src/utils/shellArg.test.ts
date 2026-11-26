@@ -84,6 +84,20 @@ describe("shellArg", () => {
     expect(shellArg("films/@scope", "win32")).toBe("films/@scope");
   });
 
+  // fails without the fix: the word was printed with the character inside its quotes.
+  it.each(["darwin", "linux", "win32"] as const)(
+    "prints nothing on %s for a name with a character a terminal does not show",
+    (platform) => {
+      for (const name of [
+        "a\nb",
+        "a\tb",
+        `a${String.fromCharCode(7)}b`,
+        `a${String.fromCharCode(27)}[2Jb`,
+      ])
+        expect(shellArg(name, platform), JSON.stringify(name)).toBeNull();
+    },
+  );
+
   it("prints nothing on Windows for a name no shell there reads literally", () => {
     for (const name of WINDOWS_UNPRINTABLE) expect(shellArg(name, "win32"), name).toBeNull();
   });
@@ -115,7 +129,7 @@ describe("shellArg", () => {
   );
 
   const argvScript = join(root, "argv.cjs");
-  writeFileSync(argvScript, "process.stdout.write(JSON.stringify(process.argv.slice(2)));");
+  writeFileSync(argvScript, 'process.stdout.write(JSON.stringify(process.argv.slice(2)) + "\\n");');
   const readArgv = (output: string): string[] => JSON.parse(output) as string[];
 
   it.runIf(process.platform === "win32")(
@@ -136,19 +150,28 @@ describe("shellArg", () => {
   it.runIf(process.platform === "win32")(
     "prints a Windows word that PowerShell reads as written",
     () => {
-      for (const name of WINDOWS_ROUND_TRIP) {
-        const line = `& '${process.execPath}' '${argvScript}' ${shellArg(name, "win32")}`;
-        const output = execFileSync(
-          "powershell.exe",
-          ["-NoProfile", "-EncodedCommand", Buffer.from(line, "utf16le").toString("base64")],
-          { encoding: "utf8" },
-        );
+      // One Windows PowerShell for every name: a cold start each pushed a slow runner past the timeout.
+      const lines = WINDOWS_ROUND_TRIP.map(
+        (name) => `& '${process.execPath}' '${argvScript}' ${shellArg(name, "win32")}`,
+      );
+      const output = execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-EncodedCommand",
+          Buffer.from(lines.join("\n"), "utf16le").toString("base64"),
+        ],
+        { encoding: "utf8" },
+      );
+      const runs = output.split(/\r?\n/).filter(Boolean);
+      expect(runs).toHaveLength(WINDOWS_ROUND_TRIP.length);
+      WINDOWS_ROUND_TRIP.forEach((name, index) => {
         // Windows PowerShell hands a space-free word to a program unquoted, so a doubled trailing backslash stays doubled.
         expect(
-          readArgv(output).map((arg) => win32.normalize(arg)),
+          readArgv(runs[index]!).map((arg) => win32.normalize(arg)),
           name,
         ).toEqual([win32.normalize(name)]);
-      }
+      });
     },
   );
 });

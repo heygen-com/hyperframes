@@ -19,6 +19,14 @@ const nullableNumber = (value: unknown): value is number | null =>
   value === null || (typeof value === "number" && Number.isFinite(value));
 export const isAudience = (value: unknown): value is LocalShareAudience =>
   audiences.some((mode) => mode === value);
+function isReviewNamed(value: Record<string, unknown>) {
+  return (
+    nullableText(value.url) &&
+    text(value.manageUrl) &&
+    nullableText(value.reviewId) &&
+    nullableText(value.reviewTitle)
+  );
+}
 function isState(value: unknown): value is LocalShareState {
   return (
     record(value) &&
@@ -26,8 +34,7 @@ function isState(value: unknown): value is LocalShareState {
       String(value.state),
     ) &&
     optionalFailure(value.failure) &&
-    nullableText(value.url) &&
-    text(value.manageUrl) &&
+    isReviewNamed(value) &&
     nullableBoolean(value.changed) &&
     nullableAudience(value.audience) &&
     nullableText(value.spaceId) &&
@@ -114,6 +121,23 @@ export async function shareBootstrap(signal: AbortSignal): Promise<string> {
   if (!record(value) || !text(value.csrf) || !/^[A-Za-z0-9_-]{43}$/.test(value.csrf))
     throw new LocalShareError("unavailable", "Sharing is not available in this Studio host.");
   return value.csrf;
+}
+export async function projectFilesStatus(
+  token: string,
+  space: string,
+  signal: AbortSignal,
+): Promise<{ state: "off" | "synced" | "needs_sync"; paths: string[]; digest: string }> {
+  const value = await json(`project-files?space=${encodeURIComponent(space)}`, token, signal);
+  if (
+    !record(value) ||
+    (value.state !== "off" && value.state !== "synced" && value.state !== "needs_sync") ||
+    typeof value.digest !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.digest) ||
+    !Array.isArray(value.paths) ||
+    !value.paths.every(text)
+  )
+    throw new LocalShareError("unavailable", "Could not read the hidden asset summary.");
+  return { state: value.state, paths: value.paths, digest: value.digest };
 }
 export async function shareSnapshot(
   token: string,

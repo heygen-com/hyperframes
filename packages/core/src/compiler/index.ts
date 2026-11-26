@@ -42,6 +42,7 @@ export {
   parsesAsScript,
 } from "./htmlBundler";
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+export { dropAuthoredCompositionFiles } from "../compositionSource";
 export { boundMediaSrc } from "../runtime/applyVariableBindings";
 
 export {
@@ -74,6 +75,7 @@ export {
   isAlwaysAppliedStyle,
   deferScriptsUntilFonts,
   headStyleRuns,
+  INLINED_FILE_ATTR,
   inlineScriptRuns,
   styleElementsFor,
   type CompositionStyle,
@@ -96,6 +98,19 @@ export {
   scopeCssToComposition,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
+
+// Size limits on one compile's expansion (shared between bundler and producer)
+export {
+  assertCompositionFileSize,
+  CompositionExpansionBudget,
+  ENTRY_PAGE,
+  isCompositionTooLargeError,
+  MAX_COMPOSITION_HTML_BYTES,
+  MAX_EXPANDED_COMPOSITION_BYTES,
+  MAX_EXPANDED_ELEMENTS,
+  REMOTE_SCRIPTS,
+  REMOTE_STYLESHEETS,
+} from "./compositionSizeLimit";
 
 // Sub-composition inlining (shared between bundler and producer)
 export {

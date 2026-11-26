@@ -81,4 +81,23 @@ describe("localizeWithProducer", () => {
     // snapshot/check re-bundle per grid point; the warning must fire once.
     expect(warn).toHaveBeenCalledOnce();
   });
+
+  // fails without the fix: a font address from the project reached the terminal with its ESC raw
+  it("prints the injector's failure with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const printed = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const boom: () => Promise<never> = () =>
+      Promise.reject(
+        new Error(`cannot fetch fonts/brand${esc}]0;owned${String.fromCharCode(7)}.woff2`),
+      );
+    await localizeWithProducer("<html></html>", async () => boom);
+    const line = String(printed.mock.calls[0]?.[0]).replace(
+      new RegExp(`${esc}\\[[0-9;]*m`, "g"),
+      "",
+    );
+    printed.mockRestore();
+    expect(line).not.toContain(esc);
+    expect(line).toContain("cannot fetch fonts/brand\\x1b]0;owned\\x07.woff2");
+  });
 });

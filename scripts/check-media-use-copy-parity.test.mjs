@@ -32,6 +32,7 @@ export const MEDIA_USE_COPY_NAMES = [
   "received-env.mjs",
   "recipe-store.mjs",
   "telemetry.mjs",
+  "telemetry-opt-out.mjs",
   "terminal-text.mjs",
   "transcriptCutFade.mjs",
   "words.mjs",

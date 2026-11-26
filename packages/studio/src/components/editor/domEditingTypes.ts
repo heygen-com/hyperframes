@@ -75,11 +75,13 @@ export interface DomEditTextField {
   computedStyles: Record<string, string>;
   source: "self" | "child" | "text-node";
   sourceChildIndex?: number;
+  spaceBefore?: string;
 }
 
 export interface DomEditSelection extends PatchTarget {
   element: HTMLElement;
   handle?: EditingElementHandle;
+  textMarkup?: boolean;
   hasAudio?: boolean;
   src?: string | null;
   label: string;

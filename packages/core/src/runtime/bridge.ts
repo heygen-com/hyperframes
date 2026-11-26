@@ -22,6 +22,8 @@ type BridgeDeps = {
   onSetMediaOutputMuted: (muted: boolean) => void;
   onSetNativeMediaSyncDisabled: (disabled: boolean) => void;
   onSetWebAudioMediaDisabled: (disabled: boolean) => void;
+  onSetParentAudio?: (clips: string[]) => void;
+  onAudioClock?: (sample: { time: number; rate: number; at: number } | null) => void;
   onSetPlaybackRate: (rate: number) => void;
   onSetIdleHeartbeat: (slow: boolean) => void;
   onSetRootDuration: (durationSeconds: number) => void;
@@ -40,6 +42,7 @@ type BridgeDeps = {
   onSetCopiesAhead?: (on: boolean) => void;
   onRetryPreviewCopies?: () => void;
   onRequestPreviewFacts?: () => void;
+  onAnnounceTimeline?: () => void;
   onScrubAudio?: (target: PreviewTarget | null, time: number | null, volume: number) => void;
   getCanonicalFps: () => number;
 };
@@ -64,16 +67,21 @@ const ANOTHER_SITE_DRIVES = new Set<string>([
   "set-playback-rate",
   "set-idle-heartbeat",
   "set-display-scale",
+  "set-parent-audio",
+  "audio-clock",
 ]);
 
 let markedForAnotherSite = false;
 const forAnotherSite = (): boolean =>
   (markedForAnotherSite ||= typeof document !== "undefined" && servedToAnotherSite(document));
 
+const UNSEEDED_DOCUMENT_ID = crypto.randomUUID?.() ?? String(performance.timeOrigin);
+
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
   if (forAnotherSite() && !ANOTHER_SITE_SEES.has(payload.type)) return;
   try {
-    window.parent.postMessage({ ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) }, "*");
+    const metadata = runtimeProtocolMetadata(runtimeProtocolFps);
+    window.parent.postMessage({ ...payload, ...metadata, documentId: UNSEEDED_DOCUMENT_ID }, "*");
   } catch (err) {
     // Cross-frame posting can throw if the parent is gone or origin-isolated.
     swallow("bridge.postMessage", err);
@@ -87,6 +95,8 @@ const FLASH_DEFAULT_DURATION_MS = 800;
 const FLASH_MAX_DURATION_MS = 5000;
 const MAX_FLASH_SELECTORS = 100;
 const MAX_SELECTOR_LENGTH = 1000;
+const MAX_PARENT_AUDIO_CLIPS = 1000;
+const MAX_PARENT_AUDIO_KEY = 8192;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -174,6 +184,20 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
       deps.onSetNativeMediaSyncDisabled(data.disabled === true),
     "set-web-audio-media-disabled": (data, deps) =>
       deps.onSetWebAudioMediaDisabled(data.disabled === true),
+    "set-parent-audio": (data, deps) => {
+      const clips = data.clips;
+      if (!Array.isArray(clips) || clips.length > MAX_PARENT_AUDIO_CLIPS) return;
+      if (!clips.every((clip) => typeof clip === "string" && clip.length <= MAX_PARENT_AUDIO_KEY))
+        return;
+      deps.onSetParentAudio?.(clips);
+    },
+    "audio-clock": (data, deps) => {
+      if (data.time === null) return deps.onAudioClock?.(null);
+      const { time, rate, at } = data;
+      if (!isFiniteNumber(time) || !isFiniteNumber(rate) || !isFiniteNumber(at) || rate <= 0)
+        return;
+      deps.onAudioClock?.({ time: Math.max(0, time), rate, at });
+    },
     "set-playback-rate": (data, deps) => {
       const rate = readNumber(data.playbackRate, 1);
       if (rate !== null) deps.onSetPlaybackRate(rate);
@@ -188,6 +212,7 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
     "set-copies-ahead": (data, deps) => deps.onSetCopiesAhead?.(data.on === true),
     "retry-preview-copies": (_d, deps) => deps.onRetryPreviewCopies?.(),
     "request-preview-facts": (_d, deps) => deps.onRequestPreviewFacts?.(),
+    "announce-timeline": (_d, deps) => deps.onAnnounceTimeline?.(),
     "set-root-duration": (data, deps) => {
       const durationSeconds = readNumber(data.durationSeconds, 0);
       if (durationSeconds !== null) deps.onSetRootDuration(durationSeconds);

@@ -60,6 +60,19 @@ describe("launchTestChrome", () => {
     }
   });
 
+  it("names a launch failure that is not an Error by what it holds", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      // Puppeteer rejects a dropped DevTools socket with an event that holds the Error.
+      const dropped = { error: new Error("read ECONNRESET") };
+      await expect(launchTestChrome(vi.fn().mockRejectedValue(dropped))).rejects.toBe(dropped);
+      expect(String(error.mock.calls[0]?.[0])).toContain("read ECONNRESET");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it("stops after the second stuck launch and preserves its error", async () => {
     const failure = new TimeoutError("still stuck");
     const launch = vi.fn().mockRejectedValue(failure);

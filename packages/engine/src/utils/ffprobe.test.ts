@@ -939,8 +939,11 @@ describe("media metadata cache invalidation", () => {
     const { extractMediaMetadata } = await import("./ffprobe.js");
     try {
       const failed = expect(extractMediaMetadata(file)).rejects.toThrow(/code 1/);
+      // Each probe first walks the file for a playlist leaving its folder, so it spawns a tick later.
+      await vi.waitFor(() => expect(processes).toHaveLength(1));
       writeFileSync(file, "updated file with different dimensions");
       const replacement = extractMediaMetadata(file);
+      await vi.waitFor(() => expect(processes).toHaveLength(2));
       processes[0]?.emit("close", 1);
       await failed;
       const shared = extractMediaMetadata(file);
@@ -1181,6 +1184,33 @@ describe("ffprobe missing-binary fallback", () => {
       extractAudioMetadata("/tmp/aborted.audio", { signal: controller.signal }),
     ).rejects.toThrow();
     expect(calls).toHaveLength(2);
+  });
+
+  // fails without the fix: extractMediaMetadata took no signal, so its probe ran to the end after a cancel.
+  it("extractMediaMetadata stops on a cancel raised while it probes", async () => {
+    const controller = new AbortController();
+    const { spawn: baseSpawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", codec_name: "h264", width: 16, height: 16 }],
+          format: { duration: "1" },
+        }),
+      },
+    ]);
+    const spawn = (command: string, args: readonly string[]) => {
+      controller.abort(new Error("render cancelled"));
+      return baseSpawn(command, args);
+    };
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    await expect(
+      extractMediaMetadata("/tmp/aborted.video", { signal: controller.signal }),
+    ).rejects.toThrow("render cancelled");
+    expect(calls).toHaveLength(1);
   });
 
   it("extractMediaMetadata falls back to PNG cICP metadata when ffprobe is missing", async () => {
@@ -2155,12 +2185,14 @@ describe("final video frame timestamp probes", () => {
       metadata,
       firstController.signal,
     );
+    // Each probe walks its file before it spawns; wait so the first probe owns processes[0].
+    await vi.waitFor(() => expect(processes).toHaveLength(1));
     const second = extractFinalVideoFrameTimestamp(
       "/tmp/shared-source.mp4",
       metadata,
       secondController.signal,
     );
-    expect(processes).toHaveLength(2);
+    await vi.waitFor(() => expect(processes).toHaveLength(2));
 
     firstController.abort();
     await expect(first).rejects.toThrow(/ffprobe abort/);

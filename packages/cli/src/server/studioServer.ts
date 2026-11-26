@@ -9,7 +9,8 @@ import { PREVIEW_NONCE_HEADER, previewProof, previewToken } from "@hyperframes/c
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { realpath, terminalText } from "@hyperframes/core";
+import { realpath, terminalLines, terminalText } from "@hyperframes/core";
+import { stackOrMessage } from "../utils/errorMessage.js";
 import {
   createReadStream,
   existsSync,
@@ -87,6 +88,9 @@ import {
   HistoryBusyError,
   HistoryClosedError,
   historyCache,
+  carriesOAuthReturn,
+  inertRefusal,
+  refuseOAuthReturn,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import { isLinkFreeWithinProject } from "@hyperframes/studio-server/safe-path";
@@ -94,8 +98,9 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
+  type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "@hyperframes/studio-server/screenshot-clip";
-import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
@@ -275,7 +280,7 @@ async function downloadRemoteGifImageSources(
       } catch (err) {
         console.warn(
           "[Studio] Remote animated GIF prep skipped:",
-          err instanceof Error ? err.message : err,
+          terminalText(err instanceof Error ? err.message : String(err)),
         );
       }
     }),
@@ -391,7 +396,7 @@ async function getThumbnailBrowser(
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
-        err instanceof Error ? err.message : err,
+        terminalText(err instanceof Error ? err.message : String(err)),
       );
       _thumbnailBrowserInitializing = null;
       return null;
@@ -553,7 +558,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         return history;
       })
       .catch((error: unknown) => {
-        console.warn(`[studio] Project history is off: ${String(error)}`);
+        console.warn(`[studio] Project history is off: ${terminalText(String(error))}`);
         if (error instanceof HistoryBusyError) ownerWaitMs = 0;
         if (error instanceof HistoryBusyError || error instanceof HistoryClosedError)
           histories.forget(projectDir);
@@ -609,7 +614,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         );
         return html;
       } catch (err) {
-        console.error("[studio] Bundle failed:", err);
+        const { isCompositionTooLargeError } = await import("@hyperframes/core/compiler");
+        if (isCompositionTooLargeError(err)) throw err;
+        console.error("[studio] Bundle failed:", terminalLines(stackOrMessage(err)));
         return null;
       }
     },
@@ -635,7 +642,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         outputDir: heifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/heif",
         allowOutsideFiles,
-        onFailure: (error) => console.warn(`[studio] ${error.message}`),
+        onFailure: (error) => console.warn(`[studio] ${terminalText(error.message)}`),
       });
       const prepared = await prepareAnimatedGifInputs(htmlWithJpegs, {
         projectDir: project.dir,
@@ -748,6 +755,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
             ...(opts.composition ? { entryFile: opts.composition } : {}),
             ...(opts.variables ? { variables: opts.variables } : {}),
+            ...(opts.range ? { range: opts.range } : {}),
             ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
@@ -887,15 +895,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               requiresWebGpu && session.softwareWebGpu,
             );
             await page
-              .waitForFunction(
-                () => {
-                  const w = window as Window & {
-                    __timelines?: Record<string, unknown>;
-                  };
-                  return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
-                },
-                { timeout: 5000 },
-              )
+              .waitForFunction(thumbnailSeekReadyInBrowser, { timeout: 5000 })
               .catch(() => {});
           },
           async (page) => {
@@ -937,7 +937,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         if (!opts.signal.aborted) {
           console.warn(
             "[Studio] Thumbnail generation failed:",
-            err instanceof Error ? err.message : err,
+            terminalText(err instanceof Error ? err.message : String(err)),
           );
         }
         return null;
@@ -947,8 +947,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     async listRegistryCatalog() {
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
       const { loadProjectConfig } = await import("../utils/projectConfig.js");
+      const { fromReceivedRegistry } = await import("../commands/add.js");
       // The same registry `add` installs from, so the panel lists what can be installed.
-      const registry = { baseUrl: loadProjectConfig(projectDir).registry };
+      const baseUrl = loadProjectConfig(projectDir).registry;
+      const registry = { baseUrl, publicOnly: fromReceivedRegistry(projectDir, baseUrl) };
       const entries = await listRegistryItems(undefined, registry);
       const blockAndComponentEntries = entries.filter(
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
@@ -993,6 +995,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const app = new Hono();
   // Extra hosts from HYPERFRAMES_PREVIEW_ALLOWED_HOSTS (Codespaces, tunnels).
   const allowedHosts = previewAllowedHostsFromEnv();
+
+  // No Studio route takes an OAuth return, and project script runs on this origin.
+  app.use(async function refuseOAuthReturnAtAnyPath(c, next) {
+    return carriesOAuthReturn(c.req.url) ? refuseOAuthReturn() : next();
+  });
 
   // Every route answers only loopback, the bind or an allowed host; a browser cannot forge Host.
   app.use(async function refuseUnknownHost(c, next) {
@@ -1205,10 +1212,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Mount the shared studio API at /api.
   // Use fetch() forwarding (not .route()) so the sub-app sees paths without
   // the /api prefix — the shared module's path extraction uses c.req.path.
-  const api = createStudioApi(adapter, { allowedHosts, sandboxThumbnailCaptures: true });
+  const api = createStudioApi(adapter, {
+    allowedHosts,
+    sandboxThumbnailCaptures: true,
+    sandboxDirectOpens: true,
+  });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
-    url.pathname = url.pathname.slice(4); // Strip "/api" prefix
+    url.pathname = url.pathname.replace(/^\/[^/]*/, ""); // Strip the "/api" segment however it is spelled
     const forwardReq = new Request(url.toString(), {
       method: c.req.method,
       headers: c.req.raw.headers,
@@ -1254,8 +1265,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return `<script>window.__HF_STUDIO_ENV__=${JSON.stringify(overrides)};</script>`;
   }
 
-  // SPA fallback. The shell's own requests pass every same-origin check, so only its own pages may frame it.
-  app.get("*", (c) => {
+  // Studio routes by hash, so only its entry paths get the shell, and only its own pages may frame it.
+  const serveStudioShell = (c: Context) => {
     for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) c.header(name, value);
     const indexPath = resolve(studioDir, "index.html");
     const indexContent = readBundleFile(indexPath);
@@ -1338,7 +1349,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     // `no-cache` not `no-store`: same refetch without an ETag, but `no-store`
     // would blocklist the document from Chrome's bfcache.
     return c.html(html, 200, { "Cache-Control": "no-cache" });
-  });
+  };
+  app.get("/", serveStudioShell);
+  app.get("/index.html", serveStudioShell);
+  app.all("*", () => inertRefusal(404, "Not found."));
 
   const shutdown = async (): Promise<void> => {
     shuttingDown = true;

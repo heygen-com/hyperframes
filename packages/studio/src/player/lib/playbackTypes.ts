@@ -47,6 +47,8 @@ export interface ClipManifestClip extends RuntimeTimelineClipIdentity {
   compositionAncestors?: string[];
   playbackStart?: number;
   playbackRate?: number;
+  transitionLabel?: string;
+  timelineDuration?: number | null;
 }
 
 export interface ClipManifest {

@@ -45,8 +45,8 @@ describe("synthesis script cache", () => {
     scriptPath = join(cacheDir, "synth-v4.py");
     outputPath = join(paths.home, "speech.wav");
     fs.mkdirSync(cacheDir, { recursive: true });
-    vi.mocked(execFileSync).mockImplementation(() => {
-      fs.writeFileSync(outputPath, "stub audio");
+    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+      if (args?.[6]) fs.writeFileSync(args[6], "stub audio");
       return JSON.stringify({
         outputPath,
         sampleRate: 24000,
@@ -81,7 +81,7 @@ describe("synthesis script cache", () => {
       const importing = String(args?.[0]) === "-c";
       const env = (options as { env?: NodeJS.ProcessEnv }).env;
       if (importing && env?.PYTHONPATH !== undefined) throw new Error("ModuleNotFoundError");
-      fs.writeFileSync(outputPath, "stub audio");
+      if (args?.[6]) fs.writeFileSync(args[6], "stub audio");
       return JSON.stringify({
         outputPath,
         sampleRate: 24000,
@@ -148,7 +148,7 @@ describe("synthesis script cache", () => {
         }
         expect(execFileSync).toHaveBeenCalledWith(
           "test-python",
-          expect.arrayContaining([scriptPath, "model.onnx", "voices.bin", "Hello", outputPath]),
+          expect.arrayContaining([scriptPath, "model.onnx", "voices.bin", "Hello"]),
           expect.objectContaining({ timeout: 300_000 }),
         );
       } finally {

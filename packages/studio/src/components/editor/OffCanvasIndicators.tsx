@@ -20,6 +20,7 @@ interface OffCanvasIndicatorsProps {
   onSelectionChangeRef: React.MutableRefObject<
     (selection: DomEditSelection, options?: { revealPanel?: boolean; additive?: boolean }) => void
   >;
+  iframeRef: React.RefObject<HTMLIFrameElement | null>;
 }
 
 function clipOutsideCanvas(
@@ -75,6 +76,7 @@ export function OffCanvasIndicators({
   groupSelections,
   activeCompositionPathRef,
   onSelectionChangeRef,
+  iframeRef,
 }: OffCanvasIndicatorsProps): React.ReactElement {
   return (
     <>
@@ -100,13 +102,14 @@ export function OffCanvasIndicators({
           const selectOffCanvas = async () => {
             const el = elements.current.get(r.key);
             if (!el) return;
-            const { resolveDomEditSelection } = await import("./domEditingLayers");
             const acp = activeCompositionPathRef.current ?? "index.html";
-            const sel = await resolveDomEditSelection(el, {
+            const options = {
               activeCompositionPath: acp,
               isMasterView: !acp || acp === "index.html",
               skipSourceProbe: true,
-            });
+            };
+            const { resolveIndicatorSelection } = await import("./previewOffCanvas");
+            const sel = await resolveIndicatorSelection(iframeRef.current, el, options);
             if (sel) onSelectionChangeRef.current(sel, { revealPanel: true });
           };
           const handleClick = (e: React.MouseEvent) => {

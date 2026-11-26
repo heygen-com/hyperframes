@@ -196,6 +196,17 @@ describe("resolveGroupSourceFile", () => {
     expect(resolveGroupSourceFile(doc.getElementById("root-group"))).toBeUndefined();
   });
 
+  // fails without the fix: an authored data-composition-src named the file a group's volume was written to
+  it("ignores a data-composition-src the page's markup kept, which no mount stamped", () => {
+    const doc = document.implementation.createHTMLDocument("preview");
+    doc.body.setAttribute("data-composition-id", "root");
+    doc.body.innerHTML = `
+      <div data-composition-id="wrapper" data-composition-src="index.html">
+        <hf-audio-group id="authored"></hf-audio-group>
+      </div>`;
+    expect(resolveGroupSourceFile(doc.getElementById("authored"))).toBeUndefined();
+  });
+
   it("is safe on a detached or missing element", () => {
     expect(resolveGroupSourceFile(null)).toBeUndefined();
     expect(resolveGroupSourceFile(document.createElement("hf-audio-group"))).toBeUndefined();

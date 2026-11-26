@@ -5,12 +5,13 @@ import {
   existsSync,
   fstatSync,
   openSync,
+  type Dirent,
   readdirSync,
   readFileSync,
   type Stats,
   statSync,
 } from "node:fs";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import AdmZip from "adm-zip";
 import type { Ignore } from "ignore";
 import { projectIgnore } from "@hyperframes/lint";
@@ -22,7 +23,7 @@ import { tryResolveCredential } from "../auth/index.js";
 import { isAuthError } from "../auth/errors.js";
 import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
 import { refreshIfNeeded } from "../cloud/auth.js";
-import { writeProjectLink } from "./projectLink.js";
+import { PERSONAL_SPACE, writeProjectLink } from "./projectLink.js";
 import {
   isHiddenProjectFile,
   isPrivateCompositionFile,
@@ -40,6 +41,7 @@ import {
   type OnLeftOut,
   type OnOutsideFile,
   outsideFileReference,
+  type UnreadableCause,
 } from "./leftOutReference.js";
 import { isCopiedOutsideFileType, isUploadedOutsideFileType } from "./outsideFileType.js";
 import {
@@ -328,13 +330,57 @@ function shouldIgnoreSegment(segment: string): boolean {
   return IGNORED_DIRS.has(segment) || IGNORED_FILES.has(segment);
 }
 
+const UNREADABLE_CODES = new Map<string, UnreadableCause>([
+  ["EBUSY", "locked"],
+  ["EPERM", "denied"],
+  ["EACCES", "denied"],
+  ["ENOENT", "missing"],
+  ["ELOOP", "missing"],
+  ["EIO", "drive"],
+  ["UNKNOWN", "drive"],
+]);
+
+const UNREADABLE_WORDS: Record<UnreadableCause, string> = {
+  locked: "another app has it open",
+  denied: "this computer does not allow reading it",
+  missing: "it was deleted or is a link to a file that is gone",
+  drive: "its drive could not read it",
+};
+
+/** A read the file system refused for one file, as its cause; any other error is thrown. */
+function readOrCause<T>(
+  read: () => T,
+): { ok: true; value: T } | { ok: false; cause: UnreadableCause } {
+  try {
+    return { ok: true, value: read() };
+  } catch (error) {
+    const cause = UNREADABLE_CODES.get(String((error as NodeJS.ErrnoException)?.code));
+    if (!cause) throw error;
+    return { ok: false, cause };
+  }
+}
+
+/** The project's own folder must list; a folder inside it that will not is noted in `unreadable`. */
+function listFolder(
+  rootDir: string,
+  dir: string,
+  unreadable: Map<string, UnreadableCause>,
+): Dirent[] {
+  if (dir === rootDir) return readdirSync(dir, { withFileTypes: true });
+  const listed = readOrCause(() => readdirSync(dir, { withFileTypes: true }));
+  if (listed.ok) return listed.value;
+  unreadable.set(archiveKey(relative(rootDir, dir).replaceAll("\\", "/")), listed.cause);
+  return [];
+}
+
 function collectProjectFiles(
   rootDir: string,
   currentDir: string,
   paths: string[],
   matcher: Ignore,
+  unreadable: Map<string, UnreadableCause>,
 ): void {
-  for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+  for (const entry of listFolder(rootDir, currentDir, unreadable)) {
     if (shouldIgnoreSegment(entry.name)) continue;
     const absolutePath = join(currentDir, entry.name);
     const relativePath = relative(rootDir, absolutePath).replaceAll("\\", "/");
@@ -342,13 +388,46 @@ function collectProjectFiles(
 
     if (entry.isDirectory()) {
       if (matcher.ignores(`${relativePath}/`)) continue;
-      collectProjectFiles(rootDir, absolutePath, paths, matcher);
+      collectProjectFiles(rootDir, absolutePath, paths, matcher, unreadable);
       continue;
     }
 
-    if (!statSync(absolutePath).isFile()) continue;
     if (matcher.ignores(relativePath)) continue;
-    paths.push(relativePath);
+    const stat = readOrCause(() => statSync(absolutePath));
+    if (!stat.ok) unreadable.set(archiveKey(relativePath), stat.cause);
+    else if (stat.value.isFile()) paths.push(relativePath);
+  }
+}
+
+/** Why `rel`, or a folder it is in, could not be read; null when it could. */
+function unreadableAt(
+  unreadable: ReadonlyMap<string, UnreadableCause>,
+  rel: string,
+): UnreadableCause | null {
+  for (let at = rel; at; at = at.includes("/") ? at.slice(0, at.lastIndexOf("/")) : "") {
+    const cause = unreadable.get(at);
+    if (cause) return cause;
+  }
+  return null;
+}
+
+/** The page the video starts from must be read; any other unreadable path is listed as left out. */
+function reportUnreadable(
+  absProjectDir: string,
+  unreadable: ReadonlyMap<string, UnreadableCause>,
+  entry: string,
+  onLeftOut: OnLeftOut | undefined,
+): void {
+  for (const page of new Set([entry, "index.html"])) {
+    const cause = unreadable.get(page);
+    if (cause) throw new Error(`${page} could not be read because ${UNREADABLE_WORDS[cause]}.`);
+  }
+  for (const [path, cause] of unreadable) {
+    const warning = `${path} could not be read because ${UNREADABLE_WORDS[cause]}; it was left out of the upload.`;
+    onLeftOut?.(terminalText(warning), {
+      ...leftOutReference(absProjectDir, path, path, join(absProjectDir, path), "unreadable"),
+      cause,
+    });
   }
 }
 
@@ -422,6 +501,7 @@ interface ExternalAssetContext {
   onOutsideFile?: OnOutsideFile;
   received: ReceivedFiles;
   walkedLeftOut: ReadonlySet<string>;
+  unreadable: Map<string, UnreadableCause>;
   filmPages: Set<string> | null;
 }
 
@@ -452,7 +532,12 @@ function addExternalAsset(
     archivePath = `${base}_${i}${ext}`;
   }
 
-  ctx.fileContents.set(archivePath, stageFile(absPath, ctx.onDiskMinBytes));
+  const staged = readOrCause(() => stageFile(absPath, ctx.onDiskMinBytes));
+  if (!staged.ok) {
+    leaveUnreadable(ctx, entryPath, rawPath, absPath, staged.cause);
+    return null;
+  }
+  ctx.fileContents.set(archivePath, staged.value);
   ctx.externalMap.set(absPath, archivePath);
   ctx.usedArchivePaths.add(archivePath);
   return archivePath;
@@ -509,7 +594,7 @@ function includeReferencedProjectFile(
     const absPath = candidate.replace(/[?#].*$/, "");
     if (!isPathInside(absPath, ctx.absProjectDir)) continue;
     const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
-    if (staysOut(ctx, rel)) return;
+    if (staysOutOrUnreadable(ctx, entryPath, rawPath, absPath, rel)) return;
     if (!existsSync(absPath)) {
       if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return;
       continue;
@@ -517,8 +602,7 @@ function includeReferencedProjectFile(
     if (!statSync(absPath).isFile()) return;
     const reason = referencedFileLeftOut(ctx, entryPath, rel, absPath);
     if (reason) return leaveOut(ctx, entryPath, rawPath, absPath, reason);
-    ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
-    return;
+    return stageReferenced(ctx, entryPath, rawPath, absPath, rel);
   }
   if (!requireOnDisk) return;
   throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
@@ -556,6 +640,50 @@ function leaveOut(
     warning,
     leftOutReference(ctx.absProjectDir, entryPath, rawPath, absPath, reason),
   );
+}
+
+function staysOutOrUnreadable(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  rawPath: string,
+  absPath: string,
+  rel: string,
+): boolean {
+  const cause = unreadableAt(ctx.unreadable, rel);
+  if (!cause) return staysOut(ctx, rel);
+  leaveUnreadable(ctx, entryPath, rawPath, absPath, cause);
+  return true;
+}
+
+function stageReferenced(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  rawPath: string,
+  absPath: string,
+  rel: string,
+): void {
+  const staged = readOrCause(() => stageFile(absPath, ctx.onDiskMinBytes));
+  if (staged.ok) return void ctx.fileContents.set(rel, staged.value);
+  ctx.unreadable.set(rel, staged.cause);
+  leaveUnreadable(ctx, entryPath, rawPath, absPath, staged.cause);
+}
+
+/** A file the video's page uses that could not be read: listed with that page, so the person can see it is used. */
+function leaveUnreadable(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  rawPath: string,
+  absPath: string,
+  cause: UnreadableCause,
+): void {
+  if (!(ctx.filmPages?.has(entryPath) ?? true)) return;
+  const warning = terminalText(
+    `${entryPath} uses ${rawPath}, which could not be read because ${UNREADABLE_WORDS[cause]}; it was left out of the upload.`,
+  );
+  if (ctx.leftOut.has(warning)) return;
+  ctx.leftOut.add(warning);
+  const reference = leftOutReference(ctx.absProjectDir, entryPath, rawPath, absPath, "unreadable");
+  ctx.onLeftOut?.(warning, { ...reference, cause });
 }
 
 function leftOnAnotherNetworkRoot(
@@ -830,6 +958,7 @@ export function localizeExternalAssets(
   onOutsideFile?: OnOutsideFile,
   entry = "index.html",
   walkedLeftOut: ReadonlySet<string> = new Set(),
+  unreadable = new Map<string, UnreadableCause>(),
 ): number {
   const ctx: ExternalAssetContext = {
     absProjectDir,
@@ -843,6 +972,7 @@ export function localizeExternalAssets(
     onOutsideFile,
     received: receivedFiles(absProjectDir),
     walkedLeftOut,
+    unreadable,
     filmPages: filmPagesOf(absProjectDir, fileContents, entry),
   };
 
@@ -893,7 +1023,10 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
   }
 }
 
-type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type" | "network_share" | "script">;
+type WalkedLeftOutReason = Exclude<
+  LeftOutReason,
+  "file_type" | "network_share" | "script" | "unreadable"
+>;
 
 const WALKED_LEFT_OUT: Record<WalkedLeftOutReason, string> = {
   private:
@@ -928,8 +1061,15 @@ export function stagePublishFiles(
 ): Map<string, StagedFile> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
-  collectProjectFiles(absProjectDir, absProjectDir, filePaths, projectIgnore(absProjectDir));
-  if (!filePaths.includes("index.html")) {
+  const unreadable = new Map<string, UnreadableCause>();
+  collectProjectFiles(
+    absProjectDir,
+    absProjectDir,
+    filePaths,
+    projectIgnore(absProjectDir),
+    unreadable,
+  );
+  if (!filePaths.includes("index.html") && !unreadable.has("index.html")) {
     throw new Error(
       "Project archive must include index.html at the root. Check that .hyperframesignore does not exclude it.",
     );
@@ -966,8 +1106,11 @@ export function stagePublishFiles(
       walkedLeftOut.add(key);
       continue;
     }
-    fileContents.set(key, stageFile(absPath, onDiskMinBytes));
+    const staged = readOrCause(() => stageFile(absPath, onDiskMinBytes));
+    if (staged.ok) fileContents.set(key, staged.value);
+    else unreadable.set(key, staged.cause);
   }
+  reportUnreadable(absProjectDir, unreadable, entry, onLeftOut);
 
   composeNamesInText(fileContents, filePaths);
   localizeExternalAssets(
@@ -978,6 +1121,7 @@ export function stagePublishFiles(
     onOutsideFile,
     entry,
     walkedLeftOut,
+    unreadable,
   );
   return fileContents;
 }
@@ -1241,8 +1385,18 @@ export async function publishProjectArchive(
     throw error;
   }
   // Remember the server's id + url so the next publish of this directory updates in place.
-  if (result.claimed) {
-    writeProjectLink(projectDir, { projectId: result.projectId, url: result.url });
-  }
+  if (result.claimed) rememberPublishedLink(projectDir, result, spaceId);
   return result;
+}
+
+function rememberPublishedLink(
+  projectDir: string,
+  result: PublishedProjectResponse,
+  spaceId: string | undefined,
+): void {
+  writeProjectLink(projectDir, {
+    projectId: result.projectId,
+    url: result.url,
+    spaceId: spaceId ?? PERSONAL_SPACE,
+  });
 }

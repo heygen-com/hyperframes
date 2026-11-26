@@ -6,12 +6,14 @@ import {
   findStartTags,
   injectScriptsAtHeadStart,
   injectScriptsIntoHtml,
+  headContentStart,
   injectTagsAtHeadStart,
   insertBeforeCloseTag,
   insertRuntimeTag,
   hasCompositionOutsideTemplates,
   isFullHtmlDocument,
   mapStartTagsAndStyles,
+  tagsOutsideCommentsAndRawText,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument.js";
@@ -447,6 +449,45 @@ describe("injectTagsAtHeadStart on long adversarial input", () => {
   });
 });
 
+describe("headContentStart", () => {
+  it.each([
+    [
+      "<!doctype html><html lang='en'><head id='h'>x",
+      "<!doctype html><html lang='en'><head id='h'>",
+    ],
+    ["<!doctype html><html lang='en'><body>x", "<!doctype html><html lang='en'>"],
+    [" \n<!DOCTYPE html><div>x", " \n<!DOCTYPE html>"],
+    ["<div>x", ""],
+    ["text<head>x", ""],
+    [
+      "<html a=\"<head>\" b='<head>' c=<head><HEAD>x",
+      "<html a=\"<head>\" b='<head>' c=<head><HEAD>",
+    ],
+    [
+      "<!-- <head> --><!doctype html><!-- <html> --><head>x",
+      "<!-- <head> --><!doctype html><!-- <html> --><head>",
+    ],
+    ["<!--><html a='--><head>'><head>x", "<!--><html a='--><head>'><head>"],
+    ["<!-- <head> never closed", ""],
+    ["<!doctype html><html><body><head>x", "<!doctype html><html>"],
+    ["<!doctype html><title><head></title>", "<!doctype html>"],
+    ["<html a='<head>x", ""],
+    ["<headless><head>x", ""],
+    ["\uFEFF<div>x", "\uFEFF"],
+    ["\uFEFF<!doctype html><html><head>x", "\uFEFF<!doctype html><html><head>"],
+  ])("reads %j up to the end of its own head start tag", (html, before) => {
+    expect(headContentStart(html)).toBe(before.length);
+  });
+
+  it("is one pass over long runs of comments, attributes and unclosed tags", () => {
+    const prolog = "<!-- <head> -->".repeat(20_000) + "<html" + " a='<head>'".repeat(20_000) + ">";
+    expect(headContentStart(prolog + "<head>x")).toBe(prolog.length + 6);
+    expect(headContentStart("<!-- a --!>".repeat(20_000) + "<head>")).toBe(11 * 20_000 + 6);
+    expect(headContentStart("<html " + "a=".repeat(20_000))).toBe(0);
+    expect(headContentStart("<head".repeat(20_000) + ">")).toBe(0);
+  });
+});
+
 describe("hasCompositionOutsideTemplates", () => {
   it.each([
     ["a root in <body>", '<body><div data-composition-id="main"></div></body>', true],
@@ -522,5 +563,24 @@ describe("insertRuntimeTag", () => {
     for (const attrs of ["", 'data-motion-blur="off"', 'data-motion-blur-shutter="on"']) {
       expect(insertRuntimeTag(page(attrs), runtime)).not.toContain("data-hf-accel-tracker");
     }
+  });
+});
+
+describe("tagsOutsideCommentsAndRawText", () => {
+  it("lists the real tags only, never tag text inside a script, style, title or comment", () => {
+    const html = `<P id="a">x</P><script>'<b data-hf-id="w">'</script><!-- <i> --><style>/* <u> */</style><br/>`;
+    const tags = [...tagsOutsideCommentsAndRawText(html)].map(
+      ({ lowercaseName, closing, start, endAfterBracket }) =>
+        `${closing ? "/" : ""}${lowercaseName}:${html.slice(start, endAfterBracket)}`,
+    );
+    expect(tags).toEqual([
+      'p:<P id="a">',
+      "/p:</P>",
+      "script:<script>",
+      "/script:</script>",
+      "style:<style>",
+      "/style:</style>",
+      "br:<br/>",
+    ]);
   });
 });

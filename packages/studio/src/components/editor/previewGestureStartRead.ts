@@ -1,9 +1,16 @@
 /** A gesture on a frame Studio cannot script starts from one `gesture-start` read (core `editingGestureStart.ts`). */
+import type { EditingGestureStart } from "@hyperframes/core/runtime/editing-port";
+import { measureGrowResponse } from "@hyperframes/core/drawn-box";
+import { settleGsapSnapshot } from "../../hooks/gsapFrameSnapshot";
 import { previewGestureStart } from "../../player/lib/previewElements";
+import { previewRootHasNoSize, whenPreviewStageSized } from "../../player/lib/bridgePlayback";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
+import type { DomEditSelection } from "./domEditing";
+import type { CropFrameStart } from "./domEditOverlayCrop";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { invertManualOffsetDragMatrix, type ManualOffsetDragMatrix } from "./manualOffsetDrag";
 import { flatVisibleRect, groupAwareRect } from "./previewOverlayRects";
+import { findPreviewElementForSelection, standInFor } from "./previewSelection";
 import { snapContextFromRects, type SnapContext } from "./snapTargetCollection";
 
 export interface PreviewGestureStart {
@@ -12,7 +19,11 @@ export interface PreviewGestureStart {
   /** Pointer px to translate px, as `measureManualOffsetDragScreenToOffsetMatrix`; null when unmeasured. */
   screenToOffset: ManualOffsetDragMatrix | null;
   /** GSAP's x/y when it owns the element's position, and whether a tween with a duration moves it. */
-  gsap: { x: number; y: number; moving: boolean } | null;
+  gsap: { x: number; y: number; moving: boolean; drawsTranslate?: true } | null;
+  gsapAt?: { x: number; y: number };
+  gsapRotation?: number | null;
+  grow?: { a: number; b: number; c: number; d: number };
+  cssRotation?: EditingGestureStart["cssRotation"];
 }
 
 export interface PreviewGestureStarts {
@@ -23,6 +34,23 @@ export interface PreviewGestureStarts {
 const startLayouts = new Map<string, PreviewGestureStart["layout"]>();
 
 export const gestureStartLayout = (handle: string) => startLayouts.get(handle) ?? null;
+
+type Grow = NonNullable<EditingGestureStart["grow"]>;
+
+function growOnOverlay(grow: Grow, sx: number, sy: number): Grow {
+  return { a: grow.a * sx, b: grow.b * sy, c: grow.c * sx, d: grow.d * sy };
+}
+
+export function measureLiveGrow(
+  overlayEl: HTMLDivElement,
+  iframe: HTMLIFrameElement,
+  element: HTMLElement,
+): Grow | null {
+  const scale = computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
+  const layout = { width: element.offsetWidth, height: element.offsetHeight };
+  const grow = scale && measureGrowResponse(element, layout);
+  return grow ? growOnOverlay(grow, scale.rootScaleX, scale.rootScaleY) : null;
+}
 
 /** Everything a gesture on `handles` reads from the frame, in one request; null when it cannot answer. */
 export async function measurePreviewGestureStart(
@@ -65,6 +93,10 @@ export async function measurePreviewGestureStart(
             layout: start.layout,
             screenToOffset: screenToOffset(start.move),
             gsap: start.gsap,
+            gsapAt: start.gsapAt,
+            gsapRotation: start.gsapRotation,
+            grow: start.grow ? growOnOverlay(start.grow, sx, sy) : undefined,
+            cssRotation: start.cssRotation,
           },
         },
     ),
@@ -73,4 +105,52 @@ export async function measurePreviewGestureStart(
       reply.snap.map((box) => flatVisibleRect(scale, box)),
     ),
   };
+}
+
+export type Shown = { selection: DomEditSelection; rect: OverlayRect; start?: PreviewGestureStart };
+export type OverChannel = { shown: Shown[]; snap?: SnapContext };
+
+export const UNANSWERED = "unanswered";
+export const PRESS_WAIT_MAX_MS = 10_000;
+
+export const unansweredMoveReason = (iframe: HTMLIFrameElement) =>
+  previewRootHasNoSize(iframe)
+    ? "This composition has no size, so Studio can't move its layers. Give its root a width and height."
+    : "The preview didn't answer, so Studio can't move this layer. Try again.";
+
+export async function askShownGestureStarts(
+  iframe: HTMLIFrameElement,
+  overlay: HTMLDivElement | null,
+  path: string | null,
+  selections: DomEditSelection[],
+  routeFromSnapshot = false,
+): Promise<OverChannel | null | typeof UNANSWERED> {
+  const found = await Promise.all(
+    selections.map((selection) => findPreviewElementForSelection(iframe, selection, path)),
+  );
+  if (found.includes(undefined)) return UNANSWERED;
+  const handles = found.map((element) => element?.handle);
+  if (!overlay || !handles.length || !handles.every(Boolean)) return null;
+  await whenPreviewStageSized(iframe, PRESS_WAIT_MAX_MS);
+  const [read, gsapRouteReadable] = await Promise.all([
+    measurePreviewGestureStart(iframe, overlay, handles as string[]),
+    routeFromSnapshot ? settleGsapSnapshot(iframe) : true,
+  ]);
+  if (!read || !gsapRouteReadable) return UNANSWERED;
+  const shown = selections.flatMap((selection, i) => {
+    const start = read.elements[i];
+    const onFrame = found[i];
+    if (!start || !onFrame) return [];
+    const element = standInFor(iframe, onFrame);
+    return [{ selection: { ...selection, handle: onFrame.handle, element }, ...start }];
+  });
+  return shown.length === selections.length ? { shown, snap: read.snap } : null;
+}
+
+export async function readCropFrameStart(
+  iframe: HTMLIFrameElement,
+  handle: string,
+): Promise<CropFrameStart | null> {
+  const start = (await previewGestureStart(iframe, [handle]))?.elements[0];
+  return start ? { layout: start.layout } : null;
 }

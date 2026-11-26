@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication
+import { htmlHasStudioReappliedMark } from "@hyperframes/core";
 export interface StudioManualEditsRenderScriptOptions {
   activeCompositionPath?: string | null;
 }
@@ -21,14 +22,7 @@ export function createStudioPositionSeekReapplyScript(): string {
   return positionSeekReapplyCall("false");
 }
 
-const POSITION_EDIT_MARKS = [
-  'data-hf-studio-path-offset="true"',
-  'data-hf-studio-box-size="true"',
-  'data-hf-studio-rotation="true"',
-  'data-hf-studio-motion="',
-];
-export const htmlHasStudioPositionEdits = (html: string) =>
-  POSITION_EDIT_MARKS.some((mark) => html.includes(mark));
+export const htmlHasStudioPositionEdits = htmlHasStudioReappliedMark;
 
 /** The reapply for a preview frame Studio cannot script; Studio wraps one it can script itself. */
 export function createSealedPreviewSeekReapplyScript(): string {
@@ -50,13 +44,16 @@ function studioPositionSeekReapplyRuntime(followFrames: boolean): void {
   const MOTION_TL_KEY = "studio-motion";
   const WRAPPED_PROP = "__hfStudioPositionSeekReapplyWrapped";
 
+  const sealedFrameArmsBeforeAnyEdit = followFrames;
   if (
+    !sealedFrameArmsBeforeAnyEdit &&
     !document.querySelector("[" + PATH_OFFSET_ATTR + '="true"]') &&
     !document.querySelector("[" + BOX_SIZE_ATTR + '="true"]') &&
     !document.querySelector("[" + ROTATION_ATTR + '="true"]') &&
     !document.querySelector("[" + MOTION_ATTR + "]")
   )
     return;
+  (window as unknown as Record<string, unknown>).__hfStudioSeekReapplyStarted = true;
 
   const splitTopLevelWhitespace = (value: string): string[] => {
     const parts: string[] = [];
@@ -425,9 +422,7 @@ function studioManualEditsRenderRuntime(
   const sourceFileForElement = (element: HTMLElement): string => {
     let current: HTMLElement | null = element;
     while (current) {
-      const sourceFile =
-        current.getAttribute("data-composition-file") ??
-        current.getAttribute("data-composition-src");
+      const sourceFile = current.getAttribute("data-composition-file");
       if (sourceFile) return sourceFile;
       current = current.parentElement;
     }

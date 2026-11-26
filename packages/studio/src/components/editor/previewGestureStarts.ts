@@ -7,7 +7,6 @@ import { findElementForSelection, type DomEditSelection } from "./domEditing";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import { resolveCenterResizeScale } from "./domEditResizeLocal";
 import {
-  PRESS_WAITING_ATTR,
   type WaitingPressState,
   type GestureKind,
   type ResizeHandle,
@@ -18,25 +17,43 @@ import {
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
 import { giveUpOnPreviewChange, isPreviewChanging } from "../../player/previewReloading";
-import { setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
+import { isStudioEditSaving, setStudioWaitingPressCancel } from "../../utils/studioPendingEdits";
 import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
-import { findPreviewElementForSelection } from "./previewSelection";
-import { measurePreviewGestureStart, type PreviewGestureStart } from "./previewGestureStartRead";
-import type { SnapContext } from "./snapTargetCollection";
+import { pressOutlineOf } from "./pressOutline";
+import {
+  askShownGestureStarts,
+  PRESS_WAIT_MAX_MS,
+  UNANSWERED,
+  unansweredMoveReason,
+  type OverChannel,
+  type Shown,
+} from "./previewGestureStartRead";
 
-type Shown = { selection: DomEditSelection; rect: OverlayRect; start?: PreviewGestureStart };
-type OverChannel = { shown: Shown[]; snap: SnapContext };
 type ShownStart = (
   e: React.PointerEvent<HTMLElement>,
   at: EditMoment,
-  waited: boolean,
+  findAgain: boolean,
   overChannel?: OverChannel,
 ) => boolean;
 
 const MAX_SETTLED_WAIT_FRAMES = 60;
-export const PRESS_WAIT_MAX_MS = 10_000;
+export { PRESS_WAIT_MAX_MS };
+
+const pollFirst = (
+  channel: HTMLIFrameElement | null,
+  press: WaitingPressState,
+  poll: () => void,
+) => {
+  if (channel) poll();
+  else press.frame = requestAnimationFrame(poll);
+};
+
+const namesReplacedPage = (iframe: HTMLIFrameElement | null, targets: DomEditSelection[]) => {
+  const live = iframe?.contentDocument;
+  return !!live && targets.some((target) => target.element.ownerDocument !== live);
+};
 
 export function createPreviewGestureStarts(
   opts: UseDomEditOverlayGesturesOptions,
@@ -51,10 +68,8 @@ export function createPreviewGestureStarts(
     setStudioWaitingPressCancel(press && (() => dropPress(press)));
   };
 
-  const clearWaitingMark = () => {
-    opts.boxRef.current?.removeAttribute(PRESS_WAITING_ATTR);
-    opts.rafPausedRef.current = false;
-  };
+  const outline = pressOutlineOf(opts);
+  const clearWaitingMark = outline.idle;
 
   /** Points the press queued right behind `press` at `next` instead. */
   const unlink = (press: WaitingPressState, next: WaitingPressState | null) => {
@@ -62,14 +77,17 @@ export function createPreviewGestureStarts(
       if (p.after === press) p.after = next;
   };
 
-  const endWaitingPress = (press: WaitingPressState | null = opts.waitingPressRef.current) => {
+  const endWaitingPress = (
+    press: WaitingPressState | null = opts.waitingPressRef.current,
+    keepMark = false,
+  ) => {
     for (let p = press; p && !p.ended; p = p.after) {
       p.ended = true;
       cancelAnimationFrame(p.frame);
     }
     if (press === opts.waitingPressRef.current) {
       opts.waitingPressRef.current = null;
-      clearWaitingMark();
+      if (!keepMark) clearWaitingMark();
     }
     // A press queued behind this one keeps waiting, on nothing that has ended.
     else if (press) unlink(press, null);
@@ -141,26 +159,6 @@ export function createPreviewGestureStarts(
     };
   };
 
-  /** An opaque frame's `selections` on the page it shows now and what a gesture on them starts from. */
-  const shownOverChannel = async (
-    iframe: HTMLIFrameElement,
-    selections: DomEditSelection[],
-  ): Promise<OverChannel | null> => {
-    const overlay = opts.overlayRef.current;
-    const path = opts.activeCompositionPathRef.current;
-    const found = await Promise.all(
-      selections.map((selection) => findPreviewElementForSelection(iframe, selection, path)),
-    );
-    const handles = found.map((element) => element?.handle);
-    if (!overlay || !handles.length || !handles.every(Boolean)) return null;
-    const read = await measurePreviewGestureStart(iframe, overlay, handles as string[]);
-    const shown = selections.flatMap((selection, i) => {
-      const element = read?.elements[i];
-      return element ? [{ selection: { ...selection, handle: handles[i] }, ...element }] : [];
-    });
-    return read && shown.length === selections.length ? { shown, snap: read.snap } : null;
-  };
-
   // A press on the page a reload is replacing would edit it by its old rules: it starts on the new page instead.
   const startOnShownPreview = (
     e: React.PointerEvent<HTMLElement>,
@@ -168,18 +166,20 @@ export function createPreviewGestureStarts(
     start: ShownStart,
     draw: WaitingPressState["draw"] = null,
     targets: () => DomEditSelection[] = () => [],
+    routeFromSnapshot = false,
   ): boolean => {
     const at = playheadMoment();
     const iframe = opts.iframeRef.current;
     const channel = iframe && previewFrameOpaque(iframe) ? iframe : null;
     if (!channel && !isPreviewChanging() && !opts.waitingPressRef.current)
-      return start(e, at, false);
+      return start(e, at, namesReplacedPage(iframe, targets()));
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     // The press already holds the pointer, which may be up by the time the gesture starts.
     const held = { setPointerCapture() {} };
     const down = { ...e, currentTarget: held, preventDefault() {}, stopPropagation() {} };
+    const before = opts.waitingPressRef.current;
     const press: WaitingPressState = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -188,12 +188,17 @@ export function createPreviewGestureStarts(
       frame: 0,
       moved: null,
       released: null,
-      after: opts.waitingPressRef.current,
+      after: before,
       ended: false,
+      refused: false,
+      drawBack: () => {
+        if (before?.refused) before.drawBack();
+        else draw?.(0, 0);
+      },
     };
     opts.waitingPressRef.current = press;
-    opts.boxRef.current?.setAttribute(PRESS_WAITING_ATTR, "true");
-    opts.rafPausedRef.current = true;
+    const onSave = !!press.after || isPreviewChanging() || isStudioEditSaving();
+    outline.waitOnSave(onSave ? "save" : "frame");
     let shownFrames = 0;
     let settledFrames = 0;
     const since = performance.now();
@@ -207,23 +212,38 @@ export function createPreviewGestureStarts(
       settledFrames = settled ? settledFrames + 1 : 0;
       return elements.length;
     };
-    // An opaque frame's pressed elements are found over its channel, once the preview settles.
-    let overChannel: OverChannel | null | undefined;
-    let asked = false;
-    const channelStep = (frame: HTMLIFrameElement): "wait" | "lost" | "run" => {
+    // An opaque frame's pressed elements are found over the channel of the frame shown once the preview settles.
+    let overChannel: OverChannel | null | typeof UNANSWERED | undefined;
+    let askedOf: HTMLIFrameElement | null = null;
+    let asks = 0;
+    const askShownFrame = () => {
+      const frame = opts.iframeRef.current ?? channel!;
+      if (askedOf === frame || asks >= 2) return;
+      [askedOf, asks, overChannel] = [frame, asks + 1, undefined];
+      void askShownGestureStarts(
+        frame,
+        opts.overlayRef.current,
+        opts.activeCompositionPathRef.current,
+        targets(),
+        routeFromSnapshot,
+      ).then((answer) => {
+        if (askedOf !== frame) return;
+        overChannel = answer;
+        pollNow();
+      });
+    };
+    const channelStep = (): "wait" | "lost" | "run" | "unanswered" => {
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
       if (overdue) giveUpOnPreviewChange();
       if (isPreviewChanging() && !overdue) return "wait";
-      if (!asked) {
-        asked = true;
-        void shownOverChannel(frame, targets()).then((shown) => (overChannel = shown));
-      }
+      askShownFrame();
       if (overChannel === undefined) return "wait";
+      if (overChannel === UNANSWERED) return "unanswered";
       return overChannel ? "run" : "lost";
     };
-    const waitStep = (): "wait" | "lost" | "run" => {
+    const waitStep = (): "wait" | "lost" | "run" | "unanswered" => {
       if (press.after && !press.after.ended) return "wait";
-      if (channel) return channelStep(channel);
+      if (channel) return channelStep();
       const found = countFrame();
       // A change that never ends (a save with no reply) would hold every press: run on the page shown.
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
@@ -232,6 +252,10 @@ export function createPreviewGestureStarts(
       if (found === 0 || settledFrames > MAX_SETTLED_WAIT_FRAMES) return "lost";
       return overdue || shownFrames >= 2 ? "run" : "wait";
     };
+    const startsFrom = (step: "lost" | "run" | "unanswered"): OverChannel | undefined | false => {
+      if (step !== "run") return false;
+      return typeof overChannel === "object" && overChannel ? overChannel : undefined;
+    };
     const poll = () => {
       if (press.ended) return;
       const step = waitStep();
@@ -239,13 +263,30 @@ export function createPreviewGestureStarts(
         press.frame = requestAnimationFrame(poll);
         return;
       }
-      endWaitingPress(press);
+      endWaitingPress(press, !!channel);
+      const read = startsFrom(step);
+      if (read === false) sayWhyNotStarted(step);
+      outline.replayEnded(replay(read) && channel ? opts.iframeRef.current : null);
+    };
+    const pollNow = () => {
+      cancelAnimationFrame(press.frame);
+      poll();
+    };
+    const replay = (read: ReturnType<typeof startsFrom>): boolean => {
       const pointerDown = down as unknown as React.PointerEvent<HTMLElement>;
-      if (step === "lost" || !start(pointerDown, at, true, overChannel ?? undefined)) return;
+      if (read === false || !start(pointerDown, at, true, read)) return false;
       if (press.moved) moveActiveGesture(press.moved);
       if (press.released) releaseActiveGesture(press.released);
+      return true;
     };
-    press.frame = requestAnimationFrame(poll);
+    const sayWhyNotStarted = (step: "lost" | "run" | "unanswered") => {
+      if (step !== "unanswered" || !channel) return;
+      press.refused = true;
+      press.drawBack();
+      const pressed = opts.selectionRef.current;
+      if (pressed) opts.onBlockedMoveRef.current(pressed, unansweredMoveReason(channel));
+    };
+    pollFirst(channel, press, poll);
     return true;
   };
 
@@ -275,8 +316,8 @@ export function createPreviewGestureStarts(
           const selection = shownSelection(item.selection);
           return selection ? [selection.element] : [];
         }),
-      (pressed, at, waited, overChannel) => {
-        if (!waited) return _startGroupDrag(pressed, opts, at);
+      (pressed, at, findAgain, overChannel) => {
+        if (!findAgain) return _startGroupDrag(pressed, opts, at);
         if (overChannel) {
           const measured = items.map((item, i) => ({ ...item, ...overChannel.shown[i]! }));
           return _startGroupDrag(
@@ -324,21 +365,19 @@ export function createPreviewGestureStarts(
   ) => {
     // A replay edits what was pressed, though another element may be selected by then.
     const target = options?.selection ?? opts.selectionRef.current;
+    const pressedRect = opts.overlayRectRef.current;
     let draw: WaitingPressState["draw"] = null;
-    if (kind === "drag") draw = drawPressedBox(opts.overlayRectRef.current);
+    if (kind === "drag") draw = drawPressedBox(pressedRect);
     if (kind === "resize")
-      draw = drawResizedBox(
-        opts.overlayRectRef.current,
-        options?.resizeCorner ?? { x: e.clientX, y: e.clientY },
-      );
+      draw = drawResizedBox(pressedRect, options?.resizeCorner ?? { x: e.clientX, y: e.clientY });
     return startOnShownPreview(
       e,
       () => {
         const shown = target && shownSelection(target);
         return shown ? [shown.element] : [];
       },
-      (pressed, at, waited, overChannel) => {
-        if (!waited) return _startGesture(kind, pressed, opts, { ...options, at });
+      (pressed, at, findAgain, overChannel) => {
+        if (!findAgain) return _startGesture(kind, pressed, opts, { ...options, at });
         const shown = overChannel ? overChannel.shown[0] : shownOnPage(target);
         return (
           !!shown &&
@@ -355,6 +394,7 @@ export function createPreviewGestureStarts(
       },
       draw,
       () => (target ? [target] : []),
+      kind === "resize",
     );
   };
 

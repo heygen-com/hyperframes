@@ -1,4 +1,4 @@
-import { DOMParser } from "linkedom";
+import { DOMParser } from "@hyperframes/parsers/linkedom";
 import { parse, walk } from "css-tree";
 import { loadSharp } from "../utils/optionalPackages.js";
 
@@ -75,9 +75,14 @@ function passiveSvg(bytes: Buffer, embedded: Set<string>): boolean {
   });
 }
 
+export function passiveInlineSvg(markup: string): boolean {
+  return passiveSvg(Buffer.from(markup, "utf8"), new Set());
+}
+
 function passiveSvgAttribute(name: string, value: string, embedded: Set<string>): boolean {
   if (name.startsWith("on") || name === "xml:base") return false;
   if (["href", "xlink:href", "src"].includes(name)) return localImageReference(value, embedded);
+  if (/:(?:href|src)$/.test(name)) return false;
   if (name === "style") return passiveCss(value, "declarationList", embedded);
   return !/url\s*\(|\\/i.test(value) || passiveCss(value, "value", embedded);
 }

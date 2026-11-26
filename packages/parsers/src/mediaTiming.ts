@@ -79,3 +79,14 @@ export function cutToHostSlots(
     return { start, end: Math.max(start, Math.min(kept.end, host.end)) };
   }, span);
 }
+
+export function wrapLoopedSourceTime(
+  target: number,
+  mediaStart: number,
+  sourceDuration: number,
+): number {
+  const loopLength = sourceDuration - mediaStart;
+  return loopLength > 0 && target >= sourceDuration
+    ? mediaStart + ((target - mediaStart) % loopLength)
+    : target;
+}

@@ -1,4 +1,4 @@
-import { terminalLines } from "@hyperframes/core";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { basename, extname, join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -104,11 +104,11 @@ function printHuman(r: DiffResult) {
     );
   if (r.duration)
     console.log(
-      `   duration: original ${r.duration.reference} s, yours ${r.duration.yours} s${r.duration.pass === null ? ` (${r.duration.note})` : r.duration.pass ? "" : " (differ)"}`,
+      `   duration: original ${r.duration.reference} s, yours ${r.duration.yours} s${r.duration.pass === null ? ` (${terminalText(String(r.duration.note))})` : r.duration.pass ? "" : " (differ)"}`,
     );
   if (r.sound)
     console.log(
-      `   sound: ${"offset_ms" in r.sound ? (r.sound.offset_ms === null ? (r.sound.note ?? "not aligned") : `${r.sound.offset_ms} ms off`) : `original ${r.sound.original ? "has" : "has no"} sound, yours ${r.sound.yours ? "has" : "has no"}`}${r.sound.pass ? "" : " (fails)"}`,
+      `   sound: ${"offset_ms" in r.sound ? (r.sound.offset_ms === null ? terminalText(r.sound.note ?? "not aligned") : `${r.sound.offset_ms} ms off`) : `original ${r.sound.original ? "has" : "has no"} sound, yours ${r.sound.yours ? "has" : "has no"}`}${r.sound.pass ? "" : " (fails)"}`,
     );
   if (r.components)
     console.log(
@@ -117,12 +117,12 @@ function printHuman(r: DiffResult) {
   if (r.person) {
     const g = r.person.gates;
     const mark = (v: boolean | null, failed: string[]) =>
-      v === null ? "unmeasured" : v ? "ok" : `fails in ${failed.join(", ")}`;
+      v === null ? "unmeasured" : v ? "ok" : `fails in ${terminalText(failed.join(", "))}`;
     console.log(
       `   person: framing ${mark(g.framing, r.person.failed.framing)}, text in the clip ${mark(g.text, r.person.failed.text)}, lips ${mark(g.sync, r.person.failed.sync)}; reported: motion ×${r.person.energy ?? "?"}, ${r.person.shots_at_cuts.at_cuts} of ${r.person.shots_at_cuts.total} clips start at a cut${r.person.shots_at_cuts.cuts_without_shot.length ? `, no new clip at ${r.person.shots_at_cuts.cuts_without_shot.join(", ")} s` : ""}`,
     );
   }
-  console.log(`   every frame: ${r.frames}`);
+  console.log(`   every frame: ${terminalText(String(r.frames))}`);
   for (const s of r.segments ?? []) {
     const state = s.pass === null ? c.dim("—") : s.pass ? c.success("✓") : c.error("✗");
     const detail =
@@ -136,7 +136,7 @@ function printHuman(r: DiffResult) {
       (s.note ?? "");
     const region = s.regenerated ? `; person in ${s.regenerated.roi.join(",")}` : "";
     console.log(
-      `   ${state} ${s.id} ${s.window[0]}–${s.window[1]} s ${s.pixels}${s.regenerated ? " outside the region" : ""}: ${detail}${region}`,
+      `   ${state} ${terminalText(s.id)} ${s.window[0]}–${s.window[1]} s ${s.pixels}${s.regenerated ? " outside the region" : ""}: ${terminalText(detail)}${region}`,
     );
   }
   for (const d of r.drawn ?? []) {
@@ -146,12 +146,12 @@ function printHuman(r: DiffResult) {
         ? "no ink found in the box (crop it tight around the letters)"
         : `score ${d.score} / p05 ${d.p05}, off by ${d.offset!.join(",")} px${d.ink === undefined ? "" : `, ink ×${d.ink}`}`;
     console.log(
-      `   ${state} ${d.id} ${d.box.join(",")} ${d.window[0]}–${d.window[1]} s: ${detail}`,
+      `   ${state} ${terminalText(d.id)} ${d.box.join(",")} ${d.window[0]}–${d.window[1]} s: ${detail}`,
     );
   }
   if (r.layer)
     console.log(
-      `   layer ${r.layer.selector}: benefit median ${r.layer.benefit_median ?? "—"} (1 matches the original, 0 is no better than without it)`,
+      `   layer ${terminalText(r.layer.selector)}: benefit median ${r.layer.benefit_median ?? "—"} (1 matches the original, 0 is no better than without it)`,
     );
   for (const f of r.layer?.frames ?? []) {
     const state =
@@ -166,11 +166,11 @@ function printHuman(r: DiffResult) {
         : f.benefit === null
           ? f.note
           : `benefit ${f.benefit}, ${f.instruction} (box ${f.bbox!.join(",")})`;
-    console.log(`   ${state} ${f.t} s: ${detail}`);
+    console.log(`   ${state} ${f.t} s: ${terminalText(String(detail))}`);
   }
-  for (const w of r.warnings) console.log(`   ${c.warn("⚠")} ${w}`);
-  if (r.sheet) console.log(`   sheet ${r.sheet}`);
-  if (r.sbs) console.log(`   side by side ${r.sbs}`);
+  for (const w of r.warnings) console.log(`   ${c.warn("⚠")} ${terminalLines(w)}`);
+  if (r.sheet) console.log(`   sheet ${terminalText(r.sheet)}`);
+  if (r.sbs) console.log(`   side by side ${terminalText(r.sbs)}`);
 }
 
 export default defineCommand({
@@ -281,7 +281,7 @@ export default defineCommand({
         sbs: args.sbs === true,
         outDir: outDir(args.out, join("diff", stem)),
         timeoutMs: number(args.timeout, "--timeout"),
-        log: (message) => console.error(message),
+        log: (message) => console.error(terminalLines(message)),
       });
       if (json) console.log(formatJson(withMeta({ ok: true, ...result })));
       else printHuman(result);

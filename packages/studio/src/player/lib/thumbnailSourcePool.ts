@@ -1,5 +1,5 @@
 import type { Input, InputVideoTrack } from "mediabunny";
-import { mediaUrlSourceOptions } from "./mediaFetch";
+import { mediaUrlSourceOptions, selfContainedFormats } from "./mediaFetch";
 
 export interface SourceInfo {
   aspect: number;
@@ -72,7 +72,7 @@ async function open(source: string, pooled: () => PooledSource): Promise<OpenedS
   const options = mediaUrlSourceOptions("thumbnail");
   const input = new mediabunny.Input({
     source: new mediabunny.UrlSource(source, options),
-    formats: mediabunny.ALL_FORMATS,
+    formats: selfContainedFormats(mediabunny),
   });
   entry.input = input;
   entry.cancelReads = options.cancelReads;

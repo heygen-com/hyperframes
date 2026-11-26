@@ -12,6 +12,7 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
+import { terminalLines } from "@hyperframes/core";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { basename, join, extname } from "node:path";
 import { homedir, tmpdir } from "node:os";
@@ -35,6 +36,7 @@ import { parseWhisperJson, type Word } from "./normalize.js";
 import { emitWords } from "./progress.js";
 import { probeAudio } from "../audio/analysis/decode.js";
 import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 
 export { initialModelForLanguage };
 
@@ -158,24 +160,35 @@ export function resolveAudioPreparationTimeoutMs(durationSeconds: number | null)
   );
 }
 
+function probeText(ffprobePath: string, args: string[]): string {
+  try {
+    return execFileSync(ffprobePath, args, {
+      encoding: "utf-8",
+      timeout: 10_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (err) {
+    const said = String((err as { stderr?: unknown }).stderr ?? "").trim();
+    if (said) console.error(terminalLines(said));
+    throw err;
+  }
+}
+
 export function getMediaDurationSeconds(filePath: string): number | null {
   try {
     const ffprobePath = findFFprobe();
     if (!ffprobePath) return null;
-    const raw = execFileSync(
-      ffprobePath,
-      [
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        "--",
-        filePath,
-      ],
-      { encoding: "utf-8", timeout: 10_000 },
-    );
+    const raw = probeText(ffprobePath, [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      ...mediaInputArgs(ffprobePath, filePath),
+      "--",
+      filePath,
+    ]);
     const durationSeconds = Number.parseFloat(raw.trim());
     return Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : null;
   } catch {
@@ -368,6 +381,7 @@ async function extractAudio(videoPath: string, signal?: AbortSignal): Promise<st
   await runFfmpeg(
     ffmpegPath,
     [
+      ...mediaInputArgs(ffmpegPath, videoPath),
       "-i",
       videoPath,
       "-map",
@@ -408,11 +422,16 @@ function isWav16kMono(filePath: string): boolean {
   try {
     const ffprobePath = findFFprobe();
     if (!ffprobePath) return false;
-    const raw = execFileSync(
-      ffprobePath,
-      ["-v", "quiet", "-print_format", "json", "-show_streams", "--", filePath],
-      { encoding: "utf-8", timeout: 10_000 },
-    );
+    const raw = probeText(ffprobePath, [
+      "-v",
+      "quiet",
+      "-print_format",
+      "json",
+      "-show_streams",
+      ...mediaInputArgs(ffprobePath, filePath),
+      "--",
+      filePath,
+    ]);
     const parsed: { streams?: AudioStream[] } = JSON.parse(raw);
     const audio = (parsed.streams ?? []).filter((s) => s.codec_type === "audio");
     const index = decodableAudioStream(audio);
@@ -438,7 +457,17 @@ async function prepareAudio(audioPath: string, signal?: AbortSignal): Promise<st
   const wavPath = tempWavPath();
   await runFfmpeg(
     ffmpegPath,
-    ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav"],
+    [
+      ...mediaInputArgs(ffmpegPath, audioPath),
+      "-i",
+      audioPath,
+      "-ar",
+      "16000",
+      "-ac",
+      "1",
+      "-f",
+      "wav",
+    ],
     wavPath,
     resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
     signal,

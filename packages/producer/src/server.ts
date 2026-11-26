@@ -19,16 +19,23 @@ import {
   type ExpectedOutputDimensions,
 } from "./services/render/outputDimensions.js";
 import {
+  type BigIntStats,
+  closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
+  openSync,
   statSync,
   mkdtempSync,
   writeFileSync,
   rmSync,
   createReadStream,
 } from "node:fs";
-import { resolve, dirname, join } from "node:path";
-import { tmpdir } from "node:os";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { basename, resolve, dirname, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
 import { parseArgs } from "node:util";
 import { isIP } from "node:net";
 import crypto from "node:crypto";
@@ -41,8 +48,10 @@ import {
   referenceBackgroundResult,
 } from "@hyperframes/engine";
 import { isSafePath } from "@hyperframes/core/safe-path";
+import { foreignWritablePath } from "@hyperframes/core/cache-dir";
 import {
   RenderCancelledError,
+  EscapedRejectionError,
   createRenderJob,
   executeRenderJob,
   resolveRenderDebugDir,
@@ -76,7 +85,7 @@ export interface HandlerOptions {
   logger?: ProducerLogger;
   /** Extract or generate a request ID. Defaults to x-request-id header or random UUID. */
   getRequestId?: (c: Context) => string;
-  /** Directory for rendered output files. Defaults to PRODUCER_RENDERS_DIR or /tmp. */
+  /** Directory for rendered output files. Defaults to PRODUCER_RENDERS_DIR or a new private temp folder. */
   rendersDir?: string;
   /** Prefix for output URLs in responses. Default: "/outputs". */
   outputUrlPrefix?: string;
@@ -92,7 +101,7 @@ export interface HandlerOptions {
   projectsDir?: string;
   /** With `confineRequests`: let requests set `debug: true`, which keeps work dirs on disk. Defaults to PRODUCER_ALLOW_DEBUG=1. */
   allowDebug?: boolean;
-  /** Bearer token `createProducerApp` requires on every route but /health. Defaults to PRODUCER_AUTH_TOKEN. */
+  /** Bearer token required on every route but /health. Defaults to PRODUCER_AUTH_TOKEN; without one no caller is checked. */
   authToken?: string;
 }
 
@@ -101,6 +110,8 @@ export interface ServerOptions extends HandlerOptions {
   port?: number;
   /** Address to listen on. Default: PRODUCER_HOST or 127.0.0.1. A non-loopback address requires `authToken`. */
   hostname?: string;
+  /** Where a token made for a run without `authToken` is written. Default: PRODUCER_AUTH_TOKEN_FILE or ~/.hyperframes/producer/<port>.token. */
+  authTokenFile?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -392,18 +403,45 @@ function resolvePreparedRenderOutput(
   rendersDir: string,
   log: ProducerLogger,
   confineOutput: boolean,
-): { input: RenderInput; cleanupProjectDir?: string; absoluteOutputPath: string } {
+): {
+  input: RenderInput;
+  cleanupProjectDir?: string;
+  absoluteOutputPath: string;
+  serverNamed: boolean;
+} {
   const { input, cleanupProjectDir } = prepared;
-  const absoluteOutputPath = resolveOutputPath(input.projectDir, input.outputPath, rendersDir, log);
+  const serverNamed = input.outputPath == null;
+  const outputCandidate =
+    input.outputPath ??
+    join(rendersDir, `${basename(resolve(input.projectDir))}-${crypto.randomUUID()}.mp4`);
+  const absoluteOutputPath = resolveOutputPath(input.projectDir, outputCandidate, rendersDir, log);
+  const outputDir = dirname(absoluteOutputPath);
   if (confineOutput) {
-    mkdirSync(rendersDir, { recursive: true });
+    mkdirSync(rendersDir, { recursive: true, mode: SERVER_FOLDER_MODE });
     if (!isSafePath(rendersDir, absoluteOutputPath)) {
       throw new Error("outputPath must be inside the renders directory");
     }
+    const foreign = folderAnotherAccountCanChange(outputDir, rendersDir);
+    if (foreign) {
+      throw new Error(
+        `outputPath must be in a folder only this server's account can change; another account can change ${foreign}`,
+      );
+    }
   }
-  const outputDir = dirname(absoluteOutputPath);
-  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-  return { input, cleanupProjectDir, absoluteOutputPath };
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true, mode: SERVER_FOLDER_MODE });
+  return { input, cleanupProjectDir, absoluteOutputPath, serverNamed };
+}
+
+const STICKY_BIT = 0o1000;
+/** Never group- or world-writable, whatever the umask, or the folder check below refuses the server's own folders. */
+const SERVER_FOLDER_MODE = 0o755;
+
+/** A shared sticky root such as /tmp is allowed; any folder below it must be this account's alone. */
+function folderAnotherAccountCanChange(dir: string, rendersDir: string): string | undefined {
+  const foreign = foreignWritablePath(dir, rendersDir);
+  const stickyRoot =
+    foreign === resolve(rendersDir) && (lstatSync(foreign).mode & STICKY_BIT) !== 0;
+  return stickyRoot ? undefined : foreign;
 }
 
 type PreparedRenderJob =
@@ -412,6 +450,7 @@ type PreparedRenderJob =
       input: RenderInput;
       cleanupProjectDir?: string;
       absoluteOutputPath: string;
+      serverNamed: boolean;
     }
   | { error: string };
 
@@ -646,35 +685,88 @@ function resolveOutputPath(
 // ---------------------------------------------------------------------------
 interface OutputArtifact {
   path: string;
+  identity: string | undefined;
+  /** A server-named file is held open until its token is forgotten, so its inode number cannot pass on. */
+  pin: number | undefined;
+  /** The server chose the name: the file goes once downloaded or expired. A caller's outputPath stays. */
+  serverNamed: boolean;
   expiresAtMs: number;
 }
 
-function createArtifactStore(ttlMs: number) {
+function createArtifactStore(ttlMs: number, log: ProducerLogger) {
   const artifacts = new Map<string, OutputArtifact>();
+
+  const forget = (token: string): void => {
+    const artifact = artifacts.get(token);
+    if (!artifact) return;
+    artifacts.delete(token);
+    if (artifact.pin !== undefined) closeSync(artifact.pin);
+    if (!artifact.serverNamed) return;
+    try {
+      rmSync(artifact.path, { force: true });
+    } catch (error) {
+      log.warn("Failed to remove output artifact", {
+        path: artifact.path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
 
   const cleanup = setInterval(() => {
     const now = Date.now();
     for (const [token, artifact] of artifacts.entries()) {
-      if (artifact.expiresAtMs <= now) {
-        artifacts.delete(token);
-      }
+      if (artifact.expiresAtMs <= now) forget(token);
     }
   }, 60_000);
   cleanup.unref();
 
   return {
-    register(path: string): string {
+    register(path: string, serverNamed: boolean): string {
+      // A caller's file is its to delete after reading it from disk, so only a server-named file is held open.
+      const pin = serverNamed ? openNoFollow(path) : undefined;
+      const stat =
+        pin === undefined
+          ? lstatSync(path, { bigint: true, throwIfNoEntry: false })
+          : fstatSync(pin, { bigint: true });
+      const identity = stat && fileIdentity(stat);
       const token = crypto.randomUUID();
-      artifacts.set(token, { path, expiresAtMs: Date.now() + ttlMs });
+      artifacts.set(token, { path, identity, pin, serverNamed, expiresAtMs: Date.now() + ttlMs });
       return token;
     },
     get(token: string): OutputArtifact | undefined {
-      return artifacts.get(token);
+      const artifact = artifacts.get(token);
+      if (artifact && artifact.expiresAtMs <= Date.now()) {
+        forget(token);
+        return undefined;
+      }
+      return artifact;
     },
-    delete(token: string) {
-      artifacts.delete(token);
-    },
+    forget,
   };
+}
+
+function openArtifact(artifact: OutputArtifact): number | undefined {
+  const fd = openNoFollow(artifact.path);
+  if (fd === undefined) return undefined;
+  const stat = fstatSync(fd, { bigint: true });
+  if (stat.isFile() && fileIdentity(stat) === artifact.identity) return fd;
+  closeSync(fd);
+  return undefined;
+}
+
+/** Undefined when nothing, or a link, is at the name; any other failure to open is a real error. */
+function openNoFollow(path: string): number | undefined {
+  try {
+    return openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ELOOP" || code === "ENOTDIR") return undefined;
+    throw error;
+  }
+}
+
+function fileIdentity(stat: BigIntStats): string {
+  return `${stat.dev}:${stat.ino}`;
 }
 
 function cleanupTempDir(dir: string | undefined, log: ProducerLogger): void {
@@ -824,18 +916,21 @@ export interface RenderHandlers {
 /**
  * Create route handler functions for the producer server.
  *
- * These can be mounted on any Hono app at any path prefix.
+ * Mount them on any Hono app at any path prefix, behind your own authentication: they check no caller.
  */
 export function createRenderHandlers(options: HandlerOptions = {}): RenderHandlers {
   const log = options.logger ?? defaultLogger;
   const getRequestId =
     options.getRequestId ?? ((c: Context) => c.req.header("x-request-id") || crypto.randomUUID());
   const outputUrlPrefix = options.outputUrlPrefix ?? "/outputs";
-  const rendersDir = options.rendersDir ?? process.env.PRODUCER_RENDERS_DIR ?? "/tmp";
+  const rendersDir =
+    options.rendersDir ??
+    process.env.PRODUCER_RENDERS_DIR ??
+    mkdtempSync(join(tmpdir(), "hyperframes-renders-"));
   const policy = options.confineRequests ? resolveRenderRequestPolicy(options) : undefined;
   const artifactTtlMs =
     options.artifactTtlMs ?? Number(process.env.PRODUCER_OUTPUT_ARTIFACT_TTL_MS || 15 * 60 * 1000);
-  const store = createArtifactStore(artifactTtlMs);
+  const store = createArtifactStore(artifactTtlMs, log);
   const maxConcurrentRenders =
     options.maxConcurrentRenders ?? Number(process.env.PRODUCER_MAX_CONCURRENT_RENDERS || 2);
   const renderSemaphore = new Semaphore(maxConcurrentRenders);
@@ -913,7 +1008,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     if ("error" in preparedJob) {
       return c.json({ success: false, requestId, error: preparedJob.error }, 400);
     }
-    const { job, input, cleanupProjectDir, absoluteOutputPath } = preparedJob;
+    const { job, input, cleanupProjectDir, absoluteOutputPath, serverNamed } = preparedJob;
 
     const release = await renderSemaphore.acquire();
 
@@ -925,16 +1020,19 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     });
 
     try {
-      await executeRenderJob(
-        job,
-        input.projectDir,
-        absoluteOutputPath,
-        createBlockingProgressReporter(log, requestId),
+      await runInRenderScope(requestId, new AbortController(), (signal) =>
+        executeRenderJob(
+          job,
+          input.projectDir,
+          absoluteOutputPath,
+          createBlockingProgressReporter(log, requestId),
+          signal,
+        ),
       );
 
       const fileSize = outputFileSize(absoluteOutputPath);
       const durationMs = Date.now() - t0;
-      const outputToken = store.register(absoluteOutputPath);
+      const outputToken = store.register(absoluteOutputPath, serverNamed);
       const outputUrl = `${outputUrlPrefix}/${outputToken}`;
       log.info("render completed", {
         requestId,
@@ -1012,7 +1110,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         });
         return;
       }
-      const { job, input, cleanupProjectDir, absoluteOutputPath } = preparedJob;
+      const { job, input, cleanupProjectDir, absoluteOutputPath, serverNamed } = preparedJob;
 
       log.info("render-stream started", { requestId, projectDir: input.projectDir });
       const abortController = new AbortController();
@@ -1036,17 +1134,13 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const release = await renderSemaphore.acquire();
 
       try {
-        await executeRenderJob(
-          job,
-          input.projectDir,
-          absoluteOutputPath,
-          reportProgress,
-          abortController.signal,
+        await runInRenderScope(requestId, abortController, (signal) =>
+          executeRenderJob(job, input.projectDir, absoluteOutputPath, reportProgress, signal),
         ).finally(release);
         clearInterval(keepalive);
 
         const fileSize = outputFileSize(absoluteOutputPath);
-        const outputToken = store.register(absoluteOutputPath);
+        const outputToken = store.register(absoluteOutputPath, serverNamed);
         const outputUrl = `${outputUrlPrefix}/${outputToken}`;
         log.info("render-stream completed", { requestId, fileSize, perf: job.perfSummary ?? null });
         await stream.writeSSE({
@@ -1092,15 +1186,19 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     if (!artifact) {
       return c.json({ success: false, error: "Output artifact not found or expired" }, 404);
     }
-    if (!existsSync(artifact.path)) {
-      store.delete(token);
+    const fd = openArtifact(artifact);
+    if (fd === undefined) {
+      store.forget(token);
       return c.json({ success: false, error: "Output artifact file missing" }, 404);
     }
-    const stats = statSync(artifact.path);
-    return new Response(createReadStream(artifact.path) as unknown as ReadableStream, {
+    const { size } = fstatSync(fd);
+    const body = createReadStream("", { fd });
+    // Removed once read to the end; a read that stops early leaves it until the token expires.
+    if (artifact.serverNamed) body.once("end", () => store.forget(token));
+    return new Response(body as unknown as ReadableStream, {
       headers: {
         "content-type": "video/mp4",
-        "content-length": String(stats.size),
+        "content-length": String(size),
         "cache-control": "no-store",
       },
     });
@@ -1243,9 +1341,58 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
   return app;
 }
 
+const renderScope = new AsyncLocalStorage<{ requestId: string; fail: (err: Error) => void }>();
+
+/** Runs a render so a rejection nobody handled inside it fails that render only. */
+export function runInRenderScope<T>(
+  requestId: string,
+  abortController: AbortController,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const fail = (err: Error) => abortController.abort(new EscapedRejectionError(err));
+  return renderScope.run({ requestId, fail }, () => run(abortController.signal));
+}
+
+export function onEscapedRejection(reason: unknown, log: ProducerLogger): void {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  const scope = renderScope.getStore();
+  log.error("Unhandled promise rejection", {
+    requestId: scope?.requestId ?? null,
+    error: err.message,
+    stack: err.stack,
+  });
+  scope?.fail(err);
+}
+
 // ---------------------------------------------------------------------------
 // Standalone server
 // ---------------------------------------------------------------------------
+
+interface ServerAuth {
+  token: string;
+  generatedFile?: string;
+}
+
+function serverAuth(options: ServerOptions, hostname: string, port: number): ServerAuth {
+  const configured = resolveAuthToken(options);
+  if (configured) return { token: configured };
+  if (!isLoopbackHostname(hostname)) {
+    throw new Error(
+      `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
+    );
+  }
+  const file = resolve(
+    options.authTokenFile?.trim() ||
+      process.env.PRODUCER_AUTH_TOKEN_FILE?.trim() ||
+      join(homedir(), ".hyperframes", "producer", `${port}.token`),
+  );
+  const token = crypto.randomBytes(32).toString("base64url");
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+  // Removed first so the new file is created with its own mode, never through a link or an older file's mode.
+  rmSync(file, { force: true });
+  writeFileSync(file, `${token}\n`, { flag: "wx", mode: 0o600 });
+  return { token, generatedFile: file };
+}
 
 /**
  * Start the producer HTTP server with graceful shutdown.
@@ -1254,16 +1401,17 @@ export function startServer(options: ServerOptions = {}) {
   const port = options.port ?? parseInt(process.env.PRODUCER_PORT ?? "9847", 10);
   const hostname = options.hostname || process.env.PRODUCER_HOST || "127.0.0.1";
   const log = options.logger ?? defaultLogger;
-  if (!isLoopbackHostname(hostname) && !resolveAuthToken(options)) {
-    throw new Error(
-      `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
-    );
-  }
-  const app = createProducerApp(options);
+  const auth = serverAuth(options, hostname, port);
+  const app = createProducerApp({ ...options, authToken: auth.token });
 
   const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
     const address = info.family === "IPv6" ? `[${info.address}]` : info.address;
     log.info(`Listening on http://${address}:${info.port}`);
+    if (auth.generatedFile) {
+      log.info(
+        `No auth token was set, so this run made one: send "Authorization: Bearer <token>" with the token in ${auth.generatedFile}`,
+      );
+    }
   });
 
   // Disable timeouts for long renders
@@ -1299,6 +1447,7 @@ export function startServer(options: ServerOptions = {}) {
 
   async function shutdown(signal: string) {
     log.info(`Received ${signal}, shutting down`);
+    if (auth.generatedFile) rmSync(auth.generatedFile, { force: true });
     const { drainBrowserPool } = await import("@hyperframes/engine");
     await drainBrowserPool().catch(() => {});
     // Bounded await: if the worker hasn't come online within 1.5s of
@@ -1323,6 +1472,7 @@ export function startServer(options: ServerOptions = {}) {
   }
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("unhandledRejection", (reason) => onEscapedRejection(reason, log));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
   return server;

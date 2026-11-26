@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { usePlayerStore } from "../player/store/playerStore";
 import { fitsBeatAnalysis, resolveBeatSourceTrack } from "../utils/timelineInspector";
-import { analyzeMusicFromUrl } from "@hyperframes/core/beats";
+import { analyzeMusicFromSignal, type MusicBeatAnalysis } from "@hyperframes/core/beats";
+import { analysisRateOf, readPcmChannels } from "../utils/projectPcm";
 import { whenTimelineIdle } from "../player/components/timelineMotion";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { mergeUserBeats } from "../utils/beatEditing";
@@ -16,12 +17,12 @@ import {
 
 // Module-level cache so the same URL isn't re-decoded/analyzed on re-mount.
 // Capped so decoded PCM buffers don't accumulate unbounded across a session.
-const analysisCache = new Map<string, ReturnType<typeof analyzeMusicFromUrl>>();
+const analysisCache = new Map<string, Promise<MusicBeatAnalysis>>();
 const MAX_ANALYSIS_CACHE = 4;
 
 const PERSIST_DEBOUNCE_MS = 350;
 
-function cacheAnalysis(url: string, promise: ReturnType<typeof analyzeMusicFromUrl>): void {
+function cacheAnalysis(url: string, promise: Promise<MusicBeatAnalysis>): void {
   analysisCache.set(url, promise);
   while (analysisCache.size > MAX_ANALYSIS_CACHE) {
     const oldest = analysisCache.keys().next().value;
@@ -47,15 +48,22 @@ async function readSavedBeats(io: ProjectIo, beatPath: string): Promise<Beats | 
   }
 }
 
-type MusicAnalysis = Awaited<ReturnType<typeof analyzeMusicFromUrl>>;
+type MusicAnalysis = MusicBeatAnalysis;
 
 type Loaded = { analysis: MusicAnalysis } & Beats;
+
+async function analyzeTrack(url: string): Promise<MusicBeatAnalysis> {
+  await whenTimelineIdle();
+  const rate = await analysisRateOf([url]);
+  const channels = await readPcmChannels(url, rate, (r) => new OfflineAudioContext(1, 1, r));
+  return analyzeMusicFromSignal({ sampleRate: rate, channels }, { pause: whenTimelineIdle });
+}
 
 /** A track's analysis (memoized per URL), or null when decode or analysis fails. */
 async function decodeTrack(musicSrc: string): Promise<MusicAnalysis | null> {
   let promise = analysisCache.get(musicSrc);
   if (!promise) {
-    promise = analyzeMusicFromUrl(musicSrc, { pause: whenTimelineIdle });
+    promise = analyzeTrack(musicSrc);
     cacheAnalysis(musicSrc, promise);
   }
   return promise.catch(() => null);

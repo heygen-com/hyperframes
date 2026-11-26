@@ -15,11 +15,13 @@ import {
   nextFrame,
   openStudio,
   pointerGesture,
+  pressNudges,
   readFiles,
   recording,
   sameFiles,
   selectTarget,
   settled,
+  shownAfterKeys,
   saveFault,
   seekTo,
   sleep,
@@ -243,23 +245,37 @@ async function driveStep(ctx, step, state) {
   const { page } = ctx.A;
   if (step.do === "undo") {
     await blurPreview(page);
+    const before = (await measure(ctx.A)).visible;
+    const pressedAt = Date.now();
     await chord(page, "Control+z");
-    // A key's DOM change reaches the CDP quads only after a frame; the next step reads from them.
-    await nextFrame(page);
+    // shownMs: the box first moved, what a person sees. restMs: Studio idle, so the next press lands on the shown box.
+    let shownMs = null;
+    const restMs = await restedFor(
+      async () => {
+        const moved = quadDistance((await measure(ctx.A)).visible, before) >= 0.5;
+        if (moved && shownMs === null) shownMs = Date.now() - pressedAt;
+        return studioBusy(page);
+      },
+      () => nextFrame(page),
+    );
     state.depth -= 1;
     // Undone back to the start, the box belongs where it began; any other undo leaves it unknown here.
     state.intended = state.depth === 0 ? state.start : null;
-    return { do: "undo" };
+    return { do: "undo", shownMs, restMs };
   }
   if (step.do === "nudge") {
+    const from = (await measure(ctx.A)).visible;
     await recording(page, true);
-    for (let i = 0; i < step.count; i++) {
-      await page.keyboard.press("ArrowRight");
-      await nextFrame(page);
-    }
+    await pressNudges(page, step.count);
     state.smooth.push(smoothness(await recording(page, false)));
     state.depth += 1;
-    state.intended = (await measure(ctx.A)).visible;
+    state.intended = (
+      await shownAfterKeys(
+        () => measure(ctx.A),
+        from,
+        () => nextFrame(page),
+      )
+    ).visible;
     return { do: "nudge", count: step.count };
   }
   if (step.do === "text") return editText(ctx.A, step, state);
@@ -373,7 +389,7 @@ async function editText(c, step, state) {
   }
   // Typing with no session open would land on Studio's shortcuts, so a failed open types nothing.
   if (opened) {
-    // One key per frame, as the nudges press theirs: a whole word in one frame is no typist's pace.
+    // One key per frame: a whole word in one frame is no typist's pace.
     for (const key of step.word) {
       await page.keyboard.type(key);
       await nextFrame(page);
@@ -438,6 +454,41 @@ export function heldSize(sizeKeys, time) {
 
 const sizeError = (a, b) =>
   a && b ? Math.max(Math.abs(a.width - b.width), Math.abs(a.height - b.height)) : 0;
+
+/**
+ * Resolves once `busy()` has read false `frames` reads in a row, a `frame()` apart, with the ms until the first of
+ * those reads; throws at `timeout` ms.
+ */
+export async function restedFor(
+  busy,
+  frame,
+  { frames = 2, timeout = 20_000, now = Date.now } = {},
+) {
+  const start = now();
+  let [clear, clearSince] = [0, 0];
+  for (const deadline = start + timeout; now() < deadline; await frame()) {
+    const readAt = now();
+    clear = (await busy()) ? 0 : clear + 1;
+    if (clear === 1) clearSince = readAt;
+    if (clear >= frames) return clearSince - start;
+  }
+  throw new Error("an edit was still waiting or saving");
+}
+
+/** The box once Studio says the preview is done, and the ms until it said so: an undo's reload shows only then. */
+export async function shownOnceRested(busy, frame, settle, options) {
+  const shownMs = await restedFor(busy, frame, options);
+  return { box: await settle(), shownMs };
+}
+
+// A sealed press waits for the previous save, then replays, and a sealed undo shows only once the preview applies it.
+const studioBusy = (page) =>
+  page.evaluate(
+    () =>
+      Boolean(document.querySelector("[data-dom-edit-press-waiting]")) ||
+      document.documentElement.hasAttribute("data-studio-edits-saving") ||
+      document.documentElement.hasAttribute("data-preview-changing"),
+  );
 
 async function untilSaved(watcher, owed) {
   for (const deadline = Date.now() + 10_000; Date.now() < deadline; await sleep(50))
@@ -517,6 +568,11 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     backSince = back ? (backSince ?? Date.now()) : null;
     if (backSince !== null && Date.now() - backSince >= UNDONE_QUIET_MS) break;
   }
+  // The write count is a floor: one gesture may write twice, so it can be met before the last gesture saves.
+  await restedFor(
+    () => studioBusy(page),
+    () => nextFrame(page),
+  );
   await page.waitForFunction(
     // Asked over each preview's editing port: a preview that cannot answer yet is not clear.
     async () =>
@@ -566,7 +622,14 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   );
   // The file the steps should have left: the last surviving save's, or the original when all were undone.
   const expected = spec.settle ? (stack.at(-1)?.after ?? versions[0]) : versions.at(-1);
-  const undone = await settled(ctx.A);
+  const rested = () =>
+    shownOnceRested(
+      () => studioBusy(page),
+      () => nextFrame(page),
+      () => settled(ctx.A),
+    );
+  const undoneAt = await rested();
+  const undone = undoneAt.box;
   await shoot("undone");
   const redo = undo.ok
     ? await walk(
@@ -580,7 +643,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
         history,
       )
     : { ok: false, landed: [] };
-  const redone = undo.ok ? await settled(ctx.A) : null;
+  const redoneAt = undo.ok ? await rested() : null;
+  const redone = redoneAt?.box ?? null;
   // A late write must not land under the reload.
   await waitForFiles(ctx.A, { timeout: 15_000 });
 
@@ -647,6 +711,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
       // The slowest write of each walk, judged by the single-case undo rule.
       ms: slowest(undo.writes),
       redoMs: slowest(redo.writes),
+      shownMs: undoneAt.shownMs,
+      redoShownMs: redoneAt?.shownMs ?? null,
     },
     undoTimeout: saveFault([
       ...undo.writes.map((w) => ["undo", w]),

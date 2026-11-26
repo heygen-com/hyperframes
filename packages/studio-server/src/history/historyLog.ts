@@ -38,6 +38,8 @@ export interface HistoryEntry {
   undoes?: string;
   /** Set on a restore: the point (an entry id, or START) the files were made equal to. */
   restoredTo?: string;
+  keptInPlace?: Record<string, string>;
+  wentAheadOf?: string[];
 }
 
 /** The point before the first kept entry. */
@@ -51,6 +53,7 @@ export interface HistoryLog {
   entries: HistoryEntry[];
   pins: Set<string>;
   keepsLedger?: boolean;
+  baselineLines?: number;
 }
 
 export type LogRecord =
@@ -86,6 +89,7 @@ export function readLog(file: string, onUnreadable: (line: number) => void): His
 
 function applyRecord(log: HistoryLog, record: LogRecord): void {
   if (record.type === "baseline") {
+    log.baselineLines = (log.baselineLines ?? 0) + 1;
     log.baseline = new Map(Object.entries(record.files));
     log.keepsLedger = record.keepsLedger === true;
   } else if (record.type === "entry") log.entries.push(record.entry);
@@ -105,6 +109,7 @@ export function saveRecord(file: string, log: HistoryLog, record: LogRecord): vo
   }
   try {
     writeSync(fd, `${JSON.stringify(record)}\n`);
+    if (record.type === "baseline") log.baselineLines = (log.baselineLines ?? 0) + 1;
   } finally {
     closeSync(fd);
   }
@@ -126,6 +131,7 @@ export function writeLog(file: string, log: HistoryLog): void {
   ];
   mkdirSync(dirname(file), { recursive: true });
   replaceFileAtomically(file, records.map((r) => `${JSON.stringify(r)}\n`).join(""), 0o644);
+  log.baselineLines = 1;
 }
 
 function applyEntry(manifest: Manifest, entry: HistoryEntry, side: HistoryEntrySide): void {
@@ -164,6 +170,10 @@ export function undoneIds(entries: readonly HistoryEntry[]): Set<string> {
   }
   return undone;
 }
+
+export const stepPaths = (entry: HistoryEntry): string[] => [
+  ...new Set([...entry.files.map((file) => file.path), ...Object.keys(entry.keptInPlace ?? {})]),
+];
 
 /**
  * What Cmd+Z (back) or Cmd+Shift+Z (forward) reverts for `mine`. Back: the newest change `mine` owns that is still

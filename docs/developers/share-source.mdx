@@ -6,8 +6,11 @@ description: "Choose whether a CLI review includes the project files used by its
 `hyperframes share` can attach editable project files to the same review page
 used by Desktop. Source upload requires `--include-source` for each upload, including updates.
 Without it, terminal, JSON and unattended commands share video only.
-Local Studio offers an unchecked **Include editable project files** option with
-a disclosure of the upload scope before creating or updating a share.
+Studio attaches an already-synced snapshot when it matches the saved project and the video in the selected workspace. With no match, Share uploads the video alone. Choose **Sync project files** to upload portable files before creating or updating a share. Syncing files does not create a link.
+
+<Frame caption="Studio lists referenced hidden assets beside Sync project files. Update shared version publishes the video.">
+  <img src="/public/images/sharing/sync-project-files.png" alt="Studio sharing panel with two referenced assets and a separate Sync project files button" />
+</Frame>
 
 Source is available when the workspace's sharing and
 Composition Sync permissions allow it. The recipient's access still depends on
@@ -31,10 +34,24 @@ through `hyperframes share --manage`.
 Source uses the same portable project policy as Desktop: authored HTML, scripts,
 styles, assets, and supported Studio edit metadata. Known credential filenames
 (such as `.env`, `.npmrc`, and `*.pem`), dependency directories, chat
-history, local sharing state, and recorded render outputs stay out.
+history, local sharing state, and recorded render outputs stay out. Git workflow files and supported Studio edit metadata are portable.
+
+If a project uses a Keynote deck, export the slides as images or video and reference that export
+in the composition. Editable shares now leave every `.key` file on the sender’s computer.
+
+The CLI lists referenced hidden assets before uploading editable source. Studio shows these paths beside **Sync project files**. For example, a composition that loads
+`brand/.fonts/Inter.woff2` can include that font when you share the project files.
+The same applies to a script loaded with `<script src="effects/.modules/fade.js"></script>`.
+That script travels with the editable project. An unused script beside it stays local.
+Source capture follows literal local asset references. For an asset whose path is computed at runtime,
+declare its path with a preload link in your HTML, such as `<link rel="preload" as="image" href="art/.images/logo.png">`.
+A literal font source such as `new FontFace("Brand", "url(brand/.fonts/Inter.woff2)")` is discovered automatically.
+Unreferenced assets in unrecognized hidden folders stay local. Known private paths stay
+excluded even when the composition references them.
 
 These are filename rules, not a secret scanner. `.gitignore` does not control
-source capture. Other regular files can be included even if Git ignores them.
+source capture. Other regular files can be included even if Git ignores them. For example,
+editable source can include authored files under `.github/workflows/`.
 Keep private material outside the project, or use `--video-only` when you do not
 want to upload project files. Unsupported symlinks and invalid file names stop
 source preparation rather than silently producing an incomplete editable project.
@@ -83,9 +100,13 @@ the command explains why it stopped. Retry after resolving the problem, or pass
 `--video-only` to share just the rendered video. An unexpected source upload
 failure never silently turns an eligible source share into video-only. If the
 server confirms an upload expired or failed, a retry starts a new upload. If
-the files changed while an earlier upload was still pending, the CLI cancels
-that upload before starting a new one. It waits for uploads already under
-verification and preserves conflicts for explicit resolution.
+the files changed while an earlier upload was still pending, the CLI uses its upload ID
+to cancel it before starting a new one. If the connection dropped before the CLI received
+that ID, it can recover the ID by sending the original manifest again. This requires every
+path to pass the current policy and every marked hidden asset to remain in the current
+share with the same contents. Otherwise, the CLI starts fresh and any earlier pending upload
+expires on the server. The CLI waits for uploads already under verification when it can
+identify them, and preserves conflicts for explicit resolution.
 
 A video-only retry does not resume an interrupted video upload that already
 includes source. Check its status before retrying. To publish the same render as

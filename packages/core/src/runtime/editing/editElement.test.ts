@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { handleFor } from "../editingHandles";
 import { editElement, MAX_EDIT_ENTRIES, MAX_EDIT_VALUE, parseEditElement } from "./editElement";
+import { endTextEdit, textEdit } from "./textEdit";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -112,6 +113,56 @@ describe("edit-element", () => {
     expect(result.applied).toBe(false);
     expect(card.style.color).toBe("");
     expect(card.getAttribute("data-fx")).toHaveLength(MAX_EDIT_VALUE + 1);
+  });
+
+  it("draws text markup and answers the markup it replaced", () => {
+    document.body.innerHTML = `<h1 id="t">Old <span class="a">bit</span></h1>`;
+    const title = document.getElementById("t")!;
+    const html = 'New <span class="a" style="color: red">bit</span>';
+    const result = editElement({ handle: handleFor(title), styles: [], attributes: [], html });
+    expect(result).toEqual({
+      applied: true,
+      styles: [],
+      attributes: [],
+      html: 'Old <span class="a">bit</span>',
+    });
+    expect(title.innerHTML).toBe(html);
+  });
+
+  it("draws no markup beyond inline text, and none over markup it could not put back", () => {
+    document.body.innerHTML = `<h1 id="t">Old</h1><div id="d"><img src="a.png" /></div>`;
+    const draw = (id: string, html: string) =>
+      editElement({
+        handle: handleFor(document.getElementById(id)!),
+        styles: [],
+        attributes: [],
+        html,
+      }).applied;
+    for (const html of ['<img src="x">', '<a href="x">x</a>', '<span onclick="x">x</span>'])
+      expect(draw("t", html), html).toBe(false);
+    expect(document.getElementById("t")!.innerHTML).toBe("Old");
+    expect(draw("d", "text")).toBe(false);
+    expect(parseEditElement({ handle: HANDLE, styles: [], attributes: [], html: 1 })).toBeNull();
+  });
+
+  it("puts markup back only over the markup it expects, and never under an open text edit", () => {
+    document.body.innerHTML = `<h1 id="t">Saved</h1>`;
+    const title = document.getElementById("t")!;
+    const handle = handleFor(title);
+    const putBack = (expect: string) =>
+      editElement({ handle, styles: [], attributes: [], html: "Before", expect }).applied;
+    const params = { handle: HANDLE, styles: [], attributes: [], html: "a", expect: "b" };
+    expect(parseEditElement(params)).toEqual(params);
+    expect(parseEditElement({ ...params, html: undefined })).toBeNull();
+    expect(putBack("Something else")).toBe(false);
+    expect(title.innerHTML).toBe("Saved");
+    textEdit({ handle, action: "start", caret: null }, new MessageChannel().port1, 1);
+    title.innerHTML = "A newer draft";
+    expect(putBack("A newer draft")).toBe(false);
+    expect(title.innerHTML).toBe("A newer draft");
+    endTextEdit();
+    expect(putBack("Saved")).toBe(true);
+    expect(title.innerHTML).toBe("Before");
   });
 
   it("applies nothing for a handle the page no longer has", () => {

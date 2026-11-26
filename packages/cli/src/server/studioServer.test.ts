@@ -23,6 +23,7 @@ import {
   HistoryBusyError,
   HistoryClosedError,
 } from "@hyperframes/studio-server";
+import { thumbnailSeekReadyInBrowser } from "@hyperframes/studio-server/screenshot-clip";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
@@ -291,7 +292,11 @@ describe("createStudioServer project history (D-491)", () => {
 
   it("waits for the history lock again once a history opened after a busy one", async () => {
     const waits: unknown[] = [];
-    const reopenable = { replacedAtPath: () => true, close: async () => {} };
+    const reopenable = {
+      replacedAtPath: () => true,
+      replacedNow: async () => true,
+      close: async () => {},
+    };
     let opens = 0;
     historyState.open = async (options) => {
       waits.push((options as { ownerWaitMs?: number }).ownerWaitMs);
@@ -585,6 +590,21 @@ describe("createStudioServer shutdown", () => {
     await shutdownPromise;
   });
 
+  it("renders the part of the film a job asks for", async () => {
+    let rendered: unknown;
+    producerState.executeRenderJob = async (job) => {
+      rendered = job;
+    };
+    server = createStudioServer({ projectDir: tmpProject() });
+    const job = server.adapter.startRender({
+      ...startRenderOpts("job-range", join(tmpdir(), "part.mp4")),
+      range: { startSeconds: 2, endSeconds: 4 },
+    });
+
+    await vi.waitFor(() => expect(job.status, job.error).toBe("complete"));
+    expect(rendered).toMatchObject({ range: { startSeconds: 2, endSeconds: 4 } });
+  });
+
   const thumbnailOpts = () => ({
     project: { id: "demo", dir: tmpProject(), title: "demo" },
     compPath: "index.html",
@@ -719,11 +739,14 @@ describe("Studio thumbnail capture", () => {
   afterEach(async () => {
     await server?.shutdown();
   });
-  function fakePageBrowser(onEvaluate = () => {}) {
+  function fakePageBrowser(
+    onEvaluate = () => {},
+    waitForFunction = async (_ready: () => boolean) => {},
+  ) {
     const screenshot = vi.fn(async () => Buffer.from("jpeg"));
     const evaluate = vi.fn(async () => onEvaluate());
     const page = new Proxy(
-      { screenshot, evaluate },
+      { screenshot, evaluate, waitForFunction },
       {
         get: (target, key) =>
           key === "then"
@@ -749,6 +772,18 @@ describe("Studio thumbnail capture", () => {
     outputHeight: 360,
     previewUrl: "http://localhost/preview",
     signal,
+  });
+
+  it("holds a thumbnail's shot on the thumbnail readiness rule", async () => {
+    const waits: unknown[] = [];
+    const { screenshot } = fakePageBrowser(undefined, async (ready) => {
+      expect(screenshot).not.toHaveBeenCalled();
+      waits.push(ready);
+    });
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await expect(server.adapter.generateThumbnail?.(opts(dir))).resolves.toBeInstanceOf(Buffer);
+    expect(waits[0]).toBe(thumbnailSeekReadyInBrowser);
   });
 
   it("stops a thumbnail whose request is aborted before its screenshot", async () => {

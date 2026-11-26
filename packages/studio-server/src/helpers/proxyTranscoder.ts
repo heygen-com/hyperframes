@@ -10,11 +10,12 @@ import {
   concatListText,
   findFfBinary,
   followFfmpegProgress,
+  localContainerInputArgs,
 } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { mediaInputArgs, NOT_MEDIA } from "./mediaExtensions.js";
-import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
+import { type MediaMetadata, probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import {
   contentCopyKey,
@@ -41,6 +42,7 @@ import { isProjectCacheFile, mkdirWithinProject, realpath, realProjectRoot } fro
  */
 
 export const PROXY_PARAMS_VERSION = "v7";
+const STILL_ENCODING = "jpeg-matrix";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -87,7 +89,7 @@ function pieceSecret(): string {
 
 function unguessablePiecePrefix(cacheDir: string, stem: string): string {
   const tag = createHmac("sha256", pieceSecret())
-    .update(`proxy-piece\n${stem}`)
+    .update(`proxy-picture-piece\n${stem}`)
     .digest("hex")
     .slice(0, 32);
   return join(cacheDir, `${CHUNK_PREFIX}${stem}-${tag}-`);
@@ -275,9 +277,8 @@ export async function proxyWindowSeconds(
 }
 
 // --- global concurrency limiter -------------------------------------------
-// ponytail: a counter + one wait queue is the whole semaphore. Priority copies
-// queue ahead of the rest and are never refused for a full queue, so a few
-// priority asks (the copy a viewer is waiting on) can exceed the cap.
+// ponytail: counters + one wait queue are the whole semaphore. Priority copies (the one a viewer waits on) queue
+// ahead and are never refused; while none runs, one starts past the cap, so other copies cannot starve it.
 
 /** One copy per cache key, shared by every caller asking for it. */
 interface ProxyJob {
@@ -288,6 +289,7 @@ interface ProxyJob {
   callers: number;
   /** Set while the job waits for a slot. */
   queued?: { start: () => void; drop: () => void };
+  holdsPrioritySlot?: boolean;
   abandoned: AbortController;
   progress: Set<(progress: ProxyProgress) => void>;
   lastProgress?: ProxyProgress;
@@ -312,7 +314,21 @@ class ProxyDroppedError extends ProxyTranscodeError {
 }
 
 let activeTranscodes = 0;
+let activePriority = 0;
 const waitQueue: ProxyJob[] = [];
+
+const hasRoom = (job: ProxyJob) =>
+  activeTranscodes < MAX_CONCURRENT_TRANSCODES || (job.priority && activePriority === 0);
+
+function takeSlot(job: ProxyJob): void {
+  activeTranscodes++;
+  job.holdsPrioritySlot = job.priority;
+  if (job.priority) activePriority++;
+}
+
+function startWaiting(): void {
+  while (waitQueue[0] && hasRoom(waitQueue[0])) waitQueue.shift()?.queued?.start();
+}
 
 function enqueue(job: ProxyJob): void {
   if (job.priority) waitQueue.unshift(job);
@@ -325,15 +341,15 @@ function dequeue(job: ProxyJob): void {
 }
 
 function acquireSlot(job: ProxyJob): Promise<void> {
-  if (activeTranscodes < MAX_CONCURRENT_TRANSCODES) {
-    activeTranscodes++;
+  if (hasRoom(job)) {
+    takeSlot(job);
     return Promise.resolve();
   }
   return new Promise((resolveSlot, reject) => {
     job.queued = {
       start: () => {
         job.queued = undefined;
-        activeTranscodes++;
+        takeSlot(job);
         resolveSlot();
       },
       drop: () => {
@@ -351,9 +367,10 @@ function queueIsFull(): boolean {
   return activeTranscodes >= MAX_CONCURRENT_TRANSCODES && waitQueue.length >= MAX_QUEUED_TRANSCODES;
 }
 
-function releaseSlot(): void {
+function releaseSlot(job: ProxyJob): void {
   activeTranscodes--;
-  waitQueue.shift()?.queued?.start();
+  if (job.holdsPrioritySlot) activePriority--;
+  startWaiting();
 }
 
 function prioritize(job: ProxyJob): void {
@@ -361,6 +378,7 @@ function prioritize(job: ProxyJob): void {
   if (!job.queued) return;
   dequeue(job);
   enqueue(job);
+  startWaiting();
 }
 
 function leave(job: ProxyJob): void {
@@ -605,12 +623,16 @@ async function encodeInChunks(
   concat: (listPath: string, target: string) => Promise<void>,
   signal: AbortSignal,
   gate: PieceGate,
+  isWhole: (piece: string, range: ChunkRange) => Promise<boolean>,
   onDone: (doneSeconds: number) => void = () => {},
 ): Promise<void> {
   const extension = extname(tempPath);
   const pieces = ranges.map((_, index) => `${chunks.prefix}${index}${extension}`);
   const madeAsPlainFile = (piece: string) => isProjectCacheFile(chunks.projectDir, piece);
-  const pending = ranges.flatMap((_, index) => (madeAsPlainFile(pieces[index]!) ? [] : [index]));
+  const kept = await keptPieces(pieces, ranges, signal, (piece, range) =>
+    madeAsPlainFile(piece) ? isWhole(piece, range) : Promise.resolve(false),
+  );
+  const pending = ranges.flatMap((_, index) => (kept[index] ? [] : [index]));
   let doneSeconds = 0;
   for (const [index, range] of ranges.entries()) {
     if (!pending.includes(index)) doneSeconds += range.lengthSeconds;
@@ -661,17 +683,64 @@ async function encodeInChunks(
     writeFileSync(
       listPath,
       concatListText(
-        pieces.map((piece) =>
-          JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/"),
-        ),
+        pieces.map((piece, index) => ({
+          path: JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/"),
+          durationSeconds: ranges[index]!.lengthSeconds,
+        })),
       ),
     );
     await concat(listPath, tempPath);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    removeAll(pieces);
+    if (pending.length === ranges.length) throw error;
+    return await encodeInChunks(
+      ranges,
+      chunks,
+      tempPath,
+      encode,
+      concat,
+      signal,
+      gate,
+      isWhole,
+      onDone,
+    );
   } finally {
     rmSync(listPath, { force: true });
   }
-  for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
+  removeAll(pieces);
 }
+
+// A piece left by an earlier run is made again if it runs short; if the join refuses one, all are.
+async function stillWhole(
+  piece: string,
+  range: ChunkRange,
+  frameRate: number | undefined,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const seconds = (await probeMediaMetadata(piece, undefined, signal)).durationSeconds;
+  const halfFrame = frameRate ? 0.5 / frameRate : 0;
+  return seconds !== undefined && seconds >= range.lengthSeconds - halfFrame;
+}
+
+async function keptPieces(
+  pieces: string[],
+  ranges: ChunkRange[],
+  signal: AbortSignal,
+  keep: (piece: string, range: ChunkRange) => Promise<boolean>,
+): Promise<boolean[]> {
+  const kept: boolean[] = [];
+  for (const [index, range] of ranges.entries()) {
+    signal.throwIfAborted();
+    kept.push(await keep(pieces[index]!, range));
+  }
+  signal.throwIfAborted();
+  return kept;
+}
+
+const removeAll = (paths: string[]) => {
+  for (const path of paths) if (existsSync(path)) unlinkSync(path);
+};
 
 const KEYFRAME_EVERY_SECOND_ARGS = ["-force_key_frames", "expr:gte(t,n_forced*1)"];
 // Fixed recipe; changing either array means bumping PROXY_PARAMS_VERSION.
@@ -779,10 +848,8 @@ async function runFfmpeg(
   const videoFilter = await buildVideoFilter(ffmpegPath, sourcePath, metadata, keepsAlpha, box);
   const alphaDecoder = keepsAlpha ? alphaDecoderFor(metadata.color.codecName) : null;
   const decoderArgs = alphaDecoder ? ["-c:v", alphaDecoder] : [];
-  const streamArgs = [
-    ...["-map", "0:V:0"],
-    ...(metadata.audioStream === undefined ? [] : ["-map", `0:a:${metadata.audioStream}`]),
-  ];
+  const soundMap =
+    metadata.audioStream === undefined ? [] : ["-map", `0:a:${metadata.audioStream}`];
   const totalSeconds = copiedSeconds(metadata.durationSeconds, limitSeconds);
   // libvpx scales poorly across threads, so alpha pieces run side by side with the cores shared out.
   const gate = keepsAlpha ? ALPHA_PIECE_GATE : UNGATED;
@@ -803,7 +870,8 @@ async function runFfmpeg(
         ...mediaInputArgs(sourcePath),
         "-i",
         sourcePath,
-        ...streamArgs,
+        ...["-map", "0:V:0"],
+        ...(range ? [] : soundMap),
         ...lengthArgs(range?.lengthSeconds ?? limitSeconds),
         "-vf",
         videoFilter,
@@ -823,36 +891,120 @@ async function runFfmpeg(
         onProgress({ doneSeconds: encodedSeconds, totalSeconds }),
       );
     }
+    await copyInPieces(ranges, outputPath, {
+      ffmpegPath,
+      sourcePath,
+      soundMap,
+      variant,
+      limitSeconds,
+      signal,
+      gate,
+      chunks,
+      encode,
+      source: metadata.source,
+      onDone: (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
+    });
+  } catch (err) {
+    throw withSource(err, () => describeSource(sourcePath, metadata));
+  }
+}
+
+function besideAsTemp(path: string, extension = extname(path)): string {
+  const copyName = basename(path, extname(path)).replace(/^\.tmp-[0-9a-f-]{36}-/, "");
+  return join(dirname(path), `.tmp-${randomUUID()}-${copyName}${extension}`);
+}
+
+type PieceCopy = {
+  ffmpegPath: string;
+  sourcePath: string;
+  soundMap: string[];
+  variant: ProxyVariant;
+  limitSeconds: number | undefined;
+  signal: AbortSignal;
+  gate: PieceGate;
+  chunks: ChunkFiles;
+  encode: EncodeFn;
+  source: MediaMetadata["source"];
+  onDone: (doneSeconds: number) => void;
+};
+
+async function copyInPieces(ranges: ChunkRange[], outputPath: string, copy: PieceCopy) {
+  const withSound = copy.soundMap.length > 0;
+  const picturePath = withSound ? besideAsTemp(outputPath) : outputPath;
+  try {
     await encodeInChunks(
       ranges,
-      chunks,
-      outputPath,
-      encode,
+      copy.chunks,
+      picturePath,
+      copy.encode,
       (listPath, target) => {
         // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
         const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
         return spawnFfmpeg(
-          ffmpegPath,
-          concatArgs(cwd ? basename(listPath) : listPath, target, variant),
+          copy.ffmpegPath,
+          concatArgs(cwd ? basename(listPath) : listPath, target, copy.variant),
           CONCAT_TIMEOUT_MS,
-          signal,
+          copy.signal,
           undefined,
           false,
           cwd,
         );
       },
-      signal,
-      gate,
-      (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
+      copy.signal,
+      copy.gate,
+      (piece, range) => stillWhole(piece, range, copy.source?.frameRate, copy.signal),
+      copy.onDone,
     );
-  } catch (err) {
-    throw withSource(err, () => describeSource(sourcePath, metadata));
+    if (withSound) await addSoundFromSource(copy, picturePath, outputPath);
+  } finally {
+    if (withSound) rmSync(picturePath, { force: true });
+  }
+}
+
+async function addSoundFromSource(
+  { ffmpegPath, sourcePath, soundMap, variant, limitSeconds, signal }: PieceCopy,
+  picturePath: string,
+  outputPath: string,
+): Promise<void> {
+  const keepsAlpha = variant === "vp8";
+  const soundPath = besideAsTemp(outputPath, keepsAlpha ? ".webm" : ".m4a");
+  const container = keepsAlpha ? "matroska" : "mov";
+  try {
+    await spawnFfmpeg(
+      ffmpegPath,
+      [
+        ...["-y", "-progress", "pipe:1", "-nostats"],
+        ...mediaInputArgs(sourcePath),
+        ...["-i", sourcePath, ...soundMap],
+        ...lengthArgs(limitSeconds),
+        ...(keepsAlpha ? ["-ac", "2", "-c:a", "libopus"] : ["-c:a", "aac"]),
+        soundPath,
+      ],
+      TRANSCODE_STALL_MS,
+      signal,
+    );
+    await spawnFfmpeg(
+      ffmpegPath,
+      [
+        ...["-y", "-copyts"],
+        ...[...localContainerInputArgs(container), "-i", picturePath],
+        ...[...localContainerInputArgs(container), "-i", soundPath],
+        ...["-map", "0:v:0", "-map", "1:a:0", "-c", "copy"],
+        ...(keepsAlpha ? [] : ["-movflags", "+faststart"]),
+        outputPath,
+      ],
+      CONCAT_TIMEOUT_MS,
+      signal,
+    );
+  } finally {
+    rmSync(soundPath, { force: true });
   }
 }
 
 function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
   return [
     "-y",
+    "-copyts",
     ...concatListInputArgs(listPath),
     "-c",
     "copy",
@@ -1019,7 +1171,7 @@ async function transcodeToCache(
       release();
     }
   } finally {
-    releaseSlot();
+    releaseSlot(job);
   }
 }
 
@@ -1205,8 +1357,13 @@ export function resolveStill(
 ): Promise<string> {
   if (signal?.aborted) return Promise.reject(signal.reason);
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const at = Math.max(0, Math.round(atSeconds * 10) / 10);
-  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
+  const at = Math.max(0, Math.floor(atSeconds * 10 + 1e-6) / 10);
+  const key = fastCopyKey(
+    source.sourcePath,
+    PROXY_PARAMS_VERSION,
+    `still-${STILL_ENCODING}@${at}`,
+    box,
+  );
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
   if (isProjectCacheFile(source.projectDir, cachePath)) {
     markCacheEntryUsed(cachePath);
@@ -1247,6 +1404,10 @@ function waitForStill(job: StillJob, cachePath: string, signal?: AbortSignal): P
   });
 }
 
+const SD_MATRICES = new Set(["bt470bg", "smpte170m"]);
+const browserMatrixOf = (colorSpace: string | undefined) =>
+  SD_MATRICES.has(colorSpace ?? "") ? "bt470bg" : "bt709";
+
 async function makeStill(
   source: CanonicalProxySource,
   at: number,
@@ -1261,7 +1422,8 @@ async function makeStill(
   if (metadata.durationSeconds !== undefined && at > metadata.durationSeconds) {
     throw new StillPastEndError();
   }
-  const filter = await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box);
+  const toJpegMatrix = `colorspace=all=bt709:iall=bt709:ispace=${browserMatrixOf(metadata.color.colorSpace)}:space=bt470bg`;
+  const filter = `${await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box)},${toJpegMatrix}`;
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {

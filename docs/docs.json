@@ -324,6 +324,18 @@
             "href": "https://hyperframes.heygen.com/lessons"
           },
           {
+            "item": "Blog",
+            "icon": "newspaper",
+            "description": "Guides, comparisons and how we build",
+            "href": "https://hyperframes.studio/blog?src=docs-navbar"
+          },
+          {
+            "item": "Tools",
+            "icon": "wand-magic-sparkles",
+            "description": "Captions, motion graphics, HTML to video and more",
+            "href": "https://hyperframes.studio/tools?src=docs-navbar"
+          },
+          {
             "item": "Community",
             "icon": "users",
             "description": "Videos people made",
@@ -1062,6 +1074,14 @@
             "href": "https://hyperframes.studio/studio/download?src=docs-footer"
           },
           {
+            "label": "Blog",
+            "href": "https://hyperframes.studio/blog?src=docs-footer"
+          },
+          {
+            "label": "Tools",
+            "href": "https://hyperframes.studio/tools?src=docs-footer"
+          },
+          {
             "label": "GitHub",
             "href": "https://github.com/heygen-com/hyperframes"
           }
@@ -1078,6 +1098,10 @@
       }
     ]
   },
+  "banner": {
+    "content": "**New** HyperFrames Studio is here: the free AI video editor, right in your browser. [Try it free →](https://hyperframes.studio/agent?src=docs-banner)",
+    "dismissible": true
+  },
   "navbar": {
     "links": [
       {
@@ -1091,8 +1115,8 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Download",
-      "href": "https://hyperframes.studio/studio/download?src=docs-navbar"
+      "label": "Open Studio",
+      "href": "https://hyperframes.studio/agent?src=docs-navbar"
     }
   },
   "redirects": [

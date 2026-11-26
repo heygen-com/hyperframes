@@ -5,11 +5,11 @@ description: HyperFrames CLI - scaffold, check frames, edit timelines, preview, 
 
 **Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
 
-**Usage beacon:** run `npx hyperframes events --skill=hyperframes-cli` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
+**Usage note:** before the first one, tell the person once: "I'll send HyperFrames a usage note (linked to your account if signed in); say no to skip." Unless they say no, run `npx hyperframes events --skill=hyperframes-cli` once as this skill starts.
 
 # HyperFrames CLI
 
-Run `npx hyperframes <command>` as above, never a project's own scripts or wrapper unless the person names that command. It needs Node.js 22+ and FFmpeg. Every command has `--help`; most take `--json`, and a failure prints `✗ …`, a `Fix:` line and exits non-zero.
+Run `npx hyperframes <command>` as above, never a project's own scripts or wrapper unless the person names that command. A job with no TTY pins the release with the launcher's `--cli-version <exact-version>`, taking the version from the person or from `--cli-version latest --version`, never from the project's files and never a floating install (`references/unattended.md`). It needs Node.js 22+ and FFmpeg. Every command has `--help`; most take `--json`, and a failure prints `✗ …`, a `Fix:` line and exits non-zero.
 
 A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is out. Pass it to the person once per conversation, in your own words, at a natural pause; updating is theirs to decide.
 
@@ -38,7 +38,7 @@ A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is
 2. `npx hyperframes check --json` and fix every error. While a lint error remains the layout and contrast audits don't run; "0 samples" means nothing was checked. Contrast failures carry a `suggestedColor`. A finding at a single sample (an entrance in flight) is info; a 3 s+ video with no visible change fails `sweep_static`.
 3. `npx hyperframes snapshot` and read the PNGs (under `.hyperframes/artifacts/snapshots/`): that is how you see the video. With sub-compositions, snapshot a midpoint of every scene; tiny unstyled content or a missing hero is a mount defect (`../hyperframes/references/format.md`).
 4. `npx hyperframes preview --background`, check the URL answers 200, give the person the project URL and wait, unless they asked for the file or for no stops. Passing checks alone is not a reason to render.
-5. Time to render (step 4): `npx hyperframes render --quality looks -o out.mp4` (`draft` while iterating, `delivery` for the final; paid plan: `cloud render --fps <data-fps> --quality high -o out.mp4`). Confirm the file is non-empty and its `ffprobe` duration matches the root `data-duration`, then look at decoded frames.
+5. Time to render (step 4): `npx hyperframes render --quality looks -o out.mp4` (`draft` while iterating, `delivery` for the final; paid plan: `cloud render --fps <data-fps> --quality high -o out.mp4`). Confirm the file is non-empty and `ffprobe` reports the root `data-duration` and the project's `data-width`/`data-height`, then look at decoded frames.
 
 "This element" or the current selection: `npx hyperframes preview --context --json --context-fields selection`; `no-selection` means ask them to click it.
 
@@ -71,7 +71,7 @@ Every write is kept and can be undone. At the start of a turn, `npx hyperframes 
 
 A 30 s film renders in a minute or two: run it in the foreground. Detach only a render longer than your tool's timeout (`HYPERFRAMES_RENDER_DETACHED=1`, its own group, output to a log) and wait with `until grep -qE 'Render (complete|failed)' render.log; do sleep 5; done`, never `pgrep -f`, which matches its own loop and waits until the tool times out.
 
-After a verified render, send one `feedback --rating`, plus a report for anything the person asked for that HyperFrames can't do, unless telemetry is off: `references/feedback.md`.
+After a verified render, send one `feedback --rating`, plus a report for anything the person asked for that HyperFrames can't do, unless telemetry is off or they said no to usage notes: `references/feedback.md`.
 
 ## When a command fails
 

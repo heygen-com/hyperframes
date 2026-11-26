@@ -6,12 +6,14 @@ import { afterEach, expect, it, vi } from "vitest";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { LayersPanel } from "./LayersPanel";
+import { DomEditCropHandles } from "./DomEditCropHandles";
 import type { LayerReorderEvent } from "./useLayerDrag";
 import type { DomEditLayerItem, DomEditSelection } from "./domEditing";
 import { announcePreviewDocumentLoaded } from "../../player/sceneSwap";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { standInFor } from "./previewSelection";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
+import { applyUndoRestoreToPreview } from "../../utils/gsapUndoRestore";
 
 installReactActEnvironment();
 
@@ -95,6 +97,7 @@ afterEach(() => {
   vi.clearAllMocks();
   usePreviewIframeStore.setState({ iframe: null });
   document.body.innerHTML = "";
+  delete (window as { __player?: unknown }).__player;
 });
 
 it("lists an opaque frame's layers, selects a row, and drills into a group row", async () => {
@@ -217,4 +220,59 @@ it("refuses to restack a sealed layer inside a locked clip, and saves nothing", 
     expect(mocks.showToast).toHaveBeenCalledWith("This layer can't be reordered", "info"),
   );
   expect(mocks.commitZ).not.toHaveBeenCalled();
+});
+
+/** A composition whose `back` layer sits at `z` under `front` at 2, as the page and as its saved file. */
+const restack = (z: number) =>
+  `<main data-composition-id="main" data-hf-id="main"><div id="back" data-hf-id="back" style="z-index: ${z}"></div><div id="front" data-hf-id="front" style="z-index: 2"></div></main>`;
+
+// fails without the fix: an in-place undo announced nothing the panel reads, so its rows kept the old order.
+it("lists the layers in their new order after an undo restacks them in place", async () => {
+  document.body.innerHTML = restack(1);
+  (window as { __player?: unknown }).__player = { seek: () => {} };
+  const iframe = sealedPreviewFrame().iframe;
+  const rows = renderPanel(iframe);
+  await vi.waitFor(() => expect(rows()).toEqual(["Front", "Back"]));
+  // Past the panel's settle timer, so only the undo can bring the new order.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const page = (z: number) => `<html><body>${restack(z)}</body></html>`;
+  const reload = vi.fn();
+  const files = { "index.html": { previous: page(1), restored: page(3) } };
+  act(() => void applyUndoRestoreToPreview(iframe, "index.html", files, 0, reload));
+  await vi.waitFor(() => expect(document.getElementById("back")!.style.zIndex).toBe("3"));
+  expect(reload).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(rows()).toEqual(["Back", "Front"]));
+});
+
+// fails without the fix: a layer picked in the Layers panel was never pressed on the canvas, so its sealed crop drew
+// the insets at the overlay's zoom alone, as if the layer had no scale of its own.
+it("draws the crop of a sealed scaled layer picked in the Layers panel at the layer's own scale", async () => {
+  document.body.innerHTML = `<main data-composition-id="main"><div id="card" style="transform: matrix(2, 0, 0, 2, 0, 0); clip-path: inset(0px 20px 0px 0px)"></div></main>`;
+  const card = document.getElementById("card")!;
+  Object.defineProperty(card, "offsetWidth", { value: 200 });
+  Object.defineProperty(card, "offsetHeight", { value: 100 });
+  card.getBoundingClientRect = () =>
+    ({ x: 0, y: 0, width: 400, height: 200, left: 0, top: 0, right: 400, bottom: 200 }) as DOMRect;
+  const rows = renderPanel(sealedPreviewFrame().iframe);
+  await vi.waitFor(() => expect(rows()).toHaveLength(1));
+  act(() => document.querySelector<HTMLElement>("[data-layer-index]")!.click());
+  await vi.waitFor(() => expect(mocks.applyDomSelection).toHaveBeenCalled());
+  const picked = mocks.applyDomSelection.mock.calls[0]![0] as DomEditSelection;
+
+  const host = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(host);
+  act(() =>
+    root.render(
+      createElement(DomEditCropHandles, {
+        selection: picked,
+        overlayRect: { left: 0, top: 0, width: 400, height: 200, editScaleX: 1, editScaleY: 1 },
+        onStyleCommit: vi.fn(),
+      }),
+    ),
+  );
+  closers.push(() => act(() => root.unmount()));
+
+  const outline = () =>
+    host.querySelector<HTMLElement>("[data-dom-edit-crop-frame] .border-dashed")?.style.width;
+  await vi.waitFor(() => expect(outline()).toBe("360px"));
 });

@@ -17,6 +17,7 @@ import {
   type UpstreamProxy,
 } from "./upstreamProxy.js";
 import { listenOnBrowserSafePort } from "../../utils/browserSafePort.js";
+import { ABSOLUTE_MAX_WORKERS } from "../../utils/workerLimits.js";
 
 const CONNECTION_TIMEOUT_MS = 15_000;
 const HOP_HEADERS = new Set([
@@ -55,6 +56,19 @@ function destination(raw: string, tunnel: boolean): URL {
 
 type OnRefused = (hostClass: RefusedHostClass) => void;
 
+export const BROWSER_PROXY_MAX_CONNECTIONS = 128;
+export const POD_PROXY_MAX_CONNECTIONS = (ABSOLUTE_MAX_WORKERS + 1) * BROWSER_PROXY_MAX_CONNECTIONS;
+
+export interface CaptureFailure {
+  reason: "connection_cap" | "upstream_failed";
+  open: number;
+}
+type OnFailed = (failure: CaptureFailure) => void;
+
+export const logFailure: OnFailed = ({ reason, open }) => {
+  console.warn(`[CaptureProxy:FAILED] reason=${reason} open=${open}`);
+};
+
 const refusalListeners = new Set<OnRefused>();
 
 export function onRenderRefusal(listener: OnRefused): () => void {
@@ -76,13 +90,31 @@ function refuse(response: ServerResponse): void {
   response.end();
 }
 
-async function httpPeer(url: URL, proxy: UpstreamProxy | undefined) {
+async function resolveOrReportFailure(hostname: string, fail: () => void): Promise<string> {
+  try {
+    return await resolvePublicAddress(hostname);
+  } catch (error) {
+    if (!(error instanceof NonPublicHostError)) fail();
+    throw error;
+  }
+}
+
+async function httpPeer(url: URL, proxy: UpstreamProxy | undefined, fail: () => void) {
   if (!proxy) {
-    const hostname = await resolvePublicAddress(url.hostname);
+    const hostname = await resolveOrReportFailure(url.hostname, fail);
     return { hostname, family: 4, port: url.port || 80, path: url.pathname + url.search };
   }
   assertPublicHostname(url.hostname);
   return { hostname: proxy.host, port: proxy.port, path: url.href };
+}
+
+function relayedReplyHead(received: IncomingMessage, response: ServerResponse): boolean {
+  try {
+    response.writeHead(received.statusCode ?? 502, forwardHeaders(received));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function forwardHttp(
@@ -91,14 +123,20 @@ async function forwardHttp(
   sockets: Set<Socket>,
   proxy: UpstreamProxy | undefined,
   onRefused: OnRefused | undefined,
+  fail: () => void,
 ): Promise<void> {
   try {
     const url = destination(incoming.url ?? "", false);
-    const peer = await httpPeer(url, proxy);
+    const peer = await httpPeer(url, proxy, fail);
     if (incoming.destroyed || response.destroyed) return;
     const headers = forwardHeaders(incoming);
     headers.host = url.host;
     if (proxy?.authorization) headers["proxy-authorization"] = proxy.authorization;
+    const badGateway = () => {
+      fail();
+      if (!response.headersSent) response.writeHead(502, { Connection: "close" });
+      response.end();
+    };
     const upstream = request(
       {
         ...peer,
@@ -108,7 +146,10 @@ async function forwardHttp(
         signal: AbortSignal.timeout(30_000),
       },
       (received) => {
-        response.writeHead(received.statusCode ?? 502, forwardHeaders(received));
+        if (!relayedReplyHead(received, response)) {
+          received.resume();
+          return badGateway();
+        }
         received.on("error", () => response.destroy());
         received.pipe(response);
       },
@@ -117,10 +158,7 @@ async function forwardHttp(
     upstream.setTimeout(CONNECTION_TIMEOUT_MS, () =>
       upstream.destroy(new Error("Capture request timed out")),
     );
-    upstream.on("error", () => {
-      if (!response.headersSent) response.writeHead(502, { Connection: "close" });
-      response.end();
-    });
+    upstream.on("error", badGateway);
     response.on("close", () => upstream.destroy());
     incoming.on("error", () => upstream.destroy());
     incoming.pipe(upstream);
@@ -143,6 +181,7 @@ async function forwardTunnelViaUpstream(
   client: Duplex,
   head: Buffer,
   sockets: Set<Socket>,
+  fail: () => void,
 ): Promise<void> {
   let upstream: Socket;
   try {
@@ -150,6 +189,7 @@ async function forwardTunnelViaUpstream(
       onSocket: (socket) => trackSocket(socket, sockets),
     });
   } catch {
+    fail();
     if (!client.destroyed) {
       client.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
     }
@@ -172,14 +212,15 @@ async function forwardTunnel(
   sockets: Set<Socket>,
   proxy: UpstreamProxy | undefined,
   onRefused: OnRefused | undefined,
+  fail: () => void,
 ): Promise<void> {
   try {
     const url = destination(incoming.url ?? "", true);
     if (proxy) {
       assertPublicHostname(url.hostname);
-      return await forwardTunnelViaUpstream(url, proxy, client, head, sockets);
+      return await forwardTunnelViaUpstream(url, proxy, client, head, sockets, fail);
     }
-    const address = await resolvePublicAddress(url.hostname);
+    const address = await resolveOrReportFailure(url.hostname, fail);
     if (client.destroyed) return;
     const upstream = connect({ host: address, family: 4, port: Number(url.port || 443) });
     trackSocket(upstream, sockets);
@@ -187,7 +228,9 @@ async function forwardTunnel(
     connectDeadline.unref();
     upstream.once("close", () => clearTimeout(connectDeadline));
     upstream.setTimeout(CONNECTION_TIMEOUT_MS, () => upstream.destroy());
+    let connected = false;
     upstream.once("connect", () => {
+      connected = true;
       clearTimeout(connectDeadline);
       if (client.destroyed) return upstream.destroy();
       client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
@@ -195,7 +238,10 @@ async function forwardTunnel(
       upstream.pipe(client);
       client.pipe(upstream);
     });
-    upstream.once("close", () => client.destroy());
+    upstream.once("close", () => {
+      if (!connected && !client.destroyed) fail();
+      client.destroy();
+    });
     client.once("close", () => upstream.destroy());
   } catch (error) {
     reportRefusal(error, onRefused);
@@ -208,20 +254,31 @@ export async function startCaptureProxy(
   upstream: UpstreamProxy | null = captureUpstreamProxy() ?? null,
   onRefused?: OnRefused,
   fixedLoopbackPort?: number,
+  {
+    maxConnections = BROWSER_PROXY_MAX_CONNECTIONS,
+    onFailed = logFailure,
+  }: { maxConnections?: number; onFailed?: OnFailed } = {},
 ): Promise<{ url: string; close(): Promise<void> }> {
   const proxy = upstream ?? undefined;
   const sockets = new Set<Socket>();
+  const clients = new Set<Socket>();
+  const fail = () => closing || onFailed({ reason: "upstream_failed", open: clients.size });
   const server = createServer(
-    (incoming, response) => void forwardHttp(incoming, response, sockets, proxy, onRefused),
+    (incoming, response) => void forwardHttp(incoming, response, sockets, proxy, onRefused, fail),
   );
-  server.on("connection", (socket) => trackSocket(socket, sockets));
+  server.on("connection", (socket) => {
+    trackSocket(socket, sockets);
+    clients.add(socket);
+    socket.once("close", () => clients.delete(socket));
+  });
+  server.on("drop", () => onFailed({ reason: "connection_cap", open: clients.size }));
   server.on(
     "connect",
     (incoming, socket, head) =>
-      void forwardTunnel(incoming, socket, head, sockets, proxy, onRefused),
+      void forwardTunnel(incoming, socket, head, sockets, proxy, onRefused, fail),
   );
   server.on("upgrade", (_incoming, socket) => socket.destroy());
-  server.maxConnections = 128;
+  server.maxConnections = maxConnections;
   server.headersTimeout = CONNECTION_TIMEOUT_MS;
   server.requestTimeout = 30_000;
   server.keepAliveTimeout = 1_000;

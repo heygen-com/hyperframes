@@ -6,6 +6,7 @@ import {
   CheckBudgetError,
   CheckDeadline,
   CheckCopiesUnfinishedError,
+  CheckChromeStartError,
   CheckDeadlineError,
   CheckStoppedError,
   idleWindow,
@@ -29,6 +30,7 @@ import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
 import { join, relative } from "node:path";
+import { fromEmptyFolder } from "@hyperframes/parsers/ff-binaries";
 import { trackCheckReport, trackCommandFailure } from "../telemetry/events.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
@@ -2363,6 +2365,7 @@ function emptyBrowserResult(): CheckBrowserResult {
 const STOP_CODES = [
   "media_copies_unfinished",
   "check_budget_reached",
+  "check_deadline",
   "check_runtime_failure",
 ] as const;
 export type StopCode = (typeof STOP_CODES)[number];
@@ -2374,7 +2377,9 @@ function runtimeFailure(error: unknown, code?: string): CheckFinding {
         ? "media_copies_unfinished"
         : error instanceof CheckBudgetError
           ? "check_budget_reached"
-          : "check_runtime_failure"),
+          : error instanceof CheckDeadlineError || error instanceof CheckChromeStartError
+            ? "check_deadline"
+            : "check_runtime_failure"),
     "error",
     normalizeErrorMessage(error),
     error instanceof CheckDeadlineError ? (error.sourceFile ?? "index.html") : "index.html",
@@ -2483,7 +2488,14 @@ async function captureFindingCrops(
 }
 
 /** HDR promotion before the browser starts; audio findings later, overlapping the browser pass. */
-async function inspectProjectMedia(
+function inspectProjectMedia(
+  project: ProjectDir,
+  dependencies: CheckDependencies,
+): Promise<{ hdr: CheckReport["hdr"]; audio: Promise<CheckFinding[]> }> {
+  return fromEmptyFolder(() => inspectProjectMediaIn(project, dependencies));
+}
+
+async function inspectProjectMediaIn(
   project: ProjectDir,
   dependencies: CheckDependencies,
 ): Promise<{ hdr: CheckReport["hdr"]; audio: Promise<CheckFinding[]> }> {

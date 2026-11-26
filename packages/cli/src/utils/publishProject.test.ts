@@ -25,7 +25,8 @@ const linkMocks = vi.hoisted(() => ({
   writeProjectLink: vi.fn(),
 }));
 
-vi.mock("./projectLink.js", () => ({
+vi.mock("./projectLink.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./projectLink.js")>()),
   writeProjectLink: linkMocks.writeProjectLink,
 }));
 
@@ -1205,6 +1206,7 @@ describe("publishProjectArchive", () => {
       expect(linkMocks.writeProjectLink).toHaveBeenCalledWith(dir, {
         projectId: "hfp_stable",
         url: "https://hyperframes.dev/p/hfp_stable",
+        spaceId: "",
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });

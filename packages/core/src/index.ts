@@ -1,5 +1,9 @@
 // Types
-export type { PlaybackHeldBy, RuntimeTimelineClipIdentity } from "./runtime/types.js";
+export type {
+  PlaybackHealthReport,
+  PlaybackHeldBy,
+  RuntimeTimelineClipIdentity,
+} from "./runtime/types.js";
 export type {
   ExecutionMode,
   Orientation,
@@ -289,6 +293,12 @@ export {
   type ToneMapSourceColour,
 } from "./hdrToneMap";
 export {
+  htmlHasStudioReappliedMark,
+  isStudioMotionMark,
+  STUDIO_REAPPLIED_MARKS,
+  STUDIO_SEEK_REAPPLY_STARTED,
+} from "./studioReappliedMarks";
+export {
   HEAVY_BITRATE,
   HEAVY_PIXEL_SHARE,
   PREVIEW_PROXY_BOX_PARAM,
@@ -308,6 +318,12 @@ export {
   type PreviewQuality,
   type PreviewSourceFacts,
 } from "./previewProxyBox";
+export {
+  naturalVideoSize,
+  parseSampleAspectRatio,
+  streamRotation,
+  type MediaDisplayFacts,
+} from "./mediaDisplaySize";
 export type {
   PausedVideoFrameProvider,
   PausedVideoFrameRequest,

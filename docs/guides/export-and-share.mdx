@@ -115,18 +115,23 @@ is correct.
 | The recipient needs                   | Send                              |
 | ------------------------------------- | --------------------------------- |
 | A video to watch or upload            | The rendered MP4, WebM, or MOV    |
-| A browser link to the current project | A published project URL           |
+| A browser link to review the video    | A video review link               |
 | The ability to continue editing       | The source project and its assets |
 
-Publish the project when a browser link is more useful than a file:
+To create a video review link, sign in, then run the following command from your
+project directory and choose who can open the link.
 
 ```bash
-npx hyperframes publish
+npx hyperframes share
 ```
 
-The command uploads the project and returns a stable URL. An anonymous first
-publish creates a claimable link. Sign in when the CLI should own the project
-immediately, update an existing link, or publish into a shared space.
+For scripts, pass an explicit audience as described in the [CLI sharing reference](/packages/cli#share).
+
+### Update an existing published project
+
+`hyperframes publish` is deprecated for new projects. Existing published links
+still work. To update a project at its current URL, sign in and run
+`npx hyperframes publish --update <url-or-id>`.
 
 A local video poster referenced with a relative path, such as
 `../shared/poster.png`, can be copied into the published project even when it
@@ -192,7 +197,13 @@ project. The five free shared-project allowance is the same allowance used by
 Desktop and the CLI. The workspace meter comes from the server; retries of an
 existing registration do not need an extra slot.
 
-Project files are included when available for the workspace. The panel reports
+Before Studio creates a link, uploads a version, or changes who can open a review or
+whether its link is on, it asks you to confirm and names the review and who can open
+it. A project folder remembers its review in `.hyperframes/review.json`,
+so a folder someone sent you can arrive already linked to their review. If the
+confirmation names a review you didn't share, cancel.
+
+Project files are included only when you choose **Include editable project files**. The panel reports
 whether the last Studio upload included files or was video only. If attaching
 files fails, retry the upload or explicitly choose **Retry with video only**.
 

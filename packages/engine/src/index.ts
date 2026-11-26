@@ -103,6 +103,7 @@ export {
   closeBrowserPool,
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
+  probedHardwareGpu,
   buildChromeArgs,
   compositionRequiresWebGpu,
   assertWebGpuAdapterAvailable,
@@ -328,6 +329,7 @@ export {
 } from "./services/audioMixer.js";
 export { audioFailureDiagnostics } from "./services/audioFailureDiagnostic.js";
 export { cloneCaptureWarning, cloneCaptureWarnings } from "./services/captureWarning.js";
+export { boundedPageText, retainCapturePerf } from "./services/pageTextBounds.js";
 export type {
   AudioElement,
   AudioFailureReason,
@@ -410,6 +412,7 @@ export {
   PROBE_FACTS_VERSION,
   buildProbeFactsText,
   probeMediaProfile,
+  isStructurallyIncompletePngError,
   runFfprobe,
   analyzeKeyframeIntervals,
   type VideoMetadata,
@@ -480,7 +483,11 @@ export {
   FFPROBE_PATH_ENV,
 } from "./utils/ffmpegBinaries.js";
 
-export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
+export {
+  trackChildProcess,
+  killTrackedProcesses,
+  onTrackedChildProcess,
+} from "./utils/processTracker.js";
 export { renameWithRetry, renameWithRetryAsync } from "@hyperframes/core/rename-retry";
 export { removeScratch, collectScratchLeftovers } from "@hyperframes/core/remove-scratch";
 

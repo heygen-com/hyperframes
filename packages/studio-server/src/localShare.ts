@@ -16,6 +16,8 @@ export interface LocalShareState {
   state: "not_shared" | "link_off" | "ready" | "processing" | "failed" | "unavailable";
   url: string | null;
   manageUrl: string;
+  reviewId: string | null;
+  reviewTitle: string | null;
   changed: boolean | null;
   hasReadyVersion?: boolean;
   failure?: string | null;
@@ -37,11 +39,12 @@ export interface LocalShareSnapshot {
   job: LocalShareJob | null;
 }
 export type LocalShareAction = {
-  action: "share" | "update" | "access" | "off" | "on" | "login";
+  action: "share" | "update" | "access" | "off" | "on" | "login" | "sync";
   audience?: LocalShareAudience;
   space?: string;
   videoOnly?: boolean;
-  includeSource?: boolean;
+  expectedReferencedHiddenDigest?: string;
+  confirmedReview?: string | null;
 };
 export type LocalShareInteraction =
   | { event: "share_opened"; link: "none" | "live" | "changed" }

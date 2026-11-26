@@ -2,18 +2,22 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   freezeRecipe,
   listRecipes,
+  readRegularFile,
   skeletonizeBrief,
   skeletonizeStoryboard,
   slugifyRecipeName,
@@ -487,3 +491,199 @@ test("use with an unknown name lists what exists", () => {
     );
   });
 });
+
+const RECIPE_FILE_NAMES = [
+  "recipe.json",
+  "frame.md",
+  "storyboard-skeleton.md",
+  "brief-skeleton.md",
+];
+
+/** A file outside the project with known content, and a link to it under each recipe file name. */
+function plantRecipeLinks(root, dir) {
+  const target = join(root, "outside.txt");
+  writeFileSync(target, "keep me\n");
+  mkdirSync(dir, { recursive: true });
+  for (const name of RECIPE_FILE_NAMES) symlinkSync(target, join(dir, name));
+  return target;
+}
+
+for (const recipeJson of ["missing", "unparseable"]) {
+  test(`freeze replaces links in a recipe folder whose recipe.json is ${recipeJson}`, () => {
+    withSandbox(({ project, root, home }) => {
+      writeFileSync(join(project, "BRIEF.md"), BRIEF);
+      const dir = join(project, ".media/recipes/promo");
+      const target = plantRecipeLinks(root, dir);
+      if (recipeJson === "missing") rmSync(join(dir, "recipe.json"));
+      writeFileSync(join(dir, "leftover.sh"), "echo planted\n");
+
+      const frozen = freezeRecipe({ projectDir: project, name: "promo" });
+      assert.equal(frozen.version, 1);
+      assert.equal(readFileSync(target, "utf8"), "keep me\n");
+      for (const name of RECIPE_FILE_NAMES) {
+        assert.ok(lstatSync(join(dir, name)).isFile(), `${name} is a regular file`);
+        assert.ok(lstatSync(join(home, ".media/recipes/promo", name)).isFile());
+      }
+      assert.equal(JSON.parse(readFileSync(join(dir, "recipe.json"), "utf8")).name, "promo");
+      assert.deepEqual(
+        readdirSync(join(home, ".media/recipes/promo")).sort(),
+        [...RECIPE_FILE_NAMES].sort(),
+      );
+    });
+  });
+}
+
+test("freeze without a BRIEF.md removes a planted brief-skeleton link instead of keeping it", () => {
+  withSandbox(({ project, root, home }) => {
+    const dir = join(project, ".media/recipes/promo");
+    const target = plantRecipeLinks(root, dir);
+    freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" });
+    assert.equal(readFileSync(target, "utf8"), "keep me\n");
+    assert.equal(lstatSync(join(dir, "brief-skeleton.md"), { throwIfNoEntry: false }), undefined);
+    assert.ok(!existsSync(join(home, ".media/recipes/promo/brief-skeleton.md")));
+  });
+});
+
+for (const linked of [".media", ".media/recipes", ".media/recipes/promo"]) {
+  test(`freeze refuses, with nothing written, when ${linked} is a link`, () => {
+    withSandbox(({ project, root, home }) => {
+      const outside = join(root, "outside-dir");
+      mkdirSync(outside);
+      const parent = join(project, linked, "..");
+      mkdirSync(parent, { recursive: true });
+      symlinkSync(outside, join(project, linked));
+      assert.throws(
+        () =>
+          freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" }),
+        /is a link; nothing was written through it/,
+      );
+      assert.deepEqual(readdirSync(outside), []);
+      assert.ok(!existsSync(join(home, ".media/recipes/promo")));
+    });
+  });
+}
+
+/** Every file under `dir`, read as text; an empty list when `dir` is missing. */
+function textsUnder(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { recursive: true })
+    .map((name) => join(dir, name))
+    .filter((path) => lstatSync(path).isFile())
+    .map((path) => readFileSync(path, "utf8"));
+}
+
+for (const source of ["frame.md", "STORYBOARD.md", "BRIEF.md"]) {
+  test(`freeze refuses a ${source} that links outside the project, copying nothing`, () => {
+    withSandbox(({ project, root, home }) => {
+      freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" });
+      const secret = join(root, "secret.txt");
+      writeFileSync(secret, "---\nworkflow: product-launch-video\n---\nTOP-SECRET-TOKEN\n");
+      rmSync(join(project, source), { force: true });
+      symlinkSync(secret, join(project, source));
+
+      assert.throws(
+        () =>
+          freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" }),
+        /is a link or not a regular file; nothing was frozen/,
+      );
+      const recipes = [join(project, ".media/recipes"), join(home, ".media/recipes")];
+      for (const text of recipes.flatMap(textsUnder)) assert.doesNotMatch(text, /TOP-SECRET/);
+      assert.deepEqual(readdirSync(join(project, ".media/recipes")), ["promo"]);
+    });
+  });
+}
+
+test("freeze refuses a frame.md that is not a regular file", () => {
+  withSandbox(({ project, home }) => {
+    rmSync(join(project, "frame.md"));
+    mkdirSync(join(project, "frame.md"));
+    assert.throws(
+      () => freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" }),
+      /is a link or not a regular file; nothing was frozen/,
+    );
+    assert.ok(!existsSync(join(project, ".media/recipes/promo")));
+    assert.ok(!existsSync(join(home, ".media/recipes/promo")));
+  });
+});
+
+test("use imports only regular recipe files from the user tier, never links or leftovers", () => {
+  withSandbox(({ project, root, home }) => {
+    freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" });
+    const userDir = join(home, ".media/recipes/promo");
+    const target = join(root, "secret.txt");
+    writeFileSync(target, "secret\n");
+    symlinkSync(target, join(userDir, "brief-skeleton.md"));
+    writeFileSync(join(userDir, "leftover.sh"), "echo planted\n");
+
+    const fresh = join(root, "fresh-project");
+    mkdirSync(fresh, { recursive: true });
+    const used = useRecipe({ projectDir: fresh, name: "promo" });
+    assert.equal(used.briefSkeletonPath, undefined);
+    assert.deepEqual(readdirSync(join(fresh, ".media/recipes/promo")).sort(), [
+      "frame.md",
+      "recipe.json",
+      "storyboard-skeleton.md",
+    ]);
+  });
+});
+
+test("use replaces a frame.md link in the project instead of writing through it", () => {
+  withSandbox(({ project, root }) => {
+    freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" });
+    const fresh = join(root, "fresh-project");
+    mkdirSync(fresh, { recursive: true });
+    const target = join(root, "outside.txt");
+    writeFileSync(target, "keep me\n");
+    symlinkSync(target, join(fresh, "frame.md"));
+
+    useRecipe({ projectDir: fresh, name: "promo" });
+    assert.equal(readFileSync(target, "utf8"), "keep me\n");
+    assert.ok(lstatSync(join(fresh, "frame.md")).isFile());
+    assert.match(readFileSync(join(fresh, "frame.md"), "utf8"), /background: #101014/);
+  });
+});
+
+test("use refuses a recipe whose frame.md is a link, so no file is read through it", () => {
+  withSandbox(({ project, root }) => {
+    const dir = join(project, ".media/recipes/promo");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "recipe.json"), JSON.stringify({ name: "promo", version: 1 }));
+    const target = join(root, "secret.txt");
+    writeFileSync(target, "secret\n");
+    symlinkSync(target, join(dir, "frame.md"));
+
+    assert.throws(
+      () => useRecipe({ projectDir: project, name: "promo" }),
+      /a link or not a regular file/,
+    );
+    assert.equal(
+      readFileSync(join(project, "frame.md"), "utf8"),
+      "# Frame spec\nbackground: #101014\n",
+    );
+  });
+});
+
+test("readRegularFile refuses a link even without O_NOFOLLOW, as on Windows", () => {
+  withSandbox(({ root }) => {
+    const target = join(root, "secret.txt");
+    writeFileSync(target, "secret\n");
+    const link = join(root, "frame.md");
+    symlinkSync(target, link);
+    assert.equal(readRegularFile(link, 0), undefined);
+    assert.equal(readRegularFile(link), undefined);
+    assert.equal(readRegularFile(target, 0).toString(), "secret\n");
+    assert.equal(readRegularFile(join(root, "missing.md"), 0), undefined);
+  });
+});
+
+test(
+  "readRegularFile refuses a FIFO without blocking on it",
+  { skip: process.platform === "win32" },
+  () => {
+    withSandbox(({ root }) => {
+      const fifo = join(root, "frame.md");
+      execFileSync("mkfifo", [fifo]);
+      assert.equal(readRegularFile(fifo), undefined);
+    });
+  },
+);

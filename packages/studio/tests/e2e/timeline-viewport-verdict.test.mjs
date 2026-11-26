@@ -9,6 +9,7 @@ import {
   percentile,
   shouldCompareWithBase,
   responsivenessLimits,
+  rowVirtualizationOf,
 } from "./timeline-viewport-verdict.mjs";
 
 const LIMITS = { samplesPerRun: 63, interactionLimitMs: 75, frameIntervalLimitMs: 75 };
@@ -237,5 +238,18 @@ describe("gatePassed", () => {
     expect(shouldCompareWithBase([])).toBe(false);
     expect(gatePassed({ ...passing, attempts: [slow, broken], againstBase: pass })).toBe(false);
     expect(gatePassed({ ...passing, attempts: [], againstBase: pass })).toBe(false);
+  });
+});
+
+describe("rowVirtualizationOf", () => {
+  // fails without the fix: main's gate read this load-time moment of a virtualized base as an unvirtualized build.
+  it("reads a virtualized timeline as on while its visible rows are full at load", () => {
+    const atLoad = { mountedRows: 8, mountedClipRoots: 1024, maxMountedClipRootsInOneRow: 128 };
+    expect(rowVirtualizationOf(atLoad, TIMELINE_VIEWPORT_BUDGETS)).toBe("on");
+  });
+
+  it("reads a timeline that mounts every row as off", () => {
+    const everyRow = { mountedRows: 1000, mountedClipRoots: 1000, maxMountedClipRootsInOneRow: 1 };
+    expect(rowVirtualizationOf(everyRow, TIMELINE_VIEWPORT_BUDGETS)).toBe("off");
   });
 });

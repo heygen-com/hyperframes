@@ -6,8 +6,14 @@ describe("published build layout", () => {
   it("emits each worker beside the bundles whose worker lookup probes their own directory", () => {
     const bundleDirs = new Set(BUNDLES.map(({ outfile }) => dirname(outfile)));
     expect([...bundleDirs]).toEqual(["dist"]);
-    expect(WORKERS.map(({ outfile }) => dirname(outfile))).toEqual(["dist", "dist", "dist"]);
+    expect(WORKERS.map(({ outfile }) => dirname(outfile))).toEqual([
+      "dist",
+      "dist",
+      "dist",
+      "dist",
+    ]);
     expect(WORKERS.map(({ outfile }) => basename(outfile)).sort()).toEqual([
+      "compileWorker.js",
       "healthWorkerThread.js",
       "hyperframeLintWorker.js",
       "shaderTransitionWorker.js",

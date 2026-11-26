@@ -2,6 +2,7 @@
 // stamped on the clock both windows share, until an empty list, the page hiding, or the parent's release.
 import {
   EDITING_ELEMENT_HANDLE,
+  MAX_DRAFT_PX,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_VALUE,
   type EditingElementHandle,
@@ -47,14 +48,18 @@ const isSource = (value: unknown) =>
     finiteOrNull(value.declaredHeight));
 const isClipPath = (value: unknown) =>
   value === null || (typeof value === "string" && value.length <= MAX_ELEMENT_VALUE);
+const isLayout = (value: unknown) =>
+  keysAre(value, "height,width") &&
+  [value.width, value.height].every((side) => finite(side) && side >= 0 && side <= MAX_DRAFT_PX);
 const isMembers = (value: unknown) =>
   value === null ||
   (Array.isArray(value) && value.length <= MAX_ELEMENT_ENTRIES && value.every(isRect));
 
 function isGeometry(value: unknown): value is EditingElementGeometry {
-  if (!keysAre(value, "angle,clipPath,corners,members,rect,source,visible")) return false;
+  if (!keysAre(value, "angle,clipPath,corners,layout,members,rect,source,visible")) return false;
   return (
     isRect(value.rect) &&
+    isLayout(value.layout) &&
     finite(value.angle) &&
     isCorners(value.corners) &&
     isSource(value.source) &&

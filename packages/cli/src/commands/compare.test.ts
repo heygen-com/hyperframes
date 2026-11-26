@@ -258,3 +258,43 @@ describe("prepareCompareVariantProjects", () => {
     }
   });
 });
+
+// Windows file names cannot hold control characters, so the project below cannot exist there.
+describe.skipIf(process.platform === "win32")("compare failure output", () => {
+  it("prints a refused project's file name with its control characters as text", async () => {
+    const scene = "scene\x1b[2J\x07.html";
+    const mount = `<div data-composition-id="scene" data-composition-src="${scene}" data-start="0" data-duration="2"></div>`;
+    const variants = ["a", "b"].map((name) => {
+      const dir = join(tempDir(), name);
+      mkdirSync(dir);
+      writeFileSync(
+        join(dir, "index.html"),
+        `<!doctype html><html><body><div data-composition-id="main" data-width="320" data-height="180" data-start="0" data-duration="2">${mount.repeat(10_001)}</div><script>window.__timelines = {};</script></body></html>`,
+      );
+      writeFileSync(
+        join(dir, scene),
+        `<template><div data-composition-id="scene" data-width="320" data-height="180"><h1>x</h1></div></template>`,
+      );
+      return dir;
+    });
+    const written: string[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation((text: string) => {
+      written.push(text);
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { default: compare } = await import("./compare.js");
+      await expect(
+        compare.run?.({ args: { _: variants, json: false }, rawArgs: [], cmd: compare } as never),
+      ).rejects.toThrow("Command failed");
+    } finally {
+      error.mockRestore();
+      log.mockRestore();
+      for (const dir of variants) rmSync(join(dir, ".."), { recursive: true, force: true });
+    }
+    expect(written.join("\n")).toContain('ending at "scene\\x1b[2J\\x07.html"');
+    // The formatter's own colour codes are the only escape bytes left.
+    // eslint-disable-next-line no-control-regex
+    expect(written.join("\n").replace(/\x1b\[\d+m/g, "")).not.toMatch(/[\x00-\x08\x0b-\x1f\x7f]/);
+  }, 60_000);
+});

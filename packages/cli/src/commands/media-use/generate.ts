@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, num, runMeasure } from "../../measure/command.js";
@@ -131,7 +132,7 @@ export default defineCommand({
     model: {
       type: "string",
       description:
-        "image: nano-banana-2.1 (default), nano-banana-2, gpt-image-2.5, gpt-image-2.6, gpt-image-2.6-flare, minimax-h3-image (2K) or minimax-h3-image-4k",
+        "image: nano-banana-2.1 (default), gpt-image-2.6, gpt-image-2.6-flare, minimax-h3-image (2K) or minimax-h3-image-4k",
     },
     bpm: { type: "string", description: "music: tempo, 60–180" },
     vocals: {
@@ -182,10 +183,10 @@ export default defineCommand({
       };
       const voice = await voiceFor(request);
       if (voice) request.voice = voice.voice_id;
+      checkRequest(request);
       const price = priceOf(request);
       const credits = creditsOf(price);
       if (args.plan) {
-        checkRequest(request);
         return {
           plan: true,
           type,
@@ -199,7 +200,7 @@ export default defineCommand({
       checkLimit(credits, num(args["max-credits"], "--max-credits"), isVendorPriced(request));
       const made = await generate(
         request,
-        (status) => console.error(`generate: ${status}…`),
+        (status) => console.error(`generate: ${terminalText(status)}…`),
         credits ?? undefined,
       );
       return { ...made, price, credits, ...(voice ? { voice } : {}) };

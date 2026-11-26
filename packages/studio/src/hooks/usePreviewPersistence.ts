@@ -7,8 +7,9 @@ import {
 import {
   afterStudioManualEditGestures,
   isStudioManualEditGestureLiveIn,
-} from "../components/editor/manualEditsDom";
+} from "../components/editor/manualEditGesture";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
+import { gestureDocumentOf } from "../components/editor/previewSelection";
 import { markScenesStale } from "../player/sceneSwap";
 import {
   createDomEditSaveQueue,
@@ -39,6 +40,7 @@ import {
 interface HistoryPreviewRestore {
   paths?: string[];
   files?: RestoreFiles;
+  revision?: number;
 }
 
 // ── Types ──
@@ -221,7 +223,7 @@ export function usePreviewPersistence({
 
   // Undo never repaints under a live gesture; the preview reloads once the last one ends.
   const heldPreviewDoc = useCallback(() => {
-    const doc = previewIframeRef.current?.contentDocument;
+    const doc = gestureDocumentOf(previewIframeRef.current);
     return doc && isStudioManualEditGestureLiveIn(doc) ? doc : null;
   }, [previewIframeRef]);
 
@@ -258,6 +260,7 @@ export function usePreviewPersistence({
         usePlayerStore.getState().currentTime,
         reloadPreview,
         nestedFiles,
+        restore.revision,
       );
       if (strategy === "full") return;
       // A soft restore patched the reverted attributes onto the live preview, but the

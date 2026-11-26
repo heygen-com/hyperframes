@@ -14,14 +14,10 @@ on:
       # A dependency bump or a ZIP layout change must re-stage the image.
       - "packages/aws-lambda/package.json"
       - "packages/aws-lambda/scripts/build-zip.ts"
+      - "packages/aws-lambda/scripts/_ffmpeg.ts"
       - "packages/aws-lambda/scripts/runtimeLock.ts"
       - "packages/aws-lambda/scripts/runtime-lock/**"
       - ".github/workflows/lambda-arm64-image.yml"
-  # On main it also seeds publish.yml's ffmpeg cache.
-  push:
-    branches: [main]
-    paths:
-      - "packages/aws-lambda/image/**"
   workflow_dispatch:
 
 concurrency:
@@ -60,16 +56,10 @@ jobs:
           docker buildx build --progress=plain --platform linux/arm64 --target artifact
           --output type=local,dest=out packages/aws-lambda/image
       - run: cat out/hf-media-check.txt && sha256sum out/*.tar.gz
-      # The reviewed digest of the build; a tarball from the cache or this run that differs fails here.
+      # The reviewed digest of the build; a tarball from this run that differs fails here.
       - name: Check the tarball against its committed digest
         working-directory: out
         run: sha256sum hf-media-linux-aarch64.tar.gz && sha256sum --strict -c ../packages/aws-lambda/hf-media-linux-aarch64.sha256
-      # Same path and key as publish.yml's lambda-arm64-ffmpeg job reads.
-      - if: matrix.copy == 'a' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: out/
-          key: hf-media-linux-aarch64-${{ hashFiles('packages/aws-lambda/image/**') }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hf-media-${{ matrix.copy }}

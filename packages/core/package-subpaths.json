@@ -116,6 +116,12 @@
       "types": "./dist/missingPath.d.ts",
       "environments": ["bun", "node"]
     },
+    "./terminal-text": {
+      "source": "./src/terminalText.ts",
+      "runtime": "./dist/terminalText.js",
+      "types": "./dist/terminalText.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./rename-retry": {
       "source": "./src/renameWithRetry.ts",
       "runtime": "./dist/renameWithRetry.js",
@@ -150,6 +156,18 @@
       "source": "./src/utils/richTextSanitize.ts",
       "runtime": "./dist/utils/richTextSanitize.js",
       "types": "./dist/utils/richTextSanitize.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./drawn-box": {
+      "source": "./src/runtime/drawnBox.ts",
+      "runtime": "./dist/runtime/drawnBox.js",
+      "types": "./dist/runtime/drawnBox.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./inline-text-style": {
+      "source": "./src/utils/inlineTextStyleRead.ts",
+      "runtime": "./dist/utils/inlineTextStyleRead.js",
+      "types": "./dist/utils/inlineTextStyleRead.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./composition-contract": {
@@ -380,6 +398,12 @@
       "types": "./dist/audioFade.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audio-decode": {
+      "source": "./src/audioDecode.ts",
+      "runtime": "./dist/audioDecode.js",
+      "types": "./dist/audioDecode.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./speed-ramp": {
       "source": "./src/speedRamp.ts",
       "runtime": "./dist/speedRamp.js",
@@ -464,6 +488,12 @@
       "types": "./dist/runtime/editingPort.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/css-rotation": {
+      "source": "./src/runtime/editing/cssRotation.ts",
+      "runtime": "./dist/runtime/editing/cssRotation.js",
+      "types": "./dist/runtime/editing/cssRotation.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/patch-tween": {
       "source": "./src/runtime/editing/patchTween.ts",
       "runtime": "./dist/runtime/editing/patchTween.js",
@@ -474,6 +504,18 @@
       "source": "./src/runtime/editing/softReload.ts",
       "runtime": "./dist/runtime/editing/softReload.js",
       "types": "./dist/runtime/editing/softReload.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/scenes": {
+      "source": "./src/runtime/editing/scenes.ts",
+      "runtime": "./dist/runtime/editing/scenes.js",
+      "types": "./dist/runtime/editing/scenes.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/live-retime": {
+      "source": "./src/runtime/editing/liveRetime.ts",
+      "runtime": "./dist/runtime/editing/liveRetime.js",
+      "types": "./dist/runtime/editing/liveRetime.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./runtime/clip-window": {
@@ -493,6 +535,18 @@
       "runtime": "./dist/runtime/mediaSteer.js",
       "types": "./dist/runtime/mediaSteer.d.ts",
       "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/web-audio-transport": {
+      "source": "./src/runtime/webAudioTransport.ts",
+      "runtime": "./dist/runtime/webAudioTransport.js",
+      "types": "./dist/runtime/webAudioTransport.d.ts",
+      "environments": ["browser"]
+    },
+    "./runtime/decodes-first": {
+      "source": "./src/runtime/decodesFirst.ts",
+      "runtime": "./dist/runtime/decodesFirst.js",
+      "types": "./dist/runtime/decodesFirst.d.ts",
+      "environments": ["browser"]
     },
     "./runtime/clip-reveal": {
       "source": "./src/runtime/clipReveal.ts",
@@ -518,10 +572,28 @@
       "types": "./dist/runtime/levelTap.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./compiler/composition-size-limit": {
+      "source": "./src/compiler/compositionSizeLimit.ts",
+      "runtime": "./dist/compiler/compositionSizeLimit.js",
+      "types": "./dist/compiler/compositionSizeLimit.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./compiler/html-tokens": {
+      "source": "./src/compiler/htmlTokens.ts",
+      "runtime": "./dist/compiler/htmlTokens.js",
+      "types": "./dist/compiler/htmlTokens.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./compiler/html-document": {
       "source": "./src/compiler/htmlDocument.ts",
       "runtime": "./dist/compiler/htmlDocument.js",
       "types": "./dist/compiler/htmlDocument.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./compiler/selector-id-tokens": {
+      "source": "./src/compiler/selectorIdTokens.ts",
+      "runtime": "./dist/compiler/selectorIdTokens.js",
+      "types": "./dist/compiler/selectorIdTokens.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./compiler/png-colour-tags": {

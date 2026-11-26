@@ -4,18 +4,35 @@
 // so winning rule, to a "planted" one.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkSkills, MANIFEST_FILE } from "./skillsManifest.js";
+
+// A process start can take seconds on a busy Windows runner, so the fixture counts its git starts.
+const fixtureGit = vi.hoisted(() => ({ starts: 0 }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...real,
+    execFileSync: ((...args: Parameters<typeof real.execFileSync>) => {
+      fixtureGit.starts++;
+      return real.execFileSync(...args);
+    }) as typeof real.execFileSync,
+  };
+});
 
 const REMOTE = "https://github.com/heygen-com/hyperframes.git";
 const RAW = "https://raw.githubusercontent.com/heygen-com/hyperframes";
 
 let root: string;
 let startDir: string;
+/** The two read-only repos every layout reads, made once: GitHub's honest copy and the planted one. */
+let repos: string;
+let honest: string;
+let planted: string;
 
 const git = (cwd: string, ...args: string[]) => {
   const { GIT_DIR: _, ...env } = process.env;
@@ -27,11 +44,11 @@ function repoWithMain(dir: string): string {
   mkdirSync(dir, { recursive: true });
   git(dir, "init", "-q", "-b", "main");
   git(dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", dir);
-  return git(dir, "rev-parse", "HEAD");
+  return readFileSync(join(dir, ".git", "refs", "heads", "main"), "utf8").trim();
 }
 
 const rewrite = (configFile: string, to: string, from: string) =>
-  git(root, "config", "--file", configFile, `url.${to}.insteadOf`, from);
+  appendFileSync(configFile, `[url "${to}"]\n\tinsteadOf = ${from}\n`);
 const sendGitHubTo = (configFile: string, repo: string) =>
   rewrite(configFile, pathToFileURL(repo).href, REMOTE);
 
@@ -65,6 +82,16 @@ const layouts: Record<string, (planted: string) => string> = {
   },
 };
 
+beforeAll(() => {
+  repos = mkdtempSync(join(tmpdir(), "skills-git-repos-"));
+  vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+  vi.stubEnv("GIT_CONFIG_GLOBAL", join(repos, "none.gitconfig"));
+  honest = repoWithMain(join(repos, "github", "heygen-com", "hyperframes.git"));
+  planted = repoWithMain(join(repos, "planted"));
+  vi.unstubAllEnvs();
+});
+afterAll(() => rmSync(repos, { recursive: true, force: true }));
+
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "skills-git-folder-"));
   startDir = process.cwd();
@@ -84,12 +111,12 @@ afterEach(() => {
 
 describe("the skills check's main lookup", () => {
   it.each(Object.keys(layouts))("reads no git config from %s", async (layout) => {
-    const honest = repoWithMain(join(root, "github", "heygen-com", "hyperframes.git"));
-    const planted = repoWithMain(join(root, "planted"));
-    const github = `${pathToFileURL(join(root, "github")).href}/`;
+    const before = fixtureGit.starts;
+    const github = `${pathToFileURL(join(repos, "github")).href}/`;
     rewrite(join(root, "person.gitconfig"), github, "https://github.com/");
     expect(planted).not.toBe(honest);
-    const project = layouts[layout]!(join(root, "planted"));
+    const project = layouts[layout]!(join(repos, "planted"));
+    expect(fixtureGit.starts - before).toBe(1);
     process.chdir(project);
 
     // A prerelease has no release tag, so the check pins main through git.

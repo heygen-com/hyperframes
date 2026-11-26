@@ -1,13 +1,35 @@
 const isControlCode = (code: number) =>
   (code < 0x20 && code !== 0x09) || (code >= 0x7f && code <= 0x9f);
 
+const reordersOrBreaksTextOnScreen = (code: number) =>
+  (code >= 0x2028 && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
+
 export function terminalText(text: string): string {
   let shown = "";
   for (const ch of text) {
     const code = ch.charCodeAt(0);
-    shown += isControlCode(code) ? `\\x${code.toString(16).padStart(2, "0")}` : ch;
+    if (isControlCode(code)) shown += `\\x${code.toString(16).padStart(2, "0")}`;
+    else if (reordersOrBreaksTextOnScreen(code)) shown += `\\u${code.toString(16)}`;
+    else shown += ch;
   }
   return shown;
+}
+
+export function quotedFilePath(path: string): string {
+  let result = "";
+  for (const ch of JSON.stringify(path)) {
+    const code = ch.charCodeAt(0);
+    const escape =
+      isControlCode(code) ||
+      reordersOrBreaksTextOnScreen(code) ||
+      /\p{Default_Ignorable_Code_Point}/u.test(ch) ||
+      ch.normalize("NFKC") !== ch;
+    if (escape) {
+      for (let index = 0; index < ch.length; index++)
+        result += `\\u${ch.charCodeAt(index).toString(16).padStart(4, "0")}`;
+    } else result += ch;
+  }
+  return result;
 }
 
 export function terminalLines(text: string): string {

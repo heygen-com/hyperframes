@@ -35,3 +35,6 @@ function isWorking(path, name) {
 
 export const ffmpegBinary = () => configuredOr("ffmpeg", "HYPERFRAMES_FFMPEG_PATH");
 export const ffprobeBinary = () => configuredOr("ffprobe", "HYPERFRAMES_FFPROBE_PATH");
+
+// The self-contained reader list and its options live with the literal-name check, so the skill scripts share them.
+export { SELF_CONTAINED_FORMATS, selfContainedInput } from "./literal-media-input.mjs";

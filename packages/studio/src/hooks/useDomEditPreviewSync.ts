@@ -8,7 +8,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import type { PatchTarget } from "../utils/sourcePatcher";
-import { onPreviewContentReplaced } from "../player/sceneSwap";
+import { onPreviewContentReplaced, onPreviewRestoredInPlace } from "../player/sceneSwap";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
 
 interface UseDomEditPreviewSyncParams {
@@ -75,7 +75,14 @@ export function useDomEditPreviewSync({
       refreshPreviewDocumentVersion();
     };
 
-    return onPreviewContentReplaced(previewIframe, handleLoad);
+    const stopReplaced = onPreviewContentReplaced(previewIframe, handleLoad);
+    const stopRestored = onPreviewRestoredInPlace(previewIframe, () => {
+      void syncSelectionFromDocument();
+    });
+    return () => {
+      stopReplaced();
+      stopRestored();
+    };
   }, [
     captionEditMode,
     domEditSelectionRef,

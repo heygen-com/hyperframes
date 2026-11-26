@@ -236,7 +236,7 @@ export function PropertyPanelFlat({
     projectId,
     element,
     previewIframeRef,
-    onSetAttributeLive,
+    onSetAttributeQuiet,
     onApplyScope: onApplyColorGradingScope,
   });
 
@@ -301,7 +301,7 @@ export function PropertyPanelFlat({
   const volumeAutomation = useVolumeAutomation(
     element,
     currentTime,
-    onSetAttributeQuiet ?? onSetAttributeLive,
+    onSetAttributeQuiet,
     linkedSpeed,
   );
 
@@ -497,7 +497,7 @@ export function PropertyPanelFlat({
       content: (
         <AudioFxGroup
           element={element}
-          onSetAttributeQuiet={onSetAttributeQuiet ?? onSetAttributeLive}
+          onSetAttributeQuiet={onSetAttributeQuiet}
           onSetAttributeLive={onSetAttributeLive}
           onAutoGroupCarveSources={onAutoGroupCarveSources}
         />

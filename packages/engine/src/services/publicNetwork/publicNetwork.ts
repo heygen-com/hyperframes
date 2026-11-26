@@ -26,9 +26,9 @@ export function isPublicIPv4(address: string): boolean {
   return isIP(address) === 4 && !isBlockedNetworkHost(address);
 }
 
-const PUBLIC_IPV4 = "Capture requires a public IPv4 address";
-const PUBLIC_HOSTNAME = "Capture requires a public hostname";
-const PUBLIC_DNS = "Capture DNS returned a non-public address";
+const PUBLIC_IPV4 = "Only a public IPv4 address is allowed";
+const PUBLIC_HOSTNAME = "Only a public hostname is allowed";
+const PUBLIC_DNS = "DNS returned a non-public address";
 
 export type RefusedHostClass = NonPublicIPv4Class | "internal-name" | "ipv6";
 
@@ -123,7 +123,7 @@ function beforeDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(
-      () => reject(new Error("Capture DNS timed out")),
+      () => reject(new Error("DNS timed out")),
       Math.max(0, deadline - Date.now()),
     );
   });
@@ -166,8 +166,8 @@ export function systemLookupInKillableChild(host: string, timeoutMs: number): Pr
         env: { ...process.env, NODE_OPTIONS: "" },
       },
       (error, stdout, stderr) => {
-        if (error?.killed) reject(new Error("Capture DNS timed out"));
-        else if (!stdout) reject(new Error(`Capture DNS failed: ${stderr || helperEnded(error)}`));
+        if (error?.killed) reject(new Error("DNS timed out"));
+        else if (!stdout) reject(new Error(`DNS failed: ${stderr || helperEnded(error)}`));
         else {
           try {
             resolve(JSON.parse(stdout) as string[]);
@@ -234,14 +234,18 @@ async function upstreamRoute(
 }
 
 /** Pinned asset transport, or the opt-in upstream proxy; redirects are returned for caller validation. */
-export async function publicRequest(url: string | URL, init: RequestInit = {}): Promise<Response> {
+export async function publicRequest(
+  url: string | URL,
+  init: RequestInit = {},
+  upstream: UpstreamProxy | null = captureUpstreamProxy() ?? null,
+): Promise<Response> {
   const target = new URL(url);
   if (!["http:", "https:"].includes(target.protocol) || target.username || target.password) {
-    throw new Error("Capture requires an HTTP(S) URL without credentials");
+    throw new Error("Only an HTTP(S) URL without credentials is allowed");
   }
   const method = (init.method ?? "GET").toUpperCase();
   if (!["GET", "HEAD"].includes(method) || init.body != null) {
-    throw new Error("Capture asset requests support only GET and HEAD without a body");
+    throw new Error("Public requests support only GET and HEAD without a body");
   }
   // Video callers budget the entire body transfer; a default must not shorten it.
   const signal = init.signal ?? AbortSignal.timeout(30_000);
@@ -258,9 +262,8 @@ export async function publicRequest(url: string | URL, init: RequestInit = {}): 
     headers.delete(name);
   headers.set("host", target.host);
   headers.set("accept-encoding", "identity");
-  const proxy = captureUpstreamProxy();
-  const { options, tunnel } = proxy
-    ? await upstreamRoute(target, proxy, headers, signal)
+  const { options, tunnel } = upstream
+    ? await upstreamRoute(target, upstream, headers, signal)
     : await pinnedRoute(target, signal);
   return new Promise<Response>((resolve, reject) => {
     const request = target.protocol === "https:" ? httpsRequest : httpRequest;
@@ -305,7 +308,7 @@ function assetResponse(incoming: IncomingMessage, req: ClientRequest, method: st
   const headers = responseHeaders(incoming);
   const encoding = headers.get("content-encoding")?.toLowerCase();
   if (encoding && encoding !== "identity") {
-    throw new Error("Capture server ignored identity content encoding");
+    throw new Error("The server ignored identity content encoding");
   }
   const status = incoming.statusCode ?? 502;
   if (method === "HEAD" || [204, 205, 304].includes(status)) {
@@ -335,7 +338,7 @@ function responseBody(incoming: IncomingMessage, req: ClientRequest): ReadableSt
         controller.error(error);
       };
       incoming.once("error", fail);
-      incoming.once("aborted", () => fail(new Error("Capture response aborted")));
+      incoming.once("aborted", () => fail(new Error("The response was aborted")));
       incoming.pause();
     },
     pull() {

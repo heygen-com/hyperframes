@@ -1,4 +1,5 @@
 import { type ArgsDef } from "citty";
+import { terminalLines } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import {
   HISTORY_START,
@@ -191,7 +192,7 @@ const changeOf = (file: HistoryEntry["files"][number]) =>
   file.before === null ? "added" : file.after === null ? "deleted" : "modified";
 
 function print(json: boolean, data: object, text: string): void {
-  console.log(json ? JSON.stringify(withMeta(data), null, 2) : text);
+  console.log(json ? JSON.stringify(withMeta(data), null, 2) : terminalLines(text));
 }
 
 async function textDiff(reader: Reader, entry: HistoryEntry): Promise<string> {
@@ -333,7 +334,7 @@ function guarded<A>(run: (args: A) => Promise<void>) {
           ? `This project is open in another app (pid ${error.pid}), which keeps its history: undo, restore or pin there.`
           : (error as Error).message;
       if ((args as { json?: boolean }).json) print(true, jsonFailure("refused", message), message);
-      else console.error(message);
+      else console.error(terminalLines(message));
     }
   };
 }
