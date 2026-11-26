@@ -38,6 +38,7 @@ import {
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
+  drawOutline,
   type GestureState,
   type GroupGestureState,
   type UseDomEditOverlayGesturesOptions,
@@ -128,7 +129,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const box = opts.waitingPressRef.current ? null : opts.boxRef.current;
+    const outline = opts.waitingPressRef.current
+      ? []
+      : [opts.boxRef.current, opts.handlesRef.current];
     const blockedMove = opts.blockedMoveRef.current;
     if (!blockedMove && !g && !groupG) {
       opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
@@ -245,10 +248,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       };
       readout.updateGestureReadout(g.readout, draftRect);
       setDraftOverlayRect(draftRect);
-      if (box) {
-        box.style.left = `${nextBoxLeft}px`;
-        box.style.top = `${nextBoxTop}px`;
-      }
+      drawOutline(outline, { left: nextBoxLeft, top: nextBoxTop });
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
     } else {
       // Corner resize scales proportionally about the center, without edge snapping.
@@ -282,12 +282,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         draftRect,
         liveInlineStyle: sel.element.getAttribute("style"),
       });
-      if (box) {
-        box.style.left = `${draftRect.left}px`;
-        box.style.top = `${draftRect.top}px`;
-        box.style.width = `${draftRect.width}px`;
-        box.style.height = `${draftRect.height}px`;
-      }
+      drawOutline(outline, draftRect);
       readout.updateGestureReadoutSize(g.readout, draftRect, writtenSize);
       setDraftOverlayRect(draftRect);
     }
@@ -309,7 +304,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const box = opts.waitingPressRef.current ? null : opts.boxRef.current;
+    const outline = opts.waitingPressRef.current
+      ? []
+      : [opts.boxRef.current, opts.handlesRef.current];
     opts.blockedMoveRef.current = null;
     opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
 
@@ -383,10 +380,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (g.kind === "drag" && isDomEditGestureTap(g, e)) {
       if (g.pathOffsetMember) restoreManualOffsetDragMembers([g.pathOffsetMember]);
-      if (box) {
-        box.style.left = `${g.originLeft}px`;
-        box.style.top = `${g.originTop}px`;
-      }
+      drawOutline(outline, { left: g.originLeft, top: g.originTop });
       restoreGestureOverlayRect(g);
       opts.suppressNextBoxClickRef.current = true;
       opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
@@ -403,10 +397,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       } else {
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
       }
-      if (box) {
-        box.style.width = `${g.originWidth}px`;
-        box.style.height = `${g.originHeight}px`;
-      }
+      drawOutline(outline, { width: g.originWidth, height: g.originHeight });
       restoreGestureOverlayRect(g);
       opts.suppressNextBoxClickRef.current = true;
       return;
@@ -470,10 +461,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         editScaleY: g.editScaleY,
         angle: g.actualRotation,
       });
-      if (box) {
-        box.style.left = `${nextBoxLeft}px`;
-        box.style.top = `${nextBoxTop}px`;
-      }
+      drawOutline(outline, { left: nextBoxLeft, top: nextBoxTop });
       const member = g.pathOffsetMember;
       const edit = beginStudioPendingEdit(manualOffsetMoveRevert([member]));
       const saved = Promise.resolve(

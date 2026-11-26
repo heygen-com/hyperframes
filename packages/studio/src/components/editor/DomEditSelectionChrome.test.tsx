@@ -52,6 +52,7 @@ describe("DomEditSelectionChrome crop composition", () => {
           allowCanvasMovement={false}
           allowBodyDrag
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass="border border-studio-accent/80"
           boxClipPath={undefined}
           selectionKey="headline"
@@ -107,6 +108,7 @@ describe("DomEditSelectionChrome crop composition", () => {
           allowCanvasMovement={true}
           allowBodyDrag
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass=""
           boxClipPath={undefined}
           selectionKey="clip"
@@ -171,6 +173,7 @@ describe("DomEditSelectionChrome while editing text", () => {
           allowCanvasMovement={true}
           allowBodyDrag
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass="border border-studio-accent/80"
           boxClipPath={undefined}
           selectionKey="copy"
@@ -256,6 +259,7 @@ describe("DomEditSelectionChrome with body drag off", () => {
           allowCanvasMovement
           allowBodyDrag={allowBodyDrag}
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass=""
           boxClipPath={undefined}
           selectionKey="box"
@@ -349,6 +353,7 @@ describe("DomEditSelectionChrome corner handles", () => {
           allowBodyDrag
           cropOutlineInsetPx={cropOutlineInsetPx}
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass=""
           boxClipPath={undefined}
           selectionKey="t"
@@ -363,8 +368,17 @@ describe("DomEditSelectionChrome corner handles", () => {
       ...host.querySelectorAll<HTMLElement>('[style*="nwse-resize"], [style*="nesw-resize"]'),
     ].map((handle) => {
       const corner = handle.querySelector<HTMLElement>("[data-resize-corner]")!;
-      const left = parseFloat(handle.style.left);
-      const top = parseFloat(handle.style.top);
+      // On the overlay: a handle is pinned to its corner's edges of the handles' wrapper, which sits on the box.
+      const wrap = handle.parentElement!.style;
+      const along = (start: string, end: string, size: string) =>
+        parseFloat(wrap[start as "left"]) +
+        (handle.style[start as "left"]
+          ? parseFloat(handle.style[start as "left"])
+          : parseFloat(wrap[size as "width"]) -
+            parseFloat(handle.style[end as "right"]) -
+            RESIZE_HANDLE_HIT_PX);
+      const left = along("left", "right", "width");
+      const top = along("top", "bottom", "height");
       return {
         left,
         top,

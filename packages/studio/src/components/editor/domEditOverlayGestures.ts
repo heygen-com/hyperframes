@@ -110,6 +110,20 @@ export function movesGesture(
   return e.pointerId === gesture.pointerId && (e.buttons & 1) === 1;
 }
 
+/** The selection box and its resize handles move in one write, in the move's own task; React's commit writes the
+ *  same rect a frame later. */
+export function drawOutline(
+  outline: (HTMLElement | null)[],
+  rect: { left?: number; top?: number; width?: number; height?: number },
+) {
+  for (const el of outline) {
+    for (const side of ["left", "top", "width", "height"] as const) {
+      const v = rect[side];
+      if (el && v !== undefined) el.style[side] = `${v}px`;
+    }
+  }
+}
+
 export interface BlockedMoveState {
   pointerId: number;
   startX: number;
@@ -242,6 +256,7 @@ export type UseDomEditOverlayGesturesOptions = {
   overlayRef: RefObject<HTMLDivElement | null>;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   boxRef: RefObject<HTMLDivElement | null>;
+  handlesRef: RefObject<HTMLDivElement | null>;
   selectionRef: RefObject<DomEditSelection | null>;
   hoverSelectionRef: RefObject<DomEditSelection | null>;
   overlayRectRef: RefObject<OverlayRect | null>;
