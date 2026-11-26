@@ -6,6 +6,7 @@ import { setCommandExitCode } from "../utils/commandResult.js";
 import {
   desktopInstalled,
   downloadHint,
+  openCommandFor,
   openInDesktop,
   previewStopCommandFor,
   type DesktopOpenResult,
@@ -24,7 +25,7 @@ const WHY_NOT: Record<Extract<DesktopOpenResult, { opened: false }>["reason"], s
   "handoff-unavailable": null,
   "unsupported-platform": "Opening a project from the CLI works on macOS, Windows and Linux only.",
   "not-installed": "The HyperFrames desktop app isn't installed on this computer.",
-  "open-failed": "The HyperFrames desktop app couldn't be started.",
+  "open-failed": "HyperFrames is installed but didn't open from here.",
 };
 
 type PreviewBeforeOpen =
@@ -118,7 +119,31 @@ function printResult(project: ProjectDir, result: DesktopOpenResult): void {
   const why = WHY_NOT[result.reason];
   if (!why) return console.log(`${c.warn("◇")}  ${downloadHint(result.downloadUrl)}`);
   console.log(`${c.warn("◇")}  ${why}`);
+  if (result.reason === "open-failed") {
+    console.log(
+      `   Open it from your own terminal: ${c.accent(terminalText(openCommandFor(project.dir)))}`,
+    );
+    return;
+  }
   console.log(`   Download it: ${c.accent(result.downloadUrl)}`);
+}
+
+function jsonPayload(
+  project: ProjectDir,
+  result: DesktopOpenResult,
+  preview: PreviewBeforeOpen,
+): Record<string, unknown> {
+  if (!result.opened && result.reason === "open-failed") {
+    return {
+      project: project.dir,
+      opened: false,
+      reason: result.reason,
+      openCommand: openCommandFor(project.dir),
+      preview,
+    };
+  }
+  const catchUp = result.opened && result.handedOver ? { catchUp: "npx hyperframes catch-up" } : {};
+  return { project: project.dir, ...result, ...catchUp, preview };
 }
 
 /** Under --json a bad directory answers in JSON too, not with the human error box. */
@@ -149,12 +174,7 @@ export default defineCommand({
     const preview = await endPreviewBeforeOpening(project.dir);
     const result = openInDesktop(project.dir);
     if (!result.opened) setCommandExitCode(1);
-    const catchUp =
-      result.opened && result.handedOver ? { catchUp: "npx hyperframes catch-up" } : {};
-    if (args.json)
-      console.log(
-        JSON.stringify({ project: project.dir, ...result, ...catchUp, preview }, null, 2),
-      );
+    if (args.json) console.log(JSON.stringify(jsonPayload(project, result, preview), null, 2));
     else {
       printPreview(preview, result.opened);
       printResult(project, result);
