@@ -442,7 +442,6 @@ export interface EditingRequests {
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
-  /** Document-order layout, style, visibility, and clip-key snapshot for stage change tracking. */
   "stage-measure": { params: StageMeasureParams; result: StageMeasureResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
