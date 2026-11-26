@@ -169,6 +169,23 @@ describe("previewEditingClient", () => {
     expect(handed.mock.calls.map(([, params]) => params)).toEqual([{ seconds: 1 }, { seconds: 2 }]);
   });
 
+  it("keeps call order for requests asked in each microtask while the agent's probe settles", async () => {
+    const { iframe, handed } = servedFrame((_kind, params) => params);
+    const asked = [previewRequest(iframe, "set-loop-start", { seconds: 0 })];
+    await new Promise<void>((done) => {
+      void previewEditingClient(iframe).ready.then(async () => {
+        for (let seconds = 1; seconds <= 12; seconds++) {
+          asked.push(previewRequest(iframe, "set-loop-start", { seconds }));
+          await Promise.resolve();
+        }
+        done();
+      });
+    });
+    await Promise.all(asked);
+    const order = handed.mock.calls.map(([, params]) => (params as { seconds: number }).seconds);
+    expect(order).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
   it("sends a request asked while a reply is handled after that handling, with each answer its own", async () => {
     const log: string[] = [];
     const { iframe } = servedFrame((_kind, params) => {

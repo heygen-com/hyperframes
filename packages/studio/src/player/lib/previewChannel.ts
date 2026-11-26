@@ -110,6 +110,7 @@ export const AGENT_PROBE_MS = 1_000;
 
 const agents = new WeakMap<EditingPortClient, boolean>();
 const pendingProbes = new WeakMap<EditingPortClient, Promise<boolean>>();
+const turnsWaiting = new WeakMap<EditingPortClient, Promise<boolean>>();
 
 function agentConnectedInCallOrder(client: EditingPortClient): boolean | Promise<boolean> {
   const pending = pendingProbes.get(client);
@@ -155,7 +156,23 @@ export async function previewAnswer<K extends EditingRequestKind>(
 ): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | typeof PREVIEW_STALE | null> {
   const client = previewEditingClient(iframe);
   const connected = agentConnectedInCallOrder(client);
-  if (!(typeof connected === "boolean" ? connected : await connected)) return null;
+  const earlier = turnsWaiting.get(client);
+  if (typeof connected === "boolean" && !earlier)
+    return connected ? sendForAnswer(client, kind, params, timeoutMs, admit) : null;
+  const turn = (earlier ?? Promise.resolve()).then(() => connected);
+  turnsWaiting.set(client, turn);
+  const ready = await turn;
+  if (turnsWaiting.get(client) === turn) turnsWaiting.delete(client);
+  return ready ? sendForAnswer(client, kind, params, timeoutMs, admit) : null;
+}
+
+function sendForAnswer<K extends EditingRequestKind>(
+  client: EditingPortClient,
+  kind: K,
+  params: EditingParams<K>,
+  timeoutMs?: number,
+  admit?: () => boolean,
+): typeof PREVIEW_STALE | Promise<EditingResult<K> | typeof PREVIEW_REJECTED | null> {
   if (admit && !admit()) return PREVIEW_STALE;
   return client.request(kind, params, { timeoutMs }).catch((err: unknown) => {
     const noReply =
