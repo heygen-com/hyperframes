@@ -11,6 +11,7 @@ import {
   TIMELINE_FIELDS,
   type EditingResult,
 } from "@hyperframes/core/runtime/editing-port";
+import { isMessageList as isList } from "@hyperframes/core/runtime/protocol";
 import { isFields, isHandle } from "../player/lib/previewElements";
 
 type Snapshot = EditingResult<"gsap-snapshot">;
@@ -23,8 +24,6 @@ const isTextOrNull = (value: unknown) => value === null || isText(value);
 const isNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 const isNumberOrNull = (value: unknown) => value === null || isNumber(value);
-const isList = (value: unknown, max: number): value is unknown[] =>
-  Array.isArray(value) && value.length <= max;
 
 /** The reply as a snapshot, or null when any part of it is off its shape or past a bound. */
 export function readGsapSnapshot(value: unknown): Snapshot | null {
@@ -91,12 +90,17 @@ function isVars(value: unknown, budget: Budget, depth: number): boolean {
   if ((budget.fields -= 1) < 0) return false;
   if (value === null || typeof value === "boolean" || isNumber(value) || isText(value)) return true;
   if (depth >= MAX_VARS_DEPTH) return false;
-  if (Array.isArray(value)) return value.every((item) => isVars(item, budget, depth + 1));
-  return (
-    isFields(value) &&
-    Object.entries(value).every(([key, item]) => isText(key) && isVars(item, budget, depth + 1))
-  );
+  return Array.isArray(value)
+    ? isVarsList(value, budget, depth + 1)
+    : isVarsRecord(value, budget, depth + 1);
 }
+
+const isVarsList = (value: unknown[], budget: Budget, depth: number) =>
+  isList(value, budget.fields) && value.every((item) => isVars(item, budget, depth));
+
+const isVarsRecord = (value: unknown, budget: Budget, depth: number) =>
+  isFields(value) &&
+  Object.entries(value).every(([key, item]) => isText(key) && isVars(item, budget, depth));
 
 function isTarget(value: unknown, budget: Budget): boolean {
   if (!isFields(value) || !isFields(value.values)) return false;

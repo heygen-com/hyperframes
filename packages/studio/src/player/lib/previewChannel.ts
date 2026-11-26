@@ -2,6 +2,8 @@
 import {
   createEditingPortClient,
   EditingPortError,
+  MAX_FONT_FACES,
+  MAX_QUERY_MATCHES,
   type EditingParams,
   type EditingPortClient,
   type EditingRequestKind,
@@ -9,8 +11,9 @@ import {
   type TextEditSelection,
   type TextEditSelectionEvent,
 } from "@hyperframes/core/runtime/editing-port";
+import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
-import { wellFormedClips } from "./manifestClips";
+import { MAX_FRAME_CLIPS, wellFormedClips } from "./manifestClips";
 import { frameRequestSent } from "./frameFacts";
 
 const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
@@ -262,17 +265,19 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
   const manifest: unknown = snapshot?.clipManifest;
   if (typeof manifest !== "object" || manifest === null) return null;
-  const { clips, durationInFrames } = manifest as Partial<ClipManifest>;
-  if (!Array.isArray(clips) || typeof durationInFrames !== "number") return null;
+  const { clips, durationInFrames, scenes } = manifest as Record<string, unknown>;
+  const wellFormed = wellFormedClips(clips);
+  if (!wellFormed || typeof durationInFrames !== "number") return null;
   if (!Number.isFinite(durationInFrames)) return null;
-  return { ...(manifest as ClipManifest), clips: wellFormedClips(clips) };
+  const listedScenes = (isMessageList(scenes) ? scenes : []) as ClipManifest["scenes"];
+  return { ...(manifest as ClipManifest), clips: wellFormed, scenes: listedScenes };
 }
 
 export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map<string, string>> {
   const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
   const pairs: unknown = snapshot?.clipParents;
   const parents = new Map<string, string>();
-  if (!Array.isArray(pairs)) return parents;
+  if (!isMessageList(pairs, MAX_FRAME_CLIPS)) return parents;
   for (const pair of pairs) {
     if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
       parents.set(pair[0], pair[1]);
@@ -287,8 +292,10 @@ export async function previewConsoleErrors(
 ): Promise<{ errors: string[]; truncated: boolean } | null> {
   const reply = await previewRequest(iframe, "console-errors", { from }, undefined, priority);
   const errors: unknown = reply?.errors;
-  if (!Array.isArray(errors) || typeof reply?.truncated !== "boolean") return null;
-  return { errors: errors.map(String), truncated: reply.truncated };
+  if (!isMessageList(errors, MAX_QUERY_MATCHES) || typeof reply?.truncated !== "boolean")
+    return null;
+  if (!errors.every((error): error is string => typeof error === "string")) return null;
+  return { errors, truncated: reply.truncated };
 }
 
 /** The runtime's computed `properties` for the element `target` names; null when it has none. */
@@ -332,7 +339,8 @@ export async function previewComputedStylesOfEvery(
     properties,
   });
   const matches: unknown = reply?.matches;
-  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  if (!isMessageList(matches, MAX_QUERY_MATCHES) || typeof reply?.truncated !== "boolean")
+    return null;
   return {
     matches: matches.map((entry: unknown) => readStyles(entry, properties)),
     truncated: reply.truncated,
@@ -350,8 +358,8 @@ export async function previewFontFaces(iframe: HTMLIFrameElement): Promise<FontF
     face !== null &&
     isText((face as { family?: unknown }).family) &&
     isText((face as { src?: unknown }).src);
-  if (!Array.isArray(families) || !families.every(isText)) return null;
-  if (!Array.isArray(ownFaces) || !ownFaces.every(isFace)) return null;
+  if (!isMessageList(families, MAX_FONT_FACES) || !families.every(isText)) return null;
+  if (!isMessageList(ownFaces, MAX_FONT_FACES) || !ownFaces.every(isFace)) return null;
   return { families, ownFaces: ownFaces.map(({ family, src }) => ({ family, src })) };
 }
 

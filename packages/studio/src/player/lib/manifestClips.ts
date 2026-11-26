@@ -1,6 +1,8 @@
+import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import { TRANSITION_LABEL_PREFIX } from "@hyperframes/core/studio-preview-mark";
 import type { ClipManifestClip } from "./playbackTypes";
 
+export const MAX_FRAME_CLIPS = 100_000;
 const MAX_TRANSITION_LABEL = 200;
 const MAX_CLIP_ID = 512;
 const MAX_CLIP_LABEL = 200;
@@ -23,7 +25,7 @@ const stringsOnly = (fields: Record<string, unknown>): boolean =>
   (fields.label == null || typeof fields.label === "string") &&
   (fields.assetUrl == null || typeof fields.assetUrl === "string") &&
   (fields.compositionAncestors == null ||
-    (Array.isArray(fields.compositionAncestors) &&
+    (isMessageList(fields.compositionAncestors) &&
       fields.compositionAncestors.every(
         (ancestor) => typeof ancestor === "string" && boundedId(ancestor),
       )));
@@ -53,8 +55,9 @@ const transitionLabelOf = (value: unknown): string | undefined =>
     ? value
     : undefined;
 
-/** A preview frame's clip list: numeric timing and track, string fields of bounded length. */
-export function wellFormedClips(clips: readonly unknown[]): ClipManifestClip[] {
+/** A preview frame's clip list: numeric timing and track, string fields of bounded length; null past the cap. */
+export function wellFormedClips(clips: unknown): ClipManifestClip[] | null {
+  if (!isMessageList(clips, MAX_FRAME_CLIPS)) return null;
   return clips.filter(wellFormedClip).map(({ transitionLabel, ...clip }) => {
     const label = transitionLabelOf(transitionLabel);
     const bounded =
