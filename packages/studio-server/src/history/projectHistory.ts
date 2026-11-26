@@ -192,7 +192,7 @@ export interface ProjectHistory {
   /** Takes in every pending write and commits every open window and the outside group. */
   checkpoint(): Promise<void>;
   flush(): Promise<void>;
-  /** True once another project stood at the folder's path when the last operation began. */
+  /** True when another project stands at the folder's path now, asked on this thread. */
   replacedAtPath(): boolean;
   replacedNow(): Promise<boolean>;
   close(): Promise<void>;
@@ -691,7 +691,7 @@ class Engine {
     return run;
   }
 
-  /** whereFolder off the main thread; folderNow keeps its answer for the sync reads (assertOpen, replacedAtPath). */
+  /** whereFolder off the main thread; folderNow keeps its answer for assertOpen's sync read. */
   async lookAtFolder(): Promise<void> {
     const now = await statOffThread(this.dir);
     if (!now) return void (this.folderNow = "gone");
@@ -700,7 +700,7 @@ class Engine {
       same && (await readIdOffThread(this.dir)) === this.projectId ? "here" : "replaced";
   }
 
-  /** The folder now, asked on this thread: only a write's own check, made right before it writes to that folder. */
+  /** The folder now, asked on this thread: a write's own check right before it writes, and replacedAtPath. */
   whereFolder(): "here" | "gone" | "replaced" {
     const now = statSync(this.dir, { throwIfNoEntry: false });
     if (!now) return "gone";
@@ -2156,7 +2156,7 @@ class Engine {
       },
       checkpoint: () => this.queue(() => this.settle()),
       flush: () => this.queue(() => this.settleAll()),
-      replacedAtPath: () => this.folderNow === "replaced",
+      replacedAtPath: () => this.whereFolder() === "replaced",
       replacedNow: async () => (await this.folderAnswer()) === "replaced",
       close: () =>
         (this.closing ??= (async () => {
