@@ -41,8 +41,12 @@ export function sourceApi({ access, fetchImpl = fetch }) {
         ),
       ),
     /** @param {string} space @param {string} composition @param {string} title */
-    create: async (space, composition, title) =>
-      compositionOf(await send("PUT", path(space, composition), { title })),
+    create: async (space, composition, title) => {
+      const { reply } = await request("PUT", path(space, composition), { title });
+      if (!reply.ok) throw await refusalOf(reply);
+      const record = compositionOf(objectOf(await reply.json(), "envelope").data);
+      return { ...record, created: reply.status === 201 };
+    },
     /** @param {string} space @param {string} composition @param {string} snapshot */
     snapshot: async (space, composition, snapshot) =>
       snapshotOf(

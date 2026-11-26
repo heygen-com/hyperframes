@@ -90,10 +90,13 @@ in `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` alongside the video storage origins.
 Retry the same command after a network interruption. Its local record preserves
 the composition identity, upload idempotency key and completed file parts.
 A storage upload that makes no progress for 60 seconds is stopped and retried
-within the retry limit. The source record lives at `.hyperframes/share-sync.<backend-hash>.json` and
-contains no sign-in token. Do not copy that record into another project or edit
-its account, workspace or path: mismatches stop sharing to avoid overwriting
-another project's source.
+within the retry limit. Studio and the CLI keep the source record under
+`source-bindings/` in the local HyperFrames configuration directory. When you
+move or copy a project, its next explicit sync creates a new cloud composition.
+The first sync after upgrading from a version that kept the record inside
+the project also starts a new composition. Previously shared versions retain
+their snapshots. If the first sync cannot confirm that it created the destination,
+it stops before uploading files. Retry to use a fresh destination.
 
 If source changed, conflicts with another snapshot, or remains under verification,
 the command explains why it stopped. Retry after resolving the problem, or pass

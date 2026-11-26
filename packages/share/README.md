@@ -132,8 +132,11 @@ When the upload ID is known, recovery can check its status directly.
 A stalled storage PUT stops after 60 seconds without progress and can retry with
 the same upload identity.
 
-Default state uses `.hyperframes/share-sync.<backend-hash>.json`, with strict
-account/backend/realpath binding, private atomic writes, and a process lock.
+The default store uses `source-bindings/` in the local HyperFrames configuration
+directory (`HYPERFRAMES_CONFIG_DIR` or `~/.hyperframes`). Records are keyed by backend
+and project realpath, checked against the signed-in account and written atomically
+under the project lock. Copies and projects with only a legacy in-project record
+start a new composition on the next explicit sync.
 Hosts can inject a compatible `store` or read-only `existingBinding` resolver.
 An external Desktop binding is reused only when exact and settled; this adapter
 never writes Desktop's binding or starts a second upload on its behalf.

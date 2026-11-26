@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   mkdtemp,
@@ -28,6 +28,18 @@ import { bindShareHost } from "../src/host.mjs";
 
 bindShareHost({ reviewUploadOrigins: ["https://storage.test"] });
 
+const originalConfig = process.env.HYPERFRAMES_CONFIG_DIR;
+let config;
+before(async () => {
+  config = await realpath(await mkdtemp(join(tmpdir(), "hf-share-config-")));
+  process.env.HYPERFRAMES_CONFIG_DIR = config;
+});
+after(async () => {
+  if (originalConfig === undefined) delete process.env.HYPERFRAMES_CONFIG_DIR;
+  else process.env.HYPERFRAMES_CONFIG_DIR = originalConfig;
+  await rm(config, { recursive: true, force: true });
+});
+
 const signed = {
   token: "test-token",
   owner: "owner",
@@ -55,6 +67,7 @@ function fakeServer(overrides = {}) {
   const calls = { create: 0, begin: [], puts: [], submit: 0, snapshot: 0 };
   let held;
   let composition;
+  const compositions = new Set();
   const receipt = (status = "pending") => ({
     uploadId: "upload",
     compositionId: composition,
@@ -84,10 +97,12 @@ function fakeServer(overrides = {}) {
       compositions: 0,
       push: V1_LIMITS,
     }),
-    create: async (_space, id) => {
+    create: async (space, id) => {
       calls.create++;
       composition = id;
-      return { id };
+      const created = !compositions.has(id);
+      compositions.add(id);
+      return { id, spaceId: space, created };
     },
     begin: async (_space, id, request) => {
       composition = id;
@@ -856,22 +871,80 @@ test("Desktop-owned source is read-only and never re-shared into a different wor
   assert.equal(server.calls.create, 0);
 });
 
-test("binding reads reject copied folders, account changes, and symlink state files", async (t) => {
+test("the install owns sync destinations across sessions, and a copied project starts unbound", async (t) => {
   const f = await fixture(t);
-  await shareSources({ access: async () => signed, spaceId: "personal", ...fakeServer() }).prepare(
-    f.root,
-    f.rendered,
-  );
+  const opts = { access: async () => signed, spaceId: "personal", ...fakeServer() };
+  const first = await shareSources(opts).prepare(f.root, f.rendered);
+  assert.equal(first.at, "ready");
+  const saved = await createProjectShareSourceStore().read(f.key);
+  assert.equal(saved.compositionId, first.snapshot.composition_id);
   await assert.rejects(f.store.read({ ...f.key, account: "other" }), /another account/);
-  const g = await fixture(t);
+
+  const copy = await fixture(t);
   const hash = createHash("sha256").update(signed.heygenApi).digest("hex").slice(0, 16);
-  const name = `.hyperframes/share-sync.${hash}.json`;
-  await mkdir(join(g.root, ".hyperframes"));
-  await writeFile(join(g.root, name), await readFile(join(f.root, name)));
-  await assert.rejects(g.store.read(g.key), /another account/);
-  await rm(join(g.root, name));
-  await symlink(join(f.root, name), join(g.root, name));
-  await assert.rejects(g.store.read(g.key));
+  const legacy = join(copy.root, ".hyperframes", `share-sync.${hash}.json`);
+  await mkdir(dirname(legacy));
+  await writeFile(legacy, JSON.stringify({ ...saved, projectPath: copy.root }));
+  assert.equal(await copy.store.read(copy.key), null);
+  const preview = await shareSources({ ...opts, reuseOnly: true }).prepare(
+    copy.root,
+    copy.rendered,
+  );
+  assert.equal(preview.reason, "source_sync_required");
+  const result = await shareSources(opts).prepare(copy.root, copy.rendered);
+  assert.equal(result.at, "ready");
+  assert.notEqual(result.snapshot.composition_id, first.snapshot.composition_id);
+  assert.equal((await copy.store.read(copy.key)).compositionId, result.snapshot.composition_id);
+});
+
+test("a first sync requires a created composition before saving a destination or beginning an upload", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const attempts = [];
+  const { create } = sourceApi({
+    access: async () => signed,
+    fetchImpl: async (url) => {
+      const id = String(url).split("/").at(-1);
+      attempts.push(id);
+      return Response.json(
+        {
+          data: {
+            id,
+            space_id: "personal",
+            title: "Project",
+            created_by: signed.owner,
+            created_at: "2026-01-01",
+            updated_at: "2026-01-01",
+            latest_snapshot_id: null,
+          },
+        },
+        { status: 200 },
+      );
+    },
+  });
+  const options = {
+    access: async () => signed,
+    spaceId: "personal",
+    ...server,
+    api: { ...server.api, create },
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await assert.rejects(
+      shareSources(options).prepare(f.root, f.rendered),
+      /requires a new composition/,
+    );
+    assert.equal(await f.store.read(f.key), null);
+  }
+  assert.notEqual(attempts[0], attempts[1]);
+  assert.equal(server.calls.begin.length, 0);
+});
+
+test("the default store requires a configuration directory outside the project", async () => {
+  const store = createProjectShareSourceStore();
+  await assert.rejects(
+    store.read({ backend: signed.heygenApi, account: signed.owner, projectPath: config }),
+    /outside the project/,
+  );
 });
 
 test("HTTP adapter identifies CLI and sends credentials only to the API host", async () => {

@@ -1,8 +1,9 @@
 // @ts-check
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, mkdir, open, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { errorCode, mkdirInside, writeJsonAtomic } from "../storage.mjs";
 import { localBaseDigest, readUploadIntent } from "./manifest.mjs";
 
@@ -41,14 +42,30 @@ function checkSnapshots(raw) {
   readUploadIntent(raw.inflight);
 }
 
-/** Project-local state is excluded by the portable source policy. Account/root mismatches fail closed, including copied folders.
+/** Default sync destinations belong to this install. Never import a binding from a project.
  * @returns {import("./adapterTypes.js").SourceStore} */
 export function createProjectShareSourceStore() {
+  const config = process.env.HYPERFRAMES_CONFIG_DIR || join(homedir(), ".hyperframes");
   /** @param {import("./types.js").BindingKey} key */
   const location = async (key) => {
-    const dir = await mkdirInside(key.projectPath, ".hyperframes");
-    const environment = createHash("sha256").update(key.backend).digest("hex").slice(0, 16);
-    return join(dir, `share-sync.${environment}.json`);
+    if (!isAbsolute(config))
+      throw new Error("Source sync requires an absolute configuration directory.");
+    await mkdir(config, { recursive: true, mode: 0o700 });
+    const root = await realpath(config);
+    const relativeConfig = relative(key.projectPath, join(root, "source-bindings"));
+    if (
+      !(
+        relativeConfig === ".." ||
+        relativeConfig.startsWith(`..${sep}`) ||
+        isAbsolute(relativeConfig)
+      )
+    )
+      throw new Error("The source sync configuration directory must be outside the project.");
+    const dir = await mkdirInside(root, "source-bindings");
+    const id = createHash("sha256")
+      .update(JSON.stringify([key.backend, key.projectPath]))
+      .digest("hex");
+    return join(dir, `${id}.json`);
   };
   return {
     read: async (key) => {
