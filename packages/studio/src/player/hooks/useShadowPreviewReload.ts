@@ -99,8 +99,6 @@ function pageGotTo(iframe: HTMLIFrameElement | null): string {
   return ` Its page had got to: ${phase}. Its frame ${given} given a page address and was added ${Date.now() - frameAddedAt.get(iframe!)!} ms ago.`;
 }
 
-/** Where the page's first script error came from, as studio-server's early-errors script records it (project,
- * runtime, studio or unknown; never its text), so a host's log can tell a project's script from ours. */
 function firstErrorFrom(iframe: HTMLIFrameElement | null): string {
   if (!iframe?.contentDocument) return "";
   const kinds = (iframe.contentWindow as Record<string, unknown> | null)?.[
