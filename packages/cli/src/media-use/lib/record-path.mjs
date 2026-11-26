@@ -172,20 +172,36 @@ function closeAll(fds, fs) {
   }
 }
 
-function openVerifiedDirs(root, rootStat, dirEntries, fs) {
+const useProcFd = (pathApi) => process.platform === "linux" && pathApi.sep === "/";
+
+function openDirChecked(target, expectedStat, dirFlags, fs) {
+  const fd = fs.openSync(target, dirFlags);
+  const stat = fs.fstatSync(fd);
+  if (!stat.isDirectory() || !sameNode(stat, expectedStat)) {
+    closeAll([fd], fs);
+    return null;
+  }
+  return fd;
+}
+
+function openVerifiedDirs(root, rootStat, dirEntries, fs, pathApi) {
   const constants = fs.constants ?? nodeFs.constants;
   if (!constants?.O_DIRECTORY || !constants?.O_NOFOLLOW) return [];
   const dirFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
+  const procFd = useProcFd(pathApi);
   const fds = [];
   try {
-    for (const entry of [{ path: root, stat: rootStat }, ...dirEntries]) {
-      const fd = fs.openSync(entry.path, dirFlags);
-      fds.push(fd);
-      const stat = fs.fstatSync(fd);
-      if (!stat.isDirectory() || !sameNode(stat, entry.stat)) {
+    const rootFd = openDirChecked(root, rootStat, dirFlags, fs);
+    if (rootFd === null) return null;
+    fds.push(rootFd);
+    for (const entry of dirEntries) {
+      const target = procFd ? `/proc/self/fd/${fds.at(-1)}/${entry.part}` : entry.path;
+      const fd = openDirChecked(target, entry.stat, dirFlags, fs);
+      if (fd === null) {
         closeAll(fds, fs);
         return null;
       }
+      fds.push(fd);
     }
     return fds;
   } catch {
@@ -195,7 +211,7 @@ function openVerifiedDirs(root, rootStat, dirEntries, fs) {
 }
 
 function fdResolvesTo(fd, expectedFull, fs, pathApi) {
-  if (process.platform !== "linux" || pathApi.sep !== "/") return true;
+  if (!useProcFd(pathApi)) return true;
   try {
     return fs.readlinkSync(`/proc/self/fd/${fd}`) === expectedFull;
   } catch {
@@ -212,8 +228,9 @@ function sameChain(before, after, fdStat) {
 }
 
 /**
- * Open and read a verified regular file inside `projectDir`, pinning parent directories with
- * `O_DIRECTORY | O_NOFOLLOW` where supported and verifying the opened descriptor stays confined to `root`.
+ * Open and read a verified regular file inside `projectDir`. On Linux each parent directory and the leaf
+ * are opened through `/proc/self/fd/<parentFd>/<part>` with `O_NOFOLLOW`; other platforms pin parent handles
+ * where supported and re-verify every ancestor `(dev, ino)` after open.
  */
 export function readFileInsideProject(
   projectDir,
@@ -222,13 +239,25 @@ export function readFileInsideProject(
 ) {
   const walked = walkInsideProject(projectDir, candidate, { fs, pathApi });
   if (!walked || !walked.stat.isFile()) return null;
-  const dirFds = openVerifiedDirs(walked.root, walked.rootStat, walked.entries.slice(0, -1), fs);
+  const dirFds = openVerifiedDirs(
+    walked.root,
+    walked.rootStat,
+    walked.entries.slice(0, -1),
+    fs,
+    pathApi,
+  );
   if (dirFds === null) return null;
   let fd;
   try {
     const constants = fs.constants ?? nodeFs.constants;
     const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
-    fd = fs.openSync(walked.full, flags);
+    const parentFd = dirFds.at(-1);
+    const leaf = walked.entries.at(-1);
+    const leafTarget =
+      useProcFd(pathApi) && parentFd !== undefined
+        ? `/proc/self/fd/${parentFd}/${leaf.part}`
+        : walked.full;
+    fd = fs.openSync(leafTarget, flags);
     const fdStat = fs.fstatSync(fd);
     if (!fdStat.isFile() || !sameNode(fdStat, walked.stat)) return null;
     if (!fdResolvesTo(fd, walked.full, fs, pathApi)) return null;

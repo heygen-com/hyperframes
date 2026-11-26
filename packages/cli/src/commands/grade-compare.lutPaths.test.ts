@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({
   paths: [] as string[],
+  openedInos: [] as number[],
   onLstat: null as ((path: string) => void) | null,
   onOpen: null as ((path: string) => void) | null,
 }));
@@ -23,6 +24,7 @@ vi.mock("node:fs", async (importOriginal) => {
     openSync: ((path: fs.PathLike, ...rest: never[]) => {
       calls.paths.push(String(path));
       const fd = (real.openSync as (...args: unknown[]) => number)(path, ...rest);
+      calls.openedInos.push(real.fstatSync(fd).ino);
       calls.onOpen?.(String(path));
       return fd;
     }) as typeof real.openSync,
@@ -64,6 +66,7 @@ beforeEach(() => {
   fs.writeFileSync(join(project, "look.cube"), CUBE);
   fs.writeFileSync(outside, `# outside-secret\n${CUBE}`);
   calls.paths.length = 0;
+  calls.openedInos.length = 0;
   calls.onLstat = null;
   calls.onOpen = null;
 });
@@ -190,21 +193,23 @@ describe("LUT paths from a grades file", () => {
     expect(swapped).toBe(true);
   });
 
-  // fails without the fix: if a parent dir is swapped right after dir open and before leaf open, post-open checks must refuse it.
+  // fails without the fix: if a parent dir is swapped right after dir open and before leaf open, opening by absolute path contacts the outside file.
   it.skipIf(process.platform === "win32")(
     "refuses when a parent directory is swapped right before the leaf file is opened",
     async () => {
       const looksDir = join(project, "looks");
       const realLut = join(looksDir, "real.cube");
       const outsideDir = join(base, "outside-looks-late");
+      const outsideCube = join(outsideDir, "real.cube");
       fs.mkdirSync(looksDir);
       fs.mkdirSync(outsideDir);
       fs.writeFileSync(realLut, `# inside-real\n${CUBE}`);
-      fs.writeFileSync(join(outsideDir, "real.cube"), `# outside-secret\n${CUBE}`);
+      fs.writeFileSync(outsideCube, `# outside-secret\n${CUBE}`);
+      const outsideIno = fs.statSync(outsideCube).ino;
 
       let swapped = false;
       calls.onOpen = (p) => {
-        if (!swapped && p === looksDir) {
+        if (!swapped && (p === looksDir || p.endsWith("/looks"))) {
           swapped = true;
           fs.renameSync(looksDir, join(project, "looks-moved"));
           fs.symlinkSync(outsideDir, looksDir, "dir");
@@ -213,6 +218,9 @@ describe("LUT paths from a grades file", () => {
 
       await expect(prepare("looks/real.cube")).rejects.toThrow(/must be a file inside the project/);
       expect(swapped).toBe(true);
+      if (process.platform === "linux") {
+        expect(calls.openedInos).not.toContain(outsideIno);
+      }
     },
   );
 
