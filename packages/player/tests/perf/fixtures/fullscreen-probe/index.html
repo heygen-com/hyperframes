@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fullscreen probe</title>
+  </head>
+  <body style="margin: 0; width: 100vw; height: 100vh">
+    <script>
+      const report = (result) =>
+        window.parent.postMessage({ source: "hf-fullscreen-probe", result }, "*");
+      addEventListener("pointerdown", () =>
+        document.documentElement.requestFullscreen().then(
+          () => report("granted"),
+          (error) => report(error.name),
+        ),
+      );
+      report("loaded");
+    </script>
+  </body>
+</html>
