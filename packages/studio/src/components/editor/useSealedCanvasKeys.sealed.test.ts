@@ -3,6 +3,7 @@
 import React, { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import { installPreviewKeyShield } from "../../../../core/src/runtime/editing/canvasKeys";
 import { installReactActEnvironment, makeSelection } from "../../hooks/domSelectionTestHarness";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { previewRequest } from "../../player/lib/previewChannel";
@@ -73,6 +74,11 @@ async function setupSealedCanvas(options?: {
     } as DOMRect;
   };
   const { iframe, frame } = sealedPreviewFrame();
+  // The fake frame shares this window and document: install its shield at load as entry.ts does,
+  // and start with its surface focused, so neither side sees the other's keys or focus moves.
+  onTestFinished(installPreviewKeyShield(window, {} as Window, true));
+  document.body.tabIndex = -1;
+  document.body.focus();
   sized(iframe, [20, 10, 1920, 1080]);
   watchPreviewFrame(iframe);
   onTestFinished(keepKeyboardOutOfSealedFrame(iframe));
