@@ -1,4 +1,4 @@
-import { failCommand, failUsage } from "../../utils/commandResult.js";
+import { CliRuntimeError, failCommand, failUsage } from "../../utils/commandResult.js";
 /**
  * `hyperframes cloud render` — orchestrate a cloud-rendered HyperFrames
  * composition end-to-end:
@@ -843,6 +843,21 @@ function stageProjectFiles(
   }
 }
 
+const ZIP_RECORD_HEADROOM_PER_FILE = 256;
+const ZIP_TRAILER_HEADROOM_BYTES = 1024;
+
+function assertProjectedArchiveFits(projected: Map<string, StagedFile>): void {
+  const stagedBytes = [...projected.values()].reduce((sum, file) => sum + stagedSize(file), 0);
+  if (
+    stagedBytes + projected.size * ZIP_RECORD_HEADROOM_PER_FILE + ZIP_TRAILER_HEADROOM_BYTES <=
+    DIRECT_UPLOAD_LIMIT_BYTES
+  ) {
+    return;
+  }
+  const { sizeBytes } = zipWithinUploadLimit(projected);
+  assertArchiveFits(sizeBytes, summarizeLargestFiles(projected));
+}
+
 async function offloadMedia(
   project: ProjectDir,
   fileMap: Map<string, StagedFile>,
@@ -859,11 +874,13 @@ async function offloadMedia(
       entryPath,
       variablesText,
       zipBudgetBytes: ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS,
+      beforeUpload: upload ? assertProjectedArchiveFits : undefined,
       onFile: (item) =>
         (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
       onReencodeProgress: asJson ? reencodeProgressLines() : undefined,
     });
   } catch (err) {
+    if (err instanceof CliRuntimeError) throw err;
     reportApiError("Media upload failed", err);
   }
   if (!asJson) {

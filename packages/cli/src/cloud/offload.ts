@@ -157,6 +157,8 @@ export interface OffloadOptions {
   variablesText?: string;
   /** Media leaves the zip, largest first, only while the zip is over this; absent, all used media leaves. */
   zipBudgetBytes?: number;
+  /** Runs once candidates are planned, on the projected post-offload archive, before any upload or encode. */
+  beforeUpload?: (projectedFileMap: Map<string, StagedFile>) => void;
 }
 
 export interface ReencodeProgress {
@@ -751,11 +753,18 @@ async function planFileTrim(
   return plan.segments;
 }
 
-async function offloadFile(
+interface PlannedOffload {
+  path: string;
+  file: StagedFile;
+  plan: FilePlan;
+  item: OffloadedMedia;
+}
+
+async function planOffloadFile(
   ctx: OffloadContext,
   path: string,
   file: StagedFile,
-): Promise<OffloadedMedia | null> {
+): Promise<PlannedOffload | null> {
   const plan = await planFile(ctx, path, file);
   if (!plan) return null;
   const item: OffloadedMedia = {
@@ -766,6 +775,13 @@ async function offloadFile(
       trimmed_to_seconds: plan.segments.reduce((sum, s) => sum + s.end - s.start, 0),
     }),
   };
+  return { path, file, plan, item };
+}
+
+async function executePlannedOffload(
+  ctx: OffloadContext,
+  { path, file, plan, item }: PlannedOffload,
+): Promise<OffloadedMedia> {
   const hit = plan.key === undefined ? undefined : ctx.cache[plan.key];
   if (hit && (!ctx.opts.upload || (await stillServed(hit, ctx.fetchImpl)))) {
     return { ...item, action: "cached", url: hit.url, asset_id: hit.asset_id };
@@ -953,15 +969,14 @@ function dropUnusedMediaWhileOver(
 const byLargest = ([a, x]: [string, StagedFile], [b, y]: [string, StagedFile]) =>
   stagedSize(y) - stagedSize(x) || a.localeCompare(b);
 
-async function uploadLargestWhileOver(
+async function planLargestWhileOver(
   ctx: OffloadContext,
   referenced: Set<string>,
   zipped: number,
   budget: number,
-  urls: Map<string, string>,
-  report: OffloadedMedia[],
-): Promise<void> {
+): Promise<PlannedOffload[]> {
   const used = [...ctx.fileMap].filter(([path]) => referenced.has(path)).sort(byLargest);
+  const planned: PlannedOffload[] = [];
   let left = zipped;
   let next = 0;
   while (left > budget && next < used.length) {
@@ -970,22 +985,54 @@ async function uploadLargestWhileOver(
       batch.push(used[next]!);
       after -= stagedSize(used[next]![1]);
     }
-    const items = await runWithConcurrencyLimit(
-      batch,
-      OFFLOAD_CONCURRENCY,
-      async ([path, file]) => {
-        const item = await offloadFile(ctx, path, file);
-        if (item) ctx.opts.onFile?.(item);
-        return item;
-      },
+    const items = await runWithConcurrencyLimit(batch, OFFLOAD_CONCURRENCY, ([path, file]) =>
+      planOffloadFile(ctx, path, file),
     );
-    for (const [index, item] of items.entries()) {
-      if (!item) continue;
-      // A dry run rewrites to a stand-in URL so the reported archive size matches the real one.
-      urls.set(item.path, item.url ?? `https://assets.invalid/${report.length}`);
-      report.push(item);
-      left -= stagedSize(batch[index]![1]);
+    for (const entry of items) {
+      if (!entry) continue;
+      planned.push(entry);
+      left -= stagedSize(entry.file);
     }
+  }
+  return planned;
+}
+
+function projectAfterOffload(
+  ctx: OffloadContext,
+  planned: PlannedOffload[],
+): Map<string, StagedFile> {
+  const projected = new Map(ctx.fileMap);
+  const urls = new Map<string, string>();
+  const dryReport = planned.map(({ item }, index) => {
+    urls.set(item.path, `https://assets.invalid/${index}`);
+    return { ...item };
+  });
+  if (urls.size > 0) rewriteReferences(ctx.absDir, projected, (key) => urls.get(key) ?? null);
+  dropReplacedFiles(projected, dryReport, ctx.preparedGifSources, [...urls.values()]);
+  return projected;
+}
+
+async function uploadLargestWhileOver(
+  ctx: OffloadContext,
+  referenced: Set<string>,
+  zipped: number,
+  budget: number,
+  urls: Map<string, string>,
+  report: OffloadedMedia[],
+): Promise<void> {
+  const planned = await planLargestWhileOver(ctx, referenced, zipped, budget);
+  if (ctx.opts.upload && ctx.opts.beforeUpload && planned.length > 0) {
+    ctx.opts.beforeUpload(projectAfterOffload(ctx, planned));
+  }
+  const items = await runWithConcurrencyLimit(planned, OFFLOAD_CONCURRENCY, async (entry) => {
+    const item = await executePlannedOffload(ctx, entry);
+    ctx.opts.onFile?.(item);
+    return item;
+  });
+  for (const item of items) {
+    // A dry run rewrites to a stand-in URL so the reported archive size matches the real one.
+    urls.set(item.path, item.url ?? `https://assets.invalid/${report.length}`);
+    report.push(item);
   }
 }
 
