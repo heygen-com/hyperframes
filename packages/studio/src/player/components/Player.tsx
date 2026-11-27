@@ -126,7 +126,9 @@ function staleTokenSwap(canceled: () => boolean) {
       const attempt = ++retries;
       if (!askAgain) return load(fresher ?? primed);
       void askAgain().then((current) => {
-        if (!canceled() && attempt === retries) load(current);
+        if (canceled() || attempt !== retries) return;
+        fresher = current;
+        load(current);
       });
     },
   };

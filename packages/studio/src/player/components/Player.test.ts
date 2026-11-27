@@ -370,6 +370,25 @@ describe("a host's sandbox origin", () => {
     );
   });
 
+  // fails without the fix: a second retry whose lookup failed went back to the first load's token, not the last one.
+  it("keeps the token the last Retry preview loaded when a later retry's lookup fails", async () => {
+    const answers: ({ token: string } | null)[] = [{ token }, { token: "N".repeat(43) }, null];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      const body = answers.shift() ?? null;
+      return { ok: body !== null, json: async () => body } as Response;
+    });
+    primeFrameToken({ projectId: "demo", token });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    retryAfterError();
+    await settle();
+    retryAfterError();
+    await settle();
+    expect(player().getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${"N".repeat(43)}?_hfStudioRetry=2`,
+    );
+  });
+
   // fails without the fix: an earlier retry answering last loaded over the later one.
   it("keeps the latest Retry preview's load when an earlier retry answers last", async () => {
     const held = heldLookups();
