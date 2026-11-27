@@ -46,7 +46,7 @@ let snapshot: LocalShareSnapshot;
 let calls: unknown[];
 let hiddenAssets: string[];
 let hiddenDigest: string;
-let sourceState: "off" | "synced" | "needs_sync";
+let sourceState: "off" | "synced" | "needs_sync" | "at_limit";
 let confirmedReviews: unknown[];
 let confirm: ReturnType<typeof vi.fn<(message?: string) => boolean>>;
 let job: LocalShareJob;
@@ -94,7 +94,26 @@ beforeEach(() => {
     vi.fn(async (url: string, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("X-Hyperframes-Share-CSRF")).toBe(token);
       if (url.includes("/project-files?space="))
-        return Response.json({ state: sourceState, paths: hiddenAssets, digest: hiddenDigest });
+        return Response.json({
+          state: sourceState,
+          paths: hiddenAssets,
+          digest: hiddenDigest,
+          canReconnect: true,
+        });
+      if (url.includes("/reconnect?"))
+        return Response.json([
+          {
+            token: "offer",
+            id: "cloud",
+            title: "Launch",
+            workspace: { id: "team1", name: "Design team" },
+          },
+        ]);
+      if (url.endsWith("/reconnect")) {
+        calls.push(JSON.parse(String(init?.body)));
+        sourceState = "synced";
+        return Response.json({ reconnected: true });
+      }
       if (url.endsWith("/snapshot")) return Response.json(snapshot);
       if (url.endsWith("/actions")) {
         const { confirmedReview, ...body } = JSON.parse(String(init?.body));
@@ -773,4 +792,29 @@ it("keeps video sharing available when the sync summary cannot be verified", asy
   expect(button("Sync project files")).toBeUndefined();
   await choose("public");
   expect(button("Create share link")?.disabled).toBe(false);
+});
+
+it("reconnects only after selecting and confirming the named project and workspace", async () => {
+  await mount();
+  await act(async () => button("Reconnect a moved or upgraded project")!.click());
+  expect(button("Confirm reconnect")!.disabled).toBe(true);
+  const select = host.querySelector<HTMLSelectElement>('option[value="offer"]')!.closest("select")!;
+  await act(async () => {
+    select.value = "offer";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(host.textContent).toContain(
+    "Future syncs will publish versions of Launch in Design team (team1)",
+  );
+  expect(calls).toEqual([]);
+  await act(async () => button("Confirm reconnect")!.click());
+  expect(calls).toEqual([{ choice: "offer" }]);
+  expect(host.textContent).toContain("Project files synced.");
+});
+
+it("offers reconnect when the workspace has no free composition slot", async () => {
+  sourceState = "at_limit";
+  await mount();
+  expect(button("Sync project files")?.disabled).toBe(true);
+  expect(button("Reconnect a moved or upgraded project")?.disabled).toBe(false);
 });

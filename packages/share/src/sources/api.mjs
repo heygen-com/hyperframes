@@ -33,6 +33,28 @@ export function sourceApi({ access, fetchImpl = fetch }) {
     `/v3/hyperframes/workspaces/${encodeURIComponent(space)}/compositions/${encodeURIComponent(composition)}`;
   return {
     /** @param {string} space */
+    list: async (space) => {
+      const records = [];
+      const cursors = new Set();
+      const query = new URLSearchParams({ limit: "100" });
+      for (;;) {
+        const route = `/v3/hyperframes/workspaces/${encodeURIComponent(space)}/compositions?${query}`;
+        const { reply } = await request("GET", route);
+        if (!reply.ok) throw await refusalOf(reply);
+        const page = objectOf(await reply.json(), "composition list");
+        if (!Array.isArray(page.data)) throw new Error("Invalid cloud project list.");
+        records.push(...page.data.map(compositionOf));
+        if (page.has_more === false) return records;
+        const cursor = page.next_token;
+        if (page.has_more !== true || typeof cursor !== "string" || !cursor || cursors.has(cursor))
+          throw new Error("Invalid cloud project list cursor.");
+        cursors.add(cursor);
+        query.set("token", cursor);
+      }
+    },
+    /** @param {string} space @param {string} composition */
+    get: async (space, composition) => compositionOf(await send("GET", path(space, composition))),
+    /** @param {string} space */
     limits: async (space) =>
       syncLimitsOf(
         await send(
@@ -115,4 +137,4 @@ export function sourceApi({ access, fetchImpl = fetch }) {
       ),
   };
 }
-/** @typedef {ReturnType<typeof sourceApi>} SourceApi */
+/** @typedef {Omit<ReturnType<typeof sourceApi>, "list" | "get">} SourceApi */

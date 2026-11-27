@@ -1,7 +1,7 @@
 // @ts-check
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath } from "node:fs/promises";
+import { lstat, mkdir, open, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { errorCode, mkdirInside, writeJsonAtomic } from "../storage.mjs";
@@ -42,6 +42,12 @@ function checkSnapshots(raw) {
   readUploadIntent(raw.inflight);
 }
 
+/** @param {string} path */
+export async function directoryIdentity(path) {
+  const info = await stat(path, { bigint: true });
+  return `${info.dev}:${info.ino}:${info.birthtimeNs}`;
+}
+
 /** Default sync destinations belong to this install. Never import a binding from a project.
  * @returns {import("./adapterTypes.js").SourceStore} */
 export function createProjectShareSourceStore() {
@@ -61,7 +67,7 @@ export function createProjectShareSourceStore() {
       )
     )
       throw new Error("The source sync configuration directory must be outside the project.");
-    const dir = await mkdirInside(root, "source-bindings");
+    const dir = await mkdirInside(root, "source-bindings", 0o700);
     const id = createHash("sha256")
       .update(JSON.stringify([key.backend, key.projectPath]))
       .digest("hex");
@@ -78,7 +84,10 @@ export function createProjectShareSourceStore() {
       try {
         if (!(await handle.stat()).isFile())
           throw new Error("Source binding must be a regular file.");
-        return bindingOf(JSON.parse(await handle.readFile("utf8")), key);
+        const record = JSON.parse(await handle.readFile("utf8"));
+        const { directoryId, ...binding } = record;
+        if (directoryId !== (await directoryIdentity(key.projectPath))) return null;
+        return bindingOf(binding, key);
       } finally {
         await handle.close();
       }
@@ -90,7 +99,10 @@ export function createProjectShareSourceStore() {
         throw error;
       });
       if (held && !held.isFile()) throw new Error("Source binding must be a regular file.");
-      await writeJsonAtomic(file, binding);
+      await writeJsonAtomic(file, {
+        ...binding,
+        directoryId: await directoryIdentity(binding.projectPath),
+      });
     },
   };
 }

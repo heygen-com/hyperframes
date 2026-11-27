@@ -136,7 +136,10 @@ The default store uses `source-bindings/` in the local HyperFrames configuration
 directory (`HYPERFRAMES_CONFIG_DIR` or `~/.hyperframes`). Records are keyed by backend
 and project realpath, checked against the signed-in account and written atomically
 under the project lock. Copies and projects with only a legacy in-project record
-start a new composition on the next explicit sync.
+start a new composition on the next explicit sync. To keep the history of a moved
+or upgraded folder, run `hyperframes share --reconnect` or choose **Reconnect a
+moved or upgraded project** in Studio before syncing. Confirm the cloud project
+and workspace. Reconnecting itself only updates the local binding.
 Hosts can inject a compatible `store` or read-only `existingBinding` resolver.
 An external Desktop binding is reused only when exact and settled; this adapter
 never writes Desktop's binding or starts a second upload on its behalf.

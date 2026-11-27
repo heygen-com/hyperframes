@@ -9,6 +9,7 @@ import {
   symlink,
   mkdir,
   realpath,
+  stat,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -20,6 +21,7 @@ import {
 } from "../src/shareSources.mjs";
 import { projectFingerprint, referencedHiddenDigest } from "../src/projectSnapshot.mjs";
 import { captureProject } from "../src/sources/capture.mjs";
+import { sourceReconnect } from "../src/sources/reconnect.mjs";
 import { sourceApi } from "../src/sources/api.mjs";
 import { SyncApiError } from "../src/sources/errors.mjs";
 import { parseStoredManifest } from "../src/sources/manifest.mjs";
@@ -878,6 +880,9 @@ test("the install owns sync destinations across sessions, and a copied project s
   assert.equal(first.at, "ready");
   const saved = await createProjectShareSourceStore().read(f.key);
   assert.equal(saved.compositionId, first.snapshot.composition_id);
+  if (process.platform !== "win32") {
+    assert.equal((await stat(join(config, "source-bindings"))).mode & 0o077, 0);
+  }
   await assert.rejects(f.store.read({ ...f.key, account: "other" }), /another account/);
 
   const copy = await fixture(t);
@@ -895,6 +900,102 @@ test("the install owns sync destinations across sessions, and a copied project s
   assert.equal(result.at, "ready");
   assert.notEqual(result.snapshot.composition_id, first.snapshot.composition_id);
   assert.equal((await copy.store.read(copy.key)).compositionId, result.snapshot.composition_id);
+});
+
+test("a replacement folder at the old path starts unbound", async (t) => {
+  const f = await fixture(t);
+  await shareSources({ access: async () => signed, spaceId: "personal", ...fakeServer() }).prepare(
+    f.root,
+    f.rendered,
+  );
+  const moved = f.root + "-moved";
+  await rename(f.root, moved);
+  t.after(() => rm(moved, { recursive: true, force: true }));
+  await mkdir(f.root);
+  assert.equal(await f.store.read(f.key), null);
+});
+
+test("reconnect pages through the signed-in workspace and only links the confirmed version", async (t) => {
+  const f = await fixture(t);
+  const { manifest } = await captureProject(f.root);
+  let project = {
+    id: "cloud-project",
+    space_id: "personal",
+    title: "Launch",
+    created_by: signed.owner,
+    latest_snapshot_id: "published",
+    created_at: "2026-01-01",
+    updated_at: "2026-01-02",
+  };
+  let workspace = { id: "personal", name: "Design" };
+  let owner = signed.owner;
+  const picker = sourceReconnect({
+    projectPath: f.root,
+    access: async () => ({ ...signed, owner }),
+    workspace: async () => workspace,
+    fetchImpl: async (url, init) => {
+      assert.equal(init.method, "GET");
+      const path = new URL(url);
+      if (path.pathname.endsWith("/compositions"))
+        return Response.json(
+          path.searchParams.has("token")
+            ? { data: [project], has_more: false }
+            : { data: [], has_more: true, next_token: "next" },
+        );
+      if (path.pathname.endsWith("/cloud-project")) return Response.json({ data: project });
+      assert.match(path.pathname, /snapshots\/published$/);
+      return Response.json({
+        data: {
+          id: "published",
+          composition_id: "cloud-project",
+          publication_outcome: "published",
+          created_by: owner,
+          client_type: "cli",
+          summary_source: "client",
+          manifest_sha256: manifest.sha256,
+          created_at: "2026-01-01",
+          manifest: { document: manifest.document },
+        },
+      });
+    },
+  });
+  const first = (await picker.list("personal"))[0];
+  assert.deepEqual(first.workspace, workspace);
+  assert.equal(first.title, "Launch");
+  assert.equal(await f.store.read(f.key), null);
+  await assert.rejects(picker.confirm("cloud-project"), /Choose a cloud project/);
+  const renamed = (await picker.list("personal"))[0];
+  project = { ...project, title: "Renamed" };
+  await assert.rejects(picker.confirm(renamed.token), /cloud project changed/);
+  const switched = (await picker.list("personal"))[0];
+  owner = "another-user";
+  await assert.rejects(picker.confirm(switched.token), /account or workspace changed/);
+  owner = signed.owner;
+  const changedSpace = (await picker.list("personal"))[0];
+  workspace = { ...workspace, name: "Other" };
+  await assert.rejects(picker.confirm(changedSpace.token), /workspace changed/);
+  assert.equal(await f.store.read(f.key), null);
+  const advanced = (await picker.list("personal"))[0];
+  project = { ...project, latest_snapshot_id: "new-version" };
+  await assert.rejects(picker.confirm(advanced.token), /cloud project changed/);
+  project = { ...project, latest_snapshot_id: "published" };
+  const choice = (await picker.list("personal"))[0];
+  await picker.confirm(choice.token);
+  const binding = await f.store.read(f.key);
+  assert.equal(binding.compositionId, "cloud-project");
+  assert.equal(binding.base.snapshotId, "published");
+  assert.equal(binding.base.manifestSha256, manifest.sha256);
+  await assert.rejects(picker.confirm(choice.token), /Choose a cloud project/);
+  await assert.rejects(picker.list("personal"), /already has a sync destination/);
+  await writeFile(join(f.root, "index.html"), "<p>Updated after the move</p>");
+  const server = fakeServer({ create: async (spaceId, id) => ({ spaceId, id, created: false }) });
+  const synced = await shareSources({
+    access: async () => signed,
+    spaceId: "personal",
+    ...server,
+  }).prepare(f.root, await projectFingerprint(f.root));
+  assert.equal(synced.snapshot.composition_id, "cloud-project");
+  assert.equal(server.calls.begin[0].baseSnapshotId, "published");
 });
 
 test("a first sync requires a created composition before saving a destination or beginning an upload", async (t) => {

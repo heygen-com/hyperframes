@@ -91,10 +91,13 @@ Retry the same command after a network interruption. Its local record preserves
 the composition identity, upload idempotency key and completed file parts.
 A storage upload that makes no progress for 60 seconds is stopped and retried
 within the retry limit. Studio and the CLI keep the source record under
-`source-bindings/` in the local HyperFrames configuration directory. When you
-move or copy a project, its next explicit sync creates a new cloud composition.
-The first sync after upgrading from a version that kept the record inside
-the project also starts a new composition. Previously shared versions retain
+`source-bindings/` in the local HyperFrames configuration directory. Syncing a copy creates a new cloud composition. After moving a project or
+upgrading from a version that stored its connection inside the project, you can
+keep its cloud history. Before the first sync, choose **Reconnect a moved or
+upgraded project** in Studio, or run `hyperframes share --reconnect` (optionally
+with `--space <id>`). Select the existing cloud project and confirm its name
+and workspace. Reconnecting records the destination locally. Your next explicit
+sync can publish a version there. Previously shared versions retain
 their snapshots. If the first sync cannot confirm that it created the destination,
 it stops before uploading files. Retry to use a fresh destination. If the service
 created the first composition but its reply was lost, that composition still counts

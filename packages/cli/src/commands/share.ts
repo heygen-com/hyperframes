@@ -56,6 +56,10 @@ export default defineCommand({
       type: "boolean",
       description: "Render and add a new video version to the existing share",
     },
+    reconnect: {
+      type: "boolean",
+      description: "Reconnect a moved or upgraded folder to an existing cloud composition",
+    },
     "include-source": {
       type: "boolean",
       description: "Upload editable project files, including unused and Git-ignored files",
@@ -95,6 +99,7 @@ export default defineCommand({
         if (message !== lastProgress) process.stderr.write(`${message}\n`);
         lastProgress = message;
       });
+      if (args.reconnect) return await reconnectFolder(service, args);
       await confirmNamedReview(input, args, service, project.dir);
       await chooseAudience(input, args, service);
       if (input.includeSource)
@@ -126,6 +131,7 @@ async function showReferencedHiddenAssets(dir: string) {
 }
 
 interface ShareArgs {
+  reconnect?: boolean;
   public?: boolean;
   team?: boolean;
   "invite-only"?: boolean;
@@ -196,6 +202,43 @@ function requestedAudience(args: ShareArgs) {
 
 function canAsk(args: ShareArgs) {
   return !args.yes && !args.json && !isUnattended();
+}
+
+async function reconnectFolder(service: ShareService, args: ShareArgs) {
+  if (
+    !canAsk(args) ||
+    [
+      args.update,
+      args.status,
+      args.manage,
+      requestedAudience(args),
+      args.review !== undefined,
+      args["include-source"],
+      args["video-only"],
+    ].some(Boolean)
+  )
+    throw new CliUsageError(
+      "Run --reconnect interactively on its own. Use --space to choose a workspace.",
+    );
+  const choices = await service.reconnect.list(args.space);
+  if (!choices.length)
+    throw new CliUsageError("This workspace has no cloud projects to reconnect.");
+  const selected = await prompts.select({
+    message: `Choose the existing cloud project in ${quotedFilePath(choices[0]!.workspace.name)}`,
+    options: choices.map((choice) => ({
+      value: choice.token,
+      label: `${quotedFilePath(choice.title)} (${shareLine(choice.id)})`,
+    })),
+  });
+  const choice = choices.find((item) => item.token === selected);
+  if (!choice) throw new CliUsageError("Reconnect cancelled.");
+  const approved = await prompts.confirm({
+    initialValue: false,
+    message: `Reconnect this folder to ${quotedFilePath(choice.title)} (${shareLine(choice.id)}) in ${quotedFilePath(choice.workspace.name)} (${shareLine(choice.workspace.id)})? Future syncs will publish versions there.`,
+  });
+  if (approved !== true) throw new CliUsageError("Reconnect cancelled.");
+  await service.reconnect.confirm(choice.token);
+  console.log("Folder reconnected. No files were uploaded.");
 }
 
 function shouldPrompt(input: ShareAction, args: ShareArgs) {
