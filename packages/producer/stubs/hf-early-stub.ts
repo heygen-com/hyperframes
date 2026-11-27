@@ -84,21 +84,21 @@ interface TimelineOperation {
  * forwarded delegation on `proxy.__hfReal`.
  */
 interface GsapTimeline {
-  to(...args: unknown[]): unknown;
-  from(...args: unknown[]): unknown;
-  fromTo(...args: unknown[]): unknown;
-  set(...args: unknown[]): unknown;
-  pause(...args: unknown[]): unknown;
-  play(...args: unknown[]): unknown;
-  seek(...args: unknown[]): unknown;
-  totalTime(...args: unknown[]): unknown;
-  time(...args: unknown[]): unknown;
-  duration(...args: unknown[]): unknown;
-  add(...args: unknown[]): unknown;
-  getChildren(...args: unknown[]): unknown[];
-  paused(...args: unknown[]): unknown;
-  timeScale(...args: unknown[]): unknown;
-  kill(): void;
+  to?(...args: unknown[]): unknown;
+  from?(...args: unknown[]): unknown;
+  fromTo?(...args: unknown[]): unknown;
+  set?(...args: unknown[]): unknown;
+  pause?(...args: unknown[]): unknown;
+  play?(...args: unknown[]): unknown;
+  seek?(...args: unknown[]): unknown;
+  totalTime?(...args: unknown[]): unknown;
+  time?(...args: unknown[]): unknown;
+  duration?(...args: unknown[]): unknown;
+  add?(...args: unknown[]): unknown;
+  getChildren?(...args: unknown[]): unknown[];
+  paused?(...args: unknown[]): unknown;
+  timeScale?(...args: unknown[]): unknown;
+  kill?(): void;
   [key: string]: unknown;
 }
 
@@ -304,7 +304,10 @@ function scheduleBatch(): void {
  * Methods queued for rAF-based batch flush (mutating tween additions).
  * These return the proxy for chaining and never synchronously flush.
  */
-const BATCHED_METHODS = new Set(["to", "from", "fromTo", "set", "add"]);
+const BATCHED_METHODS: readonly TimelineOperationMethod[] = ["to", "from", "fromTo", "set", "add"];
+const BATCHED_METHOD_SET = new Set<string>(BATCHED_METHODS);
+const CHAINED_METHODS = ["pause", "play", "seek"] as const;
+const ACCESSOR_METHODS = ["totalTime", "time", "duration", "paused", "timeScale"] as const;
 
 /**
  * Walk the real timeline's prototype chain and generate forwarding stubs on
@@ -320,7 +323,7 @@ function forwardRemainingMethods(proxy: TimelineProxy, real: GsapTimeline): void
   let obj: object | null = real as object;
   while (obj !== null && obj !== Object.prototype) {
     for (const key of Object.getOwnPropertyNames(obj)) {
-      if (key === "constructor" || key === "then" || key in proxy || BATCHED_METHODS.has(key))
+      if (key === "constructor" || key === "then" || key in proxy || BATCHED_METHOD_SET.has(key))
         continue;
       if (key.charAt(0) === "_") continue;
       const desc = Object.getOwnPropertyDescriptor(obj, key);
@@ -339,103 +342,53 @@ function forwardRemainingMethods(proxy: TimelineProxy, real: GsapTimeline): void
   }
 }
 
-/**
- * Create a queuing proxy around a real GSAP timeline.
- *
- * Batched methods (to/from/fromTo/set/add) queue operations for rAF flush.
- * All other methods on the real timeline are forwarded via dynamically
- * generated stubs that flush pending operations before delegating. This
- * uses a plain object — not `new Proxy` — because Chrome's headless shell
- * hangs when Proxy traps are exposed during page.goto navigation (Symbol
- * probing, thenable checks, DevTools serialization).
- */
+// Wrap a timeline with rAF-batched mutators; attach only methods present on `real` so runtime
+// feature checks (`typeof tl.timeScale === "function"`, `tl.kill?.()`) never trip on custom timelines.
 function wrapTimeline(real: GsapTimeline): TimelineProxy {
   const proxy: TimelineProxy = {
     __hfReal: real,
     __hfQueue: [],
     __hfIsProxy: true,
-
-    to(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "to", args);
-    },
-    from(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "from", args);
-    },
-    fromTo(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "fromTo", args);
-    },
-    set(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "set", args);
-    },
-    add(...args: unknown[]): TimelineProxy {
-      return enqueueTimelineOperation(proxy, "add", args);
-    },
-
-    pause(...args: unknown[]): TimelineProxy {
-      flushPendingOperations();
-      real.pause(...args);
-      return proxy;
-    },
-    play(...args: unknown[]): TimelineProxy {
-      flushPendingOperations();
-      real.play(...args);
-      return proxy;
-    },
-    seek(...args: unknown[]): TimelineProxy {
-      flushPendingOperations();
-      real.seek(...args);
-      return proxy;
-    },
-    totalTime(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.totalTime(...args);
-        return proxy;
-      }
-      return real.totalTime();
-    },
-    time(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.time(...args);
-        return proxy;
-      }
-      return real.time();
-    },
-    duration(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.duration(...args);
-        return proxy;
-      }
-      return real.duration();
-    },
-    getChildren(...args: unknown[]): unknown[] {
-      flushPendingOperations();
-      const children = real.getChildren(...args);
-      return Array.isArray(children) ? children : [];
-    },
-    paused(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.paused(...args);
-        return proxy;
-      }
-      return real.paused();
-    },
-    timeScale(...args: unknown[]): unknown {
-      flushPendingOperations();
-      if (args.length > 0) {
-        real.timeScale(...args);
-        return proxy;
-      }
-      return real.timeScale();
-    },
-    kill(): void {
-      flushPendingOperations();
-      real.kill();
-    },
   };
+
+  for (const method of BATCHED_METHODS) {
+    if (typeof real[method] !== "function") continue;
+    proxy[method] = (...args: unknown[]): TimelineProxy =>
+      enqueueTimelineOperation(proxy, method, args);
+  }
+  for (const method of CHAINED_METHODS) {
+    if (typeof real[method] !== "function") continue;
+    proxy[method] = (...args: unknown[]): TimelineProxy => {
+      flushPendingOperations();
+      (real[method] as (...a: unknown[]) => unknown).apply(real, args);
+      return proxy;
+    };
+  }
+  for (const method of ACCESSOR_METHODS) {
+    if (typeof real[method] !== "function") continue;
+    proxy[method] = (...args: unknown[]): unknown => {
+      flushPendingOperations();
+      const fn = real[method] as (...a: unknown[]) => unknown;
+      if (args.length > 0) {
+        fn.apply(real, args);
+        return proxy;
+      }
+      return fn.call(real);
+    };
+  }
+  if (typeof real.getChildren === "function") {
+    proxy.getChildren = (...args: unknown[]): unknown[] => {
+      flushPendingOperations();
+      const children = real.getChildren!(...args);
+      return Array.isArray(children) ? children : [];
+    };
+  }
+  if (typeof real.kill === "function") {
+    proxy.kill = (): void => {
+      flushPendingOperations();
+      real.kill!();
+    };
+  }
 
   forwardRemainingMethods(proxy, real);
 
@@ -478,7 +431,12 @@ if (typeof window !== "undefined") {
         if (!g || typeof g.timeline !== "function" || wrapped.has(g)) return;
         wrapped.add(g);
         const origTimeline = g.timeline.bind(g) as (params?: unknown) => GsapTimeline;
-        g.timeline = (params?: unknown): GsapTimeline => wrapTimeline(origTimeline(params));
+        g.timeline = (params?: unknown): GsapTimeline => {
+          const real = origTimeline(params);
+          return real && (typeof real === "object" || typeof real === "function")
+            ? wrapTimeline(real)
+            : real;
+        };
         // Tween-target tracking for top-level gsap.to/from/set/fromTo calls
         // (compositions often use `gsap.set(el, { opacity: 0 })` for initial
         // state — the timeline proxy never sees those).
