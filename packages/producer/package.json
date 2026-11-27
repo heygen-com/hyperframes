@@ -74,15 +74,15 @@
     "prepublishOnly": "echo skip"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.6",
+    "@hono/node-server": "^2.1.11",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
     "@hyperframes/lint": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
     "@hyperframes/share": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
-    "hono": "^4.13.16",
-    "linkedom": "^0.18.12",
+    "hono": "^4.13.23",
+    "linkedom": "^0.18.15",
     "postcss": "^8.4.0",
     "puppeteer": "~25.13.0",
     "puppeteer-core": "^25.13.0"

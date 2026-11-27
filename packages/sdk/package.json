@@ -86,7 +86,7 @@
   "dependencies": {
     "@hyperframes/core": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
-    "linkedom": "^0.18.12"
+    "linkedom": "^0.18.15"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
