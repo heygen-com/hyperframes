@@ -1438,6 +1438,141 @@
       "source": "/guides/choose-creation-path",
       "destination": "/quickstart",
       "permanent": true
+    },
+    {
+      "source": "/catalog/app-showcase",
+      "destination": "/catalog/blocks/app-showcase",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/apple-money-count",
+      "destination": "/catalog/blocks/apple-money-count",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/data-chart",
+      "destination": "/catalog/blocks/data-chart",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/instagram-follow",
+      "destination": "/catalog/blocks/instagram-follow",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/nyc-paris-flight",
+      "destination": "/catalog/blocks/nyc-paris-flight",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/components/oversized-cursor.html",
+      "destination": "/catalog/components/oversized-cursor",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/components/touch-indicator.html",
+      "destination": "/catalog/components/touch-indicator",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-apple-terminal-basic",
+      "destination": "/catalog/blocks/code-snippet-apple-terminal-pro",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-apple-terminal-clear-dark",
+      "destination": "/catalog/blocks/code-snippet-apple-terminal-pro",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-apple-terminal-grass",
+      "destination": "/catalog/blocks/code-snippet-apple-terminal-pro",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-apple-terminal-homebrew",
+      "destination": "/catalog/blocks/code-snippet-apple-terminal-pro",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-apple-terminal-man-page",
+      "destination": "/catalog/blocks/code-snippet-apple-terminal-pro",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-apple-terminal-novel",
+      "destination": "/catalog/blocks/code-snippet-apple-terminal-pro",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-apple-terminal-red-sands",
+      "destination": "/catalog/blocks/code-snippet-apple-terminal-pro",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-apple-terminal-silver-aerogel",
+      "destination": "/catalog/blocks/code-snippet-apple-terminal-pro",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-dark-plus",
+      "destination": "/catalog/blocks/code-snippet-dark-modern",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-visual-studio-dark",
+      "destination": "/catalog/blocks/code-snippet-dark-modern",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-high-contrast-light",
+      "destination": "/catalog/blocks/code-snippet-dark-modern",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/code-snippet-flight",
+      "destination": "/catalog/blocks/code-snippet-dark-modern",
+      "permanent": true
+    },
+    {
+      "source": "/catalog/blocks/captions-karaoke",
+      "destination": "/catalog/components/caption-pill-karaoke",
+      "permanent": true
+    },
+    {
+      "source": "/guides/4k",
+      "destination": "/guides/4k-rendering",
+      "permanent": true
+    },
+    {
+      "source": "/guides/gsap",
+      "destination": "/guides/gsap-animation",
+      "permanent": true
+    },
+    {
+      "source": "/guides/hdr-rendering",
+      "destination": "/guides/hdr",
+      "permanent": true
+    },
+    {
+      "source": "/guides/gcp-cloud-run",
+      "destination": "/deploy/gcp-cloud-run",
+      "permanent": true
+    },
+    {
+      "source": "/examples/aws-lambda",
+      "destination": "/deploy/aws-lambda",
+      "permanent": true
+    },
+    {
+      "source": "/docs/skills/pr-to-video",
+      "destination": "/guides/pr-to-video",
+      "permanent": true
+    },
+    {
+      "source": "/quickstart-0",
+      "destination": "/quickstart",
+      "permanent": true
     }
   ],
   "integrations": {
