@@ -14,7 +14,7 @@ import {
 import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
 import { MAX_FRAME_CLIPS, wellFormedClips } from "./manifestClips";
-import { frameRequestSent } from "./frameFacts";
+import { frameRequestSent, isFrameRead } from "./frameFacts";
 import { cssValueCanLoad } from "../../utils/cssLoads";
 
 const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
@@ -240,6 +240,15 @@ function sendInTurn<K extends EditingRequestKind>(
   );
 }
 
+/** Reads that start something in the frame for their asker, so two askers never share one. */
+const FRAME_WATCHES: ReadonlySet<EditingRequestKind> = new Set<EditingRequestKind>([
+  "watch-keys",
+  "arm-canvas-keys",
+  "watch-geometry",
+]);
+/** Reads in flight per client, by kind, timeout and params: an identical read asked meanwhile takes their answer. */
+const readsInFlight = new WeakMap<EditingPortClient, Map<string, Promise<unknown>>>();
+
 function sendForAnswer<K extends EditingRequestKind>(
   client: EditingPortClient,
   kind: K,
@@ -248,11 +257,34 @@ function sendForAnswer<K extends EditingRequestKind>(
   admit?: () => boolean,
 ): typeof PREVIEW_STALE | Promise<EditingResult<K> | typeof PREVIEW_REJECTED | null> {
   if (admit && !admit()) return PREVIEW_STALE;
-  return client.request(kind, params, { timeoutMs }).catch((err: unknown) => {
-    const noReply =
-      err instanceof EditingPortError && (err.code === "timeout" || err.code === "disposed");
-    return noReply ? null : PREVIEW_REJECTED;
+  type Sent = Promise<EditingResult<K> | typeof PREVIEW_REJECTED | null>;
+  const send = (): Sent =>
+    client.request(kind, params, { timeoutMs }).catch((err: unknown) => {
+      const noReply =
+        err instanceof EditingPortError && (err.code === "timeout" || err.code === "disposed");
+      return noReply ? null : PREVIEW_REJECTED;
+    });
+  if (!isFrameRead(kind)) {
+    // A read asked after this request must see what it changed.
+    readsInFlight.delete(client);
+    return send();
+  }
+  if (FRAME_WATCHES.has(kind)) return send();
+  let reads = readsInFlight.get(client);
+  if (!reads) readsInFlight.set(client, (reads = new Map()));
+  const key = `${kind} ${timeoutMs ?? ""} ${JSON.stringify(params)}`;
+  const shared = reads.get(key) as Sent | undefined;
+  // Each asker gets its own copy, so one caller changing its answer cannot change another's.
+  if (shared)
+    return shared.then((answer) =>
+      answer && typeof answer === "object" ? structuredClone(answer) : answer,
+    );
+  const inFlight = reads;
+  const sent = send().finally(() => {
+    if (inFlight.get(key) === sent) inFlight.delete(key);
   });
+  inFlight.set(key, sent);
+  return sent;
 }
 
 export async function previewRequest<K extends EditingRequestKind>(

@@ -621,3 +621,55 @@ describe("a display read asked while a gesture is held", () => {
     expect(arrived()).toEqual(["read 0", "draft"]);
   });
 });
+
+describe("identical reads asked while one is in flight", () => {
+  /** A frame whose agent is known; returns what arrived, as "kind params", in arrival order. */
+  async function connectedFrame() {
+    const { iframe, handed } = servedFrame((kind, params) => ({ kind, params }));
+    await previewRequest(iframe, "set-loop-start", { seconds: 0 });
+    handed.mockClear();
+    const arrived = () =>
+      handed.mock.calls.map(([kind, params]) => `${kind} ${JSON.stringify(params)}`);
+    return { iframe, arrived };
+  }
+
+  // fails without the fix: each asker sent its own describe, and the frame answered the same handles twice.
+  it("share one request, each asker getting its own copy of the answer", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    const asked = [
+      previewRequest(iframe, "describe", { handles: ["a:1", "a:2"] }),
+      previewRequest(iframe, "describe", { handles: ["a:1", "a:2"] }),
+      previewRequest(iframe, "describe", { handles: ["a:1"] }),
+    ];
+    const [first, second, other] = await Promise.all(asked);
+    expect(arrived()).toEqual([
+      'describe {"handles":["a:1","a:2"]}',
+      'describe {"handles":["a:1"]}',
+    ]);
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+    expect(other).toEqual({ kind: "describe", params: { handles: ["a:1"] } });
+  });
+
+  // Guards the sharing: a read asked after a crop-lift must not take the answer of one asked before it.
+  it("never share across a request that changes the frame: it keeps its place against both", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    await Promise.all([
+      previewRequest(iframe, "geometry", { handles: ["a:1"] }),
+      previewRequest(iframe, "crop-lift", { handle: "a:1", lift: false }),
+      previewRequest(iframe, "geometry", { handles: ["a:1"] }),
+    ]);
+    expect(arrived()).toEqual([
+      'geometry {"handles":["a:1"]}',
+      'crop-lift {"handle":"a:1","lift":false}',
+      'geometry {"handles":["a:1"]}',
+    ]);
+  });
+
+  it("ask again once the first has answered", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    await previewRequest(iframe, "layers", {});
+    await previewRequest(iframe, "layers", {});
+    expect(arrived()).toEqual(["layers {}", "layers {}"]);
+  });
+});
