@@ -554,10 +554,10 @@ function parseFramePresented(params: unknown): FramePresentedParams | null {
   return bounded ? { waitMs } : null;
 }
 
-const clientWaitPastFrameDeadline = (kind: EditingRequestKind, params: unknown): number | null =>
+const clientWaitPastFrameDeadline = (kind: EditingRequestKind, params: unknown): number =>
   kind === "frame-presented" && isPlainRecord(params) && typeof params.waitMs === "number"
     ? params.waitMs + 1_000
-    : null;
+    : 0;
 
 const isSelector = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= MAX_SELECTOR_LENGTH;
@@ -1032,7 +1032,7 @@ export function createEditingPortClient(options: {
       const id = ++lastId;
       if (kind === "watch-geometry") watchedGeometry = true;
       const limit =
-        requestOptions?.timeoutMs ?? clientWaitPastFrameDeadline(kind, params) ?? timeoutMs;
+        requestOptions?.timeoutMs ?? Math.max(timeoutMs, clientWaitPastFrameDeadline(kind, params));
       const result = new Promise<unknown>((resolve, reject) => {
         const timer = wallSetTimeout(
           () => settle(id, { error: new EditingPortError("timeout", `${kind} timed out`) }),

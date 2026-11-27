@@ -188,7 +188,7 @@ function stylesOf(element: Element, properties: readonly string[]): Record<strin
 }
 
 const VIDEO_SETTLE_EVENTS = ["seeked", "error", "abort", "emptied"] as const;
-// Answers before the caller's own timeout, so the frame never outlives the request it serves.
+// Without a waitMs, answers before the client's default timeout gives up.
 const FRAME_PRESENTED_LIMIT_MS = EDITING_REQUEST_TIMEOUT_MS - 1_000;
 const pendingPresentedWaits = new Set<() => void>();
 

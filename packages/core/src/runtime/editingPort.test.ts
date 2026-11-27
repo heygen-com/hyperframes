@@ -391,7 +391,7 @@ describe("createEditingPortClient", () => {
   });
 
   // fails without the fix: the client gave up at its fixed timeout while the frame was still asked to wait.
-  it("waits for a frame-presented answer as long as the frame was asked to wait, then a second more", async () => {
+  it("waits for a frame-presented answer a second past the frame's wait, never less than its default", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       const { iframe } = previewFrame();
@@ -404,6 +404,12 @@ describe("createEditingPortClient", () => {
       expect(outcome).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(200);
       expect(outcome).toHaveBeenCalledWith(expect.objectContaining({ code: "timeout" }));
+      const short = vi.fn();
+      const patient = createEditingPortClient({ iframe, host, timeoutMs: 5_000 });
+      clients.push(patient);
+      void patient.request("frame-presented", { waitMs: 100 }).catch(short);
+      await vi.advanceTimersByTimeAsync(4_900);
+      expect(short).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
