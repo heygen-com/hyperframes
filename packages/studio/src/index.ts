@@ -236,6 +236,8 @@ export type {
 export { flushStudioPendingEdits } from "./utils/studioPendingEdits";
 export { revertNewestStudioPendingEdit } from "./utils/studioPendingEdits";
 export { cancelNewestStudioWaitingPress } from "./utils/studioPendingEdits";
+export { setStudioTextEditAway } from "./hooks/textEditAway";
+export type { StudioTextEditAway } from "./hooks/textEditAway";
 export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,
