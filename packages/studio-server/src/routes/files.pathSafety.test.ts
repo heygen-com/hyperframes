@@ -270,6 +270,9 @@ describe("file route containment", () => {
     }
     expect(existsSync(join(outside, "upload.txt"))).toBe(false);
     expect(readdirSync(join(project, "..")).sort()).toEqual(["outside", "project"]);
+    const hidden = await upload(app, "", "..unsafe.txt");
+    expect(await hidden.json()).toMatchObject({ files: [], skipped: ["..unsafe.txt"] });
+    expect(existsSync(join(project, "..unsafe.txt"))).toBe(false);
   });
 
   it("keeps an upload with a run of dots in its name", async () => {
@@ -281,7 +284,7 @@ describe("file route containment", () => {
     expect(new Uint8Array(readFileSync(join(project, "clip....mp3")))).toEqual(sound);
   });
 
-  it.each(["clip...", "clip.mp3 ", "con.mp3"])(
+  it.each(["clip...", "clip.mp3 ", "con.mp3", "CONOUT$.txt", "com¹.mp3", "LPT³.wav"])(
     "reports an upload Windows would save under another name as skipped: %j",
     async (name) => {
       const { app, project } = fixture();

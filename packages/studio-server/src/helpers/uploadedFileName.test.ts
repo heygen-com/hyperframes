@@ -42,12 +42,22 @@ describe("savesUnderItsOwnName", () => {
     }
   });
 
+  it("refuses the superscript COM and LPT device names and the console devices", () => {
+    const names = ["com¹", "COM².txt", "com³.mp3", "lpt¹.png", "LPT²", "LPT³.wav"];
+    for (const name of [...names, "CONIN$", "conin$.mp3", "CONOUT$", "Conout$.tar.gz"]) {
+      expect(savesUnderItsOwnName(name), name).toBe(false);
+    }
+  });
+
   it("keeps names that only start like a device name or hold dots inside", () => {
     for (const name of [
       "console.mp3",
       "nullable.png",
       "com10.mp4",
       "lpt0.wav",
+      "com⁴.mp3",
+      "coninput.txt",
+      "conout.mp3",
       "Cartoon_Falling....mp3",
       ".gitignore",
       "a. b.mp3",

@@ -1,4 +1,5 @@
-const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9]) *(\..*)?$/i;
+const WINDOWS_DEVICE_NAME =
+  /^(con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³]) *(\..*)?$/i;
 const ENDS_IN_DOT_OR_SPACE = /[. ]$/;
 
 export function uploadedFileName(sentName: string): string | null {
