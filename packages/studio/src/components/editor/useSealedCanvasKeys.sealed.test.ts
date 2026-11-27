@@ -182,6 +182,7 @@ async function setupSealedCanvas(options?: {
       allowCanvasMovement: !options?.readOnly,
       readOnly: Boolean(options?.readOnly),
       inlineTextEditing: false,
+      holdsPress: () => overlayHold.held,
       onDeleteSelection,
       applyRuntimeNudge,
       onNudgeSavingChangeRef,
@@ -209,9 +210,11 @@ async function setupSealedCanvas(options?: {
 
 const activation = { isActive: true };
 Object.defineProperty(navigator, "userActivation", { configurable: true, value: activation });
+const overlayHold = { held: false };
 
 beforeEach(() => {
   activation.isActive = true;
+  overlayHold.held = false;
   readAhead.cold = false;
   __resetForTests();
   vi.mocked(previewRequest).mockClear();
@@ -535,4 +538,33 @@ it("acts on a frame's Delete or forwarded key only while the person has just cli
   await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
   expect(onDelete).not.toHaveBeenCalled();
   expect(forwarded).toEqual([]);
+});
+
+it("lets a drag released on the canvas finish before the keyboard moves into the frame", async () => {
+  const { overlay, iframe } = await setupSealedCanvas();
+  // As in a browser: focus entering the frame blurs Studio's window, which cancels a held drag.
+  vi.spyOn(iframe, "focus").mockImplementation(() => void window.dispatchEvent(new Event("blur")));
+  const order: string[] = [];
+  const onBlur = () => order.push("blur");
+  window.addEventListener("blur", onBlur);
+  onTestFinished(() => window.removeEventListener("blur", onBlur));
+  overlay.addEventListener("pointerup", () => order.push("drop"));
+
+  act(() => void overlay.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
+  act(() => void overlay.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
+  await vi.waitFor(() => expect(order).toContain("blur"));
+  expect(order).toEqual(["drop", "blur"]);
+});
+
+it("keeps the keyboard out of the frame while a released drop is still held", async () => {
+  const { overlay, iframe } = await setupSealedCanvas();
+  const focus = vi.spyOn(iframe, "focus");
+  overlayHold.held = true;
+  act(() => void overlay.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
+  act(() => void overlay.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
+  // Past the task the release queued: the drop is still held, as one waiting on a slow frame read is.
+  await new Promise<void>((resolve) => setTimeout(resolve));
+  expect(focus).not.toHaveBeenCalled();
 });
