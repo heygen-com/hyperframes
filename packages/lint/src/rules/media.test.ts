@@ -1757,9 +1757,9 @@ describe("base64_media_prohibited", () => {
   });
 
   it("reports the size of the payload with the wrapping removed", async () => {
-    // 46 repeats put the unfolded payload just under 1.5 KB, so counting the 26 CRLFs
-    // instead of stripping them would round the message up to 2 KB.
-    const longPayload = payload.repeat(46);
+    // 51 repeats make 2040 characters, or 1530 decoded bytes: 1 KB. Counting the 26 CRLFs
+    // would read 2092 characters (1569 bytes) and round the message up to 2 KB.
+    const longPayload = payload.repeat(51);
     const wrappedPayload = longPayload.match(/.{1,76}/g)?.join("\r\n") ?? longPayload;
     const plain = await findingsFor(`data:audio/webm;base64,${longPayload}`);
     const wrapped = await findingsFor(`data:audio/webm;codecs=opus;base64,${wrappedPayload}`);
