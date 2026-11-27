@@ -11,7 +11,6 @@ export type EditingDraftEnd =
     };
 
 /** `drafts` numbers each element still drawn, for the end that names its draft. */
-/** `chromeDrawn` answers a request that carried chrome: false when the frame had no copy that place fits. */
 export type EditingDraftReply = {
   drawn: number;
   drafts: Record<EditingElementHandle, number>;
