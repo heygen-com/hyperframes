@@ -444,7 +444,6 @@ function handleShieldKey(state: ArmedState, event: KeyboardEvent): void {
   if (state.down.delete(event.code || event.key)) forwardTrustedKey(state, event);
 }
 
-// Unarmed, keys reach the page and the agent's key watch as they do with no shield.
 function onShieldEvent(event: Event): void {
   const state = armed;
   if (!state || !isTrustedEvent(event) || isActiveTextEditTarget(event.target)) return;
@@ -504,7 +503,6 @@ function focusFrameSurface(): void {
   window.focus();
 }
 
-/** Arms only where the load-time shield is installed, so it is the first key listener. */
 export function armCanvasKeys(
   port: MessagePort,
   params: ArmCanvasKeysParams,

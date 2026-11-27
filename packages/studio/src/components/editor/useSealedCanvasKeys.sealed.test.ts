@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import React, { act, useRef } from "react";
+import React, { act, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { installPreviewKeyShield } from "../../../../core/src/runtime/editing/canvasKeys";
@@ -16,6 +16,7 @@ import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-hel
 import { usePlayerStore } from "../../player/store/playerStore";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
 import type { DomEditSelection } from "./domEditing";
+import { membersForDelete } from "../../hooks/domEditDeleteMembers";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS } from "./domEditNudge";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { keepGestureStartReadAhead } from "./gestureStartReadAhead";
@@ -63,12 +64,26 @@ const OVERLAY_RECT: OverlayRect = {
   editScaleY: 1,
 };
 
+async function previewSelections(iframe: HTMLIFrameElement, ids: string[]) {
+  const byId = new Map<string, DomEditSelection>();
+  for (const id of ids) {
+    if (id !== "target") sized(document.getElementById(id)!, [600, 200, 100, 50]);
+    const found = (await queryPreviewElements(iframe, `#${id}`))!.matches[0]!;
+    const described = (await describePreviewElements(iframe, [found.handle]))![0]!;
+    const standIn = standInFor(iframe, described);
+    byId.set(id, { ...makeSelection(id, standIn), id, selector: `#${id}`, handle: found.handle });
+  }
+  return byId;
+}
+
 async function setupSealedCanvas(options?: {
   onDeleteSelection?: CanvasDeleteHandler;
   onCommit?: ReturnType<typeof vi.fn>;
   readOnly?: boolean;
+  others?: string[];
 }) {
-  document.body.innerHTML = `<div data-composition-id="main" data-width="1920" data-height="1080"><div id="target">box</div></div><div data-studio-timeline="true"><button id="tl-clip">clip</button></div>`;
+  const others = (options?.others ?? []).map((id) => `<div id="${id}">${id}</div>`).join("");
+  document.body.innerHTML = `<div data-composition-id="main" data-width="1920" data-height="1080"><div id="target">box</div>${others}</div><div data-studio-timeline="true"><button id="tl-clip">clip</button></div>`;
   const targetEl = document.getElementById("target")!;
   targetEl.getBoundingClientRect = () => {
     const x = 300 + (Number.parseFloat(targetEl.style.translate) || 0);
@@ -102,15 +117,11 @@ async function setupSealedCanvas(options?: {
     }),
   );
 
-  const match = (await queryPreviewElements(iframe, "#target"))!.matches[0]!;
-  const described = (await describePreviewElements(iframe, [match.handle]))![0]!;
-  const standIn = standInFor(iframe, described);
-  const selection: DomEditSelection = {
-    ...makeSelection("Target", standIn),
-    id: "target",
-    selector: "#target",
-    handle: match.handle,
-  };
+  const byId = await previewSelections(iframe, ["target", ...(options?.others ?? [])]);
+  const selection = byId.get("target")!;
+  const match = { handle: selection.handle! };
+  const shown = { selection, group: [] as DomEditSelection[] };
+  let select: (primary: string, group?: string[]) => void = () => {};
 
   const overlay = sized(document.createElement("div"), [20, 10, 1920, 1080]);
   document.body.append(overlay);
@@ -149,18 +160,25 @@ async function setupSealedCanvas(options?: {
 
   function Harness() {
     const onNudgeSavingChangeRef = useRef<((saving: boolean) => void) | undefined>(undefined);
+    const [picked, setPicked] = useState(shown);
+    select = (primary, group = []) => {
+      const next = { selection: byId.get(primary)!, group: group.map((id) => byId.get(id)!) };
+      Object.assign(shown, next);
+      nudgeOpts.selectionRef.current = next.selection;
+      setPicked(next);
+    };
     const { applyRuntimeNudge } = useDomEditNudge({
       ...nudgeOpts,
-      selection,
-      groupSelections: [],
+      selection: picked.selection,
+      groupSelections: picked.group,
       allowCanvasMovement: !options?.readOnly,
       onNudgeSavingChangeRef,
     });
     useSealedCanvasKeys({
       iframeRef: nudgeOpts.iframeRef,
       overlayRef: nudgeOpts.overlayRef,
-      selection,
-      groupSelections: [],
+      selection: picked.selection,
+      groupSelections: picked.group,
       allowCanvasMovement: !options?.readOnly,
       readOnly: Boolean(options?.readOnly),
       inlineTextEditing: false,
@@ -176,7 +194,17 @@ async function setupSealedCanvas(options?: {
   act(() => root.render(React.createElement(Harness)));
   onTestFinished(() => act(() => root.unmount()));
 
-  return { iframe, overlay, targetEl, selection, commit, onDeleteSelection, handle: match.handle };
+  return {
+    iframe,
+    overlay,
+    targetEl,
+    selection,
+    commit,
+    onDeleteSelection,
+    handle: match.handle,
+    shown,
+    select: (primary: string, group?: string[]) => act(() => select(primary, group)),
+  };
 }
 
 beforeEach(() => {
@@ -454,4 +482,32 @@ it("rolls back a Delete whose arm Studio does not know", async () => {
   expect(document.getElementById("target")).toBeNull();
   await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
   expect(onDelete).not.toHaveBeenCalled();
+});
+
+it("saves a delayed group Delete on the members the frame removed, not the group selected since", async () => {
+  // Deletes what the Studio handler would: its members, else the group selected when it runs.
+  const deleted: string[][] = [];
+  let shownNow: { selection: DomEditSelection; group: DomEditSelection[] } | null = null;
+  const onDelete: CanvasDeleteHandler = async (sel, opts) => {
+    const members = membersForDelete(sel, shownNow!.group, opts);
+    deleted.push(members.map((member) => member.id ?? ""));
+    opts?.onSettled?.(true);
+  };
+  const { overlay, shown, select } = await setupSealedCanvas({
+    onDeleteSelection: onDelete,
+    others: ["a", "b", "c", "d"],
+  });
+  shownNow = shown;
+  select("a", ["a", "b"]);
+  clickCanvas(overlay);
+  await waitForArm((p) => (p.deleteHandles as string[]).length === 2);
+
+  window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+  expect([document.getElementById("a"), document.getElementById("b")]).toEqual([null, null]);
+  // The selection moves to C+D before the frame's notification reaches Studio.
+  select("c", ["c", "d"]);
+
+  await vi.waitFor(() => expect(deleted).toEqual([["a", "b"]]));
+  expect(document.getElementById("c")).not.toBeNull();
+  expect(document.getElementById("d")).not.toBeNull();
 });

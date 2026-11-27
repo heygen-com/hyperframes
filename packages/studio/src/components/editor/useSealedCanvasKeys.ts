@@ -40,7 +40,11 @@ export interface RuntimeNudgeStep {
 
 export type CanvasDeleteHandler = (
   selection: DomEditSelection,
-  options?: { expandGroup?: boolean; onSettled?: (ok: boolean) => void },
+  options?: {
+    expandGroup?: boolean;
+    members?: readonly DomEditSelection[];
+    onSettled?: (ok: boolean) => void;
+  },
 ) => Promise<unknown> | void;
 
 export interface UseSealedCanvasKeysParams {
@@ -115,20 +119,23 @@ function resolveAction(
   void previewRequest(iframe, "resolve-canvas-key-action", { actionId, outcome });
 }
 
+/** Saves exactly the members the frame removed under this arm; rolls back any it cannot name. */
 function runDeleteAction(
   iframe: HTMLIFrameElement,
   del: CanvasDeleteHandler | undefined,
-  selection: DomEditSelection,
+  armedDeletes: ReadonlyMap<EditingElementHandle, DomEditSelection>,
   event: Extract<CanvasKeyActionEvent, { action: "delete" }>,
 ): void {
-  if (!del) return resolveAction(iframe, event.actionId, "rollback");
+  const members = event.handles.map((handle) => armedDeletes.get(handle));
+  if (!del || !members.every((member): member is DomEditSelection => Boolean(member)))
+    return resolveAction(iframe, event.actionId, "rollback");
   noteFrameRemovedHandles(iframe, event.handles);
   let settled: boolean | null = null;
   const onSettled = (ok: boolean) => {
     settled = ok;
   };
   Promise.resolve()
-    .then(() => del(selection, { expandGroup: true, onSettled }))
+    .then(() => del(members[0]!, { members, onSettled }))
     .then(
       () => resolveAction(iframe, event.actionId, settled === false ? "rollback" : "commit"),
       () => resolveAction(iframe, event.actionId, "rollback"),
@@ -144,7 +151,7 @@ function buildArmParams(input: {
   allowNudge: boolean;
   allowDelete: boolean;
   resetMayClaim: boolean;
-}): ArmCanvasKeysParams {
+}): { params: ArmCanvasKeysParams; armedDeletes: Map<EditingElementHandle, DomEditSelection> } {
   const { deleteMembers, nudgeMembers } = resolveCanvasTargets(
     input.selection,
     input.groupSelections,
@@ -166,13 +173,17 @@ function buildArmParams(input: {
     ...deleteCombos,
     ...(nudge ? nudge.combos.map((c) => c.combo) : []),
   ]);
-  return {
+  const params = {
     revision: input.revision,
     focus: input.focus,
     deleteHandles,
     deleteCombos,
     nudge,
     forwardCombos: forwardCombosFor(input.studioKeys, excluded),
+  };
+  return {
+    params,
+    armedDeletes: new Map(deleteHandles.map((handle, i) => [handle, deleteMembers[i]!])),
   };
 }
 
@@ -243,7 +254,7 @@ function startSealedCanvasSession(input: {
   const { iframe, armedReadyRef, pointerDownRef, onDeleteRef, applyNudgeRef, selection } = input;
   const revision = ++lastCanvasKeyRevision;
   armedReadyRef.current = false;
-  const params = buildArmParams({
+  const { params, armedDeletes } = buildArmParams({
     revision,
     focus: !pointerDownRef.current,
     selection,
@@ -261,7 +272,7 @@ function startSealedCanvasSession(input: {
   sessions.set(revision, (event) => {
     if (!sameLoad()) return;
     if (event.action === "delete")
-      return runDeleteAction(iframe, onDeleteRef.current, selection, event);
+      return runDeleteAction(iframe, onDeleteRef.current, armedDeletes, event);
     if (!live || !hasSealedCanvasKeyboardHold(iframe)) return;
     applyNudgeRef.current({
       handles: event.handles,

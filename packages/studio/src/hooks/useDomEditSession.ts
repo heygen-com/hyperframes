@@ -310,7 +310,11 @@ export function useDomEditSession({
   const handleDomEditElementDelete = useCallback(
     async (
       selection: DomEditSelection,
-      options?: { expandGroup?: boolean; onSettled?: (ok: boolean) => void },
+      options?: {
+        expandGroup?: boolean;
+        members?: readonly DomEditSelection[];
+        onSettled?: (ok: boolean) => void;
+      },
     ) => {
       // Same structural edit the timeline delete refuses mid-recording.
       if (isRecordingRef?.current) {
