@@ -34,11 +34,13 @@ describe("a render page", () => {
         const marker = (name: string) =>
           new Promise<void>((done) => {
             window.addEventListener("message", (event) => {
-              if (event.data?.type === name) done();
+              if (event.origin === location.origin && event.data?.type === name) done();
             });
             window.postMessage({ type: name }, "*");
           });
-        window.addEventListener("message", (event) => types.push(event.data?.type));
+        window.addEventListener("message", (event) => {
+          if (event.origin === location.origin) types.push(event.data?.type);
+        });
         window.postMessage({ source: "hf-parent", type: "editing-connect", v: 1 }, "*");
         // A port handed over while the connect is handled is queued ahead of the second marker.
         await marker("first-marker");
