@@ -21,7 +21,7 @@ bindShareHost({
   reviewUploadOrigins: ["https://review-bucket.s3.us-east-1.amazonaws.com"],
   signedInRequest,
   projectFingerprint,
-  latestExportFile, // (dir) => { path, fingerprint, id } | null
+  latestExportFile, // (dir) => { path, fingerprint, id } | null, or a promise of it
   ffBinary, // ('ffprobe') => executable path
 });
 const client = reviewClient({ access, signedInEmail });
