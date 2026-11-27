@@ -53,6 +53,9 @@ function writeProject(name: string, reveal: string): string {
   <img id="a" style="position:absolute;left:0;top:0;width:100px;height:180px">
   <div id="b" style="position:absolute;left:110px;top:0;width:100px;height:180px"></div>
   <svg style="position:absolute;left:220px;top:0" width="100" height="180"><image id="c" width="100" height="180" preserveAspectRatio="none"/></svg>
+  <i id="d0" style="position:absolute;left:110px;top:170px;width:10px;height:10px"></i>
+  <i id="d1" style="position:absolute;left:120px;top:170px;width:10px;height:10px"></i>
+  <i id="d2" style="position:absolute;left:130px;top:170px;width:10px;height:10px"></i>
 </div>
 <script>
   window.__timelines = window.__timelines || {};
@@ -107,6 +110,13 @@ async function pixel(file: string, x: number, y: number): Promise<number[]> {
   return [data[o]!, data[o + 1]!, data[o + 2]!];
 }
 
+// What the SVG case's frame shows of its own state, so a miss names which wait came up short.
+async function svgStateAtCapture(file: string): Promise<string> {
+  const white = async (x: number) => (await pixel(file, x, 175))[0] === 255;
+  const [red] = await pixel(file, 135, 175);
+  return `SVG <image> at capture: element load ${(await white(115)) ? "fired" : "not fired"}, copy Image ${(await white(125)) ? "decoded" : "not decoded"}, about ${red! * 20} ms since the reveal${red === 255 ? " or more" : ""}`;
+}
+
 it.each([
   ["an <img>", `document.getElementById("a").src = "BASE/red.png";`, 50, [255, 0, 0]],
   [
@@ -117,7 +127,20 @@ it.each([
   ],
   [
     "an SVG <image>",
-    `document.getElementById("c").setAttribute("href", "BASE/blue.png");`,
+    // Paints, in the same frame the snapshot takes: d0 white once the element's own load fired, d1 white once a
+    // copy Image decoded, d2's red channel the milliseconds since the reveal over 20.
+    `const c = document.getElementById("c");
+     const t0 = performance.now();
+     const mark = (id) => (document.getElementById(id).style.background = "#fff");
+     c.addEventListener("load", () => mark("d0"));
+     c.setAttribute("href", "BASE/blue.png");
+     Object.assign(new Image(), { src: "BASE/blue.png" }).decode().then(() => mark("d1"), () => {});
+     const tick = () => {
+       const red = Math.min(255, Math.round((performance.now() - t0) / 20));
+       document.getElementById("d2").style.background = "rgb(" + red + ",0,0)";
+       requestAnimationFrame(tick);
+     };
+     tick();`,
     270,
     [0, 0, 255],
   ],
@@ -128,7 +151,10 @@ it.each([
 
     const { envelope } = await snapshotAt(dir, "1.5");
 
-    expect(await pixel(envelope.frames[0].path as string, x, 90)).toEqual(color);
+    const frame = envelope.frames[0].path as string;
+    expect(await pixel(frame, x, 90), x === 270 ? await svgStateAtCapture(frame) : kind).toEqual(
+      color,
+    );
     expect(envelope.warnings ?? []).toEqual([]);
   },
   120_000,

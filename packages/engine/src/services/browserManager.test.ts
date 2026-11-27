@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { _resetChromeSandboxFallbackForTests } from "@hyperframes/core/chrome-sandbox";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -1266,7 +1266,7 @@ const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
           for (const name of list(join(root, version))) {
             const folder = join(root, version, name);
             if (!["chrome-headless-shell", "chrome-headless-shell.exe"].some((shell) => isShell(join(folder, shell)))) continue;
-            try { PINNED_SHELL_DIGESTS["158.0.8127.36"].push(headlessShellDigest(folder)); } catch {}
+            try { PINNED_SHELL_DIGESTS["158.0.8127.88"].push(headlessShellDigest(folder)); } catch {}
           }
     });
   trust.then(() => import(process.env.HF_TEST_MODULE_URL)).then(({ resolveHeadlessShellPath }) => {
@@ -1298,6 +1298,14 @@ function resolveHeadlessShellInSubprocess(
 describe("resolveHeadlessShellPath", () => {
   const originalHeadlessShellPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
   const originalHyperframesBrowserPath = process.env.HYPERFRAMES_BROWSER_PATH;
+  // Ubuntu's umask 002 makes these fake caches group-writable, which the cache check refuses.
+  let originalUmask = 0;
+  beforeAll(() => {
+    originalUmask = process.umask(0o022);
+  });
+  afterAll(() => {
+    process.umask(originalUmask);
+  });
 
   // A runner may export either var (the Windows job sets HYPERFRAMES_BROWSER_PATH); each case sets its own.
   beforeEach(() => {
@@ -1585,7 +1593,7 @@ describe("resolveHeadlessShellPath", () => {
           ".cache",
           ...cache,
           "chrome-headless-shell",
-          "linux-158.0.8127.36",
+          "linux-158.0.8127.88",
         );
         mkdirSync(join(folder, "chrome-headless-shell-linux64"), { recursive: true });
         writeFileSync(
@@ -1657,7 +1665,7 @@ describe("resolveHeadlessShellPath", () => {
         );
       mkdirSync(shell("153.0.7990.1"), { recursive: true });
       for (const [version, content] of [
-        ["158.0.8127.36", ""],
+        ["158.0.8127.88", ""],
         ["150.0.7871.124", "shell"],
       ]) {
         mkdirSync(join(shell(version), ".."), { recursive: true });
@@ -1857,6 +1865,31 @@ describe("browser pool", () => {
 
     await first.release();
     await second.release();
+  });
+
+  // fails without the fix: launchBrowser left proc.stdio unguarded after PipeTransport.close.
+  it("absorbs late EPIPE on a launched browser's CDP pipe after Puppeteer drops its listener", async () => {
+    const pipe = new EventEmitter();
+    const puppeteerListener = () => {};
+    pipe.on("error", puppeteerListener);
+    const browser = {
+      ...makeMockBrowser(),
+      process: () => ({ kill: vi.fn(), killed: false, stdio: [null, null, null, pipe] }),
+      close: vi.fn(async () => {
+        pipe.off("error", puppeteerListener);
+      }),
+    } as unknown as Browser;
+    launchFn.mockResolvedValueOnce(browser);
+
+    const lease = await acquireBrowser(["--no-sandbox"], {
+      enableBrowserPool: false,
+      forceScreenshot: true,
+    });
+    await lease.release();
+
+    expect(() =>
+      pipe.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" })),
+    ).not.toThrow();
   });
 
   it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
@@ -2063,5 +2096,77 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     const fallbackArgs = launch.mock.lastCall?.[0]?.args;
     expect(fallbackArgs).toContain("--disable-partial-raster");
     expect(fallbackArgs).not.toContain("--enable-begin-frame-control");
+  });
+});
+
+describe("acquireBrowser abort signal", () => {
+  const base = {
+    version: vi.fn().mockResolvedValue("Chrome/test"),
+    close: vi.fn().mockResolvedValue(undefined),
+    once: vi.fn(),
+  };
+
+  afterEach(async () => {
+    await drainBrowserPool();
+    _setPuppeteerForTests(undefined);
+  });
+
+  it("forwards signal to puppeteer.launch and rethrows abort without launch failure remediation", async () => {
+    _resetBrowserPoolForTests();
+    let launchSignal: AbortSignal | undefined;
+    const launch = vi.fn().mockImplementation((options: { signal?: AbortSignal }) => {
+      launchSignal = options.signal;
+      return new Promise<never>((_resolve, reject) => {
+        options.signal?.addEventListener(
+          "abort",
+          () => reject(new Error("spawn aborted by signal")),
+          { once: true },
+        );
+      });
+    });
+    const defaultArgs = vi.fn().mockResolvedValue([]);
+    _setPuppeteerForTests({ launch, defaultArgs } as unknown as PuppeteerNode);
+
+    const controller = new AbortController();
+    const pending = acquireBrowser(["--headless"], {
+      forceScreenshot: true,
+      enableBrowserPool: false,
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort(new Error("audio failed during launch"));
+
+    await expect(pending).rejects.toThrow("audio failed during launch");
+    expect(launchSignal?.aborted).toBe(true);
+    expect(defaultArgs).not.toHaveBeenCalled();
+  });
+
+  it("aborts and closes the browser when signal fires while browser.version() is in flight", async () => {
+    _resetBrowserPoolForTests();
+    let resolveVersion!: (v: string) => void;
+    const close = vi.fn().mockResolvedValue(undefined);
+    const launch = vi.fn().mockResolvedValue({
+      ...base,
+      close,
+      version: () =>
+        new Promise<string>((resolve) => {
+          resolveVersion = resolve;
+        }),
+    });
+    _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
+
+    const controller = new AbortController();
+    const pending = acquireBrowser(["--headless"], {
+      forceScreenshot: true,
+      enableBrowserPool: false,
+      signal: controller.signal,
+    });
+    for (let i = 0; i < 10 && !resolveVersion; i++) await Promise.resolve();
+    controller.abort(new Error("aborted during version"));
+    resolveVersion("Chrome/test");
+
+    await expect(pending).rejects.toThrow("aborted during version");
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(close).toHaveBeenCalled();
   });
 });

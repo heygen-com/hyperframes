@@ -1,12 +1,14 @@
 // @vitest-environment happy-dom
 
-import React, { act, createRef } from "react";
+import React, { act, createRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
-import { RESIZE_HANDLE_HIT_PX } from "./domEditOverlayGeometry";
+import { RESIZE_HANDLE_HIT_PX, type OverlayRect } from "./domEditOverlayGeometry";
+import type { GestureState } from "./domEditOverlayGestures";
 import { SELECTION_CHROME } from "./motionPathLayerNode";
+import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,6 +54,7 @@ describe("DomEditSelectionChrome crop composition", () => {
           allowCanvasMovement={false}
           allowBodyDrag
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass="border border-studio-accent/80"
           boxClipPath={undefined}
           selectionKey="headline"
@@ -84,10 +87,13 @@ describe("DomEditSelectionChrome crop composition", () => {
     // Per element, not blanket: the crop frame composes the element's transform
     // with its ancestors', so answering "rotated 30deg" for every node in the
     // document would have the frame read the same turn several times over.
-    vi.spyOn(window, "getComputedStyle").mockImplementation(
+    const computedStyleSpy = vi.spyOn(window, "getComputedStyle").mockImplementation(
       ((node: Element) =>
         (node === element
-          ? { clipPath: "inset(10px)", transform: "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)" }
+          ? {
+              clipPath: "inset(10px)",
+              transform: "matrix(0.8660254, 0.5, -0.5, 0.8660254, 0, 0)",
+            }
           : { clipPath: "none", transform: "none" }) as CSSStyleDeclaration) as never,
     );
     const { selection, host, root } = selectionFixture(element, "#clip", true, { id: "clip" });
@@ -107,6 +113,7 @@ describe("DomEditSelectionChrome crop composition", () => {
           allowCanvasMovement={true}
           allowBodyDrag
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass=""
           boxClipPath={undefined}
           selectionKey="clip"
@@ -134,6 +141,135 @@ describe("DomEditSelectionChrome crop composition", () => {
     expect(controls.length).toBeGreaterThan(8);
     for (const control of controls) expect(control.closest(SELECTION_CHROME)).not.toBeNull();
     act(() => root.unmount());
+    computedStyleSpy.mockRestore();
+  });
+
+  // fails without the fix: an imperative crop-frame move on resize shifts left while React sees unchanged left=20px.
+  it("keeps the crop frame aligned with an anchored edge through a resize and React commit", () => {
+    const stage = document.createElement("div");
+    stage.setAttribute("data-composition-id", "root");
+    stage.setAttribute("data-width", "800");
+    stage.setAttribute("data-height", "600");
+    const element = document.createElement("div");
+    element.setAttribute("style", "position: absolute; width: 240px; height: 160px");
+    element.getBoundingClientRect = () => {
+      const width = Number.parseFloat(element.style.width) || 240;
+      const height = Number.parseFloat(element.style.height) || 160;
+      return {
+        left: 20,
+        top: 30,
+        width,
+        height,
+        right: 20 + width,
+        bottom: 30 + height,
+      } as DOMRect;
+    };
+    stage.append(element);
+    document.body.append(stage);
+    const frameRect = {
+      left: 0,
+      top: 0,
+      width: 800,
+      height: 600,
+      right: 800,
+      bottom: 600,
+    } as DOMRect;
+    const iframe = document.createElement("iframe");
+    iframe.getBoundingClientRect = () => frameRect;
+    Object.defineProperties(iframe, {
+      contentDocument: { value: document },
+      contentWindow: { value: window },
+    });
+    const { selection, host, root } = selectionFixture(element, "#anchored", true);
+    (selection.capabilities as { canApplyManualOffset: boolean }).canApplyManualOffset = false;
+    host.getBoundingClientRect = () => frameRect;
+    const boxRef = createRef<HTMLDivElement>();
+    const handlesRef = createRef<HTMLDivElement>();
+    const startRect: OverlayRect = {
+      left: 20,
+      top: 30,
+      width: 240,
+      height: 160,
+      editScaleX: 1,
+      editScaleY: 1,
+    };
+    let commitRect: (next: OverlayRect) => void = () => {};
+    const overlayRectRef = { current: startRect as OverlayRect | null };
+    const handlers = createDomEditOverlayGestureHandlers({
+      selectionRef: { current: selection },
+      overlayRectRef,
+      boxRef,
+      handlesRef,
+      overlayRef: { current: host },
+      iframeRef: { current: iframe },
+      gestureRef: { current: null as GestureState | null },
+      rafPausedRef: { current: false },
+      onManualDragStartRef: { current: vi.fn() },
+      onCanvasPointerMoveRef: { current: vi.fn() },
+      snapGuidesRef: { current: null },
+      groupGestureRef: { current: null },
+      blockedMoveRef: { current: null },
+      waitingPressRef: { current: null },
+      setOverlayRect: (next: OverlayRect | null) => {
+        if (!next) return;
+        overlayRectRef.current = next;
+        commitRect(next);
+      },
+      suppressNextBoxClickRef: { current: false },
+      hoverSelectionRef: { current: null },
+      onCanvasMouseDown: vi.fn(),
+    } as never);
+    function Harness() {
+      const [rect, setRect] = useState(startRect);
+      commitRect = setRect;
+      return (
+        <DomEditSelectionChrome
+          selection={selection}
+          overlayRect={rect}
+          allowCanvasMovement
+          allowBodyDrag
+          boxRef={boxRef}
+          handlesRef={handlesRef}
+          boxChromeClass=""
+          boxClipPath={undefined}
+          selectionKey="anchored"
+          groupSelectionCount={0}
+          gestures={handlers}
+          onStyleCommit={vi.fn()}
+          onBoxClick={vi.fn()}
+        />
+      );
+    }
+    act(() => root.render(<Harness />));
+    const ptr = (x: number, y: number) => ({
+      clientX: x,
+      clientY: y,
+      pointerId: 1,
+      button: 0,
+      buttons: 1,
+      preventDefault() {},
+      stopPropagation() {},
+      currentTarget: { setPointerCapture() {}, releasePointerCapture() {} },
+    });
+    expect(handlers.startGesture("resize", ptr(260, 190) as never, { resizeHandle: "se" })).toBe(
+      true,
+    );
+    act(() => {
+      handlers.onPointerMove(ptr(300, 190) as never);
+    });
+    const cropFrame = host.querySelector<HTMLElement>("[data-dom-edit-crop-frame]")!;
+    const box = boxRef.current!;
+    expect(Number.parseFloat(box.style.width)).toBeGreaterThan(240);
+    expect([cropFrame.style.left, cropFrame.style.top]).toEqual(["20px", "30px"]);
+    expect([
+      cropFrame.style.left,
+      cropFrame.style.top,
+      cropFrame.style.width,
+      cropFrame.style.height,
+    ]).toEqual([box.style.left, box.style.top, box.style.width, box.style.height]);
+    act(() => root.unmount());
+    host.remove();
+    stage.remove();
   });
 });
 
@@ -171,6 +307,7 @@ describe("DomEditSelectionChrome while editing text", () => {
           allowCanvasMovement={true}
           allowBodyDrag
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass="border border-studio-accent/80"
           boxClipPath={undefined}
           selectionKey="copy"
@@ -256,6 +393,7 @@ describe("DomEditSelectionChrome with body drag off", () => {
           allowCanvasMovement
           allowBodyDrag={allowBodyDrag}
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass=""
           boxClipPath={undefined}
           selectionKey="box"
@@ -293,6 +431,15 @@ describe("DomEditSelectionChrome with body drag off", () => {
     });
     press(host.querySelector('[aria-label="Rotate selection"]')!);
     expect(gestures.startGesture).toHaveBeenCalledWith("rotate", expect.anything());
+    cleanup();
+  });
+
+  // fails without the fix: the rotate handle sat outside the handles wrapper, so it waited for React's commit.
+  it("places the rotate handle inside the handles wrapper so it rides the box's write", () => {
+    const { host, cleanup } = renderChrome(true);
+    const handles = host.querySelector<HTMLElement>('[data-dom-edit-selection-handles="true"]')!;
+    const rotate = handles.querySelector<HTMLElement>('[aria-label="Rotate selection"]');
+    expect(rotate).not.toBeNull();
     cleanup();
   });
 
@@ -349,6 +496,7 @@ describe("DomEditSelectionChrome corner handles", () => {
           allowBodyDrag
           cropOutlineInsetPx={cropOutlineInsetPx}
           boxRef={createRef()}
+          handlesRef={createRef()}
           boxChromeClass=""
           boxClipPath={undefined}
           selectionKey="t"
@@ -363,9 +511,31 @@ describe("DomEditSelectionChrome corner handles", () => {
       ...host.querySelectorAll<HTMLElement>('[style*="nwse-resize"], [style*="nesw-resize"]'),
     ].map((handle) => {
       const corner = handle.querySelector<HTMLElement>("[data-resize-corner]")!;
-      const left = parseFloat(handle.style.left);
-      const top = parseFloat(handle.style.top);
+      // On the overlay: a handle is pinned to its corner's edges of the handles' wrapper, which sits on the box.
+      const wrap = handle.parentElement!.style;
+      // A handle's offset is CSS arithmetic on the wrapper's size (100%); happy-dom does no layout, so read it here.
+      const offset = (value: string, size: number) =>
+        Number(
+          new Function(
+            `return ${value
+              .replace(/calc|px/g, "")
+              .replace(/max/g, "Math.max")
+              .replace(/100%/g, String(size))}`,
+          )(),
+        );
+      const along = (start: string, end: string, size: string) => {
+        const extent = parseFloat(wrap[size as "width"]);
+        return (
+          parseFloat(wrap[start as "left"]) +
+          (handle.style[start as "left"]
+            ? offset(handle.style[start as "left"], extent)
+            : extent - offset(handle.style[end as "right"], extent) - RESIZE_HANDLE_HIT_PX)
+        );
+      };
+      const left = along("left", "right", "width");
+      const top = along("top", "bottom", "height");
       return {
+        place: ["left", "right", "top", "bottom"].map((side) => handle.style[side as "left"]),
         left,
         top,
         corner: [left + parseFloat(corner.style.left), top + parseFloat(corner.style.top)],
@@ -419,13 +589,21 @@ describe("DomEditSelectionChrome corner handles", () => {
     },
   );
 
+  // fails without the fix: a small box's handles slid out by an amount React computed from its size, so during a
+  // resize they kept the last commit's slide for a frame after the move wrote the new size.
+  it("on a small box take their place from the wrapper's size alone, so a resize's write carries them", () => {
+    const places = (size: number) =>
+      cornerHits({ left: 100, top: 100, width: size, height: size }).map((hit) => hit.place);
+    expect(places(20)).toEqual(places(28));
+  });
+
   it("stay centred on the corners of a pick large enough to hold them", () => {
     expect(cornerHits({ left: 100, top: 100, width: 32, height: 40 })).toEqual(
       expect.arrayContaining([
-        { left: 92, top: 92, corner: [100, 100] },
-        { left: 124, top: 92, corner: [132, 100] },
-        { left: 92, top: 132, corner: [100, 140] },
-        { left: 124, top: 132, corner: [132, 140] },
+        expect.objectContaining({ left: 92, top: 92, corner: [100, 100] }),
+        expect.objectContaining({ left: 124, top: 92, corner: [132, 100] }),
+        expect.objectContaining({ left: 92, top: 132, corner: [100, 140] }),
+        expect.objectContaining({ left: 124, top: 132, corner: [132, 140] }),
       ]),
     );
   });

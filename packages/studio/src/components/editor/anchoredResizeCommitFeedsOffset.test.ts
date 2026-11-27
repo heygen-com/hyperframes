@@ -146,6 +146,7 @@ function buildHarness(
     overlayRef: ref<HTMLDivElement | null>(overlayEl),
     iframeRef: ref<HTMLIFrameElement | null>(iframe),
     boxRef: ref<HTMLDivElement | null>(document.createElement("div")),
+    handlesRef: { current: null },
     selectionRef: ref<DomEditSelection | null>(selection),
     hoverSelectionRef: ref<DomEditSelection | null>(null),
     overlayRectRef: ref<OverlayRectLike | null>({

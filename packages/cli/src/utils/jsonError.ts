@@ -48,8 +48,17 @@ export function writeJsonFailure(body: CliErrorBody): void {
  * run that printed nothing can still answer with an envelope that says why. Bun's console
  * writes past process.stdout.write, so the console methods are watched too.
  */
-let reported: { message: string; hint?: string } | undefined;
+let reported: { message: string; hint?: string; exact?: boolean } | undefined;
 let noticeDepth = 0;
+
+export function printFailureLine(line: (show: (text: string) => string) => string): void {
+  console.error(line(terminalLines));
+  const given: string[] = [];
+  const shape = tidy(line((text) => `\uE000${given.push(text) - 1}\uE001`));
+  const message = shape.replace(/\uE000(\d+)\uE001/g, (_, at) => given[Number(at)] ?? "");
+  const earlier = reported?.exact ? `${reported.message} ` : "";
+  reported = { message: earlier + message, exact: true };
+}
 
 /** The failure a command reported to the person (errorBox); the envelope's message when it has none. */
 export function recordFailure(message: string, hint?: string): void {
@@ -118,14 +127,16 @@ export function watchOutput(): { wroteStdout: () => boolean; stderrText: () => s
   }
   return {
     wroteStdout: () => wrote,
-    stderrText: () =>
-      stripVTControlCharacters(stderr)
-        .split("\n")
-        .map((line) => line.replace(/^[\s✗│◇◆]+/u, "").trim())
-        .filter(Boolean)
-        .join(" ")
-        .slice(-1000),
+    stderrText: () => tidy(stderr).slice(-1000),
   };
+}
+
+function tidy(text: string): string {
+  return stripVTControlCharacters(text)
+    .split("\n")
+    .map((line) => line.replace(/^[\s✗│◇◆]+/u, "").trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 function withHint(body: CliErrorBody, hint: string | undefined): CliErrorBody {
@@ -161,6 +172,12 @@ export function jsonErrorBody(
     return { code, message: failureMessage(error.cause) };
   }
   if (reported)
-    return withHint({ code, message: stripVTControlCharacters(reported.message) }, reported.hint);
+    return withHint(
+      {
+        code,
+        message: reported.exact ? reported.message : stripVTControlCharacters(reported.message),
+      },
+      reported.hint,
+    );
   return { code, message: stderrText || "Command failed" };
 }

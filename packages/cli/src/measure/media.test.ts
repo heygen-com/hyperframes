@@ -114,7 +114,7 @@ describe.skipIf(!ffmpeg)("a guarded probe", () => {
   });
 
   it("refuses text that a text-art demuxer would show as a picture", () => {
-    expect(probeVideo(art).codec).toBe("ansi");
+    expect(() => probeVideo(art)).toThrow(Fix);
     expect(() => probeVideo(art, { guarded: true })).toThrow(Fix);
   });
 });

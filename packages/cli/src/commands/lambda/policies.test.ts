@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,8 +6,10 @@ import {
   allRequiredActions,
   buildPolicyDocument,
   buildRoleTrustPolicy,
+  runPolicies,
   validatePolicy,
 } from "./policies.js";
+import { consumeCommandResult } from "../../utils/commandResult.js";
 
 let workdir: string;
 
@@ -238,3 +240,42 @@ function writePolicy(doc: { Version: string; Statement: unknown }): string {
   writeFileSync(path, JSON.stringify(doc));
   return path;
 }
+
+describe("policies — validate output for people", () => {
+  const ODD = "\u009b2J\u0007";
+  const SHOWN = "\\x9b2J\\x07";
+
+  afterEach(() => {
+    consumeCommandResult();
+    vi.restoreAllMocks();
+  });
+
+  // fails without the fix: the path is printed as it was typed.
+  it("shows control characters in a missing policy path as text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runPolicies({
+      verb: "validate",
+      inputPath: join(workdir, `po${ODD}licy.json`),
+      json: false,
+    });
+    const printed = error.mock.calls.flat().join("\n");
+    expect(printed).toContain(`po${SHOWN}licy.json`);
+    expect(printed).not.toContain(ODD);
+    expect(consumeCommandResult().exitCode).toBe(1);
+  });
+
+  // fails without the fix: the pattern from the policy file is printed as it was written.
+  it("shows control characters in a warned action pattern as text", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const path = join(workdir, "policy.json");
+    writeFileSync(
+      path,
+      JSON.stringify({ Statement: [{ Effect: "Allow", Action: ["s3:Get\u009b2J*Object"] }] }),
+    );
+    await runPolicies({ verb: "validate", inputPath: path, json: false });
+    const printed = warn.mock.calls.flat().join("\n");
+    expect(printed).toContain("s3:Get\\x9b2J*Object");
+    expect(printed).not.toContain("\u009b");
+  });
+});

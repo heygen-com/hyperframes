@@ -11,7 +11,18 @@ vi.mock("node:fs", async (importOriginal) => ({
   mkdtempSync: vi.fn((prefix: string) => `${prefix}ABC123`),
 }));
 
-const { createStagingDir } = await import("./atomicFile");
+const { createStagingDir, toWin32LongPath } = await import("./atomicFile");
+
+describe("toWin32LongPath", () => {
+  it("prefixes Windows drive and UNC paths and leaves POSIX or already-namespaced paths unchanged", () => {
+    expect(toWin32LongPath("C:\\project\\out.mov")).toBe("\\\\?\\C:\\project\\out.mov");
+    expect(toWin32LongPath("\\\\server\\share\\out.mov")).toBe(
+      "\\\\?\\UNC\\server\\share\\out.mov",
+    );
+    expect(toWin32LongPath("\\\\?\\C:\\project\\out.mov")).toBe("\\\\?\\C:\\project\\out.mov");
+    expect(toWin32LongPath("\\\\.\\C:\\project\\out.mov")).toBe("\\\\.\\C:\\project\\out.mov");
+  });
+});
 
 describe("createStagingDir with Windows parents", () => {
   it.each([

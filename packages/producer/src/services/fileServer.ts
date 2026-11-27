@@ -8,9 +8,14 @@
  * all relative URLs (compositions, CSS, JS, assets) resolving correctly.
  */
 
+import { referencedFontResponse } from "@hyperframes/share/referencedFont.mjs";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { answerOwnLoopbackHostOnly, settleOnBrowserSafePort } from "@hyperframes/engine";
+import {
+  answerOwnLoopbackHostOnly,
+  boundedPageText,
+  settleOnBrowserSafePort,
+} from "@hyperframes/engine";
 import type { IncomingMessage } from "node:http";
 import {
   existsSync,
@@ -771,17 +776,15 @@ export function closeFileServerSafely(
   }
 }
 
+const NO_FILE_AT_NAME = new Set(["ENOENT", "ENOTDIR", "ENAMETOOLONG"]);
+
 function openRegularFile(filePath: string) {
   let fd: number;
   try {
     // Reject FIFOs with fstat without waiting for a writer to connect.
     fd = openSync(filePath, constants.O_RDONLY | constants.O_NONBLOCK);
   } catch (error) {
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      (error.code === "ENOENT" || error.code === "ENOTDIR")
-    )
+    if (error instanceof Error && "code" in error && NO_FILE_AT_NAME.has(String(error.code)))
       return null;
     // A failed open of a directory/socket has platform-specific errors.
     // Classifying it here never authorizes a later pathname read.
@@ -863,8 +866,10 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     }
 
     if (!file) {
+      const font = await referencedFontResponse(projectDir, new URL(c.req.url), c.req.raw.method);
+      if (font) return font;
       if (!/favicon\.ico$/i.test(requestPath)) {
-        console.warn(`[FileServer] 404 Not Found: ${terminalText(requestPath)}`);
+        console.warn(`[FileServer] 404 Not Found: ${terminalText(boundedPageText(requestPath))}`);
       }
       return c.text("Not found", 404);
     }

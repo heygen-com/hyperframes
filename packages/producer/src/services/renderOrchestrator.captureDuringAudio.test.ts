@@ -13,6 +13,7 @@ const trace = vi.hoisted(() => ({
   finishAudio: (_result: object): void => {},
   failAudio: (_error: Error): void => {},
   finishCapture: (): void => {},
+  assertCaptureActive: (): void => {},
   cpus: 8,
 }));
 
@@ -98,8 +99,15 @@ vi.mock("./render/captureCost.js", async (importOriginal) => ({
 }));
 
 /** Started, then held until the test finishes it (it then stops the render) or the render's signal aborts it. */
-function heldCapture({ abortSignal }: { abortSignal?: AbortSignal }): Promise<never> {
+function heldCapture({
+  abortSignal,
+  assertNotAborted,
+}: {
+  abortSignal?: AbortSignal;
+  assertNotAborted?: () => void;
+}): Promise<never> {
   trace.events.push("capture started");
+  trace.assertCaptureActive = () => assertNotAborted?.();
   return new Promise((_resolve, reject) => {
     trace.finishCapture = () => reject(new Error("stop after capture"));
     abortSignal?.addEventListener("abort", () => {
@@ -219,4 +227,20 @@ it("on fewer than 4 CPUs draws frames only after the mix", async () => {
   expect(trace.events).toEqual(["audio started", "audio done", "capture started"]);
   trace.finishCapture();
   expect(String(await failure)).toContain("stop after capture");
+});
+
+it("assertNotAborted inside a capture stage throws once the audio mix fails", async () => {
+  const { root, failure } = startRender();
+  expect(await until(() => trace.events.includes("capture started"))).toBe(true);
+
+  trace.finishAudio({
+    audioOutputPath: join(root, "audio.wav"),
+    hasAudio: false,
+    audioProcessMs: 0,
+    audioError: "bad wav",
+    audioFailures: [],
+  });
+  await failure;
+
+  expect(() => trace.assertCaptureActive()).toThrow(RenderQualityError);
 });

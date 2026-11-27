@@ -49,7 +49,7 @@ import {
 } from "../../auth/index.js";
 import { telemetryIdentity } from "../../auth/telemetryIdentity.js";
 import { c } from "../../ui/colors.js";
-import { terminalLines } from "@hyperframes/core";
+import { terminalLines, terminalText } from "@hyperframes/core";
 
 const STDIN_TIMEOUT_MS = 30_000;
 // Smallest plausible length for a real API key. We don't validate the
@@ -123,15 +123,17 @@ async function runDeviceLogin(): Promise<void> {
   try {
     tokens = await startDeviceAuthorizationFlow({
       onChallenge: ({ verificationUri, verificationUriComplete, userCode }) => {
-        console.log(`Open ${c.accent(verificationUriComplete ?? verificationUri)} in a browser.`);
-        if (!verificationUriComplete) console.log(`Enter code ${c.bold(userCode)}.`);
+        console.log(
+          `Open ${c.accent(terminalText(verificationUriComplete ?? verificationUri))} in a browser.`,
+        );
+        if (!verificationUriComplete) console.log(`Enter code ${c.bold(terminalText(userCode))}.`);
         console.log(c.dim("Waiting for approval…"));
       },
     });
   } catch (err) {
     const message = (err as Error).message || "Device authorization failed.";
     trackAuthLoginFailed("device", /expired/i.test(message) ? "flow_timeout" : "flow_error");
-    console.error(c.error(message));
+    console.error(c.error(terminalLines(message)));
     failCommand();
   }
 
@@ -143,7 +145,7 @@ async function runDeviceLogin(): Promise<void> {
     trackAuthLoginFailed("device", "rejected");
     console.error(
       c.error(
-        `HeyGen could not verify the approved device session; no credential was saved. ${(err as Error).message}`,
+        `HeyGen could not verify the approved device session; no credential was saved. ${terminalLines((err as Error).message)}`,
       ),
     );
     failCommand();
@@ -156,7 +158,7 @@ async function runDeviceLogin(): Promise<void> {
     trackAuthLoginFailed("device", "flow_error");
     console.error(
       c.error(
-        `Could not save the verified device session; it was revoked. ${(err as Error).message}`,
+        `Could not save the verified device session; it was revoked. ${terminalLines((err as Error).message)}`,
       ),
     );
     failCommand();
@@ -166,7 +168,7 @@ async function runDeviceLogin(): Promise<void> {
   if (who) identifyUser(who.distinctId, who.traits);
   trackAuthLoginCompleted("device", who?.distinctId);
   const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
-  console.log(c.success(`✓ Signed in as ${identity}.`));
+  console.log(c.success(`✓ Signed in as ${terminalText(identity)}.`));
 }
 
 // The tokens this login just issued, never a resolved credential: an env credential can outrank them.
@@ -250,7 +252,7 @@ async function reportIdentity(credential: ReturnType<typeof issuedCredential>): 
     if (who) identifyUser(who.distinctId, who.traits);
     trackAuthLoginCompleted("oauth", who?.distinctId);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
-    console.log(c.success(`✓ Signed in as ${identity}.`));
+    console.log(c.success(`✓ Signed in as ${terminalText(identity)}.`));
   } catch (err) {
     // Don't roll back — the OAuth tokens are valid on disk; this is a
     // transient verify-side issue. The credential is persisted and usable, so
@@ -260,7 +262,9 @@ async function reportIdentity(credential: ReturnType<typeof issuedCredential>): 
     await clearUserInfoBestEffort();
     trackAuthLoginCompleted("oauth");
     console.error(
-      c.warn(`Signed in. Identity check failed (transient): ${(err as Error).message}`),
+      c.warn(
+        `Signed in. Identity check failed (transient): ${terminalLines((err as Error).message)}`,
+      ),
     );
   }
 }
@@ -291,7 +295,9 @@ async function persistUserInfo(user: UserInfo): Promise<void> {
       await saveUserInfo(stored);
     }
   } catch (err) {
-    console.error(c.dim(`(warning: could not persist user info: ${(err as Error).message})`));
+    console.error(
+      c.dim(`(warning: could not persist user info: ${terminalLines((err as Error).message)})`),
+    );
   }
 }
 
@@ -300,7 +306,9 @@ async function clearUserInfoBestEffort(): Promise<void> {
   try {
     await clearUserInfo();
   } catch (err) {
-    console.error(c.dim(`(warning: could not clear stale user info: ${(err as Error).message})`));
+    console.error(
+      c.dim(`(warning: could not clear stale user info: ${terminalLines((err as Error).message)})`),
+    );
   }
 }
 
@@ -319,7 +327,7 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
     key = await collectApiKey(inlineKey);
   } catch (err) {
     trackAuthLoginFailed("api_key", "aborted");
-    console.error(c.error((err as Error).message || "Sign-in aborted."));
+    console.error(c.error(terminalLines((err as Error).message || "Sign-in aborted.")));
     failCommand();
   }
   if (!key) {
@@ -383,7 +391,7 @@ async function rollback(previous: Credentials): Promise<void> {
       console.error(c.dim("Removed the rejected credential."));
     }
   } catch (err) {
-    console.error(c.error(`Failed to roll back: ${(err as Error).message}`));
+    console.error(c.error(`Failed to roll back: ${terminalLines((err as Error).message)}`));
   }
 }
 
@@ -403,13 +411,13 @@ async function verifyAndReport(key: string): Promise<UserInfo | null> {
     // so `auth status` can show a recognizable identity. Best-effort.
     await persistUserInfo(user);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
-    console.log(c.success(`✓ API key saved. Authenticated as ${identity}.`));
+    console.log(c.success(`✓ API key saved. Authenticated as ${terminalText(identity)}.`));
     return user;
   } catch (err) {
     if (isAuthError(err) && err.code === "UNAUTHENTICATED") {
       console.error(
         `${c.warn("HeyGen rejected the API key.")}\n` +
-          `  ${c.dim(err.message)}\n` +
+          `  ${c.dim(terminalLines(err.message))}\n` +
           `Run ${c.accent("hyperframes auth login --api-key")} again with a valid key.`,
       );
       return null;

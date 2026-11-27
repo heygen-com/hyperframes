@@ -14,6 +14,10 @@ import {
 
 let workdir: string;
 
+const ESC = String.fromCharCode(27);
+const ODD = `od${ESC}[2Jd\x07`;
+const SHOWN = "od\\x1b[2Jd\\x07";
+
 beforeEach(() => {
   workdir = mkdtempSync(join(tmpdir(), "hf-lambda-cli-state-"));
 });
@@ -148,4 +152,23 @@ describe("lambda state file", () => {
       rmSync(elsewhere, { recursive: true, force: true });
     }
   });
+
+  // fails without the fix: the stack name read from the file is printed as it is stored.
+  it("requireStack shows control characters in the stack name a file records as text", () => {
+    plant("test", { ...sample, stackName: `ot${ODD}her` });
+    const said = refusal("test");
+    expect(said).toContain(`names stack "ot${SHOWN}her", not "test"`);
+    expect(said).not.toContain(ESC);
+  });
+
+  // fails without the fix: the file's path is printed as it is on disk.
+  it.skipIf(process.platform === "win32")(
+    "requireStack shows control characters in an unusable file's path as text",
+    () => {
+      plant(`te${ODD}st`, "not an object");
+      const said = refusal(`te${ODD}st`);
+      expect(said).toContain(`te${SHOWN}st.json is not a JSON object`);
+      expect(said).not.toContain(ESC);
+    },
+  );
 });

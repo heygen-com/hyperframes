@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { usePlayerStore } from "./playerStore";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
-import { parsePlaybackHealth, parsePreviewCopies } from "./previewQualitySlice";
+import { parsePlaybackHealth, parsePreviewCopies, parsePreviewFacts } from "./previewQualitySlice";
 
 describe("preview quality in the player store", () => {
   it("starts at full quality with no copies, and counts retries", () => {
@@ -113,5 +113,106 @@ describe("preview quality in the player store", () => {
       parsePlaybackHealth({ ...health, heldBy: { ...heldBy, kind: "/a/b.mp3" } })?.heldBy,
     ).toBeUndefined();
     expect(parsePlaybackHealth(health)?.heldBy).toBeUndefined();
+  });
+
+  // fails without the fix: parsePlaybackHealth and parsePreviewFacts did not validate/keep the new optional fields.
+  it("validates, bounds, and allowlists mediaStepP90Ms, over16, over33, and motionBlur in playback health", () => {
+    const base = {
+      droppedShare: 0.1,
+      seconds: 3,
+      choppy: false,
+      fps: 30,
+      worstFrameMs: 20,
+      mode: "play",
+    };
+    const blur = { attr: "medium", shutter: "180", state: "on", tier: "filter", movers: 3 };
+    const parsed = parsePlaybackHealth({
+      ...base,
+      mediaStepP90Ms: 25,
+      over16: 4,
+      over33: 1,
+      motionBlur: blur,
+    });
+    expect(parsed).toMatchObject({
+      mediaStepP90Ms: 25,
+      over16: 4,
+      over33: 1,
+      motionBlur: blur,
+    });
+    expect(parsePlaybackHealth({ ...base, mediaStepP90Ms: null, motionBlur: null })).toMatchObject({
+      mediaStepP90Ms: null,
+      motionBlur: null,
+    });
+    // Negative, NaN, Infinity, oversized strings, and unknown enum values are rejected.
+    const bad = parsePlaybackHealth({
+      ...base,
+      mediaStepP90Ms: -5,
+      over16: Number.NaN,
+      over33: Number.POSITIVE_INFINITY,
+      motionBlur: { attr: "x".repeat(64), shutter: null, state: "on", tier: "filter", movers: 1 },
+    });
+    expect(bad?.mediaStepP90Ms).toBeUndefined();
+    expect(bad?.over16).toBeUndefined();
+    expect(bad?.over33).toBeUndefined();
+    expect(bad?.motionBlur).toBeUndefined();
+    expect(
+      parsePlaybackHealth({
+        ...base,
+        motionBlur: { attr: "on", shutter: null, state: "bogus", tier: "filter", movers: 1 },
+      })?.motionBlur,
+    ).toBeUndefined();
+    expect(
+      parsePlaybackHealth({
+        ...base,
+        motionBlur: { attr: "on", shutter: null, state: "on", tier: "gpu", movers: 1 },
+      })?.motionBlur,
+    ).toBeUndefined();
+    expect(
+      parsePlaybackHealth({
+        ...base,
+        motionBlur: { attr: "on", shutter: null, state: "on", tier: "filter", movers: -1 },
+      })?.motionBlur,
+    ).toBeUndefined();
+  });
+
+  it("validates and bounds frameShape in preview facts", () => {
+    const base = {
+      sceneCount: 1,
+      mountedElementCount: 20,
+      durationSeconds: 10,
+      videos: [],
+      lighterAt: [],
+      copiesReady: true,
+    };
+    expect(
+      parsePreviewFacts({
+        ...base,
+        frameShape: { canvas: 2, svg: 1, filter: 3, tweens: 12 },
+      })?.frameShape,
+    ).toEqual({ canvas: 2, svg: 1, filter: 3, tweens: 12 });
+    expect(
+      parsePreviewFacts({
+        ...base,
+        frameShape: { canvas: 0, svg: 0, filter: 0, tweens: null },
+      })?.frameShape,
+    ).toEqual({ canvas: 0, svg: 0, filter: 0, tweens: null });
+    expect(
+      parsePreviewFacts({
+        ...base,
+        frameShape: { canvas: -1, svg: 0, filter: 0, tweens: 0 },
+      })?.frameShape,
+    ).toBeUndefined();
+    expect(
+      parsePreviewFacts({
+        ...base,
+        frameShape: { canvas: 0, svg: Number.NaN, filter: 0, tweens: 0 },
+      })?.frameShape,
+    ).toBeUndefined();
+    expect(
+      parsePreviewFacts({
+        ...base,
+        frameShape: { canvas: 0, svg: 0, filter: 0, tweens: "3" },
+      })?.frameShape,
+    ).toBeUndefined();
   });
 });

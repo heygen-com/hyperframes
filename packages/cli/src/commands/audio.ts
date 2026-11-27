@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import type {
@@ -9,6 +9,7 @@ import type {
 import type { Example } from "./_examples.js";
 import { DEFAULT_CAPABILITIES, type AnalyzeOptions } from "../audio/analysis/analyze.js";
 import { formatReport } from "../audio/analysis/format.js";
+import { refuseUnadmittedFilmSources } from "../audio/analysis/filmSources.js";
 import { analyzeTargets, previewTarget } from "../audio/analysis/run.js";
 import { filmTargets, type AudioTarget, type FilmQuery } from "../audio/analysis/targets.js";
 import { formatRead } from "../audio/read/format.js";
@@ -18,6 +19,7 @@ import { describeProject } from "../timeline/describeProject.js";
 import { CliUsageError } from "../utils/commandResult.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 import { withMeta } from "../utils/updateCheck.js";
 
@@ -174,7 +176,12 @@ async function clipTargets(flags: AudioFlags, query: FilmQuery | null): Promise<
   const project = resolveProject(flags.dir);
   ensureDOMParser();
   const timeline = await describeProject(project.indexPath);
-  return filmTargets(project.dir, timeline, query ?? { by: "all" });
+  const targets = filmTargets(project.dir, timeline, query ?? { by: "all" });
+  return refuseUnadmittedFilmSources(project.dir, targets, () =>
+    outsideAssetsAllowed(project.dir, relative(project.dir, project.indexPath), (line) =>
+      console.warn(terminalText(line)),
+    ),
+  );
 }
 
 function readQuality(files: string[], flags: AudioFlags): AnalysisQuality {

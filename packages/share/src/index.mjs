@@ -88,3 +88,5 @@ export {
 } from "./shareSources.mjs";
 
 export { SourceIgnoreError } from "./sourceIgnore.mjs";
+
+export { sourceReconnect } from "./sources/reconnect.mjs";

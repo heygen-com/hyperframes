@@ -98,6 +98,15 @@ describe("Vite GIF rendering", { timeout: 30_000 }, () => {
 const RENDER_DONE = { timeout: 20_000 };
 
 describe("Studio dev server render jobs", { timeout: 30_000 }, () => {
+  it("renders the part of the film a job asks for", async () => {
+    producer.executeRenderJob.mockResolvedValue(undefined);
+    const { state } = await fixture({ format: "mp4", range: { startSeconds: 2, endSeconds: 4 } });
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), RENDER_DONE);
+    expect(producer.createRenderJob).toHaveBeenCalledWith(
+      expect.objectContaining({ range: { startSeconds: 2, endSeconds: 4 } }),
+    );
+  });
+
   it("hands the route's pageMotionBlur to the job, so a preview that could not blur renders unblurred", async () => {
     producer.executeRenderJob.mockResolvedValue(undefined);
     const { state } = await fixture({ format: "mp4", pageMotionBlur: "off" });

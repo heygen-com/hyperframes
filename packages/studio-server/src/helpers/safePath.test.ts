@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isPrivateProjectFile, isWritableProjectFile, walkDir } from "./safePath";
+import {
+  isPrivateProjectFile,
+  isWritableInProject,
+  isWritableProjectFile,
+  walkDir,
+} from "./safePath";
 
 const hooks = vi.hoisted(() => ({ unreadable: new Map<string, string>() }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -139,42 +144,114 @@ describe("isPrivateProjectFile", () => {
   });
 });
 
-describe("isWritableProjectFile and the project's package.json", () => {
-  function projectRunning(pkg: object) {
+describe("isWritableProjectFile and Node tooling", () => {
+  function projectWith(pkg: object | string, folder = "") {
     const projectDir = createProjectDir();
-    writeFileSync(join(projectDir, "package.json"), JSON.stringify(pkg));
-    return (path: string) => isWritableProjectFile(projectDir, join(projectDir, path));
+    mkdirSync(join(projectDir, folder), { recursive: true });
+    const text = typeof pkg === "string" ? pkg : JSON.stringify(pkg);
+    writeFileSync(join(projectDir, folder, "package.json"), text);
+    const writable = (path: string) => isWritableProjectFile(projectDir, join(projectDir, path));
+    return Object.assign(writable, { projectDir });
   }
+  const SCAFFOLD = {
+    name: "demo",
+    private: true,
+    type: "module",
+    scripts: {
+      dev: "npx --yes hyperframes@1.2.3 preview",
+      check:
+        "npx --yes hyperframes lint && npx --yes hyperframes validate && npx --yes hyperframes inspect",
+      render: "npx hyperframes render --quality high",
+    },
+  };
 
-  it("refuses the script files package.json runs, in any spelling the write rule folds", () => {
-    const writable = projectRunning({
-      main: "server.js",
-      bin: { tool: "./bin/tool.mjs" },
-      scripts: { build: "node ./build.mjs && tsx scripts/gen.ts --out=dist", dev: "vite" },
-    });
-    for (const path of ["server.js", "Server.JS", "bin/tool.mjs", "build.mjs", "scripts/gen.ts"])
+  it("refuses Node-only scripts in any project, in any spelling the write rule folds", () => {
+    const writable = projectWith(SCAFFOLD);
+    for (const path of [
+      "a.ts",
+      "A.TS",
+      "b.d.ts",
+      "c.mts",
+      "d.cts",
+      "e.tsx",
+      "f.jsx",
+      "g.cjs",
+      "h.ts.",
+    ])
       expect(writable(path), path).toBe(false);
   });
 
-  it("still writes composition scripts, folders and files package.json does not name", () => {
-    const writable = projectRunning({ scripts: { build: "vite build --outDir dist" } });
-    for (const path of ["script.js", "compositions/scene.js", "dist", "index.html"])
+  it("writes composition scripts below a package.json that only runs hyperframes", () => {
+    const writable = projectWith(SCAFFOLD);
+    for (const path of ["script.js", "assets/three.module.min.mjs", "lib/x.iife.js", "index.html"])
       expect(writable(path), path).toBe(true);
+  });
+
+  it.each([
+    ["a script of its own", { ...SCAFFOLD, scripts: { build: "vite build" } }],
+    [
+      "a hyperframes script chained to another",
+      { scripts: { dev: "npx hyperframes preview; node x" } },
+    ],
+    ["a main entry", { name: "demo", main: "index" }],
+    ["a bin", { bin: { tool: "tool" } }],
+    ["dependencies", { name: "demo", devDependencies: { vitest: "^4.0.0" } }],
+    ["workspaces", { workspaces: ["packages/*"] }],
+    ["scripts that are not strings", { scripts: { dev: ["hyperframes"] } }],
+    ["a manifest that is not JSON", "{ not json"],
+    ["a manifest that is not an object", "[]"],
+  ])("refuses .js and .mjs below a package.json with %s", (_, pkg) => {
+    const writable = projectWith(pkg);
+    for (const path of ["script.js", "Script.JS", "deep/er/x.mjs"])
+      expect(writable(path), path).toBe(false);
+    expect(writable("index.html")).toBe(true);
+  });
+
+  it("refuses scripts below a nested package.json and leaves the rest of the project writable", () => {
+    const writable = projectWith({ scripts: { gen: "node gen.js" } }, "tools");
+    expect(writable("tools/gen.js")).toBe(false);
+    expect(writable("tools/sub/helper.mjs")).toBe(false);
+    expect(writable("script.js")).toBe(true);
+  });
+
+  it("refuses scripts in a project inside a folder whose package.json brings Node tooling", () => {
+    const parent = createProjectDir();
+    writeFileSync(
+      join(parent, "package.json"),
+      JSON.stringify({ scripts: { build: "node apps/video/run.js" } }),
+    );
+    const projectDir = join(parent, "apps", "video");
+    mkdirSync(projectDir, { recursive: true });
+    expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(false);
+    expect(isWritableProjectFile(projectDir, join(projectDir, "index.html"))).toBe(true);
   });
 
   it("reads a package.json changed since the last write", () => {
     const projectDir = createProjectDir();
     const pkg = join(projectDir, "package.json");
-    writeFileSync(pkg, JSON.stringify({ scripts: {} }));
+    writeFileSync(pkg, JSON.stringify(SCAFFOLD));
     expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
-    writeFileSync(pkg, JSON.stringify({ scripts: { start: "node run.js" } }));
+    writeFileSync(pkg, JSON.stringify({ ...SCAFFOLD, scripts: { start: "node run.js" } }));
     expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(false);
   });
 
-  it("writes as before when package.json is missing or not JSON", () => {
+  it("refuses extensionless files below a package.json with tooling, but not folders of that name", () => {
+    const writable = projectWith({ main: "server/start" });
+    for (const path of ["server/start", "server/Start.", "bin/www", "config"])
+      expect(writable(path), path).toBe(false);
+    mkdirSync(join(writable.projectDir, "assets"));
+    expect(writable("assets")).toBe(true);
+    expect(isWritableInProject(writable.projectDir, "new-folder", "folder")).toBe(true);
+    expect(isWritableInProject(writable.projectDir, "new-folder", "file")).toBe(false);
+  });
+
+  it("writes extensionless files below a package.json that only runs hyperframes", () => {
+    const writable = projectWith(SCAFFOLD);
+    for (const path of ["server/start", "notes"]) expect(writable(path), path).toBe(true);
+  });
+
+  it("writes composition scripts when no package.json covers them", () => {
     const projectDir = createProjectDir();
-    expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
-    writeFileSync(join(projectDir, "package.json"), "{ not json");
     expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
   });
 });

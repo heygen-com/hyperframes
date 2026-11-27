@@ -38,31 +38,25 @@ import {
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
+  drawGroupOutline,
+  drawSelectionOutline,
   type GestureState,
   type GroupGestureState,
   type UseDomEditOverlayGesturesOptions,
-  ROTATED_SNAP_BYPASS_DEGREES,
   hasDomEditRotationChanged,
-  lockDragToDominantAxis,
   movesGesture,
   isDomEditGestureTap,
-  resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
-import { resolveCenterResizeSize } from "./domEditResizeLocal";
 import { endResizeWithoutMember, resolveResizeDraftRect } from "./resizeDraft";
 import { notifyBlockedPress } from "./domEditOverlayStartGesture";
-import { hugRectForElement } from "./domEditOverlayCrop";
-import {
-  resolveSnapAdjustment,
-  resolveEquidistanceGuides,
-  snapEngagedForTravel,
-  SNAP_THRESHOLD_PX,
-} from "./snapEngine";
 import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDebug";
 import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug";
 import { createGroupDragMover } from "./groupDragMove";
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
+import { releaseEndedGestureHolds } from "../../player/lib/previewChannel";
+import { snappedDragDelta } from "./snappedDragDelta";
+import { resizeSizeAt, rotationAt } from "./gestureSteps";
 
 function logGestureCommitFailure(message: string, error: unknown): void {
   if (error instanceof DomEditSaveQueueOpenError) return;
@@ -70,23 +64,30 @@ function logGestureCommitFailure(message: string, error: unknown): void {
 }
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
-  const setDraftOverlayRect = (next: OverlayRect) => {
-    if (!opts.waitingPressRef.current) opts.setOverlayRect(next);
+  const setDraftOverlayRect = (next: OverlayRect, syncCropFrame = false) => {
+    if (opts.waitingPressRef.current) return;
+    opts.setOverlayRect(next);
+    drawSelectionOutline(opts.boxRef.current, opts.handlesRef.current, next, { syncCropFrame });
   };
   const restoreGestureOverlayRect = (g: GestureState) => {
-    setDraftOverlayRect({
-      left: g.originLeft,
-      top: g.originTop,
-      width: g.originWidth,
-      height: g.originHeight,
-      editScaleX: g.editScaleX,
-      editScaleY: g.editScaleY,
-      // Rotation keeps the chrome aligned with the element during its draft.
-      angle: g.actualRotation,
-    });
+    setDraftOverlayRect(
+      {
+        left: g.originLeft,
+        top: g.originTop,
+        width: g.originWidth,
+        height: g.originHeight,
+        editScaleX: g.editScaleX,
+        editScaleY: g.editScaleY,
+        // Rotation keeps the chrome aligned with the element during its draft.
+        angle: g.actualRotation,
+      },
+      g.kind === "drag",
+    );
   };
   const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
-    if (!opts.waitingPressRef.current) opts.setGroupOverlayItems(next);
+    if (opts.waitingPressRef.current) return;
+    opts.setGroupOverlayItems(next);
+    drawGroupOutline(opts.overlayRef.current, next);
   };
 
   const restoreGroupPathOffsets = (g: GroupGestureState) => {
@@ -128,7 +129,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const box = opts.waitingPressRef.current ? null : opts.boxRef.current;
     const blockedMove = opts.blockedMoveRef.current;
     if (!blockedMove && !g && !groupG) {
       opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
@@ -159,78 +159,14 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     if (g.kind === "rotate") {
       // Single source of truth: preview the rotation through the GSAP channel (the
       // same channel the commit lands in), not the `--hf-studio-rotation` CSS var.
-      const rotated = resolveDomEditRotationGesture({
-        centerX: g.centerX,
-        centerY: g.centerY,
-        startX: g.startX,
-        startY: g.startY,
-        currentX: e.clientX,
-        currentY: e.clientY,
-        actualAngle: g.actualRotation,
-        snap: e.shiftKey,
-      });
-      readout.updateGestureReadoutAngle(g.readout, rotated.angle, g.actualRotation);
-      applyRotationDraft(sel.element, rotated.angle, g.plainRotation);
+      const angle = rotationAt(g, e);
+      readout.updateGestureReadoutAngle(g.readout, angle, g.actualRotation);
+      applyRotationDraft(sel.element, angle, g.plainRotation);
       return;
     }
 
     if (g.kind === "drag") {
-      const lock = lockDragToDominantAxis(dx, dy, e.shiftKey);
-      dx = lock.dx;
-      dy = lock.dy;
-      const sc = g.snapContext;
-      // Bypass edge-snapping for rotated elements — the snap targets and the
-      // snapped rect are axis-aligned, so snapping a rotated box's AABB shifts it
-      // unpredictably. Rotation ~0 keeps snapping exactly as before.
-      const dragRotated = Math.abs(g.actualRotation) >= ROTATED_SNAP_BYPASS_DEGREES;
-      if (!dragRotated && sc?.snapEnabled && sc.targets.length > 0) {
-        // Snap the element's VISIBLE (crop-hugged) edges, not the full bounds.
-        const movingRect = hugRectForElement(
-          {
-            left: g.originLeft,
-            top: g.originTop,
-            width: g.originWidth,
-            height: g.originHeight,
-            editScaleX: g.editScaleX,
-            editScaleY: g.editScaleY,
-          },
-          g.selection.element,
-        );
-        const allTargets = sc.compositionTarget
-          ? [...sc.targets, sc.compositionTarget]
-          : sc.targets;
-        const snap = resolveSnapAdjustment({
-          movingRect,
-          proposedDx: dx,
-          proposedDy: dy,
-          // Same reason as the group path: a snap on a drag that has not travelled
-          // yet moves the element while the pointer is still.
-          disabledForTravel: !snapEngagedForTravel(dx, dy),
-          targets: allTargets,
-          gridEdges: sc.gridEdges ?? undefined,
-          threshold: SNAP_THRESHOLD_PX,
-          disabled: e.altKey,
-          lockedAxis: lock.lockedAxis,
-        });
-        dx = snap.dx;
-        dy = snap.dy;
-        const movedRect = {
-          left: movingRect.left + dx,
-          top: movingRect.top + dy,
-          width: movingRect.width,
-          height: movingRect.height,
-        };
-        const spacingGuides = e.altKey
-          ? []
-          : resolveEquidistanceGuides({
-              movingRect: movedRect,
-              targets: allTargets,
-              threshold: SNAP_THRESHOLD_PX,
-            });
-        opts.snapGuidesRef.current = { guides: snap.guides, spacingGuides };
-      }
-      g.lastSnappedDx = dx;
-      g.lastSnappedDy = dy;
+      ({ dx, dy } = snappedDragDelta(g, e, opts.snapGuidesRef));
 
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;
@@ -244,22 +180,10 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         angle: g.actualRotation,
       };
       readout.updateGestureReadout(g.readout, draftRect);
-      setDraftOverlayRect(draftRect);
-      if (box) {
-        box.style.left = `${nextBoxLeft}px`;
-        box.style.top = `${nextBoxTop}px`;
-      }
+      setDraftOverlayRect(draftRect, true);
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
     } else {
-      // Corner resize scales proportionally about the center, without edge snapping.
-      const grab = g.resizePressFromCorner ?? { x: 0, y: 0 };
-      const nextSize = resolveCenterResizeSize({
-        baseWidth: g.actualWidth,
-        baseHeight: g.actualHeight,
-        pointer: { x: e.clientX - grab.x, y: e.clientY - grab.y },
-        pointerStart: { x: g.startX - grab.x, y: g.startY - grab.y },
-        centerStart: { x: g.centerX, y: g.centerY },
-      });
+      const nextSize = resizeSizeAt(g, e);
       const writtenSize = applyStudioBoxSizeDraft(sel.element, nextSize);
 
       const overlayEl = opts.overlayRef.current;
@@ -282,12 +206,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         draftRect,
         liveInlineStyle: sel.element.getAttribute("style"),
       });
-      if (box) {
-        box.style.left = `${draftRect.left}px`;
-        box.style.top = `${draftRect.top}px`;
-        box.style.width = `${draftRect.width}px`;
-        box.style.height = `${draftRect.height}px`;
-      }
       readout.updateGestureReadoutSize(g.readout, draftRect, writtenSize);
       setDraftOverlayRect(draftRect);
     }
@@ -309,12 +227,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const g = opts.gestureRef.current;
     const groupG = opts.groupGestureRef.current;
     const sel = g?.selection ?? opts.selectionRef.current;
-    const box = opts.waitingPressRef.current ? null : opts.boxRef.current;
     opts.blockedMoveRef.current = null;
     opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
 
     if (groupG) {
       opts.groupGestureRef.current = null;
+      releaseEndedGestureHolds();
       const rawDx = e.clientX - groupG.startX;
       const rawDy = e.clientY - groupG.startY;
       // Consume the release click so it cannot deselect the moved group.
@@ -378,15 +296,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     opts.gestureRef.current = null;
+    releaseEndedGestureHolds();
     if (!g || !sel) return;
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
 
     if (g.kind === "drag" && isDomEditGestureTap(g, e)) {
       if (g.pathOffsetMember) restoreManualOffsetDragMembers([g.pathOffsetMember]);
-      if (box) {
-        box.style.left = `${g.originLeft}px`;
-        box.style.top = `${g.originTop}px`;
-      }
       restoreGestureOverlayRect(g);
       opts.suppressNextBoxClickRef.current = true;
       opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
@@ -403,26 +318,13 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       } else {
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
       }
-      if (box) {
-        box.style.width = `${g.originWidth}px`;
-        box.style.height = `${g.originHeight}px`;
-      }
       restoreGestureOverlayRect(g);
       opts.suppressNextBoxClickRef.current = true;
       return;
     }
 
     if (g.kind === "rotate") {
-      const finalRotation = resolveDomEditRotationGesture({
-        centerX: g.centerX,
-        centerY: g.centerY,
-        startX: g.startX,
-        startY: g.startY,
-        currentX: e.clientX,
-        currentY: e.clientY,
-        actualAngle: g.actualRotation,
-        snap: e.shiftKey,
-      });
+      const finalAngle = rotationAt(g, e);
       const restoreRotation = () =>
         restoreRotationDraft(
           sel.element,
@@ -430,13 +332,13 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           g.initialRotation,
           g.plainRotation !== null,
         );
-      if (!hasDomEditRotationChanged(g.actualRotation, finalRotation.angle)) {
+      if (!hasDomEditRotationChanged(g.actualRotation, finalAngle)) {
         restoreRotation();
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
         return;
       }
-      applyRotationDraft(sel.element, finalRotation.angle, g.plainRotation);
-      const commit = { ...finalRotation, plain: g.plainRotation };
+      applyRotationDraft(sel.element, finalAngle, g.plainRotation);
+      const commit = { angle: finalAngle, plain: g.plainRotation };
       const edit = beginStudioPendingEdit(elementLookRevert(sel.element, g.initialLook));
       const saved = Promise.resolve(edit.adopt(() => opts.onRotationCommitRef.current(sel, commit)))
         .then((result) => trackPreviewEditResult("rotate", "drag", result))
@@ -461,19 +363,18 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       const finalOffset = applyManualOffsetDragCommit(g.pathOffsetMember, dx, dy);
       const nextBoxLeft = g.originLeft + dx;
       const nextBoxTop = g.originTop + dy;
-      setDraftOverlayRect({
-        left: nextBoxLeft,
-        top: nextBoxTop,
-        width: g.originWidth,
-        height: g.originHeight,
-        editScaleX: g.editScaleX,
-        editScaleY: g.editScaleY,
-        angle: g.actualRotation,
-      });
-      if (box) {
-        box.style.left = `${nextBoxLeft}px`;
-        box.style.top = `${nextBoxTop}px`;
-      }
+      setDraftOverlayRect(
+        {
+          left: nextBoxLeft,
+          top: nextBoxTop,
+          width: g.originWidth,
+          height: g.originHeight,
+          editScaleX: g.editScaleX,
+          editScaleY: g.editScaleY,
+          angle: g.actualRotation,
+        },
+        true,
+      );
       const member = g.pathOffsetMember;
       const edit = beginStudioPendingEdit(manualOffsetMoveRevert([member]));
       const saved = Promise.resolve(
@@ -578,6 +479,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.blockedMoveRef.current = null;
     opts.groupGestureRef.current = null;
     opts.gestureRef.current = null;
+    releaseEndedGestureHolds();
     opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
   };
 

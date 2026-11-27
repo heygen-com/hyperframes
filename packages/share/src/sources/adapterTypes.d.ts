@@ -13,6 +13,11 @@ export type SourceResult =
 export interface SourceOptions {
   access: SignedInAccess;
   spaceId: string;
+  /** Parse project exclusions with gitignore rules on every source capture. The default uses strict project-relative patterns. */
+  ignoreSyntax?: import("../sourceIgnore.mjs").SourceIgnoreSyntax;
+  expectedReferencedHiddenDigest?: string;
+  /** Only verify a published snapshot. Never start or recover an upload. */
+  reuseOnly?: boolean;
   store?: SourceStore;
   enabled?: () => boolean;
   fingerprint?: (path: string) => Promise<string | null>;

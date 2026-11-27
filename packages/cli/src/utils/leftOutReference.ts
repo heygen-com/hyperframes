@@ -14,6 +14,8 @@ export type { LeftOutReason };
 export const leftOutWarning = (file: string, reference: string, reason: LeftOutReason): string =>
   terminalText(leftOutText(file, reference, reason));
 
+export type UnreadableCause = "locked" | "denied" | "missing" | "drive";
+
 /** One file an upload left out. `path` is from the project folder; `levels_up` is null on another drive. */
 export interface LeftOutReference {
   file: string;
@@ -21,6 +23,7 @@ export interface LeftOutReference {
   path: string;
   reason: LeftOutReason;
   levels_up: number | null;
+  cause?: UnreadableCause;
 }
 
 export type OnLeftOut = (warning: string, reference: LeftOutReference) => void;

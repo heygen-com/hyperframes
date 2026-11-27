@@ -3,12 +3,12 @@ import { failCommand, scheduleCliExit, failUsage } from "../utils/commandResult.
 import { defineCommand } from "../utils/defineCommand.js";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, SetupStepsError } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
 import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
-import { jsonFailure } from "../utils/jsonError.js";
-import { terminalLines, terminalText } from "@hyperframes/core";
+import { jsonFailure, printFailureLine } from "../utils/jsonError.js";
+import { terminalText } from "@hyperframes/core";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";
@@ -135,7 +135,7 @@ export default defineCommand({
     try {
       captureUpstreamProxy();
     } catch (error) {
-      console.error(terminalLines(normalizeErrorMessage(error)));
+      printFailureLine((show) => show(normalizeErrorMessage(error)));
       failCommand();
     }
 
@@ -162,7 +162,7 @@ export default defineCommand({
       try {
         url = resolveLocalCaptureTarget(localFile, localRoot).fileUrl;
       } catch (err) {
-        console.error(terminalLines(normalizeErrorMessage(err)));
+        printFailureLine((show) => show(normalizeErrorMessage(err)));
         failCommand();
       }
     } else {
@@ -179,7 +179,7 @@ export default defineCommand({
       try {
         new URL(url);
       } catch {
-        console.error(`Invalid URL: ${url}`);
+        printFailureLine((show) => `Invalid URL: ${show(String(url))}`);
         failUsage();
       }
     }
@@ -220,7 +220,7 @@ export default defineCommand({
     if (!isJson) {
       const { c } = await import("../ui/colors.js");
       console.log();
-      console.log(c.dim("◆") + "  Capturing " + c.bold(url));
+      console.log(c.dim("◆") + "  Capturing " + c.bold(terminalText(url)));
       if (isDefaultOutput && outputName !== "capture") {
         console.log(`  ${c.dim(`(./capture/ exists; writing to ./${outputName}/)`)}`);
       }
@@ -297,7 +297,8 @@ export default defineCommand({
         const icon = result.ok ? c.success("◇") : c.error("✗");
         const status = result.ok ? "Captured" : "Capture failed";
         console.log(
-          icon + `  ${status} ${c.bold(terminalText(result.title))} → ${c.dim(outputDir)}`,
+          icon +
+            `  ${status} ${c.bold(terminalText(result.title))} → ${c.dim(terminalText(outputDir))}`,
         );
         console.log();
         console.log(`  ${c.dim("Screenshots:")} ${result.screenshots.length}`);
@@ -334,7 +335,7 @@ export default defineCommand({
         if (result.warnings.length > 0) {
           console.log();
           for (const w of result.warnings) {
-            console.log(`  ${c.warn("⚠")} ${terminalLines(w)}`);
+            console.log(`  ${c.warn("⚠")} ${terminalText(w)}`);
           }
         }
         console.log();
@@ -358,7 +359,9 @@ export default defineCommand({
       if (isJson) {
         console.log(JSON.stringify(jsonFailure("runtime_error", errMsg)));
       } else {
-        console.error(`\n  ✗ Capture failed: ${terminalLines(errMsg)}\n`);
+        const setup = err instanceof SetupStepsError ? err : undefined;
+        console.error(`\n  ✗ Capture failed: ${terminalText(setup?.summary ?? errMsg)}\n`);
+        if (setup) console.error(`${setup.stepsWrittenByCli}\n`);
       }
       scheduleCliExit(1);
       failCommand();

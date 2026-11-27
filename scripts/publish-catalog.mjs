@@ -2,13 +2,17 @@ import { execFileSync } from "node:child_process";
 import {
   closeSync,
   constants,
+  copyFileSync,
   fstatSync,
+  lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
+  readdirSync,
   readFileSync,
   rmSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { GENERATED_CATALOG_PATHS } from "./catalog-generated-paths.mjs";
@@ -97,16 +101,22 @@ export function commitBatches(changes) {
   return batches.filter((entry) => entry.additions.length + entry.deletions.length > 0);
 }
 
-function api(endpoint, method = "GET", body, jq) {
+function api(endpoint, method = "GET", body, jq, token) {
   const args = ["api", endpoint, "--method", method];
   if (body !== undefined) args.push("--input", "-");
   if (jq) args.push("--jq", jq);
   return execFileSync("gh", args, {
     input: body === undefined ? undefined : JSON.stringify(body),
     encoding: "utf8",
+    env: token === undefined ? undefined : { ...process.env, GH_TOKEN: token },
     maxBuffer: 16 * 1024 * 1024,
     timeout: 60_000,
   }).trim();
+}
+
+// PR writes go through the app token: GITHUB_TOKEN can open a PR only while Actions may also approve them.
+function prApi(endpoint, method, body) {
+  return api(endpoint, method, body, undefined, process.env.CATALOG_PR_TOKEN);
 }
 
 function commitOid(value) {
@@ -178,12 +188,12 @@ function openPublishPr(repository, base) {
   const body =
     `Generated catalog snapshot from ${base}.\n\n` +
     "Item sources are reviewed in their own PRs. This PR publishes the registry index, search vectors, docs pages, payloads and navigation together.\n\n" +
-    "Required workflows are dispatched on this snapshot. Review and merge after checks pass. Publication uses GITHUB_TOKEN and GitHub-signed API commits; branch protection remains in effect.";
+    "Required workflows are dispatched on this snapshot. Review and merge after checks pass. Commits are GitHub-signed API commits; branch protection remains in effect.";
   if (number !== undefined) {
     if (api(`${endpoint}/${number}`, "GET", undefined, ".body") !== body)
-      api(`${endpoint}/${number}`, "PATCH", { title: TITLE, body });
+      prApi(`${endpoint}/${number}`, "PATCH", { title: TITLE, body });
   } else {
-    api(endpoint, "POST", { title: TITLE, body, head: BRANCH, base: "main" });
+    prApi(endpoint, "POST", { title: TITLE, body, head: BRANCH, base: "main" });
   }
 }
 
@@ -226,6 +236,8 @@ function actionEnvironment() {
   const { GITHUB_REPOSITORY: repository = "", GITHUB_RUN_ID: run = "" } = process.env;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !/^\d+$/.test(run))
     throw new Error("Run publication in GitHub Actions.");
+  if (!process.env.CATALOG_PR_TOKEN)
+    throw new Error("CATALOG_PR_TOKEN must hold the app token that opens the publish PR.");
   return { repository, run, endpoint: `repos/${repository}/git` };
 }
 
@@ -249,7 +261,7 @@ function clearObsoletePublication(repository, base, exists) {
   const number = openPublishPrNumber(repository);
   assertCurrentMain(endpoint, base);
   if (number !== undefined)
-    api(`repos/${repository}/pulls/${number}`, "PATCH", { state: "closed" });
+    prApi(`repos/${repository}/pulls/${number}`, "PATCH", { state: "closed" });
   if (exists) updateStandingBranch(endpoint, true, base);
   console.log("No unpublished catalog changes; obsolete publication cleared.");
 }
@@ -372,6 +384,47 @@ function publishMain(root) {
   publishSnapshot(context, base, exists, batches);
 }
 
+// The build job ran installed code, so its output is data: only regular files under the generated paths cross over.
+export function copyGeneratedCatalog(from, to) {
+  for (const path of GENERATED_CATALOG_PATHS) {
+    rmSync(join(to, path), { recursive: true, force: true });
+    copyRegularFiles(join(from, path), join(to, path));
+  }
+}
+
+function copyRegularFiles(source, target) {
+  let stat;
+  try {
+    stat = lstatSync(source);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  if (stat.isDirectory()) {
+    for (const name of readdirSync(source))
+      copyRegularFiles(join(source, name), join(target, name));
+    return;
+  }
+  if (!stat.isFile()) throw new Error(`Generated artifact must be a regular file: ${source}`);
+  mkdirSync(dirname(target), { recursive: true });
+  copyFileSync(source, target);
+}
+
+function optionValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  if (!value) throw new Error(`${name} needs a folder.`);
+  return resolve(value);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  publish(fileURLToPath(new URL("..", import.meta.url)));
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const stage = optionValue("--stage");
+  const from = optionValue("--from");
+  if (stage) copyGeneratedCatalog(root, stage);
+  else {
+    if (from) copyGeneratedCatalog(from, root);
+    publish(root);
+  }
 }

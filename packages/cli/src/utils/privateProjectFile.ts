@@ -26,6 +26,7 @@ import {
 } from "@hyperframes/core/safe-path";
 import { registryRoot } from "../registry/publication.js";
 import { readPlainTail, recordFolder, writeRecord } from "./projectRecords.js";
+import { isHeldError } from "./renderLockOwners.js";
 import { walkBudget } from "./walkBudget.js";
 import {
   contentHash,
@@ -283,13 +284,20 @@ function sleepSync(ms: number): void {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function tryRecordLock(lock: string, deadline: number): "taken" | "wait" {
+function openRecordLock(lock: string, deadline: number): "taken" | "held" | "exists" {
   try {
     closeSync(openSync(lock, "wx"));
     return "taken";
   } catch (error) {
+    if (isHeldError(error) && Date.now() < deadline) return "held";
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    return "exists";
   }
+}
+
+function tryRecordLock(lock: string, deadline: number): "taken" | "wait" {
+  const opened = openRecordLock(lock, deadline);
+  if (opened !== "exists") return opened === "taken" ? "taken" : "wait";
   const heldFor = Date.now() - (statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
   if (heldFor > LOCK_STALE_MS || heldFor < -LOCK_CLOCK_SLACK_MS) rmSync(lock, { force: true });
   else if (Date.now() >= deadline)

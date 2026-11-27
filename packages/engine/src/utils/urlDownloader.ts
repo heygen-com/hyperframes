@@ -20,6 +20,7 @@ import { createHash, randomUUID } from "crypto";
 import dns from "node:dns";
 import { fetchGoesThroughEnvProxy } from "@hyperframes/core/env-proxy";
 import { type LookupFunction } from "node:net";
+import type { buildConnector } from "undici";
 import { isBlockedNetworkHost } from "./networkPolicy.js";
 import { resolveRestrictPageNetwork } from "../config.js";
 import {
@@ -270,7 +271,7 @@ function getFilenameFromUrl(url: string, validationScope: string): string {
   const physicalIdentity = validationScope === "" ? url : `${url}\0${validationScope}`;
   const hash = createHash("md5").update(physicalIdentity).digest("hex").slice(0, 12);
   const urlObj = new URL(url);
-  const ext = extname(urlObj.pathname) || ".mp4";
+  const ext = /^\.[a-z0-9]{1,10}/i.exec(extname(urlObj.pathname))?.[0] ?? ".mp4";
   return `download_${hash}${ext}`;
 }
 
@@ -515,16 +516,44 @@ function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
 
 const proxyTransports = new Map<string, Promise<DownloadFetch>>();
 
+/** undici 7 reopens a tunnel the proxy closed without a reply with no pause or limit; this fails the request. */
+function failRequestOnDroppedTunnel(connect: buildConnector.connector): buildConnector.connector {
+  return (options, callback) =>
+    connect(options, (...result) => {
+      const [error] = result;
+      if (error && "code" in error && error.code === "UND_ERR_SOCKET") {
+        const closed = new Error("The egress proxy closed the tunnel", { cause: error });
+        return callback(Object.assign(closed, { code: "ECONNRESET" }), null);
+      }
+      callback(...result);
+    });
+}
+
 function egressProxyTransport(proxy: UpstreamProxy): Promise<DownloadFetch> {
   const uri = `http://${proxy.host.includes(":") ? `[${proxy.host}]` : proxy.host}:${proxy.port}`;
   const key = `${uri} ${proxy.authorization ?? ""}`;
   let transport = proxyTransports.get(key);
   if (!transport) {
-    transport = importUndiciPackageEvenUnderBun().then(({ ProxyAgent, fetch: undiciFetch }) => {
-      const dispatcher = new ProxyAgent({ uri, token: proxy.authorization });
-      return (target, options) =>
-        undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
-    });
+    transport = importUndiciPackageEvenUnderBun().then(
+      ({ Pool, ProxyAgent, fetch: undiciFetch }) => {
+        const dispatcher = new ProxyAgent({
+          uri,
+          token: proxy.authorization,
+          factory: (origin, options) =>
+            new Pool(origin, {
+              ...options,
+              connect: failRequestOnDroppedTunnel(
+                (options as { connect: buildConnector.connector }).connect,
+              ),
+            }),
+        });
+        return (target, options) =>
+          undiciFetch(target, {
+            ...(options as object),
+            dispatcher,
+          }) as unknown as Promise<Response>;
+      },
+    );
     proxyTransports.set(key, transport);
   }
   return transport;

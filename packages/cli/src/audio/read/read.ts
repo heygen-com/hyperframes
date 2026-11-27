@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { assertLiteralMediaInput, findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { loudness, type AnalysisQuality, type Span } from "@hyperframes/core/audio-analysis";
 import { loadTranscript } from "../../whisper/normalize.js";
@@ -23,7 +23,17 @@ import {
   round,
   spanDb,
 } from "./signal.js";
-import { DRUM_STEM, VOICE_STEM, cachedStems, fetchStems, stemsAccess } from "./stems.js";
+import {
+  DRUM_STEM,
+  SELF_CONTAINED_STEM_INPUT,
+  VOICE_FREE_MIX,
+  VOICE_STEM,
+  addRecordedStems,
+  cachedStems,
+  fetchStems,
+  stemsAccess,
+  writtenHere,
+} from "./stems.js";
 import {
   READ_VERSION,
   type AudibleStem,
@@ -33,6 +43,7 @@ import {
   type Voice,
 } from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
+import { refusePlaylistLeavingItsFolder } from "../../utils/playlistInput.js";
 
 export interface ReadOptions {
   /** Where analyses and stems are kept, normally the project's `.hyperframes/read-audio`. */
@@ -126,11 +137,9 @@ function heardStems(tracks: Record<string, Float32Array>): AudibleStem[] {
     .sort((a, b) => b.db - a.db || a.name.localeCompare(b.name));
 }
 
-const VOICE_FREE = "no-vocals.wav";
-
 /** Stems summed at full quality into one file next to them, made once. */
 async function mixedFile(paths: string[], out: string, warnings: string[]) {
-  if (isPlainFile(out)) return out;
+  if (isPlainFile(out) && writtenHere(dirname(out), [basename(out)])) return out;
   const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpeg) {
     warnings.push(`no ${basename(out)}: ffmpeg is required; run: npx hyperframes doctor`);
@@ -139,18 +148,22 @@ async function mixedFile(paths: string[], out: string, warnings: string[]) {
   let stage: string | undefined;
   try {
     stage = createStagingDir(dirname(out), ".hf-mix-");
-    const temporary = join(stage, VOICE_FREE);
+    const temporary = join(stage, VOICE_FREE_MIX);
     await runFile(
       ffmpeg,
       [
         ...["-v", "error", "-y"],
-        ...paths.flatMap((path) => ["-i", path]),
+        ...paths.flatMap((path) => {
+          assertLiteralMediaInput(path);
+          return [...SELF_CONTAINED_STEM_INPUT, "-i", path];
+        }),
         ...["-filter_complex", `amix=inputs=${paths.length}:normalize=0`],
         ...["-c:a", "pcm_f32le", temporary],
       ],
       { windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
     );
     renameSync(temporary, out);
+    addRecordedStems(dirname(out), [basename(out)]);
     return out;
   } catch (error) {
     warnings.push(`no ${basename(out)}: ${error instanceof Error ? error.message : error}`);
@@ -165,7 +178,7 @@ const voiceFreeMix = (stemPaths: Record<string, string>, warnings: string[]) =>
     Object.entries(stemPaths)
       .filter(([name]) => name !== VOICE_STEM)
       .map(([, path]) => path),
-    join(dirname(stemPaths[VOICE_STEM]!), VOICE_FREE),
+    join(dirname(stemPaths[VOICE_STEM]!), VOICE_FREE_MIX),
     warnings,
   );
 
@@ -179,8 +192,11 @@ function tempoOf(music: Music | null): number | null {
 async function decodedStems(stemPaths: Record<string, string>) {
   const pitched: Record<string, Float32Array> = {};
   for (const [name, stemPath] of Object.entries(stemPaths))
-    if (name !== VOICE_STEM && name !== DRUM_STEM) pitched[name] = await decodeMono(stemPath);
-  const drums = stemPaths[DRUM_STEM] ? await decodeMono(stemPaths[DRUM_STEM]) : null;
+    if (name !== VOICE_STEM && name !== DRUM_STEM)
+      pitched[name] = await decodeMono(stemPath, READ_RATE, SELF_CONTAINED_STEM_INPUT);
+  const drums = stemPaths[DRUM_STEM]
+    ? await decodeMono(stemPaths[DRUM_STEM], READ_RATE, SELF_CONTAINED_STEM_INPUT)
+    : null;
   return { pitched, drums };
 }
 
@@ -330,7 +346,13 @@ async function described(
     voiceFreeMix: mix && relative(project, mix),
     warnings,
   };
-  if (quality === "fast") return located;
+  if (quality !== "best") {
+    if (quality === "local")
+      warnings.push(
+        "stems not described: quality local keeps audio on this machine; --quality best describes them through HeyGen",
+      );
+    return located;
+  }
   const { stems, description } = await describeStems(
     stemPaths,
     {
@@ -345,6 +367,11 @@ async function described(
   return { ...located, stems, description };
 }
 
+const voiceSource = (path: string, stemPaths: Record<string, string> | null) =>
+  stemPaths
+    ? { path: stemPaths[VOICE_STEM] ?? path, input: SELF_CONTAINED_STEM_INPUT }
+    : { path, input: [] as readonly string[] };
+
 async function analyze(
   path: string,
   file: string,
@@ -357,8 +384,8 @@ async function analyze(
   const warnings: string[] = [];
   const stemPaths = await stemsFor(path, stemDir, quality, warnings);
   const words = transcript ? wordsOf(transcript) : [];
-  const voicePath = stemPaths?.[VOICE_STEM] ?? path;
-  const voiceSamples = await decodeMono(voicePath);
+  const voiceFile = voiceSource(path, stemPaths);
+  const voiceSamples = await decodeMono(voiceFile.path, READ_RATE, voiceFile.input);
   const about = base(file, sha, round(voiceSamples.length / READ_RATE, 3), stemPaths, transcript);
   if (!stemPaths && !words.length) {
     warnings.push(
@@ -368,7 +395,7 @@ async function analyze(
   }
   if (!words.length)
     warnings.push(`no transcript: voice lines carry no words; ${transcribeHint(file)}`);
-  const pitch = pitchTrack(await decodeMono(voicePath, PITCH_RATE));
+  const pitch = pitchTrack(await decodeMono(voiceFile.path, PITCH_RATE, voiceFile.input));
   const mix = await recording(path, stemPaths !== null, voiceSamples);
   const levelOf = (span: Span) => spanDb(mix, READ_RATE, span.start, span.end);
   const voice = words.length
@@ -459,6 +486,7 @@ export async function readAudio(
   file: string,
   options: ReadOptions,
 ): Promise<ReadResult> {
+  await refusePlaylistLeavingItsFolder([path]);
   const quality = options.quality ?? "local";
   const { layer } = options;
   const sha = await sha256(path);

@@ -321,4 +321,11 @@ describe("trustedPathDirs on Windows", () => {
       "D:\\WinNT\\System32",
     ]);
   });
+
+  it("reads PATH spelled Path, as a worker thread's copy of the Windows environment keeps it", () => {
+    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
+    const env = { Path: "C:\\Windows\\System32", SystemRoot: "C:\\Windows" };
+
+    expect(trustedPathDirs(undefined, "win32", env)).toEqual(["C:\\Windows\\System32"]);
+  });
 });

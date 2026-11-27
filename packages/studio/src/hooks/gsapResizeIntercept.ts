@@ -12,11 +12,7 @@ import {
   STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
   STUDIO_ORIGINAL_BOX_WIDTH_ATTR,
 } from "../components/editor/manualEditsTypes";
-import {
-  setElementGsapPosition,
-  setElementGsapScale,
-  setElementGsapSize,
-} from "../utils/elementGsap";
+import { setElementGsapPosition, setElementGsapSize } from "../utils/elementGsap";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readGsapProperty } from "./gsapRuntimeReaders";
 import { gestureStartLayout } from "../components/editor/previewGestureStartRead";
@@ -50,6 +46,8 @@ import {
 import { commitValueAtPlayhead } from "./gsapValueAtPlayhead";
 import { preflightGsapResizeIntercept, resizeRoute } from "./gsapResizePreflight";
 import { singleKeyTweenMutation } from "./useEnableKeyframes";
+import { drawFramePosition, sealedScaleFrame } from "./scaleDropOnFrame";
+import { correctOnElement, correctOnFrame, dropPointOf } from "./scaleDropPoint";
 
 const SIZE_PROPS = new Set(["width", "height"]);
 const POSITION_XY = new Set(["x", "y"]);
@@ -185,10 +183,6 @@ function tweenUsesScaleLonghands(anim: GsapAnimation | null): boolean {
 // ── Resize intercept ──────────────────────────────────────────────────────
 
 // The resize is centre-anchored, so a scale that cannot reproduce the dragged size splits the gap evenly.
-function rectCentre(rect: DOMRect): { x: number; y: number } {
-  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-}
-
 // fallow-ignore-next-line complexity
 export async function tryGsapResizeIntercept(
   selection: DomEditSelection,
@@ -393,9 +387,7 @@ export async function tryGsapResizeIntercept(
       : { x: newScaleX, y: newScaleX };
     // Where the user DROPPED the box: the draft is still applied, so this is what the preview showed
     // at release. The finalize step below moves the committed scale's box onto it.
-    if (el) {
-      scaleDraftDropPoint = draw(() => rectCentre(el.getBoundingClientRect()));
-    }
+    scaleDraftDropPoint = await dropPointOf(el, selection.element, draw);
   } else {
     resizeProps = {
       width: roundToLayoutPx(size.width),
@@ -415,25 +407,21 @@ export async function tryGsapResizeIntercept(
   // perspective it is approximate.
   // fallow-ignore-next-line complexity
   const finalizeScaleResizeCommit = async (): Promise<boolean> => {
-    // Only the scale route captures the element, so a null draft means this
-    // resize took the size route and never moved anything: the drop point is
-    // the drag's to settle, not ours.
-    if (!scaleDraftEl) return false;
+    // Only the scale route captures the element (sealed: its frame's), so without one this
+    // resize took the size route and never moved anything: the drop point is the drag's to settle.
+    const frame = scaleDraftEl ? null : sealedScaleFrame(selection.element);
+    if (!scaleDraftEl && !frame) return false;
     const draftEl = scaleDraftEl;
     if (!scaleDraftDropPoint || !selector) {
-      draw(() => clearStudioBoxSize(draftEl));
+      draw(() => clearStudioBoxSize(draftEl ?? selection.element));
       return false;
     }
     const dropPoint = scaleDraftDropPoint;
-    const measured = draw(() => {
-      clearStudioBoxSize(draftEl);
-      // Draw the committed scale before measuring: on a first resize the timeline has not re-seeked yet,
-      // so the box would read at its natural size and the correction would be skipped.
-      if (committedScale) {
-        setElementGsapScale(draftEl, committedScale.x, committedScale.y);
-      }
-      // Measure from the pre-gesture position: the scale route never saves the draft's translation, and
-      // the position write composes the residual onto that same base.
+    const nextResizeReadsItsSizeFrom = draftEl ?? selection.element;
+    draw(() => clearStudioBoxSize(nextResizeReadsItsSizeFrom));
+    // Measure from the pre-gesture position: the scale route never saves the draft's translation, and
+    // the position write composes the residual onto that same base.
+    const preGesture = () => {
       const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
       const { baseGsapX, baseGsapY } = computeDraggedGsapPosition(
         selection.element,
@@ -441,38 +429,13 @@ export async function tryGsapResizeIntercept(
         gsapPos,
         stamp,
       );
-      const base = { x: baseGsapX, y: baseGsapY };
-      setElementGsapPosition(draftEl, base.x, base.y);
-      const post = rectCentre(draftEl.getBoundingClientRect());
-      const residual = { x: dropPoint.x - post.x, y: dropPoint.y - post.y };
-      if (!Number.isFinite(residual.x) || !Number.isFinite(residual.y)) return null;
-      // The ONE corrected position — rounded once so the live runtime and the
-      // persisted file agree exactly (commitStaticGsapPosition composes the same
-      // rounded value from this delta).
-      const corrected = {
-        x: roundTo3(base.x + residual.x),
-        y: roundTo3(base.y + residual.y),
-      };
-      if (corrected.x === roundTo3(base.x) && corrected.y === roundTo3(base.y)) {
-        logResize("scale-finalize", { skipped: "already-on-drop-point", residual, base });
-        // Settled, with nothing to write. Still ours: forwarding the drag offset
-        // on top would move the box off the point it is already sitting on.
-        return "settled" as const;
-      }
-      logResize("scale-finalize", {
-        dropPoint,
-        post,
-        residual,
-        gsapPos,
-        base,
-        corrected,
-      });
-      // Correct the live box in the same task as the measurement, so no frame shows it off the drop
-      // point while the position write is in flight.
-      setElementGsapPosition(draftEl, corrected.x, corrected.y);
-      return { base, corrected, residual };
-    });
+      return { base: { x: baseGsapX, y: baseGsapY }, gsapPos };
+    };
+    const measured = draftEl
+      ? draw(() => correctOnElement(draftEl, committedScale, dropPoint, preGesture()))
+      : await correctOnFrame(frame!, committedScale ?? { x: 1, y: 1 }, dropPoint, preGesture());
     if (measured === null) return false;
+    // Already on the drop point, and still ours: forwarding the drag offset would move it off.
     if (measured === "settled") return true;
     const { base, corrected, residual } = measured;
     // Re-fetch: the scale commit above just rewrote the script, so the caller's
@@ -499,7 +462,8 @@ export async function tryGsapResizeIntercept(
     if (positionTween) {
       // A sub-pixel correction is not worth a keyframe in an authored tween.
       if (Math.abs(residual.x) < 0.5 && Math.abs(residual.y) < 0.5) {
-        draw(() => setElementGsapPosition(draftEl, base.x, base.y));
+        if (draftEl) draw(() => setElementGsapPosition(draftEl, base.x, base.y));
+        else await drawFramePosition(frame!, base);
         return true;
       }
       logResize("scale-finalize", { route: "position-keyframe", tweenId: positionTween.id });
@@ -535,7 +499,11 @@ export async function tryGsapResizeIntercept(
       { commitMutation, fetchAnimations: fetchFallbackAnimations },
       "Resize animation",
     );
-    return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
+    return {
+      status: "persisted",
+      ownsDragOffset: await finalizeScaleResizeCommit(),
+      ...(resizeGroup === "scale" && { savedAsScale: true }),
+    };
   }
 
   const callbacks = { commitMutation, fetchAnimations: fetchFallbackAnimations, stamp };
@@ -555,7 +523,11 @@ export async function tryGsapResizeIntercept(
     backfill: resizeBackfill,
   });
   if (written.status !== "persisted") return written;
-  return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
+  return {
+    status: "persisted",
+    ownsDragOffset: await finalizeScaleResizeCommit(),
+    savedAsScale: true,
+  };
 }
 
 // ── Rotation intercept ────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import {
   isNotImagePayload,
   isNotMediaPayload,
   isPrivateUnderAssetRoots,
+  isStructurallyIncompletePngError,
   playlistLeavesItsFolder,
   NotMediaPayloadError,
   probeMediaProfile,
@@ -113,7 +114,7 @@ export function dropMediaOutsideProject(input: {
   const staysInside = ({ id, src }: { id: string; src: string }) => {
     if (!src || isHttpUrl(src)) return true;
     const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
-    if (isPrivateUnderAssetRoots(path, roots)) {
+    if (isPrivateUnderAssetRoots(path, roots, input.allowOutsideProjectAssets)) {
       log.warn(`[Render] Media "${id}" source is missing: it is a private project file`, { src });
       return false;
     }
@@ -144,11 +145,21 @@ async function notMediaReferences(
   return (await playlistLeavesItsFolder(path)) ? references : [];
 }
 
+function pngCutShort(references: MediaReference[]): AssetMediaTypeMismatch[] {
+  return references
+    .filter((reference) => reference.expected === "video")
+    .map((reference) => ({
+      expected: "video",
+      detected: "image",
+      elementFingerprint: fingerprintElementId(reference.id),
+    }));
+}
+
 /**
- * Fail early when a successfully-probed local asset cannot satisfy the HTML
- * element that owns it. Missing, corrupt, remote-at-runtime, and unprobeable
- * inputs deliberately remain untouched so their existing source/download/
- * invalid-media classification is preserved downstream.
+ * Fail early when a probed local asset cannot satisfy its HTML element, a PNG
+ * cut short under a <video> included. Other missing, corrupt, remote-at-runtime
+ * and unprobeable inputs deliberately remain untouched so their existing
+ * source/download/invalid-media classification is preserved downstream.
  */
 export async function preflightCompositionAssetMediaTypes(input: {
   projectDir: string;
@@ -203,6 +214,8 @@ export async function preflightCompositionAssetMediaTypes(input: {
           profile = await probeMediaProfile(resolvedPath, { signal: input.signal });
         } catch (error) {
           if (input.signal?.aborted) throw input.signal.reason ?? error;
+          if (isStructurallyIncompletePngError(error))
+            mismatches.push(...pngCutShort(pathReferences));
           return;
         }
         for (const reference of pathReferences) {

@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { isUnattended } from "../../utils/attendedTerminal.js";
 import { CliUsageError, failCommand } from "../../utils/commandResult.js";
 /**
@@ -54,7 +55,7 @@ export default defineCommand({
       return;
     }
     await deleteStore();
-    console.log(c.success(`✓ Signed out. Removed ${credentialPath()}.`));
+    console.log(c.success(`✓ Signed out. Removed ${terminalText(credentialPath())}.`));
   },
 });
 

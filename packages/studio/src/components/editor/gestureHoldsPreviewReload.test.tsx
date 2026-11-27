@@ -214,6 +214,7 @@ afterEach(() => {
   layout.group = [];
   document.body.innerHTML = "";
   resetPlayerStore();
+  vi.restoreAllMocks();
 });
 
 describe("a reload during a drag", () => {
@@ -317,7 +318,7 @@ describe("a press while the preview reloads", () => {
     pointer(editor.box, "pointerdown", 150, 150);
     pointer(editor.overlay, "pointermove", 190, 170);
     expect(marked(editor.live.contentDocument!), "the page being replaced").toHaveLength(0);
-    expect(editor.box.hasAttribute(PRESS_WAITING_ATTR), "drawn at the pointer").toBe(true);
+    expect(editor.box.getAttribute(PRESS_WAITING_ATTR), "drawn at the pointer").toBe("save");
     pointer(editor.overlay, "pointerup", 190, 170);
     act(() => usePlayerStore.setState({ currentTime: 3 }));
     let pressedAt: number | undefined;
@@ -352,6 +353,26 @@ describe("a press while a script write is out", () => {
       await write;
     });
     await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+  });
+
+  // fails without the fix: an arrow during the wait started a nudge that the drag then ran under.
+  it("ignores an arrow pressed while a press waits, and saves only the drag", async () => {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    pointer(editor.box, "pointerdown", 150, 150);
+    const arrow = new KeyboardEvent("keydown", { key: "ArrowRight", cancelable: true });
+    act(() => void window.dispatchEvent(arrow));
+    expect(marked(editor.live.contentDocument!), "no nudge while the press waits").toHaveLength(0);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+
+    await act(async () => {
+      land();
+      await write;
+    });
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    expect(editor.onPathOffsetCommit).toHaveBeenCalledOnce();
   });
 
   it("keeps a released press when the browser releases pointer capture", async () => {
@@ -657,6 +678,50 @@ describe("a press while a script write is out", () => {
   });
 });
 
+describe("Escape on a drag queued behind a write", () => {
+  /** A released drop whose write is still out, then a second press on the box. */
+  function secondPressBehindAWrite() {
+    const editor = mountEditor(false);
+    let land: () => void = () => {};
+    const write = whileScriptWrites(() => new Promise<void>((resolve) => (land = resolve)));
+    stuckWrites.push(() => land());
+    pointer(editor.box, "pointerdown", 150, 150);
+    pointer(editor.overlay, "pointermove", 190, 170);
+    pointer(editor.overlay, "pointerup", 190, 170);
+    pointer(editor.box, "pointerdown", 190, 170);
+    pointer(editor.overlay, "pointermove", 220, 170);
+    const landWrite = () =>
+      act(async () => {
+        land();
+        await write;
+      });
+    return { editor, landWrite };
+  }
+
+  // fails without the fix: Escape missed the queued press, and its release saved a second drop.
+  it("drops the queued press still held and lands only the released drop", async () => {
+    const { editor, landWrite } = secondPressBehindAWrite();
+    const held = escape();
+    act(() => void window.dispatchEvent(held));
+    expect(held.defaultPrevented).toBe(true);
+    pointer(editor.overlay, "pointerup", 220, 170);
+    await landWrite();
+    await waitFor(() => expect(file.title).toBe("translate: 40px 20px"));
+    await settle();
+    expect(file.title, "the dropped press saved nothing").toBe("translate: 40px 20px");
+  });
+
+  it("leaves Escape alone once the queued press is released, and lands both drops", async () => {
+    const { editor, landWrite } = secondPressBehindAWrite();
+    pointer(editor.overlay, "pointerup", 220, 170);
+    const after = escape();
+    act(() => void window.dispatchEvent(after));
+    expect(after.defaultPrevented).toBe(false);
+    await landWrite();
+    await waitFor(() => expect(file.title).toBe("translate: 70px 20px"));
+  });
+});
+
 describe("a drag moves only with its own pointer pressed", () => {
   it.each([
     ["no button held, as Chromium sends after a layout change", { buttons: 0 }],
@@ -741,11 +806,20 @@ describe("an outside change during a drag, on a preview that can swap scenes in 
 
 type Editor = ReturnType<typeof mountEditor>;
 
+const escape = () => new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+function hideTab() {
+  vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
 describe("every way a drag ends without a drop clears its mark and promotes the held reload", () => {
   it.each([
     ["pointercancel", (e: Editor) => pointer(e.overlay, "pointercancel", 0, 0)],
     ["lostpointercapture", (e: Editor) => pointer(e.box, "lostpointercapture", 0, 0)],
     ["window blur", () => act(() => void window.dispatchEvent(new Event("blur")))],
+    // fails without the fix: Escape and a hidden tab left the drag held.
+    ["Escape", () => act(() => void window.dispatchEvent(escape()))],
+    ["the tab going hidden", () => act(hideTab)],
     ["a switch to read-only", (e: Editor) => e.render(true)],
     ["overlay unmount", () => act(() => overlayRoot.unmount())],
   ])("%s", async (_, end) => {
@@ -764,6 +838,37 @@ describe("every way a drag ends without a drop clears its mark and promotes the 
     expect(api().iframeRef.current, "nothing was saved, so the held copy is current").toBe(
       held.shadow,
     );
+  });
+
+  it("lets go after Escape without saving, and leaves Escape alone when nothing is held", async () => {
+    const editor = mountEditor(false);
+    const others = vi.fn();
+    window.addEventListener("keydown", others);
+    try {
+      const idle = escape();
+      act(() => void window.dispatchEvent(idle));
+      expect(idle.defaultPrevented).toBe(false);
+      expect(others).toHaveBeenCalledTimes(1);
+
+      pointer(editor.box, "pointerdown", 150, 150);
+      pointer(editor.overlay, "pointermove", 190, 170);
+      const held = escape();
+      act(() => void window.dispatchEvent(held));
+      expect(held.defaultPrevented).toBe(true);
+      expect(others, "a held drag owns Escape").toHaveBeenCalledTimes(1);
+      pointer(editor.overlay, "pointermove", 210, 180);
+      pointer(editor.overlay, "pointerup", 210, 180);
+      act(() => void editor.box.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+      await settle();
+      expect(
+        editor.onCanvasMouseDown,
+        "the release is not a click on the canvas",
+      ).not.toHaveBeenCalled();
+      expect(editor.onPathOffsetCommit).not.toHaveBeenCalled();
+      expect(byId(editor.live, "title").style.getPropertyValue("translate")).not.toBe("60px 30px");
+    } finally {
+      window.removeEventListener("keydown", others);
+    }
   });
 
   it.each([
@@ -806,6 +911,7 @@ describe("an inline text edit", () => {
     overlayRoot = createRoot(document.body.appendChild(document.createElement("div")));
     act(() => overlayRoot.render(<Editor />));
     act(() => void controls!.start(byId(live, "title")));
+    byId(live, "title").textContent = "Saved title";
     const held = await reloadMidGesture();
     expect(api().iframeRef.current).toBe(live);
 

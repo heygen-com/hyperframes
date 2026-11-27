@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { spawnSync } from "node:child_process";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -23,7 +24,11 @@ import {
 } from "@hyperframes/engine/chrome-host-ceiling";
 import { getFreeDiskMb } from "../telemetry/system.js";
 import { BrowserDownloadStalledError, installInChild } from "./installInChild.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import {
+  LINUX_ARM_BROWSER_STEPS,
+  normalizeErrorMessage,
+  SetupStepsError,
+} from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
 import {
@@ -323,7 +328,7 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
     const suffix = code ? ` (${code})` : "";
     console.warn(
-      `[hyperframes] Browser cache read failed${suffix}: ${normalizeErrorMessage(err)}. Falling back to system Chrome or a fresh download.`,
+      `[hyperframes] Browser cache read failed${terminalText(suffix)}: ${terminalLines(normalizeErrorMessage(err))}. Falling back to system Chrome or a fresh download.`,
     );
     installed = [];
   }
@@ -425,7 +430,7 @@ function warnSystemFallbackOnce(executablePath: string): void {
   if (isHeadlessShellBinary(executablePath)) return;
   _warnedSystemFallback = true;
   console.warn(
-    `[hyperframes] Using system Chrome at ${executablePath}; HeadlessExperimental.beginFrame is unavailable in regular Chrome builds, so the perf-optimized capture path falls back to screenshot mode. Install chrome-headless-shell for the optimized path:\n  npx @puppeteer/browsers install chrome-headless-shell@${managedChromeVersion()}\n(Or set HYPERFRAMES_BROWSER_PATH to point at an existing chrome-headless-shell binary.)`,
+    `[hyperframes] Using system Chrome at ${terminalText(executablePath)}; HeadlessExperimental.beginFrame is unavailable in regular Chrome builds, so the perf-optimized capture path falls back to screenshot mode. Install chrome-headless-shell for the optimized path:\n  npx @puppeteer/browsers install chrome-headless-shell@${managedChromeVersion()}\n(Or set HYPERFRAMES_BROWSER_PATH to point at an existing chrome-headless-shell binary.)`,
   );
 }
 
@@ -463,7 +468,7 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
   if (fromCache.result) return fromCache.result;
   if (fromCache.staleHyperframesCachePath) {
     console.warn(
-      `[browser] Cached binary missing, not the pinned build, or writable by another account at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+      `[browser] Cached binary missing, not the pinned build, or writable by another account at ${terminalText(fromCache.staleHyperframesCachePath)} — re-downloading...`,
     );
     try {
       return await withInstallLock(() => downloadBrowser());
@@ -511,7 +516,7 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
     if (result.status === 0) {
       const afterInstall = await findBrowser();
       if (afterInstall) {
-        console.error(`\n✅ Chromium installed at ${afterInstall.executablePath}\n`);
+        console.error(`\n✅ Chromium installed at ${terminalText(afterInstall.executablePath)}\n`);
         return afterInstall;
       }
     } else {
@@ -523,12 +528,9 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
   }
 
   // Could not auto-install — give clear manual instructions.
-  throw new Error(
-    `Chrome Headless Shell is not available for Linux ARM64 (DGX Spark, GB10, Jetson).\n\n` +
-      `Install Chromium manually and point hyperframes to it:\n\n` +
-      `  sudo apt-get install -y chromium-browser\n` +
-      `  export HYPERFRAMES_BROWSER_PATH=$(which chromium-browser)\n\n` +
-      `Then re-run your command. The HYPERFRAMES_BROWSER_PATH env var persists for the session.`,
+  throw new SetupStepsError(
+    `Chrome Headless Shell is not available for Linux ARM64 (DGX Spark, GB10, Jetson).`,
+    LINUX_ARM_BROWSER_STEPS,
   );
 }
 
@@ -594,7 +596,7 @@ async function ensureBrowserInCurrentProcess(
     if (fromCache.result) return fromCache.result;
     if (fromCache.staleHyperframesCachePath) {
       console.warn(
-        `[browser] Cached binary missing, not the pinned build, or writable by another account at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+        `[browser] Cached binary missing, not the pinned build, or writable by another account at ${terminalText(fromCache.staleHyperframesCachePath)} — re-downloading...`,
       );
       return withInstallLock(() => downloadBrowser(options));
     }
@@ -714,7 +716,8 @@ function wrapDownloadFailureWithBrowserPathHint(
       `  export HYPERFRAMES_BROWSER_PATH="${installed}"\n\n` +
       `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. `
     : `No Chrome or Chromium was found on this machine. Install Google Chrome, then set ` +
-      `HYPERFRAMES_BROWSER_PATH to its executable and re-run your command. `;
+      `HYPERFRAMES_BROWSER_PATH to its executable. Run \`hyperframes doctor\` to see which ` +
+      `Chrome was found. Then re-run your command. `;
   const message =
     `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
     pointAt +
@@ -738,7 +741,9 @@ export async function retryOnStall<T>(
       return await run();
     } catch (err) {
       if (!(err instanceof BrowserDownloadStalledError) || attempt >= attempts) throw err;
-      console.warn(`[hyperframes] ${err.message} Retrying (${attempt}/${attempts - 1}).`);
+      console.warn(
+        `[hyperframes] ${terminalLines(err.message)} Retrying (${attempt}/${attempts - 1}).`,
+      );
       clear();
     }
   }
@@ -868,7 +873,7 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
           () =>
             installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
               console.warn(
-                `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
+                `[hyperframes] Downloaded browser archive was corrupt (${terminalLines(normalizeErrorMessage(err))}); re-downloading.`,
               ),
             ),
           clearStaging,

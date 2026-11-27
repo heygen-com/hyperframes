@@ -150,7 +150,7 @@ export function liveMarkupWithoutPreviewMarks(live: Element): string {
   return copy.outerHTML;
 }
 
-export type MarkedMarkup = { html: string; saved: boolean };
+export type MarkedMarkup = { html: string; readFrom: string | null };
 
 export function savedMarkupElseLive(
   saved: Document,
@@ -159,8 +159,8 @@ export function savedMarkupElseLive(
 ): MarkedMarkup {
   const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
   return authored
-    ? { html: authoredMarkup(authored, live, sourceFile), saved: true }
-    : { html: liveMarkupWithoutPreviewMarks(live), saved: false };
+    ? { html: authoredMarkup(authored, live, sourceFile), readFrom: sourceFile }
+    : { html: liveMarkupWithoutPreviewMarks(live), readFrom: null };
 }
 
 export async function readSavedMarkup(

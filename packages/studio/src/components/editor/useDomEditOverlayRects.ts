@@ -24,6 +24,7 @@ import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import { measurePreviewOverlay } from "./previewOverlayRects";
+import { frameFactsChanged } from "../../player/lib/frameFacts";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
   if (a.length !== b.length) return false;
@@ -157,13 +158,14 @@ export function useDomEditOverlayRects({
       return;
     }
     channelReadRef.current = true;
-    void measurePreviewOverlay(iframe, overlayEl, targets)
+    void measurePreviewOverlay(iframe, overlayEl, targets, "behind-drafts")
       .then((rects) => {
         const current =
           selectionRef.current === sel &&
           groupSelectionsRef.current === group &&
           hoverShown(sel, group) === hover;
         if (!rects || !current || rafPausedRef.current || iframeRef.current !== iframe) return;
+        const [shown, shownGroup] = [overlayRectRef.current, groupOverlayItemsRef.current];
         setOverlayRect(rects.selection);
         setChildRects(rects.children);
         setGroupOverlayItems(
@@ -173,6 +175,8 @@ export function useDomEditOverlayRects({
           }),
         );
         setHoverRect(rects.hover);
+        if (overlayRectRef.current !== shown || groupOverlayItemsRef.current !== shownGroup)
+          frameFactsChanged("geometry");
       })
       .finally(() => {
         channelReadRef.current = false;

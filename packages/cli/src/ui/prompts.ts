@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core/terminal-text";
 import * as clack from "@clack/prompts";
 import type {
   ConfirmOptions,
@@ -54,7 +55,7 @@ export function password(opts: PasswordOptions): Promise<string | symbol> {
 
 function lineSpinner(): SpinnerResult {
   const say = (message?: string) => {
-    if (message) process.stderr.write(`${stripVTControlCharacters(message)}\n`);
+    if (message) process.stderr.write(`${terminalLines(stripVTControlCharacters(message))}\n`);
   };
   return {
     start: say,

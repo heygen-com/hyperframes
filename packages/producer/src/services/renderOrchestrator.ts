@@ -101,6 +101,7 @@ import {
   type WorkerSizing,
   type StaticVerificationOutcome,
   resolveBrowserGpuMode,
+  probedHardwareGpu,
   resolveHeadlessShellPath,
   compositionRequiresWebGpu,
   applyConcreteGpuScreenshotClamp,
@@ -128,6 +129,7 @@ import {
   type ReferenceBackgroundResult,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
+import { fromEmptyFolder } from "@hyperframes/parsers/ff-binaries";
 import { totalmem } from "node:os";
 import { randomUUID } from "crypto";
 import { fileURLToPath } from "url";
@@ -158,8 +160,8 @@ import {
   createMemorySampler,
   describeWorkerPhases,
   forgetWorkerPhases,
-  noteStaticDedupActivity,
-  staticDedupActivity,
+  noteCaptureActivity,
+  captureActivity,
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
@@ -230,9 +232,19 @@ import {
   type CaptureCostEstimate,
   buildHeapAdvisoryWarning,
   resolveRenderWorkerCount,
+  pickAutoGpuModeFromCalibration,
   runCaptureCalibration,
+  settleAutoGpuChoice,
   selectCaptureCalibrationFrames,
+  shouldCalibrateSoftwareGpu,
 } from "./render/captureCost.js";
+import { gpuChoiceStore, readGpuChoice, writeGpuChoice } from "./render/gpuChoice.js";
+import {
+  type FrameWindow,
+  type RenderRange,
+  assertRangeSupported,
+  resolveFrameWindow,
+} from "./render/frameWindow.js";
 import {
   computeCompositionObservabilityHash,
   RenderObservabilityRecorder,
@@ -255,7 +267,7 @@ import {
   type VideoFrameCoverageReport,
 } from "./render/videoFrameCoverage.js";
 import { runCompileStage } from "./render/stages/compileStage.js";
-import { runProbeStage } from "./render/stages/probeStage.js";
+import { probeHoldFitsCapture, runProbeStage } from "./render/stages/probeStage.js";
 import { validateRenderDuration } from "./render/planValidation.js";
 import {
   resolveVideoExtractionPolicy,
@@ -447,6 +459,8 @@ export interface RenderConfig {
    */
   motionBlur?: MotionBlurOptions;
   pageMotionBlur?: "off";
+  /** Render only this part of the film; the output starts at its start. Absent renders the whole film. */
+  range?: RenderRange;
   workers?: number;
   /** Wall-time budget in ms for the whole render. Absent or 0 disables the ETA guard. */
   maxRenderMs?: number;
@@ -836,6 +850,8 @@ export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   outputPath?: string;
   duration?: number;
   totalFrames?: number;
+  /** The film frames a `range` render captures; `totalFrames` and `duration` then describe this window. */
+  frameWindow?: FrameWindow;
   framesRendered?: number;
   perfSummary?: RenderPerfSummary;
   audioLoweredDb?: number;
@@ -954,6 +970,18 @@ export class RenderCancelledError extends Error {
     super(message);
     this.name = "RenderCancelledError";
     this.reason = reason;
+  }
+}
+
+/**
+ * Aborts a render because a promise rejection nobody handled came from it. The
+ * render fails with the original error; it is not reported as a cancel.
+ */
+export class EscapedRejectionError extends Error {
+  constructor(cause: Error) {
+    super(cause.message, { cause });
+    Object.assign(this, cause);
+    this.name = cause.name;
   }
 }
 
@@ -1288,7 +1316,7 @@ export function frameStallRule(
     tailMs: Math.max(TAIL_STALL_MS, noProgressMs),
     detail: () => describeWorkerPhases(job),
     attemptOpened: () => forgetWorkerPhases(job),
-    activity: () => staticDedupActivity(job),
+    activity: () => captureActivity(job),
   };
 }
 
@@ -3088,7 +3116,27 @@ export function resolveRenderDebugDir(): string {
  * `outputPath`; throws on cancellation, encoder failure, or a stage
  * error (with a diagnostic summary written to `perf-summary.json`).
  */
-export async function executeRenderJob(
+export function executeRenderJob(
+  job: RenderJob,
+  projectDir: string,
+  outputPath: string,
+  progressSink?: ProgressCallback,
+  abortSignal?: AbortSignal,
+  assertRenderActive?: () => void,
+): Promise<void> {
+  return fromEmptyFolder(() =>
+    renderJob(
+      job,
+      resolve(projectDir),
+      resolve(outputPath),
+      progressSink,
+      abortSignal,
+      assertRenderActive,
+    ),
+  );
+}
+
+async function renderJob(
   job: RenderJob,
   projectDir: string,
   outputPath: string,
@@ -3299,6 +3347,9 @@ async function executeRenderPipeline(input: {
     memSampler = createMemorySampler();
     const assertNotAborted = () => {
       execution.assertActive(() => new RenderCancelledError("render_cancelled"));
+      if (executionSignal.aborted) {
+        throw tooSlowError ?? audioFailure ?? new RenderCancelledError("render_cancelled");
+      }
     };
 
     job.startedAt = new Date();
@@ -3552,15 +3603,26 @@ async function executeRenderPipeline(input: {
     }
     // The probe stage produces `duration` / `totalFrames` values; the
     // sequencer owns the `RenderJob` and writes them onto it.
-    job.duration = probeResult.duration;
-    job.totalFrames = probeResult.totalFrames;
-    const totalFrames = probeResult.totalFrames;
-    captureTotalFrames = totalFrames;
     validateRenderDuration({
       duration: probeResult.duration,
-      totalFrames,
+      totalFrames: probeResult.totalFrames,
       fps: fpsToNumber(job.config.fps),
     });
+    const frameWindow = job.config.range
+      ? resolveFrameWindow(job.config.range, job.config.fps, probeResult.totalFrames)
+      : undefined;
+    job.frameWindow = frameWindow;
+    // A part of the film renders on the disk route (assertRangeSupported); every streaming,
+    // segmented and video-layer gate reads this flag first.
+    if (frameWindow) cfg.enableStreamingEncode = false;
+    const totalFrames = frameWindow
+      ? frameWindow.endFrame - frameWindow.startFrame
+      : probeResult.totalFrames;
+    job.totalFrames = totalFrames;
+    job.duration = frameWindow
+      ? (totalFrames * job.config.fps.den) / job.config.fps.num
+      : probeResult.duration;
+    captureTotalFrames = totalFrames;
     // Before the video layer may close the probe page; no box means full size, as before.
     const shownBoxes =
       largerThanCanvas.length > 0 && probeSession?.isInitialized
@@ -3711,6 +3773,14 @@ async function executeRenderPipeline(input: {
       failureToEnforce,
     } = extractResult;
     perfStages.videoExtractMs = extractResult.videoExtractMs;
+    if (
+      probeSession &&
+      !probeHoldFitsCapture(probeSession.options.skipReadinessVideoIds, videoReadinessSkipIds)
+    ) {
+      const held = probeSession;
+      probeSession = null;
+      await closeCaptureSession(held);
+    }
 
     // ── Parity gate: per-clip captured-vs-expected-frame coverage ───────
     // Fail loudly BEFORE encode if any clip's delivered frames fall below
@@ -3791,6 +3861,7 @@ async function executeRenderPipeline(input: {
           workDir,
           compiledDir,
           totalFrames: probeResult.totalFrames,
+          ...(frameWindow && { frameWindow }),
           fps: job.config.fps,
           ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
           audioGain: cfg.audioGain,
@@ -3850,10 +3921,30 @@ async function executeRenderPipeline(input: {
     updateJobStatus(job, "rendering", "Checking browser GPU", 25, onProgress, {
       code: "start_browsers",
     });
-    const resolvedBrowserGpuMode = await resolveBrowserGpuMode(cfg.browserGpuMode, {
+    let resolvedBrowserGpuMode = await resolveBrowserGpuMode(cfg.browserGpuMode, {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
     });
+    // The probe browser runs on the GPU auto mode first chose; a switch to software must not reuse it.
+    const closeProbeSession = async (): Promise<void> => {
+      if (!probeSession) return;
+      lastBrowserConsole = probeSession.browserConsoleBuffer;
+      await closeCaptureSession(probeSession).catch(() => {});
+      probeSession = null;
+    };
+    const gpuStore =
+      cfg.browserGpuMode === "auto" && resolvedBrowserGpuMode === "hardware"
+        ? gpuChoiceStore(cfg, await probedHardwareGpu())
+        : undefined;
+    const storedGpuChoice = gpuStore && readGpuChoice(gpuStore);
+    if (gpuStore && storedGpuChoice === "software") {
+      log.info("[Render] Auto GPU mode: rendering in software, as measured on this machine.", {
+        file: gpuStore.file,
+      });
+      cfg.browserGpuMode = "software";
+      resolvedBrowserGpuMode = "software";
+      await closeProbeSession();
+    }
     startingFrameCapture();
     // Apply the software-GPU→screenshot clamp to the AUTHORITATIVE local
     // `captureForceScreenshot` (not just the observability copy) so all
@@ -3936,7 +4027,7 @@ async function executeRenderPipeline(input: {
       subTimelineWaitMemo,
       staticDedupMemo,
       compositionHash,
-      onStaticDedupActivity: () => noteStaticDedupActivity(job),
+      onStaticDedupActivity: () => noteCaptureActivity(job),
       // Probe-resolved duration: drawElement self-verification derives its
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,
@@ -4244,6 +4335,11 @@ async function executeRenderPipeline(input: {
       totalMemoryMb: Math.round(totalmem() / (1024 * 1024)),
       minMemoryMb: deParallelMinMemoryMb,
     });
+    // Both routes pin streaming capture, which renders only the whole film.
+    if (frameWindow) {
+      deInversionEligible = false;
+      deParallelRouterEligible = false;
+    }
     // The browser probe is conditional, so most renders arrive here without the engine's
     // init-time drawElement gates having run. Run them before pinning 1 or 3 workers: a
     // refused comp captures by screenshot and keeps the resolver's parallelism.
@@ -4329,14 +4425,16 @@ async function executeRenderPipeline(input: {
       },
     });
 
-    if (
+    const sizeByCalibration =
       job.config.workers === undefined &&
       totalFrames >= 60 &&
       !htmlInCanvasDetected &&
       !cfg.lowMemoryMode &&
       !deInversionEligible &&
-      !deParallelRouterEligible
-    ) {
+      !deParallelRouterEligible;
+    // A machine with no stored GPU choice measures it once, even when the worker count is given.
+    const measureGpuChoice = gpuStore !== undefined && storedGpuChoice === undefined;
+    if (sizeByCalibration || measureGpuChoice) {
       updateJobStatus(job, "rendering", "Measuring capture speed", 25, onProgress, {
         code: "start_browsers",
       });
@@ -4349,6 +4447,18 @@ async function executeRenderPipeline(input: {
           )
         : undefined;
       let outcome: Awaited<ReturnType<typeof runCaptureCalibration>>;
+      let softwareOutcome: Awaited<ReturnType<typeof runCaptureCalibration>> | undefined;
+      const calibrationInput = {
+        fileServer: activeFileServer,
+        log,
+        job,
+        totalFrames,
+        buildCaptureOptions: buildPrepCaptureOptions,
+        createRenderVideoFrameInjector: calibrationFrames
+          ? calibrationFrames.injector
+          : createRenderVideoFrameInjector,
+        assertNotAborted,
+      };
       try {
         outcome = await observeRenderStage(
           observability,
@@ -4361,41 +4471,100 @@ async function executeRenderPipeline(input: {
             // ts=1784019503.
             stagePhase: "calibrating",
           }),
-          () =>
-            runCaptureCalibration({
+          async () => {
+            const result = await runCaptureCalibration({
+              ...calibrationInput,
               cfg: calibrationCaptureConfig(cfg),
-              fileServer: activeFileServer,
               workDir,
-              log,
-              job,
-              totalFrames,
               forceScreenshot: captureForceScreenshot,
               probeSession,
-              buildCaptureOptions: buildPrepCaptureOptions,
-              createRenderVideoFrameInjector: calibrationFrames
-                ? calibrationFrames.injector
-                : createRenderVideoFrameInjector,
-              assertNotAborted,
-            }),
+            });
+            probeSession = result.probeSession;
+            if (
+              storedGpuChoice === undefined &&
+              shouldCalibrateSoftwareGpu(
+                cfg.browserGpuMode,
+                resolvedBrowserGpuMode,
+                result.calibration?.estimate,
+              )
+            ) {
+              softwareOutcome = await runCaptureCalibration({
+                ...calibrationInput,
+                cfg: calibrationCaptureConfig({ ...cfg, browserGpuMode: "software" }),
+                workDir: join(workDir, "software-gpu"),
+                forceScreenshot: applyConcreteGpuScreenshotClamp(
+                  captureForceScreenshot,
+                  "software",
+                  cfg,
+                ),
+                probeSession: null,
+              });
+            }
+            return result;
+          },
           { heartbeatMessage: "browser calibrating (frames not started)" },
         );
       } finally {
         calibrationFrames?.release();
       }
       startingFrameCapture();
-      captureCalibration = outcome.calibration;
+      if (sizeByCalibration) captureCalibration = outcome.calibration;
       calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
-      probeSession = outcome.probeSession;
       if (outcome.lastBrowserConsole.length > 0) {
         lastBrowserConsole = outcome.lastBrowserConsole;
       }
+      if (
+        softwareOutcome &&
+        outcome.calibration &&
+        pickAutoGpuModeFromCalibration(
+          outcome.calibration.estimate,
+          softwareOutcome.calibration?.estimate,
+        ) === "software"
+      ) {
+        log.warn(
+          "[Render] Auto GPU mode: software capture measured faster than the hardware GPU, rendering in software.",
+          {
+            hardwareP95Ms: outcome.calibration.estimate.p95Ms,
+            softwareP95Ms: softwareOutcome.calibration?.estimate.p95Ms,
+          },
+        );
+        cfg.browserGpuMode = "software";
+        resolvedBrowserGpuMode = "software";
+        if (sizeByCalibration) captureCalibration = softwareOutcome.calibration;
+        captureForceScreenshot = softwareOutcome.forceScreenshot;
+        await closeProbeSession();
+        updateCaptureObservability({
+          browserGpuMode: resolvedBrowserGpuMode,
+          forceScreenshot: captureForceScreenshot,
+        });
+      }
+      const settledGpuChoice = measureGpuChoice
+        ? settleAutoGpuChoice(outcome.calibration?.estimate, softwareOutcome?.calibration?.estimate)
+        : undefined;
+      if (gpuStore && settledGpuChoice) {
+        try {
+          writeGpuChoice(gpuStore, settledGpuChoice, {
+            hardwareP95Ms: outcome.calibration?.estimate.p95Ms,
+            softwareP95Ms: softwareOutcome?.calibration?.estimate.p95Ms,
+          });
+        } catch (error) {
+          log.warn(
+            "[Render] Could not save the measured GPU choice; the next render measures again.",
+            {
+              file: gpuStore.file,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
+      }
       observability.checkpoint("capture_calibration", "resolved", {
         forceScreenshot: captureForceScreenshot,
-        multiplier: outcome.calibration?.estimate.multiplier ?? null,
-        p95Ms: outcome.calibration?.estimate.p95Ms ?? null,
-        medianMs: outcome.calibration?.estimate.medianMs ?? null,
+        browserGpuMode: resolvedBrowserGpuMode,
+        multiplier: captureCalibration?.estimate.multiplier ?? null,
+        p95Ms: captureCalibration?.estimate.p95Ms ?? null,
+        medianMs: captureCalibration?.estimate.medianMs ?? null,
       });
     } else {
       observability.checkpoint("capture_calibration", "skipped", {
@@ -4882,6 +5051,7 @@ async function executeRenderPipeline(input: {
       // Every route the render can end up on passes through here, including the ones a
       // replan lands on, so this is where motion blur's one supported-route answer belongs.
       assertMotionBlurSupported(job.config.motionBlur, capturePlan.kind);
+      assertRangeSupported(job.frameWindow, capturePlan.kind);
       assertOutputScaleSupported(deviceScaleFactor, capturePlan.kind);
       workerCount = capturePlan.workerCount;
       captureForceScreenshot = capturePlan.forceScreenshot;
@@ -5637,6 +5807,7 @@ async function executeRenderPipeline(input: {
                 framesDir,
                 job,
                 totalFrames,
+                ...(job.frameWindow && { frameRange: job.frameWindow }),
                 cfg,
                 plan: diskPlan,
                 log,
@@ -5976,13 +6147,16 @@ async function executeRenderPipeline(input: {
       framesRendered: job.framesRendered ?? 0,
       error: caught,
     });
+    const escapedRejection =
+      executionSignal.reason instanceof EscapedRejectionError ? executionSignal.reason : undefined;
     const error = surfaceScriptFailure(
-      tooSlowError ?? audioFailure ?? pageNeverReady ?? caught,
+      tooSlowError ?? audioFailure ?? escapedRejection ?? pageNeverReady ?? caught,
       job,
     );
     if (
       !tooSlowError &&
       !audioFailure &&
+      !escapedRejection &&
       (error instanceof RenderCancelledError || executionSignal.aborted)
     ) {
       job.error = error instanceof Error ? error.message : "render_cancelled";

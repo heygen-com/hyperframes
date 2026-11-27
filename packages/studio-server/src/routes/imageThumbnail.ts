@@ -63,6 +63,7 @@ async function resolveSource(adapter: StudioApiAdapter, id: string, url: string)
   const project = await adapter.resolveProject(id);
   if (!project) throw new HTTPException(404);
   const relative = requestSubPath(url, "projects/:id/image-thumbnail");
+  if (relative === null) throw new HTTPException(404);
   if (!/\.jpe?g$/i.test(relative)) throw new HTTPException(415);
   const path = pinWithinProject(project.dir, relative);
   if (!path) throw new HTTPException(404);

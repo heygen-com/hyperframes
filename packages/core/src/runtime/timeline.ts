@@ -1,11 +1,14 @@
+import { sourceLengthOf } from "./sourceLength";
 import type {
   RuntimeTimelineClip,
   RuntimeTimelineMessage,
   RuntimeTimelineScene,
   RuntimeTimelineLike,
 } from "./types";
+import { transitionLabelsForDocument } from "./transitionLabels";
 import { unproxiedSrc } from "./proxySrc";
 import { stableClipId } from "./clipTree";
+import { CLIP_NODES } from "./clipNodes";
 import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
 import {
   AUTHORED_DURATION_ATTR,
@@ -269,6 +272,7 @@ export function collectRuntimeTimelinePayload(params: {
     __timelines?: Record<string, RuntimeTimelineLike | undefined>;
   };
   const timelineRegistry = runtimeWindow.__timelines ?? {};
+  const transitionLabels = transitionLabelsForDocument(document, timelineRegistry);
   const startResolver = createRuntimeStartTimeResolver({
     timelineRegistry,
     includeAuthoredTimingAttrs: true,
@@ -277,6 +281,15 @@ export function collectRuntimeTimelinePayload(params: {
     if (!compositionId) return null;
     const duration = readTimelineDurationSeconds(timelineRegistry[compositionId]);
     return duration != null && duration > 0 ? duration : null;
+  };
+  const ownTimelineLength = (compositionId: string): number | null => {
+    try {
+      const length = timelineRegistry[compositionId]?.duration?.();
+      return typeof length === "number" && Number.isFinite(length) ? length : null;
+    } catch (err) {
+      swallow("runtime.timeline.ownLength", err);
+      return null;
+    }
   };
   const resolveMediaWindowEndSeconds = (): number | null => {
     const mediaNodes = Array.from(
@@ -342,7 +355,8 @@ export function collectRuntimeTimelinePayload(params: {
   const mediaWindowDuration =
     mediaWindowEnd != null ? Math.max(0, mediaWindowEnd - Math.max(0, rootCompositionStart)) : null;
   const rootDurationFromTimeline = resolveTimelineDurationSeconds(rootCompositionId);
-  const rootDurationFromAttr = parseElementDurationAttr(root ?? document.body);
+  const rootDurationNode = root ?? document.body ?? document.documentElement;
+  const rootDurationFromAttr = rootDurationNode ? parseElementDurationAttr(rootDurationNode) : null;
   const compositionWindowEnd = maxDefinedNumber(
     ...compositionNodes
       .filter((node) => node !== root)
@@ -427,7 +441,6 @@ export function collectRuntimeTimelinePayload(params: {
   // as clips — they have no declared timing so the timeline can't show their
   // actual visibility window. They can still appear as scenes via the separate
   // scene collection below.
-  const CLIP_NODES = "[data-start], [data-track-index], [data-composition-id], video, audio, img";
   const nodes = Array.from(document.querySelectorAll(CLIP_NODES));
   let maxEnd = 0;
   const clipOf = (node: Element, i: number): RuntimeTimelineClip | null => {
@@ -447,8 +460,8 @@ export function collectRuntimeTimelinePayload(params: {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if (duration == null && isMediaElement(node)) {
-      if (Number.isFinite(node.duration)) {
-        duration = resolveNaturalMediaTimelineDuration(node, node.duration);
+      if (Number.isFinite(sourceLengthOf(node))) {
+        duration = resolveNaturalMediaTimelineDuration(node, sourceLengthOf(node));
       }
     }
     if (duration == null) duration = resolveTimedImageDurationSeconds(node, start);
@@ -504,6 +517,8 @@ export function collectRuntimeTimelinePayload(params: {
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
       text: readSentTextLayer(node),
+      transitionLabel: transitionLabels.get(node) ?? null,
+      timelineDuration: isNestedHost ? ownTimelineLength(nodeCompositionId) : null,
     };
   };
   const addClip = (clip: RuntimeTimelineClip) => {
@@ -635,6 +650,8 @@ export function collectRuntimeTimelinePayload(params: {
             timelineGroup: el.getAttribute("data-timeline-group"),
             timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
             text: readSentTextLayer(el),
+            transitionLabel: transitionLabels.get(el) ?? null,
+            timelineDuration: null,
           });
           gsapClipIds.add(el.id);
         }
@@ -693,6 +710,8 @@ export function collectRuntimeTimelinePayload(params: {
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
         text: readSentTextLayer(el),
+        transitionLabel: transitionLabels.get(el) ?? null,
+        timelineDuration: null,
       });
       gsapClipIds.add(el.id);
     }

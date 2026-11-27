@@ -18,12 +18,14 @@ import {
   type GestureState,
   type GroupGestureState,
   focusDomEditOverlayElement,
+  pressStillHeld,
   resolveShiftClickCandidate,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { ChildRectOutlines, OffCanvasIndicators } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { useDomEditNudge } from "./useDomEditNudge";
+import { useSealedCanvasKeys, type CanvasDeleteHandler } from "./useSealedCanvasKeys";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import type { GestureRecordingState } from "./GestureRecordControl";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
@@ -34,7 +36,8 @@ import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
-import { useMountEffect } from "../../hooks/useMountEffect";
+import { useHeldGestureCancel } from "./useHeldGestureCancel";
+import { useGestureStartReadAhead } from "./gestureStartReadAhead";
 import { countStudioManualEditSave as counted } from "./manualEditGesture";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
@@ -42,6 +45,7 @@ import { pointerMayHitElement } from "./previewSelection";
 import { logSelect } from "../../utils/selectDebug";
 import { useOffCanvasIndicators } from "./useOffCanvasIndicators";
 import { DomEditGestureReadout } from "./DomEditGestureReadout";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -108,12 +112,8 @@ export interface DomEditOverlayProps {
     selections: DomEditSelection[],
     mode: MarqueeSelectionMode,
   ) => DomSelectionResult | void;
-  /**
-   * Delete the selected canvas element.
-   * Wire to handleDomEditElementDelete from useDomEditActionsContext —
-   * same handler the Delete/Backspace hotkey uses.
-   */
-  onDeleteSelection?: (selection: DomEditSelection) => void;
+  /** Delete the selected canvas element (handleDomEditElementDelete). */
+  onDeleteSelection?: CanvasDeleteHandler;
   /**
    * Called with the resolved z-order patch list and the menu action that
    * produced it (feeds the undo coalesce key). The patch list is tie-aware and
@@ -160,9 +160,11 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 }: DomEditOverlayProps) {
   const readOnly = usePreviewReadOnly();
   const hostInput = canvasInput === "host";
+  const previewFailed = usePlayerStore((state) => state.previewFailed);
   const bodyDrag = allowBodyDrag || !hostInput;
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const handlesRef = useRef<HTMLDivElement | null>(null);
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
   onMarqueeSelectRef.current = onMarqueeSelect;
 
@@ -277,11 +279,12 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     activeCompositionPath,
   });
 
-  const gestures = createDomEditOverlayGestureHandlers({
+  const gestureOptions = {
     activeCompositionPathRef,
     overlayRef,
     iframeRef,
     boxRef,
+    handlesRef,
     selectionRef,
     hoverSelectionRef,
     overlayRectRef,
@@ -303,7 +306,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     onCanvasPointerMoveRef,
     onCanvasMouseDown,
     snapGuidesRef,
-  });
+  };
+  const gestures = createDomEditOverlayGestureHandlers(gestureOptions);
+  useGestureStartReadAhead(gestureOptions);
 
   useEffect(() => {
     if (readOnly) gestures.clearPointerState(selectionRef, true);
@@ -311,31 +316,31 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   // A gesture that loses its pointer, the window or the overlay is cancelled, so its mark goes too.
   const cancelGestureRef = useRef((_dropQueued?: boolean) => {});
   cancelGestureRef.current = (dropQueued) => gestures.clearPointerState(selectionRef, dropQueued);
-  useMountEffect(() => {
-    const cancel = () => cancelGestureRef.current();
-    window.addEventListener("blur", cancel);
-    return () => {
-      window.removeEventListener("blur", cancel);
-      cancelGestureRef.current(true);
-    };
-  });
+  const holdsPress = () =>
+    Boolean(gestureRef.current || groupGestureRef.current) ||
+    pressStillHeld(waitingPressRef.current);
+  useHeldGestureCancel(cancelGestureRef, holdsPress, suppressNextBoxClickRef);
 
-  // Arrow-key nudge (1px, Shift = 10px) — commits through the same
-  // path-offset callbacks as a drag, one undo entry per key burst.
-  const { flushNudge } = useDomEditNudge({
+  // Arrow-key nudge (1px, Shift = 10px) and in-frame sealed canvas keys.
+  const onNudgeSavingChangeRef = useRef<((saving: boolean) => void) | undefined>(undefined);
+  const { flushNudge, applyRuntimeNudge } = useDomEditNudge({
+    ...gestureOptions,
     selection,
     groupSelections,
     allowCanvasMovement: allowCanvasMovement && !readOnly,
-    selectionRef,
-    overlayRectRef,
-    groupOverlayItemsRef,
-    gestureRef,
-    groupGestureRef,
-    blockedMoveRef,
-    onBlockedMoveRef,
-    onManualDragStartRef,
-    onPathOffsetCommitRef,
-    onGroupPathOffsetCommitRef,
+    onNudgeSavingChangeRef,
+  });
+  useSealedCanvasKeys({
+    iframeRef,
+    overlayRef,
+    selection,
+    groupSelections,
+    allowCanvasMovement,
+    readOnly,
+    inlineTextEditing: inlineText.editing,
+    onDeleteSelection,
+    applyRuntimeNudge,
+    onNudgeSavingChangeRef,
   });
 
   const marquee = useMarqueeGestures({
@@ -462,6 +467,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       className={`absolute inset-0 z-10 outline-hidden ${
         inlineText.editing || hostInput ? "pointer-events-none" : "pointer-events-auto"
       }`}
+      inert={previewFailed}
       data-editing-text={inlineText.editing ? "true" : undefined}
       tabIndex={-1}
       aria-label="Composition canvas"
@@ -522,6 +528,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           allowBodyDrag={bodyDrag}
           cropOutlineInsetPx={cropOutlineInsetPx ?? undefined}
           boxRef={boxRef}
+          handlesRef={handlesRef}
           boxChromeClass={boxChromeClass}
           boxClipPath={boxClipPath}
           selectionKey={selectionKey}
@@ -549,6 +556,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         groupSelections={groupSelections}
         activeCompositionPathRef={activeCompositionPathRef}
         onSelectionChangeRef={onSelectionChangeRef}
+        iframeRef={iframeRef}
       />
       <MarqueeOverlay candidateRects={marquee.candidateRects} marqueeRect={marquee.marqueeRect} />
       {contextMenu && (

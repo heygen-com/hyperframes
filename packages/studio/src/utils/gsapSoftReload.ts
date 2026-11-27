@@ -5,7 +5,7 @@ import {
   compositionFile,
   finalizeSoftReload,
   findGsapScriptElements,
-  previewMotionPathUrl,
+  preloadMotionPath,
   restoreAuthoredStyle,
   scriptsRegistering,
   softReloadFrame,
@@ -16,7 +16,14 @@ import {
 import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSource";
 import { fileDocs, standaloneSets } from "./softReloadTargets";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
-import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import { PREVIEW_REJECTED, PREVIEW_STALE, previewFrameOpaque } from "../player/lib/previewChannel";
+import { rereadGsapSnapshot } from "../hooks/gsapFrameSnapshot";
+import {
+  SAVED_STATE_DEADLINE_MS,
+  sendPreviewWrite,
+  takePreviewTicket,
+  ticketNeedsRecovery,
+} from "./sealedPreviewLedger";
 
 export {
   findGsapScriptElements,
@@ -28,9 +35,9 @@ export {
 type IframeWindow = SoftReloadWindow & { __playerReady?: boolean };
 
 /**
- * Pre-load and register MotionPathPlugin once per preview load (NLELayout's onIframeLoad), so
- * adding the first motion path does not wait for the CDN mid-reload and flash. Idempotent; without
- * gsap it waits for the runtime's ready, and a CDN failure is left to the soft reload's own load.
+ * Pre-load and register MotionPathPlugin once per preview load (NLELayout's onIframeLoad) unless the page is marked
+ * path-free; a first path added by an edit waits for it on its re-run. Idempotent; without gsap it waits for the
+ * runtime's ready, and a CDN failure is left to the soft reload's own load.
  */
 // At most one preview waits for its runtime; a newer load replaces it, so a frame that never boots is not kept alive.
 let pendingReadyRetry: ((event: MessageEvent) => void) | null = null;
@@ -65,27 +72,7 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
     window.addEventListener("message", retry);
     return;
   }
-  // A load is already in flight for this iframe — don't queue a second script.
-  if (win.__hfMotionPathPluginLoading) return;
-
-  try {
-    win.__hfMotionPathPluginLoading = true;
-    const pluginScript = doc.createElement("script");
-    pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
-    const finalize = () => {
-      win.__hfMotionPathPluginLoading = false;
-      try {
-        if (win.MotionPathPlugin && win.gsap?.registerPlugin) {
-          win.gsap.registerPlugin(win.MotionPathPlugin);
-        }
-      } catch {}
-    };
-    pluginScript.onload = finalize;
-    pluginScript.onerror = finalize;
-    doc.head.appendChild(pluginScript);
-  } catch {
-    win.__hfMotionPathPluginLoading = false;
-  }
+  preloadMotionPath(win, doc);
 }
 
 /**
@@ -112,6 +99,8 @@ export interface SoftReloadOptions {
   previousHtml?: string;
   /** A timing edit, whose saved timing a sealed preview takes along: no commit could patch it live. */
   timingEdit?: boolean;
+  /** The Studio file revision `authoredHtml`'s save went out at. */
+  version?: number;
   /** Other composition files a reset element is written in, by path; null when one could not be read. */
   nestedFiles?: Map<string, string> | null;
   restore?: EditingParams<"soft-reload">["restore"];
@@ -179,7 +168,12 @@ const outgoingScripts = (doc: ParentNode, scriptText: string): string[] =>
     (script) => script.textContent ?? "",
   );
 
-const SOFT_RELOAD_RESULTS = new Set<unknown>(["applied", "verify-failed", "cannot-soft-reload"]);
+const SOFT_RELOAD_RESULTS = new Set<unknown>([
+  "applied",
+  "verify-failed",
+  "cannot-soft-reload",
+  "superseded",
+]);
 
 /** The frame's reply is data: anything but exactly `{ result }` with a known result counts as a refusal. */
 function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
@@ -190,7 +184,29 @@ function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
   return result as SoftReloadResult;
 }
 
+/** What a sealed frame needs to re-run `scriptText`, from the saved files alone. */
+export function sealedRerun(
+  scriptText: string,
+  {
+    authoredHtml,
+    previousHtml,
+    timingEdit,
+  }: { authoredHtml: string; previousHtml: string; timingEdit?: boolean },
+): Omit<EditingParams<"soft-reload">, "time" | "restore"> {
+  const previous = new DOMParser().parseFromString(previousHtml, "text/html");
+  return {
+    script: scriptText,
+    sets: standaloneSets(outgoingScripts(previous, scriptText)),
+    authored: authoredStyles(authoredHtml),
+    timing: timingEdit ? savedTiming(authoredHtml) : [],
+  };
+}
+
 // Everything sent comes from the files Studio saved, never from the frame; the reply only says whether it applied.
+function rereadOnceRerun(iframe: HTMLIFrameElement, result: SoftReloadResult): void {
+  if (result !== "cannot-soft-reload" && result !== "superseded") rereadGsapSnapshot(iframe);
+}
+
 function softReloadSealed(
   iframe: HTMLIFrameElement,
   scriptText: string,
@@ -201,22 +217,34 @@ function softReloadSealed(
     onAsyncFailure,
     onShownInPlace,
     timingEdit,
+    nestedFiles,
+    version,
     restore = [],
   }: SoftReloadOptions,
 ): SoftReloadResult {
   if (authoredHtml === undefined || previousHtml === undefined || currentTimeOverride === undefined)
     return "cannot-soft-reload";
-  const previous = new DOMParser().parseFromString(previousHtml, "text/html");
-  void previewRequest(iframe, "soft-reload", {
-    script: scriptText,
-    time: currentTimeOverride,
-    sets: standaloneSets(outgoingScripts(previous, scriptText)),
-    authored: authoredStyles(authoredHtml),
-    timing: timingEdit ? savedTiming(authoredHtml) : [],
-    restore,
-  }).then((reply) => {
-    if (sealedSoftReloadResult(reply) === "cannot-soft-reload") onAsyncFailure?.();
-    else onShownInPlace?.();
+  const rerun = sealedRerun(scriptText, { authoredHtml, previousHtml, timingEdit });
+  const ticket = takePreviewTicket(iframe, {
+    scriptText,
+    snapshot: { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit, version },
+    attributes: restore.length > 0,
+    timing: timingEdit === true,
+    rerun: true,
+  });
+  const savedState = ticket.sent.attributes || ticket.sent.timing;
+  const deadline = savedState ? SAVED_STATE_DEADLINE_MS : undefined;
+  const params = { ...rerun, time: currentTimeOverride, restore };
+  void sendPreviewWrite(ticket, "soft-reload", params, deadline).then((answer) => {
+    // No answer, a refusal, a rejection and a stale write all leave the change unproven on screen.
+    const result =
+      answer === PREVIEW_REJECTED || answer === PREVIEW_STALE
+        ? "cannot-soft-reload"
+        : sealedSoftReloadResult(answer);
+    rereadOnceRerun(iframe, result);
+    if (!ticketNeedsRecovery(ticket)) return;
+    if (result === "cannot-soft-reload") onAsyncFailure?.();
+    else if (result !== "superseded") onShownInPlace?.();
   });
   return "applied";
 }
@@ -248,7 +276,7 @@ export function applySoftReload(
   });
   if (typeof result === "string") return result;
   void result.then((settled) => {
-    if (settled !== "applied") options.onAsyncFailure?.();
+    if (settled !== "applied" && settled !== "superseded") options.onAsyncFailure?.();
   });
   return "applied";
 }

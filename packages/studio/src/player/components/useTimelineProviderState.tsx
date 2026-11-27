@@ -6,7 +6,7 @@ import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineZoom } from "./useTimelineZoom";
 import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
-import { useTimelineClipDrag } from "./useTimelineClipDrag";
+import { useTimelineClipDrag, type ClipDropOptions } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
 import { buildTimelineShellMeta } from "./timelineShellMeta";
 import { useTimelineDragPreviewState } from "./useTimelineDragPreviewState";
@@ -80,7 +80,9 @@ export function useTimelineProviderState({
   sessionEpoch: sessionEpochProp,
   previewIframeRef,
   onZIndexReorder,
-}: TimelineProps = {}): TimelineContextValue {
+  insertOnClipDrop,
+  onDropRefused,
+}: TimelineProps & ClipDropOptions = {}): TimelineContextValue {
   const {
     onMoveElement,
     onMoveElements,
@@ -229,6 +231,8 @@ export function useTimelineProviderState({
     onStackingPatches: zSyncEnabled ? applyStackingPatches : undefined,
     refreshAfterLaneMove,
     sessionEpoch,
+    insertOnClipDrop,
+    onDropRefused,
   });
   const assetDrop = useTimelineAssetDrop({
     scrollRef,

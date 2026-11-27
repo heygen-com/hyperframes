@@ -10,7 +10,7 @@ import {
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegCwd, fromEmptyFolder, mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { projectFolder } from "../utils/projectRecords.js";
 import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
@@ -91,7 +91,7 @@ import {
   type RateSpec,
   terminalText,
 } from "@hyperframes/core";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
@@ -134,6 +134,8 @@ import {
 import { withMeta } from "../utils/updateCheck.js";
 import { trackSnapshotRun } from "../telemetry/events.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+
+const WALKED_BY_PROJECT_VIDEO_FILE = { playlists: true };
 
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
 // the REAL painted pixels are viewed from an orthogonal angle (FINDING [10]:
@@ -497,11 +499,15 @@ export async function probeContainingSourceFrameSeek(
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
-          ...["-v", "error", ...mediaInputFormatArgs(ffprobe, videoPath)],
+          ...["-v", "error", ...mediaInputArgs(ffprobe, videoPath, WALKED_BY_PROJECT_VIDEO_FILE)],
           ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
-        { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 32 * 1024 * 1024 },
+        {
+          timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS,
+          maxBufferBytes: 32 * 1024 * 1024,
+          cwd: ffmpegCwd(),
+        },
       );
       const parsed: unknown = JSON.parse(stdout);
       return typeof parsed === "object" && parsed !== null
@@ -627,12 +633,16 @@ async function probeSeekLanding(
           "error",
           "-copyts",
           "-noaccurate_seek",
-          ...mediaInputFormatArgs(ffmpeg, videoPath),
+          ...mediaInputArgs(ffmpeg, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         ],
         ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
       ],
-      { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 1024 * 1024 },
+      {
+        timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS,
+        maxBufferBytes: 1024 * 1024,
+        cwd: ffmpegCwd(),
+      },
     );
     const base = /^#tb 0: (\d+)\/(\d+)/m.exec(stdout);
     const row = /^0,\s*-?\d+,\s*(-?\d+),/m.exec(stdout);
@@ -689,7 +699,7 @@ async function frameColour(
   const read = (args: string[]) =>
     runFfmpegOnce(
       ffmpegPath,
-      [...mediaInputFormatArgs(ffmpegPath, videoPath), ...args],
+      [...mediaInputArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE), ...args],
       FFMPEG_EXTRACT_TIMEOUT_MS,
     );
   const probe = await read(firstFrameColourArgs(videoPath));
@@ -743,7 +753,13 @@ export async function extractVideoFrameToBuffer(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
-      args.push(...mediaInputFormatArgs(ffmpegPath, videoPath), "-i", videoPath, "-map", "0:v:0");
+      args.push(
+        ...mediaInputArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
+        "-i",
+        videoPath,
+        "-map",
+        "0:v:0",
+      );
       const filters = frameFilters(seek.select, displayedPixels, metadata, toneMapFilter);
       if (filters.length > 0) args.push("-vf", filters.join(","));
       args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
@@ -805,7 +821,7 @@ export async function decodeFramesInOnePass(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       args.push(
-        ...mediaInputFormatArgs(ffmpegPath, videoPath),
+        ...mediaInputArgs(ffmpegPath, videoPath, WALKED_BY_PROJECT_VIDEO_FILE),
         "-ss",
         String(start),
         "-i",
@@ -978,7 +994,17 @@ export function serveCapturePage(projectDir: string, html: string, proxy: boolea
  * Render key frames from a composition as PNG screenshots.
  * The agent can Read these to verify its output visually.
  */
-export async function captureSnapshots(
+export function captureSnapshots(
+  projectDir: string,
+  opts: Parameters<typeof captureSnapshotsFrom>[1],
+): Promise<CapturedSnapshots> {
+  const against = opts.against && resolve(opts.against);
+  return fromEmptyFolder(() =>
+    captureSnapshotsFrom(resolve(projectDir), { ...opts, ...(against ? { against } : {}) }),
+  );
+}
+
+async function captureSnapshotsFrom(
   projectDir: string,
   opts: {
     frames?: number;
@@ -1169,11 +1195,11 @@ export async function captureSnapshots(
             });
       if (range)
         log(
-          `   Sampling ${positions.length} frames within ${range[0]}–${range[1]}s${opts.composition ? ` (composition ${opts.composition})` : ""}`,
+          `   Sampling ${positions.length} frames within ${range[0]}–${range[1]}s${opts.composition ? ` (composition ${terminalText(opts.composition)})` : ""}`,
         );
       if (review)
         log(
-          `   Review: ${review.beats.length} beat(s) and ${review.seams.length} seam(s) within ${review.window[0]}–${review.window[1]}s${opts.composition ? ` (composition ${opts.composition})` : ""}`,
+          `   Review: ${review.beats.length} beat(s) and ${review.seams.length} seam(s) within ${review.window[0]}–${review.window[1]}s${opts.composition ? ` (composition ${terminalText(opts.composition)})` : ""}`,
         );
       if (appendedTail) {
         log(
@@ -1195,7 +1221,7 @@ export async function captureSnapshots(
         );
       if (!opts.keep) replaced.push(...clearEarlierStills(snapshotDir));
       if (replaced.length > 0) {
-        log(`   ${c.warn("⚠")} ${clearedNote(replaced.length, snapshotDir)}`);
+        log(`   ${c.warn("⚠")} ${terminalText(clearedNote(replaced.length, snapshotDir))}`);
       }
 
       // Chrome-headless ignores programmatic <video>.currentTime writes, so
@@ -1566,7 +1592,7 @@ export async function captureSnapshots(
                 pairSheetFailure = describeSharpLoadFailure(err);
                 if (!pairSheetFailure) throw err;
                 console.error(
-                  `   ${c.warn("⚠")} Reference pair sheets skipped: ${pairSheetFailure}`,
+                  `   ${c.warn("⚠")} Reference pair sheets skipped: ${terminalText(pairSheetFailure)}`,
                 );
               }
             }
@@ -1706,8 +1732,8 @@ async function recordSnapshotArtifacts(
   ).catch(warnSnapshotsNotRecorded);
   const record = records?.[0];
   if (!record) return false;
-  log(`   Revision: ${record.revision ?? "none"} (${record.attribution})`);
-  log(`   State: ${join(projectDir, ".hyperframes", "video-state.json")}`);
+  log(`   Revision: ${terminalText(`${record.revision ?? "none"} (${record.attribution})`)}`);
+  log(`   State: ${terminalText(join(projectDir, ".hyperframes", "video-state.json"))}`);
   return true;
 }
 
@@ -1781,15 +1807,17 @@ function printReview(
   const beats = review.plan.beats.map(
     (beat) => `${formatSnapshotTimestamp(beat.time)} ${terminalText(beat.label)}`,
   );
-  log(`   Beat sheet (settled frame per scene): ${sheets.beats.join(", ") || "none"}`);
+  log(
+    `   Beat sheet (settled frame per scene): ${terminalText(sheets.beats.join(", ")) || "none"}`,
+  );
   log(`     ${c.dim(beats.join(" · "))}`);
   review.plan.seams.forEach((seam, index) => {
     const sides = terminalText(`${seam.from ?? "start"} -> ${seam.to ?? "end"}`);
-    const strip = sheets.seams[index] ?? "not written";
+    const strip = terminalText(sheets.seams[index] ?? "not written");
     log(`   Seam ${index + 1} at ${formatSnapshotTimestamp(seam.time)} (${sides}): ${strip}`);
   });
   log(
-    `   Phone sheet (beats at ${REVIEW_PHONE_WIDTH} px wide): ${sheets.phone.join(", ") || "none"}`,
+    `   Phone sheet (beats at ${REVIEW_PHONE_WIDTH} px wide): ${terminalText(sheets.phone.join(", ")) || "none"}`,
   );
   for (const note of review.plan.notes) log(`   ${c.dim(terminalText(note))}`);
 }
@@ -1934,7 +1962,7 @@ export default defineCommand({
       log(c.error("  Aborting snapshot because the default index.html entry is blank."));
       if (candidate && posix.basename(candidate) === "index.html") {
         const candidateDir = posix.dirname(candidate);
-        const target = `<project>/${candidateDir}`;
+        const target = terminalText(`<project>/${candidateDir}`);
         log(
           c.dim(
             `  Move or mount the authored file, or snapshot its directory directly: hyperframes snapshot ${target}. Only use the directory form when its assets are self-contained under that directory; otherwise mount it from the project root.`,
@@ -1943,7 +1971,7 @@ export default defineCommand({
       } else if (candidate) {
         log(
           c.dim(
-            `  Move or mount ${candidate} as a project index.html before snapshotting; snapshot accepts project directories, not individual HTML files.`,
+            `  Move or mount ${terminalText(candidate)} as a project index.html before snapshotting; snapshot accepts project directories, not individual HTML files.`,
           ),
         );
       }
@@ -1962,7 +1990,7 @@ export default defineCommand({
     const zoomScale = parseZoomScale(args["zoom-scale"]);
     const against = args.against ? resolve(String(args.against)) : undefined;
     if (against && !existsSync(against))
-      fail(`${c.error("✗")} --against video not found: ${against}`);
+      fail(`${c.error("✗")} --against video not found: ${terminalText(against)}`);
 
     const label = reviewMode
       ? "review frames (beats, seams, phone)"
@@ -2016,19 +2044,19 @@ export default defineCommand({
         const short = onDisk.missing.length > 0;
         const mark = short ? c.error("✗") : c.success("◇");
         const count = short ? `${paths.length} of ${captured.paths.length}` : String(paths.length);
-        log(`\n${mark}  ${count} snapshots saved to ${snapshotDir}`);
+        log(`\n${mark}  ${count} snapshots saved to ${terminalText(snapshotDir)}`);
         for (const p of paths) {
-          log(`   ${p}`);
+          log(`   ${terminalText(p)}`);
         }
         if (short) {
-          const gone = onDisk.missing.map((path) => `\n   missing: ${path}`).join("");
+          const gone = onDisk.missing.map((path) => `\n   missing: ${terminalText(path)}`).join("");
           fail(
-            `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${snapshotDir}.${gone}`,
+            `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${terminalText(snapshotDir)}.${gone}`,
           );
         }
         if (captured.unreadVideoFrames > 0) {
           fail(
-            `${c.error("✗")} ${captured.unreadVideoFrames} video frame(s) could not be read, so those videos are black or stale in the snapshots saved to ${snapshotDir}.`,
+            `${c.error("✗")} ${captured.unreadVideoFrames} video frame(s) could not be read, so those videos are black or stale in the snapshots saved to ${terminalText(snapshotDir)}.`,
           );
         }
         if (against) {
@@ -2064,12 +2092,12 @@ export default defineCommand({
           reportArtifacts("snapshot", "contact-sheet", contactSheets);
           if (!captured.review) {
             for (const sheet of contactSheets) {
-              log(`   ${resolve(sheet)} (grid view for AI review)`);
+              log(`   ${terminalText(resolve(sheet))} (grid view for AI review)`);
             }
           }
         } catch (err) {
           console.warn(
-            `   ${c.warn("⚠")} Contact sheet skipped: ${describeSharpLoadFailure(err) ?? normalizeErrorMessage(err)}. Individual snapshot PNGs are still available.`,
+            `   ${c.warn("⚠")} Contact sheet skipped: ${terminalText(describeSharpLoadFailure(err) ?? normalizeErrorMessage(err))}. Individual snapshot PNGs are still available.`,
           );
         }
 

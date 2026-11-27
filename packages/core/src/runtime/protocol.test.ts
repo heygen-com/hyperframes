@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   inspectRuntimeProtocol,
+  isMessageList,
+  MAX_MESSAGE_LIST,
   runtimeProtocolFpsFromNumber,
   runtimeProtocolFpsToNumber,
   runtimeProtocolMetadata,
@@ -53,5 +55,27 @@ describe("runtime protocol", () => {
     expect(
       inspectRuntimeProtocol({ protocolVersion: 1, fps: { numerator: 30, denominator: 1 } }),
     ).toMatchObject({ status: "unsupported", code: "invalid_protocol_metadata" });
+  });
+
+  // fails without the fix: the inspector walked whatever length the sender declared.
+  it("rejects capabilities too long to walk or with holes, without walking them", () => {
+    const metadata = runtimeProtocolMetadata(30);
+    const inspect = (capabilities: unknown[]) =>
+      inspectRuntimeProtocol({ ...metadata, capabilities });
+    const rejected = { status: "unsupported", code: "invalid_protocol_metadata" };
+
+    expect(inspect(Array(MAX_MESSAGE_LIST + 1).fill("seconds-time"))).toMatchObject(rejected);
+    const holey = ["seconds-time"];
+    holey[2] = "play-range";
+    expect(inspect(holey)).toMatchObject(rejected);
+    expect(inspect(new Array(2 ** 32 - 1))).toMatchObject(rejected);
+    expect(inspect(Array(MAX_MESSAGE_LIST).fill("seconds-time"))).toMatchObject({
+      status: "supported",
+    });
+  });
+
+  it("reads a list against the cap its reader names", () => {
+    expect(isMessageList([1, 2, 3], 3)).toBe(true);
+    expect(isMessageList([1, 2, 3, 4], 3)).toBe(false);
   });
 });

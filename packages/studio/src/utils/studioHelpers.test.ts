@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { keyHint } from "../player/components/studioShortcuts";
 import {
+  deletedNotice,
   historyTooltipLabel,
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
@@ -17,6 +19,15 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("deletedNotice", () => {
+  it("names what went and the undo key, as the ripple toast does", () => {
+    const undo = keyHint("undo");
+    expect(deletedNotice("Title", 1)).toBe(`Deleted Title. Undo (${undo}) restores it.`);
+    expect(deletedNotice("3 clips", 3)).toBe(`Deleted 3 clips. Undo (${undo}) restores them.`);
+    expect(undo).not.toBe("");
+  });
 });
 
 describe("resolveTimelineSelectionSeekTime", () => {

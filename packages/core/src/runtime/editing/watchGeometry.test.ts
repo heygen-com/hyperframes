@@ -67,6 +67,11 @@ describe("geometryEvent", () => {
       push({}, { ...element, members: [{ ...element.rect, z: 0 }] }),
       push({}, { ...element, corners: { nw: { x: 0, y: 0 } } }),
       push({}, { ...element, source: { width: 1, height: 1, declaredWidth: null } }),
+      push({}, { ...element, layout: { width: -1, height: 1 } }),
+      push({}, { ...element, layout: { width: 1, height: 100_001 } }),
+      push({}, { ...element, layout: { width: "1", height: 1 } }),
+      push({}, { ...element, layout: { width: 1, height: 1, depth: 1 } }),
+      push({}, { ...element, layout: undefined }),
     ])
       expect(geometryEvent(bad, 1)).toBeNull();
   });

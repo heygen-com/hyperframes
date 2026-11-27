@@ -42,6 +42,7 @@ export {
   parsesAsScript,
 } from "./htmlBundler";
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+export { dropAuthoredCompositionFiles } from "../compositionSource";
 export { boundMediaSrc } from "../runtime/applyVariableBindings";
 
 export {
@@ -74,6 +75,7 @@ export {
   isAlwaysAppliedStyle,
   deferScriptsUntilFonts,
   headStyleRuns,
+  INLINED_FILE_ATTR,
   inlineScriptRuns,
   styleElementsFor,
   type CompositionStyle,

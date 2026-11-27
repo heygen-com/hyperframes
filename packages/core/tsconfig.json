@@ -23,6 +23,8 @@
     "src/runtime/editingPort.ts",
     "src/runtime/stackingContext.ts",
     "src/runtime/webAudioRoute.ts",
+    "src/runtime/webAudioTransport.ts",
+    "src/runtime/decodesFirst.ts",
     "src/runtime/levelTap.ts",
     "src/runtime/wiggleEase.ts"
   ],

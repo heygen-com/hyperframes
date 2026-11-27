@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.74",
+  "version": "0.9.102",
   "description": "",
   "repository": {
     "type": "git",
@@ -128,6 +128,12 @@
       "import": "./src/missingPath.ts",
       "types": "./src/missingPath.ts"
     },
+    "./terminal-text": {
+      "bun": "./src/terminalText.ts",
+      "node": "./dist/terminalText.js",
+      "import": "./src/terminalText.ts",
+      "types": "./src/terminalText.ts"
+    },
     "./rename-retry": {
       "bun": "./src/renameWithRetry.ts",
       "node": "./dist/renameWithRetry.js",
@@ -163,6 +169,18 @@
       "node": "./dist/utils/richTextSanitize.js",
       "import": "./src/utils/richTextSanitize.ts",
       "types": "./src/utils/richTextSanitize.ts"
+    },
+    "./drawn-box": {
+      "bun": "./src/runtime/drawnBox.ts",
+      "node": "./dist/runtime/drawnBox.js",
+      "import": "./src/runtime/drawnBox.ts",
+      "types": "./src/runtime/drawnBox.ts"
+    },
+    "./inline-text-style": {
+      "bun": "./src/utils/inlineTextStyleRead.ts",
+      "node": "./dist/utils/inlineTextStyleRead.js",
+      "import": "./src/utils/inlineTextStyleRead.ts",
+      "types": "./src/utils/inlineTextStyleRead.ts"
     },
     "./composition-contract": {
       "bun": "./src/compositionContract.ts",
@@ -392,6 +410,12 @@
       "import": "./src/audioFade.ts",
       "types": "./src/audioFade.ts"
     },
+    "./audio-decode": {
+      "bun": "./src/audioDecode.ts",
+      "node": "./dist/audioDecode.js",
+      "import": "./src/audioDecode.ts",
+      "types": "./src/audioDecode.ts"
+    },
     "./speed-ramp": {
       "bun": "./src/speedRamp.ts",
       "node": "./dist/speedRamp.js",
@@ -471,6 +495,12 @@
       "import": "./src/runtime/editingPort.ts",
       "types": "./src/runtime/editingPort.ts"
     },
+    "./runtime/css-rotation": {
+      "bun": "./src/runtime/editing/cssRotation.ts",
+      "node": "./dist/runtime/editing/cssRotation.js",
+      "import": "./src/runtime/editing/cssRotation.ts",
+      "types": "./src/runtime/editing/cssRotation.ts"
+    },
     "./runtime/patch-tween": {
       "bun": "./src/runtime/editing/patchTween.ts",
       "node": "./dist/runtime/editing/patchTween.js",
@@ -513,6 +543,18 @@
       "import": "./src/runtime/mediaSteer.ts",
       "types": "./src/runtime/mediaSteer.ts"
     },
+    "./runtime/web-audio-transport": {
+      "browser": "./src/runtime/webAudioTransport.ts",
+      "bun": "./src/runtime/webAudioTransport.ts",
+      "import": "./src/runtime/webAudioTransport.ts",
+      "types": "./src/runtime/webAudioTransport.ts"
+    },
+    "./runtime/decodes-first": {
+      "browser": "./src/runtime/decodesFirst.ts",
+      "bun": "./src/runtime/decodesFirst.ts",
+      "import": "./src/runtime/decodesFirst.ts",
+      "types": "./src/runtime/decodesFirst.ts"
+    },
     "./runtime/clip-reveal": {
       "bun": "./src/runtime/clipReveal.ts",
       "node": "./dist/runtime/clipReveal.js",
@@ -543,11 +585,23 @@
       "import": "./src/compiler/compositionSizeLimit.ts",
       "types": "./src/compiler/compositionSizeLimit.ts"
     },
+    "./compiler/html-tokens": {
+      "bun": "./src/compiler/htmlTokens.ts",
+      "node": "./dist/compiler/htmlTokens.js",
+      "import": "./src/compiler/htmlTokens.ts",
+      "types": "./src/compiler/htmlTokens.ts"
+    },
     "./compiler/html-document": {
       "bun": "./src/compiler/htmlDocument.ts",
       "node": "./dist/compiler/htmlDocument.js",
       "import": "./src/compiler/htmlDocument.ts",
       "types": "./src/compiler/htmlDocument.ts"
+    },
+    "./compiler/selector-id-tokens": {
+      "bun": "./src/compiler/selectorIdTokens.ts",
+      "node": "./dist/compiler/selectorIdTokens.js",
+      "import": "./src/compiler/selectorIdTokens.ts",
+      "types": "./src/compiler/selectorIdTokens.ts"
     },
     "./compiler/png-colour-tags": {
       "bun": "./src/compiler/pngColourTags.ts",
@@ -784,6 +838,10 @@
         "import": "./dist/missingPath.js",
         "types": "./dist/missingPath.d.ts"
       },
+      "./terminal-text": {
+        "import": "./dist/terminalText.js",
+        "types": "./dist/terminalText.d.ts"
+      },
       "./rename-retry": {
         "import": "./dist/renameWithRetry.js",
         "types": "./dist/renameWithRetry.d.ts"
@@ -807,6 +865,14 @@
       "./rich-text-sanitize": {
         "import": "./dist/utils/richTextSanitize.js",
         "types": "./dist/utils/richTextSanitize.d.ts"
+      },
+      "./drawn-box": {
+        "import": "./dist/runtime/drawnBox.js",
+        "types": "./dist/runtime/drawnBox.d.ts"
+      },
+      "./inline-text-style": {
+        "import": "./dist/utils/inlineTextStyleRead.js",
+        "types": "./dist/utils/inlineTextStyleRead.d.ts"
       },
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
@@ -960,6 +1026,10 @@
         "import": "./dist/audioFade.js",
         "types": "./dist/audioFade.d.ts"
       },
+      "./audio-decode": {
+        "import": "./dist/audioDecode.js",
+        "types": "./dist/audioDecode.d.ts"
+      },
       "./speed-ramp": {
         "import": "./dist/speedRamp.js",
         "types": "./dist/speedRamp.d.ts"
@@ -1013,6 +1083,10 @@
         "import": "./dist/runtime/editingPort.js",
         "types": "./dist/runtime/editingPort.d.ts"
       },
+      "./runtime/css-rotation": {
+        "import": "./dist/runtime/editing/cssRotation.js",
+        "types": "./dist/runtime/editing/cssRotation.d.ts"
+      },
       "./runtime/patch-tween": {
         "import": "./dist/runtime/editing/patchTween.js",
         "types": "./dist/runtime/editing/patchTween.d.ts"
@@ -1041,6 +1115,14 @@
         "import": "./dist/runtime/mediaSteer.js",
         "types": "./dist/runtime/mediaSteer.d.ts"
       },
+      "./runtime/web-audio-transport": {
+        "import": "./dist/runtime/webAudioTransport.js",
+        "types": "./dist/runtime/webAudioTransport.d.ts"
+      },
+      "./runtime/decodes-first": {
+        "import": "./dist/runtime/decodesFirst.js",
+        "types": "./dist/runtime/decodesFirst.d.ts"
+      },
       "./runtime/clip-reveal": {
         "import": "./dist/runtime/clipReveal.js",
         "types": "./dist/runtime/clipReveal.d.ts"
@@ -1061,9 +1143,17 @@
         "import": "./dist/compiler/compositionSizeLimit.js",
         "types": "./dist/compiler/compositionSizeLimit.d.ts"
       },
+      "./compiler/html-tokens": {
+        "import": "./dist/compiler/htmlTokens.js",
+        "types": "./dist/compiler/htmlTokens.d.ts"
+      },
       "./compiler/html-document": {
         "import": "./dist/compiler/htmlDocument.js",
         "types": "./dist/compiler/htmlDocument.d.ts"
+      },
+      "./compiler/selector-id-tokens": {
+        "import": "./dist/compiler/selectorIdTokens.js",
+        "types": "./dist/compiler/selectorIdTokens.d.ts"
       },
       "./compiler/png-colour-tags": {
         "import": "./dist/compiler/pngColourTags.js",

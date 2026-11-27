@@ -23,9 +23,13 @@ import {
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { useTimelineClipTimingEditing } from "./useTimelineClipTimingEditing";
+import { useTimelineTrimRipple } from "./useTimelineTrimRipple";
+import { useTimelineEditQueue } from "./timelineEditQueue";
 import { useBlockedTimelineEditToast } from "./useBlockedTimelineEditToast";
 import { useTimelineEditGate, type TimelineEditOutcome } from "./timelineEditPermission";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
+
+export type { ApplyMarqueeSelection } from "./useTimelineEditingTypes";
 
 export function useTimelineEditing({
   projectId,
@@ -37,6 +41,8 @@ export function useTimelineEditing({
   recordEdit,
   reloadPreview,
   previewIframeRef,
+  canvasSelectionsRef,
+  applyMarqueeSelectionRef,
   pendingTimelineEditPathRef,
   uploadProjectFiles,
   isRecordingRef,
@@ -44,12 +50,11 @@ export function useTimelineEditing({
   publishSdkSession,
   forceReloadSdkSession,
   invalidateGsapCache,
-  handleDomZIndexReorderCommitRef,
   canEdit,
 }: UseTimelineEditingOptions) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
-  const editQueueRef = useRef(Promise.resolve());
+  const editQueueRef = useTimelineEditQueue(projectId);
   const track = useTrackPendingTimelineEdit();
   const checkEditable = useTimelineEditGate(canEdit, showToast);
   const guard = useTimelineEditGuard(canEdit, showToast);
@@ -62,7 +67,6 @@ export function useTimelineEditing({
     isRecordingRef,
     pendingTimelineEditPathRef,
     previewIframeRef,
-    projectIdRef,
     recordEdit,
     reloadPreview,
     sdkSession,
@@ -72,7 +76,6 @@ export function useTimelineEditing({
   });
   const { handleTimelineElementMove, handleTimelineElementResize } = useTimelineClipTimingEditing({
     activeCompPath,
-    timelineElements,
     showToast,
     writeProjectFile,
     recordEdit,
@@ -84,9 +87,16 @@ export function useTimelineEditing({
     publishSdkSession,
     forceReloadSdkSession,
     invalidateGsapCache,
-    handleDomZIndexReorderCommitRef,
     editQueueRef,
-    projectIdRef,
+  });
+
+  const { handleTrimElement, handleTrimElements } = useTimelineTrimRipple({
+    handleTimelineElementResize,
+    handleTimelineGroupResize: groupEditing.handleTimelineGroupResize,
+    handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
+    showToast,
+    reloadPreview,
+    editQueueRef,
   });
 
   const handleToggleTrackHidden = useTimelineTrackVisibilityEditing({
@@ -160,9 +170,7 @@ export function useTimelineEditing({
   });
 
   const { handleTimelineElementsDelete } = useTimelineDeleteOps({
-    projectIdRef,
     activeCompPath,
-    timelineElements,
     showToast,
     writeProjectFile,
     recordEdit,
@@ -170,6 +178,9 @@ export function useTimelineEditing({
     isRecordingRef,
     forceReloadSdkSession,
     previewIframeRef,
+    canvasSelectionsRef,
+    applyMarqueeSelectionRef,
+    editQueueRef,
     handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
   });
 
@@ -271,7 +282,7 @@ export function useTimelineEditing({
   );
   const editing = {
     handleTimelineElementMove: track(guard((element) => [element], handleTimelineElementMove)),
-    handleTimelineElementResize: track(guard((element) => [element], handleTimelineElementResize)),
+    handleTimelineElementResize: track(guard((element) => [element], handleTrimElement)),
     handleToggleTrackHidden: track(
       guard(
         (trackIndex) => timelineElements.filter((el) => el.track === trackIndex),
@@ -315,7 +326,7 @@ export function useTimelineEditing({
       guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupMove),
     ),
     handleTimelineGroupResize: track(
-      guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupResize),
+      guard((changes) => changes.map((c) => c.element), handleTrimElements),
     ),
     restoreLiveLanes: (restore: Parameters<typeof setElementFxAttribute.restoreLive>[0]) => {
       setElementFxAttribute.restoreLive(restore);

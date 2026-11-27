@@ -7,6 +7,8 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { parseHTML } from "linkedom";
+import type { EditOp } from "../types.js";
 import { parseMutable, getElementStyles, setElementStyles } from "./model.js";
 import { applyOp, validateOp } from "./mutate.js";
 import { applyPatchesToDocument, applyOverrideSet } from "./apply-patches.js";
@@ -257,6 +259,58 @@ describe("setText", () => {
     const html = serializeDocument(parsed);
     expect(html).toContain('<svg data-hf-id="hf-child"><text');
     expect(html).toContain("Old</text></svg>New</div>");
+  });
+
+  // A text edit never rewrites code or CSS: on a <script>/<style>, or an element whose lone child is one, it is
+  // declined with no write and no patch, so Studio leaves the edit to the server's element patch.
+  const RAW = { script: "window.raw = 1;", style: ".raw { color: red; }" } as const;
+
+  it.each(["script", "style"] as const)("declines a text edit on a lone <%s> child", (tag) => {
+    const parsed = parseMutable(`<div data-hf-id="hf-target"><${tag}>${RAW[tag]}</${tag}></div>`);
+    const result = applyOp(parsed, { type: "setText", target: "hf-target", value: "New" });
+    expect(serializeDocument(parsed)).toContain(
+      `<div data-hf-id="hf-target"><${tag}>${RAW[tag]}</${tag}></div>`,
+    );
+    expect(result.forward).toEqual([]);
+  });
+
+  it.each(["script", "style"] as const)("declines a text edit aimed at a <%s> itself", (tag) => {
+    const parsed = parseMutable(
+      `<div data-hf-id="hf-wrap"><${tag} data-hf-id="hf-raw">${RAW[tag]}</${tag}></div>`,
+    );
+    const result = applyOp(parsed, { type: "setText", target: "hf-raw", value: "New" });
+    expect(serializeDocument(parsed)).toContain(`>${RAW[tag]}</${tag}>`);
+    expect(result.forward).toEqual([]);
+  });
+
+  it.each([
+    [
+      "script",
+      { type: "setAttribute", target: "hf-raw", name: "src", value: "https://x.test/a.js" },
+    ],
+    ["script", { type: "setStyle", target: "hf-raw", styles: { color: "red" } }],
+    ["style", { type: "setStyle", target: "hf-raw", styles: { color: "red" } }],
+    ["style", { type: "setAttribute", target: "hf-raw", name: "media", value: "print" }],
+    ["style", { type: "moveElement", target: "hf-raw", x: 10, y: 20 }],
+    ["script", { type: "addElement", parent: "hf-raw", index: 0, html: "<p>alert(1)</p>" }],
+  ] as const)("writes nothing into a <%s> through %o", (tag, op) => {
+    const raw = `<${tag} data-hf-id="hf-raw">${RAW[tag]}</${tag}>`;
+    const parsed = parseMutable(`<div data-hf-id="hf-wrap">${raw}</div>`);
+    const result = applyOp(parsed, op as EditOp);
+    expect(serializeDocument(parsed)).toContain(raw);
+    expect(result.forward).toEqual([]);
+  });
+
+  it("a text edit of a lone <textarea> child can't close the textarea", () => {
+    const parsed = parseMutable(`<div data-hf-id="hf-target"><textarea>old</textarea></div>`);
+    applyOp(parsed, {
+      type: "setText",
+      target: "hf-target",
+      value: "</textarea><script>window.pwned=1</script>",
+    });
+    const saved = parseHTML(serializeDocument(parsed)).document;
+    expect(saved.querySelectorAll("script").length).toBe(0);
+    expect(saved.querySelector("textarea")?.textContent).toContain("window.pwned=1");
   });
 
   it("override-set key maps correctly", () => {

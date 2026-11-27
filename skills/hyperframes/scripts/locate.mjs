@@ -23,6 +23,9 @@
 import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { replaceFileWith } from "./lib/link-safe-write.mjs";
+import { assertLiteralMediaPath, selfContainedInput } from "./lib/literal-media-input.mjs";
 
 const N1 = 9,
   PAD1 = 0.4; // stage 1: strips per axis, padding in STRIP units
@@ -32,14 +35,22 @@ const GREEN = "0x3CDC5A",
   BLUE = "0x3C82FF",
   RED = "0xFF3232";
 
-const ff = (args) =>
-  execFileSync("ffmpeg", ["-v", "error", "-y", ...args], {
-    stdio: ["ignore", "ignore", "inherit"],
-  });
+// A PNG written beside `dst` and renamed over it: a link already at `dst` is replaced, never written through.
+const ff = (args, dst) =>
+  replaceFileWith(dst, (temp) =>
+    execFileSync(
+      "ffmpeg",
+      ["-v", "error", "-y", ...args, "-f", "image2", "-c:v", "png", "-update", "1", temp],
+      {
+        stdio: ["ignore", "ignore", "inherit"],
+      },
+    ),
+  );
 function probe(img) {
   const out = execFileSync("ffprobe", [
     "-v",
     "error",
+    ...selfContainedInput(img),
     "-select_streams",
     "v:0",
     "-show_entries",
@@ -101,7 +112,12 @@ const pos = rest.filter((a) => !a.startsWith("--"));
 const opt = {};
 for (let i = 0; i < rest.length; i++)
   if (rest[i].startsWith("--")) opt[rest[i].slice(2)] = rest[i + 1];
-const img = pos[0];
+// A URL-shaped image or --out is read as a name under the current folder; the file-only protocol on every read
+// refuses a URL input either way, and this keeps --out from being written to one.
+const img = pos[0] && resolve(pos[0]);
+if (opt.out) opt.out = resolve(opt.out);
+for (const path of [img, opt.out]) if (path) assertLiteralMediaPath(path);
+const readImg = () => [...selfContainedInput(img), "-i", img];
 
 if (cmd === "overlay") {
   const dir = opt.out || ".";
@@ -109,8 +125,8 @@ if (cmd === "overlay") {
   const n = Number(opt.n || N1);
   const { w, h } = probe(img);
   const fz = Math.max(16, Math.round(Math.min(w, h) / 22));
-  ff(["-i", img, "-vf", gridFilters(w, h, n, "v", fz).join(","), `${dir}/gv.png`]);
-  ff(["-i", img, "-vf", gridFilters(w, h, n, "h", fz).join(","), `${dir}/gh.png`]);
+  ff([...readImg(), "-vf", gridFilters(w, h, n, "v", fz).join(",")], `${dir}/gv.png`);
+  ff([...readImg(), "-vf", gridFilters(w, h, n, "h", fz).join(",")], `${dir}/gh.png`);
   out({
     w,
     h,
@@ -133,17 +149,18 @@ if (cmd === "overlay") {
   const uw = Math.max(cw, 640),
     uh = Math.round((ch * uw) / cw);
   const fz = Math.max(15, Math.round(Math.min(uw, uh) / 16));
-  ff([
-    "-i",
-    img,
-    "-vf",
+  ff(
     [
-      `crop=${cw}:${ch}:${cx}:${cy}`,
-      `scale=${uw}:${uh}`,
-      ...gridFilters(uw, uh, nf, "both", fz),
-    ].join(","),
+      ...readImg(),
+      "-vf",
+      [
+        `crop=${cw}:${ch}:${cx}:${cy}`,
+        `scale=${uw}:${uh}`,
+        ...gridFilters(uw, uh, nf, "both", fz),
+      ].join(","),
+    ],
     `${dir}/gc.png`,
-  ]);
+  );
   out({
     region: reg.map(r4),
     crop_grid: `${dir}/gc.png`,
@@ -177,7 +194,7 @@ if (cmd === "overlay") {
   const bw = Math.max(2, Math.round((box[2] - box[0]) * w)),
     bh = Math.max(2, Math.round((box[3] - box[1]) * h));
   const dst = opt.out || "./check.png";
-  ff(["-i", img, "-vf", `drawbox=x=${bx}:y=${by}:w=${bw}:h=${bh}:color=${RED}@1:t=6`, dst]);
+  ff([...readImg(), "-vf", `drawbox=x=${bx}:y=${by}:w=${bw}:h=${bh}:color=${RED}@1:t=6`], dst);
   out({
     marked: dst,
     next: "READ it — red box on the target? If off, redo region/final with corrected strips.",

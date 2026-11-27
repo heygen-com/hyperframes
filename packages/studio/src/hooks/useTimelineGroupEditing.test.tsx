@@ -11,9 +11,15 @@ import {
 } from "@hyperframes/studio-server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Root } from "react-dom/client";
-import type { TimelineElement } from "../player";
+import { usePlayerStore, type TimelineElement } from "../player";
+import { LANE_OVERLAP_NOTICE } from "../player/components/timelineCollision";
 import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
+import {
+  enqueueTimelineEdit,
+  refuseWithEarlier,
+  type TimelineEditQueue,
+} from "./timelineEditQueue";
 import { usePersistentEditHistory } from "./usePersistentEditHistory";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
 
@@ -41,10 +47,9 @@ describe("useTimelineGroupEditing: handleTimelineGroupMove suppressFailureToast"
     function Harness() {
       hook = useTimelineGroupEditing({
         activeCompPath: "index.html",
-        editQueueRef: { current: Promise.resolve() },
+        editQueueRef: { current: Promise.resolve(), projectId: null },
         pendingTimelineEditPathRef: { current: new Set() },
         previewIframeRef: { current: null },
-        projectIdRef: { current: null },
         recordEdit: vi.fn().mockResolvedValue(undefined),
         reloadPreview: vi.fn(),
         showToast,
@@ -110,10 +115,9 @@ it.each([false, true])(
     function Harness() {
       hook = useTimelineGroupEditing({
         activeCompPath: "index.html",
-        editQueueRef: { current: Promise.resolve() },
+        editQueueRef: { current: Promise.resolve(), projectId: "fixture" },
         pendingTimelineEditPathRef: { current: new Set() },
         previewIframeRef: { current: iframe },
-        projectIdRef: { current: "fixture" },
         recordEdit,
         writeProjectFile,
         reloadPreview: vi.fn(),
@@ -159,6 +163,94 @@ it.each([false, true])(
   },
 );
 
+// The real group commits on a queue whose first edit was refused.
+function mountBehindRefusedEdit(showToast = vi.fn()) {
+  const editQueueRef: TimelineEditQueue = { current: Promise.resolve(), projectId: "fixture" };
+  const earlier = enqueueTimelineEdit(editQueueRef, () =>
+    Promise.reject(new Error("delete refused")),
+  );
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: "" })));
+  vi.stubGlobal("fetch", fetchMock);
+  let hook: ReturnType<typeof useTimelineGroupEditing>;
+  function Harness() {
+    hook = useTimelineGroupEditing({
+      activeCompPath: "index.html",
+      editQueueRef,
+      pendingTimelineEditPathRef: { current: new Set() },
+      previewIframeRef: { current: null },
+      recordEdit: vi.fn(),
+      reloadPreview: vi.fn(),
+      showToast,
+      writeProjectFile: vi.fn(),
+    });
+    return null;
+  }
+  const root = mountReactHarness(<Harness />);
+  const unmount = () => {
+    act(() => root.unmount());
+    vi.unstubAllGlobals();
+  };
+  return { earlier, fetchMock, getHook: () => hook!, unmount };
+}
+
+// fails without the fix: the shift ran and wrote though the edit queued before it was refused.
+it("refuses a ripple shift before it writes when an edit queued before it is refused", async () => {
+  const { earlier, fetchMock, getHook, unmount } = mountBehindRefusedEdit();
+  try {
+    await act(async () => {
+      const shift = getHook().handleTimelineGroupMove([{ element: el("a", 2, 2), start: 0 }], {
+        ifEarlierRefused: refuseWithEarlier,
+        suppressFailureToast: true,
+      });
+      await expect(earlier).rejects.toThrow("delete refused");
+      await expect(shift).rejects.toThrow("delete refused");
+    });
+    expect(fetchMock.mock.calls).toEqual([]);
+  } finally {
+    unmount();
+  }
+});
+
+// fails without the fix: the refused drag said the same words as a refused drop, but as an error.
+it("a drag refused for landing on a restored clip shows the refused-drop notice, as info", async () => {
+  usePlayerStore.getState().setElements([el("restored", 0, 2)]);
+  const showToast = vi.fn();
+  const { earlier, getHook, unmount } = mountBehindRefusedEdit(showToast);
+  try {
+    await act(async () => {
+      const drag = persistTimelineMoveEditsAtomically(
+        [{ element: el("a", 4, 2), updates: { start: 1, track: 0 } }],
+        undefined,
+        "timing",
+        { handleTimelineGroupMove: getHook().handleTimelineGroupMove },
+      );
+      await expect(earlier).rejects.toThrow("delete refused");
+      await expect(drag).rejects.toThrow(LANE_OVERLAP_NOTICE);
+    });
+    expect(showToast.mock.calls).toEqual([[LANE_OVERLAP_NOTICE, "info"]]);
+  } finally {
+    unmount();
+    usePlayerStore.getState().setElements([]);
+  }
+});
+
+// fails without the fix: a trim of B, shifted to 0 by a delete that was then refused, wrote B at 0.
+it("refuses a trim before it writes when an edit queued before it is refused, so the clip keeps its start", async () => {
+  const { earlier, fetchMock, getHook, unmount } = mountBehindRefusedEdit();
+  try {
+    await act(async () => {
+      const trim = getHook().handleTimelineGroupResize([
+        { element: el("b", 0, 2), start: 0, duration: 1 },
+      ]);
+      await expect(earlier).rejects.toThrow("delete refused");
+      await expect(trim).rejects.toThrow("delete refused");
+    });
+    expect(fetchMock.mock.calls).toEqual([]);
+  } finally {
+    unmount();
+  }
+});
+
 const SLOWER_THAN_THE_DEFAULT_WINDOW_MS = 400;
 
 it("undoes each group move with its GSAP rewrite in one step, however long the rewrite takes", async () => {
@@ -193,10 +285,9 @@ it("undoes each group move with its GSAP rewrite in one step, however long the r
     editHistory = usePersistentEditHistory({ projectId: "demo" });
     editing = useTimelineGroupEditing({
       activeCompPath: "index.html",
-      editQueueRef: { current: Promise.resolve() },
+      editQueueRef: { current: Promise.resolve(), projectId: "demo" },
       pendingTimelineEditPathRef: { current: new Set() },
       previewIframeRef: { current: null },
-      projectIdRef: { current: "demo" },
       recordEdit: editHistory.recordEdit,
       reloadPreview: vi.fn(),
       showToast: vi.fn(),

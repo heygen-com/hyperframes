@@ -1,6 +1,6 @@
 import {
-  composeElementTransform,
-  type PlanarTransformOps,
+  elementCornerPoints,
+  readElementTransformSnapshot,
 } from "@hyperframes/core/runtime/editing-port";
 import {
   parseInsetClipPathSides,
@@ -20,24 +20,41 @@ export interface CropScreenRect {
   height: number;
 }
 
-/** Element-space insets → the cropped region in overlay (screen) space. */
+/**
+ * Element-space insets → the cropped region's bounds in overlay (screen) space. With `corners` (a transformed
+ * layer's own corners) the insets cut along its own edges; insets that cross shrink until they meet, as CSS does.
+ */
 export function cropRectFromInsets(
   rect: CropScreenRect,
   insets: ClipPathInsetSides,
   scaleX: number,
   scaleY: number,
+  corners?: OwnCorners,
 ): CropScreenRect {
   const sx = scaleX > 0 ? scaleX : 1;
   const sy = scaleY > 0 ? scaleY : 1;
-  const left = rect.left + insets.left * sx;
-  const top = rect.top + insets.top * sy;
-  return {
-    left,
-    top,
-    width: Math.max(0, rect.width - (insets.left + insets.right) * sx),
-    height: Math.max(0, rect.height - (insets.top + insets.bottom) * sy),
+  const { left: x, top: y, width: w, height: h } = rect;
+  const { nw, ne, sw } = corners ?? { nw: { x, y }, ne: { x: x + w, y }, sw: { x, y: y + h } };
+  const [width, height] = [edge(nw, ne), edge(nw, sw)];
+  const [l, r] = meet(insets.left * sx, insets.right * sx, width);
+  const [t, b] = meet(insets.top * sy, insets.bottom * sy, height);
+  const at = (u: number, v: number) => {
+    const [fu, fv] = [width > 0 ? u / width : 0, height > 0 ? v / height : 0];
+    return {
+      x: nw.x + (ne.x - nw.x) * fu + (sw.x - nw.x) * fv,
+      y: nw.y + (ne.y - nw.y) * fu + (sw.y - nw.y) * fv,
+    };
   };
+  const cut = [at(l, t), at(width - r, t), at(width - r, height - b), at(l, height - b)];
+  const xs = cut.map((p) => p.x);
+  const ys = cut.map((p) => p.y);
+  const [left, top] = [Math.min(...xs), Math.min(...ys)];
+  return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
 }
+
+const edge = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
+const meet = (a: number, b: number, side: number): [number, number] =>
+  a + b > side && a + b > 0 ? [(a * side) / (a + b), (b * side) / (a + b)] : [a, b];
 
 // A selected croppable element shows uncropped so the crop UI can dim what is cut away. A rule keyed on its
 // identity does that, so the element's own clip-path stays the one record undo, redo and panel edits rewrite.
@@ -45,6 +62,23 @@ export function cropRectFromInsets(
 // A frame lift is kept until the frame says it is gone, so a lost reply never leaves the crop hidden there.
 type CropLift = { rule: HTMLStyleElement | null; sheetClip?: string; dropped?: boolean };
 const cropLifts = new WeakMap<HTMLElement, CropLift>();
+const liftListeners = new Set<() => void>();
+let liftVersion = 0;
+function liftsChanged() {
+  liftVersion += 1;
+  for (const listener of liftListeners) listener();
+}
+function setLift(element: HTMLElement, lift: CropLift | null) {
+  if (lift) cropLifts.set(element, lift);
+  else cropLifts.delete(element);
+  liftsChanged();
+}
+/** For `useSyncExternalStore`: the overlay redraws its crop hug when a lift starts, lands, is refused or drops. */
+export function subscribeCropLifts(listener: () => void): () => void {
+  liftListeners.add(listener);
+  return () => liftListeners.delete(listener);
+}
+export const cropLiftsVersion = () => liftVersion;
 const UNLIFT_TRIES = 3;
 
 function liftSelector(element: HTMLElement): string | null {
@@ -60,7 +94,7 @@ function unliftInFrame(element: HTMLElement, record: CropLift, tries = UNLIFT_TR
   void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift: false }).then(
     (reply) => {
       if (cropLifts.get(element) !== record) return;
-      if (reply?.lifted === false) cropLifts.delete(element);
+      if (reply?.lifted === false) setLift(element, null);
       else if (tries > 1) unliftInFrame(element, record, tries - 1);
     },
   );
@@ -71,11 +105,11 @@ function liftInFrame(element: HTMLElement): boolean {
   if (!target) return false;
   // Until the frame answers, the clip it last reported is the one under the lift.
   const record: CropLift = { rule: null, sheetClip: frameClipPaths.get(element)?.computed ?? "" };
-  cropLifts.set(element, record);
+  setLift(element, record);
   void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift: true }).then(
     (reply) => {
       if (cropLifts.get(element) !== record || !reply) return;
-      if (!reply.lifted) cropLifts.delete(element);
+      if (!reply.lifted) setLift(element, null);
       else if (typeof reply.clipPath === "string" && reply.clipPath.length <= MAX_ELEMENT_VALUE)
         record.sheetClip = reply.clipPath.trim();
     },
@@ -92,7 +126,7 @@ export function liftElementCrop(element: HTMLElement): void {
   const rule = doc.createElement("style");
   rule.textContent = `${selector}{clip-path:none!important}`;
   (doc.head ?? doc.documentElement).append(rule);
-  cropLifts.set(element, { rule });
+  setLift(element, { rule });
 }
 
 export function dropElementCropLift(element: HTMLElement): void {
@@ -100,10 +134,11 @@ export function dropElementCropLift(element: HTMLElement): void {
   if (!lift || lift.dropped) return;
   if (lift.rule) {
     lift.rule.remove();
-    cropLifts.delete(element);
+    setLift(element, null);
     return;
   }
   lift.dropped = true;
+  liftsChanged();
   unliftInFrame(element, lift);
 }
 
@@ -229,26 +264,69 @@ export function resolveCropInsetFromMoveDrag(input: {
 
 /** Display-only hug: shrink a projected rect by the element's inset crop.
  *  For rects nothing writes back to (e.g. the hover ring). */
-export function hugRectForElement(
-  rect: CropScreenRect & { editScaleX: number; editScaleY: number },
-  element: HTMLElement,
-): CropScreenRect {
+export function hugRectForElement(rect: HugRect, element: HTMLElement): CropScreenRect {
   // A lifted clip shows the full element rect.
-  return isElementCropLifted(element)
-    ? rect
-    : hugRectForClipPath(rect, readElementClipPath(element));
+  if (isElementCropLifted(element)) return rect;
+  return hugRectForClipPath(
+    rect,
+    readElementClipPath(element),
+    () => rect.ownScale ?? (previewStandIn(element) ? undefined : liveOwnScale(rect, element)),
+  );
 }
+
+type HugRect = CropScreenRect & {
+  editScaleX: number;
+  editScaleY: number;
+  ownScale?: OwnScale;
+  angle?: number;
+};
+type Point = { x: number; y: number };
+type OwnCorners = Record<"nw" | "ne" | "se" | "sw", Point>;
+/** Overlay px per own CSS px along the layer's edges, and its own corners in overlay px when it is transformed. */
+export type OwnScale = { x: number; y: number; corners?: OwnCorners };
+
+/** A live element's own-axis scale: an oriented rect's edges, or its turned corners' edges over its upright box. */
+function liveOwnScale(rect: HugRect, element: HTMLElement): HugRect["ownScale"] {
+  const { offsetWidth: w, offsetHeight: h } = element;
+  if (!(w > 0 && h > 0)) return undefined;
+  const upright = { x: rect.width / w, y: rect.height / h };
+  if (rect.angle !== undefined) return upright;
+  const win = element.ownerDocument.defaultView;
+  const transform = win && readElementTransformSnapshot(win, element);
+  const corners = transform && elementCornerPoints(win, element, transform);
+  const box = element.getBoundingClientRect();
+  if (!corners || !(box.width > 0 && box.height > 0)) return upright;
+  const toOverlay = ({ x, y }: Point) => ({
+    x: rect.left + ((x - box.left) * rect.width) / box.width,
+    y: rect.top + ((y - box.top) * rect.height) / box.height,
+  });
+  const own = {
+    nw: toOverlay(corners.nw),
+    ne: toOverlay(corners.ne),
+    se: toOverlay(corners.se),
+    sw: toOverlay(corners.sw),
+  };
+  return { x: edge(own.nw, own.ne) / w, y: edge(own.nw, own.sw) / h, corners: own };
+}
+
+const ownScaleXY = (own: HugRect["ownScale"], rect: HugRect): [number, number] => [
+  own?.x ?? rect.editScaleX,
+  own?.y ?? rect.editScaleY,
+];
 
 /** `hugRectForElement` for a clip-path read elsewhere; null is one that could not be read. */
 export function hugRectForClipPath(
-  rect: CropScreenRect & { editScaleX: number; editScaleY: number },
+  rect: HugRect,
   clipPath: string | null,
+  ownScaleOf: () => HugRect["ownScale"] = () => rect.ownScale,
 ): CropScreenRect {
   const insets = clipPath === null ? null : parseCropClipPath(clipPath);
   // Uneditable clip — show the full element rect.
   if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
     return rect;
-  return cropRectFromInsets(rect, insets, rect.editScaleX, rect.editScaleY);
+  const own = ownScaleOf();
+  const corners = rect.angle === undefined ? own?.corners : undefined;
+  return cropRectFromInsets(rect, insets, ...ownScaleXY(own, rect), corners);
 }
 
 /**
@@ -275,94 +353,28 @@ export interface CropFrame {
   scaleY: number;
 }
 
-/**
- * The element's own 2D transform as matrix components, plus the `rotate`
- * property's angle.
- *
- * `rotate` is a separate CSS property, not part of `transform`, and it is the
- * one Studio's rotate handle writes — reading `transform` alone reported a
- * turned element as upright, so the crop outline drew square across it.
- *
- * Null means there is nothing planar to draw against: no transform and no
- * rotation, or a 3D/unparseable matrix. The caller falls back to the
- * axis-aligned box rather than guessing an angle.
- */
-const IDENTITY = { a: 1, b: 0, c: 0, d: 1 };
-
-/** Perspective terms this far from zero mean the mapping is not affine. */
-const PERSPECTIVE_EPSILON = 1e-6;
+/** Components this close to the identity's count as the identity. */
+const IDENTITY_EPSILON = 1e-6;
 
 type Planar2D = { a: number; b: number; c: number; d: number };
-
-/**
- * The 2D components of a computed transform, or null when it cannot be used.
- *
- * Accepts `matrix3d` as well as `matrix`, taking the same 2D projection the
- * rest of the overlay reads through DOMMatrix. GSAP writes a 3D matrix for an
- * ordinary 2D move or spin (force3D), and a composition that flips an element
- * writes one with a negative z scale — treating either as unmeasurable left the
- * crop outline square on an element every other piece of chrome drew rotated.
- *
- * Only a perspective term rules the matrix out, because that is where the
- * mapping stops being affine and a single angle stops describing it.
- */
-function parseMatrixComponents(transform: string): Planar2D | null {
-  const flat = /^matrix\(([^)]+)\)$/.exec(transform);
-  if (flat) {
-    const [a, b, c, d] = flat[1]!.split(",").map((v) => Number.parseFloat(v));
-    return [a, b, c, d].every(Number.isFinite) ? { a: a!, b: b!, c: c!, d: d! } : null;
-  }
-  const spatial = /^matrix3d\(([^)]+)\)$/.exec(transform);
-  if (!spatial) return null;
-  const m = spatial[1]!.split(",").map((v) => Number.parseFloat(v));
-  if (m.length !== 16 || !m.every(Number.isFinite)) return null;
-  const affine = [m[3], m[7], m[11]].every((v) => Math.abs(v!) < PERSPECTIVE_EPSILON);
-  if (!affine) return null;
-  return { a: m[0]!, b: m[1]!, c: m[4]!, d: m[5]! };
-}
-
-/** The crop frame only needs an angle and a scale, so it composes plain 2D components. */
-const PLANAR_2D_OPS: PlanarTransformOps<Planar2D> = {
-  identity: () => IDENTITY,
-  fromTransform: parseMatrixComponents,
-  fromRotate: (degrees) => {
-    const rad = (degrees * Math.PI) / 180;
-    return { a: Math.cos(rad), b: Math.sin(rad), c: -Math.sin(rad), d: Math.cos(rad) };
-  },
-  compose: (outer, inner) => ({
-    a: outer.a * inner.a + outer.c * inner.b,
-    b: outer.b * inner.a + outer.d * inner.b,
-    c: outer.a * inner.c + outer.c * inner.d,
-    d: outer.b * inner.c + outer.d * inner.d,
-  }),
-};
 
 /** Whether the matrix leaves the box exactly as it found it. */
 function isIdentity(m: Planar2D): boolean {
   return (
-    Math.abs(m.a - 1) < PERSPECTIVE_EPSILON &&
-    Math.abs(m.b) < PERSPECTIVE_EPSILON &&
-    Math.abs(m.c) < PERSPECTIVE_EPSILON &&
-    Math.abs(m.d - 1) < PERSPECTIVE_EPSILON
+    Math.abs(m.a - 1) < IDENTITY_EPSILON &&
+    Math.abs(m.b) < IDENTITY_EPSILON &&
+    Math.abs(m.c) < IDENTITY_EPSILON &&
+    Math.abs(m.d - 1) < IDENTITY_EPSILON
   );
 }
 
-/**
- * The transform the element paints under, in 2D components.
- *
- * Null when nothing up the chain transforms it: the caller's axis-aligned rect
- * already describes it, and that comes from real layout rather than the
- * element's untransformed box.
- */
+/** The 2D components of the matrix the element paints under; null when upright and unscaled, or 3D. */
 function readPlanarTransform(element: HTMLElement): Planar2D | null {
-  const acc = composeElementTransform(element, PLANAR_2D_OPS, (node) => {
-    try {
-      return node.ownerDocument.defaultView?.getComputedStyle(node) ?? null;
-    } catch {
-      return null;
-    }
-  });
-  return acc && !isIdentity(acc) ? acc : null;
+  const win = element.ownerDocument.defaultView;
+  const matrix = win && readElementTransformSnapshot(win, element)?.matrix;
+  if (!matrix) return null;
+  const { a, b, c, d } = matrix;
+  return isIdentity({ a, b, c, d }) ? null : { a, b, c, d };
 }
 
 /** What the frame measured of a stand-in's element at the press: a stand-in has no box of its own. */

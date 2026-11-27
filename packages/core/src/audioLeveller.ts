@@ -30,6 +30,7 @@ import {
   type HfAutomation,
   type HfAutomationPoint,
 } from "./audioAutomation.js";
+import { windowDb, windowSizeFor } from "./audioAnalysis";
 import {
   HF_AUDIO_FX_CHAIN_VERSION,
   mintAudioFxNodeId,
@@ -39,7 +40,7 @@ import {
 } from "./audioFx.js";
 
 /** One window per emitted point; the hop keeps the lane inside its budget. */
-const FRAME = 4096;
+const FRAME_SECONDS = 4096 / 48_000;
 const POINT_BUDGET = 400;
 /** Below this, a window is silence rather than a quiet passage worth lifting. */
 const FLOOR_BELOW_PEAK_DB = 42;
@@ -75,21 +76,6 @@ export function levellerProfile(strength: number): HfLevellerProfile {
   return { correction: Number((0.25 + s * 0.6).toFixed(3)) };
 }
 
-/** Level in dB of one window, or -Infinity for silence. */
-function windowDb(samples: Float32Array, from: number, count: number): number {
-  let sum = 0;
-  let n = 0;
-  for (let i = from; i < from + count; i += 1) {
-    const s = samples[i];
-    if (s === undefined) break;
-    sum += s * s;
-    n += 1;
-  }
-  if (n === 0) return Number.NEGATIVE_INFINITY;
-  const rms = Math.sqrt(sum / n);
-  return rms > 0 ? 20 * Math.log10(rms) : Number.NEGATIVE_INFINITY;
-}
-
 /**
  * Measure a track and return the gain moves that even it out, in dB against
  * clip-local seconds. Empty when there is nothing worth correcting.
@@ -101,6 +87,7 @@ export function analyseLevelling(
 ): HfAutomationPoint[] {
   if (samples.length === 0 || sampleRate <= 0) return [];
   const profile = levellerProfile(strength);
+  const FRAME = windowSizeFor(sampleRate, FRAME_SECONDS);
   const hop = Math.max(FRAME, Math.ceil(samples.length / POINT_BUDGET));
 
   const levels: number[] = [];

@@ -17,6 +17,9 @@ Requirements:
 
 import argparse
 import json
+import os
+import re
+import secrets
 import subprocess
 import sys
 
@@ -50,10 +53,31 @@ MIN_FREQ = 30.0
 MAX_FREQ = 16000.0
 
 
+# The reader list and pattern checks of skills/hyperframes/scripts/lib/literal-media-input.mjs; a test keeps
+# them equal. A file read with only these readers, over the file protocol, cannot be a list or playlist
+# that makes ffmpeg open the files it names, and a name that ffmpeg would expand as a pattern is refused.
+SELF_CONTAINED_FORMATS = "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,caf,w64,wv,au,ac3,gif,ico,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe"
+PATTERN_IMAGE2_EXPANDS = re.compile(r"%\d*[d%*?[\]{}]")
+WILDCARD_MAKES_ANY_PERCENT_A_PATTERN = re.compile(r"[*?[{]")
+
+
 def decode_audio(path: str) -> np.ndarray:
     """Decode audio to mono float32 samples via ffmpeg."""
+    path = os.path.abspath(path)
+    if PATTERN_IMAGE2_EXPANDS.search(path) or (
+        "%" in path and WILDCARD_MAKES_ANY_PERCENT_A_PATTERN.search(path)
+    ):
+        name = os.path.basename(path)
+        print(
+            f'refused media path "{name}": ffmpeg would read it as a pattern of other files. '
+            "Rename the file or folder.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     cmd = [
-        find_program("ffmpeg"), "-i", path,
+        find_program("ffmpeg"),
+        "-protocol_whitelist", "file", "-format_whitelist", SELF_CONTAINED_FORMATS,
+        "-i", path,
         "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE),
         "-f", "s16le", "-acodec", "pcm_s16le",
         "-loglevel", "error",
@@ -176,6 +200,19 @@ def extract(path: str, fps: int, n_bands: int) -> dict:
     }
 
 
+def replace_file(path, text):
+    """Write `text` to a new temp file beside `path`, then rename it over: a link at `path` is replaced, not followed."""
+    temp = f"{path}.hf{secrets.token_hex(3)}.tmp"  # core's atomicTempPath shape, which Studio's project history skips
+    f = open(temp, "x", encoding="utf-8")  # created exclusively: never a file someone else already put there
+    try:
+        with f:
+            f.write(text)
+        os.replace(temp, path)
+    except BaseException:
+        os.unlink(temp)
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description="Extract per-frame audio visualization data")
     parser.add_argument("input", help="Audio or video file")
@@ -191,8 +228,7 @@ def main():
 
     data = extract(args.input, args.fps, args.bands)
 
-    with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+    replace_file(args.output, json.dumps(data))
 
     print(f"Wrote {args.output} ({data['totalFrames']} frames, {data['bands']} bands)", file=sys.stderr)
 

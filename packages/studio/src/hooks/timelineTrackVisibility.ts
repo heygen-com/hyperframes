@@ -11,6 +11,9 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { isAudioOnlyTrack } from "../utils/timelineInspector";
 import { hiddenToggleVerb } from "../player/components/hiddenToggle";
 import type { PatchOperation } from "../utils/sourcePatcher";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { editPreviewElement, type PreviewElementEdit } from "../player/lib/previewElements";
+import { findOpaqueTimelineElement } from "../components/editor/previewSelection";
 import {
   findTimelineElementInIframe,
   operationChanges,
@@ -88,12 +91,44 @@ function getTimelineElementTargetPath(
   return element.sourceFile || activeCompPath || "index.html";
 }
 
+async function drawSealedHiddenState(
+  iframe: HTMLIFrameElement,
+  elements: readonly TimelineElement[],
+  hidden: boolean,
+  activeCompPath: string | null,
+): Promise<PreviewElementEdit[]> {
+  const lookup = { activeCompositionPath: activeCompPath, isMasterView: true };
+  const found = await Promise.all(
+    elements.map((element) => findOpaqueTimelineElement(iframe, element, lookup)),
+  );
+  const edits = found.flatMap((element) =>
+    element
+      ? [
+          editPreviewElement(iframe, element.handle, {
+            attributes: [["data-hidden", hidden ? "" : null]],
+          }),
+        ]
+      : [],
+  );
+  await Promise.all(edits.map((edit) => edit.drawn));
+  reseekPreviewRuntime(iframe);
+  return edits;
+}
+
 function patchLiveHiddenState(
   iframe: HTMLIFrameElement | null,
   elements: readonly TimelineElement[],
   hidden: boolean,
   activeCompPath: string | null,
-): void {
+): () => void {
+  if (iframe && previewFrameOpaque(iframe)) {
+    const drawn = drawSealedHiddenState(iframe, elements, hidden, activeCompPath);
+    return () =>
+      void drawn.then((edits) => {
+        for (const edit of edits) edit.restore();
+        reseekPreviewRuntime(iframe);
+      });
+  }
   for (const element of elements) {
     const target = findTimelineElementInIframe(iframe, element, activeCompPath);
     if (!target) continue;
@@ -103,12 +138,16 @@ function patchLiveHiddenState(
       target.removeAttribute("data-hidden");
     }
   }
+  return () => {
+    patchLiveHiddenState(iframe, elements, !hidden, activeCompPath);
+    reseekPreviewRuntime(iframe);
+  };
 }
 
 export function reseekPreviewRuntime(iframe: HTMLIFrameElement | null): void {
   const store = usePlayerStore.getState();
   if (applySoftReloadFinalization(iframe, store.currentTime)) return;
-  reseekPreviewAtTime({ seek: store.requestSeek }, store.currentTime);
+  reseekPreviewAtTime({ seek: store.requestSeek }, store.currentTime, iframe);
 }
 
 export function groupElementsByTargetPath(
@@ -142,7 +181,7 @@ async function setElementsHidden({
 }: SetElementsHiddenInput): Promise<string[]> {
   if (elements.length === 0) return [];
 
-  patchLiveHiddenState(previewIframe, elements, hidden, activeCompPath);
+  const undoLive = patchLiveHiddenState(previewIframe, elements, hidden, activeCompPath);
   reseekPreviewRuntime(previewIframe);
 
   const hiddenOperation: PatchOperation = {
@@ -179,8 +218,7 @@ async function setElementsHidden({
     // The optimistic live patch already ran; a patch-target/save failure here would
     // otherwise leave the preview showing the wrong visibility until a reload. Revert
     // the live DOM to the prior state so what's on screen matches what persisted.
-    patchLiveHiddenState(previewIframe, elements, !hidden, activeCompPath);
-    reseekPreviewRuntime(previewIframe);
+    undoLive();
     throw error;
   }
 }

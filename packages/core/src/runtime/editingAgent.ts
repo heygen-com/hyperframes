@@ -7,11 +7,13 @@
  * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   EDITING_CONNECT,
   EDITING_PORT,
   EDITING_PROTOCOL_VERSION,
   EDITING_REQUEST_KINDS,
+  EDITING_REQUEST_TIMEOUT_MS,
   isPlainRecord,
   parseEditingRequest,
   type EditingKeyMessage,
@@ -27,24 +29,25 @@ import {
   elementForHandle,
   elementsAtPoint,
   queryElements,
+  readEveryMatch,
 } from "./editingHandles";
 import { elementGeometry } from "./editingGeometry";
 import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
-import { restoreAttributes } from "./editing/restoreAttributes";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
 import { maxZIndex } from "./editing/maxZIndex";
-import { gestureStart } from "./editingGestureStart";
+import { gestureBase, gestureStart } from "./editingGestureStart";
 import { gsapSnapshot } from "./editing/gsapSnapshot";
 import { motionPathHome } from "./editing/motionPathHome";
 import { cropLift } from "./editing/cropLift";
 import { stackingFamily } from "./editingLayers";
 import { gsapSet } from "./editing/gsapSet";
 import { patchTweens } from "./editing/patchTween";
-import { softReload } from "./editing/softReload";
+import { preloadMotionPath, restoreAttributesOrRerun, softReload } from "./editing/softReload";
 import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
 import { liveRetime } from "./editing/liveRetime";
+import { rebindTiming } from "./editing/rebindTiming";
 import { previewAssetsUnloaded } from "../lottieReadiness";
 import {
   getLogicalOpacity,
@@ -63,9 +66,20 @@ import { colorGradingPlayback } from "./editing/color-grading-playback";
 import { assignAudioGroup } from "./editing/assignAudioGroup";
 import { audioMeter } from "./editing/audioMeter";
 import { documentMarkup } from "./editing/documentMarkup";
+import { removeElements } from "./editing/removeElements";
+import { authoredStyles, fontFaces } from "./editing/textStyleReads";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
+import { portPausedVideoProvider } from "./editing/pausedFrames";
+import {
+  armCanvasKeys,
+  createRuntimeChannel,
+  resetCanvasKeys,
+  resolveCanvasKeyAction,
+} from "./editing/canvasKeys";
+import { measureStageDocument } from "./editing/stageMeasure";
+import { endStageAct, stageAct } from "./editing/stageAct";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -161,6 +175,77 @@ function watchKeys(port: MessagePort, combos: string[]): { watching: number } {
   return { watching: combos.length };
 }
 
+function stylesOf(element: Element, properties: readonly string[]): Record<string, string> {
+  const computed = window.getComputedStyle(element);
+  const styles: Record<string, string> = {};
+  for (const name of properties) {
+    const value =
+      name === "opacity" ? getLogicalOpacity(element, computed) : computed.getPropertyValue(name);
+    if (value) styles[name] = value;
+  }
+  return styles;
+}
+
+const VIDEO_SETTLE_EVENTS = ["seeked", "error", "abort", "emptied"] as const;
+// Answers before the caller's own timeout, so the frame never outlives the request it serves.
+const FRAME_PRESENTED_LIMIT_MS = EDITING_REQUEST_TIMEOUT_MS - 1_000;
+const pendingPresentedWaits = new Set<() => void>();
+
+type Cleanups = Array<() => void>;
+
+function whenVideosSettle(videos: HTMLVideoElement[], cleanups: Cleanups, settled: () => void) {
+  const waiting = new Set(videos);
+  const check = () => {
+    if (waiting.size === 0) return;
+    for (const video of waiting) if (!video.seeking || !video.isConnected) waiting.delete(video);
+    if (waiting.size === 0) settled();
+  };
+  for (const video of videos) {
+    for (const name of VIDEO_SETTLE_EVENTS) video.addEventListener(name, check, { once: true });
+    cleanups.push(() => {
+      for (const name of VIDEO_SETTLE_EVENTS) video.removeEventListener(name, check);
+    });
+  }
+  if (typeof MutationObserver === "function" && document.documentElement) {
+    const observer = new MutationObserver(check);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    cleanups.push(() => observer.disconnect());
+  }
+  check();
+}
+
+function whenTwoFramesPaint(cleanups: Cleanups, painted: () => void) {
+  if (typeof window.requestAnimationFrame !== "function") return painted();
+  let frame = window.requestAnimationFrame(() => {
+    frame = window.requestAnimationFrame(painted);
+  });
+  cleanups.push(() => window.cancelAnimationFrame(frame));
+}
+
+function waitForFramePresented(): Promise<{ presented: boolean }> {
+  return new Promise((resolve) => {
+    const cleanups: Cleanups = [];
+    let done = false;
+    const finish = (presented: boolean) => {
+      if (done) return;
+      done = true;
+      for (const clean of cleanups.splice(0)) clean();
+      pendingPresentedWaits.delete(expire);
+      resolve({ presented });
+    };
+    const expire = () => finish(false);
+    pendingPresentedWaits.add(expire);
+    const timer = wallSetTimeout(expire, FRAME_PRESENTED_LIMIT_MS);
+    cleanups.push(() => wallClearTimeout(timer));
+    const seeking = Array.from(document.querySelectorAll("video")).filter(
+      (video) => video.seeking && video.isConnected,
+    );
+    const paint = () => whenTwoFramesPaint(cleanups, () => finish(true));
+    if (seeking.length === 0) return paint();
+    whenVideosSettle(seeking, cleanups, paint);
+  });
+}
+
 const HANDLERS: Handlers = {
   hello: () => ({ version: EDITING_PROTOCOL_VERSION, kinds: [...EDITING_REQUEST_KINDS] }),
   "runtime-snapshot": () => ({
@@ -183,20 +268,16 @@ const HANDLERS: Handlers = {
   },
   "computed-styles": (params) => {
     const { properties } = params;
+    if ("every" in params)
+      return { styles: null, ...readEveryMatch(params.selector, (el) => stylesOf(el, properties)) };
     const element =
       "handle" in params
         ? elementForHandle(params.handle)
         : document.querySelector(params.selector);
-    if (!element) return { styles: null };
-    const computed = window.getComputedStyle(element);
-    const styles: Record<string, string> = {};
-    for (const name of properties) {
-      const value =
-        name === "opacity" ? getLogicalOpacity(element, computed) : computed.getPropertyValue(name);
-      if (value) styles[name] = value;
-    }
-    return { styles };
+    return { styles: element ? stylesOf(element, properties) : null };
   },
+  "authored-styles": authoredStyles,
+  "font-faces": () => fontFaces(),
   "elements-at-point": ({ x, y }) => ({ elements: elementsAtPoint(x, y) }),
   "pointer-targets": ({ x, y }) => pointerTargetsAt(x, y),
   describe: ({ handles }) => ({ elements: describeHandles(handles) }),
@@ -204,15 +285,16 @@ const HANDLERS: Handlers = {
   query: ({ selector }) => queryElements(selector),
   geometry: ({ handles, children }) => elementGeometry(handles, children),
   layers: ({ group, offset }) => layersOf(group, offset),
-  draft: ({ drafts }) => drawDrafts(drafts),
+  draft: ({ drafts }) => ({ ...drawDrafts(drafts), gsapSetTakesDrafts: true as const }),
   "gesture-start": ({ handles }) => gestureStart(handles),
+  "gesture-base": ({ handles }) => ({ elements: handles.map(gestureBase) }),
   "console-errors": ({ from }) => {
     const seen = watchConsoleErrors();
     const errors = seen.slice(from, from + MAX_QUERY_MATCHES);
     return { errors, truncated: from + errors.length < seen.length };
   },
   "watch-keys": ({ combos }, port) => watchKeys(port, combos),
-  "restore-attributes": (params) => restoreAttributes(params),
+  "restore-attributes": restoreAttributesOrRerun,
   "caption-words": captionWords,
   "caption-transform": captionTransform,
   "color-grading-status": colorGradingStatus,
@@ -228,6 +310,7 @@ const HANDLERS: Handlers = {
   "max-z-index": () => maxZIndex(),
   "crop-lift": cropLift,
   "edit-element": editElement,
+  "remove-elements": removeElements,
   "stacking-family": stackingFamily,
   "gsap-set": gsapSet,
   "patch-tweens": patchTweens,
@@ -236,8 +319,23 @@ const HANDLERS: Handlers = {
   "mark-scenes-stale": markScenesStale,
   "swap-scenes": swapScenes,
   "live-retime": liveRetime,
+  "rebind-timing": rebindTiming,
   "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
+  "serve-paused-frames": ({ channel }) => {
+    const install = window.__hf?.setPausedVideoFrameProvider;
+    if (!install) {
+      channel.close();
+      return { served: false };
+    }
+    install(portPausedVideoProvider(channel));
+    return { served: true };
+  },
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
+  "frame-presented": waitForFramePresented,
+  "arm-canvas-keys": (params, port) => armCanvasKeys(port, params, EDITING_PROTOCOL_VERSION),
+  "resolve-canvas-key-action": resolveCanvasKeyAction,
+  "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
+  "stage-act": (params, port) => stageAct(params, port, EDITING_PROTOCOL_VERSION),
 };
 
 function serve(port: MessagePort): void {
@@ -290,7 +388,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
     if (data.v !== EDITING_PROTOCOL_VERSION || !markedForStudio(document)) return;
-    const channel = new MessageChannel();
+    const channel = createRuntimeChannel();
     const port = channel.port1;
     ports.add(port);
     serve(port);
@@ -305,7 +403,9 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       swallow("editingAgent.handoff", err);
       port.close();
       ports.delete(port);
+      return;
     }
+    preloadMotionPath();
   };
   window.addEventListener("message", onMessage);
   return {
@@ -319,6 +419,9 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       listenForKeys(false);
       stopWatchingGeometry();
       endTextEdit();
+      for (const expire of [...pendingPresentedWaits]) expire();
+      resetCanvasKeys(true);
+      endStageAct();
     },
   };
 }

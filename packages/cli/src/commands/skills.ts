@@ -1,5 +1,6 @@
 import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { setCommandExitCode, CliResultSignal } from "../utils/commandResult.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import { execFileSync, spawn } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
@@ -217,7 +218,7 @@ const SKILLS_TOOLING: ReadonlyArray<{
     reason: "npx_missing",
     report: () =>
       clack.log.error(
-        c.error(`npx not found. Install Node.js and retry.${projectCopyHint("npx")}`),
+        c.error(terminalText(`npx not found. Install Node.js and retry.${projectCopyHint("npx")}`)),
       ),
   },
   {
@@ -228,7 +229,11 @@ const SKILLS_TOOLING: ReadonlyArray<{
     // Skip cleanly rather than letting the upstream clone dump a noisy
     // multi-line `spawn git ENOENT` / "Installation failed" abort.
     report: () =>
-      console.log(c.dim(`Skipping AI coding skills: git not available.${projectCopyHint("git")}`)),
+      console.log(
+        c.dim(
+          terminalText(`Skipping AI coding skills: git not available.${projectCopyHint("git")}`),
+        ),
+      ),
   },
 ];
 
@@ -254,7 +259,9 @@ function sanitizeSelection(selection: SkillSelection): SkillSelection | null {
   if (selection === "*") return selection;
   const rejected = selection.filter((n) => !PLAIN_SKILL_NAME.test(n));
   if (rejected.length) {
-    clack.log.warn(c.warn(`Skipping unexpected skill name(s): ${rejected.join(", ")}`));
+    clack.log.warn(
+      c.warn(terminalText(`Skipping unexpected skill name(s): ${rejected.join(", ")}`)),
+    );
   }
   const safe = selection.filter((n) => PLAIN_SKILL_NAME.test(n));
   return safe.length > 0 ? safe : null;
@@ -414,7 +421,7 @@ export async function updateSkills(
       `Unknown skill(s): ${unknown.join(", ")}. ` +
       `Available: ${[...manifestNames].sort().join(", ")}`;
     if (strict) throw new Error(message);
-    clack.log.warn(c.warn(message));
+    clack.log.warn(c.warn(terminalText(message)));
   }
 
   const targets = manifestSkills.filter(
@@ -467,7 +474,7 @@ function verifyInstalled(names: readonly string[], opts: { strict: boolean; cwd?
   if (absent.length === 0) return;
   const message = `Skill(s) still missing after install: ${absent.join(", ")}`;
   if (opts.strict) throw new Error(message);
-  clack.log.warn(c.warn(message));
+  clack.log.warn(c.warn(terminalText(message)));
 }
 
 /**
@@ -506,7 +513,7 @@ async function updateSkillsOffline(
   if (unknown.length > 0) {
     const message = `Skill(s) owned by another publisher: ${unknown.join(", ")}. Leaving them unchanged.`;
     if (opts.strict) throw new Error(message);
-    clack.log.warn(c.warn(message));
+    clack.log.warn(c.warn(terminalText(message)));
   }
   const targets = [...new Set([...requested, ...FALLBACK_CORE_SKILLS])].filter(
     (name) => !foreign.has(name),
@@ -518,7 +525,7 @@ async function updateSkillsOffline(
     c.dim(
       absent.length === 0
         ? "Skills freshness check unavailable (offline?) — installed skills found, continuing without a refresh."
-        : `Skills freshness check unavailable (offline?) — attempting a blind install of: ${absent.join(", ")}`,
+        : `Skills freshness check unavailable (offline?) — attempting a blind install of: ${terminalText(absent.join(", "))}`,
     ),
   );
 
@@ -553,7 +560,7 @@ function printSkillSection(
   if (!items.length) return;
   console.log();
   console.log(`  ${color(title)}`);
-  for (const s of items) console.log(`    ${color(`${mark} ${s.name}`)}`);
+  for (const s of items) console.log(`    ${color(`${mark} ${terminalText(s.name)}`)}`);
 }
 
 function renderCheck(result: SkillsCheckResult): void {
@@ -569,7 +576,9 @@ function renderCheck(result: SkillsCheckResult): void {
     return;
   }
 
-  console.log(`  ${c.bold("Location")}  ${c.dim(result.location)} ${c.dim(`(${result.agent})`)}`);
+  console.log(
+    `  ${c.bold("Location")}  ${c.dim(terminalText(result.location))} ${c.dim(`(${terminalText(String(result.agent))})`)}`,
+  );
   console.log();
 
   const onDemandMissing = summary.missing - summary.coreMissing;
@@ -702,7 +711,7 @@ function reportUpdate(
   if (result.installed.length > 0) {
     console.log(
       c.success(
-        `Installed/updated ${result.installed.length} skill(s): ${result.installed.join(", ")}`,
+        `Installed/updated ${result.installed.length} skill(s): ${terminalText(result.installed.join(", "))}`,
       ),
     );
   } else if (result.presenceOnly) {
@@ -715,7 +724,7 @@ function reportUpdate(
   // The named skills are the caller's actual question ("is my skill ready?")
   // — answer it explicitly, whatever the install had to do.
   const ready = requested.filter((name) => !result.retired.includes(name));
-  if (ready.length) console.log(c.success(`◇ Ready: ${ready.join(", ")}`));
+  if (ready.length) console.log(c.success(`◇ Ready: ${terminalText(ready.join(", "))}`));
 }
 
 /**
@@ -730,7 +739,7 @@ function reportUpdateFailure(message: string, json: boolean): void {
     );
     return;
   }
-  clack.log.error(c.error(message));
+  clack.log.error(c.error(terminalLines(message)));
 }
 
 const updateCommand = defineCommand({

@@ -15,6 +15,8 @@ import {
   checkInventoryPaths,
   classifyPath,
   excludedFolder,
+  isPrivateSourcePath,
+  isEligibleHiddenSourcePath,
   prefiltered,
   skippedSymlink,
   validatePath,
@@ -28,16 +30,32 @@ import { readRenderOutputs, settledState } from "./projectState.mjs";
 const INLINE_HASH_BYTES = 4 * 1024 * 1024;
 const HASHING_AT_ONCE = 4;
 
+/** Test a child of a directory so a file-only rule does not prune a folder of the same name.
+ * @param {string} rel @param {boolean} directory */
+function isPrivateEntry(rel, directory) {
+  return isPrivateSourcePath(directory ? `${rel}/x` : rel);
+}
+
 /** @param {string} root @param {string} rel @param {import("node:fs").Dirent} entry @param {Walk} walk
  * @param {string[]} dirs */
 async function visit(root, rel, entry, walk, dirs) {
+  if (isPrivateEntry(rel, entry.isDirectory())) return;
   if (entry.isDirectory()) {
     if (!excludedFolder(rel)) dirs.push(rel);
     return;
   }
-  const action = classifyPath(rel).client_action;
+  const rule = classifyPath(rel);
+  if (rule.id === "hidden-asset") {
+    if (entry.isFile() && isEligibleHiddenSourcePath(rel)) await visitFile(root, rel, walk, true);
+    return;
+  }
+  const action = rule.client_action;
   if (action === "exclude") return;
   if (action === "wait_then_exclude") return void walk.waiting.push(rel);
+  await visitPortableEntry(root, rel, entry, walk);
+}
+/** @param {string} root @param {string} rel @param {import("node:fs").Dirent} entry @param {Walk} walk */
+async function visitPortableEntry(root, rel, entry, walk) {
   if (entry.isSymbolicLink()) {
     if (skippedSymlink(rel)) walk.skippedLinks.push(rel);
     else walk.problems.push({ path: rel, problem: "symlink" });
@@ -46,18 +64,30 @@ async function visit(root, rel, entry, walk, dirs) {
   if (!entry.isFile()) return void walk.problems.push({ path: rel, problem: "special-file" });
   await visitFile(root, rel, walk);
 }
-/** @param {string} root @param {string} rel @param {Walk} walk */
-async function visitFile(root, rel, walk) {
+/** @param {string} root @param {string} rel @param {Walk} walk @param {boolean} [includeHidden] */
+async function visitFile(root, rel, walk, includeHidden = false) {
   try {
-    validatePath(rel);
+    validatePath(rel, "current", includeHidden);
   } catch (error) {
     if (!(error instanceof PathViolation)) throw error;
-    return void walk.problems.push({ path: rel, problem: "invalid-name", code: error.code });
+    return void walk.problems.push({
+      path: rel,
+      problem: "invalid-name",
+      code: error.code,
+    });
   }
   const full = join(root, rel);
   try {
     const { size, mtimeMs, ino, dev } = await lstat(full);
-    walk.files.push({ path: rel, full, size, mtimeMs, ino, dev });
+    walk.files.push({
+      path: rel,
+      full,
+      size,
+      mtimeMs,
+      ino,
+      dev,
+      ...(includeHidden && { include_hidden: true }),
+    });
   } catch {
     walk.problems.push({ path: rel, problem: "unreadable" });
   }
@@ -80,11 +110,17 @@ async function listFolder(root, dir) {
 }
 
 /** Every file a capture would list, and what keeps one from being listed. @param {string} root
- * @param {(rel: string) => boolean} renderOutput @returns {Promise<Walk>} */
-async function walkProject(root, renderOutput) {
+ * @param {(rel: string) => boolean} renderOutput @param {import("../sourceIgnore.mjs").SourceIgnore} ignored
+ * @returns {Promise<Walk>} */
+async function walkProject(root, renderOutput, ignored) {
   /** @type {Walk} */
-  const walk = { files: [], problems: [], waiting: [], skippedLinks: [] };
-  const ignored = await readSourceIgnore(root);
+  const walk = {
+    files: [],
+    problems: [],
+    waiting: [],
+    skippedLinks: [],
+    directoryEntries: new Map(),
+  };
   const dirs = [""];
   for (let dir = dirs.pop(); dir !== undefined; dir = dirs.pop()) {
     let entries;
@@ -92,16 +128,56 @@ async function walkProject(root, renderOutput) {
       entries = await listFolder(root, dir);
     } catch (error) {
       const changed = error instanceof FolderMoved;
-      walk.problems.push({ path: dir, problem: changed ? "changed" : "unreadable" });
+      walk.problems.push({
+        path: dir,
+        problem: changed ? "changed" : "unreadable",
+      });
       continue;
     }
+    walk.directoryEntries.set(dir, new Set(entries.map((entry) => entry.name)));
     for (const entry of entries) {
       const rel = dir ? `${dir}/${entry.name}` : entry.name;
-      if (prefiltered(entry.name) || renderOutput(rel) || ignored(rel)) continue;
+      if (prefiltered(entry.name) || renderOutput(rel) || ignored(rel, entry.isDirectory()))
+        continue;
       await visit(root, rel, entry, walk, dirs);
     }
   }
   return walk;
+}
+
+/** @param {string} root @param {Walk} walk */
+async function selectDependencies(root, walk) {
+  if (!walk.files.some((file) => file.include_hidden)) return new Map();
+  const { retainReferencedFiles } = await import("./referencedFiles.mjs");
+  return retainReferencedFiles(root, walk, openListed);
+}
+
+/** Eligible referenced files and the disk identities observed by the scan.
+ * @param {string} dir @param {Map<string,string>} [observed]
+ * @param {{ignored: import("../sourceIgnore.mjs").SourceIgnore, ignoreSyntax?: never} |
+ * {ignored?: never, ignoreSyntax?: import("../sourceIgnore.mjs").SourceIgnoreSyntax}} [options] */
+export async function referencedHiddenSourceFiles(dir, observed, { ignored, ignoreSyntax } = {}) {
+  const walk = await walkProject(
+    dir,
+    await readRenderOutputs(dir),
+    ignored ?? (await readSourceIgnore(dir, { syntax: ignoreSyntax })),
+  );
+  const before = walk.problems.length;
+  const hashes = await selectDependencies(dir, walk);
+  if (walk.problems.length > before) throw new Error("Cannot verify project asset references");
+  if (observed) for (const [path, hash] of hashes) observed.set(path, hash);
+  return walk.files.filter((file) => file.include_hidden);
+}
+
+/** Paths included by a normal editable Share or Send. A host can reuse the project rules from its inventory walk.
+ * @param {string} root @param {Map<string,string>} [observed]
+ * @param {{ignored: import("../sourceIgnore.mjs").SourceIgnore, ignoreSyntax?: never} |
+ * {ignored?: never, ignoreSyntax?: import("../sourceIgnore.mjs").SourceIgnoreSyntax}} [options] */
+export async function listReferencedHiddenSourceAssets(root, observed, options = {}) {
+  observed?.clear();
+  const dir = await realpath(root);
+  const files = await referencedHiddenSourceFiles(dir, observed, options);
+  return files.map((file) => file.path).sort();
 }
 
 /** The manifest's canonical length, from paths and sizes alone: every SHA-256 is 64 characters.
@@ -110,7 +186,12 @@ const manifestBytes = (files) =>
   canonicalBytes({
     format_version: 1,
     entrypoint: ENTRYPOINT,
-    files: files.map(({ path, size }) => ({ path, sha256: "0".repeat(64), size })),
+    files: files.map(({ path, size, include_hidden }) => ({
+      path,
+      sha256: "0".repeat(64),
+      size,
+      include_hidden,
+    })),
   }).length;
 
 /** A file changed this recently can be written again within its time's granularity, keeping its size and time. */
@@ -140,13 +221,14 @@ export function hashMemo(now = Date.now) {
  * opened file is the same regular file (inode, device, size) found inside the project, so a file or folder swapped
  * for a link after the walk is refused rather than followed. Null when it is not. @param {string} root
  * @param {Found} file @param {typeof realpath} [resolve] */
-async function openListed(root, file, resolve = realpath) {
-  const handle = await open(file.full, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)).catch(
-    (/** @type {NodeJS.ErrnoException} */ error) => {
-      if (error.code === "ELOOP" || error.code === "EMLINK") return null;
-      throw error;
-    },
-  );
+export async function openListed(root, file, resolve = realpath) {
+  const handle = await open(
+    file.full,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+  ).catch((/** @type {NodeJS.ErrnoException} */ error) => {
+    if (error.code === "ELOOP" || error.code === "EMLINK") return null;
+    throw error;
+  });
   if (!handle) return null;
   try {
     const opened = await handle.stat();
@@ -202,7 +284,12 @@ async function hashAll(root, files, memo) {
       else if (sha256 === null) problems.push({ path: file.path, problem: "changed" });
       else {
         memo.set(file, sha256);
-        hashed.push({ path: file.path, sha256, size: file.size });
+        hashed.push({
+          path: file.path,
+          sha256,
+          size: file.size,
+          ...(file.include_hidden && { include_hidden: true }),
+        });
       }
     }
   };
@@ -225,19 +312,37 @@ function inventoryProblems(files) {
 }
 
 /** Captures `root` (a project's real path). `memo` reuses hashes of unchanged files; a send should pass a fresh one.
- * @param {string} root @param {{ memo?: ReturnType<typeof hashMemo>, limits?: import("./types.js").Limits }} [options]
+ * @param {string} root @param {{ memo?: ReturnType<typeof hashMemo>, limits?: import("./types.js").Limits,
+ * ignoreSyntax?: import("../sourceIgnore.mjs").SourceIgnoreSyntax }} [options]
  * @returns {Promise<Capture>} */
-export async function captureProject(root, { memo = hashMemo(), limits = V1_LIMITS } = {}) {
-  const renderOutput = await readRenderOutputs(root);
-  const walk = await walkProject(root, renderOutput);
+export async function captureProject(
+  root,
+  { memo = hashMemo(), limits = V1_LIMITS, ignoreSyntax } = {},
+) {
+  root = await realpath(root);
+  const walk = await walkProject(
+    root,
+    await readRenderOutputs(root),
+    await readSourceIgnore(root, { syntax: ignoreSyntax }),
+  );
+  const references = await selectDependencies(root, walk);
   const problems = walk.problems.length ? walk.problems : inventoryProblems(walk.files);
   if (problems.length) return { at: "problems", problems };
   const over = overLimit(walk.files, manifestBytes(walk.files), limits);
   if (over) return { at: "too-big", over };
   const { hashed, problems: unhashed } = await hashAll(await realpath(root), walk.files, memo);
+  for (const file of hashed) {
+    const referenceHash = references.get(file.path);
+    if (referenceHash && file.sha256 !== referenceHash)
+      unhashed.push({ path: file.path, problem: "changed" });
+  }
   if (unhashed.length) return { at: "problems", problems: unhashed };
   try {
-    const manifest = parseManifest({ format_version: 1, entrypoint: ENTRYPOINT, files: hashed });
+    const manifest = parseManifest({
+      format_version: 1,
+      entrypoint: ENTRYPOINT,
+      files: hashed,
+    });
     const settled = await settledState(root);
     return {
       at: "captured",

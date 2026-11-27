@@ -1,9 +1,11 @@
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { studioFileRevision } from "../utils/studioFileVersion";
 import { logReload } from "../utils/reloadDebug";
+import { frameFactsChanged } from "./lib/frameFacts";
+import { afterStudioPendingEdits } from "../utils/studioPendingEdits";
 import { whileScriptWrites } from "./previewReloading";
 import { markScenesStaleIn } from "@hyperframes/core/runtime/scenes";
-import { previewFrameOpaque, previewRequest } from "./lib/previewChannel";
+import { notePreviewPromoted, previewFrameOpaque, previewRequest } from "./lib/previewChannel";
 
 type ApplySwap = (html: string, signal: AbortSignal) => Promise<void>;
 type SwapWindow = Window & {
@@ -16,6 +18,7 @@ export const SCENE_SWAP_MS = 5000;
 const PREVIEW_DOCUMENT_LOADED = "hf-preview-document-loaded";
 
 export function announcePreviewDocumentLoaded(iframe: HTMLIFrameElement): void {
+  frameFactsChanged("load");
   iframe.dispatchEvent(new Event(PREVIEW_DOCUMENT_LOADED));
 }
 
@@ -30,7 +33,11 @@ export function onPreviewDocumentLoaded(
 const RESTORED_IN_PLACE = "hf-preview-restored-in-place";
 
 export function announcePreviewRestoredInPlace(iframe: HTMLIFrameElement): void {
-  iframe.dispatchEvent(new Event(RESTORED_IN_PLACE));
+  const announce = () => {
+    frameFactsChanged("history");
+    iframe.dispatchEvent(new Event(RESTORED_IN_PLACE));
+  };
+  queueMicrotask(() => afterStudioPendingEdits(announce));
 }
 
 export function onPreviewRestoredInPlace(iframe: HTMLIFrameElement, onRestored: () => void) {
@@ -54,6 +61,8 @@ const PREVIEW_PROMOTED = "hf-preview-promoted";
 export type PreviewPromotion = { retired: HTMLIFrameElement | null; live: HTMLIFrameElement };
 
 export function announcePreviewPromoted(promotion: PreviewPromotion): void {
+  frameFactsChanged("load");
+  if (promotion.retired) notePreviewPromoted(promotion.retired, promotion.live);
   promotion.live.ownerDocument.dispatchEvent(
     new CustomEvent(PREVIEW_PROMOTED, { detail: promotion }),
   );
@@ -118,7 +127,14 @@ function reachableSwap(iframe: HTMLIFrameElement): ApplySwap | null {
   return typeof swap === "function" ? (html, signal) => swap.call(win, html, signal) : null;
 }
 
-function sealedSwap(iframe: HTMLIFrameElement): ApplySwap {
+const sceneSwapAnswers = new WeakMap<HTMLIFrameElement, boolean>();
+
+export function notePreviewSceneSwap(iframe: HTMLIFrameElement, sceneSwap: unknown): void {
+  if (typeof sceneSwap === "boolean") sceneSwapAnswers.set(iframe, sceneSwap);
+}
+
+function sealedSwap(iframe: HTMLIFrameElement): ApplySwap | null {
+  if (sceneSwapAnswers.get(iframe) === false) return null;
   return async (html) => {
     const reply: unknown = await previewRequest(
       iframe,
@@ -165,6 +181,7 @@ export function sceneSwapFor(
       clearTimeout(timer);
       cancel?.removeEventListener("abort", onCancel);
     }
+    frameFactsChanged("load");
     iframe.dispatchEvent(new Event(SCENES_SWAPPED));
   };
 }

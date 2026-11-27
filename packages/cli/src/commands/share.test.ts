@@ -1,14 +1,23 @@
 import { SourceIgnoreError, ReviewFailed } from "@hyperframes/share";
+import { referencedHiddenDigest } from "@hyperframes/share/projectSnapshot.mjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { consumeCommandResult } from "../utils/commandResult.js";
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   status: vi.fn(),
+  select: vi.fn(),
+  list: vi.fn(),
+  reconnect: vi.fn(),
   confirm: vi.fn(),
+  hiddenAssets: vi.fn(),
   received: null as null | "unchecked" | { path: string; listed: string[]; hashes: string[] },
   unattended: true,
   progress: undefined as undefined | ((value: { step: string; slow?: boolean } | null) => void),
+}));
+vi.mock("@hyperframes/share/projectSnapshot.mjs", async (original) => ({
+  ...(await original<typeof import("@hyperframes/share/projectSnapshot.mjs")>()),
+  listReferencedHiddenSourceAssets: mocks.hiddenAssets,
 }));
 vi.mock("../utils/project.js", () => ({ resolveProjectOrThrow: () => ({ dir: "/project" }) }));
 vi.mock("../utils/privateProjectFile.js", () => ({
@@ -20,14 +29,18 @@ vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
 }));
 vi.mock("../ui/prompts.js", () => ({
   confirm: mocks.confirm,
-  select: vi.fn(),
+  select: mocks.select,
   isCancel: (value: unknown) => typeof value === "symbol",
 }));
 vi.mock("../share/service.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../share/service.js")>()),
   createShareService: (_dir: string, progress: typeof mocks.progress) => {
     mocks.progress = progress;
-    return { run: mocks.run, status: mocks.status };
+    return {
+      run: mocks.run,
+      status: mocks.status,
+      reconnect: { list: mocks.list, confirm: mocks.reconnect },
+    };
   },
 }));
 import command from "./share.js";
@@ -36,6 +49,7 @@ beforeEach(() => {
   mocks.run.mockReset();
   mocks.status.mockReset();
   mocks.confirm.mockReset();
+  mocks.hiddenAssets.mockReset().mockResolvedValue([]);
   mocks.received = null;
   mocks.unattended = true;
   mocks.run.mockResolvedValue({
@@ -74,6 +88,33 @@ it("reports the failed attempt on stderr without calling the previous version re
   expect(err).toHaveBeenCalledWith("This video can't be shared.");
   expect(out).toHaveBeenCalledWith("Previous shared version: https://hyperframes.dev/r/previous");
   expect(out.mock.calls.flat().join(" ")).not.toContain("still processing");
+});
+it("escapes dynamic text for terminal output and preserves failure fields in JSON", async () => {
+  const raw = "detail" + String.fromCharCode(27, 13, 7, 155, 9, 10);
+  const shown = "detail\\x1b\\x0d\\x07\\x9b\\x09\\x0a";
+  const out = vi.spyOn(console, "log").mockImplementation(() => {});
+  const err = vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    source: {},
+    version: { failure: raw },
+    previousUrl: raw,
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(err).toHaveBeenCalledWith(shown);
+  expect(out).toHaveBeenCalledWith(`Previous shared version: ${shown}`);
+  await runCommand(command, { rawArgs: ["--status", "--json"] });
+  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0]))).toMatchObject({
+    error: { message: raw },
+    version: { failure: raw },
+    previousUrl: raw,
+  });
+  err.mockClear();
+  mocks.run.mockRejectedValue(new Error(raw));
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(err).toHaveBeenCalledWith(shown);
+  await runCommand(command, { rawArgs: ["--status", "--json"] });
+  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0])).error.message).toBe(raw);
 });
 it("still opens management when the latest export failed", async () => {
   const out = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -117,6 +158,33 @@ it("deduplicates progress and terminates each message before the friendly error"
     "Sharing: uploading\n",
   ]);
   expect(friendly).toHaveBeenCalledWith("Sharing blocked.");
+});
+
+// fails without the fix: the failure line reached the terminal with its control characters live.
+it("prints a failure's control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const friendly = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockRejectedValue(new Error(`Sharing blocked${esc}[2J.\nTry again`));
+  await runCommand(command, { rawArgs: ["--private", "-y"] });
+  expect(friendly).toHaveBeenLastCalledWith("Sharing blocked\\x1b[2J.\\x0aTry again");
+});
+
+// fails without the fix: a failed export's reason reached the terminal with its control characters live.
+it("prints a failed export's control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const friendly = vi.spyOn(console, "error").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    ready: false,
+    url: null,
+    previousUrl: null,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: { failure: `Export stopped${esc}]0;t${String.fromCharCode(7)}` },
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(friendly).toHaveBeenLastCalledWith("Export stopped\\x1b]0;t\\x07");
 });
 
 it.each(["owner@example.com", "another@example.com"])(
@@ -316,4 +384,130 @@ describe("a received folder whose record names an existing review", () => {
       expect.not.objectContaining({ confirmedReview: expect.anything() }),
     );
   });
+});
+
+// fails without the fix: the finished share's link reached the terminal with its control characters live.
+it("prints a ready share's link with control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "shared",
+    ready: true,
+    url: `https://hyperframes.dev/review/a${esc}[2J`,
+    previousUrl: null,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: {},
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(log).toHaveBeenLastCalledWith(
+    "Shared video ready: https://hyperframes.dev/review/a\\x1b[2J",
+  );
+});
+
+// fails without the fix: the earlier version's link reached the terminal with its control characters live.
+it("prints the earlier version's link with control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    ready: false,
+    url: null,
+    previousUrl: `https://hyperframes.dev/review/b${esc}[2J`,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: { failure: "Export stopped" },
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(log).toHaveBeenLastCalledWith(
+    "Previous shared version: https://hyperframes.dev/review/b\\x1b[2J",
+  );
+});
+
+it.each([false, true])(
+  "reports referenced hidden assets on stderr without another prompt (json=%s)",
+  async (json) => {
+    const paths = ["brand/.fonts/Inter.woff2", "assets/.images/lo\u200bgo.png"];
+    mocks.hiddenAssets.mockResolvedValue(paths);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, {
+      rawArgs: ["--public", "--include-source", ...(json ? ["--json"] : [])],
+    });
+    expect(err).toHaveBeenCalledWith(
+      [
+        "Editable source includes these referenced hidden assets",
+        '"brand/.fonts/Inter.woff2"',
+        '"assets/.images/lo\\u200bgo.png"',
+      ].join("\n"),
+    );
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.run).toHaveBeenCalledOnce();
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedReferencedHiddenDigest: referencedHiddenDigest(paths),
+      }),
+    );
+    expect(out.mock.calls.flat().join(" ")).not.toContain("Inter.woff2");
+  },
+);
+
+it("does not enumerate or report hidden source paths for video-only shares", async () => {
+  await runCommand(command, { rawArgs: ["--public", "--video-only", "--json"] });
+  expect(mocks.hiddenAssets).not.toHaveBeenCalled();
+});
+
+it("checks an empty hidden asset summary and skips sharing when discovery fails", async () => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  const rawArgs = ["--public", "--include-source", "--json"];
+  await runCommand(command, { rawArgs });
+  expect(mocks.run).toHaveBeenCalledWith(
+    expect.objectContaining({
+      expectedReferencedHiddenDigest: referencedHiddenDigest([]),
+    }),
+  );
+  mocks.run.mockClear();
+  mocks.hiddenAssets.mockRejectedValue(new Error("Could not verify the referenced assets."));
+  await runCommand(command, { rawArgs });
+  expect(mocks.run).not.toHaveBeenCalled();
+  expect(consumeCommandResult().exitCode).toBe(1);
+});
+
+it("requires interactive confirmation of the project and workspace before reconnecting", async () => {
+  const choice = {
+    token: "offer",
+    id: "project-1",
+    title: "Launch",
+    workspace: { id: "team-1", name: "Design" },
+  };
+  mocks.list.mockResolvedValue([choice]);
+  mocks.select.mockResolvedValue("offer");
+  mocks.unattended = false;
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  await runCommand(command, { rawArgs: ["--reconnect", "--yes"] });
+  expect(mocks.list).not.toHaveBeenCalled();
+  mocks.confirm.mockResolvedValue(false);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.confirm.mock.calls.at(-1)?.[0].message).toMatch(/Launch.*project-1.*Design.*team-1/);
+  expect(mocks.reconnect).not.toHaveBeenCalled();
+  mocks.confirm.mockResolvedValue(true);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect).toHaveBeenCalledWith("offer");
+  mocks.reconnect.mockClear().mockResolvedValueOnce({ confirmLocalFiles: "reviewed-difference" });
+  mocks.confirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect.mock.calls).toEqual([["offer"]]);
+  expect(mocks.confirm.mock.calls.at(-1)?.[0]).toMatchObject({
+    initialValue: false,
+    message: expect.stringContaining("may undo cloud edits"),
+  });
+  mocks.reconnect
+    .mockClear()
+    .mockResolvedValueOnce({ confirmLocalFiles: "reviewed-difference" })
+    .mockResolvedValueOnce(null);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect.mock.calls).toEqual([["offer"], ["reviewed-difference"]]);
+  expect(mocks.run).not.toHaveBeenCalled();
 });

@@ -80,6 +80,7 @@ interface WebGlProbeInfo {
   hasWebGL: boolean;
   vendor: string;
   renderer: string;
+  driver?: string;
 }
 
 export const SOFTWARE_WEBGL_RENDERER_TOKENS: readonly string[] = [
@@ -146,8 +147,13 @@ async function probeHardwareWebGlInfo(
         ? options.probeLifecycle.launch(ppt, launchOptions)
         : ppt.launch(launchOptions);
     });
+    absorbBrowserPipeErrors(probeBrowser);
+    const browser = probeBrowser;
     return await rejectAfter(
-      readWebGlInfo(probeBrowser),
+      readWebGlInfo(browser).then(async (info) => ({
+        ...info,
+        driver: await readGpuDriver(browser),
+      })),
       GPU_PROBE_TIMEOUT_MS,
       `GPU probe page did not answer within ${GPU_PROBE_TIMEOUT_MS}ms`,
     );
@@ -187,6 +193,18 @@ async function readWebGlInfo(browser: Browser): Promise<WebGlProbeInfo> {
       renderer: renderer == null ? "" : String(renderer),
     };
   });
+}
+
+async function readGpuDriver(browser: Browser): Promise<string> {
+  try {
+    const cdp = await browser.target().createCDPSession();
+    const { gpu } = await cdp.send("SystemInfo.getInfo");
+    const device = gpu.devices[0];
+    return device ? `${device.driverVendor} ${device.driverVersion}`.trim() : "";
+  } catch {
+    // expected: a Chrome build without SystemInfo; the GPU's name still identifies it
+    return "";
+  }
 }
 
 export type AcquiredBrowser = BrowserLease;
@@ -548,6 +566,7 @@ interface GpuProbeOutcome {
   wslAccess?: string[];
   /** Under WSL, Chrome reached the GPU only without WSLg's WAYLAND_DISPLAY. */
   withoutWaylandDisplay?: boolean;
+  gpu?: string;
 }
 
 /**
@@ -617,7 +636,7 @@ async function probeAutoBrowserGpuMode(options: GpuProbeOptions): Promise<GpuPro
   if (detectWsl(options.wslHost) && process.env.WAYLAND_DISPLAY !== undefined) {
     const env = envWithoutWaylandDisplay();
     const retried = await probeWebGlMode(ppt, options, env, "without WAYLAND_DISPLAY: ");
-    if (retried.mode === "hardware") return { mode: "hardware", withoutWaylandDisplay: true };
+    if (retried.mode === "hardware") return { ...retried, withoutWaylandDisplay: true };
   }
   return { ...probed, ...wslAccess(options) };
 }
@@ -641,7 +660,9 @@ async function probeWebGlMode(
     });
     const resolved = resolveWebGlProbeMode(info);
     logResolvedBrowserGpuMode(resolved, label + describeWebGlProbe(info));
-    return resolved === "hardware" ? { mode: "hardware" } : { mode: "software", cause: "no-gpu" };
+    return resolved === "hardware"
+      ? { mode: "hardware", gpu: [info.renderer, info.driver].filter(Boolean).join(" | ") }
+      : { mode: "software", cause: "no-gpu" };
   } catch (err) {
     logResolvedBrowserGpuMode("software", label + formatProbeFailure(err));
     const aborted = err instanceof Error && err.name === "AbortError";
@@ -670,6 +691,11 @@ function launchEnv(fingerprint: Readonly<BrowserLaunchFingerprint>): NodeJS.Proc
   );
   if (swiftShader) for (const name of VULKAN_VARS_THAT_OVERRIDE_SWIFTSHADER) delete env[name];
   return env;
+}
+
+export async function probedHardwareGpu(): Promise<string | undefined> {
+  const outcome = await _autoBrowserGpuModeCache;
+  return outcome?.mode === "hardware" ? outcome.gpu || undefined : undefined;
 }
 
 /** True when a `resolvedMode` render must launch without WAYLAND_DISPLAY to reach the GPU. */
@@ -834,7 +860,7 @@ function logResolvedBrowserGpuMode(resolved: "hardware" | "software", reason: st
 
 type BrowserLaunchConfig = Partial<
   Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot">
-> & { withoutWaylandDisplay?: boolean; pageServerUrl?: string };
+> & { withoutWaylandDisplay?: boolean; pageServerUrl?: string; signal?: AbortSignal };
 
 function createBrowserLaunchFingerprint(
   chromeArgs: string[],
@@ -885,7 +911,11 @@ export async function acquireBrowser(
   config?: BrowserLaunchConfig & Partial<Pick<EngineConfig, "enableBrowserPool">>,
 ): Promise<AcquiredBrowser> {
   const enablePool = config?.enableBrowserPool ?? DEFAULT_CONFIG.enableBrowserPool;
-  return browserLeasePool.acquire(createBrowserLaunchFingerprint(chromeArgs, config), enablePool);
+  return browserLeasePool.acquire(
+    createBrowserLaunchFingerprint(chromeArgs, config),
+    enablePool,
+    config?.signal,
+  );
 }
 
 /** An agent's macOS seatbelt allows one launch shape only: Chrome in one process over a pipe. */
@@ -922,8 +952,15 @@ async function publicOnlyNetwork(pageServerHost: string | undefined) {
 // fallow-ignore-next-line complexity
 async function launchBrowser(
   fingerprint: Readonly<BrowserLaunchFingerprint>,
+  signal?: AbortSignal,
 ): Promise<{ browser: Browser; captureMode: CaptureMode }> {
+  const throwIfAborted = () => {
+    if (!signal?.aborted) return;
+    throw signal.reason instanceof Error ? signal.reason : new Error("Browser launch aborted");
+  };
+  throwIfAborted();
   const ppt = await getPuppeteerCore();
+  throwIfAborted();
   const env = launchEnv(fingerprint);
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
@@ -932,8 +969,10 @@ async function launchBrowser(
     : undefined;
   const browserArgs = network ? [...fingerprint.args, ...network.args] : fingerprint.args;
   const launch = (args: readonly string[]) => {
+    throwIfAborted();
     let attempted = args;
     return launchWithChromeSandboxFallback(args, (launchArgs) => {
+      throwIfAborted();
       attempted = launchArgs;
       return launchInsideSandbox(ppt, {
         ...ownedLaunchOptions(),
@@ -945,18 +984,27 @@ async function launchBrowser(
         env,
         timeout: fingerprint.browserTimeoutMs,
         protocolTimeout: fingerprint.protocolTimeoutMs,
+        signal,
       });
-    }).catch(async (error: unknown) => {
-      const remediation =
-        process.platform === "darwin" &&
-        sandboxDeniedRemediation(error instanceof Error ? error.message : "");
-      if (remediation) throw new Error(remediation, { cause: error });
-      const defaults = await ppt.defaultArgs({
-        headless: true,
-        args: withHyperframesBrowserMarker(attempted),
+    })
+      .then((launched) => {
+        absorbBrowserPipeErrors(launched);
+        return launched;
+      })
+      .catch(async (error: unknown) => {
+        throwIfAborted();
+        const remediation =
+          process.platform === "darwin" &&
+          sandboxDeniedRemediation(error instanceof Error ? error.message : "");
+        if (remediation) throw new Error(remediation, { cause: error });
+        const defaults = await ppt.defaultArgs({
+          headless: true,
+          args: withHyperframesBrowserMarker(attempted),
+        });
+        throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults, {
+          env,
+        });
       });
-      throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults, { env });
-    });
   };
   const probe = (target: Browser, timeoutMs?: number) =>
     probeBeginFrameSupport(target, timeoutMs).catch((error) => ({
@@ -966,9 +1014,12 @@ async function launchBrowser(
       timedOut: false,
     }));
   try {
+    throwIfAborted();
     browser = await launch(browserArgs);
+    throwIfAborted();
 
     const browserVersion = await browser.version().catch(() => "unknown");
+    throwIfAborted();
     const gpuFlags = fingerprint.args.filter(
       (a) => a.startsWith("--use-gl=") || a.startsWith("--use-angle="),
     );
@@ -979,6 +1030,7 @@ async function launchBrowser(
 
     if (captureMode === "beginframe") {
       let result = await probe(browser);
+      throwIfAborted();
       if (!result.supported && result.timedOut) {
         console.warn(
           `[BrowserManager] HeadlessExperimental.beginFrame probe timed out after ${result.durationMs}ms: ` +
@@ -987,6 +1039,7 @@ async function launchBrowser(
         await closeBrowserAfterFailedProbe(browser);
         browser = await launch(browserArgs);
         result = await probe(browser, BEGINFRAME_PROBE_RETRY_TIMEOUT_MS);
+        throwIfAborted();
       }
       if (!result.supported) {
         await closeBrowserAfterFailedProbe(browser);
@@ -1000,6 +1053,7 @@ async function launchBrowser(
       }
     }
 
+    throwIfAborted();
     if (network) browser.once("disconnected", () => void network.close());
     return { browser, captureMode };
   } catch (error) {
@@ -1009,17 +1063,34 @@ async function launchBrowser(
   }
 }
 
+const guardedBrowserPipes = new WeakSet<NodeJS.EventEmitter>();
+
+// Puppeteer's PipeTransport.close() drops its pipe error listener; absorb late EPIPE/ECONNRESET on dying browsers.
+export function absorbBrowserPipeErrors(browser: Browser): void {
+  const proc = (
+    browser as unknown as {
+      process?: () => {
+        stdio?: ReadonlyArray<NodeJS.EventEmitter | null | undefined>;
+      } | null;
+    }
+  ).process?.();
+  for (const stream of proc?.stdio ?? []) {
+    if (!stream || guardedBrowserPipes.has(stream)) continue;
+    guardedBrowserPipes.add(stream);
+    stream.on("error", () => {});
+  }
+}
+
 function forceCloseBrowserProcess(browser: Browser): void {
+  absorbBrowserPipeErrors(browser);
   const proc = (
     browser as unknown as {
       process?: () => {
         kill: (signal?: NodeJS.Signals) => boolean;
         killed?: boolean;
-        stdio?: ReadonlyArray<NodeJS.EventEmitter | null | undefined>;
       } | null;
     }
   ).process?.();
-  for (const stream of proc?.stdio ?? []) stream?.on("error", () => {});
   if (proc && !proc.killed) {
     try {
       proc.kill("SIGKILL");

@@ -4401,3 +4401,59 @@ describe("bundleToSingleHtml with an SVG element named template", () => {
     }
   });
 });
+
+describe("bundleToSingleHtml composition file marks", () => {
+  it("serves only the data-composition-file marks it stamps, never one a file authored", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <p id="top" data-composition-file="compositions/other.html">Top</p>
+    <div id="scene-host" data-composition-id="scene" data-composition-src="compositions/scene.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <h1 id="claim" data-composition-file="index.html">Scene</h1>
+    <section id="wrap" data-composition-file="compositions/other.html"><b id="deep">deep</b></section>
+    <i id="shout" DATA-Composition-File="index.html">shout</i>
+  </div>
+</template>`,
+      "compositions/other.html": `<div data-composition-id="other"></div>`,
+    });
+
+    const { document } = parseHTML(await bundleToSingleHtml(dir));
+    const fileOf = (id: string) =>
+      document
+        .getElementById(id)
+        ?.closest("[data-composition-file]")
+        ?.getAttribute("data-composition-file") ?? null;
+
+    expect(fileOf("top")).toBeNull();
+    expect(fileOf("claim")).toBe("compositions/scene.html");
+    expect(fileOf("deep")).toBe("compositions/scene.html");
+    expect(document.getElementById("shout")?.getAttributeNames()).toEqual(["id"]);
+    expect(document.querySelectorAll("[data-composition-file]")).toHaveLength(1);
+  });
+
+  it("drops a mark authored inside a template, in the entry page or an inlined sub-composition", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <template id="tpl"><p id="intpl" data-composition-file="compositions/tpl.html">x</p>
+      <template><b data-composition-file="compositions/tpl.html">y</b></template></template>
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html"
+      data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      "compositions/scene.html": `<template id="scene-template">
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <template id="later"><i data-composition-file="compositions/tpl.html">z</i></template>
+  </div>
+</template>`,
+    });
+
+    const html = await bundleToSingleHtml(dir);
+    expect(html.match(/data-composition-file="compositions\/tpl[^"]*"/gi)).toBeNull();
+  });
+});

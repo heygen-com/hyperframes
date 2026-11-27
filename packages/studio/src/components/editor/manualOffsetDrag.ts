@@ -21,7 +21,12 @@ import {
 } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
-import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
+import { drawPreviewDraft, endPreviewDraft, frameDraftTranslate } from "./previewDrafts";
+import {
+  armDraftEndOnRelease,
+  endDraftKeepingWhatTheSaveWrites,
+  settleDraftTranslate,
+} from "./manualOffsetDraftEnd";
 import type { PreviewGestureStart } from "./previewGestureStartRead";
 
 interface OffsetDragGsap {
@@ -90,6 +95,10 @@ export interface ManualOffsetDragMember {
   initialOffset: { x: number; y: number };
   /** The move writes the element's own inline `translate`; offsets are then absolute translate px. */
   plainTranslate: boolean;
+  gsapOwnsPosition: boolean;
+  frameDraftRoute?: "gsap";
+  committedOnFrame?: { x: number; y: number; route?: "gsap" };
+  sizeSavedAsScale?: boolean;
   /**
    * The element's GSAP x/y at gesture start, captured in JS so a mid-drag
    * re-render (which reverts inline style + wipes the `data-hf-drag-gsap-base-*`
@@ -331,7 +340,7 @@ export function createManualOffsetDragMember(input: {
 }): ManualOffsetDragMemberResult {
   const { start, gesture } = input;
   const plainTranslate = start
-    ? !start.gsap
+    ? !start.gsap && (gesture !== "resize" || editsPlainCss(input.element, "resize"))
     : !!gesture && editsPlainCss(input.element, gesture === "resize" ? "resize" : "move");
   // The APPLIED offset, never a dormant var, so a stale one can't fling the element off-screen.
   const initialOffset = plainTranslate
@@ -348,8 +357,11 @@ export function createManualOffsetDragMember(input: {
   // getProperty makes GSAP bake the CSS translate into its transform, so a plain move never reads it.
   const gsapX = (!plainTranslate && win?.gsap?.getProperty?.(input.element, "x")) || 0;
   const gsapY = (!plainTranslate && win?.gsap?.getProperty?.(input.element, "y")) || 0;
-  const baseGsap = start?.gsap ? { x: start.gsap.x, y: start.gsap.y } : { x: gsapX, y: gsapY };
+  const atPress = start ? (start.gsap ?? start.gsapAt) : undefined;
+  const baseGsap = atPress ? { x: atPress.x, y: atPress.y } : { x: gsapX, y: gsapY };
   const moving = start?.gsap?.moving === true;
+  const gsapOwnsPosition = !plainTranslate && Boolean(start ?? getOffsetDragGsap(input.element));
+  const frameDraftRoute = gsapOwnsPosition && start?.gsap?.drawsTranslate ? "gsap" : undefined;
   if (!plainTranslate) stampGestureBase(input.element, initialOffset, baseGsap, moving);
 
   if (win?.__timelines) {
@@ -395,6 +407,8 @@ export function createManualOffsetDragMember(input: {
         element: input.element,
         initialOffset,
         plainTranslate,
+        gsapOwnsPosition,
+        ...(frameDraftRoute && { frameDraftRoute }),
         baseGsap,
         ...(moving && { moving }),
         initialPathOffset,
@@ -413,6 +427,8 @@ export function createManualOffsetDragMember(input: {
       element: input.element,
       initialOffset,
       plainTranslate,
+      gsapOwnsPosition,
+      ...(frameDraftRoute && { frameDraftRoute }),
       baseGsap,
       ...(moving && { moving }),
       initialPathOffset,
@@ -442,8 +458,9 @@ function drawMemberOffset(
   offset: { x: number; y: number },
   commit: boolean,
 ): void {
-  const { x, y } = member.initialOffset;
-  drawPreviewDraft(member.element, { translate: { x: offset.x - x, y: offset.y - y } });
+  const translate = frameDraftTranslate(member, offset);
+  drawPreviewDraft(member.element, { translate });
+  if (commit) member.committedOnFrame = translate;
   if (member.plainTranslate) writeTranslatePx(member.element, offset);
   else if (applyOffsetDragDraftViaGsap(member.element, offset, member.baseGsap)) return;
   else if (commit) applyStudioPathOffset(member.element, offset);
@@ -475,7 +492,12 @@ export function applyManualOffsetDragCommit(
   dx: number,
   dy: number,
 ): { x: number; y: number } {
-  return applyManualOffsetCommitValue(member, resolveManualOffsetDragMemberOffset(member, dx, dy));
+  const offset = applyManualOffsetCommitValue(
+    member,
+    resolveManualOffsetDragMemberOffset(member, dx, dy),
+  );
+  armDraftEndOnRelease(member);
+  return offset;
 }
 
 /**
@@ -523,24 +545,12 @@ export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]
   }
 }
 
-// Drop the draft's `translate: none` so the soft reload starts clean (#1673). When GSAP owns
-// the position it folded any translate into its transform, so one still showing applies twice.
-function settleDraftTranslate(element: HTMLElement, gsapOwnsPosition: boolean): void {
-  if (element.style.getPropertyValue("translate") === "none") {
-    element.style.removeProperty("translate");
-  }
-  if (!gsapOwnsPosition) return;
-  const view = element.ownerDocument.defaultView;
-  const underneath = view?.getComputedStyle(element).getPropertyValue("translate");
-  if (underneath && underneath !== "none") element.style.setProperty("translate", "none");
-}
-
-/** Teardown after a COMMITTED drag. */
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
-    if (!isStudioManualEditGestureCurrent(member.element, member.gestureToken)) continue;
+    const current = isStudioManualEditGestureCurrent(member.element, member.gestureToken);
     endStudioManualEditGesture(member.element, member.gestureToken);
-    endPreviewDraft(member.element, "keep");
+    if (!current) continue;
+    endDraftKeepingWhatTheSaveWrites(member);
     member.element.removeAttribute("data-hf-drag-initial-offset-x");
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");
@@ -548,7 +558,7 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
     member.element.removeAttribute(DRAG_MOVING_ATTR);
     // Do NOT clearProps:"transform" — that nukes the committed GSAP position
     // and causes a visual snap-back before the soft reload re-applies it.
-    const gsapOwnsPosition = !member.plainTranslate && Boolean(getOffsetDragGsap(member.element));
+    const { gsapOwnsPosition } = member;
     // Migration: when GSAP owns the position (the committed value lives in the
     // GSAP transform), the legacy `--hf-studio-offset` CSS channel is obsolete.
     // Clear it on the LIVE element — otherwise the leftover `translate:

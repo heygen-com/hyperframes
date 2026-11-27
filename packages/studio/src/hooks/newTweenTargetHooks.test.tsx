@@ -25,7 +25,7 @@ const frozenSamples = [
 
 vi.mock("./useGestureRecording", () => ({
   useGestureRecording: () => ({
-    startRecording: vi.fn(),
+    startRecording: vi.fn(() => true),
     stopRecording: () => frozenSamples,
     clearSamples: vi.fn(),
     samples: frozenSamples,

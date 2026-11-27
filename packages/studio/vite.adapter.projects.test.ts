@@ -69,6 +69,7 @@ describe("Studio's dev server keeps each project's history", () => {
     mkdirSync(join(data, "demo"));
     writeFileSync(join(data, "demo", "index.html"), "A");
     const old = await adapter.history!(adapter.resolveProject("demo")!);
+    await old?.flush();
     renameSync(join(data, "demo"), join(data, "demo-moved"));
     mkdirSync(join(data, "demo"));
     writeFileSync(join(data, "demo", "index.html"), "new");
@@ -87,7 +88,10 @@ describe("Studio's dev server retries a history whose folder changed while it op
     const root = mkdtempSync(join(tmpdir(), "hf-project-history-retry-"));
     roots.push(root);
     mkdirSync(join(root, "demo"));
-    const history = { replacedAtPath: () => false } as unknown as ProjectHistory;
+    const history = {
+      replacedAtPath: () => false,
+      replacedNow: async () => false,
+    } as unknown as ProjectHistory;
     const openHistory = vi
       .fn()
       .mockRejectedValueOnce(
@@ -113,7 +117,12 @@ describe("Studio's dev server closes the histories it opened when it stops", () 
     const httpServer = new EventEmitter();
     const close = vi.fn(async () => {});
     const openHistory = vi.fn(
-      async () => ({ close, replacedAtPath: () => false }) as unknown as ProjectHistory,
+      async () =>
+        ({
+          close,
+          replacedAtPath: () => false,
+          replacedNow: async () => false,
+        }) as unknown as ProjectHistory,
     );
     const adapter = createViteAdapter(
       root,
