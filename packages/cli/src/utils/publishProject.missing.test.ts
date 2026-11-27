@@ -106,3 +106,30 @@ describe("a file a page names that the folder lacks", () => {
     },
   );
 });
+
+describe("a file named with a percent escape", () => {
+  // fails without the fix: a page beside the root looked the root up by the escaped name, not "My Video.mp4"
+  it("is staged from the project root when a composition escapes the space in its name", () => {
+    const staged = stage({
+      "compositions/intro.html": `<video src="assets/My%20Video.mp4"></video>`,
+      "assets/My Video.mp4": "mp4",
+    })();
+    expect(staged.has("assets/My Video.mp4")).toBe(true);
+  });
+
+  // fails without the fix: the decoded spelling threw "not in the project folder" before the name as written was tried
+  it("is staged when the file's own name holds the escape and the page names it as written", () => {
+    const staged = stage({
+      "compositions/intro.html": `<video src="clips/My%20Video.mp4"></video>`,
+      "compositions/clips/My%20Video.mp4": "mp4",
+    })();
+    expect(staged.has("compositions/clips/My%20Video.mp4")).toBe(true);
+  });
+
+  it("is still refused when neither spelling is on disk", () => {
+    const staged = stage({
+      "compositions/intro.html": `<video src="clips/My%20Video.mp4"></video>`,
+    });
+    expect(staged).toThrow(refusal("clips/My%20Video.mp4"));
+  });
+});

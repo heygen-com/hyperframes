@@ -589,8 +589,8 @@ function includeReferencedProjectFile(
   requireOnDisk: boolean,
   entryPath: string,
 ): void {
-  const fromRoot = resolve(ctx.absProjectDir, rawPath);
-  for (const candidate of [resolvedPath, fromRoot]) {
+  const fromRoot = decodeUrlPathVariants(rawPath).map((name) => resolve(ctx.absProjectDir, name));
+  for (const candidate of [resolvedPath, ...fromRoot]) {
     const absPath = candidate.replace(/[?#].*$/, "");
     if (!isPathInside(absPath, ctx.absProjectDir)) continue;
     const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
@@ -759,7 +759,14 @@ function tryResolveExternal(
   const filesystemPath = isAbsolute(rawPath) && !rawPath.startsWith("//");
   if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
   const [path, suffix] = filesystemPath ? splitPathSuffix(rawPath) : [rawPath, ""];
-  for (const variant of decodeUrlPathVariants(path)) {
+  // A project file ends the search with the first spelling tried, so the one on disk goes first. Only the project
+  // folder is looked at: an outside path may be another computer's share.
+  const onDisk = (variant: string) => {
+    const absPath = resolve(referrerAbsDir, variant);
+    return Number(isPathInside(absPath, ctx.absProjectDir) && existsSync(absPath));
+  };
+  const variants = decodeUrlPathVariants(path).sort((a, b) => onDisk(b) - onDisk(a));
+  for (const variant of variants) {
     const target = archiveTargetOf(ctx, resolve(referrerAbsDir, variant), rawPath, {
       entryPath,
       requireOnDisk,
