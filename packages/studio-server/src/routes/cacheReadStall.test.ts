@@ -1,11 +1,13 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { Hono } from "hono";
 import { afterEach, expect, it, vi } from "vitest";
 import { buildWaveformCacheKey } from "../helpers/waveform.js";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore.js";
+import { fastIndexPath, writeCopyIndex } from "../helpers/proxyCacheKey.js";
+import { getProxyCachePath } from "../helpers/proxyTranscoder.js";
 import { registerWaveformRoutes } from "./waveform";
 import { stubAdapter } from "./stubAdapter.test-helpers";
 
@@ -31,6 +33,9 @@ vi.mock("node:fs", async (importOriginal) => {
     openSync: slowed(actual.openSync),
     readFileSync: slowed(actual.readFileSync),
     lstatSync: slowed(actual.lstatSync),
+    realpathSync: Object.assign(slowed(actual.realpathSync), {
+      native: slowed(actual.realpathSync.native),
+    }),
     statSync: slowed(actual.statSync),
     existsSync: slowed(actual.existsSync),
     utimesSync: slowed(actual.utimesSync),
@@ -53,6 +58,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     open: slowed(actual.open),
     readFile: slowed(actual.readFile),
     lstat: slowed(actual.lstat),
+    realpath: slowed(actual.realpath),
     stat: slowed(actual.stat),
     utimes: slowed(actual.utimes),
   };
@@ -108,5 +114,25 @@ it("reading a kept preview document keeps the thread running while each read wai
   });
   expect(html).toBe("<html>kept</html>");
   expect(stalls).toBeGreaterThanOrEqual(2);
+  expect(held).toBe(0);
+});
+
+// fails without the fix: finding a video's preview copy (its folder's real path, the copy, the index naming an earlier
+// copy of the same bytes) ran sync calls inside the preview request.
+it("finding a video's preview copy keeps the thread running while each read waits on the disk", async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "hf-cache-stall-")));
+  roots.push(dir);
+  writeFileSync(join(dir, "clip.mp4"), "video");
+  const fresh = await getProxyCachePath(dir, join(dir, "clip.mp4"));
+  mkdirSync(dirname(fresh), { recursive: true });
+  const earlier = join(dirname(fresh), `${"a".repeat(64)}.mp4`);
+  writeFileSync(earlier, "copy");
+  writeCopyIndex(fastIndexPath(fresh), earlier);
+  let found: unknown;
+  const { stalls, held } = await pingedThroughStalls(dir, async () => {
+    found = await getProxyCachePath(dir, join(dir, "clip.mp4"));
+  });
+  expect(found).toBe(earlier);
+  expect(stalls).toBeGreaterThanOrEqual(3);
   expect(held).toBe(0);
 });

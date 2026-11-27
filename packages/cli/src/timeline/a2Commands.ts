@@ -6,7 +6,7 @@ import {
 } from "@hyperframes/studio-server";
 import {
   pinWritableWithinProject,
-  readProjectCacheFile,
+  readProjectCacheFileAsync,
 } from "@hyperframes/studio-server/safe-path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readJsonFileText, readJsonStdinText } from "../utils/jsonFlag.js";
@@ -361,8 +361,8 @@ function undoBackup(projectDir: string, backupPath: string): string {
   return join(projectDir, folder, journal, name);
 }
 
-function readUndoBackup(projectDir: string, backup: string): string {
-  const bytes = readProjectCacheFile(projectDir, backup, Number.POSITIVE_INFINITY);
+async function readUndoBackup(projectDir: string, backup: string): Promise<string> {
+  const bytes = await readProjectCacheFileAsync(projectDir, backup, Number.POSITIVE_INFINITY);
   if (bytes) return bytes.toString("utf-8");
   lstatSync(backup);
   throw new UndoPathRefused(
@@ -412,13 +412,15 @@ export async function runUndo(args: Record<string, unknown>): Promise<void> {
       target: undoTarget(project.dir, receipt.file),
       backup: undoBackup(project.dir, receipt.backupPath),
     }));
-    const inputs = paths.map(({ receipt, target, backup }) => ({
-      sourceFile: receipt.file,
-      absPath: target,
-      before: readFileSync(target, "utf-8"),
-      after: readUndoBackup(project.dir, backup),
-      expectedVersion: receipt.version,
-    }));
+    const inputs = [];
+    for (const { receipt, target, backup } of paths)
+      inputs.push({
+        sourceFile: receipt.file,
+        absPath: target,
+        before: readFileSync(target, "utf-8"),
+        after: await readUndoBackup(project.dir, backup),
+        expectedVersion: receipt.version,
+      });
     receipts = applyFileMutations(project.dir, inputs);
   } catch (error) {
     return refuseUndoError(error, project.dir, json);

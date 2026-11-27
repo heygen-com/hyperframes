@@ -1088,7 +1088,7 @@ export function registerPreviewRoutes(
         // A cached copy settles before any timer; a transcode never holds one of
         // the browser's few connections to this host. 202 until the copy lands.
         if (c.req.query(PREVIEW_PROXY_RETRY_PARAM) !== undefined) {
-          retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
+          await retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
         }
         const asked = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER);
         const urgency = asked === "0" ? { background: true } : { priority: asked === "1" };
@@ -1098,7 +1098,7 @@ export function registerPreviewRoutes(
         );
       } catch (err) {
         if (err instanceof ProxyWaitTimeoutError) {
-          const progress = proxyCopyProgress(project.dir, file, proxyVariant, proxyBox);
+          const progress = await proxyCopyProgress(project.dir, file, proxyVariant, proxyBox);
           return c.text("media proxy is being made", 202, {
             "Retry-After": progress === undefined ? String(PROXY_PENDING_RETRY_AFTER_SECONDS) : "1",
             "Cache-Control": "no-store",

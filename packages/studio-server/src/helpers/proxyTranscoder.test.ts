@@ -2563,7 +2563,7 @@ describe("resolveStill", () => {
       const old = join(
         projectDir,
         CACHE_DIR_NAME,
-        `${fastCopyKey(realpathSync(clip), PROXY_PARAMS_VERSION, "still@1", undefined)}.jpg`,
+        `${await fastCopyKey(realpathSync(clip), PROXY_PARAMS_VERSION, "still@1", undefined)}.jpg`,
       );
       writeFileSync(old, readFileSync(await resolveStill(projectDir, clip, 1)));
 
