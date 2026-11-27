@@ -11,7 +11,7 @@ let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
 afterEach(async () => {
   await reader?.cancel();
-  if (server) cleanupStudioServerRoot(server, root);
+  if (server) await cleanupStudioServerRoot(server, root);
 });
 
 it.runIf(process.platform === "linux")(
