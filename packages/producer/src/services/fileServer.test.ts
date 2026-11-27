@@ -1140,6 +1140,123 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
     expect(child.__hfReal).toBeInstanceOf(FakeTimeline);
     expect(child.__hfReal.parent).toBe(parent.__hfReal);
   });
+
+  // fails without the fix: wrapTimeline attached timeScale/kill/getChildren/etc. unconditionally,
+  // defeating runtime typeof guards and throwing TypeError on custom timelines that omit them.
+  it("does not fabricate timeline methods absent from the underlying timeline", () => {
+    const queued: unknown[][] = [];
+    let seekedTo = -1;
+    const minimal = {
+      to: (...args: unknown[]) => {
+        queued.push(args);
+        return minimal;
+      },
+      duration: () => 5,
+      seek: (t: number) => {
+        seekedTo = t;
+        return minimal;
+      },
+    };
+    const gsap = { timeline: () => minimal };
+    const win: Record<string, unknown> = {
+      __HF_VIRTUAL_TIME__: { originalRequestAnimationFrame: () => 0, originalSetTimeout: () => {} },
+    };
+    new Function("window", HF_EARLY_STUB)(win);
+    win.gsap = gsap;
+
+    const tl = gsap.timeline() as unknown as Record<string, unknown>;
+    expect(typeof tl.timeScale).toBe("undefined");
+    expect(typeof tl.kill).toBe("undefined");
+    expect(typeof tl.getChildren).toBe("undefined");
+    expect(typeof tl.paused).toBe("undefined");
+    expect(typeof tl.play).toBe("undefined");
+    expect(typeof tl.pause).toBe("undefined");
+    expect(typeof tl.from).toBe("undefined");
+
+    // Runtime feature guards must safely skip absent methods instead of crashing.
+    if (typeof tl.timeScale === "function") (tl.timeScale as (v: number) => unknown)(1);
+    if (typeof tl.kill === "function") (tl.kill as () => unknown)();
+
+    // Present methods still batch, flush and delegate.
+    expect((tl.to as (...a: unknown[]) => unknown)("#a", { x: 10 })).toBe(tl);
+    expect(queued).toHaveLength(0);
+    expect((tl.duration as () => number)()).toBe(5);
+    expect(queued).toHaveLength(1);
+    expect((tl.seek as (t: number) => unknown)(2.5)).toBe(tl);
+    expect(seekedTo).toBe(2.5);
+  });
+
+  it("returns non-object timeline values untouched without crashing wrapTimeline", () => {
+    const gsap = { timeline: () => null as unknown };
+    const win: Record<string, unknown> = {
+      __HF_VIRTUAL_TIME__: { originalRequestAnimationFrame: () => 0, originalSetTimeout: () => {} },
+    };
+    new Function("window", HF_EARLY_STUB)(win);
+    win.gsap = gsap;
+
+    expect(gsap.timeline()).toBeNull();
+  });
+
+  it("still delegates timeScale, kill, and non-array getChildren when the real timeline defines them", () => {
+    const calls: string[] = [];
+    class ClassTimeline {
+      private _scale = 1;
+      private _t = 0;
+      to() {
+        calls.push("to");
+        return this;
+      }
+      pause() {
+        calls.push("pause");
+        return this;
+      }
+      time(v?: number) {
+        if (v !== undefined) {
+          this._t = v;
+          return this;
+        }
+        return this._t;
+      }
+      timeScale(v?: number) {
+        if (v !== undefined) {
+          this._scale = v;
+          calls.push(`timeScale:${v}`);
+          return this;
+        }
+        return this._scale;
+      }
+      getChildren() {
+        return "not-an-array" as unknown as unknown[];
+      }
+      kill() {
+        calls.push(`kill:${this._scale}`);
+      }
+    }
+    const gsap = { timeline: () => new ClassTimeline() };
+    const win: Record<string, unknown> = {
+      __HF_VIRTUAL_TIME__: { originalRequestAnimationFrame: () => 0, originalSetTimeout: () => {} },
+    };
+    new Function("window", HF_EARLY_STUB)(win);
+    win.gsap = gsap;
+
+    const tl = gsap.timeline() as unknown as {
+      to: (...a: unknown[]) => unknown;
+      pause: () => unknown;
+      time: (v?: number) => unknown;
+      timeScale: (v?: number) => unknown;
+      getChildren: () => unknown[];
+      kill: () => void;
+    };
+    tl.to("#x", { opacity: 1 });
+    expect(tl.pause()).toBe(tl);
+    expect(tl.time(1.5)).toBe(tl);
+    expect(tl.time()).toBe(1.5);
+    expect(tl.timeScale(2)).toBe(tl);
+    expect(tl.timeScale()).toBe(2);
+    expect(tl.getChildren()).toEqual([]);
+    tl.kill();
+    expect(calls).toEqual(["to", "pause", "timeScale:2", "kill:2"]);
+  });
 });
 
 describe("createFileServer colour-tagged PNGs", () => {

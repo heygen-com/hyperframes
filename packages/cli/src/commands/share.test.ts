@@ -6,6 +6,9 @@ import { consumeCommandResult } from "../utils/commandResult.js";
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   status: vi.fn(),
+  select: vi.fn(),
+  list: vi.fn(),
+  reconnect: vi.fn(),
   confirm: vi.fn(),
   hiddenAssets: vi.fn(),
   received: null as null | "unchecked" | { path: string; listed: string[]; hashes: string[] },
@@ -26,14 +29,18 @@ vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
 }));
 vi.mock("../ui/prompts.js", () => ({
   confirm: mocks.confirm,
-  select: vi.fn(),
+  select: mocks.select,
   isCancel: (value: unknown) => typeof value === "symbol",
 }));
 vi.mock("../share/service.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../share/service.js")>()),
   createShareService: (_dir: string, progress: typeof mocks.progress) => {
     mocks.progress = progress;
-    return { run: mocks.run, status: mocks.status };
+    return {
+      run: mocks.run,
+      status: mocks.status,
+      reconnect: { list: mocks.list, confirm: mocks.reconnect },
+    };
   },
 }));
 import command from "./share.js";
@@ -465,4 +472,42 @@ it("checks an empty hidden asset summary and skips sharing when discovery fails"
   await runCommand(command, { rawArgs });
   expect(mocks.run).not.toHaveBeenCalled();
   expect(consumeCommandResult().exitCode).toBe(1);
+});
+
+it("requires interactive confirmation of the project and workspace before reconnecting", async () => {
+  const choice = {
+    token: "offer",
+    id: "project-1",
+    title: "Launch",
+    workspace: { id: "team-1", name: "Design" },
+  };
+  mocks.list.mockResolvedValue([choice]);
+  mocks.select.mockResolvedValue("offer");
+  mocks.unattended = false;
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  await runCommand(command, { rawArgs: ["--reconnect", "--yes"] });
+  expect(mocks.list).not.toHaveBeenCalled();
+  mocks.confirm.mockResolvedValue(false);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.confirm.mock.calls.at(-1)?.[0].message).toMatch(/Launch.*project-1.*Design.*team-1/);
+  expect(mocks.reconnect).not.toHaveBeenCalled();
+  mocks.confirm.mockResolvedValue(true);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect).toHaveBeenCalledWith("offer");
+  mocks.reconnect.mockClear().mockResolvedValueOnce({ confirmLocalFiles: "reviewed-difference" });
+  mocks.confirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect.mock.calls).toEqual([["offer"]]);
+  expect(mocks.confirm.mock.calls.at(-1)?.[0]).toMatchObject({
+    initialValue: false,
+    message: expect.stringContaining("may undo cloud edits"),
+  });
+  mocks.reconnect
+    .mockClear()
+    .mockResolvedValueOnce({ confirmLocalFiles: "reviewed-difference" })
+    .mockResolvedValueOnce(null);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect.mock.calls).toEqual([["offer"], ["reviewed-difference"]]);
+  expect(mocks.run).not.toHaveBeenCalled();
 });

@@ -165,16 +165,29 @@ export function paintedOnStage(element: Element): boolean {
   );
 }
 
+const escapedIdKey = (hfId: string) => `#${hfId.replace(/[\\>]/g, "\\$&")}`;
+
+function unescapedKeyParts(key: string): string[] {
+  const parts = [""];
+  for (let i = 0; i < key.length; i += 1) {
+    const c = key[i]!;
+    if (c === "\\") parts[parts.length - 1] += key[++i] ?? "";
+    else if (c === ">") parts.push("");
+    else parts[parts.length - 1] += c;
+  }
+  return parts;
+}
+
 export function locateStageKey(
   doc: Document,
   target: { key: string; hfId: string | null },
 ): Element | null {
   const byId = (id: string) => doc.querySelector(`[data-hf-id="${CSS.escape(id)}"]`);
   if (target.hfId) return byId(target.hfId);
-  const [anchor = "", ...steps] = target.key.split(">");
-  let element: Element | null = /^\d+$/.test(anchor)
-    ? (doc.body?.children[Number(anchor)] ?? null)
-    : byId(anchor);
+  const [anchor = "", ...steps] = unescapedKeyParts(target.key);
+  let element: Element | null = null;
+  if (anchor.startsWith("#")) element = byId(anchor.slice(1));
+  else if (/^\d+$/.test(anchor)) element = doc.body?.children[Number(anchor)] ?? null;
   for (const step of steps) element = element?.children[Number(step)] ?? null;
   return element;
 }
@@ -199,7 +212,7 @@ export function measureStageDocument(
     }
     const rawHfId = element.getAttribute("data-hf-id");
     const hfId = rawHfId ? clampValue(rawHfId) : null;
-    const key = hfId ?? clampValue(path);
+    const key = clampValue(hfId ? escapedIdKey(hfId) : path);
     items.push(measureElement(doc, view, element, parent, key, hfId));
     for (let i = 0; i < element.children.length; i += 1) {
       const child = element.children[i];

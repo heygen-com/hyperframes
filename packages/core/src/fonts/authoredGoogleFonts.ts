@@ -1,5 +1,6 @@
 import { readPage } from "./pageTree.js";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 
 function screenStylesheet(media: string | null): boolean {
   return !media?.trim() || media.split(",").some((query) => /^(all|screen)$/i.test(query.trim()));
@@ -24,7 +25,7 @@ function importUrls(css: string): string[] {
   if (!/@import/i.test(css)) return [];
   let root: postcss.Root;
   try {
-    root = postcss.parse(css);
+    root = parseCss(css);
   } catch {
     return [];
   }

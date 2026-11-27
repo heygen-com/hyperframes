@@ -338,6 +338,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     allowCanvasMovement,
     readOnly,
     inlineTextEditing: inlineText.editing,
+    holdsPress,
     onDeleteSelection,
     applyRuntimeNudge,
     onNudgeSavingChangeRef,

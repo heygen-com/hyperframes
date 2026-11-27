@@ -519,12 +519,20 @@ describe("duplicate of a clip inside a sub-composition", () => {
 describe("a copy that fails", () => {
   it("leaves the previous copy on the clipboard", async () => {
     selectTitle();
-    const { clipboard, writes, fail } = mountClipboard();
+    const { clipboard, writes, fail, delayMs } = mountClipboard();
+    // A slow first read (a busy runner) outlasted a fixed 10 ms wait and failed both copies, so each copy
+    // waits for its own read. Reproduce: the old waits with this delay fail every run.
+    delayMs["index.html"] = 15;
+    const answered = async (reads: number) => {
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(reads));
+      await vi.mocked(fetch).mock.results[reads - 1]?.value;
+    };
     clipboard().handleCopy();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await answered(1);
+    delayMs["index.html"] = 0;
     fail.on = true;
     clipboard().handleCopy();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await answered(2);
     fail.on = false;
     await clipboard().handlePaste();
     expect(writes).toHaveLength(1);

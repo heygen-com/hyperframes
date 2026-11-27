@@ -167,12 +167,40 @@ export function mountShareRoutes(
       const state = await sharing.sourceStatus(space);
       const paths =
         state === "needs_sync" ? await listReferencedHiddenSourceAssets(projectDir) : [];
-      return c.json({ state, paths, digest: referencedHiddenDigest(paths) });
+      return c.json({
+        state,
+        paths,
+        digest: referencedHiddenDigest(paths),
+        canReconnect:
+          state === "at_limit" || (state === "needs_sync" && (await sharing.reconnect.available())),
+      });
     } catch {
       return c.json(
         { code: "hidden_assets_unavailable", message: "Could not read the hidden asset summary." },
         400,
       );
+    }
+  });
+  routes.get("/reconnect", async (c) => {
+    const space = c.req.query("space");
+    if (!validId(space)) return c.json({ message: "Choose a workspace." }, 400);
+    const token = c.req.header("x-hyperframes-share-csrf")!;
+    try {
+      return c.json(await (await sessions.get(token)!.get()).reconnect.list(space));
+    } catch (error) {
+      return c.json(await presentError(error, token), 400);
+    }
+  });
+  routes.post("/reconnect", async (c) => {
+    const body: unknown = await c.req.json().catch(() => null);
+    if (!isRecord(body) || !validId(body.choice))
+      return c.json({ message: "Confirm a cloud project and workspace." }, 400);
+    const token = c.req.header("x-hyperframes-share-csrf")!;
+    try {
+      const difference = await (await sessions.get(token)!.get()).reconnect.confirm(body.choice);
+      return c.json(difference ?? { reconnected: true });
+    } catch (error) {
+      return c.json(await presentError(error, token), 400);
     }
   });
   routes.post("/events", async (c) => {

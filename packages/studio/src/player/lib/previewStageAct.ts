@@ -1,10 +1,12 @@
 // Studio's end of `stage-act`: every reply is checked against what was asked, and draws go one request at a time.
 import {
   MAX_STAGE_ACTS,
+  MAX_STAGE_GHOST_MARKUP,
   readStageActHeld,
   readStageRect,
   type EditingRect,
   type StageActDraw,
+  type StageActGhost,
   type StageActHeld,
   type StageActHold,
   type StageActParams,
@@ -14,7 +16,14 @@ import {
 import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import { previewEditingClient, previewRequest } from "./previewChannel";
 
-export type { StageActDraw, StageActHeld, StageActHold, StageActTarget, StageInputEvent };
+export type {
+  StageActDraw,
+  StageActGhost,
+  StageActHeld,
+  StageActHold,
+  StageActTarget,
+  StageInputEvent,
+};
 
 /** A hold gates what the person sees: past this, the act lands unheld, as open mode does when it cannot prepare. */
 export const STAGE_ACT_TIMEOUT_MS = 250;
@@ -88,6 +97,27 @@ export async function restorePreviewStage(
   return Number.isSafeInteger(restored) && (restored as number) >= 0 && (restored as number) <= most
     ? (restored as number)
     : null;
+}
+
+/** The removed elements' markup from the frame they leave, for the frame that replaces it. Studio never parses it:
+ * it is an opaque string, capped, handed only to `holdPreviewStage` on that film's next load. */
+export async function capturePreviewGhosts(
+  iframe: HTMLIFrameElement,
+  targets: readonly StageActTarget[],
+  timeoutMs = STAGE_ACT_TIMEOUT_MS,
+): Promise<StageActGhost[] | null> {
+  if (targets.length > MAX_STAGE_ACTS) return null;
+  const reply = await replyOf(iframe, { op: "capture", targets: [...targets] }, timeoutMs);
+  const asked = new Set(targets.map((target) => target.key));
+  if (!reply || !isMessageList(reply.ghosts, asked.size)) return null;
+  const ghosts: StageActGhost[] = [];
+  for (const entry of reply.ghosts) {
+    if (!isFields(entry) || typeof entry.key !== "string" || !asked.has(entry.key)) return null;
+    if (typeof entry.markup !== "string" || entry.markup.length > MAX_STAGE_GHOST_MARKUP)
+      return null;
+    ghosts.push({ key: entry.key, markup: entry.markup });
+  }
+  return ghosts;
 }
 
 /** The boxes a `frame` reply laid out, for keys that were drawn; a malformed entry is left out. */

@@ -1,5 +1,6 @@
 // `text-edit`: one in-place text editing session in the frame, for a parent that cannot script it.
 // It edits only an element it handed a handle for, and lets out nothing but text markup.
+import { postOnPort } from "../runtimePort";
 import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingElement";
 import { elementForHandle } from "../editingHandles";
 import { isDomNode, isStylableElement, type StylableElement } from "../domRealm";
@@ -450,19 +451,19 @@ function start(
       if (session !== open) return;
       const selection = selectionIn(editable);
       const caret = caretOf(open);
-      port.postMessage({ v: version, event: "text-edit-selection", handle, selection, caret });
+      postOnPort(port, { v: version, event: "text-edit-selection", handle, selection, caret });
     },
   };
   const endInFrame = () => {
     if (session !== open) return;
     const ended = close(true);
-    if (ended) port.postMessage({ v: version, event: "text-edit-ended", handle, ...ended });
+    if (ended) postOnPort(port, { v: version, event: "text-edit-ended", handle, ...ended });
   };
   const stopListening = listen(editable, endInFrame, open.report);
   const stopFollowing = followCaret(editable, open);
   const stopPassing = hostTakesAway
     ? passAway(editable, (away) =>
-        port.postMessage({ v: version, event: "text-edit-away", handle, ...away }),
+        postOnPort(port, { v: version, event: "text-edit-away", handle, ...away }),
       )
     : () => {};
   open.stop = () => {

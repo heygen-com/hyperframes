@@ -97,6 +97,7 @@ async function offerCheckout(
   source: CheckoutSource,
   done: (p: Plan | null) => boolean,
 ): Promise<CheckoutError | null> {
+  if (kind === "credits" && before.plan === "none") return null;
   const offer = await readOffer(signal);
   if (signal.aborted) return null;
   const shortBy = (p: Plan) => (needed ? needed - p.credits : undefined);

@@ -1,3 +1,4 @@
+import { namedWorkspace } from "./workspace.js";
 import {
   readShareActivity,
   withShareActivity,
@@ -9,6 +10,7 @@ import { CliUsageError } from "../utils/commandResult.js";
 import {
   projectFingerprint,
   shareSources,
+  sourceReconnect,
   addVersion,
   pendingReviewExport,
   refreshReviewExport,
@@ -366,21 +368,28 @@ export function createShareService(
       space.review_entitlements?.can_offer_edit === false
     )
       return null;
-    return space.space_id;
+    return namedWorkspace(space);
   }
+  const reconnect = sourceReconnect({
+    projectPath: dir,
+    access: auth.access,
+    workspace: sourceWorkspace,
+  });
   return {
+    reconnect,
     sourceStatus: async (requested?: string) => {
-      const spaceId = await sourceWorkspace(requested);
+      const spaceId = (await sourceWorkspace(requested))?.id;
       if (!spaceId) return "off" as const;
       const source = shareSources({ access: auth.access, spaceId, reuseOnly: true });
       const result = await source.prepare(dir, await projectFingerprint(dir));
       if (result.at === "ready") return "synced" as const;
+      if (result.reason === "source_composition_limit") return "at_limit" as const;
       return ["source_sync_required", "source_render_changed"].includes(result.reason)
         ? ("needs_sync" as const)
         : ("off" as const);
     },
     syncProjectFiles: async (space: string, digest: string) => {
-      const spaceId = await sourceWorkspace(space);
+      const spaceId = (await sourceWorkspace(space))?.id;
       if (!spaceId || space !== spaceId)
         throw new Error("Project file sync is unavailable in this workspace.");
       assertReviewUploadStorage();

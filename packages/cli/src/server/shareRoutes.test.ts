@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -32,6 +33,11 @@ function fixture(dir = "/fixed/project") {
       heygenApi: "https://api.heygen.com",
     })),
     status: vi.fn(async () => state),
+    reconnect: {
+      available: vi.fn(async () => true),
+      list: vi.fn(async () => []),
+      confirm: vi.fn(async () => null),
+    },
     sourceStatus: vi.fn(async () => "needs_sync" as const),
     syncProjectFiles: vi.fn(async () => state),
     run: vi.fn(async () => state),
@@ -586,6 +592,7 @@ it("lists referenced hidden assets only in the local sharing session", async () 
     const summary = await (await request(app, "project-files?space=team1", csrf)).json();
     expect(summary).toEqual({
       state: "needs_sync",
+      canReconnect: true,
       paths: [font, logo],
       digest: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
@@ -594,4 +601,20 @@ it("lists referenced hidden assets only in the local sharing session", async () 
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+it("requires the local session and an explicit reconnect choice", async () => {
+  const { app, service } = fixture();
+  expect((await request(app, "reconnect?space=team1", "")).status).toBe(403);
+  const csrf = await token(app);
+  expect((await request(app, "reconnect?space=team1", csrf)).status).toBe(200);
+  expect(service.reconnect.list).toHaveBeenCalledWith("team1");
+  expect((await request(app, "reconnect", csrf, { project: "Launch" })).status).toBe(400);
+  expect(service.reconnect.confirm).not.toHaveBeenCalled();
+  const confirmLocalFiles = randomUUID();
+  vi.mocked(service.reconnect.confirm).mockResolvedValueOnce({ confirmLocalFiles });
+  const difference = await request(app, "reconnect", csrf, { choice: "selected-token" });
+  expect(await difference.json()).toEqual({ confirmLocalFiles });
+  expect(service.reconnect.confirm).toHaveBeenCalledWith("selected-token");
+  expect(service.syncProjectFiles).not.toHaveBeenCalled();
 });

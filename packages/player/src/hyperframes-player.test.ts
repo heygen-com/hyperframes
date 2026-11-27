@@ -5284,3 +5284,143 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 });
+
+describe("HyperframesPlayer sealed src", () => {
+  type SealedPlayer = HTMLElement & {
+    iframe: HTMLIFrameElement;
+    _pageRead: boolean;
+    _pageUnreadable: boolean;
+    _onIframeLoad(): void;
+    _showSealedDocument(html: string, base: string | undefined, load: number): void;
+  };
+  const SRC = "/api/projects/p/preview/~T";
+  const RUNTIME_PAGE = `<script src="/hyperframe.runtime.iife.js"></script>`;
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  /** A sealed player for SRC, with every navigation recorded with whether the frame was sealed when it began. */
+  function sealedPlayer(vouched: boolean): {
+    player: SealedPlayer;
+    navigations: [string, boolean][];
+  } {
+    const player = document.createElement("hyperframes-player") as SealedPlayer;
+    player.setAttribute("sandbox-origin", "");
+    if (vouched) player.setAttribute("src-carries-runtime", "");
+    player.setAttribute("src", SRC);
+    const navigations: [string, boolean][] = [];
+    const src = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "src")!;
+    Object.defineProperty(player.iframe, "src", {
+      configurable: true,
+      get() {
+        return src.get!.call(this);
+      },
+      set(value: string) {
+        navigations.push([value, !this.sandbox.contains("allow-same-origin")]);
+        src.set!.call(this, value);
+      },
+    });
+    return { player, navigations };
+  }
+
+  const page = (body: string, headers: Record<string, string> = {}) =>
+    ({
+      ok: true,
+      type: "basic",
+      url: `${location.origin}${SRC}`,
+      headers: new Headers({ "content-type": "text/html", ...headers }),
+      arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+    }) as unknown as Response;
+  const settle = async () => {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  };
+
+  // fails without the fix: the player read the page first, and set src only once that read came back.
+  it("loads a src its host vouches for at once, sealed before it navigates, without reading it", () => {
+    const read = vi.spyOn(globalThis, "fetch");
+    const { player, navigations } = sealedPlayer(true);
+    document.body.appendChild(player);
+
+    expect(navigations).toEqual([[SRC, true]]);
+    expect(read).not.toHaveBeenCalled();
+    expect(player._pageRead).toBe(true);
+    player.setAttribute("src", `${SRC}?v=2`);
+    expect(navigations).toEqual([
+      [SRC, true],
+      [`${SRC}?v=2`, true],
+    ]);
+    expect(player.iframe.getAttribute("src")).toBe(`${SRC}?v=2`);
+    player.remove();
+  });
+
+  it("reports an error by the load limit when a vouched page never brings the runtime", () => {
+    vi.useFakeTimers();
+    try {
+      const { player } = sealedPlayer(true);
+      document.body.appendChild(player);
+      const errors: Event[] = [];
+      player.addEventListener("error", (event) => errors.push(event));
+      player._onIframeLoad();
+      vi.advanceTimersByTime(130_000);
+      expect(errors).toHaveLength(1);
+      player.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still reads a page no one vouches for, then loads one that brings the runtime by src, once", async () => {
+    const read = vi.spyOn(globalThis, "fetch").mockResolvedValue(page(RUNTIME_PAGE));
+    const { player, navigations } = sealedPlayer(false);
+    document.body.appendChild(player);
+    expect(navigations).toEqual([]);
+    await settle();
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(navigations).toEqual([[SRC, true]]);
+    expect(player._pageRead).toBe(true);
+    player.remove();
+  });
+
+  it("loads a page that may carry its own policy by src, unread, as before", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      page(RUNTIME_PAGE, { "content-security-policy": "default-src 'self'" }),
+    );
+    const { player, navigations } = sealedPlayer(false);
+    document.body.appendChild(player);
+    await settle();
+
+    expect(navigations).toEqual([[SRC, true]]);
+    expect(player._pageRead).toBe(false);
+    expect(player._pageUnreadable).toBe(true);
+    player.remove();
+  });
+
+  it("loads a page its read could not reach by src, as before", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+    const { player, navigations } = sealedPlayer(false);
+    document.body.appendChild(player);
+    await settle();
+
+    expect(navigations).toEqual([[SRC, true]]);
+    player.remove();
+  });
+
+  it("shows a page without the runtime as a sealed document, never by src, as before", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(page("<p>no runtime</p>"));
+    const { player, navigations } = sealedPlayer(false);
+    const shown = vi.spyOn(player, "_showSealedDocument").mockImplementation(() => {});
+    document.body.appendChild(player);
+    await settle();
+
+    expect(navigations).toEqual([]);
+    expect(shown).toHaveBeenCalledWith(
+      "<p>no runtime</p>",
+      `${location.origin}${SRC}`,
+      expect.any(Number),
+    );
+    player.remove();
+  });
+});

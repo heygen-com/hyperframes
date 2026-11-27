@@ -195,6 +195,7 @@ export {
   type StageActBorrow,
   type StageActDraw,
   type StageActElementHold,
+  type StageActGhostHold,
   type StageActHeld,
   type StageActHold,
   type StageActParams,
@@ -205,6 +206,7 @@ export {
   type StageActTarget,
   type StageInputEvent,
 } from "./editing/stageAct";
+export { MAX_STAGE_GHOST_MARKUP, type StageActGhost } from "./editing/stageGhost";
 export { rotateBy, scaleBy, translateBy } from "./editing/transformValues";
 export {
   MAX_SNAPSHOT_CHANNELS,
@@ -294,6 +296,7 @@ export const EDITING_REQUEST_KINDS = [
   "assets-unloaded",
   "text-edit",
   "serve-paused-frames",
+  "frame-presented",
   "arm-canvas-keys",
   "resolve-canvas-key-action",
   "stage-measure",
@@ -362,6 +365,8 @@ export type EditingDraft =
   | EditingDraftEnd;
 
 type NoParams = Record<string, never>;
+export type FramePresentedParams = { waitMs?: number };
+const MAX_FRAME_PRESENTED_WAIT_MS = 15_000;
 export interface EditingRequests {
   hello: {
     params: NoParams;
@@ -495,6 +500,7 @@ export interface EditingRequests {
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
+  "frame-presented": { params: FramePresentedParams; result: { presented: boolean } };
   "arm-canvas-keys": { params: ArmCanvasKeysParams; result: ArmCanvasKeysResult };
   "resolve-canvas-key-action": {
     params: ResolveCanvasKeyActionParams;
@@ -543,6 +549,23 @@ const hasKeys = (params: unknown, keys: string): params is Record<string, unknow
 
 const noParams = (params: unknown): NoParams | null =>
   params === undefined || (isPlainRecord(params) && Object.keys(params).length === 0) ? {} : null;
+
+function parseFramePresented(params: unknown): FramePresentedParams | null {
+  if (noParams(params)) return {};
+  if (!hasKeys(params, "waitMs")) return null;
+  const { waitMs } = params;
+  const bounded =
+    typeof waitMs === "number" &&
+    Number.isFinite(waitMs) &&
+    waitMs > 0 &&
+    waitMs <= MAX_FRAME_PRESENTED_WAIT_MS;
+  return bounded ? { waitMs } : null;
+}
+
+const clientWaitPastFrameDeadline = (kind: EditingRequestKind, params: unknown): number =>
+  kind === "frame-presented" && isPlainRecord(params) && typeof params.waitMs === "number"
+    ? params.waitMs + 1_000
+    : 0;
 
 const isSelector = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= MAX_SELECTOR_LENGTH;
@@ -827,6 +850,7 @@ const PARAM_PARSERS: {
     hasKeys(params, "channel") && params.channel instanceof MessagePort
       ? { channel: params.channel }
       : null,
+  "frame-presented": parseFramePresented,
   "arm-canvas-keys": parseArmCanvasKeys,
   "resolve-canvas-key-action": parseResolveCanvasKeyAction,
   "stage-measure": parseStageMeasureParams,
@@ -1023,7 +1047,8 @@ export function createEditingPortClient(options: {
       if (disposed) return Promise.reject(new EditingPortError("disposed", "client disposed"));
       const id = ++lastId;
       if (kind === "watch-geometry") watchedGeometry = true;
-      const limit = requestOptions?.timeoutMs ?? timeoutMs;
+      const limit =
+        requestOptions?.timeoutMs ?? Math.max(timeoutMs, clientWaitPastFrameDeadline(kind, params));
       const result = new Promise<unknown>((resolve, reject) => {
         const timer = wallSetTimeout(
           () => settle(id, { error: new EditingPortError("timeout", `${kind} timed out`) }),

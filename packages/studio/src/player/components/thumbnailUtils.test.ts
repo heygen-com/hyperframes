@@ -90,22 +90,37 @@ describe("resolveMediaPreviewUrl", () => {
     ).toBe("/api/projects/proj-1/preview/assets/clip.mp4");
   });
 
-  it("preserves empty, canonical preview, and same-origin API sources", () => {
+  it("keeps a canonical preview source on its own file", () => {
     expect(resolveMediaPreviewUrl("", "proj-1", "http://localhost:5190")).toBe("");
     expect(
       resolveMediaPreviewUrl(
-        "http://localhost:5190/api/projects/proj-1/preview/assets/clip.mp4",
+        "http://localhost:5190/api/projects/proj-1/preview/assets/clip.mp4#t=2",
         "proj-1",
         "http://localhost:5190",
       ),
-    ).toBe("http://localhost:5190/api/projects/proj-1/preview/assets/clip.mp4");
+    ).toBe("/api/projects/proj-1/preview/assets/clip.mp4#t=2");
+  });
+
+  it.each([
+    ["another API route", "http://localhost:5190/api/projects/proj-1/thumbnail/a.png?t=1"],
+    ["another project", "http://localhost:5190/api/projects/proj-2/preview/assets/clip.mp4"],
+    ["a server-wide route", "http://localhost:5190/api/media/clip.mp4"],
+    ["an encoded climb", "http://localhost:5190/api/projects/proj-1/preview/%2e%2e/lint"],
+    ["an encoded slash climb", "http://localhost:5190/assets/..%2F..%2Flint"],
+    ["a relative climb", "../../thumbnail/a.png"],
+    ["a rooted climb", "/a/../../../api/media"],
+  ])("loads nothing for %s", (_, src) => {
+    expect(resolveMediaPreviewUrl(src, "proj-1", "http://localhost:5190")).toBe("");
+  });
+
+  it("drops query options the host did not add", () => {
     expect(
       resolveMediaPreviewUrl(
-        "http://localhost:5190/api/media/clip.mp4",
+        "http://localhost:5190/api/projects/proj-1/preview/assets/clip.mov?hf-proxy=alpha",
         "proj-1",
         "http://localhost:5190",
       ),
-    ).toBe("http://localhost:5190/api/media/clip.mp4");
+    ).toBe("/api/projects/proj-1/preview/assets/clip.mov");
   });
 
   it("routes composition-relative paths through the project preview endpoint", () => {

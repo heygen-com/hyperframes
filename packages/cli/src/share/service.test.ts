@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@hyperframes/share", () => ({
   projectFingerprint: async () => "current-project",
   shareSources: mocks.adapter,
+  sourceReconnect: () => ({ list: vi.fn(), confirm: vi.fn() }),
   reviewClient: () => ({ project: mocks.project, spaces: mocks.spaces, reviewFlags: mocks.flags }),
   reviewStatus: mocks.status,
   reviewVersion: mocks.version,
