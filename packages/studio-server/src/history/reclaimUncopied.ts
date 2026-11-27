@@ -39,7 +39,7 @@ async function blobSizes(blobs: string, hashes: Iterable<string>): Promise<Map<s
 }
 
 async function reclaimOne(home: string, dryRun: boolean): Promise<number> {
-  const log = readLog(join(home, "log.jsonl"), () => {});
+  const log = await readLog(join(home, "log.jsonl"), () => {});
   if (!log) return 0;
   const blobs = join(home, "blobs");
   const sizes = await blobSizes(blobs, namedHashes(log));

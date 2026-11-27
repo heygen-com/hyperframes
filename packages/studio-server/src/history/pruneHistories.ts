@@ -10,6 +10,7 @@ import {
   readId,
   readIdOffThread,
   readRecord,
+  readRecordOffThread,
   statOffThread,
 } from "./historyId.js";
 import {
@@ -176,10 +177,14 @@ async function abandonedProject(
   now: number,
   tempDir: string,
 ): Promise<string | null> {
-  const record = readRecord(home);
+  const record = await readRecordOffThread(home);
   const dir = record?.dir;
   if (typeof dir !== "string") return null;
-  if (now - lastUsed(home) < KEEP_GONE_PROJECT_HISTORY_MS && !isSafePath(tempDir, dir)) return null;
+  if (
+    now - (await lastUsedOffThread(home)) < KEEP_GONE_PROJECT_HISTORY_MS &&
+    !isSafePath(tempDir, dir)
+  )
+    return null;
   return (await projectGone(dir, id, record?.dev, tempDir)) ? dir : null;
 }
 
@@ -209,10 +214,17 @@ async function diskStillHere(dir: string, dev: unknown, tempDir: string): Promis
   return at === dir || isSafePath(tempDir, at);
 }
 
+const USE_MARKS = ["project.json", "log.jsonl"];
+
 function lastUsed(home: string): number {
   const mtime = (file: string) =>
     statSync(join(home, file), { throwIfNoEntry: false })?.mtimeMs ?? 0;
-  return Math.max(mtime("project.json"), mtime("log.jsonl"));
+  return Math.max(...USE_MARKS.map(mtime));
+}
+
+async function lastUsedOffThread(home: string): Promise<number> {
+  const mtime = async (file: string) => (await statOffThread(join(home, file)))?.mtimeMs ?? 0;
+  return Math.max(...(await Promise.all(USE_MARKS.map(mtime))));
 }
 
 async function bytesIn(dir: string): Promise<number> {

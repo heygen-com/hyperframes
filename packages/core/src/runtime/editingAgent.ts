@@ -71,6 +71,7 @@ import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
 import { portPausedVideoProvider } from "./editing/pausedFrames";
 import { measureStageDocument } from "./editing/stageMeasure";
+import { endStageAct, stageAct } from "./editing/stageAct";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -263,6 +264,7 @@ const HANDLERS: Handlers = {
   },
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
   "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
+  "stage-act": (params, port) => stageAct(params, port, EDITING_PROTOCOL_VERSION),
 };
 
 function serve(port: MessagePort): void {
@@ -346,6 +348,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       listenForKeys(false);
       stopWatchingGeometry();
       endTextEdit();
+      endStageAct();
     },
   };
 }

@@ -95,6 +95,15 @@ import {
   type StageMeasureResult,
 } from "./editing/stageMeasure";
 import {
+  parseStageActParams,
+  stageActReadyEvent,
+  stageInputEvent,
+  type StageActParams,
+  type StageActReadyEvent,
+  type StageActResult,
+  type StageInputEvent,
+} from "./editing/stageAct";
+import {
   parseTextEdit,
   textEditAwayEvent,
   textEditEndedEvent,
@@ -158,6 +167,27 @@ export {
   type StageMeasureResult,
   type StageTextStart,
 } from "./editing/stageMeasure";
+export {
+  isStageColour,
+  MAX_STAGE_ACTS,
+  readStageActHeld,
+  readStageRect,
+  STAGE_ACT_BORROWS,
+  STAGE_ACT_STYLES,
+  type StageActBorrow,
+  type StageActDraw,
+  type StageActElementHold,
+  type StageActHeld,
+  type StageActHold,
+  type StageActParams,
+  type StageActReadyEvent,
+  type StageActRect,
+  type StageActResult,
+  type StageActStyle,
+  type StageActTarget,
+  type StageInputEvent,
+} from "./editing/stageAct";
+export { rotateBy, scaleBy, translateBy } from "./editing/transformValues";
 export {
   MAX_SNAPSHOT_CHANNELS,
   MAX_SNAPSHOT_FIELDS,
@@ -247,6 +277,7 @@ export const EDITING_REQUEST_KINDS = [
   "text-edit",
   "serve-paused-frames",
   "stage-measure",
+  "stage-act",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -445,6 +476,8 @@ export interface EditingRequests {
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
   "stage-measure": { params: StageMeasureParams; result: StageMeasureResult };
+  /** Holds, draws and gives back Studio's stage acts inside the frame (`editing/stageAct.ts`). */
+  "stage-act": { params: StageActParams; result: StageActResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -762,6 +795,7 @@ const PARAM_PARSERS: {
       ? { channel: params.channel }
       : null,
   "stage-measure": parseStageMeasureParams,
+  "stage-act": parseStageActParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -805,6 +839,8 @@ export interface EditingPortClient {
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
   onTextEditAway(listener: (event: TextEditAwayEvent) => void): () => void;
   onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
+  onStageActReady(listener: (event: StageActReadyEvent) => void): () => void;
+  onStageInput(listener: (event: StageInputEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -868,6 +904,8 @@ export function createEditingPortClient(options: {
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
   const awayListeners = new Set<(event: TextEditAwayEvent) => void>();
   const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
+  const stageReadyListeners = new Set<(event: StageActReadyEvent) => void>();
+  const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
@@ -898,7 +936,11 @@ export function createEditingPortClient(options: {
     const away = textEditAwayEvent(data, EDITING_PROTOCOL_VERSION);
     if (away) return awayListeners.forEach((listener) => listener(away));
     const selected = textEditSelectionEvent(data, EDITING_PROTOCOL_VERSION);
-    if (selected) selectionListeners.forEach((listener) => listener(selected));
+    if (selected) return selectionListeners.forEach((listener) => listener(selected));
+    const stageReady = stageActReadyEvent(data, EDITING_PROTOCOL_VERSION);
+    if (stageReady) return stageReadyListeners.forEach((listener) => listener(stageReady));
+    const stageInput = stageInputEvent(data, EDITING_PROTOCOL_VERSION);
+    if (stageInput) stageInputListeners.forEach((listener) => listener(stageInput));
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
@@ -978,6 +1020,14 @@ export function createEditingPortClient(options: {
       selectionListeners.add(listener);
       return () => selectionListeners.delete(listener);
     },
+    onStageActReady(listener) {
+      stageReadyListeners.add(listener);
+      return () => stageReadyListeners.delete(listener);
+    },
+    onStageInput(listener) {
+      stageInputListeners.add(listener);
+      return () => stageInputListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -986,6 +1036,8 @@ export function createEditingPortClient(options: {
       textEditListeners.clear();
       awayListeners.clear();
       selectionListeners.clear();
+      stageReadyListeners.clear();
+      stageInputListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
