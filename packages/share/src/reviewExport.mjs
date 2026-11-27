@@ -261,15 +261,15 @@ const woken = new Set();
 const failures = new Map();
 
 /** Which export a failure was about: the newest export file and the project as it was rendered. @param {string} dir */
-const exportKeyOf = (dir) => {
-  const latest = latestExportFile(dir);
+const exportKeyOf = async (dir) => {
+  const latest = await latestExportFile(dir);
   return latest ? `${latest.id}\n${latest.path}\n${latest.fingerprint ?? ""}` : "";
 };
 
 /** Whether the newest export can go up now: there is one, it is MP4, and the project has not moved past it.
- * @param {string} dir @param {string} now @returns {ReviewVersion["source"]} */
-function sourceOf(dir, now) {
-  const latest = latestExportFile(dir);
+ * @param {string} dir @param {string} now @returns {Promise<ReviewVersion["source"]>} */
+async function sourceOf(dir, now) {
+  const latest = await latestExportFile(dir);
   if (!latest) return "none";
   if (!/\.mp4$/i.test(latest.path)) return "not-mp4";
   return latest.fingerprint === now ? "ready" : "stale";
@@ -290,13 +290,17 @@ export async function reviewVersion(projectPath, server = {}) {
     server.latestReadyVersionId === undefined || server.latestReadyVersionId === last?.versionId;
   const savedFailure = state.failure?.projectId === projectId ? state.failure : null;
   const failed = savedFailure ?? failures.get(key);
+  const [source, exportKey] = await Promise.all([
+    sourceOf(projectPath, now),
+    exportKeyOf(projectPath),
+  ]);
   return {
     last: last
       ? { exportedAt: last.exportedAt, current: last.fingerprint === now && onServer }
       : null,
-    source: sourceOf(projectPath, now),
+    source,
     exporting: inFlight.get(key) ?? null,
-    ...(failed?.exportKey === exportKeyOf(projectPath)
+    ...(failed?.exportKey === exportKey
       ? {
           failure: failed.sentence,
           retryable: !failed.final,
@@ -311,8 +315,8 @@ export async function reviewVersion(projectPath, server = {}) {
  * @param {string} dir @param {string} title @param {(file: string) => Promise<VideoFacts | null>} probe
  * @param {FilesForRender} filesForExport @param {boolean} requireSource */
 async function exportSource(dir, title, probe, filesForExport, requireSource) {
-  const latest = latestExportFile(dir);
-  if (!latest || sourceOf(dir, await projectFingerprint(dir)) !== "ready")
+  const latest = await latestExportFile(dir);
+  if (!latest || (await sourceOf(dir, await projectFingerprint(dir))) !== "ready")
     return { failure: local("Export an MP4 of the project as it is now first.") };
   const { size } = await stat(latest.path);
   if (size > MAX_BYTES) return { failure: said(new ReviewFailed(400, "export_too_large")) };
@@ -623,14 +627,14 @@ async function finish(dir, state, pending, id, done, fromReview) {
 /** @param {string} dir @param {NonNullable<VersionRecord["pending"]>} pending */
 async function failedExportKey(dir, pending) {
   if (typeof pending.renderKey === "string") return pending.renderKey;
-  const latest = latestExportFile(dir);
+  const latest = await latestExportFile(dir);
   if (!latest) return "";
   const checksum =
     latest.fingerprint === pending.body.source_fingerprint
       ? await fileSha256Base64(latest.path).catch(() => null)
       : null;
   return checksum === pending.body.local_upload.checksum_sha256
-    ? exportKeyOf(dir)
+    ? await exportKeyOf(dir)
     : `pending:${pending.body.client_operation_id}`;
 }
 
@@ -681,7 +685,7 @@ async function alreadyUploaded(client, id, state, body) {
  * @param {{file: string, body: ExportRequest}} source @param {string} id @param {VersionRecord} state */
 async function sendVersion(r, report, source, id, state) {
   const first = state.last?.projectId !== id;
-  let pending = bindRenderKey(bodyToSend(state, source.body, id), r.projectPath);
+  let pending = await bindRenderKey(bodyToSend(state, source.body, id), r.projectPath);
   const sourceConflict = pendingSourceConflict(r, pending, source.body);
   if (sourceConflict) return local(sourceConflict);
   await writeState(r.projectPath, (state = { ...state, pending, failure: null }));
@@ -788,7 +792,7 @@ export async function addVersion(request) {
     report({ step: "preparing", sent: 0, total: 0 });
     const failure = await withProjectShareLock(r.projectPath, "export", () => run(r, report));
     const kept = failure && (uploaded || !request.projectId);
-    if (kept) failures.set(key, { ...failure, exportKey: exportKeyOf(r.projectPath) });
+    if (kept) failures.set(key, { ...failure, exportKey: await exportKeyOf(r.projectPath) });
     return failure?.sentence ?? null;
   } catch (error) {
     const sentence =
@@ -797,7 +801,7 @@ export async function addVersion(request) {
       sentence,
       final: false,
       exportHelps: false,
-      exportKey: exportKeyOf(r.projectPath),
+      exportKey: await exportKeyOf(r.projectPath),
     });
     return sentence;
   } finally {
@@ -863,7 +867,7 @@ async function settleSavedExport(dir, client, fromReview) {
   if (done.status === "upload_pending" || going(done)) return;
   const failure = await finish(dir, state, pending, id, done, fromReview);
   const key = normalize(dir);
-  if (failure) failures.set(key, { ...failure, exportKey: exportKeyOf(dir) });
+  if (failure) failures.set(key, { ...failure, exportKey: await exportKeyOf(dir) });
   else failures.delete(key);
 }
 
@@ -887,7 +891,7 @@ export async function versionFacts(dir) {
   const last = state.last?.projectId === projectId ? state.last : null;
   return {
     last: last && { ...last, current: last.fingerprint === now },
-    source: sourceOf(dir, now),
+    source: await sourceOf(dir, now),
     running: inFlight.has(normalize(dir)),
   };
 }
@@ -945,8 +949,8 @@ function readyRecord(pending, id, done) {
 }
 
 /** @param {NonNullable<VersionRecord["pending"]>} pending @param {string} dir */
-function bindRenderKey(pending, dir) {
+async function bindRenderKey(pending, dir) {
   return typeof pending.renderKey === "string"
     ? pending
-    : { ...pending, renderKey: exportKeyOf(dir) };
+    : { ...pending, renderKey: await exportKeyOf(dir) };
 }

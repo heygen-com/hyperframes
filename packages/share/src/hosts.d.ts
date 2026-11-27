@@ -25,7 +25,13 @@ export interface ShareHost {
   /** Requests to HeyGen's sign-in host as the signed-in person, traced as the host traces its API calls. */
   signedInRequest(deps: Omit<SignedInDeps, "trace">): ReturnType<typeof signedInRequest>;
   /** The newest finished export recorded in the project's renders folder whose file is still there. */
-  latestExportFile(dir: string): { path: string; fingerprint?: string; id: string } | null;
+  /** May answer later, so a host can read its disk off its main thread. */
+  latestExportFile(
+    dir: string,
+  ):
+    | { path: string; fingerprint?: string; id: string }
+    | null
+    | Promise<{ path: string; fingerprint?: string; id: string } | null>;
   /** Trusted video upload origins configured by the host independently of the review API response. */
   reviewUploadOrigins?: readonly string[];
   /** This install's own secret: change-of-space journals are sealed with it; one it did not seal reads as none. */
