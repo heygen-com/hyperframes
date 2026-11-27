@@ -213,6 +213,10 @@ export function onSealedCanvasCancel(listener: () => void): () => void {
   return () => void canvasCancelListeners.delete(listener);
 }
 
+export function cancelFromSealedCanvas(): void {
+  for (const cancel of canvasCancelListeners) cancel();
+}
+
 function isBareCancelEscape(key: EditingKeyEvent): boolean {
   if (key.type !== "keydown" || key.key !== "Escape" || getStudioKeys().cancel !== "Escape")
     return false;
@@ -242,7 +246,7 @@ function forwardSealedKeys(
   return previewEditingClient(iframe).onKey((key) => {
     if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
     if (!personActedJustNow()) {
-      if (isBareCancelEscape(key)) for (const cancel of canvasCancelListeners) cancel();
+      if (isBareCancelEscape(key)) cancelFromSealedCanvas();
       return;
     }
     (overlayRef.current ?? window).dispatchEvent(
