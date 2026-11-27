@@ -1506,6 +1506,9 @@ describe("resolveProxy", () => {
     function clipOf(call: SpawnCall): string {
       return basename(call.args[call.args.indexOf("-i") + 1]!, ".mov");
     }
+    const startedClips = (calls: SpawnCall[]) => calls.map(clipOf);
+    const callFor = (calls: SpawnCall[], clip: string) =>
+      calls.find((call) => clipOf(call) === clip)!;
 
     function clips(projectDir: string, names: string[]): Record<string, string> {
       return Object.fromEntries(
@@ -1601,21 +1604,21 @@ describe("resolveProxy", () => {
       });
       const thumbC = resolveProxy(projectDir, clip["thumb-c"]!);
       await flush();
-      expect(calls.map(clipOf)).toEqual(["thumb-a", "thumb-b", "preview"]);
+      expect(startedClips(calls).sort()).toEqual(["preview", "thumb-a", "thumb-b"]);
 
-      succeed(calls[0]!);
+      succeed(callFor(calls, "thumb-a"));
       await thumbs[0];
       await flush();
-      expect(calls.map(clipOf).slice(3)).toEqual([]);
-      succeed(calls[2]!);
+      expect(startedClips(calls)).toHaveLength(3);
+      succeed(callFor(calls, "preview"));
       await preview;
       await flush();
-      expect(calls.map(clipOf).slice(3)).toEqual(["second-preview"]);
-      for (const call of [calls[1]!, calls[3]!]) succeed(call);
+      expect(startedClips(calls).slice(3)).toEqual(["second-preview"]);
+      for (const name of ["thumb-b", "second-preview"]) succeed(callFor(calls, name));
       await Promise.all([thumbs[1], second]);
       await flush();
-      expect(calls.map(clipOf).slice(4)).toEqual(["thumb-c"]);
-      succeed(calls[4]!);
+      expect(startedClips(calls).slice(4)).toEqual(["thumb-c"]);
+      succeed(callFor(calls, "thumb-c"));
       await thumbC;
     });
 
@@ -1794,15 +1797,14 @@ describe("resolveProxy", () => {
       const preview = resolveProxy(projectDir, clip.late!, "h264", undefined, { priority: true });
       await expect(refused).rejects.toBeInstanceOf(ProxyCapacityError);
 
-      await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
-      succeed(calls[0]!);
+      await vi.waitFor(() => expect(startedClips(calls).sort()).toEqual(["late", "running"]));
+      succeed(callFor(calls, "running"));
       await running;
-      await flush(12);
-      expect(clipOf(calls[1]!)).toBe("late");
-      succeed(calls[1]!);
+      succeed(callFor(calls, "late"));
       await expect(preview).resolves.toBeTruthy();
       await flush(12);
-      succeed(calls[2]!);
+      expect(startedClips(calls).slice(2)).toEqual(["thumb"]);
+      succeed(callFor(calls, "thumb"));
       await thumb;
     });
 
