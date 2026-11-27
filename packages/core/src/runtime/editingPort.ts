@@ -187,6 +187,7 @@ export {
   type StageActBorrow,
   type StageActDraw,
   type StageActElementHold,
+  type StageActGhostHold,
   type StageActHeld,
   type StageActHold,
   type StageActParams,
@@ -197,6 +198,7 @@ export {
   type StageActTarget,
   type StageInputEvent,
 } from "./editing/stageAct";
+export { MAX_STAGE_GHOST_MARKUP, type StageActGhost } from "./editing/stageGhost";
 export { rotateBy, scaleBy, translateBy } from "./editing/transformValues";
 export {
   MAX_SNAPSHOT_CHANNELS,
