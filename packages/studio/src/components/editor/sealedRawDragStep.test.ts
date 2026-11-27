@@ -200,6 +200,7 @@ describe("a sealed drag's step reaches the frame before the paint of its pointer
       ...{ gestureRef: ref(null), groupGestureRef: ref(null), rafPausedRef: ref(false) },
       ...{ snapGuidesRef: ref(null), blockedMoveRef: ref(null), waitingPressRef: ref(null) },
       ...{ onManualDragStartRef: ref(vi.fn()), onBlockedMoveRef: ref(vi.fn()) },
+      setGroupOverlayItems: vi.fn(),
     };
     harnesses.push(opts as never);
     const press = { clientX: 10, clientY: 10, pointerId: 1, button: 0 };
@@ -300,6 +301,16 @@ describe("a sealed gesture's raw update moves Studio's outline before its draft 
     expect([box.style.left, box.style.top, box.style.width]).toEqual(["40px", "24px", "50px"]);
   });
 
+  // fails without the fix: React kept the last pointermove's rect, and its commit drew the box a step back.
+  it("a single move keeps React's outline at the step, so its commit draws no older rect", () => {
+    const { opts, handlers } = sealedDrag();
+    handlers.onPointerMove(pointer(110, 100));
+    rawUpdate(130, 104);
+    expect(opts.setOverlayRect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ left: 40, top: 24, width: 50, height: 40 }),
+    );
+  });
+
   it("a group move puts every member box and the group box at the step", () => {
     const { opts, handlers } = sealedDrag();
     const overlay = document.createElement("div");
@@ -317,6 +328,9 @@ describe("a sealed gesture's raw update moves Studio's outline before its draft 
     expect([at("[data-dom-edit-group-member]"), at("[data-dom-edit-group-box]")]).toEqual([
       "40px",
       "40px",
+    ]);
+    expect(opts.setGroupOverlayItems).toHaveBeenLastCalledWith([
+      expect.objectContaining({ key: "a", rect: expect.objectContaining({ left: 40, top: 24 }) }),
     ]);
     (opts.groupGestureRef as { current: unknown }).current = null;
   });

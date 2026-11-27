@@ -38,8 +38,8 @@ import {
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
-  drawGroupOutline,
-  drawSelectionOutline,
+  drawDraftGroupOutline,
+  drawDraftOverlayRect,
   type GestureState,
   type GroupGestureState,
   type UseDomEditOverlayGesturesOptions,
@@ -70,11 +70,8 @@ const releaseHolds = () => {
 };
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
-  const setDraftOverlayRect = (next: OverlayRect, syncCropFrame = false) => {
-    if (opts.waitingPressRef.current) return;
-    opts.setOverlayRect(next);
-    drawSelectionOutline(opts.boxRef.current, opts.handlesRef.current, next, { syncCropFrame });
-  };
+  const setDraftOverlayRect = (next: OverlayRect, syncCropFrame = false) =>
+    drawDraftOverlayRect(opts, next, syncCropFrame);
   const restoreGestureOverlayRect = (g: GestureState) => {
     setDraftOverlayRect(
       {
@@ -90,11 +87,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       g.kind === "drag",
     );
   };
-  const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
-    if (opts.waitingPressRef.current) return;
-    opts.setGroupOverlayItems(next);
-    drawGroupOutline(opts.overlayRef.current, next);
-  };
+  const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => drawDraftGroupOutline(opts, next);
 
   const restoreGroupPathOffsets = (g: GroupGestureState) => {
     restoreManualOffsetDragMembers(g.members);

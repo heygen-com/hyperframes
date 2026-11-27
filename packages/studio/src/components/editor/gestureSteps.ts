@@ -1,6 +1,6 @@
 import {
-  drawGroupOutline,
-  drawSelectionOutline,
+  drawDraftGroupOutline,
+  drawDraftOverlayRect,
   isDomEditGestureTap,
   movesGesture,
   resolveDomEditRotationGesture,
@@ -52,10 +52,9 @@ function drawGestureStep(
 ) {
   if (g.kind === "rotate") return applyRotationDraft(element, rotationAt(g, e), g.plainRotation);
   // The outline moves before the draft goes out, so the frame's copy of it is this step's.
+  const scale = { editScaleX: g.editScaleX, editScaleY: g.editScaleY, angle: g.actualRotation };
   const outline = (rect: { left: number; top: number; width: number; height: number }) =>
-    drawSelectionOutline(opts.boxRef.current, opts.handlesRef.current, rect, {
-      syncCropFrame: g.kind === "drag",
-    });
+    drawDraftOverlayRect(opts, { ...scale, ...rect }, g.kind === "drag");
   if (g.kind === "drag") {
     const { dx, dy } = snappedDragDelta(g, e, opts.snapGuidesRef);
     const { originWidth: width, originHeight: height } = g;
@@ -86,7 +85,7 @@ function drawSealedRawStep(opts: UseDomEditOverlayGesturesOptions, e: PointerEve
       ...item,
       rect: { ...item.rect, left: item.rect.left + dx, top: item.rect.top + dy },
     }));
-    drawGroupOutline(opts.overlayRef.current, shifted);
+    drawDraftGroupOutline(opts, shifted);
     for (const member of groupG.members) applyManualOffsetDragDraft(member, dx, dy);
     return true;
   }

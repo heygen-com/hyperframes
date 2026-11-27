@@ -126,7 +126,7 @@ function drawOutline(
   }
 }
 
-export function drawGroupOutline(overlay: HTMLElement | null, items: GroupOverlayItem[]) {
+function drawGroupOutline(overlay: HTMLElement | null, items: GroupOverlayItem[]) {
   if (!overlay) return;
   const boxes = new Map<string, HTMLElement>();
   for (const box of overlay.querySelectorAll<HTMLElement>("[data-dom-edit-group-member]")) {
@@ -138,7 +138,7 @@ export function drawGroupOutline(overlay: HTMLElement | null, items: GroupOverla
   if (bounds) drawOutline([groupBox], bounds);
 }
 
-export function drawSelectionOutline(
+function drawSelectionOutline(
   box: HTMLElement | null | undefined,
   handles: HTMLElement | null | undefined,
   rect: { left: number; top: number; width: number; height: number },
@@ -157,6 +157,34 @@ export function drawSelectionOutline(
   const h = Number.parseFloat(cropFrame.style.height);
   cropFrame.style.left = `${Number.isFinite(w) ? cx - w / 2 : rect.left}px`;
   cropFrame.style.top = `${Number.isFinite(h) ? cy - h / 2 : rect.top}px`;
+}
+
+type DraftOutlineOptions = Pick<
+  UseDomEditOverlayGesturesOptions,
+  "waitingPressRef" | "setOverlayRect" | "boxRef" | "handlesRef"
+>;
+
+/** A gesture's outline: React's rect moves with the drawn box, so its later commit never draws an older step. */
+export function drawDraftOverlayRect(
+  opts: DraftOutlineOptions,
+  next: OverlayRect,
+  syncCropFrame = false,
+): void {
+  if (opts.waitingPressRef.current) return;
+  opts.setOverlayRect(next);
+  drawSelectionOutline(opts.boxRef.current, opts.handlesRef.current, next, { syncCropFrame });
+}
+
+export function drawDraftGroupOutline(
+  opts: Pick<
+    UseDomEditOverlayGesturesOptions,
+    "waitingPressRef" | "setGroupOverlayItems" | "overlayRef"
+  >,
+  next: GroupOverlayItem[],
+): void {
+  if (opts.waitingPressRef.current) return;
+  opts.setGroupOverlayItems(next);
+  drawGroupOutline(opts.overlayRef.current, next);
 }
 
 export interface BlockedMoveState {
