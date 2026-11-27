@@ -8,6 +8,8 @@ import {
   notePlaybackFrame,
   noteDisplayScale,
   PLAYBACK_HEALTH,
+  readMotionBlurSummary,
+  readPreviewFrameShape,
   restartPlaybackHealth,
   type PlaybackHealthInput,
   watchMediaFetches,
@@ -233,5 +235,72 @@ describe("playback health", () => {
     posted.mockClear();
     play(6100, 0.1, { layoutKey: "b" });
     expect(healths()).toEqual([null]);
+  });
+
+  // fails without the fix: playbackHealth did not emit mediaStepP90Ms, over16, over33, or motionBlur.
+  it("emits audio step p90, missed-frame counts, and reads motionBlur only on the 1 s emit", () => {
+    const audio = document.createElement("audio");
+    const blur = {
+      attr: "medium",
+      shutter: "180",
+      state: "on",
+      tier: "filter",
+      movers: 2,
+    } as const;
+    const readMotionBlur = vi.fn(() => blur);
+    let audioTime = 0;
+    const steps = [15, 0, 25, 15, 25, 15, 15, 25, 15, 15, 40];
+    let idx = 0;
+    for (let ms = 1000; ms <= 6000; ms += 30) {
+      if (ms >= 2000) {
+        audioTime += (steps[idx % steps.length] ?? 15) / 1000;
+        idx += 1;
+      }
+      notePlaybackFrame({
+        nowMs: ms,
+        filmTime: ms / 1000,
+        fps: FPS,
+        rate: 1,
+        playing: true,
+        hidden: false,
+        waiting: false,
+        clock: "audio",
+        layoutKey: "a",
+        audio: { el: audio, time: audioTime },
+        readMotionBlur,
+      });
+    }
+    const last = healths().at(-1) as Record<string, unknown> | null;
+    expect(last?.mediaStepP90Ms).toBe(25);
+    expect(last?.over16).toBeGreaterThan(50);
+    expect(last?.over33).toBe(0);
+    expect(last?.motionBlur).toEqual(blur);
+    // Called only on 1 s health emits (~2 times after warmup + 3 s window), never per frame (~167 ticks).
+    expect(readMotionBlur.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(readMotionBlur.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it("reads motion blur summary and frame shape from the preview document", () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML =
+      '<div data-composition-id="root" data-motion-blur="high" data-motion-blur-shutter="240">' +
+      '<canvas></canvas><svg></svg><div style="filter: blur(2px)"></div></div>';
+    const fakeWin = {
+      __hfMotionBlur: { report: () => ({ state: "on", tier: "capture", movers: 4 }) },
+      gsap: { globalTimeline: { getChildren: () => [{}, {}, {}] } },
+    } as unknown as Window;
+    expect(readMotionBlurSummary(doc, fakeWin)).toEqual({
+      attr: "high",
+      shutter: "240",
+      state: "on",
+      tier: "capture",
+      movers: 4,
+    });
+    expect(readPreviewFrameShape(doc, fakeWin)).toEqual({
+      canvas: 1,
+      svg: 1,
+      filter: 1,
+      tweens: 3,
+    });
   });
 });

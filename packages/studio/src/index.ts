@@ -75,6 +75,7 @@ export {
   type StageTextStart,
 } from "./player/lib/previewStageMeasure";
 export {
+  capturePreviewGhosts,
   holdPreviewStage,
   onPreviewStageActReady,
   onPreviewStageInput,
@@ -83,6 +84,7 @@ export {
   restorePreviewStage,
   STAGE_ACT_TIMEOUT_MS,
   type StageActDraw,
+  type StageActGhost,
   type StageActHeld,
   type StageActHold,
   type StageActTarget,

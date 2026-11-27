@@ -2,6 +2,8 @@
 export type {
   PlaybackHealthReport,
   PlaybackHeldBy,
+  PlaybackMotionBlurReport,
+  PreviewFrameShape,
   RuntimeTimelineClipIdentity,
 } from "./runtime/types.js";
 export type {
