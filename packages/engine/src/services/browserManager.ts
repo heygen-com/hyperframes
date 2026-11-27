@@ -147,6 +147,7 @@ async function probeHardwareWebGlInfo(
         ? options.probeLifecycle.launch(ppt, launchOptions)
         : ppt.launch(launchOptions);
     });
+    absorbBrowserPipeErrors(probeBrowser);
     const browser = probeBrowser;
     return await rejectAfter(
       readWebGlInfo(browser).then(async (info) => ({
@@ -985,18 +986,25 @@ async function launchBrowser(
         protocolTimeout: fingerprint.protocolTimeoutMs,
         signal,
       });
-    }).catch(async (error: unknown) => {
-      throwIfAborted();
-      const remediation =
-        process.platform === "darwin" &&
-        sandboxDeniedRemediation(error instanceof Error ? error.message : "");
-      if (remediation) throw new Error(remediation, { cause: error });
-      const defaults = await ppt.defaultArgs({
-        headless: true,
-        args: withHyperframesBrowserMarker(attempted),
+    })
+      .then((launched) => {
+        absorbBrowserPipeErrors(launched);
+        return launched;
+      })
+      .catch(async (error: unknown) => {
+        throwIfAborted();
+        const remediation =
+          process.platform === "darwin" &&
+          sandboxDeniedRemediation(error instanceof Error ? error.message : "");
+        if (remediation) throw new Error(remediation, { cause: error });
+        const defaults = await ppt.defaultArgs({
+          headless: true,
+          args: withHyperframesBrowserMarker(attempted),
+        });
+        throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults, {
+          env,
+        });
       });
-      throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults, { env });
-    });
   };
   const probe = (target: Browser, timeoutMs?: number) =>
     probeBeginFrameSupport(target, timeoutMs).catch((error) => ({
@@ -1055,17 +1063,34 @@ async function launchBrowser(
   }
 }
 
+const guardedBrowserPipes = new WeakSet<NodeJS.EventEmitter>();
+
+// Puppeteer's PipeTransport.close() drops its pipe error listener; absorb late EPIPE/ECONNRESET on dying browsers.
+export function absorbBrowserPipeErrors(browser: Browser): void {
+  const proc = (
+    browser as unknown as {
+      process?: () => {
+        stdio?: ReadonlyArray<NodeJS.EventEmitter | null | undefined>;
+      } | null;
+    }
+  ).process?.();
+  for (const stream of proc?.stdio ?? []) {
+    if (!stream || guardedBrowserPipes.has(stream)) continue;
+    guardedBrowserPipes.add(stream);
+    stream.on("error", () => {});
+  }
+}
+
 function forceCloseBrowserProcess(browser: Browser): void {
+  absorbBrowserPipeErrors(browser);
   const proc = (
     browser as unknown as {
       process?: () => {
         kill: (signal?: NodeJS.Signals) => boolean;
         killed?: boolean;
-        stdio?: ReadonlyArray<NodeJS.EventEmitter | null | undefined>;
       } | null;
     }
   ).process?.();
-  for (const stream of proc?.stdio ?? []) stream?.on("error", () => {});
   if (proc && !proc.killed) {
     try {
       proc.kill("SIGKILL");

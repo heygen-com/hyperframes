@@ -224,6 +224,12 @@ stylesheet links in `<head>`, so those styles never apply in preview, snapshot o
 
 **Fix:** Use hardcoded string selectors instead of interpolated ones.
 
+### `three_d_layer_far_larger_than_stage`
+
+**Warning.** An element with a 3D transform (`rotateX`, `rotateY`, `translateZ`, `perspective()` and similar) is more than 4 times the stage area. A 3D-transformed layer is drawn nearly whole, not only the part on stage, so it holds GPU memory for pixels nobody sees, and in an editor's preview it can blank the editor's own panels.
+
+**Fix:** Size the element to what the camera can see, or use a repeating background on a stage-sized element.
+
 ### `timed_element_missing_clip_class`
 
 **Warning.** An element has timing attributes but no `class="clip"`. The runtime still times it, but the browser editor and the clip-ownership rules use `.clip` to recognise it, so it is harder to edit and to lint.

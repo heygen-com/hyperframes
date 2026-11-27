@@ -381,7 +381,7 @@ export async function withReader<T>(
       );
   }
   // Opening failed, so the task has not run; an open turn's marker is left as it is.
-  const view = readProjectHistory({
+  const view = await readProjectHistory({
     projectDir: resolveProject(dir).dir,
     historyRoot: historyDeps.historyRoot,
   });

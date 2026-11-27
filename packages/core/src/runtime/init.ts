@@ -974,8 +974,10 @@ export function initSandboxRuntimeModular(): void {
     // this runtime currently validates.
     if (forcedWidth) document.documentElement.style.width = forcedWidth;
     if (forcedHeight) document.documentElement.style.height = forcedHeight;
-    if (forcedWidth) document.body.style.width = forcedWidth;
-    if (forcedHeight) document.body.style.height = forcedHeight;
+    if (document.body) {
+      if (forcedWidth) document.body.style.width = forcedWidth;
+      if (forcedHeight) document.body.style.height = forcedHeight;
+    }
   };
 
   const sanitizeCompositionDurationAttributes = () => {
@@ -4407,7 +4409,7 @@ export function initSandboxRuntimeModular(): void {
     // Per-instance scoped values: data-var-* / --{id} bindings inside scenes. Idempotent.
     applyVariableBindings(document);
     // An unregistered vfx chain paints nothing and logs nothing, so re-scan the new DOM.
-    initVfx(document.body, state.canonicalFps);
+    initVfx(document.body ?? document.documentElement, state.canonicalFps);
     initMotionBlur();
     return captionsApplied;
   };
@@ -4708,7 +4710,7 @@ export function initSandboxRuntimeModular(): void {
         }
       }
     };
-    initVfx(document.body, state.canonicalFps);
+    initVfx(document.body ?? document.documentElement, state.canonicalFps);
     initMotionBlur();
     applyFetchedCaptionOverrides(captionOverrides, captionHosts, rewindCaptionTimelines);
     releaseDetachedMedia();
@@ -5117,11 +5119,11 @@ export function initSandboxRuntimeModular(): void {
     colorGradingRuntime = null;
   });
   // Per-pixel effect chains: compile once here, repaint on every seek below.
-  initVfx(document.body, state.canonicalFps);
+  initVfx(document.body ?? document.documentElement, state.canonicalFps);
   initMotionBlur();
   registerRuntimeCleanup(
     watchSceneWebglContexts(() => {
-      rebuildLostVfx(document.body);
+      rebuildLostVfx(document.body ?? document.documentElement);
       // Effects paint on seeks only. A playing transport redraws the scene itself on its next tick.
       if (clock.isPlaying()) {
         paintVfx(state.currentTime);
@@ -6976,7 +6978,8 @@ export function initSandboxRuntimeModular(): void {
         type: "preview-facts",
         facts: {
           sceneCount: windowScenes.length,
-          mountedElementCount: document.body.querySelectorAll("*").length,
+          mountedElementCount:
+            (document.body ?? document.documentElement)?.querySelectorAll("*").length ?? 0,
           durationSeconds: clock.getDuration(),
           videos: describeVideoSources(),
           lighterAt: lighterLevels(),

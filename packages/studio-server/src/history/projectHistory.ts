@@ -1,5 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, readdir, realpath, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  rmdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import {
   type Dirent,
   type Stats,
@@ -458,15 +468,17 @@ interface OpenedFolder {
   folder: Stats | undefined;
   id: string | null;
   foldsCase: boolean;
+  recorded: boolean;
 }
 
-async function readOpenedFolder(dir: string): Promise<OpenedFolder> {
+async function readOpenedFolder(dir: string, home: string): Promise<OpenedFolder> {
   const [folder, id, foldsCase] = await Promise.all([
     statOffThread(dir),
     readIdOffThread(dir),
     ignoresCase(dir),
   ]);
-  return { folder, id, foldsCase };
+  const recorded = folder !== undefined && (await isRecordedFolder(home, folder));
+  return { folder, id, foldsCase, recorded };
 }
 
 const blocks = (removed: string, added: string) =>
@@ -613,13 +625,13 @@ class Engine {
     readonly options: ProjectHistoryOptions,
     readonly projectId: string,
     readonly blobs: BlobStore,
-    { folder, id, foldsCase }: OpenedFolder,
+    { folder, id, foldsCase, recorded }: OpenedFolder,
   ) {
     this.dir = resolve(options.projectDir);
     this.home = join(options.historyRoot, projectId);
     this.foldsCase = foldsCase;
     // Read after the ownership wait, so a folder swapped for a copy meanwhile is refused.
-    if (!folder || id !== projectId || !isRecordedFolder(this.home, folder)) throw this.replaced();
+    if (!folder || id !== projectId || !recorded) throw this.replaced();
     this.folder = { dev: folder.dev, ino: folder.ino, birthtimeMs: folder.birthtimeMs };
   }
 
@@ -738,7 +750,7 @@ class Engine {
   }
 
   async start(): Promise<void> {
-    const log = readLog(this.logFile, (line) =>
+    const log = await readLog(this.logFile, (line) =>
       this.options.onError?.(
         new Error(`History log line ${line} could not be read and was skipped.`),
       ),
@@ -748,15 +760,18 @@ class Engine {
     this.compactGrownLog();
     await this.reclaimUncopied();
     if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
-    const cache = this.readStatCache();
+    const cache = await this.readStatCache();
     const last = this.log.entries.at(-1)?.id ?? START;
     for (const [path, hash] of manifestAt(this.log, last) ?? []) {
       const cached = cache.get(path);
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
-    const left = this.readAdopting();
+    const left = await this.readAdopting();
     const files = await this.historyFiles();
-    const wentAhead = this.readJson<WentAhead>("went-ahead.json", { pending: [], windows: {} });
+    const wentAhead = await this.readJson<WentAhead>("went-ahead.json", {
+      pending: [],
+      windows: {},
+    });
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow(wentAhead.windows);
     this.markWentAheadBeforeReopen(wentAhead.pending, left, new Set(files.map((f) => f.path)));
@@ -1136,22 +1151,18 @@ class Engine {
     return new Map([...this.tracked].map(([path, file]) => [path, file.hash]));
   }
 
-  readStatCache(): Map<string, Tracked> {
-    try {
-      const files = JSON.parse(readFileSync(join(this.home, "stat.json"), "utf-8"));
-      return new Map(Object.entries(files as Record<string, Tracked>));
-    } catch {
-      return new Map();
-    }
+  async readStatCache(): Promise<Map<string, Tracked>> {
+    const files = await this.readJson<Record<string, Tracked> | null>("stat.json", {});
+    return new Map(Object.entries(files ?? {}));
   }
 
-  readAdopting(): Set<string> {
-    return new Set(this.readJson<string[]>("adopting.json", []));
+  async readAdopting(): Promise<Set<string>> {
+    return new Set(await this.readJson<string[]>("adopting.json", []));
   }
 
-  readJson<T>(name: string, missing: T): T {
+  async readJson<T>(name: string, missing: T): Promise<T> {
     try {
-      return JSON.parse(readFileSync(join(this.home, name), "utf-8")) as T;
+      return JSON.parse(await readFile(join(this.home, name), "utf-8")) as T;
     } catch {
       return missing;
     }
@@ -2209,7 +2220,10 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
   try {
     const blobs = await openBlobStore(join(options.historyRoot, projectId, "blobs"));
     const closedWindow = options.closedWindowAfterOwnership?.() ?? options.closedWindow;
-    const opened = await readOpenedFolder(resolve(options.projectDir));
+    const opened = await readOpenedFolder(
+      resolve(options.projectDir),
+      join(options.historyRoot, projectId),
+    );
     const engine = new Engine({ ...options, closedWindow }, projectId, blobs, opened);
     await engine.queue(async () => {
       await engine.start();
@@ -2225,7 +2239,7 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
       close: () => api.close().finally(release),
     };
   } catch (error) {
-    release();
+    await release();
     throw error;
   }
 }
@@ -2238,16 +2252,16 @@ export interface ProjectHistoryView {
 }
 
 /** Reads only: takes no lock and files, prunes or writes nothing; an owner's half-appended last line is skipped. */
-export function readProjectHistory(
+export async function readProjectHistory(
   options: Pick<ProjectHistoryOptions, "projectDir" | "historyRoot" | "ignores">,
-): ProjectHistoryView {
+): Promise<ProjectHistoryView> {
   const dir = resolve(options.projectDir);
-  const id = readId(dir);
+  const id = await readIdOffThread(dir);
   const home =
-    id && isRecordedFolder(join(options.historyRoot, id), statSync(dir))
+    id && (await isRecordedFolder(join(options.historyRoot, id), await stat(dir)))
       ? join(options.historyRoot, id)
       : null;
-  const read = home && readLog(logFileIn(home), () => {});
+  const read = home && (await readLog(logFileIn(home), () => {}));
   const log = withoutHiddenPaths(
     read || { baseline: new Map(), entries: [], pins: new Set() },
     options.ignores,
