@@ -237,6 +237,8 @@ export async function reconnectChoices(
 }
 export async function confirmReconnect(token: string, choice: string, signal: AbortSignal) {
   const result = await json("reconnect", token, signal, { choice });
+  if (record(result) && text(result.confirmLocalFiles)) return result.confirmLocalFiles;
   if (!record(result) || result.reconnected !== true)
     throw new Error("Could not confirm the new connection.");
+  return null;
 }

@@ -237,7 +237,15 @@ async function reconnectFolder(service: ShareService, args: ShareArgs) {
     message: `Reconnect this folder to ${quotedFilePath(choice.title)} (${shareLine(choice.id)}) in ${quotedFilePath(choice.workspace.name)} (${shareLine(choice.workspace.id)})? Future syncs will publish versions there.`,
   });
   if (approved !== true) throw new CliUsageError("Reconnect cancelled.");
-  await service.reconnect.confirm(choice.token);
+  const difference = await service.reconnect.confirm(choice.token);
+  if (difference) {
+    const useLocal = await prompts.confirm({
+      initialValue: false,
+      message: `This folder differs from the latest cloud version of ${quotedFilePath(choice.title)} in ${quotedFilePath(choice.workspace.name)}. Reconnect using the local files? The next sync will publish them as the new version and may undo cloud edits.`,
+    });
+    if (useLocal !== true) throw new CliUsageError("Reconnect cancelled.");
+    await service.reconnect.confirm(difference.confirmLocalFiles);
+  }
   console.log("Folder reconnected. No files were uploaded.");
 }
 

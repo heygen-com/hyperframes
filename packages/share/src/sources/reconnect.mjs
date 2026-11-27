@@ -1,6 +1,7 @@
 // @ts-check
 import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
+import { shareSourceFingerprint } from "../shareSources.mjs";
 import { withProjectShareLock } from "../projectLock.mjs";
 import { sourceApi } from "./api.mjs";
 import { createProjectShareSourceStore, directoryIdentity } from "./store.mjs";
@@ -39,7 +40,7 @@ export function sourceReconnect(options) {
     };
   }
   /** @typedef {{key:import("./types.js").BindingKey,directory:string,
-   * space:{id:string,name:string},project:import("./types.js").Composition}} Offer */
+   * space:{id:string,name:string},project:import("./types.js").Composition, localDigest?:string}} Offer */
   /** @type {Map<string,Offer>} */
   const offers = new Map();
   return {
@@ -66,7 +67,7 @@ export function sourceReconnect(options) {
       if (!offer) throw new Error("Choose a cloud project again before reconnecting.");
       const { key, space } = offer;
       const { check, api } = session(key);
-      await withProjectShareLock(key.projectPath, "source", async () => {
+      return withProjectShareLock(key.projectPath, "source", async () => {
         await check();
         const current = await options.workspace(space.id);
         if (current?.id !== space.id || current.name !== space.name)
@@ -75,12 +76,18 @@ export function sourceReconnect(options) {
         if (!sameProject(project, offer.project))
           throw new Error("The cloud project changed. Review its destination again.");
         const base = await confirmedBase(api, project);
+        const divergent = await divergentDigest(key.projectPath, base, offer.localDigest);
         await check();
         if (
           (await realpath(options.projectPath)) !== key.projectPath ||
           (await unboundDirectory(key)) !== offer.directory
         )
           throw new Error("The local folder changed. Choose the project again.");
+        if (divergent) {
+          const confirmLocalFiles = randomUUID();
+          offers.set(confirmLocalFiles, { ...offer, localDigest: divergent });
+          return { confirmLocalFiles };
+        }
         await store.write({
           ...key,
           version: 1,
@@ -92,6 +99,7 @@ export function sourceReconnect(options) {
           inflight: null,
           base,
         });
+        return null;
       });
     },
   };
@@ -123,4 +131,17 @@ function sameProject(current, shown) {
     current.title === shown.title &&
     current.latestSnapshotId === shown.latestSnapshotId
   );
+}
+
+/** @param {string} path @param {import("./types.js").Binding["base"]} base @param {string | undefined} approved */
+async function divergentDigest(path, base, approved) {
+  if (!base) return null;
+  const digest = await shareSourceFingerprint(path);
+  if (!digest)
+    throw new Error(
+      "Could not compare this folder with the published version. Finish any edits and retry.",
+    );
+  if (approved && approved !== digest)
+    throw new Error("The local files changed. Choose the project again.");
+  return digest === base.manifestSha256 || digest === approved ? null : digest;
 }

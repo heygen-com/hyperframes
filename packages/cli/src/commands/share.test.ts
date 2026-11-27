@@ -495,5 +495,19 @@ it("requires interactive confirmation of the project and workspace before reconn
   mocks.confirm.mockResolvedValue(true);
   await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
   expect(mocks.reconnect).toHaveBeenCalledWith("offer");
+  mocks.reconnect.mockClear().mockResolvedValueOnce({ confirmLocalFiles: "reviewed-difference" });
+  mocks.confirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect.mock.calls).toEqual([["offer"]]);
+  expect(mocks.confirm.mock.calls.at(-1)?.[0]).toMatchObject({
+    initialValue: false,
+    message: expect.stringContaining("may undo cloud edits"),
+  });
+  mocks.reconnect
+    .mockClear()
+    .mockResolvedValueOnce({ confirmLocalFiles: "reviewed-difference" })
+    .mockResolvedValueOnce(null);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect.mock.calls).toEqual([["offer"], ["reviewed-difference"]]);
   expect(mocks.run).not.toHaveBeenCalled();
 });

@@ -197,8 +197,8 @@ export function mountShareRoutes(
       return c.json({ message: "Confirm a cloud project and workspace." }, 400);
     const token = c.req.header("x-hyperframes-share-csrf")!;
     try {
-      await (await sessions.get(token)!.get()).reconnect.confirm(body.choice);
-      return c.json({ reconnected: true });
+      const difference = await (await sessions.get(token)!.get()).reconnect.confirm(body.choice);
+      return c.json(difference ?? { reconnected: true });
     } catch (error) {
       return c.json(await presentError(error, token), 400);
     }

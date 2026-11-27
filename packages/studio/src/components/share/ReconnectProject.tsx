@@ -9,6 +9,7 @@ type Props = { token: string; space: string; onCancel: () => void; onConnected: 
 export function ReconnectProject({ token, space, onCancel, onConnected }: Props) {
   const [choices, setChoices] = useState<Choices>([]);
   const [selected, setSelected] = useState("");
+  const [confirmLocalFiles, setConfirmLocalFiles] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("Loading cloud projects…");
   useMountEffect(() => {
@@ -29,9 +30,17 @@ export function ReconnectProject({ token, space, onCancel, onConnected }: Props)
     if (!choice) return;
     setBusy(true);
     try {
-      await confirmReconnect(token, choice.token, AbortSignal.timeout(30_000));
-      onConnected();
+      const next = await confirmReconnect(
+        token,
+        confirmLocalFiles ?? choice.token,
+        AbortSignal.timeout(30_000),
+      );
+      if (next) {
+        setConfirmLocalFiles(next);
+        setBusy(false);
+      } else onConnected();
     } catch (error) {
+      setConfirmLocalFiles(null);
       setChoices([]);
       setStatus(messageOf(error));
       setBusy(false);
@@ -46,7 +55,7 @@ export function ReconnectProject({ token, space, onCancel, onConnected }: Props)
           Existing cloud project in <bdi>{choices[0]!.workspace.name}</bdi>
           <select
             value={selected}
-            disabled={busy}
+            disabled={busy || Boolean(confirmLocalFiles)}
             onChange={(event) => setSelected(event.target.value)}
           >
             <option value="">Choose a project</option>
@@ -67,8 +76,15 @@ export function ReconnectProject({ token, space, onCancel, onConnected }: Props)
           .
         </p>
       )}
+      {confirmLocalFiles && (
+        <p role="alert">
+          This folder differs from the latest cloud version. Its next sync will publish the local
+          files as the new version, which may undo cloud edits. Cancel to keep this folder
+          disconnected.
+        </p>
+      )}
       <Button disabled={!choice || busy} onClick={() => void confirm()}>
-        Confirm reconnect
+        {confirmLocalFiles ? "Reconnect using local files" : "Confirm reconnect"}
       </Button>
       <Button variant="ghost" disabled={busy} onClick={onCancel}>
         Cancel

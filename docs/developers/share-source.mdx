@@ -96,7 +96,10 @@ upgrading from a version that stored its connection inside the project, you can
 keep its cloud history. Before the first sync, choose **Reconnect a moved or
 upgraded project** in Studio, or run `hyperframes share --reconnect` (optionally
 with `--space <id>`). Select the existing cloud project and confirm its name
-and workspace. Reconnecting records the destination locally. Your next explicit
+and workspace. If the folder differs from the latest published version, Studio and the
+CLI ask whether the next sync should publish the local files as the new version.
+Cancel to leave the folder disconnected and review cloud edits first. If either
+version changes during confirmation, choose the project again. Reconnecting records the destination locally. Your next explicit
 sync can publish a version there. Previously shared versions retain
 their snapshots. If the first sync cannot confirm that it created the destination,
 it stops before uploading files. Retry to use a fresh destination. If the service

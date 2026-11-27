@@ -35,7 +35,7 @@ function fixture(dir = "/fixed/project") {
     reconnect: {
       available: vi.fn(async () => true),
       list: vi.fn(async () => []),
-      confirm: vi.fn(async () => {}),
+      confirm: vi.fn(async () => null),
     },
     sourceStatus: vi.fn(async () => "needs_sync" as const),
     syncProjectFiles: vi.fn(async () => state),
@@ -610,7 +610,11 @@ it("requires the local session and an explicit reconnect choice", async () => {
   expect(service.reconnect.list).toHaveBeenCalledWith("team1");
   expect((await request(app, "reconnect", csrf, { project: "Launch" })).status).toBe(400);
   expect(service.reconnect.confirm).not.toHaveBeenCalled();
-  expect((await request(app, "reconnect", csrf, { choice: "selected-token" })).status).toBe(200);
+  vi.mocked(service.reconnect.confirm).mockResolvedValueOnce({
+    confirmLocalFiles: "reviewed-files",
+  });
+  const difference = await request(app, "reconnect", csrf, { choice: "selected-token" });
+  expect(await difference.json()).toEqual({ confirmLocalFiles: "reviewed-files" });
   expect(service.reconnect.confirm).toHaveBeenCalledWith("selected-token");
   expect(service.syncProjectFiles).not.toHaveBeenCalled();
 });

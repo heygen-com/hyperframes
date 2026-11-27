@@ -139,7 +139,9 @@ under the project lock. Copies and projects with only a legacy in-project record
 start a new composition on the next explicit sync. To keep the history of a moved
 or upgraded folder, run `hyperframes share --reconnect` or choose **Reconnect a
 moved or upgraded project** in Studio before syncing. Confirm the cloud project
-and workspace. Reconnecting itself only updates the local binding.
+and workspace. When the local files differ from the published version, a separate
+confirmation allows the next sync to publish those local files. Canceling leaves
+the folder unbound. Reconnecting itself only updates the local binding.
 Hosts can inject a compatible `store` or read-only `existingBinding` resolver.
 An external Desktop binding is reused only when exact and settled; this adapter
 never writes Desktop's binding or starts a second upload on its behalf.
