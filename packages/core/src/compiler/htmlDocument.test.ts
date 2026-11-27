@@ -553,6 +553,42 @@ describe("insertRuntimeTag", () => {
     expect(out.indexOf(runtime)).toBeLessThan(out.indexOf("window.author"));
   });
 
+  it("leaves a Studio preview page that opens with its head as it was placed before", () => {
+    for (const opening of [
+      "<html><head>",
+      "<!doctype html>\n<html lang='en'>\n<head data-a='<head>'>",
+    ]) {
+      const normal = `${opening}<script>window.author=1</script></head><body></body></html>`;
+      expect(insertRuntimeTag(normal, runtime, true)).toBe(injectTagsAtHeadStart(normal, runtime));
+    }
+  });
+
+  it.each([
+    ["between html and head", "<!doctype html><html>AUTHOR<head></head><body></body></html>"],
+    ["before html", "<!doctype html>AUTHOR<html><head></head><body></body></html>"],
+    ["before the doctype", "AUTHOR<!doctype html><html><head></head><body></body></html>"],
+    ["in a page with no head", "<html>AUTHOR<body></body></html>"],
+    ["in a page with no head and no body", "AUTHOR<div></div>"],
+    ["after a head in a comment", "<!-- <head> -->AUTHOR<html><head></head><body></body></html>"],
+    ["inside an svg before html", "<svg>AUTHOR</svg><html><head></head><body></body></html>"],
+    ["in a body that comes before the head", "<body>AUTHOR</body><head></head>"],
+  ])(
+    "puts the runtime and tracker ahead of an author script %s for Studio previews",
+    (_, shape) => {
+      const html = shape.replace(
+        "AUTHOR",
+        '<script>window.author=1</script><i data-motion-blur="on">',
+      );
+      const out = insertRuntimeTag(html, runtime, true);
+      const added = /<script data-hf-accel-tracker>[^]*?<\/script>|\n/g;
+      expect(out.replace(runtime, "").replace(added, "")).toBe(html);
+      const tracker = out.indexOf("data-hf-accel-tracker");
+      expect(tracker).toBeGreaterThan(-1);
+      expect(tracker).toBeLessThan(out.indexOf(runtime));
+      expect(out.indexOf(runtime)).toBeLessThan(out.indexOf("window.author"));
+    },
+  );
+
   it("adds the tracker once, however many times the runtime is placed", () => {
     const once = insertRuntimeTag(page('data-motion-blur="on"'), runtime);
     const twice = insertRuntimeTag(once, runtime);

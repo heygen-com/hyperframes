@@ -411,10 +411,18 @@ const ACCEL_TRACKER_ATTR = "data-hf-accel-tracker";
 const OPTS_INTO_MOTION_BLUR = /\sdata-motion-blur\s*=\s*["']?on[\s"'>]/i;
 
 export function insertRuntimeTag(html: string, tag: string, atHeadStart = false): string {
-  const withRuntime = atHeadStart ? injectTagsAtHeadStart(html, tag) : insertTagInHead(html, tag);
+  const withRuntime = atHeadStart
+    ? insertWhereScriptsFirstRun(html, tag)
+    : insertTagInHead(html, tag);
   if (!OPTS_INTO_MOTION_BLUR.test(html) || html.includes(ACCEL_TRACKER_ATTR)) return withRuntime;
   const tracker = `<script ${ACCEL_TRACKER_ATTR}>${acceleratedCanvasTrackerSource()}</script>`;
-  return injectTagsAtHeadStart(withRuntime, tracker);
+  return (atHeadStart ? insertWhereScriptsFirstRun : injectTagsAtHeadStart)(withRuntime, tracker);
+}
+
+function insertWhereScriptsFirstRun(html: string, tags: string): string {
+  const at = headContentStart(html);
+  const opensWithMarkup = html.charAt(at - 1) === ">";
+  return `${html.slice(0, at)}${opensWithMarkup ? "\n" : ""}${tags}${html.slice(at)}`;
 }
 
 /**
