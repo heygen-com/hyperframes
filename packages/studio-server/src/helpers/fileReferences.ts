@@ -356,7 +356,11 @@ function referenceEdits(
       const end = offset + match.length;
       if (
         beside &&
-        !besideReaches(beside.targets, context, normalized(restAfter(text, end), context))
+        !besideReaches(
+          beside.targets,
+          context,
+          normalized(restAfter(text, end, context.url ? urlRegion!.end : undefined), context),
+        )
       )
         return [];
       return [
@@ -407,8 +411,8 @@ export function referenceRewriter(
 }
 
 const MAX_REST = 256;
-const restAfter = (text: string, end: number) =>
-  /^[^"'`<>\r\n]*/.exec(text.slice(end, end + MAX_REST))![0];
+const restAfter = (text: string, end: number, urlEnd = Infinity) =>
+  /^[^"'`<>\r\n]*/.exec(text.slice(end, Math.min(urlEnd, end + MAX_REST)))![0];
 const REFERENCE_END = /^(?:$|\)(?=$|[\s;,}!)/])|[?#]|,\s|\s+\d+(?:\.\d+)?[wx](?![\w.]))/;
 
 function reaches(targets: ReadonlySet<string>, path: string): boolean {

@@ -853,4 +853,19 @@ describe("renaming a folder over the route", () => {
     expect(response.status).toBe(200);
     expect(readFileSync(join(project, "assets", "page.html"), "utf8")).toBe(style("takes"));
   });
+
+  it("in HTML follows an unquoted folder-relative URL followed by another attribute", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-rename-refs-"));
+    dirs.push(project);
+    mkdirSync(join(project, "assets", "clips"), { recursive: true });
+    writeFileSync(join(project, "assets", "clips", "a.png"), "x");
+    const page = (folder: string) =>
+      `<img src=${folder}/a.png alt=preview><a href=${folder}/a.png title=x>x</a>`;
+    writeFileSync(join(project, "assets", "i.html"), page("clips"));
+    const response = await renameIn(project, "assets/clips", "assets/takes");
+    expect(response.status).toBe(200);
+    expect(readFileSync(join(project, "assets", "i.html"), "utf8")).toBe(
+      `<img src=takes/a.png alt=preview><a href=takes/a.png title=x>x</a>`,
+    );
+  });
 });
