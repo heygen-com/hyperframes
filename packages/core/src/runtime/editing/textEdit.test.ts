@@ -38,6 +38,8 @@ const port = () =>
 let parent = port();
 const start = (handle: string, on: MessagePort = parent) =>
   textEdit({ handle, action: "start", caret: null }, on, V);
+const startTakingAway = (handle: string) =>
+  textEdit({ handle, action: "start", caret: null, away: true }, parent, V);
 const end = (handle: string, keep: boolean, on: MessagePort = parent) =>
   textEdit({ handle, action: "end", keep }, on, V);
 const key = (element: Element, init: KeyboardEventInit) =>
@@ -227,7 +229,7 @@ describe("text-edit", () => {
     try {
       const { element, handle } = page();
       const other = document.getElementById("other")!;
-      start(handle);
+      startTakingAway(handle);
       other.dispatchEvent(
         new PointerEvent("pointerdown", {
           bubbles: true,
@@ -257,7 +259,7 @@ describe("text-edit", () => {
 
   it("hands a right-click anywhere in the film, the text included, to the port and keeps the frame's menu shut", () => {
     const { element, handle } = page();
-    start(handle);
+    startTakingAway(handle);
     const menu = new MouseEvent("contextmenu", {
       bubbles: true,
       cancelable: true,
@@ -281,12 +283,30 @@ describe("text-edit", () => {
     try {
       const { element, handle } = page();
       const other = document.getElementById("other")!;
-      start(handle);
+      startTakingAway(handle);
       element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
       other.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 1 }));
       end(handle, false);
       other.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
       other.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      vi.runAllTimers();
+      expect(parent.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: "text-edit-away" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the native menu and says nothing of presses for a host that has not asked for them", () => {
+    vi.useFakeTimers();
+    try {
+      const { element, handle } = page();
+      const other = document.getElementById("other")!;
+      start(handle);
+      const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+      expect(element.dispatchEvent(menu)).toBe(true);
+      other.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
       vi.runAllTimers();
       expect(parent.postMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ event: "text-edit-away" }),
@@ -308,6 +328,9 @@ describe("text-edit", () => {
     };
     const { v: _v, event: _e, ...away } = event;
     expect(textEditAwayEvent(event, V)).toEqual(away);
+    const asked = { handle: HANDLE, action: "start", caret: null, away: true };
+    expect(parseTextEdit(asked)).toEqual(asked);
+    expect(parseTextEdit({ ...asked, away: "yes" })).toBeNull();
     expect(textEditAwayEvent({ ...event, button: 2 }, V)).not.toBeNull();
     expect(textEditAwayEvent({ ...event, button: 1 }, V)).toBeNull();
     expect(textEditAwayEvent({ ...event, v: 2 }, V)).toBeNull();

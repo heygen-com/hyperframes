@@ -24,7 +24,7 @@ import {
 type Point = { x: number; y: number };
 type Style = Record<string, string | null>;
 export type TextEditParams =
-  | { handle: EditingElementHandle; action: "start"; caret: Point | null }
+  | { handle: EditingElementHandle; action: "start"; caret: Point | null; away?: boolean }
   | { handle: EditingElementHandle; action: "end"; keep: boolean }
   | { handle: EditingElementHandle; action: "style"; style: Style };
 export type TextEditResult = { applied: boolean; html: string | null; previous: string | null };
@@ -82,13 +82,19 @@ const isHandle = (value: unknown): value is string =>
 const isPoint = (value: unknown): value is Point =>
   isRecord(value) && keysAre(value, "x,y") && Number.isFinite(value.x) && Number.isFinite(value.y);
 
+function parseStart(handle: EditingElementHandle, params: Fields): TextEditParams | null {
+  const { caret, away } = params;
+  if (caret !== null && !isPoint(caret)) return null;
+  if (keysAre(params, "action,caret,handle")) return { handle, action: "start", caret };
+  if (keysAre(params, "action,away,caret,handle") && typeof away === "boolean")
+    return { handle, action: "start", caret, away };
+  return null;
+}
+
 export function parseTextEdit(params: unknown): TextEditParams | null {
   if (!isRecord(params) || !isHandle(params.handle)) return null;
   const { handle, action } = params;
-  if (action === "start" && keysAre(params, "action,caret,handle")) {
-    const { caret } = params;
-    return caret === null || isPoint(caret) ? { handle, action, caret } : null;
-  }
+  if (action === "start") return parseStart(handle, params);
   if (action === "end" && keysAre(params, "action,handle,keep") && typeof params.keep === "boolean")
     return { handle, action, keep: params.keep };
   if (action === "style" && keysAre(params, "action,handle,style") && isStyle(params.style))
@@ -418,6 +424,7 @@ function caretOf(open: Session): TextEditCaret | null {
 function start(
   handle: EditingElementHandle,
   caret: Point | null,
+  hostTakesAway: boolean,
   port: MessagePort,
   version: number,
 ) {
@@ -449,9 +456,11 @@ function start(
   };
   const stopListening = listen(editable, endInFrame, open.report);
   const stopFollowing = followCaret(editable, open);
-  const stopPassing = passAway(editable, (away) =>
-    port.postMessage({ v: version, event: "text-edit-away", handle, ...away }),
-  );
+  const stopPassing = hostTakesAway
+    ? passAway(editable, (away) =>
+        port.postMessage({ v: version, event: "text-edit-away", handle, ...away }),
+      )
+    : () => {};
   open.stop = () => {
     stopListening();
     stopFollowing();
@@ -474,7 +483,8 @@ export function textEdit(
   port: MessagePort,
   version: number,
 ): TextEditResult {
-  if (params.action === "start") return start(params.handle, params.caret, port, version);
+  if (params.action === "start")
+    return start(params.handle, params.caret, params.away === true, port, version);
   if (session?.handle !== params.handle || session.port !== port) return NOTHING;
   if (params.action === "style") return styleSelection(session, params.style);
   const ended = close(params.keep);

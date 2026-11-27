@@ -926,21 +926,22 @@ export function createEditingPortClient(options: {
     if ("error" in outcome) entry.reject(outcome.error);
     else entry.resolve(outcome.result);
   };
+  const deliver = <E>(event: E | null | false, listeners: Set<(event: E) => void>) => {
+    if (event) listeners.forEach((listener) => listener(event));
+    return Boolean(event);
+  };
   const onPush = (data: Record<string, unknown>) => {
-    const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
-    if (key) return keyListeners.forEach((listener) => listener(key));
-    const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
-    if (geometry) return geometryListeners.forEach((listener) => listener(geometry));
-    const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
-    if (ended) return textEditListeners.forEach((listener) => listener(ended));
-    const away = textEditAwayEvent(data, EDITING_PROTOCOL_VERSION);
-    if (away) return awayListeners.forEach((listener) => listener(away));
-    const selected = textEditSelectionEvent(data, EDITING_PROTOCOL_VERSION);
-    if (selected) return selectionListeners.forEach((listener) => listener(selected));
-    const stageReady = stageActReadyEvent(data, EDITING_PROTOCOL_VERSION);
-    if (stageReady) return stageReadyListeners.forEach((listener) => listener(stageReady));
-    const stageInput = stageInputEvent(data, EDITING_PROTOCOL_VERSION);
-    if (stageInput) stageInputListeners.forEach((listener) => listener(stageInput));
+    const v = EDITING_PROTOCOL_VERSION;
+    const readers = [
+      () => deliver(data.v === v && data.event === "key" && keyEvent(data.key), keyListeners),
+      () => deliver(geometryEvent(data, v), geometryListeners),
+      () => deliver(textEditEndedEvent(data, v), textEditListeners),
+      () => deliver(textEditAwayEvent(data, v), awayListeners),
+      () => deliver(textEditSelectionEvent(data, v), selectionListeners),
+      () => deliver(stageActReadyEvent(data, v), stageReadyListeners),
+      () => deliver(stageInputEvent(data, v), stageInputListeners),
+    ];
+    readers.some((read) => read());
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
