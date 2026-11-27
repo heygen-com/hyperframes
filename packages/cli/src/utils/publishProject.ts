@@ -581,8 +581,7 @@ function linkOutsideApproved(
   return onOutsideFile(outsideFileReference(absProjectDir, file, file, absPath)) !== false;
 }
 
-/** Ships one in-project path a page names, or leaves it out with its reason. False when it is not on disk. */
-function includeCandidate(
+function includeCandidateOnDisk(
   ctx: ExternalAssetContext,
   entryPath: string,
   rawPath: string,
@@ -598,8 +597,7 @@ function includeCandidate(
   return true;
 }
 
-/** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root under one
- * spelling of its name. False when that spelling is on disk in neither, so the next spelling can be tried. */
+/** Ships a referenced in-project file the ignore rules skipped, from its folder or the root; false if absent. */
 function includeReferencedProjectFile(
   ctx: ExternalAssetContext,
   resolvedPath: string,
@@ -611,7 +609,8 @@ function includeReferencedProjectFile(
   const candidates = [resolvedPath, resolve(ctx.absProjectDir, name)].filter((absPath) =>
     isPathInside(absPath, ctx.absProjectDir),
   );
-  if (candidates.some((absPath) => includeCandidate(ctx, entryPath, rawPath, absPath))) return true;
+  if (candidates.some((absPath) => includeCandidateOnDisk(ctx, entryPath, rawPath, absPath)))
+    return true;
   if (!requireOnDisk) return false;
   throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
 }
@@ -783,7 +782,6 @@ function tryResolveExternal(
 ): string | null {
   const filesystemPath = isAbsolute(rawPath) && !rawPath.startsWith("//");
   if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
-  // Every spelling of the name without its query or fragment, then of the whole value: a file may be named "a#b.svg".
   const [path, suffix] = splitPathSuffix(rawPath);
   const spellings: [string, string][] = decodeUrlPathVariants(path).map((name) => [name, suffix]);
   if (suffix)
@@ -792,7 +790,6 @@ function tryResolveExternal(
     const target = archiveTargetOf(ctx, resolve(referrerAbsDir, name), rawPath, {
       name,
       entryPath,
-      // a name missing in one spelling is refused only once every spelling has been looked for
       requireOnDisk: requireOnDisk && i === spellings.length - 1,
       filesystemPath,
     });

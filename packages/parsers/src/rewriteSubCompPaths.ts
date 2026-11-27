@@ -86,8 +86,11 @@ export function rewriteAssetPath(
   const slashed = basePath.replace(/\\/g, "/");
   if (!slashed || slashed.startsWith("/")) return relativePath;
   const filePath = decodeWellFormedEscapes(slashed);
-  const sibling = resolve("/", join(compDir, filePath)).slice(1);
-  if (!needsRewrite(filePath) && (!assetExists || !assetExists(sibling))) return relativePath;
+  const siblingOf = (name: string) => resolve("/", join(compDir, name)).slice(1);
+  const sibling = needsRewrite(filePath)
+    ? siblingOf(filePath)
+    : [filePath, slashed].map(siblingOf).find((name) => assetExists?.(name));
+  if (sibling === undefined) return relativePath;
   const rebased = encodeUrlPath(sibling) + suffix;
   charge?.(rebased.length - relativePath.length);
   return rebased;
