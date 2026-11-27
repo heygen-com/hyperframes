@@ -61,7 +61,7 @@ function frameColoursOnly(event: TextEditSelectionEvent): TextEditSelectionEvent
 }
 
 export function frameStyleValue(name: string, value: unknown): string | null {
-  if (typeof value !== "string" || !value) return null;
+  if (typeof value !== "string" || !value || name.startsWith("--")) return null;
   const probe = document.createElement("i").style;
   probe.setProperty(name, value);
   return probe.getPropertyValue(name) ? value : null;

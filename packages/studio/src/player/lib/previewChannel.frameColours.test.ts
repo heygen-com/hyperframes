@@ -73,4 +73,5 @@ it("keeps a frame's style value only when it is a value of the property it answe
   expect(frameStyleValue("border-top-style", "dashed;color:red")).toBeNull();
   expect(frameStyleValue("background-color", BEACON)).toBeNull();
   expect(frameStyleValue("color", 7)).toBeNull();
+  expect(frameStyleValue("--accent", BEACON)).toBeNull();
 });
