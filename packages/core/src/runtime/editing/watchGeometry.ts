@@ -1,7 +1,9 @@
 // `watch-geometry`: the frame pushes the named elements' `geometry` fields once per animation frame,
 // stamped on the clock both windows share, until an empty list, the page hiding, or the parent's release.
+import { portMap, postOnPort } from "../runtimePort";
 import {
   EDITING_ELEMENT_HANDLE,
+  MAX_DRAFT_PX,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_VALUE,
   type EditingElementHandle,
@@ -47,14 +49,18 @@ const isSource = (value: unknown) =>
     finiteOrNull(value.declaredHeight));
 const isClipPath = (value: unknown) =>
   value === null || (typeof value === "string" && value.length <= MAX_ELEMENT_VALUE);
+const isLayout = (value: unknown) =>
+  keysAre(value, "height,width") &&
+  [value.width, value.height].every((side) => finite(side) && side >= 0 && side <= MAX_DRAFT_PX);
 const isMembers = (value: unknown) =>
   value === null ||
   (Array.isArray(value) && value.length <= MAX_ELEMENT_ENTRIES && value.every(isRect));
 
 function isGeometry(value: unknown): value is EditingElementGeometry {
-  if (!keysAre(value, "angle,clipPath,corners,members,rect,source,visible")) return false;
+  if (!keysAre(value, "angle,clipPath,corners,layout,members,rect,source,visible")) return false;
   return (
     isRect(value.rect) &&
+    isLayout(value.layout) &&
     finite(value.angle) &&
     isCorners(value.corners) &&
     isSource(value.source) &&
@@ -75,13 +81,13 @@ export function geometryEvent(data: unknown, version: number): EditingGeometryEv
   return elements.every((e) => e === null || isGeometry(e)) ? { at, elements } : null;
 }
 
-const watches = new Map<MessagePort, EditingElementHandle[]>();
+const watches = portMap<EditingElementHandle[]>();
 let wireVersion = 0;
 
 function pushTo(port: MessagePort, handles: EditingElementHandle[], at: number): void {
   const { elements } = elementGeometry(handles, undefined);
   try {
-    port.postMessage({ v: wireVersion, event: "geometry", at, elements });
+    postOnPort(port, { v: wireVersion, event: "geometry", at, elements });
   } catch {
     watches.delete(port);
   }
@@ -92,7 +98,7 @@ function push(): void {
   observing = false;
   const at = performance.timeOrigin + performance.now();
   try {
-    for (const [port, handles] of watches) pushTo(port, handles, at);
+    watches.forEach((handles, port) => pushTo(port, handles, at));
   } catch (err) {
     swallow("watchGeometry.push", err);
   } finally {
@@ -108,15 +114,16 @@ let observing = false;
 let nextFrame = 0;
 function observeThisFrame(): void {
   nextFrame = 0;
-  if (!watches.size) return;
+  if (!watches.size()) return;
   observer ??= new ResizeObserver(push);
   observer.observe(document.documentElement);
   observing = true;
 }
 
 function schedule(): void {
-  if (watches.size && !nextFrame && !observing) nextFrame = requestAnimationFrame(observeThisFrame);
-  if (watches.size) return;
+  if (watches.size() && !nextFrame && !observing)
+    nextFrame = requestAnimationFrame(observeThisFrame);
+  if (watches.size()) return;
   if (nextFrame) cancelAnimationFrame(nextFrame);
   if (observing) observer?.unobserve(document.documentElement);
   nextFrame = 0;
@@ -138,7 +145,7 @@ export function watchGeometry(
   version: number,
 ): { watching: number } {
   if (!handles.length) watches.delete(port);
-  else if (watches.has(port) || watches.size < MAX_GEOMETRY_WATCHERS) watches.set(port, handles);
+  else if (watches.has(port) || watches.size() < MAX_GEOMETRY_WATCHERS) watches.set(port, handles);
   else throw new Error(`at most ${MAX_GEOMETRY_WATCHERS} ports may watch geometry`);
   wireVersion = version;
   window.addEventListener("pagehide", stopAll);

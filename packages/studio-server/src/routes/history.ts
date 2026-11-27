@@ -7,7 +7,7 @@ import {
   type HistoryWindow,
   type ProjectHistory,
 } from "../history/projectHistory.js";
-import type { HistoryWho, HistoryTarget } from "../history/historyLog.js";
+import { stepPaths, type HistoryWho, type HistoryTarget } from "../history/historyLog.js";
 import { HistoryBusyError } from "../history/ownerLock.js";
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
@@ -97,7 +97,7 @@ const isSelectorIndex = (value: unknown): value is number =>
 function nextStep(history: ProjectHistory, direction: "back" | "forward") {
   const target = history.next(direction, YOU);
   if (!target) return null;
-  const paths = target.files.map((file) => file.path);
+  const paths = stepPaths(target);
   return { id: target.id, label: target.label, endedAt: target.endedAt, paths };
 }
 

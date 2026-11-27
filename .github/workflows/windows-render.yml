@@ -438,18 +438,22 @@ jobs:
             studio_shard: 2/2
           - lane: core
             packages: --filter @hyperframes/core --filter @hyperframes/player --filter @hyperframes/shader-transitions
-          # Engine and CLI ran one after the other in a single lane (about 5 + 11 min), 16 min of a 16 min deadline;
-          # each half runs the same two packages with Vitest's --shard, so the lanes end together.
+          # Engine and CLI run the same two packages in thirds with Vitest's --shard: halves sat at 842-934 s of
+          # the 960 s step deadline, so a slow runner failed them.
           - lane: engine-cli-1
             packages: --filter @hyperframes/engine --filter @hyperframes/cli
-            test_shard: 1/2
+            test_shard: 1/3
             process_tests: true
           - lane: engine-cli-2
             packages: --filter @hyperframes/engine --filter @hyperframes/cli
-            test_shard: 2/2
+            test_shard: 2/3
             process_tests: true
             once_checks: true
             runtime_contract: true
+          - lane: engine-cli-3
+            packages: --filter @hyperframes/engine --filter @hyperframes/cli
+            test_shard: 3/3
+            process_tests: true
 
     steps:
       - name: Disable Windows Defender real-time monitoring and update its signatures now

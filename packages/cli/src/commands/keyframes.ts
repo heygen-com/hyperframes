@@ -885,7 +885,7 @@ function onionShotOptions(args: ShotArgs & { selector?: string }) {
 }
 
 function printOnionShotSaved(saved: string, elementCount: number): void {
-  console.log(`${c.success("◇")}  onion-skin screenshot saved ${c.accent(saved)}`);
+  console.log(`${c.success("◇")}  onion-skin screenshot saved ${c.accent(terminalText(saved))}`);
   console.log(
     c.dim(
       `   ${elementCount} element${elementCount === 1 ? "" : "s"} · open it to verify the motion matches your target, then read the keyframes below.`,

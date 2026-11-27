@@ -1,7 +1,11 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
+  analyzeMediaGrade,
   formatMeasuredNote,
   gradeSampleTimes,
   parseMediaTreatmentSignalStats,
@@ -106,6 +110,81 @@ describe("vendored media grade analyzer parity", () => {
     for (const duration of [0.4, 12, 300]) {
       expect(analyzer.gradeSampleTimes(duration)).toEqual(gradeSampleTimes(duration));
     }
+  });
+});
+
+// Stand-in ffprobe and ffmpeg that log every call's arguments and answer as the analyzers expect: a demuxer listing
+// (for the core module's format list), probe JSON, and signal stats.
+function standIns(dir: string): {
+  ffprobePath: string;
+  ffmpegPath: string;
+  calls: () => string[][];
+} {
+  mkdirSync(dir, { recursive: true });
+  const log = join(dir, "calls.log");
+  const listing = [
+    "mov,mp4,m4a,3gp,3g2,mj2",
+    ...["matroska,webm", "mxf", "avi", "mpeg", "mpegts", "mpegvideo", "flv", "asf", "ogg"],
+    ...["wav", "mp3", "aac", "flac", "aiff", "caf", "w64", "wv", "au", "ac3"],
+    ...["gif", "ico", "image2", "png_pipe", "jpeg_pipe"],
+    ...["webp_pipe", "bmp_pipe", "tiff_pipe", "hls", "concat", "dash", "avisynth", "tty"],
+  ]
+    .map((name) => ` D  ${name} demuxer`)
+    .join("\\n");
+  const script = [
+    "#!/bin/sh",
+    `for a in "$@"; do printf '%s\\n' "$a"; done >> '${log}'`,
+    `echo @@END@@ >> '${log}'`,
+    'case " $* " in',
+    `  *" -demuxers "*) printf '${listing}\\n' ;;`,
+    `  *"-show_entries"*) echo '{"streams":[{"pix_fmt":"yuv420p","duration":"2"}],"format":{"duration":"2"}}' ;;`,
+    `  *) printf '${SIGNALSTATS.replaceAll("\n", "\\n")}\\n' ;;`,
+    "esac",
+  ].join("\n");
+  for (const name of ["ffprobe", "ffmpeg"]) {
+    writeFileSync(join(dir, name), `${script}\n`);
+    chmodSync(join(dir, name), 0o755);
+  }
+  const calls = () =>
+    readFileSync(log, "utf8")
+      .split("@@END@@\n")
+      .map((call) => call.split("\n").filter(Boolean))
+      .filter((call) => call.length > 0 && !call.includes("-demuxers"));
+  return { ffprobePath: join(dir, "ffprobe"), ffmpegPath: join(dir, "ffmpeg"), calls };
+}
+
+/** The readers a call allows for `file`, from its `-format_whitelist`; null when it sets none before the file. */
+function readersFor(call: string[], file: string): Set<string> | null {
+  const at = call.indexOf("-format_whitelist");
+  if (at < 0 || at > call.indexOf(file)) return null;
+  return new Set(call[at + 1]!.split(","));
+}
+
+describe.skipIf(process.platform === "win32")("vendored analyzer input limits", () => {
+  it("open each file with no reader the core module would not use, and only from a local file", async () => {
+    const root = mkdtempSync(join(tmpdir(), "grade-inputs-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const file = join(root, "clip.mp4");
+    writeFileSync(file, "not read");
+    const core = standIns(join(root, "core"));
+    analyzeMediaGrade(file, core);
+    const vendored = standIns(join(root, "vendored"));
+    const analyzer = await import(
+      new URL("../../../packages/cli/src/media-use/lib/grade-analyzer.mjs", import.meta.url).href
+    );
+    analyzer.analyzeMediaGrade(file, vendored);
+    const coreCalls = core.calls();
+    const vendoredCalls = vendored.calls();
+    expect(coreCalls.length).toBeGreaterThanOrEqual(2);
+    expect(vendoredCalls.length).toBe(coreCalls.length);
+    vendoredCalls.forEach((call, index) => {
+      const allowed = readersFor(coreCalls[index]!, file);
+      const ours = readersFor(call, file);
+      expect(allowed, coreCalls[index]!.join(" ")).not.toBeNull();
+      expect(ours, call.join(" ")).not.toBeNull();
+      expect([...ours!].filter((reader) => !allowed!.has(reader))).toEqual([]);
+      expect(call[call.indexOf("-protocol_whitelist") + 1]).toBe("file");
+    });
   });
 });
 

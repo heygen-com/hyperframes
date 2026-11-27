@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
+import { STUDIO_PREVIEW_PAGE_DEADLINE_MS } from "@hyperframes/core/studio-preview-mark";
 
 export interface BuildJob {
   kind: "build";
@@ -20,24 +21,59 @@ export interface FinishJob {
   signature: string;
   projectDir: string;
   compPath: string;
-  options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean };
+  options: {
+    capture: boolean;
+    gsapBaseUrl: string;
+    gsapMirror?: string | null;
+    sandboxedCapture: boolean;
+  };
   variables?: Record<string, unknown>;
 }
 
-export type SubCompositionJob = BuildJob | FinishJob;
-type Result<J> = J extends BuildJob ? { html: string; references: string[] } | null : string;
+export interface BaseJob {
+  kind: "base";
+  html: string;
+  projectId: string;
+  runtimeUrl: string;
+}
+
+export interface PartsJob {
+  kind: "parts";
+  html: string;
+  ignore: string[];
+}
+
+export interface CompositionsJob {
+  kind: "compositions";
+  projectDir: string;
+  files: string[];
+  keptBackForPageInProgressMs: number;
+}
+
+export type SubCompositionJob = BuildJob | BaseJob | FinishJob | PartsJob | CompositionsJob;
+type Result<J> = J extends BuildJob
+  ? { html: string; references: string[] } | { refused: string } | null
+  : J extends BaseJob
+    ? { html: string; references: string[] }
+    : J extends CompositionsJob
+      ? { compositions: string[]; unchecked: number }
+      : string;
 
 export class SubCompositionDeadlineError extends Error {
-  constructor(compPath: string) {
+  readonly queued: boolean;
+  constructor(compPath: string, queued = false) {
     super(`${compPath} took too long to build`);
     this.name = "SubCompositionDeadlineError";
+    this.queued = queued;
   }
 }
 
 export const SUB_COMPOSITION_DEADLINE_MS = 30_000;
+export const ROOT_PREVIEW_DEADLINE_MS = STUDIO_PREVIEW_PAGE_DEADLINE_MS;
 
 interface Pending {
   job: SubCompositionJob;
+  deadline: number;
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -53,10 +89,21 @@ function workerEntry(): URL {
   return pathToFileURL(join(here, source));
 }
 
-// Jobs in the order the worker runs them: the first is the one it is running.
+// Jobs in order. Only `running` has reached the worker, so one dropped while it waits never does.
 const pending = new Map<number, Pending>();
 let worker: Worker | null = null;
+let running: number | null = null;
 let nextId = 0;
+
+function handOverNext(): void {
+  if (running !== null) return;
+  for (const [id, { job, deadline }] of pending) {
+    running = id;
+    worker ??= startWorker();
+    worker.postMessage({ id, job, timeLeftMs: deadline - performance.now() });
+    return;
+  }
+}
 
 function startWorker(): Worker {
   const started = new Worker(workerEntry());
@@ -64,6 +111,7 @@ function startWorker(): Worker {
     "message",
     ({ id, result, error }: { id: number; result?: unknown; error?: string }) => {
       const job = untrack(id);
+      handOverNext();
       if (!job) return;
       if (error !== undefined) job.reject(new Error(error));
       else job.resolve(result);
@@ -90,6 +138,7 @@ function untrack(id: number): Pending | undefined {
   const job = pending.get(id);
   if (!job) return undefined;
   pending.delete(id);
+  if (running === id) running = null;
   clearTimeout(job.timer);
   holdHostWhileBusy();
   return job;
@@ -100,14 +149,10 @@ function untrack(id: number): Pending | undefined {
 function replace(from: Worker, failed?: Error): void {
   if (worker !== from) return;
   worker = null;
+  running = null;
   void from.terminate();
-  if (failed) {
-    for (const id of [...pending.keys()]) untrack(id)?.reject(failed);
-    return;
-  }
-  if (pending.size === 0) return;
-  const next = (worker = startWorker());
-  for (const [id, job] of pending) next.postMessage({ id, job: job.job });
+  if (failed) for (const id of [...pending.keys()]) untrack(id)?.reject(failed);
+  handOverNext();
 }
 
 /** `job` on the build worker, refused past `deadline` (performance.now() time). Only the running job's deadline ends
@@ -121,17 +166,16 @@ export function runOffThread<J extends SubCompositionJob>(
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => {
-        const running = pending.keys().next().value === id;
+        const wasRunning = running === id;
         untrack(id);
-        reject(new SubCompositionDeadlineError(compPath));
-        if (running && worker) replace(worker);
+        reject(new SubCompositionDeadlineError(compPath, !wasRunning));
+        if (wasRunning && worker) replace(worker);
       },
       Math.max(0, deadline - performance.now()),
     );
     timer.unref?.();
-    worker ??= startWorker();
-    track(id, { job, resolve: resolve as (result: unknown) => void, reject, timer });
-    worker.postMessage({ id, job });
+    track(id, { job, deadline, resolve: resolve as (result: unknown) => void, reject, timer });
+    handOverNext();
   });
 }
 

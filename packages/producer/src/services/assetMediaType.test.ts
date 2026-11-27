@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -201,6 +202,17 @@ describe("preflightCompositionAssetMediaTypes", () => {
     await expect(run({ imageSrc: "corrupt-media" })).resolves.toBeUndefined();
   });
 
+  // fails without the fix: the probe error was ignored, so the <video> went on to frame extraction.
+  it("refuses a PNG cut short under a video element, and leaves it to the image element otherwise", async () => {
+    const png = readFileSync(stillPath);
+    writeFileSync(join(projectDir, "cut-short.png"), png.subarray(0, png.length - 12));
+    await expect(run({ videoSrc: "cut-short.png" })).rejects.toMatchObject({
+      code: ASSET_MEDIA_TYPE_MISMATCH,
+      mismatches: [expect.objectContaining({ expected: "video", detected: "image" })],
+    });
+    await expect(run({ imageSrc: "cut-short.png" })).resolves.toBeUndefined();
+  });
+
   // STUDIO-5433. This preflight sees every local media src regardless of its
   // authored timing, so it is the only place a document payload behind a
   // `data-end` video or a `loop`ing audio is caught before frames are captured
@@ -262,6 +274,26 @@ describe("preflightCompositionAssetMediaTypes", () => {
         await expect(run(input)).rejects.toBeInstanceOf(NotMediaPayloadError);
       },
     );
+
+    it.each([
+      ["an option line", "ffconcat version 1.0\nfile clip.mp4\noption safe 0\n"],
+      ["an entry that is not there", "ffconcat version 1.0\nfile gone.mp4\n"],
+      [
+        "a line hidden behind a lone carriage return",
+        "ffconcat version 1.0\nfile a.mp4\rfile b.mp4\n",
+      ],
+    ])("refuses a project playlist with %s", async (_name, list) => {
+      writeFileSync(join(projectDir, "a.mp4"), "media");
+      writeFileSync(join(projectDir, "b.mp4"), "media");
+      writeFileSync(join(projectDir, "list.ffconcat"), list);
+      await expect(run({ videoSrc: "list.ffconcat" })).rejects.toBeInstanceOf(NotMediaPayloadError);
+    });
+
+    it("keeps a project playlist naming media beside it", async () => {
+      writeFileSync(join(projectDir, "a.mp4"), "media");
+      writeFileSync(join(projectDir, "list.ffconcat"), "ffconcat version 1.0\nfile a.mp4\n");
+      await expect(run({ videoSrc: "list.ffconcat" })).resolves.toBeUndefined();
+    });
 
     it.each(["data:x/../streamed-preview.html", "BLOB:a/../streamed-preview.html"])(
       "sniffs a project file named behind a URL scheme: %s",
@@ -341,6 +373,25 @@ describe("dropMediaOutsideProject", () => {
     },
   );
 
+  it("drops a private project file named by a path spelled outside the project", () => {
+    for (const rel of [".git/clip.mp4", "media/clip.mp4"]) {
+      mkdirSync(dirname(join(projectDir, rel)), { recursive: true });
+      writeFileSync(join(projectDir, rel), "x");
+    }
+    const alias = join(root, "alias");
+    rmSync(alias, { force: true });
+    symlinkSync(projectDir, alias);
+    const srcs: Record<string, string> = {
+      link: join(alias, ".git", "clip.mp4"),
+      local: join(alias, "media", "clip.mp4"),
+    };
+    // Another letter case names the same folder only where the volume folds case.
+    const upper = join(root, "PROJECT");
+    if (existsSync(upper)) srcs.letterCase = join(upper, ".git", "clip.mp4");
+    expect(keptVideos(srcs, true)).toEqual(["local"]);
+    expect(keptVideos(srcs)).toEqual([]);
+  });
+
   it("drops a URL scheme followed by parent folders, in any letter case", () => {
     const schemes = ["data:", "DATA:", "blob:", "Blob:", "about:", "https:", "HTTP:"];
     const srcs = Object.fromEntries(
@@ -358,5 +409,11 @@ describe("dropMediaOutsideProject", () => {
       local: "clip.mp4",
     };
     expect(keptVideos(srcs)).toEqual(Object.keys(srcs));
+  });
+
+  it("keeps long inline media when outside files are allowed, without walking its text as folders", () => {
+    // A regression test: each `/` in the base64 text was walked as a folder, and thousands of them overflowed the stack.
+    const srcs = { long: `data:video/mp4;base64,${"A/".repeat(20_000)}`, local: "clip.mp4" };
+    expect(keptVideos(srcs, true)).toEqual(Object.keys(srcs));
   });
 });

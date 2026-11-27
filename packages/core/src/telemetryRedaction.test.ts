@@ -69,6 +69,35 @@ describe("redactTelemetryString", () => {
     );
   });
 
+  // fails without the fix (never finishes): every path pattern rescanned the token from each delimiter in it.
+  it.each([["=,([".repeat(1024 * 1024)], ["=.".repeat(2 * 1024 * 1024)]])(
+    "redacts a multi-megabyte token of delimiters in milliseconds",
+    (token) => {
+      const start = performance.now();
+      const out = redactTelemetryString(`Conflicting script integrity requirements for ${token}`);
+      expect(performance.now() - start).toBeLessThan(1000);
+      expect(out.length).toBeLessThanOrEqual(240);
+    },
+  );
+
+  it("still redacts a path after a run too long to be a path segment", () => {
+    const out = redactTelemetryString(`${"=".repeat(300)} /Users/kim/secret.mp4`, Infinity);
+    expect(out).not.toContain("secret");
+  });
+
+  // fails without the fix: a long run must keep the file name that makes the rest of it a path.
+  it.each(["/", "\\"])("redacts a path whose file name starts a long run (%s)", (separator) => {
+    const message = `failed: acme-secret${separator}clip.mp4?&${"x".repeat(300)}`;
+    expect(redactTelemetryString(message, 240)).toBe("failed: [path]");
+  });
+
+  // fails without the fix: the cut fell inside the path and left its start, which no longer reads as a path.
+  it("cuts long input at whitespace, so a path on the cut is never left half", () => {
+    const filler = "a ".repeat(8187);
+    const out = redactTelemetryString(`${filler}customer/acme-secret/video.mp4 tail`, Infinity);
+    expect(out).not.toMatch(/customer|acme/);
+  });
+
   it("truncates after redacting, so a long path cannot survive by being cut", () => {
     const out = redactTelemetryString(`/data/${"x".repeat(500)}/a.mp4`, 40);
     expect(out).not.toContain("xxx");

@@ -9,15 +9,16 @@
 import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, statSync } from "fs";
-import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
+import { basename, isAbsolute, join, normalize, relative, resolve, win32 } from "path";
 import { tmpdir } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import { assetRootsRefusal } from "../utils/assetRoots.js";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
+import { untaggedVideoMatrix } from "@hyperframes/parsers/media-streams";
 import {
   MEDIA_RENDER_ID_ATTR,
   isAudibleVideoElement,
@@ -575,15 +576,20 @@ export class VideoSourceExtractionError extends Error {
 const FFMPEG_REASON_LINES = 3;
 const FFMPEG_REASON_CHARS = 300;
 
-/** ffmpeg's last stderr lines for an error that leaves this host: no local path, file name or URL. */
+const FFMPEG_LINE_THAT_NEVER_SAYS_WHY =
+  /^(?:\s|ffmpeg version |Input #|Output #|Stream mapping:|Press \[q\]|(?:frame|size)=|Conversion failed!)|\] (?:video:\S+ audio:|Task finished with error code|Terminating thread with return code)/;
+
+/** ffmpeg's last lines saying why, for an error that leaves this host: no local path, file name or URL. */
 function ffmpegReasonFrom(stderr: string, paths: readonly string[]): string {
-  let text = stderr;
+  const lines = stderr.split(/[\r\n]+/);
+  const said = lines.filter((line) => line.trim() && !FFMPEG_LINE_THAT_NEVER_SAYS_WHY.test(line));
+  let text = (said.length > 0 ? said : lines).join("\n");
   for (const known of paths.filter(Boolean).sort((a, b) => b.length - a.length))
     text = text.split(known).join("<path>");
   return text
     .replace(/[a-z][a-z\d+.-]*:\/\/[^\s'"]+/gi, "<url>")
     .replace(/(?:[a-z]:)?(?:[\\/][^\s\\/:'"]+){2,}/gi, "<path>")
-    .split(/\r?\n/)
+    .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .slice(-FFMPEG_REASON_LINES)
@@ -1032,14 +1038,10 @@ function readFirstFrameColour(videoPath: string, codec: string) {
   return probe;
 }
 
-/** Chrome plays untagged VP9 and AV1 as BT.601, H.264 and VP8 as BT.709 from 720 coded lines (assumed for the rest). */
-const CHROME_BT601_UNTAGGED_CODECS = new Set(["vp9", "av1"]);
-
 function chromeGuessForUntaggedMatrix(metadata: VideoMetadata): string[] {
   const matrix = metadata.colorSpace?.colorSpace;
   if (matrix && matrix !== "unknown") return [];
-  const hd = metadata.height >= 720 && !CHROME_BT601_UNTAGGED_CODECS.has(metadata.videoCodec);
-  return [`setparams=colorspace=${hd ? "bt709" : "smpte170m"}`];
+  return [`setparams=colorspace=${untaggedVideoMatrix(metadata.videoCodec, metadata.height)}`];
 }
 
 export function sdrCanvasColourFilters(metadata: VideoMetadata, toneMappedToSdr = false): string[] {
@@ -1417,7 +1419,7 @@ async function extractVideoFramesRangeUnredacted(
 
   let metadata: VideoMetadata;
   try {
-    metadata = await extractMediaMetadata(videoPath);
+    metadata = await extractMediaMetadata(videoPath, { signal });
   } catch (error) {
     throw classifyVideoExtractionError(error);
   }
@@ -2460,8 +2462,8 @@ export async function extractAllVideoFrames(
         const attempted =
           !options.collectProbeFailures &&
           boundedTransientRetryBudget(options.maxTransientRetries) === 0
-            ? { result: await extractMediaMetadata(videoPath), retries: 0 }
-            : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath), {
+            ? { result: await extractMediaMetadata(videoPath, { signal }), retries: 0 }
+            : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath, { signal }), {
                 signal,
                 maxTransientRetries: options.maxTransientRetries,
                 onRetry: () => recordTransientRetries(1),
@@ -2602,7 +2604,7 @@ export async function extractAllVideoFrames(
   let cacheRootDir: string | undefined;
   if (configuredCacheRootDir) {
     try {
-      cacheRootDir = privateCacheRoot(configuredCacheRootDir);
+      cacheRootDir = privateCacheRoot(resolve(configuredCacheRootDir));
       if (cacheRootDir) mkdirSync(cacheRootDir, { recursive: true });
     } catch {
       cacheRootDir = undefined;
@@ -2965,7 +2967,8 @@ export async function extractAllVideoFrames(
         throw new Error("Video frame extraction cancelled");
       }
       try {
-        const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
+        const metadata =
+          videoMetadata[index] ?? (await extractMediaMetadata(videoPath, { signal }));
         alignClipStartToFirstOutputFrame(video, fps);
         const initialWindow = resolveVideoExtractionWindow(video, metadata, options.timelineEnd);
         const window = await resolveFinalFrameExtractionWindow(

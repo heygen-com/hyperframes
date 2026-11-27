@@ -61,6 +61,13 @@ describe("captured image validation", () => {
     expect(bytes).toEqual(original);
   });
 
+  it("keeps a local reference written as href or xlink:href", async () => {
+    const mark = '<defs><path id="mark" d="M0 0h24v24z"/></defs>';
+    const xlink = '<g xmlns:xlink="http://www.w3.org/1999/xlink"><use xlink:href="#mark"/></g>';
+    expect(await captureImageExtension(svg(`${mark}<use href="#mark"/>`))).toBe(".svg");
+    expect(await captureImageExtension(svg(mark + xlink))).toBe(".svg");
+  });
+
   it.each([
     "<script>alert(1)</script>",
     '<rect width="24" height="24" onload="alert(1)"/>',
@@ -70,6 +77,9 @@ describe("captured image validation", () => {
     "<style>path{fill:url(https://private.example/image.svg)}</style>",
     "<style>path{fill:u\\72l(https://private.example/image.svg)}</style>",
     '<set attributeName="href" to="https://private.example/image.svg"/>',
+    '<g xmlns:xl="http://www.w3.org/1999/xlink"><image xl:href="https://private.example/image.png"/></g>',
+    '<g xmlns:xl="http://www.w3.org/1999/xlink"><use xl:href="#mark"/></g>',
+    '<image xmlns:m="urn:media" m:src="https://private.example/image.png"/>',
   ])("rejects active or externally loading SVG: %s", async (content) => {
     expect(await captureImageExtension(svg(content))).toBeNull();
   });

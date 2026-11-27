@@ -1,4 +1,4 @@
-import { failCommand, failUsage } from "../../utils/commandResult.js";
+import { CliRuntimeError, failCommand, failUsage } from "../../utils/commandResult.js";
 /**
  * `hyperframes cloud render` — orchestrate a cloud-rendered HyperFrames
  * composition end-to-end:
@@ -374,15 +374,15 @@ export default defineCommand({
         );
       } else {
         console.log("");
-        console.log(`${c.success("✓")}  Submitted ${c.accent(renderId)}`);
-        console.log(c.dim(`   Poll with: hyperframes cloud get ${renderId}`));
+        console.log(`${c.success("✓")}  Submitted ${c.accent(terminalText(renderId))}`);
+        console.log(c.dim(`   Poll with: hyperframes cloud get ${terminalText(renderId)}`));
       }
       return;
     }
 
     if (!asJson) {
       console.log("");
-      console.log(c.dim(`  Polling ${renderId} every ${pollIntervalMs / 1000}s …`));
+      console.log(c.dim(`  Polling ${terminalText(renderId)} every ${pollIntervalMs / 1000}s …`));
     }
 
     const detail = await pollWithProgress(client, renderId, asJson, {
@@ -843,6 +843,21 @@ function stageProjectFiles(
   }
 }
 
+const ZIP_RECORD_HEADROOM_PER_FILE = 256;
+const ZIP_TRAILER_HEADROOM_BYTES = 1024;
+
+function assertProjectedArchiveFits(projected: Map<string, StagedFile>): void {
+  const stagedBytes = [...projected.values()].reduce((sum, file) => sum + stagedSize(file), 0);
+  if (
+    stagedBytes + projected.size * ZIP_RECORD_HEADROOM_PER_FILE + ZIP_TRAILER_HEADROOM_BYTES <=
+    DIRECT_UPLOAD_LIMIT_BYTES
+  ) {
+    return;
+  }
+  const { sizeBytes } = zipWithinUploadLimit(projected);
+  assertArchiveFits(sizeBytes, summarizeLargestFiles(projected));
+}
+
 async function offloadMedia(
   project: ProjectDir,
   fileMap: Map<string, StagedFile>,
@@ -859,11 +874,13 @@ async function offloadMedia(
       entryPath,
       variablesText,
       zipBudgetBytes: ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS,
+      beforeUpload: upload ? assertProjectedArchiveFits : undefined,
       onFile: (item) =>
         (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
       onReencodeProgress: asJson ? reencodeProgressLines() : undefined,
     });
   } catch (err) {
+    if (err instanceof CliRuntimeError) throw err;
     reportApiError("Media upload failed", err);
   }
   if (!asJson) {
@@ -1063,7 +1080,7 @@ async function maybeUploadProject(
   if (!asJson) {
     console.log(
       c.dim(
-        `   asset_id: ${c.accent(uploaded.asset_id)} · ${formatDuration(Date.now() - uploadStart)}`,
+        `   asset_id: ${c.accent(terminalText(uploaded.asset_id))} · ${formatDuration(Date.now() - uploadStart)}`,
       ),
     );
   }
@@ -1196,7 +1213,7 @@ export function logsTick(
 }
 
 function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): string {
-  const status = colorStatus(detail.status);
+  const status = colorStatus(terminalText(detail.status));
   return `${status}  ${c.dim(formatDuration(elapsedMs))}`;
 }
 
@@ -1242,7 +1259,7 @@ async function streamVideo(
   // `downloadToFile` creates the parent directory and preserves existing output on failure.
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Downloading to ${c.accent(destPath)}`);
+    console.log(`${c.accent("◆")}  Downloading to ${c.accent(terminalText(destPath))}`);
   }
   try {
     const result = await downloadToFile(url, destPath);

@@ -8,7 +8,7 @@ import { usePlayerStore } from "../store/playerStore";
 import { announcePreviewDocumentLoaded } from "../sceneSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
 import { watchPreviewFrame } from "../lib/bridgePlayback";
-import { previewUnderFrameToken } from "../lib/frameToken";
+import { previewUnderFrameToken, underCurrentFrameToken } from "../lib/frameToken";
 import { retirePreviewEditingClient } from "../lib/previewChannel";
 import { type AssetWaitState, waitForPreviewAssets } from "./previewAssetWait";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
@@ -96,11 +96,42 @@ function enableInteractiveIframe(player: HyperframesPlayerElement): void {
 const studioDraws = (wait: boolean, loadingUi: PlayerProps["loadingUi"]) =>
   wait && loadingUi !== "host";
 
-async function playerSrc(previewSource: string, opaque: boolean): Promise<string> {
+async function playerSrc(
+  previewSource: string,
+  opaque: boolean,
+  onStale: (fresh: string) => void,
+): Promise<string> {
   const url = new URL(previewSource, window.location.origin);
   applyPreviewVariablesToUrl(url);
   const src = url.pathname + url.search;
-  return opaque ? previewUnderFrameToken(src) : src;
+  return opaque ? previewUnderFrameToken(src, onStale) : src;
+}
+
+/** A primed frame token found stale, or never confirmed: the preview loads again under the current one. */
+function staleTokenSwap(canceled: () => boolean) {
+  let shown: HyperframesPlayerElement | null = null;
+  let fresher: string | null = null;
+  let retries = 0;
+  return {
+    onStale(fresh: string) {
+      if (canceled() || retries > 0) return;
+      fresher = fresh;
+      shown?.setAttribute("src", fresh);
+    },
+    src: (primed: string) => fresher ?? primed,
+    show(player: HyperframesPlayerElement) {
+      shown = player;
+    },
+    retry(primed: string, load: (src: string) => void, askAgain?: () => Promise<string>) {
+      const attempt = ++retries;
+      if (!askAgain) return load(fresher ?? primed);
+      void askAgain().then((current) => {
+        if (canceled() || attempt !== retries) return;
+        fresher = current;
+        load(current);
+      });
+    },
+  };
 }
 
 const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
@@ -179,27 +210,38 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       const previewSource =
         directUrl || (projectId ? buildProjectApiPath(projectId, "/preview") : null);
       if (!previewSource) return;
+      // The Studio server puts the runtime in every page it answers a project preview frame with; a direct URL may be any page.
+      const carriesRuntime = !directUrl;
 
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
       const opaque = host.sandboxOrigin === "opaque";
 
-      void Promise.all([loadPlayerModule(), playerSrc(previewSource, opaque)]).then(([, src]) => {
+      const swap = staleTokenSwap(() => canceled);
+      const source = playerSrc(previewSource, opaque, swap.onStale);
+
+      void Promise.all([loadPlayerModule(), source]).then(([, primed]) => {
         if (canceled) return;
+        const src = swap.src(primed);
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
         const retryPreview = () => {
           retryCountRef.current += 1;
-          const retryUrl = new URL(src, window.location.origin);
-          retryUrl.searchParams.set("_hfStudioRetry", String(retryCountRef.current));
+          const attempt = retryCountRef.current;
           setPreviewError(null);
           setCompositionLoading(true);
           loadStartedAtRef.current = performance.now();
           loadIdRef.current += 1;
           player.removeAttribute("no-load-timeout");
-          player.setAttribute("src", retryUrl.pathname + retryUrl.search);
+          const load = (current: string) => {
+            const retryUrl = new URL(current, window.location.origin);
+            retryUrl.searchParams.set("_hfStudioRetry", String(attempt));
+            player.setAttribute("src", retryUrl.pathname + retryUrl.search);
+          };
+          const askAgain = () => underCurrentFrameToken(swap.src(primed));
+          swap.retry(primed, load, opaque ? askAgain : undefined);
         };
         retryPreviewRef.current = retryPreview;
         const iframe = player.iframeElement;
@@ -284,6 +326,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Sealed before the ref (useTimelinePlayer's bridge) sees the frame, never unsealed: a host may seal it too.
         if (opaque) player.toggleAttribute("sandbox-origin", true);
+        if (opaque && carriesRuntime) player.toggleAttribute("src-carries-runtime", true);
         if (typeof ref === "function") {
           ref(iframe);
         } else if (ref) {
@@ -304,6 +347,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         loadIdRef.current += 1;
         player.setAttribute("src", src);
         container.appendChild(player);
+        swap.show(player);
         watchPreviewFrame(iframe);
 
         enableInteractiveIframe(player);

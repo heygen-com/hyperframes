@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 
@@ -86,6 +87,7 @@ function probeWebmAlpha(filePath: string): WebmAlphaProbe {
         "stream=codec_name:stream_tags=alpha_mode",
         "-of",
         "json",
+        ...mediaInputArgs(ffprobePath, filePath),
         "--",
         filePath,
       ],
@@ -147,6 +149,7 @@ export function sampledAlphaIsFullyOpaque(filePath: string): boolean | undefined
         "error",
         "-c:v",
         "libvpx-vp9",
+        ...mediaInputArgs(ffmpegPath, filePath),
         "-i",
         filePath,
         "-frames:v",

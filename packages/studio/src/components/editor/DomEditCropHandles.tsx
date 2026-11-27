@@ -1,5 +1,12 @@
 import { trackPreviewEditResult, type PreviewMethod } from "../../utils/previewFeatureUsage";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type PointerEvent as ReactPointerEvent,
+  type SetStateAction,
+} from "react";
 import type { DomEditSelection } from "./domEditing";
 import { type OverlayRect, RESIZE_HANDLE_HIT_PX } from "./domEditOverlayGeometry";
 import {
@@ -22,7 +29,12 @@ import { isCropBarTarget, useCropPresetBarStore } from "./cropPresetStore";
 import { CropPresetBar } from "./CropPresetBar";
 import { movesGesture } from "./domEditOverlayGestures";
 import { previewStandIn } from "./previewDrafts";
-import { readCropFrameStart } from "./previewGestureStartRead";
+import { onFrameShowsTime } from "../../player/lib/bridgePlayback";
+import { gestureStartLayout, readCropFrameStart } from "./previewGestureStartRead";
+import {
+  afterStudioManualEditGestures,
+  isStudioManualEditGestureActive,
+} from "./manualEditGesture";
 
 interface CropGestureState {
   edge: CropEdge | "move";
@@ -151,6 +163,82 @@ function insetsAfterDrag(gesture: CropGestureState, x: number, y: number): ClipP
   return resolveCropInsetFromEdgeDrag({ ...drag, edge, width, height });
 }
 
+const isCropped = (crop: ReturnType<typeof readElementCropInsets>) =>
+  !!crop && (hasCropInsets(crop) || crop.radius > 0);
+
+type StartReads = {
+  token: number;
+  busy: boolean;
+  again: boolean;
+  element: HTMLElement;
+  held?: () => void;
+};
+
+/** A stand-in has no size of its own: the frame measures it while selected and when its overlay size changes, so its
+ * insets draw at the element's own scale before any press, as an unsealed crop reads it live. One read at a time, one
+ * more when it lands if anything changed meanwhile; a new selection or a press (a new `token`) drops one still out. */
+function readStandInStart(
+  r: StartReads,
+  take: (element: HTMLElement, start: CropFrameStart) => void,
+): void {
+  const el = r.element;
+  const standIn = previewStandIn(el);
+  if (!standIn) return;
+  // An uncropped stand-in draws the same at any measured size, so another gesture's steps need no read.
+  if (isStudioManualEditGestureActive(el) && !isCropped(readElementCropInsets(el))) {
+    r.held ??= afterStudioManualEditGestures(el.ownerDocument, () => {
+      r.held = undefined;
+      readStandInStart(r, take);
+    });
+    return;
+  }
+  if (r.busy) return void (r.again = true);
+  r.busy = true;
+  const token = r.token;
+  void readCropFrameStart(standIn.iframe, standIn.handle).then((start) => {
+    r.busy = false;
+    if (start && token === r.token) take(el, start);
+    if (r.again) {
+      r.again = false;
+      readStandInStart(r, take);
+    }
+  });
+}
+
+/** `readStandInStart` while `element` is selected and not dragged: again when its box moves or a seek lands. */
+/** Counts the seeks `element`'s sealed frame has applied, as its runtime reports them. */
+function useFrameSeeks(element: HTMLElement): number {
+  const [seeks, setSeeks] = useState(0);
+  useEffect(() => {
+    const frame = previewStandIn(element)?.iframe;
+    if (!frame) return;
+    return onFrameShowsTime((iframe) => iframe === frame && setSeeks((n) => n + 1));
+  }, [element]);
+  return seeks;
+}
+
+function useStandInStart<S extends { element: HTMLElement; start?: CropFrameStart }>(
+  element: HTMLElement,
+  overlayRect: { width: number; height: number },
+  dragging: boolean,
+  setState: Dispatch<SetStateAction<S>>,
+) {
+  const reads = useRef<StartReads>({ token: 0, busy: false, again: false, element });
+  const shownSize = `${Math.round(overlayRect.width)}x${Math.round(overlayRect.height)}`;
+  const seeks = useFrameSeeks(element);
+  useEffect(() => {
+    const r = reads.current;
+    if (r.element !== element) r.token++;
+    r.element = element;
+    if (!dragging)
+      readStandInStart(r, (el, start) =>
+        setState((prev) => (prev.element === el ? { ...prev, start } : prev)),
+      );
+  }, [element, shownSize, seeks, dragging, setState]);
+  useEffect(() => () => reads.current.held?.(), []);
+  return reads;
+}
+
 function letGoOf(ref: { current: CropGestureState | null }, gesture: CropGestureState): void {
   if (ref.current === gesture) ref.current = null;
 }
@@ -158,7 +246,12 @@ function letGoOf(ref: { current: CropGestureState | null }, gesture: CropGesture
 const measuredStartOf = (
   state: { element: HTMLElement; start?: CropFrameStart },
   element: HTMLElement,
-) => (state.element === element ? state.start : undefined);
+): CropFrameStart | undefined => {
+  if (state.element === element && state.start) return state.start;
+  const handle = previewStandIn(element)?.handle;
+  const layout = handle ? gestureStartLayout(handle) : null;
+  return layout ? { layout } : undefined;
+};
 
 /** The element's clip-path is the crop; state only holds a crop drag's draft. */
 const shownCropInsets = (dragging: boolean, draft: ClipPathInsetSides, element: HTMLElement) =>
@@ -247,6 +340,8 @@ export function DomEditCropHandles({
     return () => dropElementCropLift(el);
   }, [selection.element]);
 
+  const reads = useStandInStart(selection.element, overlayRect, dragging, setState);
+
   // The crop applies in the element's LOCAL frame (clip-path precedes the
   // transform), so all crop UI is drawn inside a container rotated with the
   // element — on a rotated element an axis-aligned dim visually "straightens"
@@ -291,6 +386,7 @@ export function DomEditCropHandles({
     setState((prev) => ({ ...prev, insets: pressed }));
     setDragging(true);
     const { element } = selection;
+    reads.current.token++;
     void measurePressOnFrame(element, overlayRect, gesture).then((start) =>
       settleMeasuredPress(start, gesture, gestureRef.current, {
         refuse: refuseCropPress,

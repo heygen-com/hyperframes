@@ -32,6 +32,7 @@ import { domEditCommitDeclined, type DomEditCommitOutcome } from "./domEditCommi
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { deletedNotice } from "../utils/studioHelpers";
 
 interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   /** Route delete through SDK when session resolves the hf-id. */
@@ -145,10 +146,7 @@ export function useElementLifecycleOps({
           if (allHandled) {
             clearDomSelection();
             usePlayerStore.getState().setSelectedElementId(null);
-            showToast(
-              `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
-              "info",
-            );
+            showToast(deletedNotice(label, sameFile.length), "info");
             return { ok: true } as const;
           }
         }
@@ -209,10 +207,7 @@ export function useElementLifecycleOps({
         forceReloadSdkSession?.();
         reloadPreview();
         for (const member of sameFile) onElementDeleted?.(member);
-        showToast(
-          `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
-          "info",
-        );
+        showToast(deletedNotice(label, sameFile.length), "info");
         return { ok: true } as const;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
@@ -377,7 +372,7 @@ export function useElementLifecycleOps({
             usePlayerStore.getState().bumpZEditVersion();
           };
           // Resolves once every source-file batch is persisted so a same-file timing write
-          // can be ordered after it (see applyTimelineStackingReorder callers).
+          // can be ordered after it.
           //
           // skipReload: the live iframe DOM and the player store already hold the
           // final z state (applied synchronously above), and the persisted patch is

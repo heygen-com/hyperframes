@@ -11,9 +11,11 @@ import {
   type EditingRect,
 } from "@hyperframes/core/runtime/editing-port";
 import { previewGeometry } from "../../player/lib/previewElements";
+import type { ReadPriority } from "../../player/lib/previewChannel";
 import { computeOverlayRootScale, type OverlayRootScale } from "./domEditOverlayBasis";
 import { hugRectForClipPath } from "./domEditOverlayCrop";
 import {
+  cornerEdgeLength,
   frameCornersToOverlay,
   frameRectToOverlay,
   orientOverlayRect,
@@ -23,9 +25,27 @@ import {
 
 const clientRect = ({ x, y, width, height }: EditingRect) => ({ left: x, top: y, width, height });
 
+/** Overlay px per CSS px along the element's own edges, which a turn does not lengthen; undefined without a size. */
+function ownScaleOf(scale: OverlayRootScale, box: EditingElementBox) {
+  const { layout } = box;
+  if (!(layout.width > 0 && layout.height > 0)) return undefined;
+  const corners = box.corners && frameCornersToOverlay(scale, box.corners);
+  const width = corners
+    ? cornerEdgeLength(corners.nw, corners.ne)
+    : box.rect.width * scale.rootScaleX;
+  const height = corners
+    ? cornerEdgeLength(corners.nw, corners.sw)
+    : box.rect.height * scale.rootScaleY;
+  return {
+    x: width / layout.width,
+    y: height / layout.height,
+    ...(corners && { corners }),
+  };
+}
+
 /** `toOverlayRect`. */
 const baseRect = (scale: OverlayRootScale, box: EditingElementBox) =>
-  frameRectToOverlay(scale, clientRect(box.rect), box.source);
+  frameRectToOverlay(scale, clientRect(box.rect), box.source, ownScaleOf(scale, box));
 
 /** `orientedOverlayRect`. */
 function orientedRect(scale: OverlayRootScale, box: EditingElementBox): OverlayRect {
@@ -86,13 +106,14 @@ export async function measurePreviewOverlay(
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
   targets: PreviewOverlayTargets,
+  priority: ReadPriority = "now",
 ): Promise<PreviewOverlayRects | null> {
   const handles = [...new Set([targets.selection, targets.hover, ...targets.group])].filter(
     (handle): handle is string => Boolean(handle),
   );
   // A selection with no handle is not in this frame; it draws nothing, as one not found there.
   const reply = handles.length
-    ? await previewGeometry(iframe, handles, targets.selection ?? undefined)
+    ? await previewGeometry(iframe, handles, targets.selection ?? undefined, priority)
     : { elements: [], children: null };
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;

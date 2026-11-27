@@ -319,6 +319,16 @@ export function seekGsapTimeline(
   const from = landOn(timeline, t, suppressEvents, version);
   if (t < from && structure) reapplyStepsInAuthoredOrder(timeline, structure, t);
   if (from !== t || !gsapNeverRendered(timeline)) return false;
+  redrawGsapTimelineAt(timeline, t, structure);
+  return true;
+}
+
+export function redrawGsapTimelineAt(
+  timeline: RuntimeTimelineLike,
+  t: number,
+  structure?: GsapStructureKey,
+): void {
+  if (typeof timeline.totalTime !== "function") return;
   rerenderGsapTimelineAt(
     {
       totalTime: timeline.totalTime.bind(timeline),
@@ -328,7 +338,6 @@ export function seekGsapTimeline(
     t,
     structure,
   );
-  return true;
 }
 
 type GsapParent = {

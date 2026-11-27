@@ -7,9 +7,11 @@ import {
 } from "../linearScans";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import { styleRoot } from "../styleRoots";
 import selectorParser from "postcss-selector-parser";
 import { GLSL_SCRIPT_TYPES } from "../shaderDomains";
+import { MAX_EXPANDED_COMPOSITION_BYTES } from "../sizeLimits";
 import {
   matchHtmlBodyCssWidthFirst,
   matchHtmlBodyCssHeightFirst,
@@ -589,6 +591,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
     if (/(?:^|\s)data-no-timeline(?=[\s=/]|$)/i.test(rootTag?.attrs || "")) return [];
     if (options.scriptsOutsideProjectUnread?.length) return [];
+    if (options.linkedFilesOverLimit?.some((file) => file.kind === "script")) return [];
     const findings: HyperframeLintFinding[] = [];
     const registered = [source, ...(options.externalScripts ?? []).map((script) => script.content)];
     if (
@@ -618,6 +621,23 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     // ERROR also suppresses the layout and contrast audits in `check`, so it
     // cost far more than the line it was protecting.
     return findings;
+  },
+
+  // linked_files_not_checked
+  ({ options }) => {
+    const unread = options.linkedFilesOverLimit ?? [];
+    if (unread.length === 0) return [];
+    const limitMb = MAX_EXPANDED_COMPOSITION_BYTES / (1024 * 1024);
+    return [
+      {
+        code: "linked_files_not_checked",
+        severity: "warning",
+        message:
+          `${unread.length} linked stylesheet or script file(s) were not checked, starting at "${unread[0]!.href}": ` +
+          `the files linked before them already add up to the ${limitMb} MB one page may hold.`,
+        fixHint: "Link each file once, and keep large data out of linked stylesheets and scripts.",
+      },
+    ];
   },
 
   // timeline_id_mismatch
@@ -672,7 +692,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       if (!inlineStyle || !/transition/i.test(inlineStyle)) continue;
       let root: postcss.Root;
       try {
-        root = postcss.parse(inlineStyle);
+        root = parseCss(inlineStyle);
       } catch {
         continue;
       }
@@ -711,7 +731,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           ),
           code: "css_parse_error",
           severity: "error",
-          message: `CSS parse error: ${error instanceof Error ? error.message : "unknown"}`,
+          message:
+            error instanceof postcss.CssSyntaxError
+              ? `CSS parse error: ${error.message}`
+              : "CSS parse error: this style block could not be read.",
           fixHint:
             "Check the CSS at the reported line for an unclosed brace, quote, or comment, or a missing semicolon between declarations.",
         });

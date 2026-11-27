@@ -32,12 +32,11 @@ export type RuntimeState = {
    * audible presenter playback and remote sync.
    */
   webAudioMediaDisabled: boolean;
-  /**
-   * Latch so the `media-autoplay-blocked` outbound message is posted at most
-   * once per runtime session. The parent only needs the first signal — it
-   * takes over playback and further rejections are the same problem.
-   */
+  /** Latch: the first refusal starts `media-autoplay-blocked`, which then follows the media list. */
   mediaAutoplayBlockedPosted: boolean;
+  parentCopiesPosted: boolean;
+  parentAudioClips: ReadonlySet<string>;
+  parentAudioClock: { time: number; rate: number; at: number } | null;
   /**
    * One-shot flag: force a hard media sync on the next tick. Set on
    * play/pause/seek/rate transitions to immediately correct any
@@ -105,6 +104,9 @@ export function createRuntimeState(): RuntimeState {
     nativeMediaSyncDisabled: false,
     webAudioMediaDisabled: false,
     mediaAutoplayBlockedPosted: false,
+    parentCopiesPosted: false,
+    parentAudioClips: new Set(),
+    parentAudioClock: null,
     mediaForceSyncNextTick: false,
     playbackRate: 1,
     bridgeLastPostedFrame: -1,

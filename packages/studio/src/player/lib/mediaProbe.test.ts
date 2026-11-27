@@ -16,7 +16,8 @@ const requestedSources: string[] = [];
 const sourceRetryRules: string[] = [];
 
 vi.mock("mediabunny", () => ({
-  ALL_FORMATS: {},
+  ALL_FORMATS: [],
+  HLS: {},
   UrlSource: class {
     constructor(
       readonly url: string,
@@ -144,6 +145,23 @@ describe("media probe registry", () => {
     expect(requestedSources).toEqual([
       `${window.location.origin}/api/projects/project-a/preview/assets/My%20clip%20%231.mp4`,
     ]);
+  });
+
+  it("probes nothing for a clip whose src names another API route", async () => {
+    await probeMissingSourceDurations(
+      [
+        {
+          id: "v",
+          tag: "video",
+          src: `${window.location.origin}/api/projects/other/preview/a.mp4`,
+        },
+        { id: "a", tag: "audio", src: "../../lint" },
+      ],
+      "project-a",
+      vi.fn(),
+    );
+
+    expect(requestedSources).toEqual([]);
   });
 
   it("probes same-origin rooted media through the active project preview", async () => {

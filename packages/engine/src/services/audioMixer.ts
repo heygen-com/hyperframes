@@ -5,7 +5,7 @@ import { closeSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } fro
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { join, dirname, isAbsolute, relative } from "path";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import {
   extractAudioMetadata,
   ffmpegSeekSeconds,
@@ -1371,6 +1371,7 @@ async function mixThroughFloatSum(
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
     keepEncoderInputAt?: string;
+    window?: { startSeconds: number; durationSeconds: number };
   },
 ): Promise<MixResult> {
   const sumPath = join(workDir, "master-sum.wav");
@@ -1388,10 +1389,47 @@ async function mixThroughFloatSum(
       ).path
     : sumPath;
   const encodeStart = Date.now();
-  const encoded = await encodeAac(encoderInput, outputPath, totalDuration, {
-    signal,
-    timeout: config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout,
-  });
+  const timeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
+  const window = config?.window;
+  const deliveryInput = window ? join(workDir, "window.wav") : encoderInput;
+  if (window) {
+    const length = formatFilterNumber(window.durationSeconds);
+    const trimmed = await runFfmpeg(
+      [
+        "-i",
+        encoderInput,
+        "-af",
+        `atrim=start=${formatFilterNumber(window.startSeconds)}:duration=${length},asetpts=PTS-STARTPTS,apad,atrim=0:${length}`,
+        "-acodec",
+        "pcm_f32le",
+        "-ar",
+        "48000",
+        "-y",
+        deliveryInput,
+      ],
+      { signal, timeout },
+    );
+    if (!trimmed.success) {
+      const failure = ffmpegFailure("mix", trimmed, timeout);
+      return {
+        success: false,
+        outputPath,
+        durationMs: sum.durationMs + trimmed.durationMs,
+        tracksProcessed: 0,
+        error: failure.detail,
+        failures: [failure],
+      };
+    }
+  }
+  const encoded = await encodeAac(
+    deliveryInput,
+    outputPath,
+    window?.durationSeconds ?? totalDuration,
+    {
+      signal,
+      timeout,
+    },
+  );
   if (!encoded.success) {
     const failure = ffmpegFailure(
       "mix",
@@ -1408,7 +1446,7 @@ async function mixThroughFloatSum(
     };
   }
   if (config?.keepEncoderInputAt)
-    renameWithRetry(encoderInput, config.keepEncoderInputAt, { copyFallback: true });
+    renameWithRetry(deliveryInput, config.keepEncoderInputAt, { copyFallback: true });
   return {
     ...sum,
     outputPath,
@@ -1436,6 +1474,8 @@ export async function processCompositionAudio(
     keepEncoderInputAt?: string;
     /** Folders a local source must be in; one outside them, or private there, is never opened. Unset allows any folder. */
     assetRoots?: readonly string[];
+    /** Deliver only this part of the mix; the whole film is mixed first so effect tails cross into it. */
+    window?: { startSeconds: number; durationSeconds: number };
   },
   compiledDir?: string,
 ): Promise<MixResult> {

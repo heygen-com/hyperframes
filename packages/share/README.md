@@ -21,7 +21,7 @@ bindShareHost({
   reviewUploadOrigins: ["https://review-bucket.s3.us-east-1.amazonaws.com"],
   signedInRequest,
   projectFingerprint,
-  latestExportFile, // (dir) => { path, fingerprint, id } | null
+  latestExportFile, // (dir) => { path, fingerprint, id } | null, or a promise of it
   ffBinary, // ('ffprobe') => executable path
 });
 const client = reviewClient({ access, signedInEmail });
@@ -78,7 +78,46 @@ can use video-only; changed source, conflicts and unexpected upload failures nee
 an explicit choice to omit source. The CLI exposes `--video-only` for that choice.
 `filesForExport` only validates already-prepared source; it does not upload.
 
-The adapter uses the portable-source-v4 capture/manifest rules and
+For editable projects, show the paths returned by `listReferencedHiddenSourceAssets(projectPath)`
+with the usual Share action. Both this function and `referencedHiddenDigest` are exported from
+`@hyperframes/share/projectSnapshot.mjs`. Pass `expectedReferencedHiddenDigest: referencedHiddenDigest(paths)`
+to `shareSources`. If the captured paths differ, refresh the summary and retry. An older host that
+omits the digest can still send projects with no referenced hidden assets.
+
+Hosts can set `reuseOnly: true` to attach an existing published snapshot without creating, resuming or cancelling a source upload. The workspace, manifest and rendered project must still match at attachment time.
+
+Hosts that use gitignore syntax can pass the same syntax choice to disclosure and the adapter:
+
+```js
+const selection = { ignoreSyntax: "gitignore" };
+const paths = await listReferencedHiddenSourceAssets(projectPath, undefined, selection);
+await showShareSummary(paths);
+const sources = shareSources({
+  access,
+  spaceId,
+  ...selection,
+  expectedReferencedHiddenDigest: referencedHiddenDigest(paths),
+});
+const result = await sources.prepare(projectPath, renderedFingerprint);
+```
+
+The adapter reads the current rules for each capture, including retries and final checks in
+`filesForExport`. Hosts that use `shareSourceFingerprint` for content identity pass the same
+`selection` as its second argument. Omitting `ignoreSyntax` retains the strict project-relative syntax.
+
+Hosts with their own file inventory can instead read `readSourceIgnore(projectPath, { syntax: "gitignore" })`
+once per capture. Pass the resulting `ignored` function to the inventory walk as
+`ignored(relativePath, entry.isDirectory())` and reuse it for
+`listReferencedHiddenSourceAssets(projectPath, observed, { ignored })`. Private-path rules apply
+even when an ignore rule re-includes a path.
+
+Editable source includes referenced WOFF, WOFF2, TTF and OTF files with dot-prefixed names, such as
+`.brand/.Atlas.woff2`. The same private-path and ignore rules apply to these fonts. Preview and render servers can call
+`referencedFontResponse(projectDir, relativePath, method)` from `@hyperframes/share/projectSnapshot.mjs`
+to serve a selected dot-prefixed font. It returns a streaming response for a verified file and
+`null` if the file cannot be served.
+
+The adapter uses the portable-source-v13 capture/manifest rules and
 multipart transport. The pinned policy, Unicode 15.1 registry (with its license),
 and manifest test vectors are checked into this repository. Source is captured through
 verified file handles; upload bytes are streamed and checked against their hash.
@@ -86,11 +125,23 @@ Workspace limits, upload receipts and published snapshot identity are checked.
 Pending uploads retain their original idempotency key across retries. A conflict
 is never auto-resolved. When local source changes, the adapter cancels an older
 pending upload before starting another; uploads under verification are preserved.
+If a Begin response was lost before its upload ID was saved, recovery can replay the original request
+only while every marked hidden asset still has its disclosed path, hash and size in the current capture.
+Otherwise the adapter starts a new request and any unconfirmed pending upload expires on the server.
+When the upload ID is known, recovery can check its status directly.
 A stalled storage PUT stops after 60 seconds without progress and can retry with
 the same upload identity.
 
-Default state uses `.hyperframes/share-sync.<backend-hash>.json`, with strict
-account/backend/realpath binding, private atomic writes, and a process lock.
+The default store uses `source-bindings/` in the local HyperFrames configuration
+directory (`HYPERFRAMES_CONFIG_DIR` or `~/.hyperframes`). Records are keyed by backend
+and project realpath, checked against the signed-in account and written atomically
+under the project lock. Copies and projects with only a legacy in-project record
+start a new composition on the next explicit sync. To keep the history of a moved
+or upgraded folder, run `hyperframes share --reconnect` or choose **Reconnect a
+moved or upgraded project** in Studio before syncing. Confirm the cloud project
+and workspace. When the local files differ from the published version, a separate
+confirmation allows the next sync to publish those local files. Canceling leaves
+the folder unbound. Reconnecting itself only updates the local binding.
 Hosts can inject a compatible `store` or read-only `existingBinding` resolver.
 An external Desktop binding is reused only when exact and settled; this adapter
 never writes Desktop's binding or starts a second upload on its behalf.

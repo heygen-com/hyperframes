@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core/terminal-text";
 import { existsSync } from "node:fs";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { CaptureDirRefusedError } from "./captureErrors.js";
@@ -86,6 +87,10 @@ export interface PostExtractionResult {
   animationCatalog: CaptureResult["animationCatalog"];
 }
 
+const SHARES_NO_FIRST_OR_LAST_LETTER_WITH_THE_MARKER = "hf-captured-composition-key";
+export const withoutCompositionMarker = (capturedHtml: string): string =>
+  capturedHtml.replace(/data-composition-id/gi, SHARES_NO_FIRST_OR_LAST_LETTER_WITH_THE_MARKER);
+
 export async function runPostExtraction(input: PostExtractionInput): Promise<PostExtractionResult> {
   let {
     state,
@@ -135,7 +140,9 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
       );
       if (fontsManifest.families.length > 0) {
         const summary = fontsManifest.families
-          .map((f) => `${f.family}${f.variable ? " (variable)" : ""} × ${f.fileCount}`)
+          .map(
+            (f) => `${terminalText(f.family)}${f.variable ? " (variable)" : ""} × ${f.fileCount}`,
+          )
           .join(", ");
         // stderr (via diag): `capture --json` writes its envelope to stdout, so
         // these progress/advisory lines must not land there.
@@ -147,7 +154,10 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
         }
       }
     } catch (err) {
-      diag.warn("Font metadata extraction failed (non-fatal):", normalizeErrorMessage(err));
+      diag.warn(
+        "Font metadata extraction failed (non-fatal):",
+        terminalLines(normalizeErrorMessage(err)),
+      );
     }
   };
   await runFontExtraction();
@@ -283,7 +293,9 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
 
   // Persist a self-contained page recreation under extracted/, with images already inlined.
   try {
-    const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
+    const pageHtml = withoutCompositionMarker(
+      `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`,
+    );
     state.pageHtml = pageHtml;
     if (canWrite())
       writeCaptureFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");

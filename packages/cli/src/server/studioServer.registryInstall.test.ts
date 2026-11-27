@@ -11,8 +11,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer, type AddressInfo } from "node:net";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+import { historyWritesSettled } from "./studioServerTestFixture.js";
 
 vi.mock("../telemetry/events.js", () => ({ trackRegistryItemAdded: vi.fn() }));
 vi.mock("node:fs", async (importOriginal) => {
@@ -67,7 +69,7 @@ afterEach(() => {
 });
 
 /** A project behind a symlink whose hyperframes.json points at a stubbed registry; `fetched` logs every URL. */
-function projectWithRegistry(onItemFetch?: () => void): {
+function projectWithRegistry(onItemFetch?: () => void | Promise<void>): {
   link: string;
   real: string;
   registry: string;
@@ -91,7 +93,7 @@ function projectWithRegistry(onItemFetch?: () => void): {
       }
       const item = ITEMS.find((candidate) => url.includes(`/${candidate.name}/`));
       if (item && url.endsWith("/registry-item.json")) {
-        onItemFetch?.();
+        await onItemFetch?.();
         return new Response(JSON.stringify(item));
       }
       if (item && url.endsWith(".html")) {
@@ -141,7 +143,11 @@ describe("Studio catalog install", () => {
 
   it("answers that the project folder is gone when it is renamed while the item downloads", async () => {
     let real = "";
-    ({ real } = projectWithRegistry(() => renameSync(real, `${real}-renamed`)));
+    let link = "";
+    ({ link, real } = projectWithRegistry(async () => {
+      await historyWritesSettled(server!, link);
+      renameSync(real, `${real}-renamed`);
+    }));
 
     const response = await server!.app.request("/api/projects/link/registry/install", {
       method: "POST",
@@ -198,6 +204,31 @@ describe("Studio catalog install", () => {
     expect(items.map((item) => item.name).sort()).toEqual(ITEMS.map((item) => item.name).sort());
     expect(fetched.length).toBeGreaterThan(0);
     expect(fetched.every((url) => url.startsWith(registry))).toBe(true);
+  });
+
+  // fails without the fix: the panel listed a received project's registry from any host
+  it("lists nothing from a received project's registry on a private address, and connects to none", async () => {
+    let connections = 0;
+    const listener = createServer((socket) => {
+      connections += 1;
+      socket.destroy();
+    });
+    await new Promise<void>((done) => listener.listen(0, "127.0.0.1", done));
+    const { real, fetched } = projectWithRegistry();
+    const registry = `https://127.0.0.1:${(listener.address() as AddressInfo).port}/r`;
+    writeFileSync(join(real, "hyperframes.json"), JSON.stringify({ registry }));
+    mkdirSync(join(real, ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(real, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["hyperframes.json"] }),
+    );
+    try {
+      expect(await server!.adapter.listRegistryCatalog!()).toEqual([]);
+      expect(connections).toBe(0);
+      expect(fetched.filter((url) => url.startsWith(registry))).toEqual([]);
+    } finally {
+      listener.close();
+    }
   });
 
   it("installs a block sized unlike the project twice, and leaves a real edit alone", async () => {

@@ -1,14 +1,17 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 
 import {
   blocking,
   isFork,
   attachCommand,
+  captureSources,
+  checkSource,
   downloadAsset,
   duplicateCaptureProblems,
   LimitExceeded,
@@ -19,7 +22,7 @@ import {
 } from "./check-pr-captures.mjs";
 
 const ASSET = "https://github.com/user-attachments/assets/9173dafa-203a-447a-be3a-1234567890ab";
-const studio = (path, lines = 50) => ({ path, lines });
+const studio = (path, binary = false) => ({ path, binary });
 const captured = `## Before\n![old](${ASSET})\n\n## After\n${ASSET}\n`;
 
 test("a PR that touches neither package needs nothing", () => {
@@ -36,7 +39,7 @@ test("a missing After heading fails and names it", () => {
     files: [studio("packages/player/src/a.ts")],
   });
   assert.equal(ok, false);
-  assert.deepEqual(problems, ['the body has no "After" heading']);
+  assert.deepEqual(problems, ['no "After" heading']);
 });
 
 test("a heading with no media fails and names the section", () => {
@@ -76,36 +79,27 @@ test("a nested heading stays inside its section", () => {
 
 test("No visible change passes for a small non-visual diff", () => {
   const body = "## No visible change\nrename of an internal type";
-  assert.equal(evaluate({ body, files: [studio("packages/studio/src/types.ts", 8)] }).ok, true);
+  assert.equal(evaluate({ body, files: [studio("packages/studio/src/types.ts")] }).ok, true);
 });
 
-test("No visible change fails at 20 lines and says why", () => {
+// fails without the fix: a 700-line logic change was refused for its size alone.
+test("No visible change passes for a non-visual diff of any size", () => {
   const body = "## No visible change\nx";
-  const { ok, problems } = evaluate({ body, files: [studio("packages/studio/src/a.ts", 20)] });
-  assert.equal(ok, false);
-  assert.match(problems[0], /changes 20 lines .* under 20/);
+  const files = parseNumstat("500\t200\tpackages/studio/src/a.ts\0");
+  assert.equal(evaluate({ body, files }).ok, true);
 });
 
 test("No visible change fails on a .tsx file even when tiny, and names the file", () => {
   const body = "## No visible change\nx";
-  const { problems } = evaluate({ body, files: [studio("packages/studio/src/Button.tsx", 1)] });
+  const { problems } = evaluate({ body, files: [studio("packages/studio/src/Button.tsx")] });
   assert.match(problems[0], /touches .*Button\.tsx/);
 });
 
-test("both No visible change conditions are reported together", () => {
-  const body = "## No visible change\nx";
-  const { problems } = evaluate({ body, files: [studio("packages/studio/src/a.css", 90)] });
-  assert.equal(problems.filter((p) => p.startsWith('"No visible change"')).length, 2);
-});
-
-test("numstat keeps only watched paths and counts added plus deleted", () => {
+test("numstat keeps only watched paths and marks none of these text files binary", () => {
   const files = parseNumstat(
     "3\t2\tpackages/studio/src/a.ts\0" + "9\t9\tdocs/x.md\0" + "1\t0\tpackages/player/src/b.ts\0",
   );
-  assert.deepEqual(files, [
-    studio("packages/studio/src/a.ts", 5),
-    studio("packages/player/src/b.ts", 1),
-  ]);
+  assert.deepEqual(files, [studio("packages/studio/src/a.ts"), studio("packages/player/src/b.ts")]);
 });
 
 test("markdown under a watched package needs no capture", () => {
@@ -129,13 +123,16 @@ test("test files under a watched package need no capture", () => {
   const mixed = parseNumstat(
     "3\t0\tpackages/studio/src/a.ts\0" + "40\t0\tpackages/studio/src/a.test.ts\0",
   );
-  assert.deepEqual(mixed, [studio("packages/studio/src/a.ts", 3)]);
+  assert.deepEqual(mixed, [studio("packages/studio/src/a.ts")]);
   assert.equal(evaluate({ body: "", files: mixed }).ok, false);
 });
 
-test("a binary file spends the whole no-visible-change budget", () => {
-  const [file] = parseNumstat("-\t-\tpackages/studio/public/logo.png\0");
-  assert.equal(file.lines, 20);
+test("No visible change fails on a binary file, such as an image, and names it", () => {
+  const body = "## No visible change\nx";
+  const files = parseNumstat("-\t-\tpackages/studio/public/logo.png\0");
+  const { ok, problems } = evaluate({ body, files });
+  assert.equal(ok, false);
+  assert.match(problems[0], /binary files: packages\/studio\/public\/logo\.png/);
 });
 
 test("the failure prints the exact attach command", () => {
@@ -210,7 +207,7 @@ test("comment fragments cannot rebuild a comment or hide a section from the read
 
 test("No visible change does not cover a component change", () => {
   const body = "## No visible change\nx";
-  assert.equal(evaluate({ body, files: [studio("packages/studio/src/A.tsx", 5)] }).ok, false);
+  assert.equal(evaluate({ body, files: [studio("packages/studio/src/A.tsx")] }).ok, false);
 });
 
 test("a renamed-in file is a plain path with --no-renames -z output", () => {
@@ -737,4 +734,138 @@ test("the CLI passes on notices alone", () => {
   );
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /not compared/);
+});
+
+const NO_VISIBLE = "## No visible change\nOnly a helper moved.\n";
+function commentsFile(pages) {
+  const path = join(mkdtempSync(join(tmpdir(), "captures-comments-")), "comments.json");
+  writeFileSync(path, JSON.stringify(pages));
+  return path;
+}
+const comment = (login, body, id = 1) => ({
+  user: { login },
+  body,
+  html_url: `https://github.com/a/r/pull/1#issuecomment-${id}`,
+});
+const withComments = (pages, author = "author") => ({
+  HEAD_REPO: "a/r",
+  BASE_REPO: "a/r",
+  PR_AUTHOR: author,
+  PR_COMMENTS_FILE: commentsFile(pages),
+});
+
+test("the section in a comment by the PR's author passes, read across pages", () => {
+  const pages = [[comment("someone", "thanks", 1)], [comment("author", NO_VISIBLE, 2)]];
+  const result = runCli(withComments(pages), "Moves a helper.");
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /issuecomment-2/);
+});
+
+test("the same section in anyone else's comment fails", () => {
+  const result = runCli(withComments([[comment("reviewer", NO_VISIBLE)]]), "Moves a helper.");
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /nobody else's comment counts/);
+});
+
+test("the body alone still passes with an empty comment list", () => {
+  const result = runCli(withComments([[]]), NO_VISIBLE);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /the PR description/);
+});
+
+test("a comment counts on its own: Before in the body and After in a comment is no section", async () => {
+  const sources = captureSources(
+    `## Before\n[a](${OLD})\n`,
+    [comment("author", `## After\n[b](${NEW})\n`)],
+    "author",
+  );
+  const files = [studio("packages/studio/src/a.tsx")];
+  for (const { text } of sources)
+    assert.equal((await checkSource(text, files, fromMap, {})).ok, false);
+});
+
+test("an author comment with good captures passes over a body whose captures are duplicates", async () => {
+  const sources = captureSources(
+    bodyWith(`[a](${OLD})`, `[b](${sameBytes})`),
+    [comment("author", bodyWith(`[a](${OLD})`, `[b](${NEW})`))],
+    "author",
+  );
+  const files = [studio("packages/studio/src/a.tsx")];
+  const verdicts = [];
+  for (const { text } of sources) verdicts.push((await checkSource(text, files, fromMap, {})).ok);
+  assert.deepEqual(verdicts, [false, true]);
+});
+
+test("no author means no comment counts", () => {
+  assert.deepEqual(
+    captureSources("b", [comment("x", NO_VISIBLE)], undefined).map((source) => source.label),
+    ["the PR description"],
+  );
+});
+
+test("an unreadable comments file fails closed", () => {
+  const result = runCli(
+    { PR_COMMENTS_FILE: join(tmpdir(), "no-such-dir-xyz", "c.json") },
+    NO_VISIBLE,
+  );
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+  assert.match(result.stderr, /cannot read the PR comments/);
+});
+
+test("a comment event never runs the PR's code and re-checks only for the PR's own author", () => {
+  const { jobs, on } = parse(
+    readFileSync(new URL("../.github/workflows/pr-captures.yml", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(on.issue_comment.types, ["created", "edited", "deleted"]);
+  assert.match(jobs.captures.if, /github\.event_name != 'issue_comment'/);
+  assert.match(jobs.recheck.if, /github\.event\.issue\.pull_request/);
+  assert.match(
+    jobs.recheck.if,
+    /github\.event\.comment\.user\.login == github\.event\.issue\.user\.login/,
+  );
+  assert.ok(
+    jobs.recheck.steps.every((step) => !step.uses),
+    "recheck checks nothing out",
+  );
+  assert.deepEqual(jobs.recheck.permissions, { actions: "write", "pull-requests": "read" });
+});
+
+const capturesWorkflow = () =>
+  parse(readFileSync(new URL("../.github/workflows/pr-captures.yml", import.meta.url), "utf8"));
+
+test("a comment run whose job is skipped joins no shared group, so it cannot cancel the author's re-check", () => {
+  const { concurrency, jobs } = capturesWorkflow();
+  assert.match(concurrency.group, /github\.event_name == 'issue_comment' && github\.run_id/);
+  assert.doesNotMatch(concurrency.group, /format\('comment-\{0\}', github\.event\.issue\.number\)/);
+  assert.equal(
+    jobs.recheck.concurrency.group,
+    "pr-captures-recheck-${{ github.event.issue.number }}",
+  );
+  assert.equal(jobs.recheck.concurrency["cancel-in-progress"], true);
+});
+
+// Shapes as the runs API reports them; a fork PR's run waiting for approval is completed + action_required.
+const RUNS = {
+  awaitingApproval: { id: 1, status: "completed", conclusion: "action_required" },
+  running: { id: 2, status: "in_progress", conclusion: null },
+  queued: { id: 3, status: "queued", conclusion: null },
+  skipped: { id: 4, status: "completed", conclusion: "skipped" },
+  success: { id: 5, status: "completed", conclusion: "success" },
+  failure: { id: 6, status: "completed", conclusion: "failure" },
+  cancelled: { id: 7, status: "completed", conclusion: "cancelled" },
+};
+
+test("the re-check re-runs only a finished run that ran, never one waiting for approval", () => {
+  const step = capturesWorkflow().jobs.recheck.steps.find((s) => s.run?.includes("gh run rerun"));
+  assert.ok(step.env?.RERUNNABLE, "the re-run goes through the RERUNNABLE filter");
+  assert.match(step.run, /--jq "\$RERUNNABLE"\)/);
+  const picked = Object.entries(RUNS).flatMap(([name, run]) => {
+    const out = spawnSync("jq", ["-r", step.env.RERUNNABLE], {
+      input: JSON.stringify(run),
+      encoding: "utf8",
+    });
+    assert.equal(out.status, 0, out.stderr);
+    return out.stdout.trim() ? [name] : [];
+  });
+  assert.deepEqual(picked, ["success", "failure", "cancelled"]);
 });

@@ -1,6 +1,6 @@
 export { shouldBlockRender } from "./shouldBlockRender.js";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { projectIgnore } from "./projectIgnore.js";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { isNonRelativeUrl, rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
@@ -28,8 +28,9 @@ import {
   checkSubCompositionUsability,
   templateContent,
 } from "@hyperframes/parsers/sub-composition-validity";
-import { parseHTML } from "linkedom";
+import { htmlReadUnlikeBrowserFinding, parseLintHtml } from "./readableHtml.js";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import {
   cleanAssetUrl,
   collectSubCompositionSrcs,
@@ -53,6 +54,7 @@ import {
 } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import { readLinkedProjectFile } from "./linkedFile.js";
+import { MAX_EXPANDED_COMPOSITION_BYTES } from "./sizeLimits.js";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/parsers/private-path";
 import { collectGoogleFontFamilies, extractFontFaceFamilies } from "./rules/fonts.js";
 import { lintProjectShaderScripts } from "./projectShaders.js";
@@ -64,9 +66,9 @@ import type {
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
 import { isAudibleVideo, isAudibleVideoTag, mediaSrcOf, mediaSrcTagRe } from "./utils";
 
-/** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
+/** Adapts `parseLintHtml` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtml(html: string): ParsableDocumentLike {
-  return parseHTML(html).document as unknown as ParsableDocumentLike;
+  return parseLintHtml(html).document as unknown as ParsableDocumentLike;
 }
 
 /** The file a source was read from, as per-file findings carry it. */
@@ -142,10 +144,47 @@ const IMPORT_MAP_EXTENSIONS = new Set([".json", ".importmap"]);
 const hasExtension = (path: string, kinds: ReadonlySet<string>) =>
   kinds.has(extname(path).toLowerCase());
 
+type LinkedFileKind = "stylesheet" | "script";
+
+/**
+ * Reads the stylesheets and scripts one file links: each file once under any of its names, and no more
+ * in all than one bundle may hold. A file past that is listed in `overLimit` instead of read.
+ */
+function linkedFileReader(projectDir: string) {
+  const seen = new Set<string>();
+  const overLimit: Array<{ href: string; kind: LinkedFileKind }> = [];
+  let room = MAX_EXPANDED_COMPOSITION_BYTES;
+  const read = (path: string, href: string, kind: LinkedFileKind, maxFileBytes = Infinity) => {
+    let file: string;
+    let bytes: number;
+    try {
+      file = realpathSync(path);
+      bytes = statSync(file).size;
+    } catch {
+      return null;
+    }
+    if (seen.has(file)) return null;
+    seen.add(file);
+    if (bytes > maxFileBytes) return null;
+    if (bytes > room) {
+      overLimit.push({ href, kind });
+      return null;
+    }
+    const linked = readLinkedProjectFile(projectDir, path);
+    if (linked.kind !== "file") return null;
+    room -= bytes;
+    return linked.text;
+  };
+  return { read, overLimit };
+}
+
+type LinkedFileReader = ReturnType<typeof linkedFileReader>;
+
 function collectLocalStylesheets(
   projectDir: string,
   document: ParentNode,
   compSrcPath?: string,
+  reader: LinkedFileReader = linkedFileReader(projectDir),
 ): Array<{ href: string; content: string; rootRelativePath: string }> {
   const styles: Array<{ href: string; content: string; rootRelativePath: string }> = [];
   for (const link of querySelectorAllIncludingTemplates(document, "link")) {
@@ -160,9 +199,9 @@ function collectLocalStylesheets(
         ? resolveExistingLocalAsset(projectDir, href)
         : null);
     if (!stylesheet || !hasExtension(stylesheet.resolved, STYLESHEET_EXTENSIONS)) continue;
-    const read = readLinkedProjectFile(projectDir, stylesheet.resolved);
-    if (read.kind !== "file") continue;
-    styles.push({ href, content: read.text, rootRelativePath: stylesheet.rootRelativePath });
+    const content = reader.read(stylesheet.resolved, href, "stylesheet");
+    if (content === null) continue;
+    styles.push({ href, content, rootRelativePath: stylesheet.rootRelativePath });
   }
   return styles;
 }
@@ -170,14 +209,16 @@ function collectLocalStylesheets(
 function collectExternalStyles(
   projectDir: string,
   html: string,
-  compSrcPath?: string,
+  compSrcPath: string | undefined,
+  reader: LinkedFileReader,
 ): NonNullable<HyperframeLinterOptions["externalStyles"]> {
   const styles: NonNullable<HyperframeLinterOptions["externalStyles"]> = [];
-  const { document } = parseHTML(html);
+  const { document } = parseLintHtml(html);
   for (const { href, content, rootRelativePath } of collectLocalStylesheets(
     projectDir,
     document,
     compSrcPath,
+    reader,
   )) {
     styles.push({ href, content, file: join(projectDir, rootRelativePath), rootRelativePath });
   }
@@ -192,11 +233,13 @@ export function linkedSources(
   compSrcPath?: string,
 ): Pick<
   HyperframeLinterOptions,
-  "externalStyles" | "externalScripts" | "scriptsOutsideProjectUnread"
+  "externalStyles" | "externalScripts" | "scriptsOutsideProjectUnread" | "linkedFilesOverLimit"
 > {
+  const reader = linkedFileReader(projectDir);
   return {
-    externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
-    ...collectExternalScripts(projectDir, html, compSrcPath),
+    externalStyles: collectExternalStyles(projectDir, html, compSrcPath, reader),
+    ...collectExternalScripts(projectDir, html, compSrcPath, reader),
+    ...(reader.overLimit.length > 0 && { linkedFilesOverLimit: reader.overLimit }),
   };
 }
 
@@ -207,11 +250,12 @@ function leavesProject(projectDir: string, path: string): boolean {
 function collectExternalScripts(
   projectDir: string,
   html: string,
-  compSrcPath?: string,
+  compSrcPath: string | undefined,
+  reader: LinkedFileReader,
 ): Pick<HyperframeLinterOptions, "externalScripts" | "scriptsOutsideProjectUnread"> {
   const scripts: NonNullable<HyperframeLinterOptions["externalScripts"]> = [];
   const scriptsOutsideProjectUnread: string[] = [];
-  const { document } = parseHTML(html);
+  const { document } = parseLintHtml(html);
   for (const element of querySelectorAllIncludingTemplates(document, "script[src]")) {
     const src = element.getAttribute("src") ?? "";
     if (!isLocalStylesheetHref(src) || /\.min\.m?js(?:[?#]|$)/i.test(src)) continue;
@@ -233,15 +277,15 @@ function collectExternalScripts(
         ? IMPORT_MAP_EXTENSIONS
         : SCRIPT_EXTENSIONS;
     if (!hasExtension(script.resolved, kinds)) continue;
-    const read = readLinkedProjectFile(projectDir, script.resolved);
-    if (read.kind !== "file" || read.text.length > MAX_EXTERNAL_SCRIPT_BYTES) continue;
+    const content = reader.read(script.resolved, src, "script", MAX_EXTERNAL_SCRIPT_BYTES);
+    if (content === null) continue;
     const attrs = Array.from(element.attributes)
       .map(({ name, value }) => `${name}="${value.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`)
       .join(" ");
     scripts.push({
       src,
       attrs,
-      content: read.text,
+      content,
       file: join(projectDir, script.rootRelativePath),
       rootRelativePath: script.rootRelativePath,
     });
@@ -251,7 +295,7 @@ function collectExternalScripts(
 
 function collectCssSources(projectDir: string, html: string, compSrcPath?: string): CssSource[] {
   const sources: CssSource[] = [];
-  const { document } = parseHTML(html);
+  const { document } = parseLintHtml(html);
 
   for (const style of querySelectorAllIncludingTemplates(document, "style")) {
     sources.push({ content: style.textContent ?? "" });
@@ -293,6 +337,9 @@ function resolveCssAssetCandidates(
   return resolveLocalAssetCandidates(projectDir, url);
 }
 
+const WINDOWS_LONG_PATH_LIMIT = 32_767;
+const longerThanAnyPath = (src: string) => src.length > WINDOWS_LONG_PATH_LIMIT;
+
 function mountedSources(
   projectDir: string,
   rootHtml: string,
@@ -301,10 +348,11 @@ function mountedSources(
   const sources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
   const seen = new Set<string>();
   for (const source of sources) {
-    const { document } = parseHTML(source.html);
+    const { document } = parseLintHtml(source.html);
     for (const host of querySelectorAllIncludingTemplates(document, "[data-composition-src]")) {
       const src = host.getAttribute("data-composition-src")?.trim();
-      if (!src || isUnresolvedAssetPlaceholder(src) || isRemoteOrInlineUrl(src)) continue;
+      if (!src || longerThanAnyPath(src)) continue;
+      if (isUnresolvedAssetPlaceholder(src) || isRemoteOrInlineUrl(src)) continue;
       const path = resolve(projectDir, src);
       if (seen.has(path) || !isWithinProjectRoot(projectDir, path)) continue;
       seen.add(path);
@@ -322,7 +370,7 @@ function mountedSources(
 function declaredProjectFontFamilies(projectDir: string, sources: HtmlSource[]): string[] {
   const families = new Set<string>();
   for (const { html, compSrcPath } of sources) {
-    const { document } = parseHTML(html);
+    const { document } = parseLintHtml(html);
     const styles = [
       ...querySelectorAllIncludingTemplates(document, "style").map((style) => ({
         content: style.textContent ?? "",
@@ -471,7 +519,7 @@ function lintBlankRootWithStandaloneComposition(
   rootHtml: string,
   htmlSources: HtmlSource[],
 ): HyperframeLintFinding[] {
-  const { document: rootDocument } = parseHTML(rootHtml);
+  const { document: rootDocument } = parseLintHtml(rootHtml);
   const root = rootDocument.querySelector("body [data-composition-id]");
   // A no-media scaffold has no rendered descendants and can silently mask an authored file below.
   // A scaffold that retained its A-roll <video>/<audio> is visibly non-blank, so this rule leaves it
@@ -483,7 +531,7 @@ function lintBlankRootWithStandaloneComposition(
   const standaloneCandidates: string[] = [];
   for (const source of htmlSources) {
     if (!source.compSrcPath) continue;
-    const { document } = parseHTML(source.html);
+    const { document } = parseLintHtml(source.html);
     const composition = document.querySelector("body [data-composition-id]");
     if (!composition) continue;
     const authoredTimedContent = Array.from(
@@ -704,7 +752,7 @@ function lintTextureMaskAssetNotFound(
     for (const cssSource of collectCssSources(projectDir, html, compSrcPath)) {
       let matches: CssUrlMatch[] = [];
       try {
-        postcss.parse(cssSource.content).walkDecls(/^(?:-webkit-)?mask-image$/i, (declaration) => {
+        parseCss(cssSource.content).walkDecls(/^(?:-webkit-)?mask-image$/i, (declaration) => {
           matches.push(...bareOrQuotedCssUrlMatches(declaration.value));
         });
       } catch (error) {
@@ -767,12 +815,12 @@ function lintLinkedStylesheetAssets(
   for (const { html, compSrcPath } of htmlSources) {
     for (const { content, rootRelativePath } of collectLocalStylesheets(
       projectDir,
-      parseHTML(html).document,
+      parseLintHtml(html).document,
       compSrcPath,
     )) {
       let root: postcss.Root;
       try {
-        root = postcss.parse(content);
+        root = parseCss(content);
       } catch (error) {
         if (!(error instanceof postcss.CssSyntaxError)) throw error;
         continue;
@@ -863,7 +911,7 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
   const spans: AudioSpan[] = [];
   type Placement = { file: TimingFile; origin: number; slots: HostSlot[]; mounting: string[] };
   const mount = (html: string, at: Omit<Placement, "file">) => {
-    const { document } = parseHTML(html);
+    const { document } = parseLintHtml(html);
     const root = querySelectorAllIncludingTemplates(document, "[data-composition-id]")[0];
     if (root) visit(root, { ...at, file: timingFile(document) });
   };
@@ -893,7 +941,7 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
       visit(el, inner);
     }
   };
-  const { document } = parseHTML(rootHtml);
+  const { document } = parseLintHtml(rootHtml);
   visit(document, { file: timingFile(document), origin: 0, slots: [], mounting: [] });
   return spans;
 }
@@ -999,6 +1047,11 @@ function lintMissingOrEmptySubComposition(
     // Shared scanner — see collectSubCompositionSrcs for why this must be a
     // text scan rather than a DOM query (template content is inert).
     for (const srcPath of collectSubCompositionSrcs(html)) {
+      if (longerThanAnyPath(srcPath)) {
+        const shown = `${srcPath.slice(0, 80)}…`;
+        checked.set(shown, { srcPath: shown, problem: "it is longer than any file path can be" });
+        continue;
+      }
       // data-composition-src is always written root-relative (even from a
       // nested sub-composition) — matches the resolution the renderer uses
       // in packages/producer/src/services/htmlCompiler.ts (parseSubCompositions
@@ -1037,7 +1090,10 @@ function lintMissingOrEmptySubComposition(
       }
 
       const fileHtml = read.text;
-      const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtml);
+      const refusal = htmlReadUnlikeBrowserFinding(fileHtml);
+      const validity = refusal
+        ? { ok: false, detail: `the parser refuses it. ${refusal.message.replace(/\.$/, "")}` }
+        : checkSubCompositionUsability(fileHtml, parseSubCompHtml);
       if (!validity.ok) {
         if (!checked.has(srcPath)) {
           checked.set(srcPath, {

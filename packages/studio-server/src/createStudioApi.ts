@@ -26,7 +26,8 @@ import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
 import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
-import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
+import { isProjectRootMissing } from "./helpers/safePath.js";
+import { folderGoneOff } from "./helpers/projectDisk.js";
 import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   documentFromAnotherSite,
@@ -36,7 +37,7 @@ import {
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
 import { refuseServiceWorkerScripts } from "./helpers/serviceWorkerScripts.js";
-import { previewErrorPage } from "./helpers/previewErrorPage.js";
+import { previewErrorPage, retryAfterSeconds } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
 import {
   createFrameTokens,
@@ -45,17 +46,18 @@ import {
 } from "./helpers/opaqueFrameLoads.js";
 import { isFetchedAgain } from "./helpers/fetchAgain.js";
 
-async function answerRefusedFrameWithPage(c: Context, next: Next) {
+const answerRefusedFrameWithPage = (runtimeUrl: string) => async (c: Context, next: Next) => {
   await next();
   if (c.req.header("sec-fetch-dest") !== "iframe" || c.res.status < 400) return;
   const headers = new Headers(c.res.headers);
   headers.set("content-type", "text/html; charset=utf-8");
   headers.delete("content-length");
-  c.res = new Response(previewErrorPage(c.res.status), {
+  const retryAfterS = retryAfterSeconds(c.res.headers.get("retry-after"));
+  c.res = new Response(previewErrorPage(c.res.status, runtimeUrl, retryAfterS), {
     status: c.res.status,
     headers,
   });
-}
+};
 
 const siteHeaders = (c: Context) => ({
   fetchSite: c.req.header("sec-fetch-site"),
@@ -81,11 +83,6 @@ async function markPreviewForAnotherSite(c: Context) {
 }
 
 const FRAMED_DESTS = new Set(["document", "iframe", "frame", "embed", "object", "fencedframe"]);
-const framedByAnotherSite = (c: Context) => {
-  if (!documentForAnotherSite(c)) return false;
-  const dest = c.req.header("sec-fetch-dest");
-  return dest === undefined || FRAMED_DESTS.has(dest);
-};
 
 function withoutValidators(request: Request): Request {
   const headers = new Headers(request.headers);
@@ -94,15 +91,32 @@ function withoutValidators(request: Request): Request {
   return new Request(request, { headers });
 }
 
+interface PreviewSandboxing {
+  captures: boolean;
+  directOpens: boolean;
+}
+
+function previewAsker(c: Context, { captures, directOpens }: PreviewSandboxing) {
+  const capture = captures && isThumbnailCapture(c);
+  const openedDirectly = directOpens && !capture && c.req.header("sec-fetch-site") === "none";
+  return { capture, openedDirectly, anotherSite: documentForAnotherSite(c) || openedDirectly };
+}
+
+const loadsAsPage = (c: Context) => {
+  const dest = c.req.header("sec-fetch-dest");
+  return dest === undefined || FRAMED_DESTS.has(dest);
+};
+
 const sandboxPreviewForAnotherSiteOrCapture =
-  (sandboxCaptures: boolean) => async (c: Context, next: Next) => {
-    if (framedByAnotherSite(c)) c.req.raw = withoutValidators(c.req.raw);
+  (sandboxing: PreviewSandboxing) => async (c: Context, next: Next) => {
+    const asker = previewAsker(c, sandboxing);
+    if (asker.anotherSite && loadsAsPage(c)) c.req.raw = withoutValidators(c.req.raw);
     await next();
     c.header("Vary", "Sec-Fetch-Site, Referer", { append: true });
-    const anotherSite = documentForAnotherSite(c);
-    if (anotherSite || (sandboxCaptures && isThumbnailCapture(c)))
+    if (asker.anotherSite || asker.capture)
       c.header("Content-Security-Policy", "sandbox allow-scripts");
-    if (anotherSite) await markPreviewForAnotherSite(c);
+    if (asker.openedDirectly) c.header("X-Content-Type-Options", "nosniff");
+    if (asker.anotherSite) await markPreviewForAnotherSite(c);
   };
 
 async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
@@ -170,6 +184,7 @@ const reportRefusals =
 export interface StudioApiOptions extends CaptureSandboxOption {
   allowedHosts?: readonly string[];
   subCompositionDeadlineMs?: number;
+  sandboxDirectOpens?: boolean;
 }
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
@@ -177,6 +192,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   if (adapter.onRefusal) api.use(reportRefusals(adapter.onRefusal));
   api.use(refuseServiceWorkerScripts);
   const sandboxThumbnailCaptures = options.sandboxThumbnailCaptures ?? false;
+  const sandboxDirectOpens = options.sandboxDirectOpens ?? false;
   const frameTokens = createFrameTokens();
   const resolveProjectId = (id: string) =>
     Promise.resolve()
@@ -189,7 +205,10 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   api.use("/projects/:id/preview/*", refuseProxyWorkForAnotherSite);
   api.use(
     "/projects/:id/preview/*",
-    sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
+    sandboxPreviewForAnotherSiteOrCapture({
+      captures: sandboxThumbnailCaptures,
+      directOpens: sandboxDirectOpens,
+    }),
   );
   api.get("/projects/:id/frame-token", async (c) => {
     if (fromAnotherSite(c))
@@ -201,6 +220,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   api.use("/projects/:id/thumbnail/*", refuseForAnotherSite("thumbnail"));
   api.use("/projects/:id/waveform/*", refuseForAnotherSite("waveform"));
   api.use("/projects/:id/peaks/*", refuseForAnotherSite("peaks"));
+  api.use("/projects/:id/pcm/*", refuseForAnotherSite("pcm"));
   api.use("/projects/:id/image-thumbnail/*", refuseForAnotherSite("image thumbnail"));
   api.use("/projects/:id/media/metadata", refuseForAnotherSite("media metadata"));
   api.use("/projects/:id/lint", refuseForAnotherSite("lint"));
@@ -238,8 +258,8 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
     }
     return next();
   });
-  api.use("/projects/:id/preview/*", answerRefusedFrameWithPage);
-  api.use("/projects/:id/preview", answerRefusedFrameWithPage);
+  api.use("/projects/:id/preview/*", answerRefusedFrameWithPage(adapter.runtimeUrl));
+  api.use("/projects/:id/preview", answerRefusedFrameWithPage(adapter.runtimeUrl));
   api.use(async function answerProjectDirMissingAfterErrorHandlers(c, next) {
     const hostHeaders = new Headers(c.res.headers);
     await next();
@@ -254,7 +274,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
         () => undefined,
       );
     await next();
-    if (c.res.status >= 403 && dirBeforeRoute && folderGone(dirBeforeRoute))
+    if (c.res.status >= 403 && dirBeforeRoute && (await folderGoneOff(dirBeforeRoute)))
       replaceWithProjectDirMissing(c, hostHeaders);
   });
   api.use("/projects/:id/*", async function forgetSignatureAfterWrite(c, next) {

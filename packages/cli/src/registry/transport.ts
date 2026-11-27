@@ -1,3 +1,5 @@
+import { NonPublicHostError, publicRequest } from "@hyperframes/engine/public-network";
+
 /** Registry hosts may be private; authenticate the HTTPS transport, not public IP reachability. */
 export function registryHttpsUrl(value: string): URL {
   const url = new URL(value);
@@ -29,10 +31,16 @@ export function registryPathUrl(base: string, ...parts: string[]): string {
   return url.href;
 }
 
-export async function fetchRegistryHttps(value: string, signal: AbortSignal): Promise<Response> {
+export async function fetchRegistryHttps(
+  value: string,
+  signal: AbortSignal,
+  publicOnly = false,
+): Promise<Response> {
   let url = registryHttpsUrl(value);
   for (let redirects = 0; redirects <= 5; redirects++) {
-    const response = await fetch(url.href, { signal, redirect: "manual" });
+    const response = publicOnly
+      ? await publicRegistryRequest(url, signal)
+      : await fetch(url.href, { signal, redirect: "manual" });
     if (![301, 302, 303, 307, 308].includes(response.status)) return response;
     const location = response.headers.get("location");
     await response.body?.cancel();
@@ -40,4 +48,16 @@ export async function fetchRegistryHttps(value: string, signal: AbortSignal): Pr
     url = registryHttpsUrl(new URL(location, url).href);
   }
   throw new Error("Too many registry redirects");
+}
+
+async function publicRegistryRequest(url: URL, signal: AbortSignal): Promise<Response> {
+  try {
+    return await publicRequest(url, { signal }, null);
+  } catch (error) {
+    if (!(error instanceof NonPublicHostError)) throw error;
+    throw new Error(
+      `${url.host} is not a public address. The registry in a received hyperframes.json is only fetched from public addresses.`,
+      { cause: error },
+    );
+  }
 }

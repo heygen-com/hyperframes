@@ -15,19 +15,20 @@ import { availableParallelism, cpus, freemem, platform, totalmem } from "os";
 
 const BYTES_PER_MIB = 1024 * 1024;
 const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
-// These are the paths as seen from INSIDE a container, where the runtime
+// These memory paths are as seen from INSIDE a container, where the runtime
 // mounts the container's own cgroup at the namespace root — the case this
 // probe exists for. They are deliberately not resolved via /proc/self/cgroup:
 // on a bare host under systemd the process's real limit may live in a nested
 // slice (e.g. /sys/fs/cgroup/user.slice/.../memory.max) that these root paths
 // don't see, and that's acceptable — bare hosts are covered by total-RAM
 // detection, and chasing nested slices adds fragility for no container gain.
+const CGROUP_V2_CONTROLLERS_PATH = "/sys/fs/cgroup/cgroup.controllers";
 const CGROUP_V2_MEMORY_MAX_PATH = "/sys/fs/cgroup/memory.max";
 const CGROUP_V1_MEMORY_LIMIT_PATH = "/sys/fs/cgroup/memory/memory.limit_in_bytes";
 // Kernel no-limit sentinel is page-rounded 2^63-1 (~9223372036854771712); >= 2^60 is implausible as a real limit.
 const CGROUP_V1_NO_LIMIT_CUTOFF_BYTES = 2n ** 60n;
 
-const CGROUP_V2_CPU_MAX_PATH = "/sys/fs/cgroup/cpu.max";
+const CGROUP_V2_MOUNT = "/sys/fs/cgroup";
 const CGROUP_V1_CPU_QUOTA_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us";
 const CGROUP_V1_CPU_PERIOD_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_period_us";
 
@@ -111,16 +112,26 @@ export function _resetCgroupLimitCacheForTests(): void {
 export function getCgroupCpuLimit(): number | null {
   if (_cachedCgroupCpus !== undefined) return _cachedCgroupCpus;
   if (process.platform !== "linux") return (_cachedCgroupCpus = null);
-  const v2 = readCgroupFile(CGROUP_V2_CPU_MAX_PATH);
-  _cachedCgroupCpus =
-    v2 !== null
-      ? parseCgroupCpus(v2, null, null)
-      : parseCgroupCpus(
-          null,
-          readCgroupFile(CGROUP_V1_CPU_QUOTA_PATH),
-          readCgroupFile(CGROUP_V1_CPU_PERIOD_PATH),
-        );
+  _cachedCgroupCpus = isCgroupV2()
+    ? cgroupV2CpuLimit()
+    : parseCgroupCpus(
+        null,
+        readCgroupFile(CGROUP_V1_CPU_QUOTA_PATH),
+        readCgroupFile(CGROUP_V1_CPU_PERIOD_PATH),
+      );
   return _cachedCgroupCpus;
+}
+
+// Read like libuv clamps availableParallelism(): every cpu.max from the process's own cgroup up to the root.
+function cgroupV2CpuLimit(): number | null {
+  const own = readCgroupFile("/proc/self/cgroup")?.match(/^0::(\/.*)$/m)?.[1] ?? "/";
+  const quotas: number[] = [];
+  for (let dir = own.replace(/\/+$/, ""); ; dir = dir.slice(0, dir.lastIndexOf("/"))) {
+    const quota = parseCgroupCpus(readCgroupFile(`${CGROUP_V2_MOUNT}${dir}/cpu.max`), null, null);
+    if (quota !== null) quotas.push(quota);
+    if (dir === "") break;
+  }
+  return quotas.length > 0 ? Math.min(...quotas) : null;
 }
 
 /**
@@ -135,10 +146,9 @@ export function getCgroupMemoryLimitMb(): number | null {
     return null;
   }
 
-  const v2Content = readCgroupFile(CGROUP_V2_MEMORY_MAX_PATH);
-  const v1Content = v2Content === null ? readCgroupFile(CGROUP_V1_MEMORY_LIMIT_PATH) : null;
-
-  _cachedCgroupLimitMb = parseCgroupLimitMb(v2Content, v1Content);
+  _cachedCgroupLimitMb = isCgroupV2()
+    ? parseCgroupLimitMb(readCgroupFile(CGROUP_V2_MEMORY_MAX_PATH), null)
+    : parseCgroupLimitMb(null, readCgroupFile(CGROUP_V1_MEMORY_LIMIT_PATH));
   if (_cachedCgroupLimitMb !== null) {
     // stderr, not stdout: this is a diagnostic notice, and commands like `check --json`
     // write their machine-readable payload to stdout. A banner on stdout corrupts that
@@ -149,6 +159,10 @@ export function getCgroupMemoryLimitMb(): number | null {
     );
   }
   return _cachedCgroupLimitMb;
+}
+
+function isCgroupV2(): boolean {
+  return readCgroupFile(CGROUP_V2_CONTROLLERS_PATH) !== null;
 }
 
 function readCgroupFile(path: string): string | null {
@@ -181,8 +195,8 @@ function warnCgroupReadFailure(path: string, error: unknown): void {
   if (_warnedCgroupReadFailure) return;
   _warnedCgroupReadFailure = true;
   console.warn(
-    `[SystemMemory] Unable to read cgroup memory limit at ${path} ` +
-      `(${formatCgroupReadError(error)}); falling back to host RAM.`,
+    `[SystemMemory] Unable to read ${path} ` +
+      `(${formatCgroupReadError(error)}); using the host's values instead.`,
   );
 }
 

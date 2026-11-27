@@ -97,3 +97,35 @@ it("defaults to video only even when source sharing is available", async () => {
   expect(result.requireSource).toBe(false);
   expect(mocks.factory).not.toHaveBeenCalled();
 });
+
+it("requires a fresh summary when the captured hidden paths have changed", async () => {
+  const expectedReferencedHiddenDigest = "b".repeat(64);
+  mocks.prepare.mockResolvedValue({ at: "unavailable", reason: "source_hidden_assets_changed" });
+  await expect(
+    prepareCliShareSource("/project", access, "space", {
+      shareFiles: true,
+      includeSource: true,
+      expectedReferencedHiddenDigest,
+    }),
+  ).rejects.toThrow("Share again to review the updated paths.");
+  expect(mocks.factory).toHaveBeenCalledWith(
+    expect.objectContaining({ expectedReferencedHiddenDigest }),
+  );
+});
+
+it.each(["Source binding belongs to another project.", "Source limits unavailable."])(
+  "shares video when optional snapshot reuse fails (%s) and keeps explicit uploads strict",
+  async (message) => {
+    mocks.prepare.mockRejectedValue(new Error(message));
+    const options = { includeSource: true, shareFiles: true };
+    await expect(
+      prepareCliShareSource("/project", access, "space", { ...options, reuseOnly: true }),
+    ).resolves.toEqual({
+      source: { at: "video_only", reason: "source_unavailable" },
+      requireSource: false,
+    });
+    await expect(prepareCliShareSource("/project", access, "space", options)).rejects.toThrow(
+      message,
+    );
+  },
+);

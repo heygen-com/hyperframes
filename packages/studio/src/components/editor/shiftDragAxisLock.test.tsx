@@ -15,9 +15,12 @@ function gestureHarness(gesture: Partial<GestureState> | null, group: GroupGestu
   const opts = {
     gestureRef: { current: gesture },
     groupGestureRef: { current: group },
+    iframeRef: { current: null },
     selectionRef: { current: null },
     hoverSelectionRef: { current: null },
     boxRef: { current: null },
+    handlesRef: { current: null },
+    overlayRef: { current: null },
     blockedMoveRef: { current: null },
     waitingPressRef: { current: null },
     rafPausedRef: { current: false },
@@ -196,6 +199,7 @@ describe("a shift press on a selected box starts the drag", () => {
         allowCanvasMovement
         allowBodyDrag
         boxRef={createRef()}
+        handlesRef={createRef()}
         boxChromeClass=""
         boxClipPath={undefined}
         selectionKey="box"

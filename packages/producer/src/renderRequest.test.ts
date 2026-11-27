@@ -83,6 +83,33 @@ describe("RenderRequest", () => {
       parseRenderRequest({ ...value, options: { ...value.options, strictVariables: "yes" } }),
     ).toThrow(/strictVariables must be a boolean/);
   });
+  it("carries a range into the local render config, and refuses a malformed one", () => {
+    const value = request();
+    value.options.range = { startSeconds: 2.5, endSeconds: 4 };
+    expect(
+      renderConfigFromRequest(parseRenderRequest(serializeRenderRequest(value))).range,
+    ).toEqual({
+      startSeconds: 2.5,
+      endSeconds: 4,
+    });
+    for (const range of [
+      { startSeconds: -1 },
+      { startSeconds: 3, endSeconds: 3 },
+      { endSeconds: 2 },
+      "0-2",
+    ]) {
+      expect(() => parseRenderRequest({ ...value, options: { ...value.options, range } })).toThrow(
+        /range must be/,
+      );
+    }
+    expect(() =>
+      distributedConfigFromRequest({
+        ...value,
+        options: { ...value.options, distributed: { width: 1920, height: 1080 } },
+      }),
+    ).toThrow(/takes its range from renderSpan/);
+  });
+
   it("carries expectedOutputDimensions through the in-process and distributed adapters, and refuses invalid dimensions", () => {
     const value = request();
     value.options.expectedOutputDimensions = { width: 1280, height: 720 };

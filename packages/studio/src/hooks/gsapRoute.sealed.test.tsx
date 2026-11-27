@@ -44,6 +44,7 @@ const HANDLE = "0123456789abcdef:1";
 const snapshot = (vars: Record<string, number> | null) => ({
   time: 0.5,
   defaultEase: null,
+  globalTweens: [],
   timelines: [
     {
       id: "main",
@@ -204,6 +205,7 @@ describe("the GSAP-or-CSS route for a layer in a sealed preview", () => {
     );
 
     announcePreviewRestoredInPlace(iframe);
+    await Promise.resolve();
 
     expect(await editsPlainCssSettled(standIn, "move")).toBe(false);
   });

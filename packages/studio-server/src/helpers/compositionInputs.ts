@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { createProjectSignatureAsync } from "./projectSignature.js";
 import { rootHeadContent } from "./subComposition.js";
 import { resolveWithinProject } from "./safePath.js";

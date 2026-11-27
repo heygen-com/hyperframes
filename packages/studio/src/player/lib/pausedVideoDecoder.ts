@@ -1,18 +1,16 @@
 import {
   ALL_FORMATS,
+  HLS,
   Input,
   UrlSource,
+  VideoSample,
   VideoSampleSink,
   type Rotation,
-  type VideoSample,
 } from "mediabunny";
-import type {
-  PausedVideoFrame,
-  PausedVideoFrameProvider,
-  PausedVideoFrameRequest,
-} from "@hyperframes/core";
-import { mediaUrlSourceOptions } from "./mediaFetch";
-import type { IframeWindow } from "./playbackTypes";
+import type { PausedVideoFrame } from "@hyperframes/core";
+import { PAUSED_FRAME_SOURCES } from "@hyperframes/core/runtime/editing-port";
+import { untaggedVideoMatrix } from "@hyperframes/parsers/media-streams";
+import { mediaUrlSourceOptions, selfContainedFormats } from "./mediaFetch";
 import {
   previewDecodeTime,
   previewPresentationTime,
@@ -20,7 +18,7 @@ import {
 } from "./previewVideoTime";
 
 const FRAME_BUDGET = 64 * 1024 * 1024;
-const MAX_READERS = 4;
+const MAX_READERS = PAUSED_FRAME_SOURCES;
 const NEARBY_FORWARD_SECONDS = 0.5;
 const ALPHA_DRAIN_WAIT_MS = 2000;
 
@@ -44,6 +42,7 @@ type Reader = {
   lead: number;
   ticks: number;
   transparent: boolean;
+  untaggedBt601: boolean;
   tail: Promise<void>;
   iterator: AsyncGenerator<VideoSample, void, unknown> | null;
   iteratorEnd: number;
@@ -69,7 +68,38 @@ async function readSingleSample(reader: Reader, query: number): Promise<VideoSam
   }
 }
 
-export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideoFrameProvider {
+async function asBt601(sample: VideoSample): Promise<VideoSample> {
+  if (!sample.format) return sample;
+  const data = new ArrayBuffer(sample.allocationSize());
+  const layout = await sample.copyTo(data);
+  const { primaries, transfer, fullRange } = sample.colorSpace;
+  return new VideoSample(data, {
+    format: sample.format,
+    codedWidth: sample.visibleRect.width,
+    codedHeight: sample.visibleRect.height,
+    timestamp: sample.timestamp,
+    duration: sample.duration,
+    rotation: sample.rotation,
+    flip: sample.flip,
+    layout,
+    colorSpace: { primaries, transfer, fullRange, matrix: "smpte170m" },
+  });
+}
+
+export interface PausedVideoDecodeAsk {
+  source: string;
+  time: number;
+  frameRate?: number;
+  variableFrameRate?: boolean;
+}
+
+export interface PausedVideoDecoder {
+  decode(asks: PausedVideoDecodeAsk[], signal: AbortSignal): Promise<PausedVideoFrame[]>;
+  suspend(): Promise<void>;
+  dispose(): void;
+}
+
+export function createPausedVideoDecoder(): PausedVideoDecoder {
   const readers = new Map<string, Promise<Reader>>();
   const opened = new Map<string, Reader>();
   const opening = new Map<Input, () => void>();
@@ -77,18 +107,6 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
   const cacheOrder = new Map<Cached, Reader>();
   let bytes = 0;
   let disposed = false;
-
-  const sourceFacts = (source: string) => {
-    let path = new URL(source, location.href).pathname;
-    try {
-      path = decodeURIComponent(path);
-    } catch {}
-    return Object.entries(
-      (iframe.contentWindow as IframeWindow | null)?.__HF_MEDIA_SOURCE_FACTS__ ?? {},
-    )
-      .filter(([suffix]) => path.endsWith(suffix))
-      .sort(([a], [b]) => b.length - a.length)[0]?.[1];
-  };
 
   const trim = (budget = FRAME_BUDGET) => {
     for (const [entry, reader] of cacheOrder) {
@@ -145,7 +163,10 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
   };
   const open = async (source: string): Promise<Reader> => {
     const options = mediaUrlSourceOptions("thumbnail");
-    const input = new Input({ source: new UrlSource(source, options), formats: ALL_FORMATS });
+    const input = new Input({
+      source: new UrlSource(source, options),
+      formats: selfContainedFormats({ ALL_FORMATS, HLS }),
+    });
     opening.set(input, options.cancelReads);
     try {
       const track = await input.getPrimaryVideoTrack();
@@ -162,6 +183,11 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
           track.getFlip(),
           track.canBeTransparent(),
         ]);
+      const [codec, codedHeight, colour] = await Promise.all([
+        track.getCodec(),
+        track.getCodedHeight(),
+        track.getColorSpace(),
+      ]);
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.ceil(width));
       const aspect = rotation % 180 === 0 ? squareWidth / squareHeight : squareHeight / squareWidth;
@@ -179,6 +205,8 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
         lead,
         ticks,
         transparent,
+        untaggedBt601:
+          !colour.matrix && untaggedVideoMatrix(codec ?? "", codedHeight) === "smpte170m",
         tail: Promise.resolve(),
         iterator: null,
         iteratorEnd: 0,
@@ -280,7 +308,12 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     if (!context) throw new Error("Preview canvas unavailable");
     context.clearRect(0, 0, reader.canvas.width, reader.canvas.height);
     context.imageSmoothingQuality = "high";
-    sample.drawWithFit(context, { fit: "fill", rotation: reader.rotation, flip: reader.flip });
+    const drawn = reader.untaggedBt601 ? await asBt601(sample) : sample;
+    try {
+      drawn.drawWithFit(context, { fit: "fill", rotation: reader.rotation, flip: reader.flip });
+    } finally {
+      if (drawn !== sample) drawn.close();
+    }
     const image = await createImageBitmap(reader.canvas);
     if (signal.aborted || disposed || reader.disposed) {
       image.close();
@@ -347,18 +380,17 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
       if (signal.aborted || disposed) await closeIterator(reader).catch(() => {});
     }
   };
-  const sourceTiming = (request: PausedVideoFrameRequest, reader: Reader) => {
-    const facts = sourceFacts(request.source);
+  const sourceTiming = (request: PausedVideoDecodeAsk, reader: Reader) => {
     return {
-      frameRate: facts?.frameRate,
-      variableFrameRate: facts?.variableFrameRate,
+      frameRate: request.frameRate,
+      variableFrameRate: request.variableFrameRate,
       sourceLead: reader.lead,
       inputLead: reader.lead,
       timeResolution: reader.ticks,
     };
   };
   const decodeOne = async (
-    request: PausedVideoFrameRequest,
+    request: PausedVideoDecodeAsk,
     signal: AbortSignal,
   ): Promise<PausedVideoFrame> => {
     signal.throwIfAborted();

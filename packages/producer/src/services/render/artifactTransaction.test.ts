@@ -10,8 +10,9 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, basename } from "node:path";
 import { tmpdir } from "node:os";
+import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
 import {
   ArtifactTransaction,
   buildArtifactExpectation,
@@ -41,6 +42,26 @@ describe("ArtifactTransaction", () => {
 
     transaction.rollback();
     expect(transactionDirectories(dir)).toEqual([]);
+  });
+
+  it("caps the staging directory stem so a long output name stays under 259 characters", async () => {
+    const root = tempDir();
+    const deepDir = join(root, "a".repeat(60), "b".repeat(60));
+    mkdirSync(deepDir, { recursive: true });
+    const stem = "deliverable-".repeat(6).slice(0, 65);
+    const destination = join(deepDir, `${stem}.mov`);
+    expect(destination.length).toBeLessThanOrEqual(259);
+
+    const transaction = new ArtifactTransaction(destination, "file");
+    const txDirName = basename(dirname(transaction.stagingPath));
+
+    expect(RENDER_TEMP_DIR.test(txDirName)).toBe(true);
+    expect(transaction.stagingPath.length).toBeLessThanOrEqual(259);
+
+    writeFileSync(transaction.stagingPath, "mov-bytes");
+    await transaction.commit();
+    expect(readFileSync(destination, "utf8")).toBe("mov-bytes");
+    expect(transactionDirectories(deepDir)).toEqual([]);
   });
 
   it("atomically replaces a file only after validation", async () => {

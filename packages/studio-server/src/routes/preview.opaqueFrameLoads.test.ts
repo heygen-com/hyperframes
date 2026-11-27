@@ -160,21 +160,37 @@ describe("an opaque preview frame's loads under its token", () => {
     ["video", "music.mp3"],
     ["video", "logo.png"],
     ["audio", "clip.mp4"],
-    ["audio", "comp/music.mp3"],
     ["font", "data.json"],
     ["font", "scene.js"],
     ["script", "data.json"],
     ["script", "fonts/Brand.woff2"],
     ["script", "scene.html"],
     ["script", "comp/scene.html"],
-    // The sub-composition route answers any project file with an HTML page.
-    ["script", "comp/scene.js"],
-    ["font", "comp/fonts/Brand.woff2"],
     ["toString", "scene.js"],
     ["constructor", "fonts/Brand.woff2"],
   ])("refuses a %s load of %s", async (dest, path) => {
     const res = await load(path, { origin: "null", "sec-fetch-dest": dest });
     expect(res.status).toBe(200);
+    expectNotGranted(res);
+  });
+
+  // fails without the fix: a frame refused a page got one without the runtime, so a sealed frame never reported why.
+  it("answers a refused frame with a page that carries the runtime after the refusal it reports", async () => {
+    const res = await load("comp/missing.html", { origin: "null", "sec-fetch-dest": "iframe" });
+    expect(res.status).toBe(404);
+    const page = await res.text();
+    expect(page).toContain('src="/api/runtime.js"');
+    expect(page.indexOf("__hfPreviewErrors")).toBeLessThan(page.indexOf('src="/api/runtime.js"'));
+  });
+
+  // The sub-composition route answers only for compositions, so these never reach a page or a grant.
+  it.each([
+    ["audio", "comp/music.mp3"],
+    ["script", "comp/scene.js"],
+    ["font", "comp/fonts/Brand.woff2"],
+  ])("refuses a %s load of %s with no page", async (dest, path) => {
+    const res = await load(path, { origin: "null", "sec-fetch-dest": dest });
+    expect(res.status).toBe(404);
     expectNotGranted(res);
   });
 
@@ -210,7 +226,9 @@ describe("an opaque preview frame's loads under its token", () => {
     expect(html.replaceAll(tokened, "")).not.toContain("/api/projects/demo/preview/");
   });
 
-  it("puts Studio's seek reapply last in a sealed document with a Studio edit, and only there", async () => {
+  // fails without the fix: a sealed document with no Studio edit yet got no reapply, so the first edit an undo or redo
+  // put back on it could not be kept in place.
+  it("puts Studio's seek reapply last in every sealed document, edited or not, and in no plain one", async () => {
     const reapply = "//# sourceURL=hyperframes://position-seek-reapply</script>";
     const sealed = await (await load("comp/sized.html", { "sec-fetch-dest": "iframe" })).text();
     expect(sealed).toContain(reapply);
@@ -220,7 +238,7 @@ describe("an opaque preview frame's loads under its token", () => {
     });
     expect(await plain.text()).not.toContain(reapply);
     const unedited = await (await load("comp/scene.html", { "sec-fetch-dest": "iframe" })).text();
-    expect(unedited).not.toContain(reapply);
+    expect(unedited).toContain(reapply);
   });
 
   it("serves the main preview under the token, re-based", async () => {

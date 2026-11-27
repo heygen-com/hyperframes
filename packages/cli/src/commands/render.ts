@@ -115,6 +115,7 @@ import {
 } from "../telemetry/renderCpu.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
+import { hyperframesConfigDir } from "../utils/configDir.js";
 import {
   afterCleanRender,
   afterRevert,
@@ -166,6 +167,7 @@ import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
   fpsToNumber,
+  terminalLines,
   terminalText,
   type CanvasResolution,
   type OutputResolutionIssueKind,
@@ -285,12 +287,11 @@ export default defineCommand({
     start: {
       type: "string",
       description:
-        "Render from this second of the film (MP4). The clip starts at 0 and carries the audio of the span.",
+        "Render from this second of the film. The clip starts at 0 and carries the audio of that part.",
     },
     end: {
       type: "string",
-      description:
-        "Render up to this second of the film (default: the end). Needs MP4, a whole frame rate of 24, 25, 30 or 60, and SDR.",
+      description: "Render up to this second of the film (default: the end).",
     },
     "video-bitrate": {
       type: "string",
@@ -785,7 +786,7 @@ function ensureDockerImage(version: string, platform: string, quiet: boolean): s
     return tag;
   }
 
-  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag} (${platform})...`));
+  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag} (${terminalText(platform)})...`));
 
   const dockerfilePath = resolveDockerfilePath();
 
@@ -878,7 +879,9 @@ function resolveDockerHostPlatform(options: RenderOptions): string {
 
 async function registerRenderOutputOrWarn(projectDir: string, outputPath: string): Promise<void> {
   await registerRenderOutput(projectDir, outputPath).catch((error: unknown) =>
-    console.warn(`Render output was not registered: ${normalizeErrorMessage(error)}`),
+    console.warn(
+      `Render output was not registered: ${terminalLines(normalizeErrorMessage(error))}`,
+    ),
   );
 }
 
@@ -1121,8 +1124,8 @@ async function executeLocalRender(
   if (!options.quiet) {
     for (const outcome of preflight.outcomes) {
       if (outcome.level === "warn") {
-        console.warn(c.warn(`  ${outcome.name}: ${outcome.detail}`));
-        if (outcome.hint) console.warn(c.dim(`  ${outcome.hint}`));
+        console.warn(c.warn(`  ${outcome.name}: ${terminalLines(String(outcome.detail))}`));
+        if (outcome.hint) console.warn(c.dim(`  ${terminalLines(outcome.hint)}`));
       }
     }
   }
@@ -1161,13 +1164,15 @@ async function executeLocalRender(
               ? "."
               : ", or render WebM instead: hyperframes render --format webm --output output.webm"),
         );
-        failCommand();
+        failCommand(1, error);
       }
       // Capability probing is advisory. Let the real encode surface the
       // authoritative FFmpeg error instead of failing here with a bare stack.
       if (!options.quiet) {
         const detail = error instanceof Error ? error.message : String(error);
-        console.warn(c.warn(`  Unable to probe H.264 encoder capabilities: ${detail}`));
+        console.warn(
+          c.warn(`  Unable to probe H.264 encoder capabilities: ${terminalLines(detail)}`),
+        );
       }
     }
     if (encoderMode === "gpu" && isHls) {
@@ -1217,6 +1222,10 @@ async function executeLocalRender(
 
   const engineConfig = producer.resolveConfig({
     browserGpuMode: options.browserGpuMode ?? "software",
+    ...(options.browserGpuMode === "auto" && {
+      gpuChoiceFile: hyperframesConfigDir("gpu-choice.json"),
+      hyperframesVersion: VERSION,
+    }),
     // Local auto opts out of the software-GPU screenshot clamp, and a BeginFrame that draws no first frame
     // retries by screenshot. Docker and --no-browser-gpu request software; --resolution supersamples via screenshot.
     ...(options.browserGpuMode === "auto" &&
@@ -1264,26 +1273,9 @@ async function executeLocalRender(
       resumeSegments: options.resumeSegments,
       keepSegments: options.keepSegments,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
-      // plan() takes the film's own size; these only satisfy the request shape.
-      distributed: options.range ? { width: 1920, height: 1080 } : undefined,
+      range: options.range,
     },
   });
-  if (options.range) {
-    return renderRange({
-      producer,
-      request,
-      range: options.range,
-      projectDir,
-      outputPath,
-      options,
-      logger,
-      startTime,
-      cpu,
-      signal: cancellation.signal,
-      allowOutsideProjectAssets,
-      includeOutsideScripts,
-    });
-  }
   const job = producer.createRenderJob(
     producer.renderConfigFromRequest(request, {
       logger,
@@ -1346,7 +1338,7 @@ async function executeLocalRender(
   const cpuUsage = cpu.stop();
   if (job.outcome === "completed_with_warnings") {
     for (const warning of job.warnings) {
-      console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
+      console.warn(c.warn(`  [${warning.code}] ${terminalLines(warning.message)}`));
     }
   }
   const audioLowered = audioLoweredWarning(job.audioLoweredDb);
@@ -1393,64 +1385,6 @@ async function executeLocalRender(
       ...job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
       ...(audioLowered ? [audioLowered] : []),
     ],
-  };
-}
-
-async function renderRange(input: {
-  producer: Awaited<ReturnType<typeof loadProducer>>;
-  request: ReturnType<Awaited<ReturnType<typeof loadProducer>>["createRenderRequest"]>;
-  range: RenderRange;
-  projectDir: string;
-  outputPath: string;
-  options: RenderOptions;
-  logger: ProducerLogger;
-  startTime: number;
-  cpu: RenderCpuSampler;
-  signal: AbortSignal;
-  allowOutsideProjectAssets: boolean;
-  includeOutsideScripts: boolean;
-}): Promise<SingleRenderResult> {
-  const { producer, options } = input;
-  let framesEncoded = 0;
-  let reference = producer.referenceBackgroundResult(undefined);
-  try {
-    const config = producer.distributedConfigFromRequest(input.request, {
-      logger: input.logger,
-      abortSignal: input.signal,
-    });
-    const spanResult = await producer.renderSpan(
-      input.projectDir,
-      config,
-      input.range,
-      input.outputPath,
-      {
-        allowOutsideProjectAssets: input.allowOutsideProjectAssets,
-        includeOutsideScripts: input.includeOutsideScripts,
-      },
-    );
-    framesEncoded = spanResult.framesEncoded;
-    reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);
-  } catch (error: unknown) {
-    handleRenderError(error, options, input.startTime, input.cpu, false, "");
-  }
-  if (!options.embedded) markRenderSucceeded();
-  const elapsed = Date.now() - input.startTime;
-  input.cpu.stop();
-  printRenderComplete({
-    outputPath: input.outputPath,
-    projectDir: input.projectDir,
-    desktopHint: wantsDesktopHint(options),
-    elapsedMs: elapsed,
-    quiet: options.quiet,
-    format: options.format,
-  });
-  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
-  return {
-    renderTimeMs: elapsed,
-    ...reference,
-    durationMs: Math.round((framesEncoded / fpsToNumber(options.fps)) * 1000),
-    outcome: "completed",
-    warnings: [],
   };
 }
 

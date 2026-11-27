@@ -60,6 +60,22 @@ describe("prompt wrapper", () => {
     }
   });
 
+  // fails without the fix: a bell in the message reached stderr as it was given
+  it("an unattended spinner shows control characters in its message as text", () => {
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const spin = prompts.spinner();
+      spin.start("Transcoding clip\u0007.mov");
+      spin.stop("Done\u0007\nnext line");
+      expect(write.mock.calls).toEqual([
+        ["Transcoding clip\\x07.mov\n"],
+        ["Done\\x07\nnext line\n"],
+      ]);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it("an attended spinner is clack's", () => {
     state.unattended = false;
     expect(prompts.spinner()).toEqual({ fromClack: true });

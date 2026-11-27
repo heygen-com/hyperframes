@@ -1,17 +1,21 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFileSync } from "node:child_process";
 import {
   accessSync,
   closeSync,
   constants,
   existsSync,
+  mkdtempSync,
   openSync,
   readSync,
+  rmdirSync,
   statSync,
 } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Readable } from "node:stream";
-import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js";
+import { isTrustedExecutablePath, readEnv, trustedPathDirs } from "./trustedExecutable.js";
 
 /**
  * Shared FFmpeg/FFprobe binary resolution for every package that shells out
@@ -118,7 +122,7 @@ function scanPath(name: FfBinaryName): string | undefined {
       ? [
           ".exe",
           ...new Set(
-            (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+            (readEnv("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
               .split(";")
               .map((ext) => ext.trim().toLowerCase())
               .filter(Boolean),
@@ -294,10 +298,10 @@ export function concatListInputArgs(concatListPath: string): string[] {
 
 /** What a render service lets a media input open: containers that name no other file. */
 export const SELF_CONTAINED_FORMATS =
-  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
+  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,caf,w64,wv,au,ac3,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
 
 // Demuxers that open other files or URLs on their own. hls and concat stay allowed: ffmpeg copies the
-// format whitelist into every nested open, so a list cannot reach these, and the folder walk confines its paths.
+// format whitelist into every nested open, so a list cannot reach these; they are read only with `playlists: true`.
 const PATH_OPENING_DEMUXERS = new Set([
   "dash",
   "imf",
@@ -339,15 +343,52 @@ export function _setDemuxerListingForTests(listing?: string): void {
   demuxerLists.clear();
 }
 
+let workingDir: string | undefined;
+
+/** Empty folder ffmpeg runs from, so a name it opens as written finds no project file. Callers pass absolute paths. */
+export function ffmpegWorkingDir(): string {
+  if (workingDir && existsSync(workingDir)) return workingDir;
+  if (!workingDir) {
+    process.once("exit", () => {
+      try {
+        rmdirSync(workingDir!);
+      } catch {}
+    });
+  }
+  workingDir = mkdtempSync(join(tmpdir(), "hf-ffmpeg-cwd-"));
+  return workingDir;
+}
+
+const emptyFolderScope = new AsyncLocalStorage<true>();
+
+/** Runs `work` with ffmpeg spawned from {@link ffmpegWorkingDir}; every path it hands ffmpeg must be absolute. */
+export const fromEmptyFolder = <T>(work: () => T): T => emptyFolderScope.run(true, work);
+
+export const ffmpegCwd = (): string | undefined =>
+  emptyFolderScope.getStore() ? ffmpegWorkingDir() : undefined;
+
 export function localContainerInputArgs(container: "mov" | "matroska" | undefined): string[] {
   return container ? ["-protocol_whitelist", "file", "-format_whitelist", container] : [];
 }
 
 export { assertLiteralMediaInput };
 
-/** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. */
-export function mediaInputFormatArgs(listingBinary: string, input: string): string[] {
+const PLAYLIST_DEMUXERS = new Set(["hls", "applehttp", "concat"]);
+
+/** The `-format_whitelist` pair for `input` (no playlists unless `playlists: true`); callers read it by position. */
+export function mediaInputFormatArgs(
+  listingBinary: string,
+  input: string,
+  { playlists = false }: { playlists?: boolean } = {},
+): string[] {
   assertLiteralMediaInput(input);
+  const allowed = (formats: string) =>
+    playlists
+      ? formats
+      : formats
+          .split(",")
+          .filter((name) => !PLAYLIST_DEMUXERS.has(name))
+          .join(",");
   let formats = demuxerLists.get(listingBinary);
   if (formats === undefined) {
     try {
@@ -366,7 +407,16 @@ export function mediaInputFormatArgs(listingBinary: string, input: string): stri
     if (formats === undefined) return ["-format_whitelist", SELF_CONTAINED_FORMATS];
     demuxerLists.set(listingBinary, formats);
   }
-  return ["-format_whitelist", formats];
+  return ["-format_whitelist", allowed(formats)];
+}
+
+export function mediaInputArgs(
+  listingBinary: string,
+  input: string,
+  options: { playlists?: boolean } = {},
+): string[] {
+  const local = /^https?:\/\//i.test(input) ? [] : ["-protocol_whitelist", "file"];
+  return [...local, ...mediaInputFormatArgs(listingBinary, input, options)];
 }
 
 const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;

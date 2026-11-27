@@ -55,6 +55,7 @@ export interface TimelineElement {
   playbackStartAttr?: "media-start" | "playback-start";
   playbackRate?: number;
   sourceDuration?: number;
+  loop?: boolean;
   volume?: number;
   /** A video with sound to mix (`data-has-audio`, or unmuted without it); `muted` silences it. */
   hasAudio?: boolean;
@@ -66,6 +67,10 @@ export interface TimelineElement {
   fxChain?: string;
   automation?: string;
   masterChain?: string;
+  /** The fx badge's `data-color-grading`, inline clip-path and `data-fx-carve`, for a frame Studio cannot reach. */
+  colorGrading?: string;
+  clipPath?: string;
+  carve?: string;
   /** Path from data-composition-src — identifies sub-composition elements */
   compositionSrc?: string;
   /** Set by data-timeline-locked on the host element — disables move and trim in Studio. */

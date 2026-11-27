@@ -1,6 +1,7 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { previewFrameOpaque, previewRequest } from "../../player/lib/previewChannel";
 import type { EditingResult } from "@hyperframes/core/runtime/editing-port";
+import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
   HF_COLOR_GRADING_ACTIVE_EFFECT_KEYS,
@@ -85,10 +86,11 @@ const PORT_PREVIEW_TIMEOUT_MS = 15_000;
 const isImageData = (value: unknown): value is string =>
   typeof value === "string" && value.startsWith("data:image/");
 
-function portBatch(batch: unknown): PreviewBatch | null {
+function portBatch(batch: unknown, cards: number): PreviewBatch | null {
   if (typeof batch !== "object" || batch === null) return null;
   const { width, height, images } = batch as Record<string, unknown>;
-  if (!Number.isFinite(width) || !Number.isFinite(height) || !Array.isArray(images)) return null;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || !isMessageList(images, cards))
+    return null;
   return {
     width: width as number,
     height: height as number,
@@ -109,7 +111,7 @@ function portRuntime(iframe: HTMLIFrameElement): RuntimeColorGradingPreview {
         params,
         PORT_PREVIEW_TIMEOUT_MS,
       );
-      return portBatch(reply?.batch);
+      return portBatch(reply?.batch, candidates.length);
     },
   };
 }

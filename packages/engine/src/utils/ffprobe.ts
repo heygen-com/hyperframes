@@ -1,11 +1,12 @@
 // fallow-ignore-file code-duplication complexity
-import { localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegCwd, localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { spawn } from "child_process";
 import { createReadStream, mkdtempSync, readFileSync, rmSync, statSync } from "fs";
 import { chunkCrc32 } from "./crc32.js";
 import { StringDecoder } from "node:string_decoder";
 import { tmpdir } from "os";
 import { basename, join } from "path";
+import { fileURLToPath } from "node:url";
 import { parseSampleAspectRatio, redactTelemetryString, streamRotation } from "@hyperframes/core";
 import {
   alphaDecoderFor,
@@ -18,7 +19,11 @@ import {
   urlInputArgs,
   withPublicOnlyProxy,
 } from "./urlInput.js";
-import { TextArtMediaError } from "./notMediaPayload.js";
+import {
+  PlaylistLeavesFolderError,
+  TextArtMediaError,
+  playlistLeavesItsFolder,
+} from "./notMediaPayload.js";
 import { decodableAudioStream, misstatesPcmByteRate } from "@hyperframes/parsers/media-streams";
 import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
@@ -66,6 +71,14 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
 const REFUSED_TEXT_ART = /^\[(?:tty|bin|xbin|idf|adf) @ [^\]]*\] Format not on whitelist/m;
 
+const localPathOf = (input: string): string => {
+  try {
+    return /^file:/i.test(input) ? fileURLToPath(input) : input;
+  } catch {
+    return input;
+  }
+};
+
 export async function runFfprobe(
   filePath: string,
   argsWithoutInput: string[],
@@ -81,6 +94,10 @@ export async function runFfprobe(
   if (filePath === "-") {
     throw new Error('[FFmpeg] Refusing to probe "-": stdin is not a supported input path.');
   }
+
+  // urlInputArgs lets ffprobe read playlists; render preflight walks them, a CLI probe may not have.
+  if (!/^https?:\/\//i.test(filePath) && (await playlistLeavesItsFolder(localPathOf(filePath))))
+    throw new PlaylistLeavesFolderError();
 
   const command = getFfprobeBinary();
   const args = [
@@ -123,6 +140,7 @@ async function spawnFfprobe(
     stdio: ["ignore", "pipe", "pipe"],
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,
+    cwd: ffmpegCwd(),
   });
   trackChildProcess(proc);
   // Decoded through StringDecoder rather than per-chunk toString(): a
@@ -200,6 +218,10 @@ const finalVideoFrameTimestampCache = new Map<string, MediaProbeCacheEntry<numbe
 const finalVideoFrameTimestampSignalCaches = new WeakMap<
   AbortSignal,
   Map<string, MediaProbeCacheEntry<number>>
+>();
+const videoMetadataSignalCaches = new WeakMap<
+  AbortSignal,
+  Map<string, MediaProbeCacheEntry<VideoMetadata>>
 >();
 const audioMetadataCache = new Map<string, MediaProbeCacheEntry<AudioMetadata>>();
 const audioMetadataSignalCaches = new WeakMap<
@@ -533,7 +555,7 @@ export async function buildProbeFactsText(filePath: string, signal?: AbortSignal
     ffprobeMajor: await ffprobeMajor(),
   };
   try {
-    const metadata = await extractMediaMetadata(filePath);
+    const metadata = await extractMediaMetadata(filePath, { signal });
     const window = resolveStreamWindow(filePath, {
       videoStreamStartSeconds: metadata.videoStreamStartSeconds,
       videoStreamDurationSeconds:
@@ -621,6 +643,10 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
 }
 
 class StructurallyIncompletePngError extends Error {}
+
+export function isStructurallyIncompletePngError(error: unknown): boolean {
+  return error instanceof StructurallyIncompletePngError;
+}
 
 const TEXT_ART_CODECS = new Set(["ansi", "bintext", "xbin", "idf"]);
 
@@ -929,6 +955,7 @@ export { parseSampleAspectRatio };
 export async function probeDecodedAlphaPlane(
   filePath: string,
   decoder: string,
+  signal?: AbortSignal,
 ): Promise<boolean | undefined> {
   let probeDir: string | undefined;
   try {
@@ -953,7 +980,7 @@ export async function probeDecodedAlphaPlane(
         "nut",
         framePath,
       ],
-      { timeout: 30_000 },
+      { timeout: 30_000, signal },
     );
     if (!decoded.success) return undefined;
     const stdout = await runFfprobe(framePath, [
@@ -980,9 +1007,20 @@ export async function probeDecodedAlphaPlane(
  * deprecated alias below), this also handles still images such as PNG so it
  * can be used uniformly for any visual asset the HDR pipeline encounters.
  */
-export async function extractMediaMetadata(filePath: string): Promise<VideoMetadata> {
+export async function extractMediaMetadata(
+  filePath: string,
+  options?: { signal?: AbortSignal },
+): Promise<VideoMetadata> {
+  const signal = options?.signal;
+  signal?.throwIfAborted();
   const identity = mediaFileIdentity(filePath);
-  const cached = readMetadataCache(videoMetadataCache, filePath, identity);
+  // As for audio: a probe bound to a caller's signal is shared only among callers of that signal.
+  let cache = videoMetadataCache;
+  if (signal) {
+    cache = videoMetadataSignalCaches.get(signal) ?? new Map();
+    videoMetadataSignalCaches.set(signal, cache);
+  }
+  const cached = readMetadataCache(cache, filePath, identity);
   if (cached) return cached;
 
   const probePromise = (async (): Promise<VideoMetadata> => {
@@ -1001,8 +1039,10 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
 
     let output: FFProbeOutput | null = null;
     try {
-      output = await probeMediaOutput(filePath);
+      output = await probeMediaOutput(filePath, signal);
     } catch (error) {
+      // As probeMediaProfile does: a cancel rejects with its own reason, so callers read it as a cancel.
+      if (signal?.aborted) throw signal.reason ?? error;
       if (!stillImage()) throw error;
     }
 
@@ -1060,15 +1100,17 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     const hasAlpha = videoStreamHasAlpha(videoStream);
     const alphaDecoder = hasAlpha ? null : alphaDecoderFor(videoStream.codec_name);
     const alphaPlaneDecoded = alphaDecoder
-      ? await probeDecodedAlphaPlane(filePath, alphaDecoder)
+      ? await probeDecodedAlphaPlane(filePath, alphaDecoder, signal)
       : undefined;
 
     let containerDuration = output?.format.duration ? parseFloat(output.format.duration) : 0;
     const streamDuration = videoStream.duration ? parseFloat(videoStream.duration) : 0;
     // Recorder output (WebM/Matroska written to a pipe) carries no duration header: read it off the packets.
     if (!(containerDuration > 0) && !(streamDuration > 0) && !isPng) {
-      containerDuration = (await scanPacketDuration(filePath, fps)) ?? 0;
+      containerDuration = (await scanPacketDuration(filePath, fps, signal)) ?? 0;
     }
+    // The alpha and packet probes answer undefined on any failure, a cancel included.
+    signal?.throwIfAborted();
     const parsedStreamStart = videoStream.start_time ? parseFloat(videoStream.start_time) : 0;
     const streamStart = Number.isFinite(parsedStreamStart) ? parsedStreamStart : 0;
     // `nb_frames` is populated by the container demuxer; a muxer that requires
@@ -1121,7 +1163,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     };
   })();
 
-  writeMetadataCache(videoMetadataCache, filePath, identity, probePromise);
+  if (!signal || identity !== null) writeMetadataCache(cache, filePath, identity, probePromise);
   return probePromise;
 }
 
@@ -1165,7 +1207,11 @@ export function readStoredFinalFrame(
 const PACKET_TAIL_CHARS = 64 * 1024;
 
 /** The video stream's length from its packets (last end time), for a file whose headers state none. */
-async function scanPacketDuration(filePath: string, fps: number): Promise<number | undefined> {
+async function scanPacketDuration(
+  filePath: string,
+  fps: number,
+  signal?: AbortSignal,
+): Promise<number | undefined> {
   try {
     const stdout = await runFfprobe(
       filePath,
@@ -1173,7 +1219,7 @@ async function scanPacketDuration(filePath: string, fps: number): Promise<number
         ...["-select_streams", "v:0", "-show_entries", "packet=pts_time,duration_time"],
         ...["-of", "csv=p=0"],
       ],
-      undefined,
+      signal,
       { retainTail: true, maxChars: PACKET_TAIL_CHARS },
     );
     const lines = stdout.split("\n");

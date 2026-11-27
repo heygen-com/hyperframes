@@ -8,13 +8,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   headingSlugs,
   lintDocRefs,
   lintFrontmatter,
+  lintProjectCliRoutes,
   lintRegistryItemRefs,
   lintRelativeScriptRuns,
   lintVersionedCliRuns,
@@ -73,6 +74,27 @@ test("valid: description with a colon inside a quoted string", () => {
 
 const has = (violations, needle) =>
   violations.some((v) => v.message.toLowerCase().includes(needle.toLowerCase()));
+
+test("invalid: a description that a pasted link alone triggers (#8530)", () => {
+  for (const said of [
+    "Bring Figma into a video. Use when the person pastes a figma.com link or asks to use a Figma design.",
+    "Turn a site into a video. Use when the user shares a URL.",
+    "Capture a website. Use when someone drops a link to a page.",
+    "Capture a website. Use when the user has pasted a link.",
+    "Capture a website. Use when a link is pasted with no other request.",
+    "Capture a website. Use when given a URL.",
+    "Capture a website. Use for pasted links.",
+  ]) {
+    const violations = lintFrontmatter(wrap(`name: foo\ndescription: ${said}`));
+    assert.ok(has(violations, "a pasted link alone"), said);
+  }
+});
+
+test("valid: a description that names the task a link comes with", () => {
+  const said =
+    "Bring Figma into a video. Use when the person asks to use a Figma design, frame or logo in a video; a link with no task is not that ask.";
+  assert.deepEqual(lintFrontmatter(wrap(`name: foo\ndescription: ${said}`)), []);
+});
 
 test("invalid: missing frontmatter block", () => {
   const violations = lintFrontmatter("# just a body, no dashes\n");
@@ -413,4 +435,40 @@ test("versioned CLI examples use the installed launcher", () => {
     ),
     [],
   );
+});
+
+test("project CLI routes: a project's scripts or a CLI installed into it are flagged", () => {
+  for (const text of [
+    "or the project's pinned `npm run` scripts",
+    "run `npm run render` in the project",
+    "`npm i hyperframes@0.9.0` then run it",
+    "`npm install --save-dev hyperframes`",
+    "then `node_modules/.bin/hyperframes render`",
+  ]) {
+    assert.equal(lintProjectCliRoutes(`intro\n${text}\n`)[0]?.line, 2, text);
+  }
+});
+
+test("project CLI routes: the launcher and plain prose pass", () => {
+  const ok = [
+    'node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version 1.2.3 render',
+    "never a project's own scripts or wrapper unless the person names that command",
+    "`npx skills add heygen-com/hyperframes`",
+  ].join("\n");
+  assert.deepEqual(lintProjectCliRoutes(ok), []);
+});
+
+test("project CLI routes: no shipped SKILL.md offers a route through a project's files", () => {
+  const skillsDir = join(import.meta.dirname, "..", "skills");
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const path = join(skillsDir, entry.name, "SKILL.md");
+    let content;
+    try {
+      content = readFileSync(path, "utf-8");
+    } catch {
+      continue;
+    }
+    assert.deepEqual(lintProjectCliRoutes(content), [], path);
+  }
 });

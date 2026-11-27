@@ -3,16 +3,18 @@ import type { Example } from "../_examples.js";
 import { jsonArg, runMeasure, videoArg } from "../../measure/command.js";
 import {
   ffmpegBin,
+  ffmpegInput,
+  ffmpegToFile,
   Fix,
   probeVideo,
   round,
-  runFfmpeg,
   type VideoInfo,
 } from "../../measure/media.js";
 import { toneMapReferenceNits } from "@hyperframes/core";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { makeOutputFolder } from "../../utils/outputFolder.js";
+import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 
 export const examples: Example[] = [
   [
@@ -46,6 +48,7 @@ const hasFilter = (name: string) =>
 
 /** A constant-rate SDR H.264 copy: what the measuring tools, diff and the render all read the same way. */
 function normalize(info: VideoInfo, out: string): { path: string; fps: string } {
+  assertLiteralMediaOutput(out);
   const fps = info.vfr ? standardRate(info) : info.fpsText;
   const filters = [`fps=${fps}`];
   if (info.hdr) {
@@ -59,10 +62,18 @@ function normalize(info: VideoInfo, out: string): { path: string; fps: string } 
     );
   }
   makeOutputFolder(dirname(out));
-  runFfmpeg([
-    ...["-y", "-i", info.path, "-vf", [...filters, "format=yuv420p"].join(",")],
-    ...["-c:v", "libx264", "-crf", "12", "-preset", "medium", "-c:a", "aac", "-b:a", "192k", out],
-  ]);
+  ffmpegToFile(
+    [
+      ...[
+        "-y",
+        ...ffmpegInput(info.path, { playlists: info.guarded }),
+        "-vf",
+        [...filters, "format=yuv420p"].join(","),
+      ],
+      ...["-c:v", "libx264", "-crf", "12", "-preset", "medium", "-c:a", "aac", "-b:a", "192k"],
+    ],
+    out,
+  );
   return { path: out, fps };
 }
 

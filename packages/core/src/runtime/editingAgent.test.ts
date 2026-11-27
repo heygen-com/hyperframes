@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
+import { handleFor } from "./editingHandles";
 import { PREVIEW_FOR_ANOTHER_SITE_META, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
@@ -61,6 +62,25 @@ describe("installEditingAgent", () => {
     expect(message).toEqual({ source: "hf-preview", type: "editing-port", v: 1 });
     expect(targetOrigin).toBe("*");
     expect(transfer).toHaveLength(1);
+  });
+
+  // fails without the fix: the plugin preload ran before the handoff, so a page it threw on never got a port.
+  it("hands the port over before the optional plugin preload", () => {
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      get: () => {
+        throw new Error("page gsap getter");
+      },
+    });
+    const reported = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", reported);
+    try {
+      post(parent, CONNECT);
+      expect(handoff).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("error", reported);
+      Reflect.deleteProperty(window, "gsap");
+    }
   });
 
   it("hands a fresh port to each later connect from the parent and keeps the earlier one working", async () => {
@@ -173,6 +193,8 @@ describe("installEditingAgent", () => {
           "wait-for-seek",
           "set-loop-start",
           "computed-styles",
+          "authored-styles",
+          "font-faces",
           "elements-at-point",
           "pointer-targets",
           "describe",
@@ -182,6 +204,7 @@ describe("installEditingAgent", () => {
           "layers",
           "draft",
           "gesture-start",
+          "gesture-base",
           "console-errors",
           "watch-keys",
           "restore-attributes",
@@ -200,6 +223,7 @@ describe("installEditingAgent", () => {
           "max-z-index",
           "crop-lift",
           "edit-element",
+          "remove-elements",
           "stacking-family",
           "gsap-set",
           "patch-tweens",
@@ -207,7 +231,16 @@ describe("installEditingAgent", () => {
           "hold-scenes",
           "mark-scenes-stale",
           "swap-scenes",
+          "live-retime",
+          "rebind-timing",
           "assets-unloaded",
+          "text-edit",
+          "serve-paused-frames",
+          "frame-presented",
+          "arm-canvas-keys",
+          "resolve-canvas-key-action",
+          "stage-measure",
+          "stage-act",
         ],
       },
     });
@@ -249,6 +282,19 @@ describe("installEditingAgent", () => {
       "invalid-params",
     ],
     [{ v: 1, id: 16, kind: "computed-styles", params: { selector: "p" } }, 16, "invalid-params"],
+    ...[
+      { selector: "p", properties: ["font-size"] },
+      { handle: H, properties: [] },
+      { handle: H, properties: ["font-size;"] },
+      { handle: H, properties: Array(65).fill("font-size") },
+      { handle: "not a handle", properties: ["font-size"] },
+      { handle: H, properties: ["font-size"], extra: 1 },
+    ].map((params, index) => [
+      { v: 1, id: 900 + index, kind: "authored-styles", params },
+      900 + index,
+      "invalid-params",
+    ]),
+    [{ v: 1, id: 910, kind: "font-faces", params: { all: true } }, 910, "invalid-params"],
     [{ v: 1, id: 160, kind: "console-errors", params: {} }, 160, "invalid-params"],
     [{ v: 1, id: 161, kind: "console-errors", params: { from: -1 } }, 161, "invalid-params"],
     [{ v: 1, id: 162, kind: "console-errors", params: { from: 1.5 } }, 162, "invalid-params"],
@@ -406,7 +452,26 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: "1", y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: { x: Infinity, y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: 1, y: 0, route: "css" }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: 1e6, y: 0, route: "gsap" }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
+      ...[
+        { seconds: 1, values: {} },
+        { seconds: -1, values: { opacity: 1 } },
+        { seconds: 1, values: { color: 1 } },
+        { seconds: 1, values: { opacity: "1" } },
+        { seconds: 1, values: { opacity: 1 }, extra: 1 },
+      ].map((props) => ({ drafts: [{ handle: H, translate: null, size: null, props }] })),
+      {
+        drafts: [
+          {
+            handle: H,
+            translate: { x: 1, y: 0, route: "gsap" },
+            size: null,
+            props: { seconds: 1, values: { x: 2 } },
+          },
+        ],
+      },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
       { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1, route: "x" } }] },
@@ -419,9 +484,30 @@ describe("installEditingAgent", () => {
       {
         drafts: [{ handle: H, translate: null, size: null, rotate: { angle: NaN, route: "gsap" } }],
       },
+      {
+        drafts: [
+          { handle: H, translate: null, size: null, rotate: { angle: 1, route: "transform" } },
+        ],
+      },
+      ...[
+        "url(x.png)",
+        "rotate(1deg);color:red",
+        "translate(1px",
+        "scale(2) /* x",
+        "x".repeat(513),
+      ].map((value) => ({
+        drafts: [
+          {
+            handle: H,
+            translate: null,
+            size: null,
+            rotate: { angle: 1, route: "transform", value },
+          },
+        ],
+      })),
     ].map((params, index) => [
-      { v: 1, id: 150 + index, kind: "draft", params },
-      150 + index,
+      { v: 1, id: 600 + index, kind: "draft", params },
+      600 + index,
       "invalid-params",
     ]),
     ...[{}, { handles: [] }, { handles: ["1"] }, { handles: Array(257).fill(H) }].map(
@@ -558,15 +644,17 @@ describe("installEditingAgent", () => {
       id: 1,
       ok: false,
     });
-    expect(document.querySelector("script")?.textContent).toBe(script);
+    expect(document.body.querySelector("script")?.textContent).toBe(script);
     // The sent script registers on a local, so the frame reads its timeline empty for now.
     expect(await ask(port, { v: 1, id: 2, kind: "soft-reload", params })).toMatchObject({
       id: 2,
       ok: true,
       result: { result: "verify-failed" },
     });
-    expect(document.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
-    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind"]) delete frame[key];
+    expect(document.body.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
+    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind", "__hfMotionPathWaiters"])
+      delete frame[key];
+    document.head.querySelector("script[src]")?.remove();
   });
 
   it("holds and swaps scenes through the port, and refuses a hold carrying anything extra", async () => {
@@ -598,6 +686,129 @@ describe("installEditingAgent", () => {
     delete window.__hfSwapScenes;
   });
 
+  it("answers a live retime through the port, and refuses one carrying anything extra", async () => {
+    const port = connectedPort();
+    const tween = { selector: "#a", start: 1, duration: 1, wasStart: 0, wasDuration: 1 };
+    const tweens = [{ ...tween, moved: true, source: 0 }];
+    const plan = { key: "t", after: "x", time: 0, tweens, timing: [] };
+
+    const extra = { ...plan, script: "x" };
+    expect(await ask(port, { v: 1, id: 1, kind: "live-retime", params: extra })).toMatchObject({
+      ok: false,
+    });
+    // No live script registers the timeline, so nothing can move.
+    expect(await ask(port, { v: 1, id: 2, kind: "live-retime", params: plan })).toMatchObject({
+      ok: true,
+      result: { result: "unchanged" },
+    });
+  });
+
+  it("rebinds the timing through the port, refuses an off-shape time, and waits out a swap", async () => {
+    const frame = window as unknown as Record<string, unknown>;
+    const rebinds: string[] = [];
+    const port = connectedPort();
+    const rebind = (id: number, params: object) =>
+      ask(port, { v: 1, id, kind: "rebind-timing", params });
+    try {
+      frame.__hfForceTimelineRebind = () => rebinds.push("rebound");
+      for (const [id, params] of [
+        [1, { time: -1 }],
+        [2, { time: Number.NaN }],
+        [3, { time: 1, script: "x" }],
+        [4, {}],
+      ] as const)
+        expect(await rebind(id, params)).toMatchObject({ ok: false });
+      frame.__hfSwapsWaiting = 1;
+      expect(await rebind(5, { time: 0 })).toMatchObject({ ok: true, result: { rebound: false } });
+      expect(rebinds).toEqual([]);
+      delete frame.__hfSwapsWaiting;
+      expect(await rebind(6, { time: 0 })).toMatchObject({ ok: true, result: { rebound: true } });
+      expect(rebinds).toEqual(["rebound"]);
+      delete frame.__hfForceTimelineRebind;
+      expect(await rebind(7, { time: 0 })).toMatchObject({ ok: true, result: { rebound: false } });
+    } finally {
+      delete frame.__hfForceTimelineRebind;
+      delete frame.__hfSwapsWaiting;
+    }
+  });
+
+  // fails without the fix: the frame refused a turn drawn inside a translating transform, so it never turned.
+  it("draws a turn inside a translating transform through the port", async () => {
+    const port = connectedPort();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<div id="spun" style="transform: translate(-50%, -50%)"></div>',
+    );
+    const spun = document.getElementById("spun")!;
+    const value = "translate(-50%, -50%) rotate(20deg)";
+    const rotate = { angle: 20, route: "transform", value };
+    const drafts = [{ handle: handleFor(spun), translate: null, size: null, rotate }];
+    expect(await ask(port, { v: 1, id: 1, kind: "draft", params: { drafts } })).toMatchObject({
+      ok: true,
+    });
+    expect(spun.style.transform).toBe(value);
+  });
+
+  it("ends a drawn size and sets GSAP values in one request, the size ended first", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const box = document.getElementById("box")!;
+    const handle = handleFor(box);
+    const widthAtSet: string[] = [];
+    Object.assign(window, { gsap: { set: () => widthAtSet.push(box.style.width) } });
+    const port = connectedPort();
+    const size = { width: 307, height: 204 };
+    const drawn = await ask(port, {
+      v: 1,
+      id: 1,
+      kind: "draft",
+      params: { drafts: [{ handle, translate: null, size }] },
+    });
+    expect(drawn).toMatchObject({ ok: true, result: { gsapSetTakesDrafts: true } });
+    expect(box.style.width).toBe("307px");
+
+    const ending = [{ handle, translate: null, size: null }];
+    const props = { scaleX: 1.9, scaleY: 1.9 };
+    const set = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "gsap-set",
+      params: { handle, props, drafts: ending },
+    });
+    const malformed = [{ handle, translate: null, size: "none" }];
+    const refused = await ask(port, {
+      v: 1,
+      id: 3,
+      kind: "gsap-set",
+      params: { handle, props, drafts: malformed },
+    });
+
+    expect(set).toMatchObject({ id: 2, ok: true, result: { applied: true } });
+    expect(widthAtSet).toEqual([""]);
+    expect(refused).toMatchObject({ id: 3, ok: false, error: { code: "invalid-params" } });
+    Reflect.deleteProperty(window, "gsap");
+  });
+
+  // fails without the fix: the frame refused a move routed through its GSAP, so a sealed drag drew a CSS translate.
+  it("moves a GSAP-held element's x/y through the port", async () => {
+    const port = connectedPort();
+    document.body.insertAdjacentHTML("beforeend", '<div id="held"></div>');
+    const held = document.getElementById("held")!;
+    const position = { x: 40, y: 30 };
+    Object.assign(window, {
+      gsap: {
+        getProperty: (_: Element, axis: "x" | "y") => position[axis],
+        set: (_: Element, props: Partial<typeof position>) => Object.assign(position, props),
+      },
+    });
+    const translate = { x: 35, y: 33, route: "gsap" };
+    const drafts = [{ handle: handleFor(held), translate, size: null }];
+    expect(await ask(port, { v: 1, id: 1, kind: "draft", params: { drafts } })).toMatchObject({
+      ok: true,
+    });
+    expect(position).toEqual({ x: 35, y: 33 });
+    Reflect.deleteProperty(window, "gsap");
+  });
+
   it("answers computed styles for the element a selector names", async () => {
     document.body.innerHTML = `<p id="title" style="color: rgb(1, 2, 3); opacity: 0.5">Hi</p>
       <canvas data-hf-preview-video-canvas style="opacity: 0.25"></canvas>
@@ -617,6 +828,45 @@ describe("installEditingAgent", () => {
       ok: false,
       error: { code: "failed" },
     });
+  });
+
+  it("answers the display of every element a selector matches, in document order", async () => {
+    document.body.innerHTML = `<div id="headline"><span style="display: block">Launch</span><span>day</span></div>`;
+    const port = connectedPort();
+    const every = (id: number, selector: string, properties: string[]) =>
+      ask(port, {
+        v: 1,
+        id,
+        kind: "computed-styles",
+        params: { selector, every: true, properties },
+      });
+
+    expect((await every(1, "#headline, #headline *", ["display"])).result).toEqual({
+      styles: null,
+      matches: [{ display: "block" }, { display: "block" }, { display: "inline" }],
+      truncated: false,
+    });
+    expect((await every(2, "#missing", ["display"])).result).toEqual({
+      styles: null,
+      matches: [],
+      truncated: false,
+    });
+    for (const [id, properties] of [
+      [3, ["color"]],
+      [4, ["display", "opacity"]],
+    ] as const)
+      expect(await every(id, "#headline", [...properties])).toMatchObject({
+        ok: false,
+        error: { code: "invalid-params" },
+      });
+    expect(
+      await ask(port, {
+        v: 1,
+        id: 5,
+        kind: "computed-styles",
+        params: { handle: "0123456789abcdef:1", every: true, properties: ["display"] },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid-params" } });
   });
 
   it("reads custom properties whose names use any case or an underscore", async () => {
@@ -739,6 +989,31 @@ describe("installEditingAgent", () => {
       ]);
     });
 
+    it("leaves a key typed into a field inside a shadow root to the field", async () => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const field = host
+        .attachShadow({ mode: "open" })
+        .appendChild(document.createElement("input"));
+      field.focus();
+      const port = connectedPort();
+      await watch(port, ["b"]);
+      const seen = collect(port);
+
+      const event = new KeyboardEvent("keydown", {
+        key: "b",
+        code: "KeyB",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      field.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(await received(port, seen)).toEqual([]);
+      host.remove();
+    });
+
     it("leaves a key the film cancelled before it", async () => {
       const film = (event: Event) => event.preventDefault();
       window.addEventListener("keydown", film, true);
@@ -773,6 +1048,169 @@ describe("installEditingAgent", () => {
       await watch(port, ["k"], 3);
       agent.dispose();
       expect(press("keydown", { key: "k", code: "KeyK" })).toBe(false);
+    });
+  });
+
+  // fails without the fix: frame-presented is an unknown request kind until editingPort + editingAgent implement it.
+  describe("frame-presented", () => {
+    function seekingVideo() {
+      const video = document.createElement("video");
+      let seeking = true;
+      Object.defineProperty(video, "seeking", { get: () => seeking, configurable: true });
+      document.body.append(video);
+      return {
+        video,
+        finish: (eventName: "seeked" | "error" | "abort" | "emptied") => {
+          seeking = false;
+          video.dispatchEvent(new Event(eventName));
+        },
+      };
+    }
+
+    it("waits for seeking videos to fire seeked and two animation frames", async () => {
+      const rafs: FrameRequestCallback[] = [];
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (rafs.push(cb), rafs.length));
+      try {
+        const port = connectedPort();
+        const { finish } = seekingVideo();
+        let reply: Record<string, unknown> | null = null;
+        const pending = ask(port, { v: 1, id: 50, kind: "frame-presented" }).then((r) => {
+          reply = r;
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(reply).toBeNull();
+        expect(rafs).toHaveLength(0);
+
+        finish("seeked");
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        expect(reply).toBeNull();
+        rafs.shift()!(16);
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        expect(reply).toBeNull();
+        rafs.shift()!(32);
+        await pending;
+        expect(reply).toEqual({ v: 1, id: 50, ok: true, result: { presented: true } });
+      } finally {
+        rafSpy.mockRestore();
+      }
+    });
+
+    it.each(["error", "abort", "emptied"] as const)(
+      "settles and removes listeners when a seeking video emits %s",
+      async (eventName) => {
+        const rafSpy = vi
+          .spyOn(window, "requestAnimationFrame")
+          .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+        try {
+          const port = connectedPort();
+          const { video, finish } = seekingVideo();
+          const addSpy = vi.spyOn(video, "addEventListener");
+          const removeSpy = vi.spyOn(video, "removeEventListener");
+          const pending = ask(port, { v: 1, id: 51, kind: "frame-presented" });
+          await vi.waitFor(() =>
+            expect(addSpy).toHaveBeenCalledWith("seeked", expect.any(Function), { once: true }),
+          );
+          finish(eventName);
+          expect(await pending).toEqual({ v: 1, id: 51, ok: true, result: { presented: true } });
+          expect(removeSpy).toHaveBeenCalledWith("seeked", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("error", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("emptied", expect.any(Function));
+        } finally {
+          rafSpy.mockRestore();
+        }
+      },
+    );
+
+    // fails without the fix: a seek that never settled kept its listeners and observer alive past the caller's timeout.
+    it("answers presented false and lets go of the video when its seek never settles", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+      try {
+        const port = connectedPort();
+        const { video } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const removeSpy = vi.spyOn(video, "removeEventListener");
+        const pending = ask(port, { v: 1, id: 53, kind: "frame-presented" });
+        while (addSpy.mock.calls.length === 0) await new Promise((r) => setImmediate(r));
+        vi.advanceTimersByTime(4_000);
+        expect(await pending).toEqual({ v: 1, id: 53, ok: true, result: { presented: false } });
+        for (const name of ["seeked", "error", "abort", "emptied"])
+          expect(removeSpy).toHaveBeenCalledWith(name, expect.any(Function));
+        expect(disconnect).toHaveBeenCalled();
+      } finally {
+        disconnect.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    // fails without the fix: the frame gave up at its fixed 4 s, so a 6 s seek counted as never shown.
+    it("waits as long as it is asked to, so a 6 s seek still presents", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+      try {
+        const port = connectedPort();
+        const { video, finish } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const pending = ask(port, {
+          v: 1,
+          id: 55,
+          kind: "frame-presented",
+          params: { waitMs: 10_000 },
+        });
+        while (addSpy.mock.calls.length === 0) await new Promise((r) => setImmediate(r));
+        vi.advanceTimersByTime(6_000);
+        finish("seeked");
+        expect(await pending).toEqual({ v: 1, id: 55, ok: true, result: { presented: true } });
+      } finally {
+        rafSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    // fails without the fix: disposal let the two-frame stage's callbacks run on.
+    it("cancels a pending animation frame when the agent is disposed", async () => {
+      const rafs: FrameRequestCallback[] = [];
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (rafs.push(cb), rafs.length));
+      const cancelSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+      try {
+        const port = connectedPort();
+        void ask(port, { v: 1, id: 54, kind: "frame-presented" });
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        agent.dispose();
+        expect(cancelSpy).toHaveBeenCalledWith(1);
+      } finally {
+        rafSpy.mockRestore();
+        cancelSpy.mockRestore();
+      }
+    });
+
+    it("settles and removes listeners when a seeking video is disconnected from the document", async () => {
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+      try {
+        const port = connectedPort();
+        const { video } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const removeSpy = vi.spyOn(video, "removeEventListener");
+        const pending = ask(port, { v: 1, id: 52, kind: "frame-presented" });
+        await vi.waitFor(() =>
+          expect(addSpy).toHaveBeenCalledWith("seeked", expect.any(Function), { once: true }),
+        );
+        video.remove();
+        expect(await pending).toEqual({ v: 1, id: 52, ok: true, result: { presented: true } });
+        expect(removeSpy).toHaveBeenCalledWith("seeked", expect.any(Function));
+      } finally {
+        rafSpy.mockRestore();
+      }
     });
   });
 });

@@ -167,6 +167,33 @@ describe("billing add-credits", () => {
     expect(log.mock.calls.flat().join("\n")).not.toMatch(/deprecat|renamed|top-up/i);
   });
 
+  // The server answers a Free account's add-on checkout 400 "An active HyperFrames plan is required".
+  it("offers a Free account no add-on from the terminal; the open page shows it the plans", async () => {
+    terminal.attended = true;
+    terminal.enter = true;
+    never.paid = false;
+    held.offer = Promise.resolve({
+      addon: {
+        unitsPerBlock: 100,
+        unitAmount: 100,
+        currency: "usd",
+        min: 1,
+        max: 100,
+        recommended: 10,
+      },
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["add-credits", "--timeout", "4"] });
+    await vi.advanceTimersByTimeAsync(6000);
+    await done;
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
+    expect(log.mock.calls.flat().join("\n")).not.toContain("add-on credits:");
+    expect(events.failed).toEqual([]);
+  });
+
   it("refuses the old name `top-up` like any unknown action, naming the valid ones", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await expect(runCommand(billing, { rawArgs: ["top-up"] })).rejects.toThrow();
@@ -192,6 +219,14 @@ describe("billing with no action", () => {
     expect(out).toContain("HyperFrames: pro plan, 500 credits");
     expect(out).toMatch(MANAGE);
     expect(opened).toEqual([]);
+  });
+
+  // fails without the fix: the plan name reached the terminal with its control characters live.
+  it("shows a plan name's control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const out = await printed([], { plan: `pro${esc}[2J`, credits: 500 });
+    expect(out).toContain("HyperFrames: pro\\x1b[2J");
+    expect(out).not.toContain(esc);
   });
 
   it("shows Free with no manage line", async () => {
@@ -245,6 +280,21 @@ describe("billing numeric flags", () => {
 });
 
 describe("billing without a terminal", () => {
+  // fails without the fix: the checkout link reached the terminal with its control characters live.
+  it("prints a checkout link's control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    held.checkout = Promise.resolve(`https://checkout.example.test/c${esc}[2J`);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    const printed = log.mock.calls.flat().join("\n");
+    expect(printed).toContain("Checkout link: https://checkout.example.test/c\\x1b[2J");
+    expect(printed).not.toContain(esc);
+  });
+
   it("prints Stripe's checkout link instead of waiting for Enter, and opens only the pricing page", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.useFakeTimers();
@@ -369,6 +419,25 @@ describe("billing outcomes", () => {
     vi.useRealTimers();
     expect(events.failed).toEqual([{ reason: "checkout_rejected" }]);
     expect(events.timeout).toEqual([]);
+  });
+
+  // fails without the fix: the checkout failure reached the terminal with its control characters live.
+  it("prints a checkout failure's control characters as visible escapes", async () => {
+    const { CheckoutError } = await import("../heygen/plan.js");
+    const esc = String.fromCharCode(27);
+    terminal.checkoutError = new CheckoutError("checkout_rejected", `No${esc}[2J checkout`);
+    never.paid = false;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] });
+    const settled = expect(done).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(6000);
+    await settled;
+    vi.useRealTimers();
+    const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("No\\x1b[2J checkout");
+    expect(printed).not.toContain(`${esc}[2J`);
   });
 
   it("stops at once when credits are not on sale, since the credits page cannot sell them either", async () => {

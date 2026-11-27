@@ -2,39 +2,39 @@
   "source": "heygen-com/hyperframes",
   "skills": {
     "figma": {
-      "hash": "674455e54a2df3f5",
-      "files": 3
+      "hash": "09d532370df2e133",
+      "files": 4
     },
     "hyperframes": {
-      "hash": "cca611faf7aaea9a",
-      "files": 81
+      "hash": "5840a96b8ffa9773",
+      "files": 87
     },
     "hyperframes-cli": {
-      "hash": "4ceea9a9ef69905c",
-      "files": 13
+      "hash": "36ed7b39fe73ede2",
+      "files": 14
     },
     "hyperframes-registry": {
-      "hash": "25e0d7a72fe285a0",
+      "hash": "09559f0d178c08f5",
       "files": 13
     },
     "media-use": {
-      "hash": "d979128f61f6ab95",
-      "files": 131
+      "hash": "691512b346d6c774",
+      "files": 139
     },
     "remotion-to-hyperframes": {
-      "hash": "27f757cb659e1aaa",
-      "files": 76
+      "hash": "3a1dd4a513701ef6",
+      "files": 77
     },
     "reverse-any-video": {
-      "hash": "e429671078249b3e",
+      "hash": "d2f7f1c2f3967e5e",
       "files": 5
     },
     "slideshow": {
-      "hash": "c022f24e53ce376a",
+      "hash": "85dd76ed51ef78ab",
       "files": 2
     },
     "style-sampling": {
-      "hash": "59e52f3f688b9277",
+      "hash": "995ce900ea5b358f",
       "files": 2
     }
   }

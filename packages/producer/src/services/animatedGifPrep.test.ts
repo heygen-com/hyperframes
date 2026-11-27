@@ -1,5 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseHTML } from "linkedom";
@@ -68,6 +77,21 @@ function makeProject(): string {
 }
 
 describe("buildAnimatedGifTranscodeArgs", () => {
+  it("bounds the transcode inside ffmpeg itself, by CPU time and output size", () => {
+    const args = buildAnimatedGifTranscodeArgs({
+      inputPath: "/in/reaction.gif",
+      outputPath: "/out/reaction.webm.tmp-1-2",
+      loopIterations: 1_000,
+      padSeconds: 3_600,
+    });
+    // -timelimit is a global option, so it has to come before the input to apply at all.
+    expect(args.indexOf("-timelimit")).toBeGreaterThan(-1);
+    expect(args.indexOf("-timelimit")).toBeLessThan(args.indexOf("-i"));
+    expect(Number(args[args.indexOf("-timelimit") + 1])).toBe(3_600);
+    expect(Number(args[args.indexOf("-fs") + 1])).toBe(1024 * 1024 * 1024);
+    expect(args.indexOf("-fs")).toBeGreaterThan(args.indexOf("-i"));
+  });
+
   it("builds VP9 WebM args with alpha and finite-loop expansion", () => {
     const args = buildAnimatedGifTranscodeArgs({
       inputPath: "/in/reaction.gif",
@@ -127,6 +151,71 @@ describe("prepareAnimatedGifInputs", () => {
       }
     },
   );
+
+  it("never resolves a private project file named by a path spelled outside the project", () => {
+    const projectDir = makeProject();
+    const alias = `${projectDir}-alias`;
+    try {
+      symlinkSync(projectDir, alias);
+      for (const folder of [".git", "media"]) {
+        mkdirSync(join(projectDir, folder), { recursive: true });
+        writeFileSync(join(projectDir, folder, "sticker.gif"), gif([...frame(5), ...frame(15)], 0));
+      }
+      const options = { projectDir, downloadDir: projectDir, allowOutsideFiles: true };
+      const named = (folder: string) => join(alias, folder, "sticker.gif");
+      expect(resolveLocalImageSourcePath(named(".git"), options)).toBeNull();
+      expect(resolveLocalImageSourcePath(named("media"), options)).toBe(named("media"));
+    } finally {
+      rmSync(alias, { force: true });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not cache a transcode that ffmpeg cut off at its output size limit", async () => {
+    const projectDir = makeProject();
+    try {
+      writeFileSync(join(projectDir, "sticker.gif"), gif([...frame(5), ...frame(15)], 0));
+      const cacheDir = join(projectDir, "cache");
+      await expect(
+        prepareAnimatedGifInputs('<img data-start="0" data-duration="2" src="sticker.gif" />', {
+          projectDir,
+          downloadDir: projectDir,
+          cacheDir,
+          // Sparse, so the test writes nothing to disk.
+          transcode: async (request) => {
+            writeFileSync(request.outputPath, "");
+            truncateSync(request.outputPath, 1024 * 1024 * 1024);
+          },
+        }),
+      ).rejects.toThrow(/output size limit/);
+      expect(existsSync(cacheDir) ? readdirSync(cacheDir) : []).toEqual([]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards the compile abort signal to the transcode", async () => {
+    const projectDir = makeProject();
+    try {
+      writeFileSync(join(projectDir, "sticker.gif"), gif([...frame(5), ...frame(15)], 0));
+      const controller = new AbortController();
+      const calls: AnimatedGifTranscodeRequest[] = [];
+
+      await prepareAnimatedGifInputs('<img data-start="0" data-duration="2" src="sticker.gif" />', {
+        projectDir,
+        downloadDir: projectDir,
+        signal: controller.signal,
+        transcode: async (request) => {
+          calls.push(request);
+          writeFileSync(request.outputPath, "webm");
+        },
+      });
+
+      expect(calls[0]?.signal).toBe(controller.signal);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 
   it("rewrites animated GIF images to muted looped videos", async () => {
     const projectDir = makeProject();

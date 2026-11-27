@@ -29,7 +29,7 @@ import {
   isProjectRootMissing,
   mkdirWithinProject,
   projectRelativePath,
-  readProjectCacheFile,
+  readProjectCacheFileAsync,
   resolveWithinProject,
 } from "../helpers/safePath.js";
 import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
@@ -141,6 +141,7 @@ export function registerThumbnailRoutes(
     const { project, signature: projectSignature } = resolved;
 
     let compPath = requestSubPath(c.req.url, "projects/:id/thumbnail");
+    if (compPath === null) return c.json({ error: "not found" }, 404);
     if (compPath && !compPath.includes(".")) compPath += ".html";
     const htmlFile = resolveWithinProject(project.dir, compPath);
     const source = htmlFile ? readFileOnce(htmlFile) : "not-a-file";
@@ -232,7 +233,11 @@ export function registerThumbnailRoutes(
         new Set([...thumbnailGenerationCoordinator.protectedKeys(), cachePath]),
       );
     }
-    const cached = readProjectCacheFile(project.dir, cachePath, THUMBNAIL_CACHE_MAX_BYTES);
+    const cached = await readProjectCacheFileAsync(
+      project.dir,
+      cachePath,
+      THUMBNAIL_CACHE_MAX_BYTES,
+    );
     if (cached) {
       return new Response(new Uint8Array(cached), {
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
@@ -246,7 +251,7 @@ export function registerThumbnailRoutes(
         cachePath,
         c.req.raw.signal,
         async (signal) => {
-          const previewCopiesAtStart = proxyActivityMark(project.dir);
+          const previewCopiesAtStart = await proxyActivityMark(project.dir);
           const generated = await adapter.generateThumbnail!({
             project,
             compPath,
@@ -262,7 +267,7 @@ export function registerThumbnailRoutes(
             signal,
           });
           if (!generated) return null;
-          const previewCopiesAtEnd = proxyActivityMark(project.dir);
+          const previewCopiesAtEnd = await proxyActivityMark(project.dir);
           const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
           const inputsUnchanged = async (signature: string) =>
             (await compositionInputSignature(project.dir, compPath, signature)) === inputSignature;

@@ -52,13 +52,13 @@ const target = { id: "s1-bg", hfId: "hf-bg", selector: "#s1-bg", selectorIndex: 
 function renderController(iframe: HTMLIFrameElement) {
   let latest: ReturnType<typeof useColorGradingController> | undefined;
   const previewIframeRef = { current: iframe };
-  const onSetAttributeLive = vi.fn();
+  const onSetAttributeQuiet = vi.fn();
   function Host() {
     latest = useColorGradingController({
       projectId: "proj",
       element,
       previewIframeRef,
-      onSetAttributeLive,
+      onSetAttributeQuiet,
     });
     return null;
   }
@@ -106,6 +106,30 @@ describe("grade preview sealed", () => {
     expect(state().presetPreviews).toMatchObject({ width: 160, height: 90 });
     expect(state().presetPreviews.images["bright-pop"]).toBe("data:image/png;base64,bright-pop");
     expect(state().presetPreviews.images.neutral).toBeUndefined();
+  });
+
+  it("draws no preset card from a frame batch longer than the cards asked for, or with a gap", async () => {
+    for (const reshape of [
+      (images: unknown[]) => [...images, images[0]],
+      (images: unknown[]) => {
+        delete images[1];
+        return images;
+      },
+    ]) {
+      const { grading } = installFrameGrading();
+      const honest = grading.renderPreviews.getMockImplementation()!;
+      grading.renderPreviews.mockImplementation(async (...args) => {
+        const batch = await honest(...args);
+        return { ...batch, images: reshape(batch.images) };
+      });
+      const state = renderController(sealedPreviewFrame().iframe);
+
+      act(() => state().requestPresetPreviews());
+      // A second request starts only after the first reply was handled.
+      await settle(() => expect(grading.renderPreviews.mock.calls.length).toBeGreaterThan(1));
+      expect(state().presetPreviews.images).toEqual({});
+      closers.splice(0).forEach((close) => close());
+    }
   });
 
   it("plays the hovered card in the frame and stops it when the hover ends", async () => {

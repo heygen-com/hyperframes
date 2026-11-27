@@ -1,11 +1,4 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
@@ -17,16 +10,19 @@ import {
   normalizeHfColorGrading,
   parseCubeLut,
   serializeHfColorGrading,
+  terminalText,
 } from "@hyperframes/core";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
+import { mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { openSettledCompositionPage, runFfmpegOnce } from "../capture/captureCompositionFrame.js";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { c } from "../ui/colors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import { displayPathFromBase, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
+import { readFileInsideProject, recordPathInProject } from "../media-use/lib/record-path.mjs";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -148,7 +144,9 @@ export function warnInactiveGradingCells(cells: readonly GradeCompareCell[]): vo
     const normalized = normalizeHfColorGrading(cell.grading);
     if (!isHfColorGradingActive(normalized)) {
       console.error(
-        c.warn(`Warning: grading for "${cell.label}" is inactive/no-op — it will render ungraded`),
+        c.warn(
+          `Warning: grading for "${terminalText(cell.label)}" is inactive/no-op — it will render ungraded`,
+        ),
       );
     }
   }
@@ -425,6 +423,25 @@ function frameFileNameForPath(framePath: string): string {
   return "frame.png";
 }
 
+function readLutSource(
+  projectDir: string,
+  lutSrc: string,
+  label: string,
+  typed = false,
+): { path: string; bytes: Buffer } {
+  const outside = () =>
+    new Error(`LUT for "${label}" must be a file inside the project: ${lutSrc}`);
+  if (typed) {
+    const path = resolveFromBase(projectDir, lutSrc);
+    if (!existsSync(path)) throw new Error(`LUT file not found for "${label}": ${path}`);
+    return { path, bytes: readFileSync(path) };
+  }
+  const candidate = recordPathInProject(projectDir, lutSrc);
+  const result = candidate !== null ? readFileInsideProject(projectDir, candidate) : null;
+  if (result === null) throw outside();
+  return result;
+}
+
 export async function prepareGradeCompareTempProject(opts: {
   projectDir: string;
   framePath: string;
@@ -433,6 +450,7 @@ export async function prepareGradeCompareTempProject(opts: {
   frameWidth: number;
   frameHeight: number;
   frameFileName?: string;
+  lutPathsTypedWithLutsFlag?: boolean;
 }): Promise<PreparedGradeCompareProject> {
   const tempDir = mkdtempSync(join(tmpdir(), "hf-grade-compare-"));
   try {
@@ -444,13 +462,14 @@ export async function prepareGradeCompareTempProject(opts: {
       const lutSrc = lutSrcFromGrading(cell.grading);
       if (!lutSrc) return cell;
 
-      const sourcePath = resolveFromBase(opts.projectDir, lutSrc);
-      if (!existsSync(sourcePath)) {
-        throw new Error(`LUT file not found for "${cell.label}": ${sourcePath}`);
-      }
-      const lutText = readFileSync(sourcePath, "utf-8");
+      const { path: sourcePath, bytes: lutBytes } = readLutSource(
+        opts.projectDir,
+        lutSrc,
+        cell.label,
+        opts.lutPathsTypedWithLutsFlag,
+      );
       try {
-        parseCubeLut(lutText);
+        parseCubeLut(lutBytes.toString("utf-8"));
       } catch (err) {
         throw new Error(
           `LUT for "${cell.label}" is not a valid .cube: ${normalizeErrorMessage(err)}`,
@@ -459,7 +478,7 @@ export async function prepareGradeCompareTempProject(opts: {
       const lutExt = extname(sourcePath) || ".cube";
       const stagedName = `lut-${lutIndex}${lutExt}`;
       lutIndex += 1;
-      copyFileSync(sourcePath, join(tempDir, stagedName));
+      writeFileSync(join(tempDir, stagedName), lutBytes);
       return {
         label: cell.label,
         grading: rewriteGradingLutSrc(cell.grading, stagedName),
@@ -497,6 +516,7 @@ async function extractVideoFrameToBuffer(videoPath: string): Promise<Buffer | nu
       "error",
       "-ss",
       "0",
+      ...mediaInputArgs(ffmpegPath, videoPath),
       "-i",
       videoPath,
       "-frames:v",
@@ -654,7 +674,7 @@ export default defineCommand({
 
       if (!parsed.json) {
         console.log(
-          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(basename(parsed.framePath))}`,
+          `${c.accent("◆")}  Rendering ${cells.length} grade candidates from ${c.accent(terminalText(basename(parsed.framePath)))}`,
         );
       }
 
@@ -667,6 +687,7 @@ export default defineCommand({
         frameHeight: frame.height,
         frameFileName: frame.stagedName,
         cells,
+        lutPathsTypedWithLutsFlag: parsed.source.kind === "luts",
       });
       preparedDir = prepared.tempDir;
 
@@ -688,7 +709,7 @@ export default defineCommand({
       if (parsed.json) {
         printJson(buildGradeCompareSuccessPayload(sheet, prepared.cells.length, capResult));
       } else {
-        console.log(`\n${c.success("◇")}  Grade comparison saved to ${sheet}`);
+        console.log(`\n${c.success("◇")}  Grade comparison saved to ${terminalText(sheet)}`);
       }
     } catch (err) {
       failCaught(

@@ -543,6 +543,54 @@ test("the Lambda handler zip is pinned before packing and attached before npm pu
   assert.doesNotMatch(attach.run, /--clobber/);
 });
 
+/** The steps a job runs, with each local composite action's own steps in place of its `uses`. */
+function stepsWithLocalActions(steps) {
+  return steps.flatMap((step) => {
+    if (!step.uses?.startsWith("./")) return [step];
+    const action = parse(
+      readFileSync(new URL(`../${step.uses.slice(2)}/action.yml`, import.meta.url), "utf8"),
+    );
+    return stepsWithLocalActions(action.runs?.steps ?? []);
+  });
+}
+
+test("no release job restores an Actions cache, which any run on main can write", () => {
+  for (const [name, job] of Object.entries(config.jobs)) {
+    const cached = stepsWithLocalActions(job.steps ?? []).filter((step) =>
+      /^actions\/cache(\/restore)?@/.test(step.uses ?? ""),
+    );
+    assert.deepEqual(cached, [], `${name} restores an Actions cache`);
+  }
+});
+
+test("pack always builds its own bundle, and publish takes only that bundle", () => {
+  assert.equal(pack.outputs.bundle_id, "${{ steps.bundle.outputs.artifact-id }}");
+  for (const step of pack.steps) {
+    assert.ok(
+      !/previous_bundle/.test(JSON.stringify(step)),
+      `pack step reuses a bundle: ${step.name ?? step.uses}`,
+    );
+    if (step.uses?.startsWith("actions/download-artifact@"))
+      assert.notEqual(
+        step.with?.name,
+        "release-bundle",
+        "pack downloads a release-bundle it did not build",
+      );
+  }
+  const upload = pack.steps.find((step) => step.id === "bundle");
+  assert.equal(upload.with.name, "release-bundle");
+  // A release-bundle that another job uploaded first makes this upload fail, so the release stops.
+  assert.equal(upload.with.overwrite, false);
+  assert.equal(upload.if, undefined);
+  const download = publish.steps.find(
+    (step) =>
+      step.uses?.startsWith("actions/download-artifact@") &&
+      /release-bundle/.test(step.with?.path ?? ""),
+  );
+  assert.equal(download.with["artifact-ids"], "${{ needs.pack.outputs.bundle_id }}");
+  assert.equal(download.with.name, undefined);
+});
+
 test("packing pins only the freshly built zip and never downloads release assets", () => {
   const step = pack.steps.find((s) => s.name === "Pin Lambda handler zip");
   assert.match(step.run, /ACTUAL_SHA256.*sha256sum/);
@@ -592,7 +640,7 @@ test("the workflow publishes exactly the public workspace packages", () => {
 });
 
 test("release-commit code runs only in a job without secrets", () => {
-  assert.deepEqual(pack.permissions, { contents: "read", actions: "read" });
+  assert.deepEqual(pack.permissions, { contents: "read" });
   assert.equal(pack.environment, undefined);
   const packCheckout = pack.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   assert.equal(packCheckout.with["persist-credentials"], false);
@@ -859,6 +907,85 @@ test("publishing skips only identical uploads and fails on a version it did not 
   assert.doesNotMatch(rerun.calls, /npm publish/);
 });
 
+test("a publish that fails on the way is tried again, three times in all, asking npm first each time", () => {
+  const step = stepOf(publish, "Publish packages");
+  // The fake npm fails its first `failures` publishes; with `lands` the package is on npm after a failed one.
+  const run = ({ failures, lands = "" }) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-publish-retry-"));
+    try {
+      const bin = join(temp, "bin");
+      mkdirSync(bin);
+      const log = join(temp, "npm.log");
+      const seen = join(temp, "on-npm");
+      writeFileSync(log, "");
+      writeFileSync(
+        join(bin, "npm"),
+        `#!/bin/sh
+echo "npm $1" >> "${log}"
+if [ "$1" = view ]; then [ -s "${seen}" ] || exit 1; cat "${seen}"; exit 0; fi
+tried=$(grep -c "^npm publish" "${log}")
+if [ "$tried" -le "$FAILURES" ]; then [ -z "$LANDS" ] || echo "$LANDS" > "${seen}"; exit 1; fi
+echo "$INTEGRITY" > "${seen}"
+`,
+      );
+      chmodSync(join(bin, "npm"), 0o755);
+      packTarball(temp, "core.tgz", { name: "@hyperframes/core", version: "1.2.3-alpha.1" });
+      writeFileSync(
+        join(temp, "publish-order.tsv"),
+        `@hyperframes/core\t${join(temp, "core.tgz")}\n`,
+      );
+      const integrity = `sha512-${createHash("sha512")
+        .update(readFileSync(join(temp, "core.tgz")))
+        .digest("base64")}`;
+      const result = runStep(step, {
+        cwd: temp,
+        path: `${bin}:${process.env.PATH}`,
+        env: {
+          VERSION: "1.2.3-alpha.1",
+          DIST_TAG: "alpha",
+          NODE_AUTH_TOKEN: "",
+          PUBLISH_RETRY_SECONDS: "0",
+          FAILURES: String(failures),
+          LANDS: lands === "same" ? integrity : lands,
+          INTEGRITY: integrity,
+        },
+      });
+      const calls = readFileSync(log, "utf8").trim().split("\n");
+      return { ...result, calls, publishes: calls.filter((c) => c === "npm publish").length };
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+
+  // fails without the fix: one failed publish failed the release, with the rest of the packages already out.
+  const second = run({ failures: 1 });
+  assert.equal(second.status, 0, second.stdout + second.stderr);
+  assert.equal(second.publishes, 2);
+  assert.deepEqual(second.calls, ["npm view", "npm publish", "npm view", "npm publish"]);
+
+  const third = run({ failures: 2 });
+  assert.equal(third.status, 0, third.stdout);
+  assert.equal(third.publishes, 3);
+
+  const never = run({ failures: 9 });
+  assert.equal(never.status, 1);
+  assert.equal(never.publishes, 3);
+  assert.match(never.stdout, /failed to publish/);
+
+  // The publish answered with a failure but the package went out: it is not sent a second time.
+  const landed = run({ failures: 9, lands: "same" });
+  assert.equal(landed.status, 0, landed.stdout);
+  assert.equal(landed.publishes, 1);
+  const landedLast = run({ failures: 9, lands: "" });
+  assert.equal(landedLast.calls.at(-1), "npm view", "npm is asked once more after the last try");
+
+  // Someone else's contents under this version, seen between tries: no further try, and the release fails.
+  const others = run({ failures: 9, lands: "sha512-other" });
+  assert.equal(others.status, 1);
+  assert.equal(others.publishes, 1);
+  assert.match(others.stdout, /this run did not publish it/);
+});
+
 test("every publish runs in npm-publish, the environment npm trusted publishing names", () => {
   assert.equal(publish.environment, "npm-publish");
   const jobsWithEnvironment = Object.entries(config.jobs).filter(([, job]) => job.environment);
@@ -963,7 +1090,6 @@ function runFindPrevious(step, artifacts) {
 }
 
 for (const [job, name, artifact] of [
-  ["pack", "Find previous release bundle", "release-bundle"],
   ["publish", "Find previous release receipt", "lambda-release-receipt"],
 ]) {
   test(`"${name}" hands the download step a bare artifact id, or nothing on a first attempt`, () => {

@@ -73,6 +73,33 @@ describe("syncStoredElementAttribute", () => {
   });
 });
 
+describe("the fx badge's fields", () => {
+  const LOOK = '{"preset":"warm-daylight","intensity":1}';
+
+  it("records a saved look and duck on the stored clip, and drops them when they go", () => {
+    usePlayerStore.setState({ elements: [el()] });
+    syncStoredElementAttribute(el(), "data-color-grading", LOOK);
+    syncStoredElementAttribute(el(), "data-fx-carve", '{"enabled":true}');
+    expect(usePlayerStore.getState().elements[0]).toMatchObject({
+      colorGrading: LOOK,
+      carve: '{"enabled":true}',
+    });
+    syncStoredElementAttribute(el(), "data-color-grading", null);
+    expect(usePlayerStore.getState().elements[0]?.colorGrading).toBeUndefined();
+  });
+
+  it("reads back a look and crop an undo restored on the preview", () => {
+    usePlayerStore.setState({ elements: [el()] });
+    syncStoredAutomationFromPreview(
+      previewWith({ "data-color-grading": LOOK, style: "clip-path: inset(10px)" }),
+    );
+    expect(usePlayerStore.getState().elements[0]).toMatchObject({
+      colorGrading: LOOK,
+      clipPath: "inset(10px)",
+    });
+  });
+});
+
 describe("syncStoredAutomationFromPreview", () => {
   it("reads back a volume an undo restored on the preview", () => {
     usePlayerStore.setState({ elements: [el({ volume: 1.5 })] });
@@ -103,7 +130,7 @@ describe("syncStoredAutomationFromPreview", () => {
     usePlayerStore.setState({ elements: [el({ hfId: "hf-bgm" })] });
     const doc = document.implementation.createHTMLDocument("preview");
     doc.body.innerHTML =
-      '<div data-composition-id="strip" data-composition-src="compositions/strip.html">' +
+      '<div data-composition-id="strip" data-composition-src="compositions/strip.html" data-composition-file="compositions/strip.html">' +
       '<audio id="bgm" data-hf-id="hf-bgm"></audio></div><audio id="bgm" data-hf-id="hf-bgm"></audio>';
     doc.querySelectorAll("audio")[0]?.setAttribute("data-automation", TWO_POINTS);
     doc.querySelectorAll("audio")[1]?.setAttribute("data-automation", RESTORED);

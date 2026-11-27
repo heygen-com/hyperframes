@@ -12,7 +12,6 @@ type ProjectFileWriter = (path: string, content: string, expectedContent?: strin
 
 interface CutTarget {
   target: NonNullable<ReturnType<typeof buildPatchTarget>>;
-  originalId?: string;
   splitTime: number;
   elementStart: number;
   elementDuration: number;
@@ -64,7 +63,6 @@ function buildCutTarget(
 ): CutTarget {
   return {
     target,
-    ...(element.domId ? { originalId: element.domId } : {}),
     splitTime: Math.max(0, toAuthoredStart(element, splitTime)),
     elementStart: toAuthoredStart(element, element.start),
     elementDuration: element.duration,

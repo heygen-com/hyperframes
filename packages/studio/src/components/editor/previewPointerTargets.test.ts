@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
@@ -160,11 +160,15 @@ describe("useDomSelection over an opaque frame's canvas", () => {
   type Resolve = ReturnType<typeof useDomSelection>["resolveDomSelectionFromPreviewPoint"];
   let interaction: ReturnType<typeof usePreviewInteraction> | null = null;
   let menu: ReturnType<typeof useCanvasContextMenuState> | null = null;
-  function renderSelection(iframe: HTMLIFrameElement, wrapResolve = (resolve: Resolve) => resolve) {
+  function renderSelection(
+    iframe: HTMLIFrameElement,
+    wrapResolve = (resolve: Resolve) => resolve,
+    projectId: string | null = null,
+  ) {
     let hook: ReturnType<typeof useDomSelection> | null = null;
     function Harness() {
       hook = useDomSelection({
-        projectId: null,
+        projectId,
         activeCompPath: "index.html",
         isMasterView: true,
         compIdToSrc: new Map(),
@@ -293,6 +297,41 @@ describe("useDomSelection over an opaque frame's canvas", () => {
     act(() => hook().applyDomSelection(member));
     expect(hook().activeGroupElement).toBe(group.element);
   });
+
+  // fails without the fix: the clip click and useTimelineSelectionPreviewSync each built the selection, so the
+  // source was asked twice (one request of two targets same-origin, two requests opaque).
+  it.each([
+    ["opaque", opaqueFrame],
+    ["same-origin", liveFrame],
+  ])(
+    "asks the source once when a clip click and the timeline's sync select the same clip (%s)",
+    async (_kind, frame) => {
+      const probed: unknown[] = [];
+      const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        if (!String(input).includes("/probe-elements/")) return new Response("{}");
+        const { targets } = JSON.parse(String(init?.body)) as { targets: unknown[] };
+        probed.push(...targets);
+        return new Response(JSON.stringify({ exists: targets.map(() => true) }));
+      });
+      onTestFinished(() => fetch.mockRestore());
+      const hook = renderSelection(frame(), undefined, "demo");
+      const clip = {
+        id: "title",
+        key: "index.html:title:0",
+        domId: "title",
+        selector: "#title",
+      } as unknown as TimelineElement;
+      const [, synced] = await act(() =>
+        Promise.all([
+          hook().handleTimelineElementSelect(clip),
+          hook().buildDomSelectionForTimelineElement(clip),
+        ]),
+      );
+      expect(synced).toMatchObject({ id: "title", existsInSource: true });
+      expect(hook().domEditSelection).toMatchObject({ id: "title" });
+      expect(probed).toHaveLength(1);
+    },
+  );
 
   it("selects a timeline clip the frame knows only by its clip id", async () => {
     const hook = renderSelection(opaqueFrame());

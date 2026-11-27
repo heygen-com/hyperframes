@@ -21,6 +21,12 @@ import {
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
 import { endResizeWithoutMember, resolveResizeDraftRect } from "./resizeDraft";
+import {
+  armPreviewDraftEnd,
+  drawPreviewDraft,
+  frameDraftTranslate,
+  takePreviewDraftEnds,
+} from "./previewDrafts";
 import { applySoftReloadFinalization } from "../../utils/gsapSoftReload";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState } from "./domEditOverlayGestures";
@@ -77,6 +83,21 @@ const shown = (element: HTMLElement) =>
     .map((axis) =>
       [...axis.matchAll(/-?[\d.]+px/g)].reduce((sum, [px]) => sum + parseFloat(px), 0),
     );
+
+// fails without the fix: the frame got the raw offset, where an open preview's drag writes it rounded to 3 decimals.
+describe("the translate a drag sends the frame", () => {
+  it("is the open preview's rounded offset less where the layer started", () => {
+    const member = {
+      element: document.createElement("div"),
+      initialOffset: { x: 10.5555, y: -3.25 },
+      baseGsap: { x: 0, y: 0 },
+    };
+    expect(frameDraftTranslate(member, { x: 30.55624, y: 4.0004 })).toEqual({
+      x: 30.556 - 10.5555,
+      y: 4 + 3.25,
+    });
+  });
+});
 
 describe("gesture drafts on an opaque frame", () => {
   it("moves the frame's element with a drag, and puts it back when the drag is cancelled", async () => {
@@ -177,9 +198,93 @@ describe("gesture drafts on an opaque frame", () => {
   it("sends one request at a time and draws only the latest of the moves that waited", async () => {
     const member = dragMember(await standIn(sealedPreviewFrame().iframe, "#card"));
     vi.mocked(previewRequest).mockClear();
-    for (let dx = 2; dx <= 40; dx += 2) applyManualOffsetDragDraft(member, dx, 0);
+    applyManualOffsetDragDraft(member, 2, 0);
+    await Promise.resolve();
+    for (let dx = 4; dx <= 40; dx += 2) applyManualOffsetDragDraft(member, dx, 0);
     await vi.waitFor(() => expect(shown(card())).toEqual([80, 0]));
     expect(draftRequests()).toHaveLength(2);
+  });
+
+  // fails without the fix: a sealed drag draws each step from its raw update and again from pointermove.
+  it("posts a step drawn twice once", async () => {
+    const member = dragMember(await standIn(sealedPreviewFrame().iframe, "#card"));
+    vi.mocked(previewRequest).mockClear();
+    applyManualOffsetDragDraft(member, 10, 0);
+    await vi.waitFor(() => expect(shown(card())).toEqual([20, 0]));
+    applyManualOffsetDragDraft(member, 10, 0);
+    await settled();
+    expect(draftRequests()).toHaveLength(1);
+    applyManualOffsetDragDraft(member, 12, 0);
+    await vi.waitFor(() => expect(shown(card())).toEqual([24, 0]));
+    expect(draftRequests()).toHaveLength(2);
+  });
+
+  // fails without the fix: the step's offset left alone with the old size, and the frame painted that half state.
+  it("sends a resize step's offset and size in one message, so the frame never shows one without the other", async () => {
+    const iframe = sealedPreviewFrame().iframe;
+    const element = await standIn(iframe, "#card");
+    const g = {
+      ...{ originLeft: 10, originTop: 20, originWidth: 100, originHeight: 50 },
+      ...{ actualWidth: 200, actualHeight: 100, editScaleX: 0.5, editScaleY: 0.5 },
+      actualRotation: 0,
+      pathOffsetMember: dragMember(element),
+    } as GestureState;
+    vi.mocked(previewRequest).mockClear();
+    const size = { width: 300, height: 140 };
+    resolveResizeDraftRect(g, element, null, iframe, () => null, { wanted: size, written: size });
+    await vi.waitFor(() => expect(card().style.width).toBe("300px"));
+    const sent = draftRequests().map(([, , params]) => (params as { drafts: object[] }).drafts);
+    expect(sent).toEqual([[expect.objectContaining({ translate: { x: -50, y: -20 }, size })]]);
+  });
+
+  it("keeps what each draw before one send set: a later field wins, and a size drawn earlier stays", async () => {
+    const element = await standIn(sealedPreviewFrame().iframe, "#card");
+    vi.mocked(previewRequest).mockClear();
+    drawPreviewDraft(element, { size: null });
+    drawPreviewDraft(element, { size: { width: 260, height: 90 } });
+    drawPreviewDraft(element, { translate: { x: 4, y: 0 } });
+    drawPreviewDraft(element, { translate: { x: 7, y: 3 } });
+    await vi.waitFor(() => expect(card().style.width).toBe("260px"));
+    const sent = draftRequests().map(([, , params]) => (params as { drafts: object[] }).drafts);
+    expect(sent).toEqual([
+      [expect.objectContaining({ translate: { x: 7, y: 3 }, size: { width: 260, height: 90 } })],
+    ]);
+  });
+
+  // fails without the fix: a later sample replaced one still waiting, so a depth the recording saves never showed.
+  it("sends every recording sample that waited, in order, so none the recording saves goes unshown", async () => {
+    const element = await standIn(sealedPreviewFrame().iframe, "#card");
+    vi.mocked(previewRequest).mockClear();
+    drawPreviewDraft(element, { translate: null, props: { seconds: 1, values: { x: 1 } } });
+    await Promise.resolve();
+    drawPreviewDraft(element, { props: { seconds: 1.1, values: { z: 5 } } });
+    drawPreviewDraft(element, { props: { seconds: 1.2, values: { x: 3, y: 2 } } });
+    await vi.waitFor(() => expect(draftRequests()).toHaveLength(2));
+    const sent = draftRequests().map(([, , params]) =>
+      (params as { drafts: Array<{ props?: unknown }> }).drafts.map((draft) => draft.props),
+    );
+    expect(sent).toEqual([
+      [{ seconds: 1, values: { x: 1 } }],
+      [
+        { seconds: 1.1, values: { z: 5 } },
+        { seconds: 1.2, values: { x: 3, y: 2 } },
+      ],
+    ]);
+  });
+
+  it("sends a draw still waiting for its microtask before a save that carries its end", async () => {
+    const iframe = sealedPreviewFrame().iframe;
+    const element = await standIn(iframe, "#card");
+    const member = dragMember(element);
+    applyManualOffsetDragDraft(member, 10, 0);
+    await settled();
+    vi.mocked(previewRequest).mockClear();
+    applyManualOffsetDragDraft(member, 12, 0);
+    armPreviewDraftEnd(element, "#card");
+    const ends = takePreviewDraftEnds(iframe, ["#card"]);
+    // without the flush the draw still waits, so the end can't ride the save and a late draw could undo it
+    expect(draftRequests()).toHaveLength(1);
+    expect(ends).toEqual([expect.objectContaining({ end: "keep-size" })]);
   });
 
   it("grows a resized box about its centre without measuring the frame, and draws it there", async () => {

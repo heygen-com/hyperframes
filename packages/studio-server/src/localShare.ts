@@ -39,11 +39,11 @@ export interface LocalShareSnapshot {
   job: LocalShareJob | null;
 }
 export type LocalShareAction = {
-  action: "share" | "update" | "access" | "off" | "on" | "login";
+  action: "share" | "update" | "access" | "off" | "on" | "login" | "sync";
   audience?: LocalShareAudience;
   space?: string;
   videoOnly?: boolean;
-  includeSource?: boolean;
+  expectedReferencedHiddenDigest?: string;
   confirmedReview?: string | null;
 };
 export type LocalShareInteraction =

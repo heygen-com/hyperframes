@@ -8,7 +8,10 @@ import { readRecord, recordKind, writeRecord } from "./projectRecords.js";
 interface ProjectLink {
   projectId: string;
   url: string;
+  spaceId?: string;
 }
+
+export const PERSONAL_SPACE = "";
 
 type ProjectLinks = Record<string, ProjectLink>;
 
@@ -42,13 +45,21 @@ function isProjectLink(value: unknown): value is ProjectLink {
   );
 }
 
+function projectLinkRecord(link: ProjectLink): ProjectLink {
+  return {
+    projectId: link.projectId,
+    url: link.url,
+    ...(typeof link.spaceId === "string" ? { spaceId: link.spaceId } : {}),
+  };
+}
+
 function readProjectLinks(): ProjectLinks {
   const record = readJsonRecord(projectsFile());
   if (!record) return {};
   const links: ProjectLinks = {};
   for (const [path, value] of Object.entries(record)) {
     if (isProjectLink(value)) {
-      links[path] = { projectId: value.projectId, url: value.url };
+      links[path] = projectLinkRecord(value);
     }
   }
   return links;
@@ -69,7 +80,7 @@ export function readProjectLink(absDir: string): ProjectLink | null {
 
 export function writeProjectLink(absDir: string, link: ProjectLink): void {
   const links = readProjectLinks();
-  links[resolve(absDir)] = { projectId: link.projectId, url: link.url };
+  links[resolve(absDir)] = projectLinkRecord(link);
   writeProjectLinks(links);
 }
 
@@ -129,4 +140,11 @@ export function writeTeamProject(projectDir: string, team: TeamProject): string 
   if (!writeRecord(resolve(projectDir), TEAM_PROJECT_FILE, `${JSON.stringify(body, null, 2)}\n`))
     throw new Error(`Could not write ${file}`);
   return file;
+}
+
+export function teamProjectLinkedHere(projectDir: string, team: TeamProject): boolean {
+  const link = readProjectLink(projectDir);
+  if (!link || link.projectId !== team.projectId) return false;
+  const recordPredatesSpaces = link.spaceId === undefined;
+  return recordPredatesSpaces || link.spaceId === (team.spaceId ?? PERSONAL_SPACE);
 }

@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../player/store/playerStore";
 import { jsonResponse, requestUrl } from "./fetchStubTestUtils";
 import type { TimelineElement } from "../player/store/playerStore";
+import { captureDurationRollback } from "./previewTimingPatch";
 import {
-  captureDurationRollback,
   finishClipTimingFallback,
   finishGroupTimingGsapFallback,
   finishTimelineTimingFallback,

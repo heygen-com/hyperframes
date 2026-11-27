@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { parseHTML } from "linkedom";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
 import {
   buildSubCompositionHtml,
@@ -25,6 +26,53 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  // fails without the fix: the builder judged the text the preview route hands it. Stamping decodes
+  // the marker's first letter, and a caller's text is not the file Studio would run.
+  it("judges the file's own text, not the stamped text it is handed", () => {
+    const page =
+      '<noscript><title>&lt;/title&gt;&lt;/noscript&gt;&lt;div &#100;ata-composition-id="x"&gt;&lt;/div&gt;' +
+      "&lt;script&gt;window.ran = 1&lt;/script&gt;&lt;noscript&gt;&lt;title&gt;</title></noscript>";
+    const dir = makeTempProject({
+      "index.html": '<html><head></head><body><div data-composition-id="main"></div></body></html>',
+      "extracted/page.html": page,
+    });
+    const stamped = ensureHfIds(page);
+    expect(page).not.toContain("data-composition-id");
+    expect(stamped).toContain('data-composition-id="x"');
+    for (const handed of [stamped, '<div data-composition-id="x"></div>']) {
+      expect(
+        buildSubCompositionHtml(dir, "extracted/page.html", "/runtime.js", undefined, handed),
+      ).toBeNull();
+    }
+  });
+
+  // fails without the fix: the builder copied a captured page's scripts into a preview on Studio's origin.
+  it("returns null for a captured page whose text only looks like the marker", () => {
+    const dir = makeTempProject({
+      "index.html": '<html><head></head><body><div data-composition-id="main"></div></body></html>',
+      "extracted/page.html":
+        '<!doctype html><html><head></head><body><div data-captured-composition-idata-composition-id="x"></div><script>window.ran = 1</script></body></html>',
+    });
+    expect(buildSubCompositionHtml(dir, "extracted/page.html", "/runtime.js")).toBeNull();
+  });
+
+  // fails without the fix: a tag written inside a script or style counted as the composition's element.
+  it.each([
+    '<script>const s = "<div data-composition-id=\\"x\\"></div>"; window.ran = 1</script>',
+    '<style>/* <div data-composition-id="x"></div> */</style><script>window.ran = 1</script>',
+    '<noscript><div data-composition-id="x"></div></noscript><script>window.ran = 1</script>',
+  ])(
+    "returns null for a page whose only marker is text a browser does not read as a tag: %s",
+    (body) => {
+      const dir = makeTempProject({
+        "index.html":
+          '<html><head></head><body><div data-composition-id="main"></div></body></html>',
+        "extracted/page.html": `<!doctype html><html><head></head><body>${body}</body></html>`,
+      });
+      expect(buildSubCompositionHtml(dir, "extracted/page.html", "/runtime.js")).toBeNull();
+    },
+  );
+
   // Windows does not allow a quote in a file name.
   it.skipIf(process.platform === "win32")(
     "writes the composition's path into its root as attribute text",
@@ -58,7 +106,8 @@ describe("buildSubCompositionHtml", () => {
         '<!doctype html><html><head><meta name="outside-head"></head><body></body></html>',
     });
     const dir = makeTempProject({
-      "scenes/scene.html": '<template><div id="scene"></div></template>',
+      "scenes/scene.html":
+        '<template><div id="scene" data-composition-id="scene"></div></template>',
     });
     symlinkSync(join(outside, "index.html"), join(dir, "index.html"));
     const html = buildSubCompositionHtml(dir, "scenes/scene.html", "/runtime.js");
@@ -570,7 +619,7 @@ describe("buildSubCompositionHtml", () => {
     <link rel="stylesheet" href="_shared.css" />
     <style>.stage { background-image: url("frame-01.png"); }</style>
   </head>
-  <body><div class="stage"><img src="frame-01.png" alt="" /></div></body>
+  <body><div class="stage" data-composition-id="frame-01"><img src="frame-01.png" alt="" /></div></body>
 </html>`,
     });
 
@@ -749,5 +798,66 @@ describe("tagRootCompositionFile", () => {
       `<a${"<a data-composition-id".repeat(15_000)}`,
     ];
     for (const page of shapes) expectFast(() => tagRootCompositionFile(page, "a.html"), 100);
+  });
+});
+
+describe("buildSubCompositionHtml authored file marks", () => {
+  it("names the composition's own file on its root, whatever file its markup claims", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<div data-composition-id="scene" data-composition-file="index.html">
+  <p id="claim" data-composition-file="compositions/other.html">Hi</p>
+</div>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/runtime.js") ?? "";
+    const { document } = parseHTML(html);
+
+    expect(
+      document.querySelector("[data-composition-id]")?.getAttribute("data-composition-file"),
+    ).toBe("compositions/scene.html");
+    expect(document.querySelector("#claim")?.hasAttribute("data-composition-file")).toBe(false);
+  });
+
+  it("drops a mark written inside a template, at any depth", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<div data-composition-id="scene">
+  <template><p data-composition-file="index.html">a</p><template><b data-composition-file="index.html">b</b></template></template>
+</div>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/runtime.js") ?? "";
+
+    expect(html).toContain("<p>a</p><template><b>b</b></template>");
+    expect(html).not.toContain('data-composition-file="index.html"');
+  });
+
+  it("refuses a mark hidden where a scripting browser reads past a comment", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<div data-composition-id="scene">
+  <noscript><!-- </noscript><p data-composition-file="index.html">a</p> --></noscript>
+</div>`,
+    });
+    expect(() => buildSubCompositionHtml(dir, "compositions/scene.html", "/runtime.js")).toThrow(
+      /can't be read the way a browser reads them/,
+    );
+  });
+
+  it("drops a mark a full document wrote on its <html> or <body>", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<!doctype html><html data-composition-file="index.html"><head></head>
+<body data-composition-file="index.html"><div data-composition-id="scene"><p id="in">a</p></div><p id="out">b</p></body></html>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/runtime.js") ?? "";
+    const { document } = parseHTML(html);
+    const fileOf = (id: string) =>
+      document
+        .getElementById(id)
+        ?.closest("[data-composition-file]")
+        ?.getAttribute("data-composition-file") ?? null;
+
+    expect(fileOf("in")).toBe("compositions/scene.html");
+    expect(fileOf("out")).toBeNull();
   });
 });

@@ -56,6 +56,7 @@ import {
 } from "./compositionAssembly";
 import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 import { terminalText } from "../terminalText";
+import { COMPOSITION_SRC_ATTR, dropAuthoredCompositionFiles } from "../compositionSource";
 
 // Anything a scene script can leave running, pending or registered outside its timeline, or that
 // throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
@@ -320,6 +321,22 @@ export interface InlineSubCompositionsOptions {
    * built, and each scoped sheet rule by rule as `scopeCssToComposition` reports it. May throw.
    */
   chargeEmitted?: (srcPath: string, bytes: number) => void;
+  /** Told how many elements each mount copies, before it is copied. May throw. */
+  chargeElements?: (srcPath: string, count: number) => void;
+}
+
+/** Every element under `root`, an HTML template's content included. */
+function countElements(root: ParentNode): number {
+  let count = 0;
+  const pending: ParentNode[] = [root];
+  for (let node = pending.pop(); node; node = pending.pop()) {
+    for (const el of Array.from(node.children)) {
+      count += 1;
+      const html = el.localName === "template" && !el.firstElementChild && "content" in el;
+      pending.push(html ? (el as HTMLTemplateElement).content : el);
+    }
+  }
+  return count;
 }
 
 export interface ExternalLink {
@@ -417,6 +434,7 @@ export function inlineSubCompositions(
     tagScenes = false,
     readProjectScript,
     chargeEmitted,
+    chargeElements,
   } = options;
 
   const rootStyles = [...document.querySelectorAll("style")];
@@ -441,6 +459,12 @@ export function inlineSubCompositions(
     }
     return doc;
   };
+  const elementCounts = new Map<string, number>();
+  const elementCount = (html: string) => {
+    let count = elementCounts.get(html);
+    if (count === undefined) elementCounts.set(html, (count = countElements(parseOnce(html))));
+    return count;
+  };
   const parseCopy = (html: string): Document => {
     const copy = parseOnce(html).cloneNode(true);
     return isDocument(copy) ? copy : parseHtml(html);
@@ -458,7 +482,7 @@ export function inlineSubCompositions(
   }));
   for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
     const { element: hostEl, ancestry, scene: parentScene } = queue[queueIndex]!;
-    const src = hostEl.getAttribute("data-composition-src");
+    const src = hostEl.getAttribute(COMPOSITION_SRC_ATTR);
     if (!src) continue;
 
     const compHtml = resolveHtml(src);
@@ -485,6 +509,7 @@ export function inlineSubCompositions(
       continue;
     }
 
+    chargeElements?.(src, elementCount(compHtml));
     const compDoc = parseCopy(compHtml);
 
     // Determine composition IDs
@@ -509,6 +534,7 @@ export function inlineSubCompositions(
       onMissingComposition?.(src);
       continue;
     }
+    dropAuthoredCompositionFiles(contentDoc);
 
     // Which node is the composition root, which id its CSS scopes to, which
     // id its scripts scope to, where its assets come from and in what order —
@@ -788,7 +814,7 @@ export function inlineSubCompositions(
       hostEl.insertAdjacentHTML("beforeend", el.outerHTML);
 
     hostEl.setAttribute("data-composition-file", src);
-    hostEl.removeAttribute("data-composition-src");
+    hostEl.removeAttribute(COMPOSITION_SRC_ATTR);
 
     const nestedAncestry = [...ancestry, src];
     const nested = enumerateNestedCompositionHosts(hostEl, nestedAncestry);

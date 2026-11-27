@@ -2,15 +2,9 @@ import { useState } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { Button, Popover } from "../ui";
 import { shareBootstrap, safeShareUrl } from "./localShareClient";
+import { SourceShareActions } from "./SourceShareActions";
 import { useQuickShare } from "./useQuickShare";
-import {
-  ShareSettings,
-  ShareNotices,
-  ShareActions,
-  ShareSourceStatus,
-  ShareLogin,
-  SharePlan,
-} from "./QuickShareControls";
+import { ShareSettings, ShareNotices, ShareLogin, SharePlan } from "./QuickShareControls";
 export function QuickShare({ beforeShare }: { beforeShare?: () => Promise<void> }) {
   const [token, setToken] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -46,8 +40,7 @@ export function QuickShareContent({
   token: string;
   beforeShare?: () => Promise<void>;
 }) {
-  const [includeSource, setIncludeSource] = useState(false);
-  const model = { ...useQuickShare(token, beforeShare), includeSource, setIncludeSource };
+  const model = useQuickShare(token, beforeShare);
   const { snapshot, progress, error } = model;
   const url = safeShareUrl(snapshot?.share.url ?? "");
   const manageUrl = safeShareUrl(snapshot?.share.manageUrl ?? "");
@@ -61,8 +54,18 @@ export function QuickShareContent({
         <>
           <ShareSettings model={model} snapshot={snapshot} />
           <ShareNotices model={model} snapshot={snapshot} />
-          <ShareSourceStatus model={model} snapshot={snapshot} />
-          <ShareActions model={model} snapshot={snapshot} url={url} />
+          <SourceShareActions
+            key={JSON.stringify([
+              model.spaceId,
+              snapshot.share.reviewId,
+              snapshot.job?.id,
+              snapshot.job?.state,
+            ])}
+            token={token}
+            model={model}
+            snapshot={snapshot}
+            url={url}
+          />
           <SharePlan model={model} snapshot={snapshot} />
         </>
       ) : null}

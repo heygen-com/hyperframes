@@ -5,7 +5,8 @@ import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from "no
 import { basename, dirname, join, resolve } from "node:path";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
-import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegWorkingDir, mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
+import { assertLiteralMediaOutput } from "@hyperframes/parsers/literal-media-input";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { recordFolder } from "../utils/projectRecords.js";
 
@@ -66,7 +67,15 @@ export function runFfmpeg(args: string[], input?: Buffer, cwd?: string, timeout?
   });
 }
 
+export const guardedCwd = (info: VideoInfo): string | undefined =>
+  info.guarded ? ffmpegWorkingDir() : undefined;
+
+export function ffmpegInput(path: string, { playlists = false } = {}): string[] {
+  return [...mediaInputArgs(ffmpegBin(), path, { playlists }), "-i", path];
+}
+
 export function ffmpegToFile(args: string[], out: string, input?: Buffer): string {
+  assertLiteralMediaOutput(out);
   const work = createStagingDir(dirname(out), ".ffmpeg-");
   try {
     const made = join(work, basename(out));
@@ -99,7 +108,7 @@ export interface VideoInfo {
   hdr: boolean;
   transfer?: string;
   codec: string;
-  /** A file a composition names: each run reads it with render's demuxer list and stops after {@link GUARDED_RUN_MS}. */
+  /** A file a composition names: each run stops after {@link GUARDED_RUN_MS}. */
   guarded?: boolean;
 }
 
@@ -128,9 +137,20 @@ const rate = (text: string | undefined): number => {
 /** A sound's length in seconds. */
 export function probeSeconds(path: string): number {
   if (!existsSync(path)) throw new Fix(`no file at ${path}`, "pass a sound from the project");
+  const bin = ffprobeBin();
   const text = execFileSync(
-    ffprobeBin(),
-    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", path],
+    bin,
+    [
+      "-v",
+      "error",
+      ...mediaInputArgs(bin, path),
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "csv=p=0",
+      "--",
+      path,
+    ],
     { maxBuffer: MAX_BUFFER, windowsHide: true },
   ).toString();
   return Number(text) || 0;
@@ -200,29 +220,21 @@ function startsWithMp4Header(path: string): boolean {
 /** Size (as displayed, rotation applied), clock and sound of a video; `guarded` for a file a composition names. */
 // fallow-ignore-next-line complexity
 export function probeVideo(path: string, { guarded = false } = {}): VideoInfo {
+  if (guarded) path = resolve(path);
   if (!existsSync(path)) throw new Fix(`no file at ${path}`, missingFileFix(path));
+  const bin = ffprobeBin();
+  const formats = mediaInputArgs(bin, path, { playlists: guarded });
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
-    const bin = ffprobeBin();
     json = JSON.parse(
       execFileSync(
         bin,
-        [
-          "-v",
-          "error",
-          ...(guarded ? mediaInputFormatArgs(bin, path) : []),
-          "-show_streams",
-          "-show_format",
-          "-of",
-          "json",
-          "--",
-          path,
-        ],
+        ["-v", "error", ...formats, "-show_streams", "-show_format", "-of", "json", "--", path],
         {
           maxBuffer: MAX_BUFFER,
           windowsHide: true,
           stdio: ["ignore", "pipe", "pipe"],
-          ...(guarded ? { timeout: GUARDED_RUN_MS } : {}),
+          ...(guarded ? { timeout: GUARDED_RUN_MS, cwd: ffmpegWorkingDir() } : {}),
         },
       ).toString(),
     );
@@ -312,8 +324,7 @@ export function videoClip(
   return {
     input: [
       ...(start > 0 ? ["-ss", String(start)] : []),
-      "-i",
-      path,
+      ...ffmpegInput(path),
       ...(seconds !== undefined ? ["-t", String(seconds)] : []),
     ],
     filters: [],

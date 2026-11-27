@@ -33,6 +33,7 @@ export type {
   StudioSelectionTextField,
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
+export type { RenderRange } from "./helpers/renderRange.js";
 export { stampProjectHfIds, stampProjectHfIdsAsync } from "./helpers/hfIdPersist.js";
 export {
   patchElementInHtml,
@@ -71,6 +72,7 @@ export {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
   type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "./helpers/screenshotClip.js";
 export {
   thumbnailDeviceScaleFactor,

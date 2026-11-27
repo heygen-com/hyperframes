@@ -2,11 +2,12 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClipboard } from "./useClipboard";
 import { usePlayerStore, type TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { setCompositionSourceMap } from "../components/editor/domEditingDom";
 
 // Saved without hf-ids and with no element id: the preview stamps ids only in memory.
 const SAVED = `<!doctype html><html><body>
@@ -43,9 +44,12 @@ const TITLE: TimelineElement = {
 };
 
 let root: Root | null = null;
+// What Studio reads from the project's index.html before any copy.
+beforeEach(() => setCompositionSourceMap(new Map([["sub", "compositions/sub.html"]])));
 afterEach(() => {
   act(() => root?.unmount());
   root = null;
+  setCompositionSourceMap(new Map());
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
 });
@@ -515,12 +519,20 @@ describe("duplicate of a clip inside a sub-composition", () => {
 describe("a copy that fails", () => {
   it("leaves the previous copy on the clipboard", async () => {
     selectTitle();
-    const { clipboard, writes, fail } = mountClipboard();
+    const { clipboard, writes, fail, delayMs } = mountClipboard();
+    // A slow first read (a busy runner) outlasted a fixed 10 ms wait and failed both copies, so each copy
+    // waits for its own read. Reproduce: the old waits with this delay fail every run.
+    delayMs["index.html"] = 15;
+    const answered = async (reads: number) => {
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(reads));
+      await vi.mocked(fetch).mock.results[reads - 1]?.value;
+    };
     clipboard().handleCopy();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await answered(1);
+    delayMs["index.html"] = 0;
     fail.on = true;
     clipboard().handleCopy();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await answered(2);
     fail.on = false;
     await clipboard().handlePaste();
     expect(writes).toHaveLength(1);

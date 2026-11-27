@@ -1,9 +1,12 @@
 // fallow-ignore-file code-duplication
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { runCommand, type CommandDef } from "citty";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { RegistryItem } from "@hyperframes/core";
-import { catalogRow, countUnindexed, pickByName, searchMissCommand } from "./catalog.js";
+import { catalogRow, countUnindexed, pickByName, searchMissReport } from "./catalog.js";
 
 /** The whole registry, which is what "in this registry" has to be measured against. */
 const registryNames = new Set(["fade-through", "whip-pan", "count-up"]);
@@ -108,7 +111,8 @@ vi.mock("../registry/resolver.js", () => ({
     })),
 }));
 
-vi.mock("../registry/remote.js", () => ({
+vi.mock("../registry/remote.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../registry/remote.js")>()),
   readRegistryManifest: async () => {
     if (state.registryUnreadable) throw new Error(state.registryUnreadable);
     return { items: state.registry, catalogArtifact: { revision: state.artifactRevision } };
@@ -205,6 +209,7 @@ const component = (name: string): { name: string; type: string } => ({
 });
 
 interface Envelope {
+  query: string;
   tier: string;
   dropped: number;
   unindexed: number;
@@ -329,6 +334,43 @@ describe("catalog on a terminal", () => {
   });
 });
 
+describe("catalog lines that repeat outside text", () => {
+  const ODD = `od${String.fromCharCode(27)}[2Jd\x07`;
+  const SHOWN = "od\\x1b[2Jd\\x07";
+
+  // fails without the fix: an item's name is printed as the registry sent it.
+  it("shows control characters in an item name as text", async () => {
+    state.registry = [block(`count-${ODD}`)];
+
+    const output = await runCatalog({});
+
+    expect(output).toContain(`count-${SHOWN}`);
+    expect(output).not.toContain("\x07");
+  });
+
+  // fails without the fix: the query is repeated as it was typed.
+  it("shows control characters in a query that matched nothing as text", async () => {
+    state.ranking = [];
+    state.modelStatus = "declined";
+
+    const { err } = await runForExit({ query: `quantum ${ODD}` });
+
+    expect(err).toContain(`No items match query "quantum ${SHOWN}".`);
+    expect(err).not.toContain("\x07");
+  });
+
+  // fails without the fix: the query is repeated as it was typed.
+  it("shows control characters in a query with no searchable words as text", async () => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const { err } = await runForExit({ query: "実写\x07写真" });
+
+    expect(err).toContain('No searchable words in query "実写\\x07写真".');
+    expect(err).not.toContain("\x07");
+  });
+});
+
 describe("catalog --json meaning search", () => {
   it("reports the registry moves meaning search cannot see", async () => {
     // Published after the user's artifact was fetched: in the registry, absent
@@ -430,7 +472,7 @@ describe("catalog --json meaning search", () => {
     const envelope = await runEnvelope({ query: "number", words: "transition" });
 
     expect(envelope.shown).toBe(1);
-    expect(envelope.report_gap).toContain("number");
+    expect(envelope.query).toBe("number");
   });
 
   it("carries an on-device runtime failure into the JSON envelope", async () => {
@@ -461,6 +503,29 @@ describe("catalog --json meaning search", () => {
     expect(state.vectorFetches).toBe(1);
     expect(state.cachedVectorRevision).toBe("revision-current");
     expect(state.consentRecorded).toEqual([]);
+  });
+
+  // fails without the fix: the catalog downloaded search vectors from the registry a received project names
+  it("downloads no search vectors from a received project's registry", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-catalog-received-"));
+    writeFileSync(
+      join(dir, "hyperframes.json"),
+      JSON.stringify({ registry: "https://registry.test/r" }),
+    );
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["hyperframes.json"] }),
+    );
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir);
+    state.cachedVectorRevision = "revision-previous";
+    try {
+      await runEnvelope({ query: "count up" });
+      expect(state.vectorFetches).toBe(0);
+    } finally {
+      cwd.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("replaces a changed model revision under existing consent", async () => {
@@ -494,9 +559,24 @@ describe("catalog --json meaning search", () => {
 
     expect(envelope.shown).toBeGreaterThan(0);
     expect(envelope.report_gap).toBe(
-      'npx hyperframes feedback --search-miss "make a number count up" ' +
-        '--wanted "<the move you needed>" --tier on-device',
+      'npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier on-device',
     );
+    expect(envelope.report_gap).not.toContain("make a number count up");
+  });
+
+  // fails without the fix: on Windows the envelope carried a bash-escaped line that runs "$(calc)" in PowerShell.
+  it("on Windows, hands back how to report the gap, not a line that would run the query", async () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    onTestFinished(() => {
+      Object.defineProperty(process, "platform", platform);
+    });
+
+    const envelope = await runEnvelope({ query: "count up $(calc)" });
+
+    expect(envelope.query).toBe("count up $(calc)");
+    expect(envelope.report_gap).not.toContain("$(calc)");
+    expect(envelope.report_gap).toContain("--search-miss");
   });
 
   it("names the tier that actually answered in the gap-report command", async () => {
@@ -639,19 +719,12 @@ describe("a zero-result search", () => {
   });
 });
 
-describe("searchMissCommand", () => {
-  it("keeps a non-ASCII query intact", () => {
-    // Half of the gap reports received so far were CJK. A query mangled on the
-    // way into the command is a report nobody can act on.
-    expect(searchMissCommand("実写写真のみ 9:16 生活ハック", "on-device")).toContain(
-      '--search-miss "実写写真のみ 9:16 生活ハック"',
+// Each one keeps a shell meaning in PowerShell or cmd.exe however it is double-quoted.
+describe("searchMissReport", () => {
+  it("names the tier and leaves the query out", () => {
+    expect(searchMissReport("on-device")).toBe(
+      'npx hyperframes feedback --search-miss --wanted "<the move you needed>" --tier on-device',
     );
-  });
-
-  it("escapes shell metacharacters so the printed line is safe to paste", () => {
-    const cmd = searchMissCommand('a "quoted" $VAR `sub` \\ thing', "words");
-
-    expect(cmd).toContain('--search-miss "a \\"quoted\\" \\$VAR \\`sub\\` \\\\ thing"');
   });
 });
 
@@ -682,6 +755,21 @@ describe("catalog meaning search, on a terminal", () => {
 
     expect(output).toContain("None of these do it?");
     expect(output).toContain("--tier words");
+    expect(output).toContain("--search-miss --wanted");
+    expect(output).not.toContain('"count up"');
+  });
+
+  it.each([
+    ["some results", "count\nup"],
+    ["no result", "zzqx\nyyqx"],
+  ])("prints the same gap line whatever the query holds: %s", async (_n, query) => {
+    state.modelStatus = "declined";
+    state.ranking = null;
+
+    const output = await runCatalog({ query });
+
+    expect(output).toContain("--search-miss --wanted");
+    expect(output).not.toContain(query);
   });
 
   it("offers the gap report on the on-device tier too", async () => {

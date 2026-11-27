@@ -1137,6 +1137,27 @@ describe("findBrowser — cache resolution", () => {
     expect(warnSpy.mock.calls[0]?.[0]).toContain("Falling back to system Chrome");
   });
 
+  // fails without the fix: the error's code and message were printed as they arrived.
+  it("shows control characters in a cache read failure as text", async () => {
+    installFsMocks({ existing: new Set([HF_CACHE, SYSTEM_CHROME]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCacheError: Object.assign(new Error("scandir '/c/od\u001b[2Jd\u0007'\nsecond"), {
+        code: "E\u001b]0;t\u0007",
+      }),
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { findBrowser, _resetSystemFallbackWarnForTests } = await import("./manager.js");
+    _resetSystemFallbackWarnForTests();
+    await findBrowser();
+
+    const said = warnSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(said).toContain("Browser cache read failed (E\\x1b]0;t\\x07)");
+    expect(said).toContain("scandir '/c/od\\x1b[2Jd\\x07'");
+    expect(said).not.toContain("\u001b");
+    expect(said).not.toContain("\u0007");
+  });
+
   it("falls back to the puppeteer-managed cache when hyperframes cache is empty", async () => {
     // Empty hyperframes cache, populated puppeteer cache — the regression
     // scenario from the hf#677 spike.
@@ -1788,6 +1809,7 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
       expect(caught.message).toContain(rawMsg);
       expect(caught.message).toContain("HYPERFRAMES_BROWSER_PATH");
       expect(caught.message).toContain("No Chrome or Chromium was found on this machine");
+      expect(caught.message).toContain("hyperframes doctor");
       expect(caught.message).not.toContain('export HYPERFRAMES_BROWSER_PATH="');
       expect(caught.message).not.toContain("set HYPERFRAMES_BROWSER_PATH=");
       expect(caught.cause).toBe(originalError);
@@ -2007,7 +2029,7 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
 
   it.each([
     { host: MAC_12, expected: OLD_BUILD },
-    { host: MAC_13, expected: "158.0.8127.36" },
+    { host: MAC_13, expected: "158.0.8127.88" },
   ])("downloads $expected on $host.release", async ({ host, expected }) => {
     installFsMocks({ existing: new Set(), osHost: host });
     const install = vi.fn(async () => ({ executablePath: MAC_HF_BINARY }));
@@ -2033,7 +2055,7 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
         {
           browser: "chrome-headless-shell",
           executablePath: MAC_HF_BINARY,
-          buildId: "158.0.8127.36",
+          buildId: "158.0.8127.88",
         },
       ],
     });
@@ -2069,10 +2091,10 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
     installFsMocks({
       existing: new Set([
         PUPPETEER_CACHE,
-        macPuppeteerBinary("mac-158.0.8127.36"),
+        macPuppeteerBinary("mac-158.0.8127.88"),
         macPuppeteerBinary("mac-150.0.7871.124"),
       ]),
-      dirs: { [PUPPETEER_CACHE]: ["mac-158.0.8127.36", "mac-150.0.7871.124"] },
+      dirs: { [PUPPETEER_CACHE]: ["mac-158.0.8127.88", "mac-150.0.7871.124"] },
       osHost: MAC_12,
     });
     installPuppeteerBrowsersMock({ browserPlatform: "mac" });
@@ -2088,17 +2110,17 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
     installFsMocks({
       existing: new Set([
         PUPPETEER_CACHE,
-        macPuppeteerBinary("mac-158.0.8127.36"),
+        macPuppeteerBinary("mac-158.0.8127.88"),
         macPuppeteerBinary("mac-150.0.7871.124"),
       ]),
-      dirs: { [PUPPETEER_CACHE]: ["mac-158.0.8127.36", "mac-150.0.7871.124"] },
+      dirs: { [PUPPETEER_CACHE]: ["mac-158.0.8127.88", "mac-150.0.7871.124"] },
       osHost: MAC_13,
     });
     installPuppeteerBrowsersMock({ browserPlatform: "mac" });
     const { findBrowser } = await import("./manager.js");
 
     await expect(findBrowser()).resolves.toEqual({
-      executablePath: macPuppeteerBinary("mac-158.0.8127.36"),
+      executablePath: macPuppeteerBinary("mac-158.0.8127.88"),
       source: "cache",
     });
   });

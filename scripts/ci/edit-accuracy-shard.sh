@@ -4,7 +4,7 @@
 set -euo pipefail
 export HF_WRITE_TRACE="/tmp/edit-accuracy/write-trace-${1//\//-}.log"
 mkdir -p /tmp/edit-accuracy
-bench() { bun run --cwd packages/studio test:edit-accuracy -- --grid "$EDIT_ACCURACY_GRID" --jobs 2 "$@"; }
+bench() { bun run --cwd packages/studio test:edit-accuracy -- --grid "$EDIT_ACCURACY_GRID" --jobs 2 --frames shared "$@"; }
 bench --shard "$1" --out /tmp/edit-accuracy/run1
 mapfile -t FLIPPED < <(node packages/studio/tests/e2e/edit-accuracy/ratchet.mjs flipped \
   /tmp/base-edit-accuracy.json /tmp/edit-accuracy/run1/results.json)

@@ -25,20 +25,23 @@ import "./lib/windows-exe-search.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { assertLiteralMediaPath, selfContainedInput } from "./lib/literal-media-input.mjs";
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? process.argv[i + 1] : fallback;
 }
-const reference = arg("reference");
-const render = arg("render");
+// A URL-shaped argument is read as a name under the current folder; the file-only protocol on every read refuses URLs either way.
+const reference = arg("reference") && resolve(arg("reference"));
+const render = arg("render") && resolve(arg("render"));
 if (!reference || !render) {
   console.error(
     "usage: verify-motion.mjs --reference ref.mp4 --render out.mp4 [--crop WxH+X+Y] [--interval 0.2] [--min-motion-psnr 15]",
   );
   process.exit(2);
 }
+for (const path of [reference, render]) assertLiteralMediaPath(path);
 const crop = arg("crop", null);
 const interval = Number(arg("interval", "0.2"));
 const minMotion = Number(arg("min-motion-psnr", "15"));
@@ -48,6 +51,7 @@ const ffprobe = (file) =>
     execFileSync("ffprobe", [
       "-v",
       "error",
+      ...selfContainedInput(file),
       "-show_entries",
       "format=duration",
       "-of",
@@ -65,6 +69,7 @@ const end = Math.min(refDur, renderDur) - interval - 0.01;
 const dims = execFileSync("ffprobe", [
   "-v",
   "error",
+  ...selfContainedInput(reference),
   "-select_streams",
   "v",
   "-show_entries",
@@ -92,7 +97,8 @@ if (crop) {
 
 const dir = mkdtempSync(join(tmpdir(), "verify-motion-"));
 const frame = (src, t, vf, dst) => {
-  const args = ["-y", "-v", "error", "-ss", String(t), "-i", src, "-frames:v", "1"];
+  const args = ["-y", "-v", "error", ...selfContainedInput(src), "-ss", String(t), "-i", src];
+  args.push("-frames:v", "1");
   if (vf) args.push("-vf", vf);
   execFileSync("ffmpeg", args.concat(dst));
 };

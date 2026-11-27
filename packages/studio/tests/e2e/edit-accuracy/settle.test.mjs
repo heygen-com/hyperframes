@@ -12,8 +12,9 @@ import {
   seekBound,
   swapPending,
   unsettledBy,
+  waitingQuad,
 } from "./case.mjs";
-import { heldSize, keyedBy } from "./sequences.mjs";
+import { heldSize, keyedBy, restedFor, shownOnceRested } from "./sequences.mjs";
 
 describe("settling on the shown preview", () => {
   const read = (pending, x = 0, frames = "a") => ({
@@ -277,6 +278,31 @@ describe("the box a press is measured against", () => {
     expect(shown.actual[0][0]).toBe(0);
   });
 
+  // fails without the fix: the press itself read the waiting outline, so a sealed press jumped 0.2 px.
+  it("reads the element at the press, before the pointer moves", async () => {
+    const shown = await measureShown(
+      { page: { $: async (selector) => (selector.includes('="frame"') ? null : marker([true])) } },
+      "move",
+      read,
+      async () => quad(260),
+      false,
+    );
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  // fails without the fix: a press made while Studio saved read the element, still where the last save
+  // left it, 312 px from the box Studio draws at the pointer.
+  it("reads the waiting box at the press while it waits on a save", async () => {
+    const shown = await measureShown(
+      { page: { $: async () => marker([true]) } },
+      "move",
+      read,
+      async () => quad(260),
+      false,
+    );
+    expect(shown.m.visible[0][0]).toBe(260);
+  });
+
   it("reads the element when nothing waits", async () => {
     const shown = await measureShown({ page: page([]) }, "move", read, async () => quad(260));
     expect(shown.m.visible[0][0]).toBe(0);
@@ -287,5 +313,102 @@ describe("the box a press is measured against", () => {
       quad(260),
     );
     expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  // fails without the fix: a sealed fast-keys drag threw "element has no rendered box" when Studio
+  // remounted the selection box right after the replay, before the marker's box was read.
+  it("reads again when Studio took the waiting box out of the page before its box was read", async () => {
+    const gone = async () => {
+      throw new Error("element has no rendered box");
+    };
+    const shown = await measureShown({ page: page([marker([false])]) }, "move", read, gone);
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  it("still fails when a waiting box in the page has no box", async () => {
+    const empty = async () => {
+      throw new Error("element has no rendered box");
+    };
+    await expect(
+      measureShown({ page: page([marker([true])]) }, "move", read, empty),
+    ).rejects.toThrow("element has no rendered box");
+  });
+
+  // The box as each read finds it: Studio's own check runs on it, in the page or out of it.
+  const box = (...states) => ({
+    evaluate: async (check) => {
+      const [isConnected, waiting] = states.shift() ?? [false, false];
+      return check({ isConnected, hasAttribute: () => waiting });
+    },
+    dispose: async () => {},
+  });
+  const gone = async () => {
+    throw new Error("element has no rendered box");
+  };
+  const map = { toComp: (p) => p };
+
+  it("does not take the quad of a box that left the page, still marked waiting, after it was read", async () => {
+    const shown = await measureShown({ page: page([box([false, true])]) }, "move", read, async () =>
+      quad(260),
+    );
+    expect(shown.m.visible[0][0]).toBe(0);
+  });
+
+  // fails without the fix: the read before the press threw when Studio remounted the waiting box first.
+  it("before the press, a waiting box that left the page is no waiting box", async () => {
+    expect(await waitingQuad(page([box([false, false])]), map, gone)).toBeNull();
+    expect(await waitingQuad(page([box([false, true])]), map, async () => quad(260))).toBeNull();
+  });
+
+  it("before the press, a waiting box in the page gives its quad, or fails when it has none", async () => {
+    expect((await waitingQuad(page([box([true, true])]), map, async () => quad(260)))[0][0]).toBe(
+      260,
+    );
+    await expect(waitingQuad(page([box([true, true])]), map, gone)).rejects.toThrow(
+      "element has no rendered box",
+    );
+  });
+});
+
+// fails without the fix: the sequence read the file once its write count was met, while a sealed press that waited for
+// the previous save was still saving, so the last gesture's edit looked lost.
+describe("the end of a sequence", () => {
+  // Each frame advances a fake clock by 10 ms, so the times are exact.
+  const reads = (states) => {
+    let [at, ms] = [0, 0];
+    return {
+      busy: async () => states[Math.min(at++, states.length - 1)],
+      frame: async () => void (ms += 10),
+      now: () => ms,
+      read: () => at,
+    };
+  };
+
+  it("waits until no press waits and no edit saves, two reads in a row", async () => {
+    const { busy, frame, now, read } = reads([true, true, false, true, false, false, true]);
+    await restedFor(busy, frame, { now });
+    expect(read()).toBe(6);
+  });
+
+  it("says how long until the first of the clear reads, the undo's time to show", async () => {
+    const { busy, frame, now } = reads([true, true, false, false]);
+    expect(await restedFor(busy, frame, { now })).toBe(20);
+  });
+
+  // fails without the fix: the undo was read while its reload was on the way, 240-329 px from where it landed.
+  it("reads an undo's box once Studio says its reload is done, and how long that took", async () => {
+    const { busy, frame, now, read } = reads([true, true, true, false, false]);
+    const settle = async () => (read() > 3 ? "undone" : "before");
+    expect(await shownOnceRested(busy, frame, settle, { now })).toEqual({
+      box: "undone",
+      shownMs: 30,
+    });
+  });
+
+  it("gives up with a reason when an edit never stops saving", async () => {
+    const { busy, frame, now } = reads([true]);
+    await expect(restedFor(busy, frame, { now, timeout: 30 })).rejects.toThrow(
+      /still waiting or saving/,
+    );
   });
 });

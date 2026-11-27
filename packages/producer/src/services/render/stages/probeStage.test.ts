@@ -20,6 +20,8 @@ import {
   hasRuntimeMediaChanges,
   hasScriptedAudioVolumeAutomation,
   hasVariableBoundMedia,
+  probeHoldFitsCapture,
+  probeVideoHold,
   reportedLengthSource,
 } from "./probeStage.js";
 
@@ -36,6 +38,10 @@ let mediaPreflightComposition: unknown;
 let afterMediaPreflight: (() => void) | null = null;
 let fileServerCloseCallCount = 0;
 let browserMediaResults: unknown[] = [];
+let browserMediaError: Error | null = null;
+let pageEvaluateHandler: ((fn: unknown, ...args: unknown[]) => Promise<unknown>) | null = null;
+// Media sizes the mocked FFmpeg probe reports, by resolved path; any other path fails to probe.
+const mediaSizes = new Map<string, { width: number; height: number }>();
 
 type MockSession = {
   id: number;
@@ -94,6 +100,8 @@ function resetRetryMocks() {
   afterMediaPreflight = null;
   fileServerCloseCallCount = 0;
   browserMediaResults = [];
+  pageEvaluateHandler = null;
+  mediaSizes.clear();
 }
 
 mock.module("../../assetMediaType.js", () => ({
@@ -115,6 +123,12 @@ mock.module("@hyperframes/engine", () => ({
   parseImageElements,
   resolveReferencedStart,
   videoAudioId,
+  resolveProjectRelativeSrc: (src: string, projectDir: string) => `${projectDir}/${src}`,
+  extractMediaMetadata: async (path: string) => {
+    const size = mediaSizes.get(path);
+    if (!size) throw new Error(`ffprobe failed: ${path}`);
+    return size;
+  },
   createCaptureSession: async (
     _url: string,
     _dir: string,
@@ -135,13 +149,16 @@ mock.module("@hyperframes/engine", () => ({
       browserConsoleBuffer: [],
       page: {
         sessionId,
-        evaluate: async () => ({
-          timelineKeys: [],
-          hfDuration: 5,
-          gsapLoaded: false,
-          totalDurationMs: 5000,
-          __hf: {},
-        }),
+        evaluate: async (fn?: unknown, ...args: unknown[]) => {
+          if (pageEvaluateHandler) return pageEvaluateHandler(fn, ...args);
+          return {
+            timelineKeys: [],
+            hfDuration: 5,
+            gsapLoaded: false,
+            totalDurationMs: 5000,
+            __hf: {},
+          };
+        },
       },
       launchCaptureMode: (cfg as { forceScreenshot?: boolean }).forceScreenshot
         ? "screenshot"
@@ -184,6 +201,8 @@ mock.module("@hyperframes/engine", () => ({
   },
   // Mirror of the real engine classifier. Canonical tests + pattern list
   // live in frameCapture-transientErrors.test.ts — update both if patterns change.
+  isMemoryExhaustionError: (error: unknown) =>
+    /^out of memory\.?$/i.test(error instanceof Error ? error.message.trim() : ""),
   isTransientBrowserError: (error: unknown) => {
     const msg = error instanceof Error ? error.message : String(error);
     if (/Composition has zero duration[\s\S]*Runtime ready: false/.test(msg)) return true;
@@ -207,7 +226,10 @@ mock.module("../../fileServer.js", () => ({
 }));
 
 mock.module("../../htmlCompiler.js", () => ({
-  discoverMediaFromBrowser: async () => browserMediaResults,
+  discoverMediaFromBrowser: async () => {
+    if (browserMediaError) throw browserMediaError;
+    return browserMediaResults;
+  },
   discoverAudioVolumeAutomationFromTimeline: async () => [],
   discoverVideoVisibilityFromTimeline: async () => [],
   recompileWithResolutions: async (c: unknown) => c,
@@ -216,7 +238,7 @@ mock.module("../../htmlCompiler.js", () => ({
 
 const notedStaticDedupActivity: object[] = [];
 mock.module("../shared.js", () => ({
-  noteStaticDedupActivity: (job: object) => notedStaticDedupActivity.push(job),
+  noteCaptureActivity: (job: object) => notedStaticDedupActivity.push(job),
   BROWSER_MEDIA_EPSILON: 0.0001,
   projectBrowserEndToCompositionTimeline: (
     existingStart: number,
@@ -1624,6 +1646,67 @@ describe("runProbeStage — render variable threading", () => {
   });
 });
 
+describe("probeVideoHold", () => {
+  it("holds each readable local video with its size, leaving runtime-set and remote sources live", async () => {
+    resetRetryMocks();
+    mediaSizes.set("/p/4k.mp4", { width: 3840, height: 2160 });
+    const html = `<body>
+      <video id="local" src="4k.mp4"></video>
+      <video id="bound" src="4k.mp4" data-var-src="clip"></video>
+      <video id="sourced"><source src="4k.mp4" data-var-src="clip"></video>
+      <video id="remote" src="https://cdn.example/4k.mp4"></video>
+      <video id="unreadable" src="missing.mp4"></video>
+    </body>`;
+    const videos = ["local", "bound", "sourced", "remote", "unreadable"].map((id) => ({
+      id,
+      src:
+        id === "remote"
+          ? "https://cdn.example/4k.mp4"
+          : id === "unreadable"
+            ? "missing.mp4"
+            : "4k.mp4",
+    }));
+
+    expect(await probeVideoHold(videos, html, "/p", "/p/compiled")).toEqual({
+      skipReadinessVideoIds: ["local"],
+      videoMetadataHints: [{ id: "local", width: 3840, height: 2160 }],
+    });
+  });
+});
+
+describe("probeHoldFitsCapture", () => {
+  it("lets capture reuse the probe page only when capture holds every video the probe held", () => {
+    expect(probeHoldFitsCapture(["a", "b"], ["a", "b", "c"])).toBe(true);
+    expect(probeHoldFitsCapture(["a", "b"], ["a"])).toBe(false);
+    expect(probeHoldFitsCapture(undefined, [])).toBe(true);
+  });
+});
+
+describe("runProbeStage — video hold", () => {
+  // fails without the fix: the probe page loaded every clip live, so 40 clips of one 4K file froze Chrome.
+  it("opens the probe page with the composition's local videos held at their FFmpeg size", async () => {
+    resetRetryMocks();
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({ stageForceScreenshot: false });
+    mediaSizes.set(`${input.projectDir}/4k.mp4`, { width: 3840, height: 2160 });
+    input.composition.videos = [
+      { id: "c0", src: "4k.mp4", start: 0, end: 2, mediaStart: 0, hasAudio: false },
+      { id: "c1", src: "4k.mp4", start: 2, end: 4, mediaStart: 30, hasAudio: false },
+    ] as never[];
+
+    await runProbeStage(input);
+
+    expect(capturedOptions[0]).toMatchObject({
+      skipReadinessVideoIds: ["c0", "c1"],
+      videoMetadataHints: [
+        { id: "c0", width: 3840, height: 2160 },
+        { id: "c1", width: 3840, height: 2160 },
+      ],
+    });
+  });
+});
+
 describe("runProbeStage — page motion blur", () => {
   // The probe session is reused for capture, so it must carry the render's "off" like any session.
   it("passes pageMotionBlur to the probe session so a reused session installs the off global", async () => {
@@ -1868,5 +1951,152 @@ describe("reportedLengthSource", () => {
     expect(JSON.stringify(reported)).not.toMatch(/customer|secret|Full Source/);
     expect(reportedLengthSource({ from: "timeline" })).toEqual({ from: "timeline" });
     expect(reportedLengthSource(null)).toBeNull();
+  });
+});
+
+describe("runProbeStage — a page call that never answers", () => {
+  it("says which probe step stopped, keeping the browser's own words", async () => {
+    resetRetryMocks();
+    browserMediaError = new Error(
+      "Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+    );
+    const { runProbeStage } = await import("./probeStage.js");
+    try {
+      await expect(runProbeStage(makeProbeInput({}))).rejects.toThrow(
+        "Preparing the render stopped while listing the film's videos, audio and images: Runtime.callFunctionOn timed out.",
+      );
+    } finally {
+      browserMediaError = null;
+    }
+  });
+
+  it("leaves a bare out-of-memory message as it is, so it is still read as memory exhaustion", async () => {
+    resetRetryMocks();
+    browserMediaError = new Error("Out of memory");
+    const { runProbeStage } = await import("./probeStage.js");
+    try {
+      await expect(runProbeStage(makeProbeInput({}))).rejects.toThrow(/^Out of memory$/);
+    } finally {
+      browserMediaError = null;
+    }
+  });
+});
+
+describe("runProbeStage — runtime blob and inline data audio", () => {
+  const SAMPLE_WAV_BYTES = Buffer.from("RIFF$\x00\x00\x00WAVEfmt ", "binary");
+
+  // fails without the fix: a helper function that assigns URL.createObjectURL(...) to an audio element
+  // escaped static selector resolution, so static-duration compositions skipped the browser probe.
+  it("probes when a script calls createObjectURL on a page with media elements", () => {
+    const withAudio = `<html><body><audio id="ambience" data-start="0" data-duration="5"></audio><script>
+      function attach(el, blob) { el.src = URL.createObjectURL(blob); }
+      attach(document.getElementById("ambience"), new Blob([]));
+    </script></body></html>`;
+    const withoutMedia = `<html><body><canvas id="c"></canvas><script>URL.createObjectURL(new Blob([]));</script></body></html>`;
+    expect(hasRuntimeMediaChanges(withAudio)).toBe(true);
+    expect(hasRuntimeMediaChanges(withoutMedia)).toBe(false);
+  });
+
+  // fails without the fix: browser-discovered blob: audio stayed as a blob: URL in composition.audios,
+  // which audioMixer cannot open on disk ("Source not found for audio element ... src=\"blob:...\"").
+  it("materializes same-origin blob audio from the probe page into compiledDir and deduplicates shared blobs", async () => {
+    resetRetryMocks();
+    const { existsSync, readFileSync } = await import("node:fs");
+    const stageDir = mkdtempSync(join(tmpdir(), "hf-probe-blob-"));
+    const blobUrl = "blob:http://127.0.0.1:0/11111111-2222-3333-4444-555555555555";
+    let fetchCalls = 0;
+    pageEvaluateHandler = async (_fn, url) => {
+      fetchCalls += 1;
+      expect(url).toBe(blobUrl);
+      return { ok: true, base64: SAMPLE_WAV_BYTES.toString("base64"), mimeType: "audio/wav" };
+    };
+    browserMediaResults = [
+      {
+        id: "audio-morning-ambience",
+        tagName: "audio",
+        src: blobUrl,
+        start: 0,
+        end: 5,
+        duration: 5,
+        durationInferred: false,
+        mediaStart: 0,
+        playbackRate: 1,
+        loop: false,
+        hasAudio: true,
+        volume: 1,
+        muted: false,
+      },
+      {
+        id: "audio-morning-ambience-copy",
+        tagName: "audio",
+        src: blobUrl,
+        start: 2,
+        end: 5,
+        duration: 3,
+        durationInferred: false,
+        mediaStart: 0,
+        playbackRate: 1,
+        loop: false,
+        hasAudio: true,
+        volume: 1,
+        muted: false,
+      },
+    ];
+    try {
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      input.projectDir = stageDir;
+      input.workDir = stageDir;
+      await runProbeStage(input);
+
+      expect(fetchCalls).toBe(1);
+      expect(input.composition.audios).toHaveLength(2);
+      const [first, second] = input.composition.audios as Array<{ src: string }>;
+      expect(first!.src).toMatch(/^__hf_runtime_audio\/[0-9a-f]{16}\.wav$/);
+      expect(second!.src).toBe(first!.src);
+      const onDisk = join(stageDir, "compiled", first!.src);
+      expect(existsSync(onDisk)).toBe(true);
+      expect(readFileSync(onDisk).equals(SAMPLE_WAV_BYTES)).toBe(true);
+    } finally {
+      rmSync(stageDir, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: static data:audio/... URIs stayed raw in composition.audios and failed audioMixer.
+  it("materializes inline data: audio even when no browser probe runs", async () => {
+    resetRetryMocks();
+    const { existsSync, readFileSync } = await import("node:fs");
+    const stageDir = mkdtempSync(join(tmpdir(), "hf-probe-data-audio-"));
+    try {
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      input.projectDir = stageDir;
+      input.workDir = stageDir;
+      input.composition.duration = 5;
+      input.compiled.html = "<div>static</div>";
+      input.composition.audios = [
+        {
+          id: "sfx-click",
+          src: `data:audio/wav;base64,${SAMPLE_WAV_BYTES.toString("base64")}`,
+          start: 0,
+          end: 1,
+          mediaStart: 0,
+          loop: false,
+          layer: 0,
+          volume: 1,
+          type: "audio",
+        },
+      ] as never[];
+
+      await runProbeStage(input);
+
+      const [clip] = input.composition.audios as Array<{ src: string }>;
+      expect(clip!.src).toMatch(/^__hf_runtime_audio\/[0-9a-f]{16}\.wav$/);
+      const onDisk = join(stageDir, "compiled", clip!.src);
+      expect(existsSync(onDisk)).toBe(true);
+      expect(readFileSync(onDisk).equals(SAMPLE_WAV_BYTES)).toBe(true);
+    } finally {
+      rmSync(stageDir, { recursive: true, force: true });
+    }
   });
 });

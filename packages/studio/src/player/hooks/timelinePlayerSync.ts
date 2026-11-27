@@ -7,6 +7,7 @@ const RENDERED_FIELDS: readonly (keyof TimelineElement)[] = [
   "duration",
   "track",
   "sourceDuration",
+  "loop",
   "muted",
   "hasAudio",
   "volume",

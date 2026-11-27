@@ -7,9 +7,15 @@ import {
   afterStudioManualEditGestures,
   isStudioManualEditGestureLiveIn,
   studioManualEditSavesIn,
-} from "../../components/editor/manualEditsDom";
-import { refusedPreviewStatus } from "@hyperframes/core/studio-preview-mark";
+} from "../../components/editor/manualEditGesture";
+import {
+  refusedPreviewStatus,
+  STUDIO_PREVIEW_ERROR_KINDS,
+} from "@hyperframes/core/studio-preview-mark";
+import { gestureDocumentOf } from "../../components/editor/previewSelection";
 import { logReload } from "../../utils/reloadDebug";
+import { pageRetryAfterMs, refusedPageMessage } from "./refusedPreviewPage";
+import { noteFrameAdded, pageGotTo, shadowPlayerReachable, waitsOnServer } from "./shadowPagePhase";
 import {
   useTimelineSyncCallbacks,
   planShadowAlone,
@@ -23,6 +29,7 @@ import type { IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
 import { setPreviewReloading } from "../previewReloading";
 import { previewFrameOpaque, previewSeekPainted } from "../lib/previewChannel";
 import { studioFileRevision } from "../../utils/studioFileVersion";
+import { previewLoadShows } from "../../utils/sealedPreviewLedger";
 import { announcePreviewPromoted } from "../sceneSwap";
 import { afterStudioPendingEdits, isStudioEditSaving } from "../../utils/studioPendingEdits";
 import { usePlayerStore } from "../store/playerStore";
@@ -64,27 +71,16 @@ function restoreSeekPainted(iframe: HTMLIFrameElement | null): Promise<void> | u
   return win?.__hfWaitForSeekCompletion?.().catch(() => {});
 }
 
-function shadowPlayerReachable(iframe: HTMLIFrameElement | null): boolean {
-  try {
-    return Boolean((iframe?.contentWindow as IframeWindow | null | undefined)?.__player);
-  } catch {
-    return false;
-  }
+function firstErrorFrom(iframe: HTMLIFrameElement | null): string {
+  if (!iframe?.contentDocument) return "";
+  const kinds = (iframe.contentWindow as Record<string, unknown> | null)?.[
+    STUDIO_PREVIEW_ERROR_KINDS
+  ];
+  const origin = Array.isArray(kinds)
+    ? (kinds[0] as { origin?: unknown } | undefined)?.origin
+    : null;
+  return typeof origin === "string" ? ` Its first page error came from: ${origin}.` : "";
 }
-
-function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
-  const doc = iframe?.contentDocument;
-  if (!doc || doc.URL === "about:blank") return "no-page";
-  const win = iframe!.contentWindow as unknown as Record<string, unknown>;
-  if (doc.readyState === "loading") return "page-loading";
-  if (win.__hfStartupError) return "startup-error";
-  if (!win.__hyperframes) return "runtime-not-run";
-  if (!win.__hyperframeRuntimeBootstrapped) return "scripts-waiting";
-  return "no-player";
-}
-
-const pageGotTo = (iframe: HTMLIFrameElement | null) =>
-  shadowPlayerReachable(iframe) ? "" : ` Its page had got to: ${shadowPagePhase(iframe)}.`;
 
 function hyperframesPlayerOf(iframe: HTMLIFrameElement): Element | null {
   const root = iframe.getRootNode();
@@ -167,6 +163,7 @@ export function useShadowPreviewReload({
   // The newest reload asked for while a still is being taken; it starts once the still is up.
   const holdingUrlRef = useRef<string | null>(null);
   const holdTokenRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const restoringRef = useRef<(() => void) | null>(null);
   const dropRestoring = useCallback(() => {
@@ -218,7 +215,9 @@ export function useShadowPreviewReload({
               : sealed
                 ? "its runtime to report a timeline"
                 : "its timeline to be ready";
-      const got = sealed ? "" : pageGotTo(shadow);
+      const got = sealed ? " Its page had got to: sealed." : pageGotTo(shadow);
+      const errorFrom = sealed ? "" : firstErrorFrom(shadow);
+      const retryAfterMs = sealed ? undefined : pageRetryAfterMs(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();
@@ -233,16 +232,16 @@ export function useShadowPreviewReload({
       const message = `The preview did not reload (${cause}). It was still waiting for ${waitingFor}.${got} The previous preview is still showing.`;
       logReload("shadow-failed", { cause, waitingFor });
       const refused = refusedPreviewStatus(cause);
-      const pageMissingNow = refused !== null && refused < 500;
-      (pageMissingNow ? console.warn : console.error)(`[studio] ${message}`);
-      onReloadFailedRef.current?.(message);
-      retry.afterFailure(cause, failedGen);
+      const askingAgain = retry.afterFailure(cause, failedGen, retryAfterMs) === "asking-again";
+      const notAFailureYet = askingAgain || (refused !== null && refused < 500);
+      (notAFailureYet ? console.warn : console.error)(`[studio] ${message}${errorFrom}`);
+      if (!askingAgain) onReloadFailedRef.current?.(message);
     },
     [stopPendingShadow, retry, isRefreshingRef, pendingSeekRef, restoreLive],
   );
 
   const gestureSavesOnScreen = useCallback(() => {
-    const liveDoc = iframeRef.current?.contentDocument;
+    const liveDoc = gestureDocumentOf(iframeRef.current);
     return liveDoc ? studioManualEditSavesIn(liveDoc) : 0;
   }, [iframeRef]);
 
@@ -265,7 +264,7 @@ export function useShadowPreviewReload({
   // shows the file before it: once that write has landed, a fresh one loads instead.
   const heldOrStale = useCallback(
     (gen: number) => {
-      const liveDoc = iframeRef.current?.contentDocument;
+      const liveDoc = gestureDocumentOf(iframeRef.current);
       if (liveDoc && isStudioManualEditGestureLiveIn(liveDoc))
         return waitThenRetry(gen, "gesture", (retry) =>
           afterStudioManualEditGestures(liveDoc, retry),
@@ -313,6 +312,7 @@ export function useShadowPreviewReload({
       attachIframeShortcutListeners();
       applyPreviewAudioState();
       setPreviewSlots((prev) => planShadowPromotion(prev, gen));
+      previewLoadShows(shadow, revisionAtRequestRef.current);
       if (liveTime != null) handOverPlaybackRef.current(liveTime, playing);
       if (held) releaseAfterPaint(shadow, held.release);
       announcePreviewPromoted({ retired, live: shadow });
@@ -333,6 +333,7 @@ export function useShadowPreviewReload({
 
   const getShadowAdapter = useCallback(() => getAdapter(shadowIframeRef.current), [getAdapter]);
   const isCurrentShadow = useCallback((gen?: number) => gen === shadowGenRef.current, []);
+  const liveFrame = useCallback(() => iframeRef.current, [iframeRef]);
   const previewGeneration = useCallback(() => shadowGenRef.current, []);
   const markAdapterReady = useCallback(
     (iframe: HTMLIFrameElement | null, gen: number | undefined, commit: () => void) => {
@@ -367,8 +368,17 @@ export function useShadowPreviewReload({
     onAdapterReady: markAdapterReady,
     isCurrent: isCurrentShadow,
     hostOwnsDeadline: true,
+    liveFrame,
   });
   cancelPendingLoadRef.current = cancelPendingLoad;
+  const onShadowPageLoad = useCallback(
+    (gen: number) => {
+      const refused = refusedPageMessage(shadowIframeRef.current);
+      if (refused === null) onShadowIframeLoad(gen);
+      else failShadow(gen, refused);
+    },
+    [onShadowIframeLoad, failShadow],
+  );
 
   // The Player reports whether loaders (shader transition, assets) are cleared right now.
   const onShadowReadyChange = useCallback(
@@ -403,6 +413,11 @@ export function useShadowPreviewReload({
           logReload("shadow-detached", { gen });
           return;
         }
+        if (waitsOnServer(frame, SHADOW_READY_TIMEOUT_MS)) {
+          logReload("shadow-awaiting-server", { gen });
+          armReadyTimerRef.current(gen);
+          return;
+        }
         budgetsSpentRef.current += 1;
         if (budgetsSpentRef.current < SHADOW_READY_BUDGETS) {
           logReload("shadow-slow", { budgetsSpent: budgetsSpentRef.current });
@@ -419,6 +434,7 @@ export function useShadowPreviewReload({
 
   const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
     shadowIframeRef.current = node;
+    if (node) noteFrameAdded(node);
     if (node) hyperframesPlayerOf(node)?.toggleAttribute("inert", true);
     const gen = budgetGenRef.current;
     if (!node || !shadowFrameLeftPageRef.current || gen == null || gen !== shadowGenRef.current)
@@ -452,6 +468,7 @@ export function useShadowPreviewReload({
 
   const beginShadowReload = useCallback(
     (url: string) => {
+      if (!mountedRef.current) return;
       const live = iframeRef.current;
       const take = holdStillRef.current;
       if (heldRef.current || !take || !live?.isConnected) {
@@ -513,6 +530,7 @@ export function useShadowPreviewReload({
 
   // Hiding the tab pauses the budget; showing it again restarts the full budget for a pending shadow.
   useMountEffect(() => {
+    mountedRef.current = true;
     const onVisibilityChange = () => {
       if (isDocumentHidden()) {
         clearTimeout(readyTimerRef.current);
@@ -524,6 +542,7 @@ export function useShadowPreviewReload({
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      mountedRef.current = false;
       retry.cancel();
       stopPendingShadow();
       heldRef.current?.release();
@@ -536,7 +555,7 @@ export function useShadowPreviewReload({
 
   return {
     previewSlots,
-    onShadowIframeLoad,
+    onShadowIframeLoad: onShadowPageLoad,
     onShadowReadyChange,
     onShadowError: failShadow,
     setShadowIframeNode,

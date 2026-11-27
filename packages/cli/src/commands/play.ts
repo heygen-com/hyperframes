@@ -1,3 +1,4 @@
+import { referencedFontResponse } from "@hyperframes/share/referencedFont.mjs";
 import { failUsage, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -98,7 +99,7 @@ export default defineCommand({
     try {
       startPort = parsePort(args.port ?? "3003");
     } catch (error) {
-      clack.log.error(normalizeErrorMessage(error));
+      clack.log.error(terminalText(normalizeErrorMessage(error)));
       failUsage();
     }
     const project = resolveProject(args.dir);
@@ -126,7 +127,7 @@ export default defineCommand({
         args["remote-debugging-port"] as string | undefined,
       );
     } catch (err) {
-      clack.log.error((err as Error).message);
+      clack.log.error(terminalText((err as Error).message));
       failUsage();
     }
 
@@ -239,6 +240,7 @@ export async function registerCompositionRoute(
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
+    if (reqPath === null) return ctx.text("Not found", 404);
     const filePath = resolve(project.dir, reqPath);
 
     // Security: don't allow path traversal outside project dir. isSafePath
@@ -246,9 +248,13 @@ export async function registerCompositionRoute(
     // an in-project symlink to an external target nor a sibling dir whose name
     // shares the project-dir prefix (e.g. `<dir>-evil`) can escape.
     if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
-    if (isPrivateCompositionFile(project.dir, filePath) || !existsSync(filePath)) {
-      return ctx.text("Not found", 404);
+    if (isPrivateCompositionFile(project.dir, filePath)) {
+      return (
+        (await referencedFontResponse(project.dir, reqPath, ctx.req.raw.method)) ??
+        ctx.text("Not found", 404)
+      );
     }
+    if (!existsSync(filePath)) return ctx.text("Not found", 404);
 
     // HTML gets the runtime + codec-map injected; other assets pass through.
     if (filePath.endsWith(".html")) {

@@ -29,7 +29,8 @@ const input = {
 let servedEtag: string | undefined;
 
 vi.mock("mediabunny", () => ({
-  ALL_FORMATS: {},
+  ALL_FORMATS: [],
+  HLS: {},
   UrlSource: class {
     constructor(
       readonly url: string,

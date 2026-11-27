@@ -3,7 +3,11 @@ import { act, createElement, Fragment, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
-import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
+import {
+  answerTap,
+  sealedPreviewFrame,
+  type PortRequest,
+} from "../../player/lib/sealedPreviewFrame.test-helpers";
 import { previewRequest } from "../../player/lib/previewChannel";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { useCaptionDetection } from "../../hooks/useCaptionDetection";
@@ -33,42 +37,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-type PortRequest = { id?: unknown; kind?: unknown; params?: unknown };
-
 /** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
 function opaqueFrame() {
-  let pick: ((request: PortRequest) => boolean) | null = null;
-  const heldIds = new Set<unknown>();
-  const held: Array<() => void> = [];
-  // Studio's end of the port, so a test can keep the frame's answer to a request until it releases it.
-  const tap = (port: MessagePort) => {
-    const end = {
-      onmessage: null as ((event: MessageEvent) => void) | null,
-      postMessage(request: PortRequest) {
-        if (pick?.(request)) heldIds.add(request.id);
-        port.postMessage(request);
-      },
-      close: () => port.close(),
-    };
-    port.onmessage = (event) => {
-      const deliver = () => end.onmessage?.(event);
-      if (heldIds.has(event.data?.id)) held.push(deliver);
-      else deliver();
-    };
-    return end as unknown as MessagePort;
-  };
-  const { iframe } = sealedPreviewFrame({ wrapHandedOverPort: tap });
+  const { wrapHandedOverPort, hold, held } = answerTap();
+  const { iframe } = sealedPreviewFrame({ wrapHandedOverPort });
   iframe.style.width = "1920px";
   iframe.getBoundingClientRect = () => new DOMRect(0, 0, 1920, 1080);
-  /** Keeps the answers to the requests `match` picks; the returned call hands them to Studio. */
-  const hold = (match: (request: PortRequest) => boolean) => {
-    pick = match;
-    return () => {
-      pick = null;
-      heldIds.clear();
-      held.splice(0).forEach((deliver) => deliver());
-    };
-  };
   return { iframe, hold, held };
 }
 

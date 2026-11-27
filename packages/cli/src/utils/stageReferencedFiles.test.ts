@@ -160,9 +160,10 @@ describe("leftOutNotice", () => {
 
   it("names the first five escaped, counts the rest and says how to keep them", () => {
     const leftOut = ["a\x1b[2J.png", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt", "g.txt"];
-    const notice = leftOutNotice("compare a.html", { leftOut, complete: false });
+    const notice = leftOutNotice("compare a\x1b[2J\nb.html", { leftOut, complete: false });
 
     expect(notice).not.toContain("\x1b");
+    expect(notice).toMatch(/^compare a\\x1b\[2J\\x0ab\.html: left out /);
     expect(notice).toContain("a\\x1b[2J.png, b.txt, c.txt, d.txt, e.txt, and 2 more.");
     expect(notice).toContain("too large or too many");
     expect(notice).toContain("pass the project folder");

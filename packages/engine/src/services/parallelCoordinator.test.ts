@@ -1,4 +1,5 @@
 import { availableParallelism, totalmem } from "os";
+import { join } from "path";
 import { getHeapStatistics } from "v8";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
@@ -6,6 +7,7 @@ import {
   computeWorkerSizing,
   createPoolFailureHandler,
   distributeFrames,
+  distributeFramesInterleaved,
   expectedFramesForTask,
   flagSilentWorkerExits,
   formatPoolFailure,
@@ -16,6 +18,7 @@ import {
   selectWorkerDiagnostics,
   shouldDisableBrowserPoolForParallelWorker,
   shouldVerifyWorkerGpu,
+  shrinkTasks,
   synthesizeSilentWorkerExitError,
   withParallelWorkerDeadline,
   resolveParallelDeVerifySamples,
@@ -49,6 +52,61 @@ describe("parallel worker phase deadline", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("a worker phase started after the pool was cancelled", () => {
+  it("rejects as cancelled and leaves no unhandled rejection when the phase fails later", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const controller = new AbortController();
+      controller.abort();
+      let failPhase!: (error: Error) => void;
+      const phase = new Promise<void>((_, reject) => (failPhase = reject));
+      const diagnostic = {
+        workerId: 1,
+        phase: "session_init" as const,
+        browserExecutable: "chrome",
+        browserVersion: "unknown",
+        canvasDrawElement: false,
+        gpuBackend: "unknown",
+      };
+      await expect(
+        withParallelWorkerDeadline(phase, diagnostic, 0, controller.signal),
+      ).rejects.toThrow("Parallel worker cancelled");
+      failPhase(new Error("page failed to load"));
+      await new Promise((settle) => setImmediate(settle));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+});
+
+describe("shrinkTasks", () => {
+  it("re-splits an interleaved pool across the kept workers, covering every frame once", () => {
+    const tasks = distributeFramesInterleaved(10, 4, "/tmp/work", 100);
+    expect(shrinkTasks(tasks, 2)).toBe(true);
+    const frames = tasks.flatMap((task) => {
+      const out: number[] = [];
+      for (let f = task.startFrame; f < task.endFrame; f += task.frameStride ?? 1) out.push(f);
+      return out;
+    });
+    expect(tasks.map((task) => task.outputDir)).toEqual([
+      join("/tmp/work", "worker-0"),
+      join("/tmp/work", "worker-1"),
+    ]);
+    expect(frames.sort((a, b) => a - b)).toEqual(Array.from({ length: 10 }, (_, i) => 100 + i));
+  });
+
+  it("leaves a pool it cannot re-split unchanged", () => {
+    const tasks = distributeFrames(10, 3, "/tmp/work");
+    tasks[1]!.startFrame = 5;
+    const before = structuredClone(tasks);
+    expect(shrinkTasks(tasks, 2)).toBe(false);
+    expect(tasks).toEqual(before);
   });
 });
 
@@ -131,6 +189,7 @@ describe("calculateOptimalWorkers", () => {
   });
 });
 
+vi.mock("fs", async () => (await import("./__fixtures__/noCgroupFs.js")).fsWithoutCgroup());
 vi.mock("os", async (importOriginal) => {
   const os = await importOriginal<typeof import("os")>();
   return {

@@ -1,15 +1,17 @@
+import { portablePrivatePattern } from "@hyperframes/parsers/private-path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   ManifestInvalid,
+  localBaseDigest,
   parseCanonicalManifest,
   parseManifest,
   parseStoredManifest,
 } from "../src/sources/manifest.mjs";
 import { overLimit, V1_LIMITS } from "../src/sources/limits.mjs";
-import { excludedFolder, skippedSymlink } from "../src/sources/pathPolicy.mjs";
+import { excludedFolder, skippedSymlink, validatePath } from "../src/sources/pathPolicy.mjs";
 
 /** Reference vectors for the source manifest format. */
 const vectors = JSON.parse(
@@ -30,11 +32,11 @@ function refusal(run) {
   return null;
 }
 
-test("the vectors are portable-source-v4's, and there are vectors of every kind", () => {
-  assert.equal(vectors.policy_version, "portable-source-v4");
+test("the vectors are portable-source-v13's, and there are vectors of every kind", () => {
+  assert.equal(vectors.policy_version, "portable-source-v13");
   assert.deepEqual(
     [vectors.valid.length, vectors.invalid.length, vectors.limits.length, vectors.stored.length],
-    [11, 147, 5, 8],
+    [15, 248, 5, 8],
   );
 });
 
@@ -122,25 +124,67 @@ test("a capture skips only folders no included file can be under", () => {
   assert.equal(excludedFolder("assets/renders"), false);
 });
 
-test("an upload refuses a .hyperframes folder below the root; a stored snapshot still reads one", () => {
+function manifestWith(path, includeHidden = false) {
   const blob = { sha256: "0".repeat(64), size: 0 };
-  const manifest = (path) => ({
+  return {
     format_version: 1,
     entrypoint: "index.html",
     files: [
       { path: "index.html", ...blob },
-      { path, ...blob },
-    ].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path))),
+      { path, ...blob, ...(includeHidden && { include_hidden: true }) },
+    ],
+  };
+}
+
+for (const [name, path, rule] of [
+  [
+    "a hidden image with a fullwidth extension letter",
+    "art/.icons/logo.\uFF50ng",
+    "unrecognized-hidden",
+  ],
+  [
+    "a hidden image in a compatibility spelling of the render folder",
+    "\uFF52enders/.icons/logo.png",
+    "root-generated-output",
+  ],
+]) {
+  test(`a hidden marker refuses ${name}`, () => {
+    const expected = { code: "excluded_path", path, rule };
+    assert.throws(() => validatePath(path, "current", true), expected);
+    assert.deepEqual(refusal(() => parseManifest(manifestWith(path, true)))?.violations, [
+      expected,
+    ]);
   });
-  const error = refusal(() => parseManifest(manifest("sub/.hyperframes/agent-runs.jsonl")));
+}
+
+test("a v4 base retains the digest of a path segment containing only a zero-width joiner", () => {
+  const old = manifestWith("assets/\u200d/cover.svg");
+  assert.equal(
+    localBaseDigest(old),
+    "67183e170a22454c5b4847c6774c9efc2912192294173e9c7e58d37c98625d6d",
+  );
+  assert.equal(refusal(() => parseStoredManifest(old))?.code, "path_empty_segment");
+  assert.equal(refusal(() => parseManifest(old))?.code, "path_empty_segment");
+  assert.equal(
+    refusal(() => localBaseDigest(manifestWith("assets//cover.svg")))?.code,
+    "path_empty_segment",
+  );
+});
+
+test("an upload refuses a .hyperframes folder below the root; a stored snapshot still reads one", () => {
+  const error = refusal(() => parseManifest(manifestWith("sub/.hyperframes/agent-runs.jsonl")));
   assert.equal(error?.code, "excluded_path");
   assert.equal(error?.violations[0]?.rule, "nested-hyperframes-state");
-  assert.equal(parseManifest(manifest(".hyperframes/studio-motion.json")).document.files.length, 2);
   assert.equal(
-    refusal(() => parseManifest(manifest(".hyperframes/agent-runs.jsonl")))?.violations[0]?.rule,
+    parseManifest(manifestWith(".hyperframes/studio-motion.json")).document.files.length,
+    2,
+  );
+  assert.equal(
+    refusal(() => parseManifest(manifestWith(".hyperframes/agent-runs.jsonl")))?.violations[0]
+      ?.rule,
     "known-hyperframes-state",
   );
-  const stored = parseStoredManifest(manifest("sub/.hyperframes/agent-runs.jsonl"));
+  const stored = parseStoredManifest(manifestWith("sub/.hyperframes/agent-runs.jsonl"));
   assert.equal(stored.document.files.length, 2);
   assert.equal(excludedFolder("sub/.hyperframes"), true);
   assert.equal(excludedFolder(".hyperframes/transcripts/x/.hyperframes"), true);
@@ -151,4 +195,14 @@ test("only links under assets/podcast/, in any spelling, are skipped", () => {
   assert.equal(skippedSymlink("Assets/Podcast/raw/cam-a.mov"), true);
   assert.equal(skippedSymlink("assets/cam-a.mov"), false);
   assert.equal(skippedSymlink("other/assets/podcast/cam-a.mov"), false);
+});
+
+test("the portable contract tracks the complete parser private-path expression", () => {
+  const policy = JSON.parse(
+    readFileSync(new URL("../src/sources/contract/path-policy.json", import.meta.url), "utf8"),
+  );
+  assert.equal(
+    policy.rules.find(({ id }) => id === "private-source").regex,
+    portablePrivatePattern,
+  );
 });

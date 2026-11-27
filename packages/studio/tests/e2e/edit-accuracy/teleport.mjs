@@ -121,7 +121,8 @@ function frameSampler() {
   window.__editBenchFrames = rec;
   // The clock each preview stamps its geometry pushes on: the same instant reads the same in every document.
   const clock = () => performance.timeOrigin + performance.now();
-  for (const type of ["pointerdown", "pointermove", "pointerup"])
+  // Studio may post a sealed step on pointerrawupdate, so the frame can paint it before its coalesced pointermove.
+  for (const type of ["pointerdown", "pointerrawupdate", "pointermove", "pointerup"])
     window.addEventListener(
       type,
       (e) => {
@@ -273,7 +274,10 @@ function frameSampler() {
     const waiting = document.querySelector("[data-dom-edit-press-waiting]");
     return {
       ...(outline && { outline: quadOf(outline) }),
-      ...(waiting && { waitingQuad: quadOf(waiting) }),
+      ...(waiting && {
+        waitingQuad: quadOf(waiting),
+        waitingOnSave: waiting.getAttribute("data-dom-edit-press-waiting") !== "frame",
+      }),
     };
   };
   // Each push becomes a sample paired with the pointer at the push's own stamp, so a late push is never scored
@@ -444,12 +448,24 @@ function trackers(gesture, first, p0) {
 
 const round = (v) => Math.round(v * 100) / 100;
 
+/** Until the pointer moves, a box waiting only on the frame's answer is Studio's resting outline: read the element. */
+function untilPointerMoves(frames) {
+  const [x, y] = frames[0]?.pointer ?? [];
+  const moved = frames.findIndex((f) => f.pointer[0] !== x || f.pointer[1] !== y);
+  const atRest = (i) => moved < 0 || i < moved;
+  return frames.map((f, i) =>
+    f.waitingQuad && !f.waitingOnSave && atRest(i) ? { ...f, waitingQuad: undefined } : f,
+  );
+}
+
 /** Fails a frame whose tracked point outran the pointer or left its path; after release, the release point. */
 // fallow-ignore-next-line complexity
 export function scoreTeleport(gesture, samples) {
-  const frames = samples
-    .filter((s) => s.quad && s.root && s.pointer)
-    .map((s) => ({ ...s, map: compositionMapper(s.root, COMPOSITION) }));
+  const frames = untilPointerMoves(
+    samples
+      .filter((s) => s.quad && s.root && s.pointer)
+      .map((s) => ({ ...s, map: compositionMapper(s.root, COMPOSITION) })),
+  );
   if (frames.length < 2) {
     const count = (f) => samples.filter(f).length;
     const failed = samples.find((s) => s.error)?.error;

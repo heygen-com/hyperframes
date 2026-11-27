@@ -25,6 +25,7 @@
  * the next couple of hundred milliseconds, and no further event is dispatched
  * while it does.
  */
+import { fromStudioPreview } from "../../player/lib/bridgePlayback";
 import { usePlayerStore } from "../../player/store/playerStore";
 
 const AWAKE_MS = 400;
@@ -65,17 +66,6 @@ let lastPreviewFrame: number | null = null;
 let lastPreviewPlaying: boolean | null = null;
 
 /**
- * The preview iframe is served by the editor's own origin (`useTimelinePlayer`
- * builds its src against `window.location.origin`), so a message from anywhere
- * else is not the preview whatever its payload claims. Answered before the
- * payload is read, because a sender we do not trust controls every field in it.
- */
-function isFromPreviewOrigin(event: MessageEvent): boolean {
-  if (typeof window === "undefined") return true;
-  return event.origin === window.location.origin;
-}
-
-/**
  * `window` also receives postMessage traffic from extensions, devtools and any
  * other embed on the page. Waking on those would hold the overlays awake for
  * reasons that have nothing to do with the preview.
@@ -98,7 +88,9 @@ function previewStateOf(data: {
 }
 
 function onPreviewMessage(event: MessageEvent): void {
-  if (!isFromPreviewOrigin(event)) return;
+  // Only a preview frame Studio built, from an origin it can have (a sealed one's is opaque): anything else on the page
+  // can post the same payload. Checked before the payload is read.
+  if (!fromStudioPreview(event)) return;
   const data: unknown = event.data;
   if (!isPreviewPayload(data)) return;
   const state = previewStateOf(data);

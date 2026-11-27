@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { parseNumeric } from "@hyperframes/parsers/composition-contract";
 import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
-import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { findFfBinary, mediaInputArgs } from "@hyperframes/parsers/ff-binaries";
 import {
   cleanAssetUrl,
   isRemoteOrInlineUrl,
@@ -12,7 +12,7 @@ import {
   maskNonScannableRanges,
   resolveExistingLocalAsset,
 } from "@hyperframes/parsers/asset-resolution";
-import { parseHTML } from "linkedom";
+import { parseLintHtml } from "./readableHtml.js";
 import type { HyperframeLintFinding } from "./types.js";
 import { mediaSrcOf, mediaSrcTagRe } from "./utils";
 
@@ -89,7 +89,7 @@ async function probeIsHevc(ffprobePath: string, filePath: string): Promise<boole
     const stdout = await execFileAsync(ffprobePath, [
       "-v",
       "error",
-      ...mediaInputFormatArgs(ffprobePath, filePath),
+      ...mediaInputArgs(ffprobePath, filePath),
       "-select_streams",
       "v:0",
       "-show_entries",
@@ -150,7 +150,7 @@ interface UnresolvedFiniteVideoSlot extends Omit<LocalFiniteVideoSlot, "src"> {
 }
 
 function collectVideoElements(html: string): Element[] {
-  const { document } = parseHTML(html);
+  const { document } = parseLintHtml(html);
   const roots: ParentNode[] = [document];
   const videos: Element[] = [];
   for (let index = 0; index < roots.length; index++) {
@@ -247,7 +247,7 @@ async function probePlayableVideoDuration(
       await execFileAsync(ffprobePath, [
         "-v",
         "error",
-        ...mediaInputFormatArgs(ffprobePath, filePath),
+        ...mediaInputArgs(ffprobePath, filePath),
         "-select_streams",
         "v:0",
         "-show_entries",

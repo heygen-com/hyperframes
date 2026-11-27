@@ -168,11 +168,37 @@ function typedResponse(response: Response, asked: number, request: WatchedReques
   return new Response(body, { status, statusText, headers });
 }
 
+const OTHER_ADDRESS = "OtherAddress";
+
+const addressOf = (input: RequestInfo | URL): string =>
+  typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+
+function oneAddress(reader: MediaReader) {
+  let address: string | undefined;
+  return (input: RequestInfo | URL, asked: number): void => {
+    address ??= addressOf(input);
+    if (addressOf(input) !== address) throw new MediaFetchError(reader, null, OTHER_ADDRESS, asked);
+  };
+}
+
+const neverRetried = (error: unknown): boolean =>
+  error instanceof MediaFetchError &&
+  (error.code === OTHER_ADDRESS || (error.status !== null && error.status < 500));
+
+/** A playlist names other addresses to read, so it is left out of the formats Studio reads. */
+export function selfContainedFormats<Format>(mediabunny: {
+  ALL_FORMATS: Format[];
+  HLS: Format;
+}): Format[] {
+  return mediabunny.ALL_FORMATS.filter((format) => format !== mediabunny.HLS);
+}
+
 /**
- * Options for a mediabunny `UrlSource`. Its default retries a same-origin network failure
+ * Options for one mediabunny `UrlSource`. Its default retries a same-origin network failure
  * forever and logs a bare `TypeError` each time; these retry twice and fail with a MediaFetchError.
  */
 export function mediaUrlSourceOptions(reader: MediaReader) {
+  const only = oneAddress(reader);
   // Per start byte: a resume asks for a new start, while asking for one again uses its budget up.
   const failuresByStart = new Map<number | null, number>();
   const inFlightReads = new AbortController();
@@ -183,6 +209,7 @@ export function mediaUrlSourceOptions(reader: MediaReader) {
   const fetchFn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const sent = ranges === "readable" ? boundedRange(init) : init;
     const asked = Number(rangeStart(sent, true) ?? 0);
+    only(input, asked);
     const request = watchedRequest(
       reader,
       init?.signal ? [inFlightReads.signal, init.signal] : [inFlightReads.signal],
@@ -194,12 +221,11 @@ export function mediaUrlSourceOptions(reader: MediaReader) {
     return typedResponse(response, asked, request);
   };
   const getRetryDelay = (_previousAttempts: number, error: unknown): number | null => {
+    if (isAbort(error)) return null;
     const start = error instanceof MediaFetchError ? error.start : null;
     const failed = failuresByStart.get(start) ?? 0;
-    const clientError =
-      error instanceof MediaFetchError && error.status !== null && error.status < 500;
     if (error instanceof MediaFetchError) error.setRetries(failed);
-    if (clientError || failed >= MAX_RETRIES) return null;
+    if (neverRetried(error) || failed >= MAX_RETRIES) return null;
     failuresByStart.set(start, failed + 1);
     return 0.5 * (failed + 1);
   };

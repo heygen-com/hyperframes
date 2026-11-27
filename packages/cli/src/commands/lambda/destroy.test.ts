@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stateFilePath, writeStackOutputs } from "./state.js";
 
 const samDirs = vi.hoisted(() => [] as string[]);
-vi.mock("./repoRoot.js", () => ({ repoRoot: () => undefined }));
+const root = vi.hoisted(() => ({ value: undefined as string | undefined }));
+vi.mock("./repoRoot.js", () => ({ repoRoot: () => root.value }));
 vi.mock("./sam.js", () => ({
   samDelete: vi.fn((opts: { samDir: string }) => {
     samDirs.push(opts.samDir);
@@ -20,6 +21,10 @@ let cwd: string;
 let previousCwd: string;
 let quiet: { mockRestore(): void };
 
+const ESC = String.fromCharCode(27);
+const ODD = `od${ESC}[2Jd\x07`;
+const SHOWN = "od\\x1b[2Jd\\x07";
+
 beforeEach(() => {
   cwd = mkdtempSync(join(tmpdir(), "hf-lambda-destroy-"));
   previousCwd = process.cwd();
@@ -32,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   quiet.mockRestore();
+  root.value = undefined;
   process.chdir(previousCwd);
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -58,6 +64,18 @@ describe("runDestroy", () => {
     expect(existsSync(stateFilePath("Demo", cwd))).toBe(false);
   });
 
+  it("in a source checkout, says which checkout it deletes from and runs sam there", async () => {
+    writeStackOutputs(stack, cwd);
+    root.value = cwd;
+
+    await runDestroy({ stackName: "Demo" });
+
+    expect(samDirs).toEqual([join(cwd, "examples", "aws-lambda")]);
+    expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain(
+      `Using the source checkout at ${cwd}`,
+    );
+  });
+
   it("deletes the stack's own video repository, whatever name the state file records", async () => {
     writeStackOutputs({ ...stack, videoRepository: "someone-elses-repo" }, cwd);
 
@@ -67,4 +85,21 @@ describe("runDestroy", () => {
       expect.objectContaining({ repositoryName: "demo-video" }),
     );
   });
+
+  // fails without the fix: the stack name, in the progress lines, is printed as it is stored.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in the stack and repository names as text",
+    async () => {
+      const stackName = `De${ODD}mo`;
+      writeStackOutputs({ ...stack, stackName, videoRepository: "repo" }, cwd);
+
+      await runDestroy({ stackName });
+
+      const printed = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(printed).toContain(`sam delete (stack=De${SHOWN}mo region=us-east-1)`);
+      expect(printed).toContain(`Deleting ECR repository de${SHOWN.toLowerCase()}mo-video`);
+      expect(printed).not.toContain(ESC);
+      expect(samDelete).toHaveBeenCalledWith(expect.objectContaining({ stackName }));
+    },
+  );
 });

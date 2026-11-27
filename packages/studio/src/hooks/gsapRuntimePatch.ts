@@ -10,8 +10,35 @@ import {
   type PatchTarget,
   type RuntimeTweenChange,
 } from "@hyperframes/core/runtime/patch-tween";
+import { swapWaiting, type SoftReloadWindow } from "@hyperframes/core/runtime/soft-reload";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 
 export type { RuntimeTweenChange, SetPatchProps } from "@hyperframes/core/runtime/patch-tween";
+
+// A composition can name its own error class anything, so only these names leave the machine.
+const REPORTED_ERROR_NAMES = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "EvalError",
+  "URIError",
+  "AggregateError",
+  "SecurityError",
+  "InvalidStateError",
+  "NotFoundError",
+  "DataCloneError",
+]);
+// The film controls the thrown value and its realm: read its name (never instanceof); a throwing name is 'other'.
+function reportedErrorName(error: unknown): string {
+  try {
+    const name = (error as { name?: unknown } | null)?.name;
+    return typeof name === "string" && REPORTED_ERROR_NAMES.has(name) ? name : "other";
+  } catch {
+    return "other";
+  }
+}
 
 function reachablePreview(iframe: HTMLIFrameElement): PatchTarget {
   const win = iframe.contentWindow as
@@ -42,11 +69,16 @@ export function patchRuntimeTweenInPlace(
 ): boolean {
   if (!iframe) return false;
   try {
+    if (iframe.contentWindow && swapWaiting(iframe.contentWindow as SoftReloadWindow)) return false;
     const target = reachablePreview(iframe);
     if (change.kind !== "global-set")
       return patchTween(target, selector, change, compositionId, deferSeek);
     return applyGlobalSet(target, selector, change.props) !== null;
-  } catch {
+  } catch (error) {
+    trackStudioEvent("gsap_instant_patch_threw", {
+      error_name: reportedErrorName(error),
+    });
+    console.error("[Studio] An in-place tween patch threw; reloading the preview instead", error);
     return false;
   }
 }

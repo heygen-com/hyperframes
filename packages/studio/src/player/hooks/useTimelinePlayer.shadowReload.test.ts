@@ -5,7 +5,11 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPreviewReload";
-import { refusedPreviewMessage } from "@hyperframes/core/studio-preview-mark";
+import {
+  refusedPreviewMessage,
+  STUDIO_PREVIEW_ERROR_KINDS,
+  STUDIO_PREVIEW_PAGE_DEADLINE_MS,
+} from "@hyperframes/core/studio-preview-mark";
 import { usePlayerStore } from "../store/playerStore";
 import { isPreviewChanging } from "../previewReloading";
 import { studioWriteHeaders } from "../../utils/studioFileVersion";
@@ -429,7 +433,8 @@ describe("shadow reload readiness and failure", () => {
 
   const loaded = { URL: "http://127.0.0.1/preview", readyState: "complete" };
   it.each([
-    ["no-page", {}, { ...loaded, URL: "about:blank" }],
+    ["blank", {}, { ...loaded, URL: "about:blank" }],
+    ["unreadable", {}, null],
     ["page-loading", {}, { ...loaded, readyState: "loading" }],
     ["startup-error", { __hfStartupError: "failed", __hyperframes: {} }, loaded],
     ["runtime-not-run", {}, loaded],
@@ -457,6 +462,81 @@ describe("shadow reload readiness and failure", () => {
     },
   );
 
+  it("says no frame was there when a shadow gives up before its frame is added", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { root } = beginReload({ onPreviewReloadFailed });
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    const [message] = onPreviewReloadFailed.mock.calls[0]!;
+    expect(message).toContain("Its page had got to: no-frame.");
+    expect(message).not.toContain("Its frame");
+    unmount(root);
+  });
+
+  it("says a blank shadow frame was never given a page address, and when it was added", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    act(() => void vi.advanceTimersByTime(1000));
+    const shadow = makeFakeIframe({});
+    Object.defineProperty(shadow, "contentDocument", {
+      value: { ...loaded, URL: "about:blank" },
+    });
+    act(() => getApi().setShadowIframeNode(shadow));
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    const [message] = onPreviewReloadFailed.mock.calls[0]!;
+    expect(message).toContain(
+      `Its page had got to: blank. Its frame was never given a page address and was added ${FULL_WAIT_MS - 1000} ms ago.`,
+    );
+    unmount(root);
+  });
+
+  it("waits while its frame waits on the server for the page, and spends its budget once the page arrives", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeFakeIframe({});
+    shadow.setAttribute("src", "/api/projects/demo/preview");
+    const page = { ...loaded, URL: "about:blank" };
+    Object.defineProperty(shadow, "contentDocument", { get: () => page });
+    act(() => getApi().setShadowIframeNode(shadow));
+
+    act(() => void vi.advanceTimersByTime(61_000));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    page.URL = loaded.URL;
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    expect(onPreviewReloadFailed).toHaveBeenCalledTimes(1);
+    expect(onPreviewReloadFailed.mock.calls[0]![0]).toContain(
+      "Its page had got to: runtime-not-run.",
+    );
+    unmount(root);
+  });
+
+  it("gives up on a frame whose page never arrives once the server's own page deadline has passed", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeFakeIframe({});
+    shadow.setAttribute("src", "/api/projects/demo/preview");
+    Object.defineProperty(shadow, "contentDocument", { value: { ...loaded, URL: "about:blank" } });
+    act(() => getApi().setShadowIframeNode(shadow));
+
+    act(() => void vi.advanceTimersByTime(STUDIO_PREVIEW_PAGE_DEADLINE_MS));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS + FULL_WAIT_MS));
+    expect(onPreviewReloadFailed).toHaveBeenCalledTimes(1);
+    expect(onPreviewReloadFailed.mock.calls[0]![0]).toContain(
+      "Its page had got to: blank. Its frame was given a page address",
+    );
+    unmount(root);
+  });
+
   it("names the timeline when a shadow's runtime runs but never reports a length", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -478,7 +558,7 @@ describe("shadow reload readiness and failure", () => {
   });
 
   // fails without the fix: a sealed shadow refuses every read, so it was always reported as a page that never loaded.
-  it("says only what a sealed shadow reported when it fails to reload", () => {
+  it("names a sealed shadow's step as sealed, without reading its page, when it fails to reload", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onPreviewReloadFailed = vi.fn();
@@ -494,7 +574,8 @@ describe("shadow reload readiness and failure", () => {
 
     const [message] = onPreviewReloadFailed.mock.calls[0]!;
     expect(message).toContain("still waiting for its runtime to report a timeline");
-    expect(message).not.toContain("Its page had got to");
+    expect(message).toContain("Its page had got to: sealed.");
+    expect(message).not.toContain("Its frame");
     unmount(root);
   });
 
@@ -766,6 +847,42 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  // fails without the fix: a host's error tracker strips the error's text and kept only its class, so a reload
+  // broken by the project's own script could not be told from one broken by the runtime or Studio.
+  it("logs where the page's first error came from, and keeps it out of the message people see", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const thrown = makeFakeIframe({
+      [STUDIO_PREVIEW_ERROR_KINDS]: [
+        { name: "TypeError", origin: "project" },
+        { name: "TypeError", origin: "runtime" },
+      ],
+    });
+    act(() => getApi().setShadowIframeNode(thrown));
+
+    act(() => getApi().onShadowError(gen, "Uncaught TypeError: x is not a function"));
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\[studio\] The preview did not reload \(Uncaught TypeError: x is not a function\)\..* Its first page error came from: project\.$/,
+      ),
+    );
+    expect(onPreviewReloadFailed.mock.calls[0]![0]).not.toContain("came from");
+    unmount(root);
+  });
+
+  it("logs no error origin for a page that recorded none", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getApi, gen, root } = beginReload();
+    act(() => getApi().setShadowIframeNode(makeFakeIframe({})));
+
+    act(() => getApi().onShadowError(gen, "Composition timeline not found after 8s"));
+
+    expect(consoleError.mock.calls[0]![0]).not.toContain("came from");
+    unmount(root);
+  });
+
   it("drops a shadow whose document reports an error and reports the cause", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const onPreviewReloadFailed = vi.fn();
@@ -890,7 +1007,7 @@ describe("shadow reload store ownership and readiness", () => {
   it("keeps a section the new document still hosts but its manifest misses, without dropping it once", () => {
     const { getApi, gen, liveIframe, shadowIframe, root } = setup();
     const film = `<div data-composition-id="main"><div id="benefit" data-composition-id="benefit"
-      data-composition-src="compositions/benefit.html" data-start="0" data-duration="3"></div><p id="a"></p></div>`;
+      data-composition-src="compositions/benefit.html" data-composition-file="compositions/benefit.html" data-start="0" data-duration="3"></div><p id="a"></p></div>`;
     liveIframe.contentDocument!.body.innerHTML = film;
     shadowIframe.contentDocument!.body.innerHTML = film;
     const a = { id: "a", domId: "a", tag: "p", start: 0, duration: 3, track: 0 };

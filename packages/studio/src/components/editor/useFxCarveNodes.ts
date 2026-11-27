@@ -24,10 +24,7 @@ import {
 import { fxAutomationTarget, type HfAutomationLane } from "@hyperframes/core/audio-automation";
 import { clipStart } from "./propertyPanelAudioFxGroupUtils.js";
 import { clipAudioOnItsClock, type ClipClock } from "./clipAudioClock.js";
-import { studioApiFetch } from "../../utils/studioApiFetch";
-
-/** Decode rate every carve measurement shares — see `measureCarve`. */
-const DECODE_SAMPLE_RATE = 48000;
+import { analysisRateOf, readPcm } from "../../utils/projectPcm";
 
 /**
  * Turns the analysed bands (and, if the carve is asked to match levels, a
@@ -85,6 +82,7 @@ export async function measureCarve(
   carved: HfAudioFxChain;
   duck: { t: number; v: number }[];
   voiceMix: Float32Array;
+  sampleRate: number;
 } | null> {
   // Decoded in an OfflineAudioContext, not a live one. Opening a second output
   // device mid-playback makes the running track glitch while the hardware is
@@ -94,13 +92,13 @@ export async function measureCarve(
     (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
       .webkitOfflineAudioContext;
   if (!Ctor) return null;
+  const urlOf = (relative: string) => new URL(relative, doc.baseURI).href;
+  const sources = [...voices.map((voice) => voice.src), ...(bed.src ? [bed.src] : [])];
+  const rate = await analysisRateOf(sources.map(urlOf));
   // Each clip as it plays: trimmed to its in-point and duration, and at its own speed.
   const decode = async (relative: string, clock: ClipClock): Promise<Float32Array> => {
-    const res = await studioApiFetch(new URL(relative, doc.baseURI).href);
-    const buffer = await new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(
-      await res.arrayBuffer(),
-    );
-    return clipAudioOnItsClock(buffer.getChannelData(0), DECODE_SAMPLE_RATE, clock);
+    const samples = await readPcm(urlOf(relative), rate, (r) => new Ctor(1, 1, r));
+    return clipAudioOnItsClock(samples, rate, clock);
   };
   const bedStart = clipStart(bed.start);
   // Every voice, summed onto the bed's own clock. One question — where and
@@ -114,7 +112,7 @@ export async function measureCarve(
       offsetSeconds: clipStart(voice.start) - bedStart,
     })),
   );
-  const mixed = mixCarveSources(decoded, DECODE_SAMPLE_RATE);
+  const mixed = mixCarveSources(decoded, rate);
   if (mixed.length === 0) return null;
   // Strength is what the author set; these are the numbers it means.
   const profile = carveProfile(strength);
@@ -123,13 +121,11 @@ export async function measureCarve(
   const bedSamples = bed.src ? await decode(bed.src, bed.clock).catch(() => null) : null;
   // Speech after the bed stops has no bed to carve.
   const voiceMix = bedSamples ? mixed.subarray(0, bedSamples.length) : mixed;
-  const bands = analyseCarveBands(voiceMix, DECODE_SAMPLE_RATE, profile);
+  const bands = analyseCarveBands(voiceMix, rate, profile);
   // The level half of the carve, measured against the speech it has to sit
   // under. No offset to apply: the mix is already on the bed's clock.
-  const duck = bedSamples
-    ? analyseCarveDuck(voiceMix, bedSamples, DECODE_SAMPLE_RATE, profile, 0)
-    : [];
-  return { bands, carved: carveBandsToChain(bands), duck, voiceMix };
+  const duck = bedSamples ? analyseCarveDuck(voiceMix, bedSamples, rate, profile, 0) : [];
+  return { bands, carved: carveBandsToChain(bands), duck, voiceMix, sampleRate: rate };
 }
 
 /** Each filter's depth as an envelope, plus the level envelope if there is one. */
@@ -139,10 +135,11 @@ export function carveLanes(
   duck: { t: number; v: number }[],
   voiceMix: Float32Array,
   bands: ReturnType<typeof analyseCarveBands>,
+  sampleRate: number,
 ): HfAutomationLane[] {
   // Each filter's depth becomes an envelope of the speech's level in that
   // band, so pauses leave the bed alone and whoever is talking sets the depth.
-  const lanes = analyseCarveDynamics(voiceMix, DECODE_SAMPLE_RATE, bands).flatMap((dyn, i) => {
+  const lanes = analyseCarveDynamics(voiceMix, sampleRate, bands).flatMap((dyn, i) => {
     const id = carvedNodes[i]?.id;
     return id ? carveLaneFor(id, dyn.points) : [];
   });

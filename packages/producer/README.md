@@ -45,13 +45,20 @@ through a proxy name, list that name in `allowedHosts` or in the comma-separated
 `PRODUCER_ALLOWED_HOSTS` variable. Requests without those headers, such as curl or
 another service, are unaffected.
 
-The server listens on `127.0.0.1` unless you pass `hostname` or set `PRODUCER_HOST`. To
-listen on any other address, also set `authToken` or `PRODUCER_AUTH_TOKEN`. Every route
-except `/health` then requires `Authorization: Bearer <token>`, and the server refuses to
-start without one. A request's `projectDir` must resolve, symlinks included, inside
+Every route except `/health` requires `Authorization: Bearer <token>`. Set the token with
+`authToken` or `PRODUCER_AUTH_TOKEN`. If you set none, `startServer` makes one for the run
+and writes it to `~/.hyperframes/producer/<port>.token` (or `authTokenFile`, or
+`PRODUCER_AUTH_TOKEN_FILE`), readable only by the account that runs the server, and logs
+that path. Any local account, container or program can reach a loopback port, so the
+server never listens without a token. It listens on `127.0.0.1` unless you pass
+`hostname` or set `PRODUCER_HOST`, and it refuses any other address unless you set the
+token yourself. `createProducerApp` without `authToken`, and `createRenderHandlers`
+always, check no caller: serve them only behind your own authentication.
+
+A request's `projectDir` must resolve, symlinks included, inside
 `projectsDir` (`PRODUCER_PROJECTS_DIR`, default: the working directory). Its `entryFile`
 must stay inside that project, and `outputPath` must be inside `rendersDir`
-(`PRODUCER_RENDERS_DIR`, default `/tmp`). `debug: true` is refused unless you set
+(`PRODUCER_RENDERS_DIR`, default: a new private folder in the OS temp dir). `debug: true` is refused unless you set
 `allowDebug` or `PRODUCER_ALLOW_DEBUG=1`. `createProducerApp` applies these path and
 debug checks by default. `createRenderHandlers`, for mounting the handlers inside your own
 trusted service, applies them only with `confineRequests: true`.
