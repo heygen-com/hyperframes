@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi, type TestContext } from "vitest";
 import { Hono } from "hono";
 import {
