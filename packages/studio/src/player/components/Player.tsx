@@ -219,7 +219,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
         const retryPreview = () => {
           retryCountRef.current += 1;
-          const retryUrl = new URL(src, window.location.origin);
+          const retryUrl = new URL(swap.src(primed), window.location.origin);
           retryUrl.searchParams.set("_hfStudioRetry", String(retryCountRef.current));
           setPreviewError(null);
           setCompositionLoading(true);

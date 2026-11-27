@@ -245,6 +245,19 @@ describe("a host's sandbox origin", () => {
     });
     await settle();
     expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
+
+    // A later retry keeps the current token, never the stale one.
+    act(() => {
+      player.dispatchEvent(new CustomEvent("error", { detail: { message: "refused" } }));
+    });
+    const retry = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent === "Retry preview",
+    );
+    if (!retry) throw new Error("retry action did not render");
+    act(() => retry.click());
+    expect(player.getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+    );
   });
 
   it.each([
