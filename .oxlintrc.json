@@ -87,6 +87,11 @@
             "object": "self",
             "property": "fetch",
             "message": "Use studioApiFetch (utils/studioApiFetch.ts): it keeps Studio's requests off the preview media's sockets."
+          },
+          {
+            "object": "postcss",
+            "property": "parse",
+            "message": "Parse CSS with parseCss from @hyperframes/parsers/postcss: it never opens the file a sourceMappingURL comment in the CSS names."
           }
         ]
       }
@@ -96,6 +101,7 @@
       "excludeFiles": [
         "**/*.test.ts",
         "packages/parsers/src/linkedom.ts",
+        "packages/parsers/src/postcss.ts",
         "packages/cli/src/**/*.ts"
       ],
       "rules": {
@@ -106,6 +112,11 @@
               {
                 "name": "linkedom",
                 "message": "Import from @hyperframes/parsers/linkedom: it writes <title> and <textarea> text so it can't close its element."
+              },
+              {
+                "name": "postcss",
+                "importNames": ["parse"],
+                "message": "Parse CSS with parseCss from @hyperframes/parsers/postcss: it never opens the file a sourceMappingURL comment in the CSS names."
               }
             ]
           }
@@ -136,6 +147,77 @@
               {
                 "name": "linkedom",
                 "message": "Import from @hyperframes/parsers/linkedom: it writes <title> and <textarea> text so it can't close its element."
+              },
+              {
+                "name": "postcss",
+                "importNames": ["parse"],
+                "message": "Parse CSS with parseCss from @hyperframes/parsers/postcss: it never opens the file a sourceMappingURL comment in the CSS names."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/*/src/**/*.ts",
+        "packages/*/src/**/*.tsx",
+        "packages/*/src/**/*.mts",
+        "packages/*/src/**/*.cts",
+        "packages/*/src/**/*.js",
+        "packages/*/src/**/*.mjs",
+        "packages/*/src/**/*.cjs"
+      ],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.test.mts",
+        "**/*.test.cts",
+        "**/*.test.js",
+        "**/*.test.mjs",
+        "**/*.test.cjs",
+        "packages/studio/src/**/*.ts",
+        "packages/studio/src/**/*.tsx",
+        "packages/parsers/src/postcss.ts"
+      ],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "postcss",
+            "property": "parse",
+            "message": "Parse CSS with parseCss from @hyperframes/parsers/postcss: it never opens the file a sourceMappingURL comment in the CSS names."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/*/src/**/*.tsx",
+        "packages/*/src/**/*.mts",
+        "packages/*/src/**/*.cts",
+        "packages/*/src/**/*.js",
+        "packages/*/src/**/*.mjs",
+        "packages/*/src/**/*.cjs"
+      ],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.test.mts",
+        "**/*.test.cts",
+        "**/*.test.js",
+        "**/*.test.mjs",
+        "**/*.test.cjs"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "postcss",
+                "importNames": ["parse"],
+                "message": "Parse CSS with parseCss from @hyperframes/parsers/postcss: it never opens the file a sourceMappingURL comment in the CSS names."
               }
             ]
           }

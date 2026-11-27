@@ -7,6 +7,7 @@ import {
 } from "../linearScans";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import { styleRoot } from "../styleRoots";
 import selectorParser from "postcss-selector-parser";
 import { GLSL_SCRIPT_TYPES } from "../shaderDomains";
@@ -691,7 +692,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       if (!inlineStyle || !/transition/i.test(inlineStyle)) continue;
       let root: postcss.Root;
       try {
-        root = postcss.parse(inlineStyle);
+        root = parseCss(inlineStyle);
       } catch {
         continue;
       }

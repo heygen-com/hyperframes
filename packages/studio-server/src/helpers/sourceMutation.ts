@@ -3,6 +3,7 @@ import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { removeElementWithGsapCascade } from "@hyperframes/parsers";
 import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import selectorParser from "postcss-selector-parser";
 import { escapeCssIdentifier } from "@hyperframes/core/compiler/selector-id-tokens";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
@@ -68,7 +69,7 @@ function dropCssRulesForId(document: Document, id: string): void {
     if (!css.includes(idToken)) continue;
     let root: postcss.Root;
     try {
-      root = postcss.parse(css);
+      root = parseCss(css);
     } catch {
       continue;
     }
@@ -96,7 +97,7 @@ function duplicateCssRulesForId(document: Document, originalId: string, newId: s
     const css = styleEl.textContent ?? "";
     let root: postcss.Root;
     try {
-      root = postcss.parse(css);
+      root = parseCss(css);
     } catch {
       continue;
     }
