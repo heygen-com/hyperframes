@@ -74,7 +74,7 @@ it("keeps its port from a composition that patched MessagePort before Studio con
   nativePost.call(studio, { v: 1, id: 1, kind: "hello" });
   expect(await reply).toMatchObject({ id: 1, ok: true });
 
-  // A forged Delete through any port the composition collected would reach Studio as the frame's.
+  // A Delete posted through any port the composition collected would reach Studio as the frame's.
   for (const port of seen) {
     nativePost.call(port, {
       v: 1,
