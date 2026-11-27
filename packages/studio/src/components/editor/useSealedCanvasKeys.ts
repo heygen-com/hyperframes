@@ -201,6 +201,12 @@ type CanvasActionHandler = (event: CanvasKeyActionEvent) => void;
 const actionRoutes = new WeakMap<object, Map<number, CanvasActionHandler>>();
 
 const personActedJustNow = () => navigator.userActivation?.isActive === true;
+const escapeNeedsNoActivation = (key: {
+  key: string;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}) => key.key === "Escape" && !key.altKey && !key.ctrlKey && !key.metaKey;
 
 /** One action listener per frame load, routing by arm revision; a Delete for no known arm rolls back. */
 function canvasActionRoute(iframe: HTMLIFrameElement): Map<number, CanvasActionHandler> {
@@ -223,7 +229,8 @@ function forwardSealedKeys(
   sameLoad: () => boolean,
 ): () => void {
   return previewEditingClient(iframe).onKey((key) => {
-    if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe) || !personActedJustNow()) return;
+    if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
+    if (!personActedJustNow() && !escapeNeedsNoActivation(key)) return;
     (overlayRef.current ?? window).dispatchEvent(
       new KeyboardEvent(key.type, {
         key: key.key,

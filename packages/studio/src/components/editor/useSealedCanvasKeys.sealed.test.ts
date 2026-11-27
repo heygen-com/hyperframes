@@ -537,7 +537,9 @@ it("acts on a frame's Delete or forwarded key only while the person has just cli
   expect(document.getElementById("target")).toBeNull();
   await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
   expect(onDelete).not.toHaveBeenCalled();
-  expect(forwarded).toEqual([]);
+  // Escape never activates a page, and it only cancels: it still reaches Studio.
+  window.dispatchEvent(trustedKey("keydown", { key: "Escape", code: "Escape" }));
+  await vi.waitFor(() => expect(forwarded).toEqual(["Escape"]));
 });
 
 it("lets a drag released on the canvas finish before the keyboard moves into the frame", async () => {
