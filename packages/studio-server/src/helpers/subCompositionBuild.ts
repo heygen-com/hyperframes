@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
+import { STUDIO_PREVIEW_PAGE_DEADLINE_MS } from "@hyperframes/core/studio-preview-mark";
 
 export interface BuildJob {
   kind: "build";
@@ -68,7 +69,7 @@ export class SubCompositionDeadlineError extends Error {
 }
 
 export const SUB_COMPOSITION_DEADLINE_MS = 30_000;
-export const ROOT_PREVIEW_DEADLINE_MS = 120_000;
+export const ROOT_PREVIEW_DEADLINE_MS = STUDIO_PREVIEW_PAGE_DEADLINE_MS;
 
 interface Pending {
   job: SubCompositionJob;

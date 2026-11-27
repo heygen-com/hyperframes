@@ -8,6 +8,7 @@ import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPrevie
 import {
   refusedPreviewMessage,
   STUDIO_PREVIEW_ERROR_KINDS,
+  STUDIO_PREVIEW_PAGE_DEADLINE_MS,
 } from "@hyperframes/core/studio-preview-mark";
 import { usePlayerStore } from "../store/playerStore";
 import { isPreviewChanging } from "../previewReloading";
@@ -511,6 +512,27 @@ describe("shadow reload readiness and failure", () => {
     expect(onPreviewReloadFailed).toHaveBeenCalledTimes(1);
     expect(onPreviewReloadFailed.mock.calls[0]![0]).toContain(
       "Its page had got to: runtime-not-run.",
+    );
+    unmount(root);
+  });
+
+  it("gives up on a frame whose page never arrives once the server's own page deadline has passed", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeFakeIframe({});
+    shadow.setAttribute("src", "/api/projects/demo/preview");
+    Object.defineProperty(shadow, "contentDocument", { value: { ...loaded, URL: "about:blank" } });
+    act(() => getApi().setShadowIframeNode(shadow));
+
+    act(() => void vi.advanceTimersByTime(STUDIO_PREVIEW_PAGE_DEADLINE_MS));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS + FULL_WAIT_MS));
+    expect(onPreviewReloadFailed).toHaveBeenCalledTimes(1);
+    expect(onPreviewReloadFailed.mock.calls[0]![0]).toContain(
+      "Its page had got to: blank. Its frame was given a page address",
     );
     unmount(root);
   });
