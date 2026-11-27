@@ -7,7 +7,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { buildWaveformCacheKey } from "../helpers/waveform.js";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore.js";
 import { fastIndexPath, writeCopyIndex } from "../helpers/proxyCacheKey.js";
-import { getProxyCachePath } from "../helpers/proxyTranscoder.js";
+import { getProxyCachePath, resolveProxy } from "../helpers/proxyTranscoder.js";
+import { registerPreviewRoutes } from "./preview";
 import { registerWaveformRoutes } from "./waveform";
 import { stubAdapter } from "./stubAdapter.test-helpers";
 
@@ -63,6 +64,17 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     utimes: slowed(actual.utimes),
   };
 });
+
+// A video that needs a preview copy, without running ffprobe on the test's bytes.
+vi.mock("../helpers/mediaCodecMap.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../helpers/mediaCodecMap.js")>()),
+  probeAssetCodec: async () => ({
+    codecName: "hevc",
+    browserHostile: true,
+    representativeMime: null,
+    hasAlpha: false,
+  }),
+}));
 
 const roots: string[] = [];
 afterEach(() => {
@@ -135,4 +147,53 @@ it("finding a video's preview copy keeps the thread running while each read wait
   expect(found).toBe(earlier);
   expect(stalls).toBeGreaterThanOrEqual(3);
   expect(held).toBe(0);
+});
+
+/** A project with a video whose preview copy was already made under another key, found through the copy index. */
+async function projectWithIndexedCopy() {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "hf-cache-stall-")));
+  roots.push(dir);
+  writeFileSync(join(dir, "clip.mp4"), "video");
+  const fresh = await getProxyCachePath(dir, join(dir, "clip.mp4"));
+  mkdirSync(dirname(fresh), { recursive: true });
+  const earlier = join(dirname(fresh), `${"a".repeat(64)}.mp4`);
+  writeFileSync(earlier, "copy");
+  writeCopyIndex(fastIndexPath(fresh), earlier);
+  return dir;
+}
+
+// fails without the fix: the route's zero wait started before the copy lookup, so a slow disk turned a made copy into
+// "being made" on every retry.
+it("a preview copy that was already made is served while each read waits on the disk", async () => {
+  const dir = await projectWithIndexedCopy();
+  const app = new Hono();
+  registerPreviewRoutes(app, stubAdapter(dir));
+  let res: Response | undefined;
+  await pingedThroughStalls(dir, async () => {
+    res = await app.request("http://localhost/projects/p/preview/clip.mp4?hf-proxy=h264");
+  });
+  expect(res?.status).toBe(200);
+  expect(await res?.text()).toBe("copy");
+});
+
+// fails without the fix: a lookup that failed while an earlier one held its project's turn had no handler yet.
+it("a copy lookup that fails while it waits its turn reaches only its caller", async () => {
+  const dir = await projectWithIndexedCopy();
+  const unhandled: unknown[] = [];
+  const note = (reason: unknown) => unhandled.push(reason);
+  process.on("unhandledRejection", note);
+  try {
+    let failed: unknown;
+    await pingedThroughStalls(dir, async () => {
+      const first = resolveProxy(dir, join(dir, "clip.mp4"));
+      const second = resolveProxy(dir, join(tmpdir(), "outside.mp4")).catch(
+        (err: unknown) => (failed = err),
+      );
+      await Promise.all([first, second]);
+    });
+    expect(failed).toBeInstanceOf(Error);
+  } finally {
+    process.off("unhandledRejection", note);
+  }
+  expect(unhandled).toEqual([]);
 });

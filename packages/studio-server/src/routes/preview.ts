@@ -107,7 +107,6 @@ import {
   resolveProxy,
   resolveStill,
   retryProxyCopy,
-  waitForProxy,
   ProxyCapacityError,
   ProxyTranscodeError,
   ProxyWaitTimeoutError,
@@ -1092,10 +1091,10 @@ export function registerPreviewRoutes(
         }
         const asked = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER);
         const urgency = asked === "0" ? { background: true } : { priority: asked === "1" };
-        servedPath = await waitForProxy(
-          resolveProxy(project.dir, file, proxyVariant, proxyBox, urgency),
-          0,
-        );
+        servedPath = await resolveProxy(project.dir, file, proxyVariant, proxyBox, {
+          ...urgency,
+          waitMs: 0,
+        });
       } catch (err) {
         if (err instanceof ProxyWaitTimeoutError) {
           const progress = await proxyCopyProgress(project.dir, file, proxyVariant, proxyBox);

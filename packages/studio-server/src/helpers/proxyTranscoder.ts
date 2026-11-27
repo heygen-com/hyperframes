@@ -1233,6 +1233,8 @@ async function lookUpCopy(
 const askOrder = new Map<string, Promise<unknown>>();
 
 function reachQueueInAskOrder<T>(projectDir: string, looked: Promise<T>): Promise<T> {
+  // A lookup can fail while an earlier one holds the turn; its caller still gets the error from `turn`.
+  void looked.catch(() => undefined);
   const turn = (askOrder.get(projectDir) ?? Promise.resolve()).then(() => looked);
   const passed = turn.then(
     () => undefined,
@@ -1327,7 +1329,7 @@ export async function resolveProxy(
     const stop = (): void => void entry.job.progress.delete(listener);
     joined.then(stop, stop);
   }
-  return joined;
+  return options.waitMs === undefined ? joined : waitForProxy(joined, options.waitMs);
 }
 
 /** Batch resolve for check and publish: at most MAX_CONCURRENT_TRANSCODES of its own requests in
@@ -1490,6 +1492,8 @@ async function makeStill(
 
 export interface ResolveProxyOptions {
   limitSeconds?: number;
+  /** How long this caller waits for a copy still being made (never for the lookup); then `ProxyWaitTimeoutError`. */
+  waitMs?: number;
   priority?: boolean;
   background?: boolean;
   signal?: AbortSignal;
