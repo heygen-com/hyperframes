@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -610,11 +611,10 @@ it("requires the local session and an explicit reconnect choice", async () => {
   expect(service.reconnect.list).toHaveBeenCalledWith("team1");
   expect((await request(app, "reconnect", csrf, { project: "Launch" })).status).toBe(400);
   expect(service.reconnect.confirm).not.toHaveBeenCalled();
-  vi.mocked(service.reconnect.confirm).mockResolvedValueOnce({
-    confirmLocalFiles: "reviewed-files",
-  });
+  const confirmLocalFiles = randomUUID();
+  vi.mocked(service.reconnect.confirm).mockResolvedValueOnce({ confirmLocalFiles });
   const difference = await request(app, "reconnect", csrf, { choice: "selected-token" });
-  expect(await difference.json()).toEqual({ confirmLocalFiles: "reviewed-files" });
+  expect(await difference.json()).toEqual({ confirmLocalFiles });
   expect(service.reconnect.confirm).toHaveBeenCalledWith("selected-token");
   expect(service.syncProjectFiles).not.toHaveBeenCalled();
 });
