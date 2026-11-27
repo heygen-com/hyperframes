@@ -860,7 +860,7 @@ export function registerPreviewRoutes(
       });
     }
     const builtKey = `${project.id}\n${etag}`;
-    const cached = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
+    const cached = builtPreviews.get(builtKey) ?? (await adapter.previewDocuments?.read(builtKey));
     if (cached) {
       rememberPreview(builtKey, cached);
       return c.html(marked(cached), 200, previewCacheHeaders(etag));

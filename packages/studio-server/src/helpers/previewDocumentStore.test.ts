@@ -31,38 +31,38 @@ function storedFile(projectDir: string): string {
   return join(dir, name);
 }
 
-it("stores a built document inside the project", () => {
+it("stores a built document inside the project", async () => {
   const projectDir = tempDir();
   const store = createPreviewDocumentStore(projectDir, "salt", "secret");
   store.write("key", "<html></html>");
-  expect(store.read("key")).toBe("<html></html>");
+  expect(await store.read("key")).toBe("<html></html>");
 });
 
-it("does not recreate a project folder renamed away while its preview is open", () => {
+it("does not recreate a project folder renamed away while its preview is open", async () => {
   const projectDir = join(tempDir(), "film");
   const store = createPreviewDocumentStore(projectDir, "salt", "secret");
   store.write("key", "<html></html>");
   expect(existsSync(projectDir)).toBe(false);
 });
 
-it("never serves a document written under another user's secret", () => {
+it("never serves a document written under another user's secret", async () => {
   const projectDir = tempDir();
   createPreviewDocumentStore(projectDir, "salt", "the author's secret").write(
     "key",
     "<p>shipped</p>",
   );
-  expect(createPreviewDocumentStore(projectDir, "salt", "secret").read("key")).toBeNull();
+  expect(await createPreviewDocumentStore(projectDir, "salt", "secret").read("key")).toBeNull();
 });
 
-it("never serves a document the project shipped at a store name", () => {
+it("never serves a document the project shipped at a store name", async () => {
   const projectDir = tempDir();
   const store = createPreviewDocumentStore(projectDir, "salt", "secret");
   store.write("key", "<html></html>");
   writeFileSync(storedFile(projectDir), `${"0".repeat(64)}\n<p>shipped</p>`);
-  expect(store.read("key")).toBeNull();
+  expect(await store.read("key")).toBeNull();
 });
 
-it.skipIf(process.platform === "win32")("never reads through a link at a store name", () => {
+it.skipIf(process.platform === "win32")("never reads through a link at a store name", async () => {
   const projectDir = tempDir();
   const outside = join(tempDir(), "document.html");
   const store = createPreviewDocumentStore(projectDir, "salt", "secret");
@@ -71,10 +71,10 @@ it.skipIf(process.platform === "win32")("never reads through a link at a store n
   const file = storedFile(projectDir);
   renameSync(file, outside);
   symlinkSync(outside, file);
-  expect(store.read("key")).toBeNull();
+  expect(await store.read("key")).toBeNull();
 });
 
-it.skipIf(process.platform === "win32")("never reads through a linked preview folder", () => {
+it.skipIf(process.platform === "win32")("never reads through a linked preview folder", async () => {
   const projectDir = tempDir();
   const elsewhere = tempDir();
   const store = createPreviewDocumentStore(projectDir, "salt", "secret");
@@ -83,13 +83,13 @@ it.skipIf(process.platform === "win32")("never reads through a linked preview fo
   const preview = join(projectDir, ".hyperframes", "preview");
   renameSync(preview, join(elsewhere, "preview"));
   symlinkSync(join(elsewhere, "preview"), preview);
-  expect(store.read("key")).toBeNull();
+  expect(await store.read("key")).toBeNull();
 });
 
-it("keeps nothing without a secret", () => {
+it("keeps nothing without a secret", async () => {
   const projectDir = tempDir();
   const store = createPreviewDocumentStore(projectDir, "salt", "");
   store.write("key", "<html></html>");
-  expect(store.read("key")).toBeNull();
+  expect(await store.read("key")).toBeNull();
   expect(existsSync(join(projectDir, ".hyperframes"))).toBe(false);
 });
