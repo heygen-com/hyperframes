@@ -377,18 +377,22 @@ function failure(id: number, err: unknown): EditingReply {
 
 const parentAtLoad = typeof window !== "undefined" ? window.parent : undefined;
 
+function isConnectRequest(event: MessageEvent<unknown>, parent: Window): boolean {
+  // A top-level page is its own parent, so a self-post would pass the source check.
+  if (parent === window || event.source !== parent) return false;
+  const data = event.data;
+  if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
+    return false;
+  return data.v === EDITING_PROTOCOL_VERSION && markedForStudio(document);
+}
+
 export function installEditingAgent(parent: Window = parentAtLoad ?? window.parent): {
   dispose: () => void;
 } {
   const ports = portMap<true>();
   const onMessage = (event: MessageEvent<unknown>) => {
-    // A top-level page is its own parent, so a self-post would pass the source check.
-    if (parent === window || event.source !== parent) return;
-    const data = event.data;
-    if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
-      return;
-    if (data.v !== EDITING_PROTOCOL_VERSION || !markedForStudio(document)) return;
-    const channel = createRuntimeChannel();
+    const channel = isConnectRequest(event, parent) ? createRuntimeChannel() : null;
+    if (!channel) return;
     const port = channel.port1;
     ports.set(port, true);
     serve(port);

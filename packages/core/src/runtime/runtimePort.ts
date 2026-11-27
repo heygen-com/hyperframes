@@ -11,7 +11,7 @@ type PortMethods = {
   proto: object;
   post: Fn;
   close: Fn;
-  setOnMessage: Fn | null;
+  setOnMessage: Fn;
   port1: Fn | null;
   port2: Fn | null;
   eventData: Fn | null;
@@ -39,18 +39,19 @@ const native: PortMethods | null = (() => {
     const port1 = accessor(channelProto, "port1", "get");
     const port2 = accessor(channelProto, "port2", "get");
     const proto = protoOf(channelPort(probe, port1, "port1")) as MessagePort;
+    const setOnMessage = accessor(proto, "onmessage", "set");
+    const eventProto = typeof MessageEvent !== "undefined" ? MessageEvent.prototype : null;
+    const eventData = accessor(eventProto, "data", "get");
+    if (!setOnMessage) return null;
     const methods: PortMethods = {
       proto,
       post: proto.postMessage as Fn,
       close: proto.close as Fn,
-      setOnMessage: accessor(proto, "onmessage", "set"),
+      setOnMessage,
       port1,
       port2,
-      eventData:
-        typeof MessageEvent !== "undefined"
-          ? accessor(MessageEvent.prototype, "data", "get")
-          : null,
-      eventProto: typeof MessageEvent !== "undefined" ? MessageEvent.prototype : null,
+      eventData,
+      eventProto,
     };
     apply(methods.close, channelPort(probe, port1, "port1"), []);
     apply(methods.close, channelPort(probe, port2, "port2"), []);
@@ -60,12 +61,23 @@ const native: PortMethods | null = (() => {
   }
 })();
 
-// A stand-in object (tests) keeps its own methods; a browser port always gets the bound ones.
-const bound = (port: MessagePort) => (native && protoOf(port) === native.proto ? native : null);
+let standIns = false;
 
-export function createRuntimeChannel(): { port1: MessagePort; port2: MessagePort } {
-  const channel = new (NativeMessageChannel ?? MessageChannel)();
-  if (!native) return { port1: channel.port1, port2: channel.port2 };
+/** Tests only: stand-in ports and events from another realm (jsdom over Node) keep their own methods. */
+export function allowPortStandInsForTests(): void {
+  standIns = true;
+}
+
+function bound(port: MessagePort): PortMethods | null {
+  if (native && protoOf(port) === native.proto) return native;
+  if (standIns) return null;
+  throw new Error("not a runtime port");
+}
+
+/** Null when the browser's own port methods could not be read at load: the agent then never connects. */
+export function createRuntimeChannel(): { port1: MessagePort; port2: MessagePort } | null {
+  if (!native || !NativeMessageChannel || !(native.eventData || standIns)) return null;
+  const channel = new NativeMessageChannel();
   return {
     port1: channelPort(channel, native.port1, "port1"),
     port2: channelPort(channel, native.port2, "port2"),
@@ -81,11 +93,12 @@ export function postOnPort(port: MessagePort, message: unknown, transfer?: Trans
 
 export function onPortMessage(port: MessagePort, handler: (data: unknown) => void): void {
   const methods = bound(port);
-  const read = methods?.eventData;
-  const dataOf = (event: MessageEvent<unknown>) =>
-    read && protoOf(event) === methods?.eventProto ? apply(read, event, []) : event.data;
-  const onMessage = (event: MessageEvent<unknown>) => handler(dataOf(event));
-  if (methods?.setOnMessage) apply(methods.setOnMessage, port, [onMessage]);
+  const onMessage = (event: MessageEvent<unknown>) => {
+    const read = native?.eventData;
+    if (read && protoOf(event) === native?.eventProto) handler(apply(read, event, []));
+    else if (standIns) handler(event.data);
+  };
+  if (methods) apply(methods.setOnMessage, port, [onMessage]);
   else port.onmessage = onMessage;
 }
 

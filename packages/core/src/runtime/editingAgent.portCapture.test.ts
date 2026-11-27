@@ -155,3 +155,19 @@ it("keeps its port from a composition that patched the channel's port getters, S
   seen.delete(studio);
   expect([...seen]).toEqual([]);
 });
+
+it("never connects when the port's own methods could not be read at load", async () => {
+  delete (proto as { onmessage?: unknown }).onmessage;
+  vi.resetModules();
+  const loaded = await import("./editingAgent").finally(() =>
+    Object.defineProperty(proto, "onmessage", onmessage),
+  );
+  const parent = frameWindow();
+  const handoff = vi.fn();
+  parent.postMessage = handoff as unknown as Window["postMessage"];
+  const agent = loaded.installEditingAgent(parent);
+  cleanups.push(() => agent.dispose());
+
+  connect(parent);
+  expect(handoff).not.toHaveBeenCalled();
+});
