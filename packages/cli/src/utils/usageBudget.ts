@@ -38,6 +38,7 @@ export type HarnessUsage =
       harness: "claude-code" | "codex" | "grok";
       session: UsageWindow | null;
       weekly: UsageWindow | null;
+      monthly?: UsageWindow | null;
       spend: UsageWindow | null;
       planTier: string | null;
     };
@@ -82,9 +83,10 @@ function knownUsage(
   weekly: UsageWindow | null,
   planTier: string | null = null,
   spend: UsageWindow | null = null,
+  monthly?: UsageWindow | null,
 ): HarnessUsage {
-  const windows = [session, weekly, spend].filter(
-    (window): window is UsageWindow => window !== null,
+  const windows = [session, weekly, monthly, spend].filter(
+    (window): window is UsageWindow => window !== null && window !== undefined,
   );
   if (!windows.length) return unknownUsage("no_usage_windows");
   if (
@@ -96,7 +98,15 @@ function knownUsage(
     )
   )
     return unknownUsage("invalid_usage_response");
-  return { status: "known", harness, session, weekly, spend, planTier };
+  return {
+    status: "known",
+    harness,
+    session,
+    weekly,
+    ...(monthly !== undefined ? { monthly } : {}),
+    spend,
+    planTier,
+  };
 }
 
 const codexWindowSchema = {
@@ -150,12 +160,14 @@ type CodexWindow = NonNullable<JTDDataType<typeof codexWindowSchema>>;
 function codexWindowKind(
   seconds: number | undefined,
   index: number,
-): "session" | "weekly" | "unknown" {
+): "session" | "weekly" | "monthly" | "unknown" {
   switch (seconds) {
     case 18000:
       return "session";
     case 604800:
       return "weekly";
+    case 2592000:
+      return "monthly";
     case undefined:
       return index === 0 ? "session" : "weekly";
     default:
@@ -179,9 +191,14 @@ function normalizeCodexWindow(raw: CodexWindow, now: number): UsageWindow | null
 export function parseCodexUsage(text: string, now = Date.now()): HarnessUsage {
   const usage = parseCodex(text);
   if (!usage) return unknownUsage("invalid_usage_response");
-  const windows: { session: UsageWindow | null; weekly: UsageWindow | null } = {
+  const windows: {
+    session: UsageWindow | null;
+    weekly: UsageWindow | null;
+    monthly: UsageWindow | null;
+  } = {
     session: null,
     weekly: null,
+    monthly: null,
   };
   for (const [index, raw] of [
     usage.rate_limit.primary_window,
@@ -194,7 +211,14 @@ export function parseCodexUsage(text: string, now = Date.now()): HarnessUsage {
     if (window === null || windows[kind] !== null) return unknownUsage("invalid_usage_response");
     windows[kind] = window;
   }
-  return knownUsage("codex", windows.session, windows.weekly, usage.plan_type ?? null);
+  return knownUsage(
+    "codex",
+    windows.session,
+    windows.weekly,
+    usage.plan_type ?? null,
+    null,
+    windows.monthly,
+  );
 }
 
 export function parseGrokUsage(text: string): HarnessUsage {
