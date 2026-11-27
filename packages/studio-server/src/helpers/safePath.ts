@@ -11,7 +11,7 @@ import {
   type Dirent,
   type Stats,
 } from "node:fs";
-import { lstat, readdir } from "node:fs/promises";
+import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
@@ -258,6 +258,36 @@ export function readProjectCacheFile(root: string, file: string, maxBytes: numbe
     return null;
   } finally {
     closeSync(fd);
+  }
+}
+
+/** `readProjectCacheFile` with every check, open and read on libuv's thread pool: a disk that stops answering holds
+ * the request, never the server's thread. */
+export async function readProjectCacheFileAsync(
+  root: string,
+  file: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  if (!(await isLinkFreeWithinProjectAsync(root, dirname(file)))) return null;
+  let handle: FileHandle;
+  try {
+    handle = await open(file, NO_FOLLOW_READ);
+  } catch {
+    return null;
+  }
+  try {
+    const stat = await handle.stat();
+    if (!isPlainFileWithOneName(stat) || stat.size > maxBytes) return null;
+    if (
+      constants.O_NOFOLLOW === undefined &&
+      !sameFile(await lstat(file).catch(missingAsUndefined), stat)
+    )
+      return null;
+    return await handle.readFile();
+  } catch {
+    return null;
+  } finally {
+    await handle.close();
   }
 }
 

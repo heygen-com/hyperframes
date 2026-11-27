@@ -14,6 +14,7 @@ import {
 } from "@hyperframes/core/studio-preview-mark";
 import { gestureDocumentOf } from "../../components/editor/previewSelection";
 import { logReload } from "../../utils/reloadDebug";
+import { pageRetryAfterMs, refusedPageMessage } from "./refusedPreviewPage";
 import {
   useTimelineSyncCallbacks,
   planShadowAlone,
@@ -245,6 +246,7 @@ export function useShadowPreviewReload({
                 : "its timeline to be ready";
       const got = sealed ? " Its page had got to: sealed." : pageGotTo(shadow);
       const errorFrom = sealed ? "" : firstErrorFrom(shadow);
+      const retryAfterMs = sealed ? undefined : pageRetryAfterMs(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();
@@ -259,10 +261,10 @@ export function useShadowPreviewReload({
       const message = `The preview did not reload (${cause}). It was still waiting for ${waitingFor}.${got} The previous preview is still showing.`;
       logReload("shadow-failed", { cause, waitingFor });
       const refused = refusedPreviewStatus(cause);
-      const pageMissingNow = refused !== null && refused < 500;
-      (pageMissingNow ? console.warn : console.error)(`[studio] ${message}${errorFrom}`);
-      onReloadFailedRef.current?.(message);
-      retry.afterFailure(cause, failedGen);
+      const askingAgain = retry.afterFailure(cause, failedGen, retryAfterMs) === "asking-again";
+      const notAFailureYet = askingAgain || (refused !== null && refused < 500);
+      (notAFailureYet ? console.warn : console.error)(`[studio] ${message}${errorFrom}`);
+      if (!askingAgain) onReloadFailedRef.current?.(message);
     },
     [stopPendingShadow, retry, isRefreshingRef, pendingSeekRef, restoreLive],
   );
@@ -398,6 +400,14 @@ export function useShadowPreviewReload({
     liveFrame,
   });
   cancelPendingLoadRef.current = cancelPendingLoad;
+  const onShadowPageLoad = useCallback(
+    (gen: number) => {
+      const refused = refusedPageMessage(shadowIframeRef.current);
+      if (refused === null) onShadowIframeLoad(gen);
+      else failShadow(gen, refused);
+    },
+    [onShadowIframeLoad, failShadow],
+  );
 
   // The Player reports whether loaders (shader transition, assets) are cleared right now.
   const onShadowReadyChange = useCallback(
@@ -569,7 +579,7 @@ export function useShadowPreviewReload({
 
   return {
     previewSlots,
-    onShadowIframeLoad,
+    onShadowIframeLoad: onShadowPageLoad,
     onShadowReadyChange,
     onShadowError: failShadow,
     setShadowIframeNode,
