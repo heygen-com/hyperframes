@@ -1093,8 +1093,6 @@ function undoTickRoundingOnTheSourceFrameGrid(
 // Caps extraction ffmpeg runs across all clips; uncapped, dozens of clips starved each other into timeouts.
 const EXTRACTION_SLOTS = Math.max(1, Math.floor(usableCpuCount() / 2));
 const inExtractionSlot = createConcurrencyLimit(EXTRACTION_SLOTS);
-// Each run's share of the CPUs. Left to ffmpeg, every run starts threads per core that each hold frames, so memory
-// grew with cores x slots: one 4K mjpeg run measured 211 MB at 2 threads and 1057 MB at 32.
 const EXTRACTION_THREADS = String(Math.max(1, Math.floor(cpuBudget() / EXTRACTION_SLOTS)));
 const TAIL_PROBE_SLOTS = Math.max(1, Number(process.env.HF_TAIL_PROBE_SLOTS) || 16);
 const inTailProbeSlot = createConcurrencyLimit(TAIL_PROBE_SLOTS);
