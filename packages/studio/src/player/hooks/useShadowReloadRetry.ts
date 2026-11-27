@@ -53,21 +53,22 @@ export function useShadowReloadRetry(
 
   /** A reload failed with `cause` as generation `failedGen`: a timeout is retried once, a busy page a few times. */
   const afterFailure = useCallback(
-    (cause: string, failedGen: number, retryAfterMs?: number) => {
+    (cause: string, failedGen: number, retryAfterMs?: number): "asking-again" | "done" => {
       if (refusedPreviewStatus(cause) === 503) {
-        if (retryAfterMs === undefined || refusedTries.current >= BUSY_PAGE_RETRIES) return;
+        if (retryAfterMs === undefined || refusedTries.current >= BUSY_PAGE_RETRIES) return "done";
         refusedTries.current += 1;
         cancelRef.current();
         retryWhenVisible(
           failedGen,
           Math.min(Math.max(retryAfterMs, MIN_BUSY_WAIT_MS), MAX_BUSY_WAIT_MS),
         );
-        return;
+        return "asking-again";
       }
-      if (cause !== READY_TIMEOUT_CAUSE || retried.current) return;
+      if (cause !== READY_TIMEOUT_CAUSE || retried.current) return "done";
       retried.current = true;
       cancelRef.current();
       retryWhenVisible(failedGen, SHADOW_RETRY_DELAY_MS);
+      return "done";
     },
     [retryWhenVisible],
   );

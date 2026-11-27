@@ -33,6 +33,7 @@ afterEach(() => {
 function beginReload(onPreviewReloadFailed = vi.fn()) {
   vi.useFakeTimers();
   vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   const harness = renderTimelinePlayerHarness({ onPreviewReloadFailed });
   const live = makeFakeIframe(makeAdapterWindow().win);
   act(() => {
@@ -86,14 +87,16 @@ describe("a shadow reload that timed out", () => {
   });
 });
 
-/** The shadow's frame given a page its server refused with `status`, then that refusal reported. */
+/** The shadow's frame loads the page its server refused with `status`, which carries a runtime as the real one does. */
 function refuse(getApi: () => TimelinePlayerApi, status: number, retryAfterS?: number) {
   const gen = shadows(getApi().previewSlots)[0]!.gen;
-  const page = makeFakeIframe({
+  const { win } = makeAdapterWindow();
+  Object.assign(win, {
+    __hfPreviewErrors: [refusedPreviewMessage(status)],
     ...(retryAfterS !== undefined && { __hfPreviewRetryAfter: retryAfterS }),
   });
-  act(() => getApi().setShadowIframeNode(page));
-  act(() => getApi().onShadowError(gen, refusedPreviewMessage(status)));
+  act(() => getApi().setShadowIframeNode(makeFakeIframe(win)));
+  act(() => getApi().onShadowIframeLoad(gen));
   return gen;
 }
 
@@ -104,6 +107,7 @@ describe("a shadow reload whose page the server refused with 503", () => {
     const { getApi, onPreviewReloadFailed } = beginReload();
     for (let tries = 0; tries < BUSY_PAGE_RETRIES; tries++) {
       const gen = refuse(getApi, 503, 5);
+      expect(onPreviewReloadFailed).not.toHaveBeenCalled();
       expect(shadows(getApi().previewSlots)).toHaveLength(0);
       act(() => void vi.advanceTimersByTime(4_999));
       expect(shadows(getApi().previewSlots)).toHaveLength(0);
@@ -113,7 +117,7 @@ describe("a shadow reload whose page the server refused with 503", () => {
     refuse(getApi, 503, 5);
     act(() => void vi.advanceTimersByTime(60_000));
     expect(shadows(getApi().previewSlots)).toHaveLength(0);
-    expect(onPreviewReloadFailed).toHaveBeenCalledTimes(BUSY_PAGE_RETRIES + 1);
+    expect(onPreviewReloadFailed).toHaveBeenCalledTimes(1);
   });
 
   it("does not ask again when the server did not say when to", () => {
@@ -133,7 +137,6 @@ describe("a shadow reload whose page the server refused with 503", () => {
   });
 
   it("does not ask again for a page the server said is missing", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
     const { getApi } = beginReload();
     refuse(getApi, 404, 5);
     act(() => void vi.advanceTimersByTime(60_000));
