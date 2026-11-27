@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -6,7 +14,7 @@ import type { VideoElement } from "../types.js";
 import { FFMPEG_PATH_ENV, getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 
-// A 32-CPU machine: 16 extraction slots, so each ffmpeg gets 2 threads.
+// A 32-CPU machine: 16 extraction slots.
 vi.mock("./systemMemory.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./systemMemory.js")>()),
   usableCpuCount: () => 32,
@@ -23,7 +31,6 @@ function valuesOf(args: string[], flag: string): string[] {
 describe.skipIf(process.platform === "win32")("extraction ffmpeg threads", () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-extract-threads-"));
   const shim = join(dir, "ffmpeg-shim.sh");
-  const calls = join(dir, "calls");
   const previousFfmpeg = process.env[FFMPEG_PATH_ENV];
 
   beforeAll(() => {
@@ -32,58 +39,95 @@ describe.skipIf(process.platform === "win32")("extraction ffmpeg threads", () =>
       [
         "#!/bin/sh",
         `case " $* " in *" -i "*) ;; *) exec "${getFfmpegBinary()}" "$@" ;; esac`,
-        `printf '%s\\037' "$@" >> "${calls}"; echo >> "${calls}"`,
-        `exec "${getFfmpegBinary()}" "$@"`,
+        'd="$HF_TEST_SHIM_DIR"; t=0; prev=',
+        'for a in "$@"; do [ "$prev" = -filter_threads ] && t=$a; prev=$a; done',
+        `printf '%s\\037' "$@" > "$d/args-$$"`,
+        'echo "$t" > "$d/running/$$"',
+        'cat "$d"/running/* | awk \'{ s += $1 } END { print s }\' >> "$d/alive-threads"',
+        // Hold each run until the expected number have started, so every one runs beside the others.
+        'n=0; until [ "$(wc -l < "$d/alive-threads")" -ge "$HF_TEST_TOGETHER" ] || [ $n -ge 200 ]; do sleep 0.05; n=$((n+1)); done',
+        `"${getFfmpegBinary()}" "$@"; rc=$?`,
+        'rm -f "$d/running/$$"; exit $rc',
       ].join("\n"),
     );
     chmodSync(shim, 0o755);
   });
 
   afterAll(() => {
+    delete process.env.HF_TEST_TOGETHER;
     if (previousFfmpeg === undefined) delete process.env[FFMPEG_PATH_ENV];
     else process.env[FFMPEG_PATH_ENV] = previousFfmpeg;
     rmSync(dir, { recursive: true, force: true });
   });
 
-  // Left to ffmpeg, each of the 16 runs starts a thread per core with frame buffers for each: 16 x 32 threads. On a
-  // 4K source one run measured 211 MB at 2 threads and 1057 MB at 32.
-  it("gives each extraction ffmpeg its share of the CPUs for decoding, filtering and encoding", async () => {
+  /** Extracts `clips` through the shim; returns each run's thread counts and the threads alive as each started. */
+  async function extractThroughShim(run: string, clips: number, seconds: number, fps: number) {
     const videos: VideoElement[] = [];
-    for (const i of [0, 1, 2]) {
-      const src = join(dir, `clip-${i}.mp4`);
+    for (let i = 0; i < clips; i++) {
+      const src = join(dir, `${run}-${i}.mp4`);
       const made = await runFfmpeg([
-        ...["-y", "-v", "error", "-f", "lavfi", "-i", `testsrc=s=64x64:d=1:r=10,hue=h=${i * 60}`],
+        ...["-y", "-v", "error", "-f", "lavfi"],
+        ...["-i", `testsrc=s=32x32:d=${seconds}:r=${fps},hue=h=${i * 60}`],
         ...["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", src],
       ]);
       expect(made.success, made.stderr).toBe(true);
       videos.push({
-        id: `clip-${i}`,
-        src,
-        start: 0,
-        end: 1,
-        mediaStart: 0,
-        loop: false,
-        hasAudio: false,
+        ...{ id: `${run}-${i}`, src, start: 0, end: seconds, mediaStart: 0 },
+        ...{ loop: false, hasAudio: false },
       });
     }
-    mkdirSync(join(dir, "out"), { recursive: true });
+    const shimDir = join(dir, run);
+    mkdirSync(join(shimDir, "running"), { recursive: true });
+    process.env.HF_TEST_SHIM_DIR = shimDir;
     process.env[FFMPEG_PATH_ENV] = shim;
-    const result = await extractAllVideoFrames(videos, dir, {
-      fps: 10,
-      outputDir: join(dir, "out"),
-    });
-    expect(result.errors).toEqual([]);
-
-    const runs = readFileSync(calls, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => line.split("\x1f").filter(Boolean));
-    expect(runs.length).toBeGreaterThanOrEqual(3);
-    for (const args of runs) {
-      const input = args.lastIndexOf("-i");
-      expect(valuesOf(args.slice(0, input), "-threads")).toEqual(["2"]);
-      expect(valuesOf(args.slice(input), "-threads")).toEqual(["2"]);
-      expect(valuesOf(args, "-filter_threads")).toEqual(["2"]);
+    try {
+      const result = await extractAllVideoFrames(videos, dir, {
+        fps,
+        outputDir: join(shimDir, "out"),
+      });
+      expect(result.errors).toEqual([]);
+    } finally {
+      if (previousFfmpeg === undefined) delete process.env[FFMPEG_PATH_ENV];
+      else process.env[FFMPEG_PATH_ENV] = previousFfmpeg;
+      delete process.env.HF_TEST_SHIM_DIR;
     }
+    const threads = readdirSync(shimDir)
+      .filter((name) => name.startsWith("args-"))
+      .map((name) => {
+        const args = readFileSync(join(shimDir, name), "utf8").split("\x1f").filter(Boolean);
+        const input = args.lastIndexOf("-i");
+        return [
+          ...valuesOf(args.slice(0, input), "-threads"),
+          ...valuesOf(args.slice(input), "-threads"),
+          ...valuesOf(args, "-filter_threads"),
+        ];
+      });
+    const aliveThreads = readFileSync(join(shimDir, "alive-threads"), "utf8")
+      .trim()
+      .split(/\s+/)
+      .map(Number);
+    return { threads, aliveThreads };
+  }
+
+  it("gives a lone clip every CPU for decoding, filtering and encoding", async () => {
+    process.env.HF_TEST_TOGETHER = "1";
+    const { threads } = await extractThroughShim("lone", 1, 1, 10);
+    expect(threads).toEqual([["32", "32", "32"]]);
+  }, 60_000);
+
+  // One 4K run measured 211 MB at 2 threads and 1057 MB at 32, so runs alive together split the CPUs.
+  it("splits the CPUs between clips extracted together, never past the budget", async () => {
+    process.env.HF_TEST_TOGETHER = "3";
+    const { threads, aliveThreads } = await extractThroughShim("three", 3, 1, 10);
+    expect(threads).toEqual(Array(3).fill(Array(3).fill(String(Math.floor(32 / 3)))));
+    expect(aliveThreads).toHaveLength(3);
+    expect(Math.max(...aliveThreads)).toBeLessThanOrEqual(32);
+  }, 60_000);
+
+  it("splits the CPUs between the segments of one long clip", async () => {
+    process.env.HF_TEST_TOGETHER = "2";
+    const { threads, aliveThreads } = await extractThroughShim("segments", 1, 125, 1);
+    expect(threads).toEqual(Array(2).fill(Array(3).fill("16")));
+    expect(Math.max(...aliveThreads)).toBeLessThanOrEqual(32);
   }, 60_000);
 });
