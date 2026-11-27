@@ -52,11 +52,11 @@ const SHARES = [
 ];
 const onAShare = (path: string) => /^[\\/]{2}[^\\/]/.test(path);
 
-let cleanup: (() => void) | undefined;
-afterEach(() => {
+let cleanup: (() => Promise<void>) | undefined;
+afterEach(async () => {
   host.windows = false;
   host.touched.length = 0;
-  cleanup?.();
+  await cleanup?.();
   cleanup = undefined;
 });
 

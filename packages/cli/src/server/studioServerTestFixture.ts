@@ -29,12 +29,13 @@ export function writeStudioIndexHtml(studioDir: string): void {
 }
 
 /** Pairs with makeStudioServerRoot; `onDone` resets caller-local state (e.g. the `hooks.studioDir` mock target). */
-export function cleanupStudioServerRoot(
-  server: { watcher: { close(): void } },
+export async function cleanupStudioServerRoot(
+  server: { watcher: { close(): void }; shutdown(): Promise<void> },
   root: string,
   onDone?: () => void,
-): void {
+): Promise<void> {
   server.watcher.close();
+  await server.shutdown();
   fs.rmSync(root, { recursive: true, force: true });
   onDone?.();
 }

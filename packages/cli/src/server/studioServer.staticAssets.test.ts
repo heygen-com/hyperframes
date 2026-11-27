@@ -54,9 +54,7 @@ beforeEach(() => {
   server = createStudioServer({ projectDir: fixture.projectDir });
 });
 
-afterEach(() => {
-  cleanupStudioServerRoot(server, root, () => (hooks.studioDir = ""));
-});
+afterEach(() => cleanupStudioServerRoot(server, root, () => (hooks.studioDir = "")));
 
 describe("studio bundle cache policy", () => {
   it("serves everything under /assets/ as immutable", async () => {

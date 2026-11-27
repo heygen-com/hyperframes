@@ -41,9 +41,7 @@ beforeEach(() => {
   server = createStudioServer({ projectDir, projectName: "film" });
 });
 
-afterEach(() => {
-  cleanupStudioServerRoot(server, root);
-});
+afterEach(() => cleanupStudioServerRoot(server, root));
 
 async function fetchAsset(url: string): Promise<Buffer> {
   const response = await server.app.request(`/api/projects/film/preview/${url}`);

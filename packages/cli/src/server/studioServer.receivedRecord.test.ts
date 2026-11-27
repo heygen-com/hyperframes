@@ -30,11 +30,11 @@ vi.mock("../utils/walkBudget.js", async (importOriginal) => {
 let root: string;
 let server: StudioServer | undefined;
 
-afterEach(() => {
+afterEach(async () => {
   walk.exhausted = false;
   if (server) {
     chmodAll(root);
-    cleanupStudioServerRoot(server, root);
+    await cleanupStudioServerRoot(server, root);
   }
   server = undefined;
 });

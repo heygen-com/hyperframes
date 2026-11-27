@@ -34,9 +34,7 @@ beforeEach(() => {
   server = createStudioServer({ projectDir, projectName: "film" });
 });
 
-afterEach(() => {
-  cleanupStudioServerRoot(server, root);
-});
+afterEach(() => cleanupStudioServerRoot(server, root));
 
 describe("studio preview of a project over the mount limit", () => {
   it("serves the refusal, not the raw page that would expand the mounts in the browser", async () => {
