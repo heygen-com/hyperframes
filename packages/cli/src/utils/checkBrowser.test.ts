@@ -1528,9 +1528,7 @@ describe("preResolveHostileMediaProxies", () => {
       settled = true;
     });
 
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(mocks.resolveProxy).toHaveBeenCalledTimes(1));
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
       projectDir,
       join(projectDir, "clip.mp4"),
@@ -1895,7 +1893,7 @@ describe("preResolveHostileMediaProxies", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const pending = preResolveHostileMediaProxies(projectDir, "<html></html>");
-    await vi.waitFor(() => expect(mocks.proxySignal).toBeDefined());
+    await vi.waitFor(() => expect(mocks.resolveProxy).toHaveBeenCalled());
     expect(mocks.proxySignal!.aborted).toBe(false);
     for (const listener of mocks.stopListeners) listener();
 
