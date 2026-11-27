@@ -122,6 +122,20 @@ describe("a sealed drag's chrome", () => {
     ]);
   });
 
+  it("goes back to Studio when a later copy would be refused, and the drafts still land", async () => {
+    const { iframe, member } = await sealedDrag();
+    paintChromeInFrameWhile(iframe, overlay(), () => true);
+    applyManualOffsetDragDraft(member, 10, 0);
+    await vi.waitFor(() => expect(plane().style.clipPath).toContain("evenodd"));
+    plane().insertAdjacentHTML("beforeend", "<div></div>".repeat(70));
+    applyManualOffsetDragDraft(member, 40, 0);
+    await vi.waitFor(() => expect(chromeSent(iframe).at(-1)).toBeNull());
+    await vi.waitFor(() =>
+      expect(document.getElementById("card")!.style.translate).toContain("40"),
+    );
+    expect([frameHost(), plane().style.clipPath]).toEqual([null, ""]);
+  });
+
   it("of a later drag stays when an earlier drag's release clears the frame", async () => {
     const { iframe, member } = await sealedDrag();
     let firstHeld = true;

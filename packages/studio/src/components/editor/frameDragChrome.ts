@@ -143,6 +143,7 @@ export function paintChromeInFrameWhile(
   };
   const scale = { x: basis.rootScaleX, y: basis.rootScaleY };
   let copied: Element[] = [];
+  let inFrame = false;
   const carrier: DraftChromeCarrier = {
     read(): EditingDragChrome | undefined {
       const elements = listed(plane);
@@ -152,10 +153,16 @@ export function paintChromeInFrameWhile(
         nodes = [...plane.children].flatMap((child) => copyOf(child, copied) ?? []);
       }
       const chrome = { origin, scale, place: copied.map(placeOf), ...(nodes && { nodes }) };
+      if (parseDragChrome(chrome) !== undefined) {
+        inFrame = true;
+        return chrome;
+      }
       // A copy the frame would refuse rides no request, or it would take the drafts down with it.
-      if (parseDragChrome(chrome) !== undefined) return chrome;
       copied = [];
-      return undefined;
+      plane.style.removeProperty("clip-path");
+      const clear = inFrame ? null : undefined;
+      inFrame = false;
+      return clear;
     },
     shown() {
       if (current?.carrier === carrier)
