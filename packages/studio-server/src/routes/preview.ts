@@ -958,7 +958,8 @@ export function registerPreviewRoutes(
         previewCacheHeaders(etag),
       );
     } catch (error) {
-      if (error instanceof SubCompositionDeadlineError) return c.text(error.message, 503);
+      if (error instanceof SubCompositionDeadlineError)
+        return c.text(error.message, 503, error.queued ? { "Retry-After": "5" } : undefined);
       throw error;
     }
   });
