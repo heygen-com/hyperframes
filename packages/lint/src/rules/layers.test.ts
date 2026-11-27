@@ -44,4 +44,11 @@ describe("three_d_layer_far_larger_than_stage", () => {
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ elementId: "wall" });
   });
+
+  it("does not report a keyframe step as if it were an element", async () => {
+    const css =
+      "@keyframes grow{from{width:100px;height:100px;transform:rotateX(0deg)}" +
+      "to{width:11000px;height:5200px;transform:rotateX(90deg)}}";
+    expect(await hits(html('<div id="floor" style="animation:grow 2s"></div>', css))).toEqual([]);
+  });
 });

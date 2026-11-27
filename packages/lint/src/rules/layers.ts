@@ -72,6 +72,11 @@ function styleBlockFindings(styles: LintContext["styles"], stage: Stage): Hyperf
   const findings: HyperframeLintFinding[] = [];
   for (const style of styles) {
     parsed(() => styleRoot(style))?.walkRules((rule) => {
+      if (
+        rule.parent?.type === "atrule" &&
+        /keyframes$/i.test((rule.parent as postcss.AtRule).name)
+      )
+        return;
       const box = boxOf(rule);
       if (oversizedArea(box, stage))
         findings.push(finding(box, stage, { selector: rule.selector }));

@@ -1,5 +1,6 @@
 import { closeSync, existsSync, fstatSync, openSync, readSync, readdirSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
+import { toWin32LongPath } from "@hyperframes/core/atomic-file";
 import { HLS_MASTER_PLAYLIST, HLS_VIDEO_PLAYLIST, renameWithRetry } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
 import { extractMediaMetadata } from "../../utils/ffprobe.js";
@@ -15,9 +16,10 @@ export interface ArtifactTransactionFileSystem {
 }
 
 const defaultFileSystem: ArtifactTransactionFileSystem = {
-  existsSync,
-  renameSync: (source, destination) => renameWithRetry(source, destination),
-  rmSync,
+  existsSync: (path) => existsSync(toWin32LongPath(path)),
+  renameSync: (source, destination) =>
+    renameWithRetry(toWin32LongPath(source), toWin32LongPath(destination)),
+  rmSync: (path, options) => rmSync(toWin32LongPath(path), options),
 };
 
 /**
@@ -139,21 +141,41 @@ export function buildArtifactExpectation(input: {
   };
 }
 
+const WINDOWS_PATH_LIMIT = 259;
+const TRANSACTION_SUFFIX = ".hf-transaction-";
+const TRANSACTION_RANDOM_LEN = 6;
+const SHORT_TRANSACTION_STEM = "hf";
+
+function transactionStem(parent: string, name: string, rawStem: string): string {
+  const overhead =
+    parent.length + 1 + 1 + TRANSACTION_SUFFIX.length + TRANSACTION_RANDOM_LEN + 1 + name.length;
+  const maxStem = WINDOWS_PATH_LIMIT - overhead;
+  if (rawStem.length <= maxStem) return rawStem;
+  if (maxStem < SHORT_TRANSACTION_STEM.length) return SHORT_TRANSACTION_STEM;
+  const trimmed = rawStem
+    .slice(0, maxStem)
+    .replace(/[\uD800-\uDBFF]$/, "")
+    .replace(/[. ]+$/, "");
+  return trimmed || SHORT_TRANSACTION_STEM;
+}
+
 function createSiblingTransactionDirectory(destination: string): string {
   const parent = dirname(destination);
+  const name = basename(destination);
   const extension = extname(destination);
-  const stem = extension ? basename(destination, extension) : basename(destination);
+  const rawStem = extension ? basename(destination, extension) : name;
+  const stem = transactionStem(parent, name, rawStem);
   // mkdtemp reserves the directory atomically and creates it with private
   // permissions. Keeping it beside the destination preserves same-filesystem
   // rename semantics without exposing predictable files in a shared temp dir.
-  return createOwnedRenderDir(join(parent, `.${stem}.hf-transaction-`));
+  return createOwnedRenderDir(join(parent, `.${stem}${TRANSACTION_SUFFIX}`));
 }
 
 function assertReadableNonEmptyFile(path: string): void {
   // Validate the opened object, not a pathname checked before opening it.
   // The descriptor pins the file across validation and closes the TOCTOU gap
   // between lstat(path) and open(path).
-  const fd = openSync(path, "r");
+  const fd = openSync(toWin32LongPath(path), "r");
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile() || stat.size <= 0) {
@@ -168,7 +190,7 @@ function assertReadableNonEmptyFile(path: string): void {
 function collectDirectoryFiles(root: string): string[] {
   const files: string[] = [];
   const visit = (directory: string): void => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    for (const entry of readdirSync(toWin32LongPath(directory), { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) visit(path);
       else if (entry.isFile()) files.push(path);
@@ -337,7 +359,7 @@ export class ArtifactTransaction {
   ): Promise<void> {
     for (const required of expected.requiredFiles ?? []) {
       const path = join(this.stagingPath, required);
-      if (!existsSync(path)) {
+      if (!existsSync(toWin32LongPath(path))) {
         throw new Error(`Render artifact directory is missing ${required}: ${this.stagingPath}`);
       }
       assertReadableNonEmptyFile(path);

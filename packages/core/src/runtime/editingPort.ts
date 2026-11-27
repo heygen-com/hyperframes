@@ -105,8 +105,10 @@ import {
 } from "./editing/stageAct";
 import {
   parseTextEdit,
+  textEditAwayEvent,
   textEditEndedEvent,
   textEditSelectionEvent,
+  type TextEditAwayEvent,
   type TextEditEndedEvent,
   type TextEditSelectionEvent,
   type TextEditParams,
@@ -867,6 +869,7 @@ export interface EditingPortClient {
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
+  onTextEditAway(listener: (event: TextEditAwayEvent) => void): () => void;
   onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
   onCanvasKeyAction(listener: (event: CanvasKeyActionEvent) => void): () => void;
   onStageActReady(listener: (event: StageActReadyEvent) => void): () => void;
@@ -932,6 +935,7 @@ export function createEditingPortClient(options: {
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
+  const awayListeners = new Set<(event: TextEditAwayEvent) => void>();
   const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
   const canvasKeyActionListeners = new Set<(event: CanvasKeyActionEvent) => void>();
   const stageReadyListeners = new Set<(event: StageActReadyEvent) => void>();
@@ -961,6 +965,7 @@ export function createEditingPortClient(options: {
     pushRoute(keyListeners, (d) => d.v === v && d.event === "key" && keyEvent(d.key)),
     pushRoute(geometryListeners, (d) => geometryEvent(d, v)),
     pushRoute(textEditListeners, (d) => textEditEndedEvent(d, v)),
+    pushRoute(awayListeners, (d) => textEditAwayEvent(d, v)),
     pushRoute(selectionListeners, (d) => textEditSelectionEvent(d, v)),
     pushRoute(canvasKeyActionListeners, (d) => canvasKeyActionEvent(d, v)),
     pushRoute(stageReadyListeners, (d) => stageActReadyEvent(d, v)),
@@ -1037,6 +1042,10 @@ export function createEditingPortClient(options: {
       textEditListeners.add(listener);
       return () => textEditListeners.delete(listener);
     },
+    onTextEditAway(listener) {
+      awayListeners.add(listener);
+      return () => awayListeners.delete(listener);
+    },
     onTextEditSelection(listener) {
       selectionListeners.add(listener);
       return () => selectionListeners.delete(listener);
@@ -1059,6 +1068,7 @@ export function createEditingPortClient(options: {
       keyListeners.clear();
       geometryListeners.clear();
       textEditListeners.clear();
+      awayListeners.clear();
       selectionListeners.clear();
       canvasKeyActionListeners.clear();
       stageReadyListeners.clear();
@@ -1091,6 +1101,7 @@ export {
   caretRangeAt,
   takePlainTextOnly,
   textEditResult,
+  type TextEditAwayEvent,
   type TextEditEndedEvent,
   type TextEditCaret,
   type TextEditResult,
