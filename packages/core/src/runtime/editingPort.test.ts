@@ -126,7 +126,7 @@ describe("createEditingPortClient", () => {
       document.body.innerHTML = `<div id="hero" data-hf-id="hf-hero">Hi</div>`;
       const measured = await client.request("stage-measure", { maxItems: 10 });
       expect(measured.truncated).toBe(false);
-      expect(measured.items.map((item) => [item.key, item.text])).toEqual([["hf-hero", "Hi"]]);
+      expect(measured.items.map((item) => [item.key, item.text])).toEqual([["#hf-hero", "Hi"]]);
 
       document.body.insertAdjacentHTML("beforeend", `<p style="display: none">Later</p>`);
       const [hero, later] = [...document.body.children] as HTMLElement[];
