@@ -8,7 +8,7 @@ import { usePlayerStore } from "../store/playerStore";
 import { announcePreviewDocumentLoaded } from "../sceneSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
 import { watchPreviewFrame } from "../lib/bridgePlayback";
-import { previewUnderFrameToken } from "../lib/frameToken";
+import { previewUnderFrameToken, underCurrentFrameToken } from "../lib/frameToken";
 import { retirePreviewEditingClient } from "../lib/previewChannel";
 import { type AssetWaitState, waitForPreviewAssets } from "./previewAssetWait";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
@@ -208,7 +208,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       const previewSource =
         directUrl || (projectId ? buildProjectApiPath(projectId, "/preview") : null);
       if (!previewSource) return;
-      // The Studio server puts the runtime in every project preview it serves; a direct URL may be any page.
+      // The Studio server puts the runtime in every page it answers a project preview frame with; a direct URL may be any page.
       const carriesRuntime = !directUrl;
 
       let canceled = false;
@@ -238,7 +238,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             retryUrl.searchParams.set("_hfStudioRetry", String(attempt));
             player.setAttribute("src", retryUrl.pathname + retryUrl.search);
           };
-          const askAgain = () => playerSrc(previewSource, opaque, swap.onStale);
+          const askAgain = () => underCurrentFrameToken(swap.src(primed));
           swap.retry(primed, load, opaque ? askAgain : undefined);
         };
         retryPreviewRef.current = retryPreview;

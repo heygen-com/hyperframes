@@ -174,6 +174,15 @@ describe("an opaque preview frame's loads under its token", () => {
     expectNotGranted(res);
   });
 
+  // fails without the fix: a frame refused a page got one without the runtime, so a sealed frame never reported why.
+  it("answers a refused frame with a page that carries the runtime after the refusal it reports", async () => {
+    const res = await load("comp/missing.html", { origin: "null", "sec-fetch-dest": "iframe" });
+    expect(res.status).toBe(404);
+    const page = await res.text();
+    expect(page).toContain('src="/api/runtime.js"');
+    expect(page.indexOf("__hfPreviewErrors")).toBeLessThan(page.indexOf('src="/api/runtime.js"'));
+  });
+
   // The sub-composition route answers only for compositions, so these never reach a page or a grant.
   it.each([
     ["audio", "comp/music.mp3"],

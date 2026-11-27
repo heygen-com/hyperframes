@@ -34,6 +34,13 @@ export function primeFrameToken(next: { projectId: string; token: string } | nul
   primed = next;
 }
 
+export async function underCurrentFrameToken(src: string): Promise<string> {
+  const project = PREVIEW_PATH.exec(src)?.[1];
+  if (!project) return src;
+  const token = await fetchFrameToken(`${project}/frame-token`);
+  return token ? src.replace(PREVIEW_PATH, `$1/preview/~${token}`) : src;
+}
+
 /** The preview path under its project's frame token, where an opaque frame's own loads are let through. */
 export async function previewUnderFrameToken(
   src: string,
@@ -41,16 +48,12 @@ export async function previewUnderFrameToken(
 ): Promise<string> {
   const project = PREVIEW_PATH.exec(src)?.[1];
   if (!project) return src;
-  const path = `${project}/frame-token`;
-  const under = (token: string) => src.replace(PREVIEW_PATH, `$1/preview/~${token}`);
   const given = primed && buildProjectApiPath(primed.projectId) === project ? primed.token : null;
   primed = null;
-  if (given === null) {
-    const token = await fetchFrameToken(path);
-    return token ? under(token) : src;
-  }
-  void fetchFrameToken(path).then((token) => {
-    if (token && token !== given) onStale?.(under(token));
+  if (given === null) return underCurrentFrameToken(src);
+  const under = src.replace(PREVIEW_PATH, `$1/preview/~${given}`);
+  void underCurrentFrameToken(under).then((current) => {
+    if (current !== under) onStale?.(current);
   });
-  return under(given);
+  return under;
 }

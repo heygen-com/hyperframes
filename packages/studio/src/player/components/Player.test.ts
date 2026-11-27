@@ -333,8 +333,9 @@ describe("a host's sandbox origin", () => {
     );
   });
 
-  // fails without the fix: a retry whose token lookup never answered stayed on the failed address with no Retry.
-  it("starts a bounded load when Retry preview's token lookup never answers", async () => {
+  // fails without the fix: a retry whose token lookup never answered stayed on the failed address with no Retry, and
+  // then dropped the token that was working.
+  it("starts a bounded load under the working token when Retry preview's token lookup never answers", async () => {
     const held = heldLookups();
     primeFrameToken({ projectId: "demo", token });
     await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
@@ -345,10 +346,28 @@ describe("a host's sandbox origin", () => {
     try {
       retryAfterError();
       await vi.advanceTimersByTimeAsync(FRAME_TOKEN_DEADLINE_MS);
-      expect(player().getAttribute("src")).toBe("/api/projects/demo/preview?_hfStudioRetry=1");
+      expect(player().getAttribute("src")).toBe(
+        `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+      );
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // fails without the fix: a retry took a token primed for the project while its preview was open, and kept it.
+  it("asks for the current token on Retry preview even when the host primed another one meanwhile", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => ({ ok: true, json: async () => ({ token }) }) as Response,
+    );
+    primeFrameToken({ projectId: "demo", token });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    retryAfterError();
+    await settle();
+    expect(player().getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+    );
   });
 
   // fails without the fix: an earlier retry answering last loaded over the later one.
