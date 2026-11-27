@@ -246,8 +246,7 @@ function redrawKeepingLiveDrafts(): void {
   putLiveDraftsBack();
 }
 
-/** Applies each draft in order; one for an element this load no longer has is skipped. `chrome` is
- * painted in the same turn, so it shows in the same frame as the drafts. */
+/** Applies each draft in order, then `chrome`; one for an element this load no longer has is skipped. */
 export function drawDrafts(
   drafts: readonly EditingDraft[],
   chrome?: EditingDragChrome,

@@ -432,8 +432,7 @@ export interface EditingRequests {
     params: { group?: EditingElementHandle; offset?: number };
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
-  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here.
-   * `chrome` is Studio's selection chrome painted with them; null takes it away. */
+  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES, and the chrome painted with them (null clears it). */
   draft: {
     params: { drafts: EditingDraft[]; chrome?: EditingDragChrome };
     result: EditingDraftReply & { gsapSetTakesDrafts?: true };
@@ -703,7 +702,6 @@ function draftList(params: unknown): EditingParams<"draft"> | null {
   return drawn && parsed !== undefined ? { ...drawn, chrome: parsed } : null;
 }
 
-/** `chromeOnly` lets a request that carries chrome name no draft. */
 function draftsOnly(params: unknown, chromeOnly = false): { drafts: EditingDraft[] } | null {
   if (!hasKeys(params, "drafts") || !Array.isArray(params.drafts)) return null;
   const { drafts } = params;
