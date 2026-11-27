@@ -1,4 +1,4 @@
-// Studio's stage acts inside a sealed frame: hold an element in its before look, apply the parent's draws, give it back.
+// Studio's stage acts inside a sealed frame: hold an element's before look, apply the parent's draws, give it back.
 // The parent owns every motion and easing; the frame only borrows named properties, writes validated values and
 // reports boxes, so a sealed act paints what an open one does without the parent touching the frame's document.
 import { MAX_DRAFT_PX, MAX_ELEMENT_TEXT, type EditingRect } from "../editingElement";
@@ -233,6 +233,8 @@ const OP_PARSERS: Record<StageActParams["op"], (params: Fields) => StageActParam
     const { deferred, caretColor } = params;
     if (!onlyKeys(params, ["op", "acts", "deferred", "caretColor"]) || !acts) return null;
     if (typeof deferred !== "boolean" || !isStageColour(caretColor)) return null;
+    // A key held twice would borrow its own first draw and restore that, not the element's values.
+    if (new Set(acts.map((act) => act.key)).size !== acts.length) return null;
     return { op: "hold", acts, deferred, caretColor };
   },
   frame: (params) => {
@@ -378,15 +380,17 @@ function holdElement(
   };
 }
 
-/** Holds `act` now, or null while a deferred element is not on the stage yet. */
+/** Holds `act` now; "later" while a deferred element is not on the stage yet; null when it cannot be held. */
 function tryHold(
   doc: Document,
   act: StageActHold,
   deferred: boolean,
   caretColor: string,
-): Held | null {
+): Held | "later" | null {
   const element = locateStageKey(doc, act) as HTMLElement | null;
-  if (!element?.style || (deferred && !paintedOnStage(element))) return null;
+  const onStage = element?.style && paintedOnStage(element);
+  if (!onStage && deferred) return "later";
+  if (!element?.style) return null;
   return holdElement(element, act.key, act, caretColor);
 }
 
@@ -404,8 +408,9 @@ function holdWaiting(open: Session, doc: Document, keys?: readonly string[]): St
   for (const [key, act] of open.waiting) {
     if (keys && !keys.includes(key)) continue;
     const held = tryHold(doc, act, true, open.caretColor);
-    if (!held) continue;
+    if (held === "later") continue;
     open.waiting.delete(key);
+    if (!held) continue;
     open.held.set(key, held);
     now.push(held.info());
   }
@@ -440,10 +445,11 @@ function start(
   const held: StageActHeld[] = [];
   for (const act of params.acts) {
     const one = tryHold(doc, act, params.deferred, params.caretColor);
-    if (one) {
+    if (one === "later") open.waiting.set(act.key, act);
+    else if (one) {
       open.held.set(act.key, one);
       held.push(one.info());
-    } else if (params.deferred) open.waiting.set(act.key, act);
+    }
   }
   // The person's press, drop or key in the frame: the parent decides whether it edits and ends the run.
   const onInput = (event: Event) => {

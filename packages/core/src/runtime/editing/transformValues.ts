@@ -1,5 +1,3 @@
-// The element's own transform values moved, grown or turned by an act, never replaced (the stage acts' CSS maths).
-
 /** A translate's parts, split at the spaces outside brackets: Studio's own is `var(--hf-studio-offset-x, 0px) ...`. */
 function valueParts(value: string): string[] {
   const parts: string[] = [];

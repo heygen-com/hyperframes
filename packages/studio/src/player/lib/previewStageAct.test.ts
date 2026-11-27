@@ -168,6 +168,18 @@ describe("previewStageDrawer", () => {
     ]);
   });
 
+  it("sends draws past the cap in the next request instead of dropping them", async () => {
+    const sent: number[] = [];
+    const { iframe } = opaqueFrame((_, params) => {
+      sent.push((params as { draws: unknown[] }).draws.length);
+      return { op: "frame", rects: [] };
+    });
+    const drawer = previewStageDrawer(iframe, () => {});
+    for (let i = 0; i <= MAX_STAGE_ACTS; i += 1) drawer.draw(`k${i}`, { scale: 1 });
+    drawer.flush();
+    await vi.waitFor(() => expect(sent).toEqual([MAX_STAGE_ACTS, 1]));
+  });
+
   it("drops boxes for keys it did not draw", async () => {
     const { iframe } = opaqueFrame(() => ({ op: "frame", rects: [{ key: "z", rect }] }));
     const rects = vi.fn();

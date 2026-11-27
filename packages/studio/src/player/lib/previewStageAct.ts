@@ -16,7 +16,7 @@ import { previewEditingClient, previewRequest } from "./previewChannel";
 
 export type { StageActDraw, StageActHeld, StageActHold, StageActTarget, StageInputEvent };
 
-/** A hold gates what the person sees: past this, the act lands without one, as open mode does when it cannot prepare. */
+/** A hold gates what the person sees: past this, the act lands unheld, as open mode does when it cannot prepare. */
 export const STAGE_ACT_TIMEOUT_MS = 250;
 
 type Fields = Record<string, unknown>;
@@ -120,8 +120,10 @@ export function previewStageDrawer(
   let next = new Map<string, StageActDraw>();
   const send = () => {
     if (out || stopped || next.size === 0) return;
-    const draws = [...next].slice(0, MAX_STAGE_ACTS).map(([key, draw]) => ({ key, draw }));
-    next = new Map();
+    // Past the cap, the rest wait for the next request rather than being dropped.
+    const queued = [...next];
+    const draws = queued.slice(0, MAX_STAGE_ACTS).map(([key, draw]) => ({ key, draw }));
+    next = new Map(queued.slice(MAX_STAGE_ACTS));
     out = true;
     const asked = new Set(draws.map((one) => one.key));
     void replyOf(iframe, { op: "frame", draws }, STAGE_ACT_TIMEOUT_MS).then((reply) => {

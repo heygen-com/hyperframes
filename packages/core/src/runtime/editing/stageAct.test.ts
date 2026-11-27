@@ -126,6 +126,10 @@ describe("parseStageActParams", () => {
     ],
     ["an op named after an Object member", { op: "constructor" }],
     [
+      "the same key twice in one hold",
+      { op: "hold", acts: [act, act], deferred: false, caretColor: "#fff" },
+    ],
+    [
       "a style it does not draw",
       { op: "frame", draws: [{ key: "a", draw: { styles: { width: "1px" } } }] },
     ],
@@ -301,6 +305,35 @@ describe("stageAct", () => {
     run(hold([{ key: "hf-a", hfId: "hf-a", borrow: ["opacity"], draw: {} }]), port);
     const ready = run(parseStageActParams({ op: "ready", keys: ["hf-a", "gone"] }), port);
     expect(ready.op === "ready" && ready.held.map((one) => one.key)).toEqual(["hf-a"]);
+  });
+
+  it("drops a deferred typing act that cannot type, instead of retrying it on every change", async () => {
+    document.body.innerHTML = `<p data-hf-id="hf-e"><b>x</b></p><div id="other"></div>`;
+    const el = document.querySelector<HTMLElement>("[data-hf-id=hf-e]")!;
+    sized(el);
+    const port = fakePort();
+    const typing = { key: "hf-e", hfId: "hf-e", borrow: [], draw: {}, typing: { hidden: true } };
+    expect(run(hold([typing], true), port)).toEqual({ op: "hold", held: [] });
+    el.prepend("Now text");
+    document.getElementById("other")!.textContent = "changed";
+    await Promise.resolve();
+    expect(el.style.opacity).toBe("");
+    expect(port.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("drops a deferred typing act whose element shows with no text to type", async () => {
+    document.body.innerHTML = `<p data-hf-id="hf-e" style="display: none"><b>x</b></p>`;
+    const el = document.querySelector<HTMLElement>("[data-hf-id=hf-e]")!;
+    const port = fakePort();
+    const typing = { key: "hf-e", hfId: "hf-e", borrow: [], draw: {}, typing: { hidden: true } };
+    run(hold([typing], true), port);
+    sized(el);
+    el.style.display = "block";
+    await Promise.resolve();
+    el.prepend("Now text");
+    await Promise.resolve();
+    expect(el.style.opacity).toBe("");
+    expect(port.postMessage).not.toHaveBeenCalled();
   });
 
   it("stops watching for deferred elements at the cap", async () => {

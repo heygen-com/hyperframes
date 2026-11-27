@@ -155,7 +155,6 @@ function measureElement(
   };
 }
 
-/** Whether `element` shows on the stage now: what a hold waits for before borrowing its look. */
 export function paintedOnStage(element: Element): boolean {
   const view = element.ownerDocument.defaultView;
   if (!view) return false;
@@ -166,7 +165,6 @@ export function paintedOnStage(element: Element): boolean {
   );
 }
 
-/** The element `measureStageDocument` named `key`: by its `data-hf-id`, else by its child-index path. */
 export function locateStageKey(
   doc: Document,
   target: { key: string; hfId: string | null },
