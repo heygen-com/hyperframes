@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { Hono } from "hono";
@@ -25,7 +25,7 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
     if (!isWithinProjectRoot(project.dir, audioPath)) {
       return c.json({ error: "file not found" }, 404);
     }
-    const stats = statSync(audioPath, { throwIfNoEntry: false });
+    const stats = await stat(audioPath).catch(() => undefined);
     if (!stats) return c.json({ error: "file not found" }, 404);
 
     const cacheDir = join(project.dir, ".waveform-cache");
@@ -36,7 +36,7 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
       buildWaveformCacheKey(relative(project.dir, audioPath), stats),
     );
 
-    const cached = readCachedPeaks(project.dir, cachePath);
+    const cached = await readCachedPeaks(project.dir, cachePath);
     if (cached) return c.json({ peaks: cached });
 
     let peaks: number[];
