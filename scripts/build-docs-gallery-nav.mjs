@@ -4,6 +4,7 @@
 // transform, re-pointed at this repo's own docs.json.
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   getCatalogTab,
   readCatalogGalleryData,
@@ -43,5 +44,5 @@ export function buildNav(docs) {
   console.log(`Rebuilt Catalog nav: ${groups.length} groups, ${data.items.length} items.`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`)
+if (process.argv[1] === fileURLToPath(import.meta.url))
   buildNav(resolveDocsRoot(process.argv[2]).docs);
