@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Player, readPreviewErrorMessage, shouldShowCompositionLoadingOverlay } from "./Player";
 import { hasUnloadedAssets } from "./previewAssetWait";
 import { previewEditingClient } from "../lib/previewChannel";
-import { primeFrameToken } from "../lib/frameToken";
+import { FRAME_TOKEN_DEADLINE_MS, primeFrameToken } from "../lib/frameToken";
 import { usePlayerStore } from "../store/playerStore";
 import { onPreviewDocumentLoaded } from "../sceneSwap";
 
@@ -331,6 +331,24 @@ describe("a host's sandbox origin", () => {
     expect(player().getAttribute("src")).toBe(
       `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
     );
+  });
+
+  // fails without the fix: a retry whose token lookup never answered stayed on the failed address with no Retry.
+  it("starts a bounded load when Retry preview's token lookup never answers", async () => {
+    const held = heldLookups();
+    primeFrameToken({ projectId: "demo", token });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    held[0]?.(token);
+    await settle();
+    vi.useFakeTimers();
+    try {
+      retryAfterError();
+      await vi.advanceTimersByTimeAsync(FRAME_TOKEN_DEADLINE_MS);
+      expect(player().getAttribute("src")).toBe("/api/projects/demo/preview?_hfStudioRetry=1");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // fails without the fix: an earlier retry answering last loaded over the later one.

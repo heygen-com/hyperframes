@@ -3,13 +3,21 @@ import { studioApiFetch } from "../../utils/studioApiFetch";
 
 export const PREVIEW_PATH = /^(\/api\/projects\/[^/?#]+)\/preview(?:\/~[\w-]{43})?(?=[/?#]|$)/;
 
+export const FRAME_TOKEN_DEADLINE_MS = 5_000;
+
 export function fetchFrameToken(frameTokenPath: string): Promise<string | null> {
-  return studioApiFetch(frameTokenPath)
+  const abort = new AbortController();
+  const deadline = setTimeout(() => abort.abort(), FRAME_TOKEN_DEADLINE_MS);
+  const expired = new Promise<null>((done) =>
+    abort.signal.addEventListener("abort", () => done(null)),
+  );
+  const lookup = studioApiFetch(frameTokenPath, { signal: abort.signal })
     .then((res) => (res.ok ? res.json() : null))
     .then((body: { token?: unknown } | null) =>
       typeof body?.token === "string" ? body.token : null,
     )
     .catch(() => null);
+  return Promise.race([lookup, expired]).finally(() => clearTimeout(deadline));
 }
 
 export function previewWithoutFrameToken(href: string): string {

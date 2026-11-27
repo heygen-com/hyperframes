@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { previewUnderFrameToken, primeFrameToken } from "./frameToken";
+import { FRAME_TOKEN_DEADLINE_MS, previewUnderFrameToken, primeFrameToken } from "./frameToken";
 
 const PRIMED = "P".repeat(43);
 const CURRENT = "C".repeat(43);
@@ -77,4 +77,17 @@ it("hands back the path under the current token when a primed one is stale, and 
   await previewUnderFrameToken("/api/projects/demo/preview", current);
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(current).not.toHaveBeenCalled();
+});
+
+// fails without the fix: a token lookup that never answered left the preview waiting forever.
+it("gives up on a token lookup that never answers at the deadline, and loads the preview without one", async () => {
+  vi.useFakeTimers();
+  try {
+    answer("pending");
+    const loaded = previewUnderFrameToken("/api/projects/demo/preview");
+    await vi.advanceTimersByTimeAsync(FRAME_TOKEN_DEADLINE_MS);
+    await expect(loaded).resolves.toBe("/api/projects/demo/preview");
+  } finally {
+    vi.useRealTimers();
+  }
 });
