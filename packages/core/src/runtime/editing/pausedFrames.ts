@@ -1,6 +1,7 @@
 // Paused video frames for a frame Studio cannot script: the runtime asks over a port Studio handed it, and Studio
 // decodes. An ask names a path on the frame's own server and the proxy options it played, never a URL: Studio
 // resolves it against its own project before reading anything.
+import { closePort, onPortMessage, postOnPort } from "../runtimePort";
 import { sourceFactsOfSrc } from "../mediaSourceLookup";
 import { isMessageList } from "../protocol";
 import type {
@@ -129,19 +130,18 @@ export function portPausedVideoProvider(port: MessagePort): PausedVideoFrameProv
     for (const frame of reply.frames)
       if (isRecord(frame)) (frame.image as ImageBitmap | undefined)?.close?.();
   };
-  port.onmessage = (event: MessageEvent<unknown>) => {
-    const reply = event.data;
+  onPortMessage(port, (reply) => {
     const entry = isRecord(reply) && isId(reply.id) ? pending.get(reply.id) : undefined;
     if (!entry) return closeImages(reply);
     pending.delete((reply as { id: number }).id);
     entry.resolve(reply as PausedFrameReply);
-  };
+  });
   const ask = (message: Exclude<PausedFrameAskMessage, { type: "close" }>, signal?: AbortSignal) =>
     new Promise<PausedFrameReply>((resolve, reject) => {
       if (disposed) return reject(aborted());
       const onAbort = () => {
         if (!pending.delete(message.id)) return;
-        port.postMessage({ type: "abort", id: message.id });
+        postOnPort(port, { type: "abort", id: message.id });
         reject(aborted());
       };
       pending.set(message.id, {
@@ -152,7 +152,7 @@ export function portPausedVideoProvider(port: MessagePort): PausedVideoFrameProv
         reject,
       });
       signal?.addEventListener("abort", onAbort, { once: true });
-      port.postMessage(message);
+      postOnPort(port, message);
     });
   const provider: PausedVideoFrameProvider = {
     async decode(requests, signal) {
@@ -196,9 +196,9 @@ export function portPausedVideoProvider(port: MessagePort): PausedVideoFrameProv
       for (const entry of pending.values()) entry.reject(aborted());
       pending.clear();
       try {
-        port.postMessage({ type: "close" });
+        postOnPort(port, { type: "close" });
       } catch {}
-      port.close();
+      closePort(port);
       window.removeEventListener("pagehide", onPageHide);
     },
   };

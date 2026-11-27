@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "../editingAgent";
+import { captureStageGhosts } from "./stageGhost";
 import {
   endStageAct,
   MAX_STAGE_ACTS,
@@ -89,6 +90,7 @@ describe("parseStageActParams", () => {
       { op: "ready", keys: ["a"] },
       { op: "restore", keys: null },
       { op: "restore", keys: ["a"] },
+      { op: "capture", targets: [{ key: "0>1", hfId: null }] },
     ])
       expect(parseStageActParams(ok)).toEqual(ok);
   });
@@ -125,6 +127,56 @@ describe("parseStageActParams", () => {
       { op: "frame", draws: [{ key: "a", draw: { toString: 1 } }] },
     ],
     ["an op named after an Object member", { op: "constructor" }],
+    [
+      "an oversized ghost",
+      {
+        op: "hold",
+        acts: [
+          {
+            key: "g",
+            ghost: { markup: "x".repeat(65_537), box: { x: 0, y: 0, width: 1, height: 1 } },
+            draw: {},
+          },
+        ],
+        deferred: false,
+        caretColor: "#fff",
+      },
+    ],
+    [
+      "a ghost with a field it does not take",
+      {
+        op: "hold",
+        acts: [
+          {
+            key: "g",
+            ghost: { markup: "<i></i>", box: { x: 0, y: 0, width: 1, height: 1 } },
+            draw: {},
+            hfId: null,
+          },
+        ],
+        deferred: false,
+        caretColor: "#fff",
+      },
+    ],
+    [
+      "a ghost with no finite box",
+      {
+        op: "hold",
+        acts: [
+          {
+            key: "g",
+            ghost: { markup: "<i></i>", box: { x: NaN, y: 0, width: 1, height: 1 } },
+            draw: {},
+          },
+        ],
+        deferred: false,
+        caretColor: "#fff",
+      },
+    ],
+    [
+      "too many capture targets",
+      { op: "capture", targets: Array(MAX_STAGE_ACTS + 1).fill({ key: "a", hfId: null }) },
+    ],
     [
       "the same key twice in one hold",
       { op: "hold", acts: [act, act], deferred: false, caretColor: "#fff" },
@@ -406,5 +458,60 @@ describe("stageAct", () => {
     expect([a!.style.opacity, b!.style.opacity]).toEqual(["", "0"]);
     installEditingAgent(window).dispose();
     expect(b!.style.opacity).toBe("");
+  });
+});
+
+describe("removed ghosts", () => {
+  const box = { x: 40, y: 50, width: 10, height: 10 };
+
+  it("captures a subtree with its computed look and without its identity, and stands it back as a fixed, inert ghost", () => {
+    document.body.innerHTML = `<div data-hf-id="hf-r" id="r" style="color: rgb(5, 6, 7)"><img src="a.png"><span>Gone</span></div>`;
+    const [ghost] = captureStageGhosts(document, [{ key: "hf-r", hfId: "hf-r" }]);
+    expect(ghost?.key).toBe("hf-r");
+    expect(ghost?.markup).not.toMatch(/data-hf-id|id="r"/);
+    expect(ghost?.markup).toContain("color: rgb(5, 6, 7)");
+
+    document.body.innerHTML = "";
+    const port = fakePort();
+    run(
+      hold([
+        {
+          key: "hf-r",
+          ghost: { markup: ghost!.markup, box },
+          draw: { styles: { opacity: "0.5" } },
+        },
+      ]),
+      port,
+    );
+    const stood = document.body.firstElementChild as HTMLElement;
+    expect(stood.getAttribute("aria-hidden")).toBe("true");
+    expect([
+      stood.style.position,
+      stood.style.left,
+      stood.style.top,
+      stood.style.pointerEvents,
+      stood.style.opacity,
+    ]).toEqual(["fixed", "40px", "50px", "none", "0.5"]);
+    run(parseStageActParams({ op: "restore", keys: null }), port);
+    expect(document.body.children.length).toBe(0);
+  });
+
+  it("stands back a picture and nested elements exactly as the frame it left had them, as open mode's import does", () => {
+    document.body.innerHTML = `<figure data-hf-id="hf-f"><img src="p.png" alt="P"><figcaption><b>Big</b> <i>cat</i><svg viewBox="0 0 4 4"><circle r="2"></circle></svg></figcaption></figure>`;
+    const open = document.querySelector("figure")!.cloneNode(true) as HTMLElement;
+    const [ghost] = captureStageGhosts(document, [{ key: "hf-f", hfId: "hf-f" }]);
+    document.body.innerHTML = "";
+    run(hold([{ key: "hf-f", ghost: { markup: ghost!.markup, box }, draw: {} }]), fakePort());
+    expect(document.body.firstElementChild!.innerHTML).toBe(open.innerHTML);
+  });
+
+  it("leaves out a subtree over the cap and a key it cannot find", () => {
+    document.body.innerHTML = `<p data-hf-id="hf-big">${"x".repeat(70_000)}</p>`;
+    expect(
+      captureStageGhosts(document, [
+        { key: "hf-big", hfId: "hf-big" },
+        { key: "9", hfId: null },
+      ]),
+    ).toEqual([]);
   });
 });

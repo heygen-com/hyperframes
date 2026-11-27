@@ -148,7 +148,7 @@ export async function probeMissingSourceDurations<
       continue;
     }
     const source = resolveProbeSource(el.src, projectId);
-    if (getCachedProbe(source) || hasFreshFailure(normalizeUrl(source))) continue;
+    if (!source || getCachedProbe(source) || hasFreshFailure(normalizeUrl(source))) continue;
     const keys = keysBySource.get(source);
     if (keys) keys.push(el.key ?? el.id);
     else keysBySource.set(source, [el.key ?? el.id]);

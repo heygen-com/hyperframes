@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioApi } from "../createStudioApi";
+import { runOffThread } from "../helpers/subCompositionBuild";
 import type { StudioApiAdapter } from "../types";
 
 const projectDir = mkdtempSync(join(tmpdir(), "hf-preview-comp-deadline-"));
@@ -74,6 +75,25 @@ describe("a sub-composition preview build", () => {
     expect(res?.status).toBe(200);
     expect((await res?.text())?.length).toBeGreaterThan(cells.length / 30);
     expect(stall).toBeLessThan(DEADLINE_MS);
+  }, 90_000);
+
+  it("refused while it waited behind another build says when to ask again; one that ran out its own time does not", async () => {
+    const ranOut = await comp("huge.html");
+    expect(ranOut.status).toBe(503);
+    expect(ranOut.headers.get("retry-after")).toBeNull();
+
+    const busy = runOffThread(
+      { kind: "parts", html: "<p>busy</p>".repeat(1_500_000), ignore: [] },
+      performance.now() + 60_000,
+      "busy",
+    );
+    try {
+      const waited = await comp("small.html");
+      expect(waited.status).toBe(503);
+      expect(waited.headers.get("retry-after")).toBe("5");
+    } finally {
+      await busy;
+    }
   }, 90_000);
 
   it("after a refused one, the next page still builds", async () => {

@@ -8,13 +8,13 @@ import {
   renameSync,
   rmSync,
   statSync,
-  utimesSync,
 } from "node:fs";
+import { utimes } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { requireFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeAudioTrack } from "./mediaMetadata.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
-import { isProjectCacheFile, readProjectCacheFile } from "./safePath.js";
+import { isProjectCacheFile, readProjectCacheFileAsync } from "./safePath.js";
 import { mediaInputArgs } from "./mediaExtensions.js";
 
 const SAMPLE_RATE = 4000;
@@ -204,13 +204,16 @@ export function writeWaveformCache(
 const PEAKS_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 
 /** A peaks cache entry's numbers; a link, a non-file or anything but numbers is a miss and is decoded again. */
-export function readCachedPeaks(projectDir: string, cachePath: string): number[] | null {
-  const bytes = readProjectCacheFile(projectDir, cachePath, PEAKS_CACHE_MAX_BYTES);
+export async function readCachedPeaks(
+  projectDir: string,
+  cachePath: string,
+): Promise<number[] | null> {
+  const bytes = await readProjectCacheFileAsync(projectDir, cachePath, PEAKS_CACHE_MAX_BYTES);
   if (!bytes) return null;
   try {
     const parsed: unknown = JSON.parse(bytes.toString("utf-8"));
     if (!Array.isArray(parsed) || !parsed.every((n) => typeof n === "number")) return null;
-    markWaveformCacheUsed(cachePath);
+    await markWaveformCacheUsed(cachePath);
     return parsed;
   } catch {
     return null;
@@ -218,13 +221,10 @@ export function readCachedPeaks(projectDir: string, cachePath: string): number[]
 }
 
 /** Marks a cache entry as just used, so eviction drops the least recently used entries first. */
-export function markWaveformCacheUsed(cachePath: string): void {
-  try {
-    const now = new Date();
-    utimesSync(cachePath, now, now);
-  } catch {
-    // An entry that cannot be touched is only evicted sooner.
-  }
+export async function markWaveformCacheUsed(cachePath: string): Promise<void> {
+  const now = new Date();
+  // An entry that cannot be touched is only evicted sooner.
+  await utimes(cachePath, now, now).catch(() => undefined);
 }
 
 function dropEntriesPastCacheLimit(cacheDir: string, limits: typeof WAVEFORM_CACHE_LIMITS): void {

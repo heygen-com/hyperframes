@@ -1,4 +1,5 @@
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 
 // Blocks belong to a single lint context. Weak keys release each parsed tree after the pass.
 const parsed = new WeakMap<object, { root: postcss.Root } | { error: unknown }>();
@@ -8,7 +9,7 @@ export function styleRoot(style: { content: string }): postcss.Root {
   let entry = parsed.get(style);
   if (!entry) {
     try {
-      entry = { root: postcss.parse(style.content) };
+      entry = { root: parseCss(style.content) };
     } catch (error) {
       entry = { error };
     }

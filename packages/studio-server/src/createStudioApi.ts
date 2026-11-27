@@ -37,7 +37,7 @@ import {
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
 import { refuseServiceWorkerScripts } from "./helpers/serviceWorkerScripts.js";
-import { previewErrorPage } from "./helpers/previewErrorPage.js";
+import { previewErrorPage, retryAfterSeconds } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
 import {
   createFrameTokens,
@@ -46,17 +46,18 @@ import {
 } from "./helpers/opaqueFrameLoads.js";
 import { isFetchedAgain } from "./helpers/fetchAgain.js";
 
-async function answerRefusedFrameWithPage(c: Context, next: Next) {
+const answerRefusedFrameWithPage = (runtimeUrl: string) => async (c: Context, next: Next) => {
   await next();
   if (c.req.header("sec-fetch-dest") !== "iframe" || c.res.status < 400) return;
   const headers = new Headers(c.res.headers);
   headers.set("content-type", "text/html; charset=utf-8");
   headers.delete("content-length");
-  c.res = new Response(previewErrorPage(c.res.status), {
+  const retryAfterS = retryAfterSeconds(c.res.headers.get("retry-after"));
+  c.res = new Response(previewErrorPage(c.res.status, runtimeUrl, retryAfterS), {
     status: c.res.status,
     headers,
   });
-}
+};
 
 const siteHeaders = (c: Context) => ({
   fetchSite: c.req.header("sec-fetch-site"),
@@ -257,8 +258,8 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
     }
     return next();
   });
-  api.use("/projects/:id/preview/*", answerRefusedFrameWithPage);
-  api.use("/projects/:id/preview", answerRefusedFrameWithPage);
+  api.use("/projects/:id/preview/*", answerRefusedFrameWithPage(adapter.runtimeUrl));
+  api.use("/projects/:id/preview", answerRefusedFrameWithPage(adapter.runtimeUrl));
   api.use(async function answerProjectDirMissingAfterErrorHandlers(c, next) {
     const hostHeaders = new Headers(c.res.headers);
     await next();

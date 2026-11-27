@@ -43,9 +43,9 @@ describe("writeWaveformCache", () => {
     expect(readdirSync(cacheDir).sort()).toEqual(["entry-2.json", "entry-3.json", "newest.json"]);
   });
 
-  it("drops the least recently used entry, not the oldest written", () => {
+  it("drops the least recently used entry, not the oldest written", async () => {
     const cacheDir = cacheWithEntries(3);
-    markWaveformCacheUsed(join(cacheDir, "entry-0.json"));
+    await markWaveformCacheUsed(join(cacheDir, "entry-0.json"));
 
     writeWaveformCache(join(cacheDir, "newest.json"), [0.5], { entries: 3, bytes: 1_000 });
 

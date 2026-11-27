@@ -21,7 +21,7 @@ bindShareHost({
   reviewUploadOrigins: ["https://review-bucket.s3.us-east-1.amazonaws.com"],
   signedInRequest,
   projectFingerprint,
-  latestExportFile, // (dir) => { path, fingerprint, id } | null
+  latestExportFile, // (dir) => { path, fingerprint, id } | null, or a promise of it
   ffBinary, // ('ffprobe') => executable path
 });
 const client = reviewClient({ access, signedInEmail });
@@ -132,8 +132,16 @@ When the upload ID is known, recovery can check its status directly.
 A stalled storage PUT stops after 60 seconds without progress and can retry with
 the same upload identity.
 
-Default state uses `.hyperframes/share-sync.<backend-hash>.json`, with strict
-account/backend/realpath binding, private atomic writes, and a process lock.
+The default store uses `source-bindings/` in the local HyperFrames configuration
+directory (`HYPERFRAMES_CONFIG_DIR` or `~/.hyperframes`). Records are keyed by backend
+and project realpath, checked against the signed-in account and written atomically
+under the project lock. Copies and projects with only a legacy in-project record
+start a new composition on the next explicit sync. To keep the history of a moved
+or upgraded folder, run `hyperframes share --reconnect` or choose **Reconnect a
+moved or upgraded project** in Studio before syncing. Confirm the cloud project
+and workspace. When the local files differ from the published version, a separate
+confirmation allows the next sync to publish those local files. Canceling leaves
+the folder unbound. Reconnecting itself only updates the local binding.
 Hosts can inject a compatible `store` or read-only `existingBinding` resolver.
 An external Desktop binding is reused only when exact and settled; this adapter
 never writes Desktop's binding or starts a second upload on its behalf.

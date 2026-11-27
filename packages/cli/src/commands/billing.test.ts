@@ -167,6 +167,33 @@ describe("billing add-credits", () => {
     expect(log.mock.calls.flat().join("\n")).not.toMatch(/deprecat|renamed|top-up/i);
   });
 
+  // The server answers a Free account's add-on checkout 400 "An active HyperFrames plan is required".
+  it("offers a Free account no add-on from the terminal; the open page shows it the plans", async () => {
+    terminal.attended = true;
+    terminal.enter = true;
+    never.paid = false;
+    held.offer = Promise.resolve({
+      addon: {
+        unitsPerBlock: 100,
+        unitAmount: 100,
+        currency: "usd",
+        min: 1,
+        max: 100,
+        recommended: 10,
+      },
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["add-credits", "--timeout", "4"] });
+    await vi.advanceTimersByTimeAsync(6000);
+    await done;
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
+    expect(log.mock.calls.flat().join("\n")).not.toContain("add-on credits:");
+    expect(events.failed).toEqual([]);
+  });
+
   it("refuses the old name `top-up` like any unknown action, naming the valid ones", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await expect(runCommand(billing, { rawArgs: ["top-up"] })).rejects.toThrow();

@@ -1,4 +1,5 @@
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import { styleRoot } from "../styleRoots";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import { readAttr, readJsonAttr, truncateSnippet } from "../utils";
@@ -90,7 +91,7 @@ function inlineStyleFindings(tags: LintContext["tags"], stage: Stage): Hyperfram
   for (const tag of tags) {
     const inline = readJsonAttr(tag.raw, "style");
     if (!inline || !THREE_D_TRANSFORM.test(inline)) continue;
-    const root = parsed(() => postcss.parse(inline));
+    const root = parsed(() => parseCss(inline));
     const box = root ? boxOf(root) : {};
     if (!oversizedArea(box, stage)) continue;
     const where = {

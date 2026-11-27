@@ -1,7 +1,15 @@
 // Studio's stage acts inside a sealed frame: hold an element's before look, apply the parent's draws, give it back.
 // The parent owns every motion and easing; the frame only borrows named properties, writes validated values and
 // reports boxes, so a sealed act paints what an open one does without the parent touching the frame's document.
+import { postOnPort } from "../runtimePort";
 import { MAX_DRAFT_PX, MAX_ELEMENT_TEXT, type EditingRect } from "../editingElement";
+import { listenFrameKeydown } from "./canvasKeys";
+import {
+  captureStageGhosts,
+  inertStageGhost,
+  MAX_STAGE_GHOST_MARKUP,
+  type StageActGhost,
+} from "./stageGhost";
 import { locateStageKey, paintedOnStage } from "./stageMeasure";
 import { rotateBy, scaleBy, translateBy } from "./transformValues";
 
@@ -49,12 +57,19 @@ export type StageActElementHold = StageActTarget & {
   draw: StageActDraw;
   typing?: { hidden: boolean };
 };
-export type StageActHold = StageActElementHold;
+/** A removed element stood back as a ghost from markup relayed out of the frame it left. */
+export type StageActGhostHold = {
+  key: string;
+  ghost: { markup: string; box: EditingRect };
+  draw: StageActDraw;
+};
+export type StageActHold = StageActElementHold | StageActGhostHold;
 export type StageActParams =
   | { op: "hold"; acts: StageActHold[]; deferred: boolean; caretColor: string }
   | { op: "frame"; draws: { key: string; draw: StageActDraw }[] }
   | { op: "ready"; keys: string[] }
-  | { op: "restore"; keys: string[] | null };
+  | { op: "restore"; keys: string[] | null }
+  | { op: "capture"; targets: StageActTarget[] };
 export interface StageActHeld {
   key: string;
   rect: EditingRect;
@@ -69,7 +84,8 @@ export type StageActResult =
   | { op: "hold"; held: StageActHeld[] }
   | { op: "frame"; rects: StageActRect[] }
   | { op: "ready"; held: StageActHeld[] }
-  | { op: "restore"; restored: number };
+  | { op: "restore"; restored: number }
+  | { op: "capture"; ghosts: StageActGhost[] };
 export type StageActReadyEvent = { v: number; event: "stage-act-ready"; held: StageActHeld[] };
 export type StageInputEvent = {
   v: number;
@@ -80,6 +96,7 @@ export type StageInputEvent = {
   ctrlKey: boolean;
 };
 const STAGE_INPUTS = ["pointerdown", "drop", "keydown"] as const;
+const STAGE_POINTER_INPUTS = ["pointerdown", "drop"] as const;
 
 // ---- validation (both ends: the frame checks the parent's params, the parent checks the frame's replies)
 
@@ -205,9 +222,20 @@ const parseTyping = (value: unknown): { hidden: boolean } | null | undefined => 
     : null;
 };
 
-function parseHold(value: unknown): StageActHold | null {
-  if (!isFields(value) || !onlyKeys(value, ["key", "hfId", "borrow", "draw", "typing"]))
+function parseGhostHold(value: Fields): StageActGhostHold | null {
+  if (!onlyKeys(value, ["key", "ghost", "draw"]) || !isKey(value.key) || !isFields(value.ghost))
     return null;
+  const { markup, box } = value.ghost;
+  const rect = readStageRect(box);
+  const draw = parseDraw(value.draw);
+  if (typeof markup !== "string" || markup.length > MAX_STAGE_GHOST_MARKUP) return null;
+  return rect && draw && { key: value.key, ghost: { markup, box: rect }, draw };
+}
+
+function parseHold(value: unknown): StageActHold | null {
+  if (!isFields(value)) return null;
+  if ("ghost" in value) return parseGhostHold(value);
+  if (!onlyKeys(value, ["key", "hfId", "borrow", "draw", "typing"])) return null;
   const target = parseTarget({ key: value.key, hfId: value.hfId });
   const borrow = parseBorrow(value.borrow);
   const draw = parseDraw(value.draw);
@@ -249,6 +277,10 @@ const OP_PARSERS: Record<StageActParams["op"], (params: Fields) => StageActParam
     const keys = params.keys === null ? null : keyList(params.keys);
     if (!onlyKeys(params, ["op", "keys"]) || (keys === null && params.keys !== null)) return null;
     return { op: "restore", keys };
+  },
+  capture: (params) => {
+    const targets = allParsed(list(params.targets, MAX_STAGE_ACTS)?.map(parseTarget));
+    return onlyKeys(params, ["op", "targets"]) && targets ? { op: "capture", targets } : null;
   },
 };
 
@@ -380,6 +412,38 @@ function holdElement(
   };
 }
 
+function holdGhost(
+  doc: Document,
+  key: string,
+  ghost: { markup: string; box: EditingRect },
+  draw: StageActDraw,
+): Held | null {
+  const node = doc.body && inertStageGhost(doc, ghost.markup);
+  if (!node) return null;
+  Object.assign(node.style, {
+    position: "fixed",
+    margin: "0",
+    left: `${ghost.box.x}px`,
+    top: `${ghost.box.y}px`,
+    translate: "none",
+    pointerEvents: "none",
+  });
+  node.setAttribute("aria-hidden", "true");
+  doc.body.appendChild(node);
+  const apply = (next: StageActDraw) => {
+    if (next.translate) node.style.setProperty("translate", translateBy("none", ...next.translate));
+    if (next.scale !== undefined) node.style.setProperty("scale", scaleBy("none", next.scale));
+    for (const [name, value] of Object.entries(next.styles ?? {}))
+      node.style.setProperty(name, value!);
+  };
+  apply(draw);
+  return {
+    info: () => ({ key, rect: rectOf(node), textStart: null, chars: 0 }),
+    apply,
+    restore: () => node.remove(),
+  };
+}
+
 /** Holds `act` now; "later" while a deferred element is not on the stage yet; null when it cannot be held. */
 function tryHold(
   doc: Document,
@@ -387,6 +451,7 @@ function tryHold(
   deferred: boolean,
   caretColor: string,
 ): Held | "later" | null {
+  if ("ghost" in act) return holdGhost(doc, act.key, act.ghost, act.draw);
   const element = locateStageKey(doc, act) as HTMLElement | null;
   const onStage = element?.style && paintedOnStage(element);
   if (!onStage && deferred) return "later";
@@ -455,15 +520,15 @@ function start(
   const onInput = (event: Event) => {
     const key = event instanceof KeyboardEvent ? event.key.slice(0, MAX_INPUT_KEY) : null;
     const { metaKey = false, ctrlKey = false } = event as KeyboardEvent;
-    port.postMessage({ v: version, event: "stage-input", type: event.type, key, metaKey, ctrlKey });
+    postOnPort(port, { v: version, event: "stage-input", type: event.type, key, metaKey, ctrlKey });
   };
-  for (const type of STAGE_INPUTS) view?.addEventListener(type, onInput, true);
+  const stopInputs = view ? listenStageInputs(view, onInput) : () => {};
   // Observer callbacks run before the frame paints: an element its seek reveals is held before it shows.
   const watch =
     open.waiting.size > 0 && view
       ? new view.MutationObserver(() => {
           const now = holdWaiting(open, doc);
-          if (now.length > 0) port.postMessage({ v: version, event: "stage-act-ready", held: now });
+          if (now.length > 0) postOnPort(port, { v: version, event: "stage-act-ready", held: now });
           if (open.waiting.size === 0) watch?.disconnect();
         })
       : null;
@@ -472,9 +537,18 @@ function start(
   open.stop = () => {
     watch?.disconnect();
     if (cap) view?.clearTimeout(cap);
-    for (const type of STAGE_INPUTS) view?.removeEventListener(type, onInput, true);
+    stopInputs();
   };
   return { op: "hold" as const, held };
+}
+
+function listenStageInputs(view: Window, onInput: (event: Event) => void): () => void {
+  for (const type of STAGE_POINTER_INPUTS) view.addEventListener(type, onInput, true);
+  const stopKeys = listenFrameKeydown(view, onInput);
+  return () => {
+    for (const type of STAGE_POINTER_INPUTS) view.removeEventListener(type, onInput, true);
+    stopKeys();
+  };
 }
 
 export function stageAct(
@@ -483,6 +557,8 @@ export function stageAct(
   version: number,
   doc: Document = document,
 ): StageActResult {
+  if (params.op === "capture")
+    return { op: "capture", ghosts: captureStageGhosts(doc, params.targets) };
   if (params.op === "hold") return start(doc, params, port, version);
   const open = session?.port === port ? session : null;
   if (params.op === "frame") {

@@ -8,6 +8,7 @@
 
 import { replaceMatches, urlHashRefMatches } from "@hyperframes/parsers/css-url-scans";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import { fnv1a32 } from "../canary";
 import { escapeCssIdentifier, selectorIdTokens } from "./selectorIdTokens";
 import {
@@ -547,7 +548,7 @@ export function rewriteSvgIdReferencesInCss(
 
   let root: postcss.Root;
   try {
-    root = postcss.parse(css);
+    root = parseCss(css);
   } catch {
     // Unparseable CSS is the caller's problem to report; leaving it untouched
     // is strictly better than dropping the whole stylesheet here.
