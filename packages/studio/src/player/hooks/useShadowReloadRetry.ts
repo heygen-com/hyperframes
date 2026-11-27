@@ -5,6 +5,7 @@ import { refusedPreviewStatus } from "@hyperframes/core/studio-preview-mark";
 export const READY_TIMEOUT_CAUSE = "it took too long to load";
 export const SHADOW_RETRY_DELAY_MS = 2_000;
 export const BUSY_PAGE_RETRIES = 3;
+const MIN_BUSY_WAIT_MS = 1_000;
 const MAX_BUSY_WAIT_MS = 30_000;
 
 /** More tries for a reload that timed out (once) or whose server said busy (503, after its Retry-After), so an edit is
@@ -54,12 +55,12 @@ export function useShadowReloadRetry(
   const afterFailure = useCallback(
     (cause: string, failedGen: number, retryAfterMs?: number) => {
       if (refusedPreviewStatus(cause) === 503) {
-        if (refusedTries.current >= BUSY_PAGE_RETRIES) return;
+        if (retryAfterMs === undefined || refusedTries.current >= BUSY_PAGE_RETRIES) return;
         refusedTries.current += 1;
         cancelRef.current();
         retryWhenVisible(
           failedGen,
-          Math.min(retryAfterMs ?? SHADOW_RETRY_DELAY_MS, MAX_BUSY_WAIT_MS),
+          Math.min(Math.max(retryAfterMs, MIN_BUSY_WAIT_MS), MAX_BUSY_WAIT_MS),
         );
         return;
       }

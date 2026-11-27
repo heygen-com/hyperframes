@@ -59,9 +59,11 @@ type Result<J> = J extends BuildJob
       : string;
 
 export class SubCompositionDeadlineError extends Error {
-  constructor(compPath: string) {
+  readonly queued: boolean;
+  constructor(compPath: string, queued = false) {
     super(`${compPath} took too long to build`);
     this.name = "SubCompositionDeadlineError";
+    this.queued = queued;
   }
 }
 
@@ -165,7 +167,7 @@ export function runOffThread<J extends SubCompositionJob>(
       () => {
         const wasRunning = running === id;
         untrack(id);
-        reject(new SubCompositionDeadlineError(compPath));
+        reject(new SubCompositionDeadlineError(compPath, !wasRunning));
         if (wasRunning && worker) replace(worker);
       },
       Math.max(0, deadline - performance.now()),

@@ -116,10 +116,19 @@ describe("a shadow reload whose page the server refused with 503", () => {
     expect(onPreviewReloadFailed).toHaveBeenCalledTimes(BUSY_PAGE_RETRIES + 1);
   });
 
-  it("asks again after the short retry delay when the page carries no Retry-After", () => {
+  it("does not ask again when the server did not say when to", () => {
     const { getApi } = beginReload();
     refuse(getApi, 503);
-    act(() => void vi.advanceTimersByTime(SHADOW_RETRY_DELAY_MS));
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect(shadows(getApi().previewSlots)).toHaveLength(0);
+  });
+
+  it("waits at least a second when the server's Retry-After is 0", () => {
+    const { getApi } = beginReload();
+    refuse(getApi, 503, 0);
+    act(() => void vi.advanceTimersByTime(999));
+    expect(shadows(getApi().previewSlots)).toHaveLength(0);
+    act(() => void vi.advanceTimersByTime(1));
     expect(shadows(getApi().previewSlots)).toHaveLength(1);
   });
 
