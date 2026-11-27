@@ -176,7 +176,8 @@
         "**/*.test.js",
         "**/*.test.mjs",
         "**/*.test.cjs",
-        "packages/studio/src/**",
+        "packages/studio/src/**/*.ts",
+        "packages/studio/src/**/*.tsx",
         "packages/parsers/src/postcss.ts"
       ],
       "rules": {
