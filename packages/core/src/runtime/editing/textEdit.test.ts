@@ -5,6 +5,7 @@ import {
   endTextEdit,
   parseTextEdit,
   textEdit,
+  textEditAwayEvent,
   textEditEndedEvent,
   textEditResult,
   textEditSelectionEvent,
@@ -37,6 +38,8 @@ const port = () =>
 let parent = port();
 const start = (handle: string, on: MessagePort = parent) =>
   textEdit({ handle, action: "start", caret: null }, on, V);
+const startTakingAway = (handle: string) =>
+  textEdit({ handle, action: "start", caret: null, away: true }, parent, V);
 const end = (handle: string, keep: boolean, on: MessagePort = parent) =>
   textEdit({ handle, action: "end", keep }, on, V);
 const key = (element: Element, init: KeyboardEventInit) =>
@@ -218,6 +221,126 @@ describe("text-edit", () => {
     const drop = new Event("drop", { bubbles: true, cancelable: true });
     expect(element.dispatchEvent(paste)).toBe(false);
     expect(element.dispatchEvent(drop)).toBe(false);
+  });
+
+  // fails without the fix: a sealed frame's host can't hear the film's document, so where a press landed was lost.
+  it("tells the port where a press outside the text landed, after the ended event that saves it", () => {
+    vi.useFakeTimers();
+    try {
+      const { element, handle } = page();
+      const other = document.getElementById("other")!;
+      startTakingAway(handle);
+      other.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          clientX: 30,
+          clientY: 40,
+          shiftKey: true,
+        }),
+      );
+      element.dispatchEvent(new FocusEvent("blur"));
+      vi.runAllTimers();
+      const events = parent.postMessage.mock.calls.map(([message]) => message.event);
+      expect(events).toEqual(["text-edit-ended", "text-edit-away"]);
+      expect(parent.postMessage).toHaveBeenLastCalledWith({
+        v: V,
+        event: "text-edit-away",
+        handle,
+        button: 0,
+        point: { x: 30, y: 40 },
+        viewportWidth: window.innerWidth,
+        keys: { shiftKey: true, metaKey: false, ctrlKey: false },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hands a right-click anywhere in the film, the text included, to the port and keeps the frame's menu shut", () => {
+    const { element, handle } = page();
+    startTakingAway(handle);
+    const menu = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      button: 2,
+      clientX: 5,
+      clientY: 6,
+    });
+    expect(element.dispatchEvent(menu)).toBe(false);
+    expect(parent.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "text-edit-away",
+        handle,
+        button: 2,
+        point: { x: 5, y: 6 },
+      }),
+    );
+  });
+
+  it("says nothing of a press inside the text, a non-primary press, or any press once the session ends", () => {
+    vi.useFakeTimers();
+    try {
+      const { element, handle } = page();
+      const other = document.getElementById("other")!;
+      startTakingAway(handle);
+      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      other.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 1 }));
+      end(handle, false);
+      other.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      other.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      vi.runAllTimers();
+      expect(parent.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: "text-edit-away" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the native menu and says nothing of presses for a host that has not asked for them", () => {
+    vi.useFakeTimers();
+    try {
+      const { element, handle } = page();
+      const other = document.getElementById("other")!;
+      start(handle);
+      const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+      expect(element.dispatchEvent(menu)).toBe(true);
+      other.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+      vi.runAllTimers();
+      expect(parent.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: "text-edit-away" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads an away event only in its exact shape", () => {
+    const event = {
+      v: V,
+      event: "text-edit-away",
+      handle: HANDLE,
+      button: 0,
+      point: { x: 1, y: 2 },
+      viewportWidth: 640,
+      keys: { shiftKey: false, metaKey: true, ctrlKey: false },
+    };
+    const { v: _v, event: _e, ...away } = event;
+    expect(textEditAwayEvent(event, V)).toEqual(away);
+    const asked = { handle: HANDLE, action: "start", caret: null, away: true };
+    expect(parseTextEdit(asked)).toEqual(asked);
+    expect(parseTextEdit({ ...asked, away: "yes" })).toBeNull();
+    expect(textEditAwayEvent({ ...event, button: 2 }, V)).not.toBeNull();
+    expect(textEditAwayEvent({ ...event, button: 1 }, V)).toBeNull();
+    expect(textEditAwayEvent({ ...event, v: 2 }, V)).toBeNull();
+    expect(textEditAwayEvent({ ...event, extra: 1 }, V)).toBeNull();
+    expect(textEditAwayEvent({ ...event, point: { x: Infinity, y: 2 } }, V)).toBeNull();
+    expect(textEditAwayEvent({ ...event, viewportWidth: 0 }, V)).toBeNull();
+    expect(
+      textEditAwayEvent({ ...event, keys: { shiftKey: 1, metaKey: true, ctrlKey: false } }, V),
+    ).toBeNull();
+    expect(textEditAwayEvent({ ...event, keys: { shiftKey: false, metaKey: true } }, V)).toBeNull();
   });
 
   it("reads an ended event only in its exact shape", () => {
