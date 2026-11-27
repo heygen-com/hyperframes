@@ -168,6 +168,12 @@ export function paintChromeInFrameWhile(
       if (current?.carrier === carrier)
         plane.style.clipPath = outside(origin, basis.iframeRect.width, basis.iframeRect.height);
     },
+    // The frame had no copy this place fits (it reloaded): Studio draws it all until a new copy is shown.
+    lost() {
+      plane.style.removeProperty("clip-path");
+      copied = [];
+      inFrame = false;
+    },
   };
   current = { iframe, plane, held, carrier };
   carryPreviewDraftChrome(iframe, carrier);

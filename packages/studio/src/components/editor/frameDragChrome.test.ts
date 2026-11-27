@@ -136,6 +136,22 @@ describe("a sealed drag's chrome", () => {
     expect([frameHost(), plane().style.clipPath]).toEqual([null, ""]);
   });
 
+  // fails without the fix: the frame dropped a place it had no copy for, and Studio stayed clipped with no outline.
+  it("is sent whole again when the frame lost its copy mid-drag", async () => {
+    const { iframe, member } = await sealedDrag();
+    paintChromeInFrameWhile(iframe, overlay(), () => true);
+    applyManualOffsetDragDraft(member, 10, 0);
+    await vi.waitFor(() => expect(plane().style.clipPath).toContain("evenodd"));
+    await previewRequest(iframe, "draft", { drafts: [], chrome: null });
+    expect(frameHost()).toBeNull();
+    studioBox().style.left = "50px";
+    applyManualOffsetDragDraft(member, 40, 0);
+    applyManualOffsetDragDraft(member, 50, 0);
+    await vi.waitFor(() => expect(frameBox().style.left).toBe("50px"));
+    await vi.waitFor(() => expect(plane().style.clipPath).toContain("evenodd"));
+    expect(chromeSent(iframe).filter((chrome) => chrome?.nodes)).toHaveLength(2);
+  });
+
   it("of a later drag stays when an earlier drag's release clears the frame", async () => {
     const { iframe, member } = await sealedDrag();
     let firstHeld = true;

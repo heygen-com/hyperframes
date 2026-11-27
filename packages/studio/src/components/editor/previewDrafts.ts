@@ -28,6 +28,7 @@ type Entry = Drawn & { gesture: object; draft?: number; saving?: string };
 export interface DraftChromeCarrier {
   read: () => EditingDragChrome | undefined;
   shown: () => void;
+  lost: () => void;
 }
 
 interface Queue {
@@ -71,15 +72,17 @@ function queueFor(iframe: HTMLIFrameElement): Queue {
 
 const opGesture = new WeakMap<EditingDraft, object>();
 
-const CLEAR_CHROME: DraftChromeCarrier = { read: () => null, shown: () => {} };
+const CLEAR_CHROME: DraftChromeCarrier = { read: () => null, shown: () => {}, lost: () => {} };
 
-function chromeShown(
+function chromeAnswered(
   queue: Queue,
   carrier: DraftChromeCarrier | undefined,
   sent: EditingDragChrome | undefined,
-  reply: unknown,
+  reply: { chromeDrawn?: boolean } | null | undefined,
 ): void {
-  if (reply && sent?.nodes && carrier && queue.chrome === carrier) carrier.shown();
+  if (!sent || !carrier || queue.chrome !== carrier) return;
+  if (reply?.chromeDrawn === false) carrier.lost();
+  else if (reply?.chromeDrawn && sent.nodes) carrier.shown();
 }
 
 function send(iframe: HTMLIFrameElement, queue: Queue): void {
@@ -93,7 +96,7 @@ function send(iframe: HTMLIFrameElement, queue: Queue): void {
   queue.sending = true;
   void previewRequest(iframe, "draft", { drafts, ...(chrome !== undefined && { chrome }) })
     .then((reply) => {
-      chromeShown(queue, carrier, chrome, reply);
+      chromeAnswered(queue, carrier, chrome, reply);
       if (reply?.gsapSetTakesDrafts) queue.gsapSetTakesDrafts = true;
       for (const op of drafts) {
         const entry = queue.drawn.get(op.handle);
