@@ -1,6 +1,6 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 // fallow-ignore-file code-duplication
-import { memo, useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { memo, useState, useCallback, useRef, useMemo, useEffect, type RefObject } from "react";
 import { SearchInput } from "../ui/SearchInput";
 import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -149,9 +149,13 @@ function ImportButton({ importing, onClick }: { importing: boolean; onClick: () 
 function EmptyState({
   searchQuery,
   onClearSearch,
+  onImport,
+  fileInputRef,
 }: {
   searchQuery: string;
   onClearSearch: () => void;
+  onImport?: AssetsTabProps["onImport"];
+  fileInputRef: RefObject<HTMLInputElement | null>;
 }) {
   if (searchQuery) {
     return (
@@ -188,7 +192,18 @@ function EmptyState({
         <polyline points="17 8 12 3 7 8" strokeLinecap="round" strokeLinejoin="round" />
         <line x1="12" y1="3" x2="12" y2="15" strokeLinecap="round" />
       </svg>
-      <p className="text-[10px] text-neutral-600 text-center">Drop media files here</p>
+      <p className="text-[10px] text-neutral-600 text-center">
+        Drop media files here or choose files to get started
+      </p>
+      {onImport && (
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-panel-input text-panel-text-3 hover:text-panel-text-1 active:scale-[0.98] transition-colors"
+        >
+          Choose files
+        </button>
+      )}
     </div>
   );
 }
@@ -452,7 +467,12 @@ export const AssetsTab = memo(function AssetsTab({
         {viewMode === "global" ? (
           <GlobalAssetsView searchQuery={searchQuery} />
         ) : mediaAssets.length === 0 ? (
-          <EmptyState searchQuery={searchQuery} onClearSearch={() => setSearchQuery("")} />
+          <EmptyState
+            searchQuery={searchQuery}
+            onClearSearch={() => setSearchQuery("")}
+            onImport={onImport}
+            fileInputRef={fileInputRef}
+          />
         ) : (
           visibleCategories.map((cat) => (
             <div key={cat} className="mb-1">
