@@ -222,6 +222,25 @@ describe("__hfSwapScenes", () => {
     vi.restoreAllMocks();
   });
 
+  // fails without the fix: no load said it, so a sealed Studio asked a swap of every one and waited for the refusal.
+  it("says in each timeline message whether this load can swap scenes", async () => {
+    const posted: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message === "object" && message !== null) posted.push(message as never);
+    });
+    const sceneSwap = () => posted.findLast((m) => m.type === "timeline")?.sceneSwap;
+    boot([A1, B], trackingRoot().root);
+    await tick();
+    expect(sceneSwap()).toBe(true);
+    window.__hfRuntimeTeardown?.();
+    posted.length = 0;
+    boot([A1, B], trackingRoot().root, (head) =>
+      head.replace(/<meta name="hf-scene-parts"[^>]*>/, ""),
+    );
+    await tick();
+    expect([sceneSwap(), typeof window.__hfSwapScenes]).toEqual([false, "undefined"]);
+  });
+
   it("swaps only the edited scene: its DOM, style and timeline, keeping the time and the other scene", async () => {
     const { root, children } = trackingRoot();
     boot([A1, B], root);
@@ -2165,7 +2184,7 @@ describe("the preview's scene window", () => {
   const audio = (src: string) => `<audio src="${src}" data-start="0.5" data-duration="1"></audio>`;
 
   it("lets a scene mounting ahead of a playing film join its mix, leaving what already plays alone", async () => {
-    vi.spyOn(WebAudioTransport.prototype, "init").mockResolvedValue(true);
+    vi.spyOn(WebAudioTransport.prototype, "open").mockReturnValue(true);
     const schedule = vi
       .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
       .mockResolvedValue(null);

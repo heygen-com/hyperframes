@@ -1,5 +1,6 @@
 import type { LocalShareSpace, LocalShareState } from "@hyperframes/studio-server";
 import { shareSite } from "../share/auth.js";
+import { namedWorkspace } from "../share/workspace.js";
 import type { ShareService, ShareState } from "../share/service.js";
 
 export function presentShare(value: ShareState): LocalShareState {
@@ -15,6 +16,8 @@ export function presentShare(value: ShareState): LocalShareState {
     failure: value.state === "failed" ? value.version.failure : null,
     hasReadyVersion: value.ready || Boolean(value.previousUrl),
     manageUrl: value.manageUrl,
+    reviewId: value.reviewId,
+    reviewTitle: value.reviewTitle,
     // Desktop's watcher does not cover every portable render input.
     changed: knownChanges(value),
     audience: value.share?.access ?? null,
@@ -27,8 +30,7 @@ export function presentSpaces(
   spaces: Awaited<ReturnType<ShareService["spaces"]>>,
 ): LocalShareSpace[] {
   return spaces.map((space) => ({
-    id: space.space_id,
-    name: space.name || (space.kind === "personal" ? "Personal workspace" : space.space_id),
+    ...namedWorkspace(space),
     bound: space.bound === true,
     canCreate: space.can_create_review,
     ...planOffer(space.review_entitlements),

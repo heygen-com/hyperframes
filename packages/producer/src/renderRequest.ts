@@ -1,4 +1,8 @@
 import {
+  isExpectedOutputDimensions,
+  type ExpectedOutputDimensions,
+} from "./services/render/outputDimensions.js";
+import {
   PRORES_PROFILE_NAMES,
   isVideoFrameFormat,
   resolveConfig,
@@ -16,6 +20,7 @@ import {
 } from "@hyperframes/core";
 import type { ProducerLogger } from "./logger.js";
 import type { RenderConfig } from "./services/renderOrchestrator.js";
+import type { RenderRange } from "./services/render/frameWindow.js";
 import type { DistributedRenderConfig } from "./services/distributed/plan.js";
 import {
   validateDistributedRenderConfig,
@@ -67,8 +72,10 @@ export interface RenderRequestOptions {
   hdrMode?: RenderConfig["hdrMode"];
   chromaSubsampling?: RenderConfig["chromaSubsampling"];
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
+  range?: RenderRange;
   variables?: Record<string, unknown>;
   strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
   engineConfig: EngineConfig;
@@ -212,8 +219,34 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   }
 }
 
+function isRenderRange(value: unknown): value is RenderRange {
+  if (!isPlainObject(value)) return false;
+  const seconds = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  const { startSeconds, endSeconds } = value;
+  if (!seconds(startSeconds)) return false;
+  return (
+    endSeconds === undefined || (seconds(endSeconds) && Number(endSeconds) > Number(startSeconds))
+  );
+}
+
+function assertRequestRange(options: Record<string, unknown>): void {
+  if (options.range !== undefined && !isRenderRange(options.range)) {
+    throw new Error(
+      "Render request range must be { startSeconds, endSeconds? } in seconds, end after start",
+    );
+  }
+}
+
 function assertRequestOptionObjects(options: Record<string, unknown>): void {
   validateEngineConfigSnapshot(options.engineConfig);
+  if (
+    options.expectedOutputDimensions !== undefined &&
+    !isExpectedOutputDimensions(options.expectedOutputDimensions)
+  ) {
+    throw new Error(
+      "Render request expectedOutputDimensions must contain positive integer width and height",
+    );
+  }
   if (options.variables !== undefined && !isPlainObject(options.variables)) {
     throw new Error("Render request variables must be a JSON object");
   }
@@ -234,6 +267,7 @@ function assertRequestOptions(options: unknown): asserts options is RenderReques
   }
   assertRequestOptionScalars(options);
   assertRequestOptionObjects(options);
+  assertRequestRange(options);
 }
 
 function assertNonEmptyPath(value: unknown, field: "projectDir" | "outputPath"): void {
@@ -285,7 +319,11 @@ export function createRenderRequest(input: CreateRenderRequestInput): RenderRequ
 
 export function renderConfigFromRequest(
   request: RenderRequest,
-  runtime: { logger?: ProducerLogger; allowOutsideProjectAssets?: boolean } = {},
+  runtime: {
+    logger?: ProducerLogger;
+    allowOutsideProjectAssets?: boolean;
+    includeOutsideScripts?: boolean;
+  } = {},
 ): RenderConfig {
   const { engineConfig, distributed: _distributed, ...options } = request.options;
   return {
@@ -293,6 +331,7 @@ export function renderConfigFromRequest(
     producerConfig: engineConfig,
     logger: runtime.logger,
     allowOutsideProjectAssets: runtime.allowOutsideProjectAssets === true,
+    includeOutsideScripts: runtime.includeOutsideScripts === true,
   };
 }
 
@@ -308,6 +347,8 @@ export function distributedConfigFromRequest(
   const options = request.options;
   const distributed = options.distributed;
   if (!distributed) throw new Error("Render request is missing distributed options");
+  if (options.range)
+    throw new Error("A distributed render takes its range from renderSpan, not the request");
   // Both are in-process only, and the narrowing matters: `DistributedFormat`
   // does not carry either member, so `format: options.format` below only
   // typechecks once they are thrown out.
@@ -356,6 +397,7 @@ export function distributedConfigFromRequest(
     planDirSizeLimitBytes: distributed.planDirSizeLimitBytes,
     variables: options.variables,
     strictVariables: options.strictVariables,
+    expectedOutputDimensions: options.expectedOutputDimensions,
   };
 }
 
@@ -407,6 +449,7 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("entryFile", config.entryFile),
     ...optionalProperty("variables", config.variables),
     ...optionalProperty("strictVariables", config.strictVariables),
+    ...optionalProperty("expectedOutputDimensions", config.expectedOutputDimensions),
   } satisfies CreateRenderRequestInput["options"];
   return createRenderRequest({
     projectDir: input.projectDir,

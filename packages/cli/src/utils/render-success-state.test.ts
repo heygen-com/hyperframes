@@ -109,6 +109,22 @@ describe("runPostRenderStep", () => {
     expect(process.exitCode).toBe(0);
   });
 
+  // fails without the fix: the step's failure message is handed to the printer as it was thrown.
+  it("reports a failure message with control characters as visible escapes", () => {
+    const sink = vi.fn();
+    const esc = String.fromCharCode(27);
+    runPostRenderStep(
+      "record",
+      () => {
+        throw new Error(`no such file /out/od${esc}[2Jd${String.fromCharCode(7)}.mp4\nsecond line`);
+      },
+      sink,
+    );
+    expect(sink.mock.calls[0]?.[0]).toContain(
+      "(render already succeeded): no such file /out/od\\x1b[2Jd\\x07.mp4\nsecond line",
+    );
+  });
+
   it("stringifies a non-Error throw value", () => {
     const sink = vi.fn();
     runPostRenderStep(

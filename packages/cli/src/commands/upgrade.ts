@@ -1,9 +1,19 @@
+import { globalInstallLocation, homeCliCommand } from "../utils/homeCliCommand.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import * as clack from "../ui/prompts.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+} from "node:fs";
+import { terminalText } from "@hyperframes/core";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, resolve } from "node:path";
 import { c } from "../ui/colors.js";
@@ -90,11 +100,11 @@ export default defineCommand({
 
     console.log();
     console.log(`   ${c.dim("Current:")}  ${c.bold("v" + result.current)}`);
-    console.log(`   ${c.dim("Latest:")}   ${c.bold(c.accent("v" + result.latest))}`);
+    console.log(`   ${c.dim("Latest:")}   ${c.bold(c.accent("v" + terminalText(result.latest)))}`);
     console.log();
 
     if (checkOnly) {
-      clack.outro(c.accent("Update available: v" + result.latest));
+      clack.outro(c.accent("Update available: v" + terminalText(result.latest)));
       return;
     }
 
@@ -138,14 +148,14 @@ function applyUpgrade(result: UpdateCheckResult, autoYes: boolean): void {
   }
 
   if (!autoYes) {
-    printManualCommands(plan.displayCmd, `npx hyperframes@${result.latest}`);
+    printManualCommands(plan.displayCmd, homeCliCommand(result.latest));
     return;
   }
 
   runDetectedInstall(plan.invocation, plan.displayCmd, result.latest);
 }
 
-const NPX_LATEST = `npx hyperframes@${updateChannel()}`;
+const NPX_LATEST = homeCliCommand(updateChannel());
 
 /**
  * How `upgrade --yes` moves this install to `latest`: the detected manager's argv, or, for an
@@ -169,17 +179,19 @@ export type CliUpgradeOutcome =
   | { status: "unchanged"; version: string; command: string; reason: string }
   | { status: "unverified"; command: string; reason: string }
   | { status: "manual"; command: string; reason: string }
-  | { status: "failed"; command: string };
+  | { status: "failed"; command: string; reason?: string };
 
 /** The version Homebrew's linked `hyperframes` reports, or null when it cannot be read. */
-function brewInstalledVersion(): string | null {
+function brewInstalledVersion(cwd: string): string | null {
   try {
     const prefix = execFileSync("brew", ["--prefix", "hyperframes"], {
+      cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       shell: false,
     }).trim();
     const version = execFileSync(join(prefix, "bin", "hyperframes"), ["--version"], {
+      cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       shell: false,
@@ -199,8 +211,13 @@ export function upgradeRunningCli(latest: string): CliUpgradeOutcome {
   if (!isSafeVersion(latest)) return { status: "failed", command: NPX_LATEST };
   const plan = upgradePlan(latest);
   if ("manual" in plan) return { status: "manual", command: plan.manual, reason: plan.reason };
+  const location = globalInstallLocation();
+  if ("reason" in location)
+    return { status: "failed", command: plan.displayCmd, reason: location.reason };
+  const { cwd } = location;
   try {
     execFileSync(plan.invocation.bin, plan.invocation.args, {
+      cwd,
       stdio: ["inherit", 2, 2],
       shell: false,
     });
@@ -208,7 +225,7 @@ export function upgradeRunningCli(latest: string): CliUpgradeOutcome {
     return { status: "failed", command: plan.displayCmd };
   }
   // `brew upgrade` installs whatever the formula pins, which can lag npm, and exits 0 on a no-op.
-  const installed = plan.pinsVersion ? latest : brewInstalledVersion();
+  const installed = plan.pinsVersion ? latest : brewInstalledVersion(cwd);
   const command = plan.displayCmd;
   if (installed === null) {
     return { status: "unverified", command, reason: "the installed version could not be read" };
@@ -224,7 +241,7 @@ function printNpxFallback(reason: string, npxFallback: string, autoYes: boolean)
   console.log();
   if (autoYes) {
     console.log(
-      `   ${c.dim("Couldn't detect a global install to upgrade")} ${c.dim("(" + reason + ")")}`,
+      `   ${c.dim("Couldn't detect a global install to upgrade")} ${c.dim("(" + terminalText(reason) + ")")}`,
     );
   }
   console.log(`   ${c.accent(npxFallback)}`);
@@ -265,6 +282,15 @@ export function resolveProjectArgs(
   return { dir: project, check: opts.check, json: opts.json };
 }
 
+function readWrapper(path: string): { mode: number; text: string } {
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    return { mode: fstatSync(fd).mode & 0o7777, text: readFileSync(fd, "utf-8") };
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export async function upgradeProjectPins(
   dir: string,
   opts: { json: boolean; check: boolean },
@@ -284,7 +310,8 @@ export async function upgradeProjectPins(
     .filter((entry) => entry.isFile() && entry.name.endsWith(".sh"))
     .map((entry) => {
       const path = resolve(dir, entry.name);
-      return { path, rewrite: rewritePinnedHyperframesText(readFileSync(path, "utf-8"), latest) };
+      const { mode, text } = readWrapper(path);
+      return { path, mode, rewrite: rewritePinnedHyperframesText(text, latest) };
     });
   if (rewrite.changed && !opts.check) {
     raw.scripts = rewrite.scripts;
@@ -292,7 +319,8 @@ export async function upgradeProjectPins(
   }
   if (!opts.check) {
     for (const wrapper of wrapperRewrites) {
-      if (wrapper.rewrite.changed) writeFileSync(wrapper.path, wrapper.rewrite.text, "utf-8");
+      if (wrapper.rewrite.changed)
+        replaceFileAtomically(wrapper.path, wrapper.rewrite.text, wrapper.mode);
     }
   }
   const from = new Set(rewrite.fromVersions);
@@ -311,15 +339,16 @@ function printProjectPinResult(
     return;
   }
   if (!res.changed) {
-    console.log(`   ${c.success("◇")}  Project pins already on hyperframes@${res.to}`);
+    console.log(
+      `   ${c.success("◇")}  Project pins already on hyperframes@${terminalText(res.to)}`,
+    );
     return;
   }
   const verb = checkOnly ? "would bump" : "bumped";
   console.log(
     `   ${c.success("◇")}  ${verb} project pins ${res.from.join(", ")} → ${c.accent(res.to)}`,
   );
-  if (checkOnly)
-    console.log(`   ${c.dim("Run `npx hyperframes@latest upgrade --project` to apply.")}`);
+  if (checkOnly) console.log(`   ${c.dim("Repeat the same command without --check to apply.")}`);
 }
 
 export function runDetectedInstall(
@@ -327,16 +356,26 @@ export function runDetectedInstall(
   displayCmd: string,
   version: string,
 ): void {
+  const location = globalInstallLocation();
+  if ("reason" in location) {
+    clack.outro(c.dim(terminalText(location.reason)));
+    setCommandExitCode(1);
+    return;
+  }
   console.log();
   console.log(`   ${c.dim("Running:")} ${c.accent(displayCmd)}`);
   console.log();
   try {
     // shell:false — version is provably safe per isSafeVersion above; keep the
     // no-shell call so future edits can't regress the injection surface.
-    execFileSync(invocation.bin, invocation.args, { stdio: "inherit", shell: false });
+    execFileSync(invocation.bin, invocation.args, {
+      cwd: location.cwd,
+      stdio: "inherit",
+      shell: false,
+    });
     clack.outro(c.success(`Upgraded to v${version}`));
   } catch {
-    clack.outro(c.dim("Install failed. Try running manually:"));
+    clack.outro(c.dim("Install failed. Retry from your home directory:"));
     console.log(`   ${c.accent(displayCmd)}`);
     setCommandExitCode(1);
   }

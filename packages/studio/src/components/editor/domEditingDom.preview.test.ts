@@ -42,7 +42,7 @@ it("keeps a provider-backed video selectable and listed with its logical opacity
   const { video, canvas, root } = preview("0.65");
   expect(getComputedStyle(video).opacity).toBe("0");
   expect(isElementVisibleThroughAncestors(video)).toBe(true);
-  expect(resolveVisualDomEditSelectionTarget([canvas, video], options)).toBe(video);
+  expect(resolveVisualDomEditSelectionTarget([canvas, video])).toBe(video);
   expect(collectDomEditLayerItems(root, options).map((item) => item.element)).toEqual([video]);
   const selected = await resolveDomEditSelection(video, options);
   expect(selected?.computedStyles.opacity).toBe("0.65");
@@ -53,7 +53,7 @@ it("keeps a provider-backed video selectable and listed with its logical opacity
 it("keeps authored zero opacity invisible and reports zero to the inspector", async () => {
   const { video, canvas } = preview("0");
   expect(isElementVisibleThroughAncestors(video)).toBe(false);
-  expect(resolveVisualDomEditSelectionTarget([canvas, video], options)).toBeNull();
+  expect(resolveVisualDomEditSelectionTarget([canvas, video])).toBeNull();
   expect(getCuratedComputedStyles(video).opacity).toBe("0");
   const selected = await resolveDomEditSelection(video, options);
   expect(selected?.computedStyles.opacity).toBe("0");
@@ -64,7 +64,7 @@ it("still respects a hidden ancestor when the preview frame itself is visible", 
   const { video, root } = preview("0.65");
   root.style.opacity = "0";
   expect(isElementVisibleThroughAncestors(video)).toBe(false);
-  expect(resolveVisualDomEditSelectionTarget([video], options)).toBeNull();
+  expect(resolveVisualDomEditSelectionTarget([video])).toBeNull();
 });
 
 it("does not treat an unrelated preceding canvas as the video's visible frame", () => {

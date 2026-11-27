@@ -1,4 +1,4 @@
-import { isRichTextFormattingTag } from "@hyperframes/core/rich-text-sanitize";
+import { hasOnlyFormattingChildren } from "@hyperframes/core/runtime/editing-port";
 import type { DomEditSelection } from "./domEditingTypes";
 import { isTextEditableSelection } from "./domEditingLayers";
 
@@ -44,6 +44,18 @@ export function canEditTextInline(selection: DomEditSelection | null): boolean {
  * first colour change. What counts as formatting is the sanitiser's allowlist,
  * so the editor and the thing that writes the file agree on it.
  */
+/** `canEditElementTextInline` for a sealed preview's selection: the frame refuses markup that is not text. */
+export function canEditSealedTextInline(selection: DomEditSelection | null): boolean {
+  if (!selection?.handle || selection.isCompositionHost) return false;
+  if (selection.isInsideLockedComposition || selection.textMarkup === false) return false;
+  if (!selection.textContent?.trim()) return false;
+  return !["BODY", "HTML"].includes(selection.tagName.toUpperCase());
+}
+
+/** The gate an edit opens through on a selection, live or sealed. */
+export const canOpenTextInline = (selection: DomEditSelection | null): boolean =>
+  selection?.handle ? canEditSealedTextInline(selection) : canEditTextInline(selection);
+
 export function canEditElementTextInline(element: HTMLElement | null): boolean {
   if (!element) return false;
   const tag = element.tagName;
@@ -51,21 +63,6 @@ export function canEditElementTextInline(element: HTMLElement | null): boolean {
   if (!hasOnlyFormattingChildren(element)) return false;
   if (element.isContentEditable) return false;
   return (element.textContent ?? "").trim().length > 0;
-}
-
-export function hasOnlyFormattingChildren(element: HTMLElement): boolean {
-  for (const child of Array.from(element.children)) {
-    if (!isRichTextFormattingTag(child.tagName)) return false;
-    if (!isHtmlFromAnyWindow(child)) return false;
-    // Formatting nests, and a structural child hidden inside a span is still
-    // structural.
-    if (!hasOnlyFormattingChildren(child as HTMLElement)) return false;
-  }
-  return true;
-}
-
-function isHtmlFromAnyWindow(node: Element): boolean {
-  return node.namespaceURI === "http://www.w3.org/1999/xhtml";
 }
 
 /** Where and when a press landed, for recognising the next one as a pair. */
@@ -89,11 +86,15 @@ const DOUBLE_PRESS_SLOP_PX = 6;
  * suppresses the compatibility mouse events and stops the browser pairing the
  * two presses at all: no `dblclick` is dispatched, and `detail` stays 1.
  */
-export function isDoublePress(previous: PressMark | null, next: PressMark): boolean {
+export function isDoublePress(
+  previous: PressMark | null,
+  next: PressMark,
+  pairByPlaceOnly = false,
+): boolean {
   if (!previous) return false;
   return (
     next.element !== null &&
-    previous.element === next.element &&
+    (pairByPlaceOnly || previous.element === next.element) &&
     next.at - previous.at <= DOUBLE_PRESS_MS &&
     Math.abs(next.x - previous.x) <= DOUBLE_PRESS_SLOP_PX &&
     Math.abs(next.y - previous.y) <= DOUBLE_PRESS_SLOP_PX

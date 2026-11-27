@@ -20,6 +20,7 @@ import {
   scanActiveServers,
   type ActiveServer,
 } from "../server/portUtils.js";
+import { terminalText } from "@hyperframes/core";
 import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { windowsLocalAppData } from "../utils/windowsAppData.js";
@@ -246,7 +247,7 @@ function openLog(logPath: string): number {
     return openSync(logPath, "a", 0o600);
   } catch (error) {
     console.warn(
-      `[hyperframes] background preview log not written: cannot open ${logPath} (${error})`,
+      `[hyperframes] background preview log not written: cannot open ${terminalText(logPath)} (${terminalText(String(error))})`,
     );
     return openSync(devNull, "a");
   }
@@ -331,7 +332,7 @@ function statusServer(
   saved: PreviewSession | null,
   preferredPort: number | undefined,
 ): ActiveServer | null {
-  const candidates = sameProjectServers(servers, projectDir);
+  const candidates = sameProjectServers(servers, projectDir).filter((server) => server.proven);
   return (
     candidates.find((server) => server.port === preferredPort) ??
     candidates.find((server) => server.port === saved?.port) ??
@@ -511,6 +512,22 @@ function ownedStopTargetPid(
   return isDescendant(liveServerPid, saved.pid) ? saved.pid : liveServerPid;
 }
 
+function provenStopTargetPid(
+  projectDir: string,
+  server: ActiveServer,
+  saved: PreviewSession | null,
+  liveServerPid: number,
+  dependencies: LifecycleDependencies,
+): number {
+  if (server.pidSource === "os" && server.proven)
+    return ownedStopTargetPid(saved, liveServerPid, dependencies);
+  if (saved && isCurrentPreviewWrapper(saved, dependencies)) return saved.pid;
+  throw new Error(
+    `preview ownership could not be proven for ${resolve(projectDir)}: the server on port ${server.port} is not a preview this user started, ` +
+      "or the system did not say which process it is. Stop that preview from the terminal it runs in.",
+  );
+}
+
 async function stopOwnedPreviewBeforeReplacement(
   owned: ActiveServer | null,
   projectDir: string,
@@ -580,7 +597,7 @@ function reuseExistingPreview(
   candidates: ActiveServer[],
   dependencies: LifecycleDependencies,
 ): Extract<BackgroundPreviewResult, { type: "reused" }> | null {
-  if (!reusableExisting || dependencies.forceNew) return null;
+  if (!reusableExisting?.proven || dependencies.forceNew) return null;
   const unmet = unmetPreferredPort(reusableExisting.port, dependencies.preferredPort);
   if (unmet !== undefined) {
     throw new PreviewServerPortMismatchError(
@@ -744,7 +761,7 @@ export async function stopBackgroundPreview(
   }
 
   const kill = dependencies.kill ?? stopProcess;
-  await kill(ownedStopTargetPid(saved, pid, dependencies));
+  await kill(provenStopTargetPid(projectDir, server, saved, pid, dependencies));
 
   if (!(await awaitServerGone(projectDir, server.port, dependencies))) {
     throw new Error(`background preview did not stop for ${resolve(projectDir)}`);

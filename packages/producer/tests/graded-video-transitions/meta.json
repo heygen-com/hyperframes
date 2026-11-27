@@ -1,0 +1,13 @@
+{
+  "name": "graded-video-transitions",
+  "description": "Color-graded videos keep their animation: a red-to-blue opacity dissolve (2-4 s) and a green clip-path wipe from the left (4-6 s). Before the fix the dissolve exported as a hard cut.",
+  "tags": ["regression", "color-grading", "video"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

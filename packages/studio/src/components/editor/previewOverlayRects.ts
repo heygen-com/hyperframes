@@ -4,15 +4,18 @@
  * `domEditOverlayGeometry`'s, so both kinds of frame draw an element's chrome in the same place.
  */
 import {
+  MAX_DESCRIBE_HANDLES,
   ROTATION_GATE_EPSILON_DEG,
   type EditingElementBox,
   type EditingElementGeometry,
   type EditingRect,
 } from "@hyperframes/core/runtime/editing-port";
 import { previewGeometry } from "../../player/lib/previewElements";
+import type { ReadPriority } from "../../player/lib/previewChannel";
 import { computeOverlayRootScale, type OverlayRootScale } from "./domEditOverlayBasis";
 import { hugRectForClipPath } from "./domEditOverlayCrop";
 import {
+  cornerEdgeLength,
   frameCornersToOverlay,
   frameRectToOverlay,
   orientOverlayRect,
@@ -22,9 +25,27 @@ import {
 
 const clientRect = ({ x, y, width, height }: EditingRect) => ({ left: x, top: y, width, height });
 
+/** Overlay px per CSS px along the element's own edges, which a turn does not lengthen; undefined without a size. */
+function ownScaleOf(scale: OverlayRootScale, box: EditingElementBox) {
+  const { layout } = box;
+  if (!(layout.width > 0 && layout.height > 0)) return undefined;
+  const corners = box.corners && frameCornersToOverlay(scale, box.corners);
+  const width = corners
+    ? cornerEdgeLength(corners.nw, corners.ne)
+    : box.rect.width * scale.rootScaleX;
+  const height = corners
+    ? cornerEdgeLength(corners.nw, corners.sw)
+    : box.rect.height * scale.rootScaleY;
+  return {
+    x: width / layout.width,
+    y: height / layout.height,
+    ...(corners && { corners }),
+  };
+}
+
 /** `toOverlayRect`. */
 const baseRect = (scale: OverlayRootScale, box: EditingElementBox) =>
-  frameRectToOverlay(scale, clientRect(box.rect), box.source);
+  frameRectToOverlay(scale, clientRect(box.rect), box.source, ownScaleOf(scale, box));
 
 /** `orientedOverlayRect`. */
 function orientedRect(scale: OverlayRootScale, box: EditingElementBox): OverlayRect {
@@ -38,7 +59,7 @@ function orientedRect(scale: OverlayRootScale, box: EditingElementBox): OverlayR
 }
 
 /** `groupAwareOverlayRect`, or with `oriented`, `orientedGroupAwareOverlayRect`. */
-function groupAwareRect(
+export function groupAwareRect(
   scale: OverlayRootScale,
   geometry: EditingElementGeometry,
   oriented: boolean,
@@ -51,6 +72,12 @@ function groupAwareRect(
   );
   const union = resolveDomEditGroupOverlayRect(members);
   return union ? { ...union, editScaleX: rect.editScaleX, editScaleY: rect.editScaleY } : rect;
+}
+
+/** `toVisibleOverlayRect`. */
+export function flatVisibleRect(scale: OverlayRootScale, box: EditingElementBox): OverlayRect {
+  const rect = baseRect(scale, box);
+  return { ...rect, ...hugRectForClipPath(rect, box.clipPath) };
 }
 
 /** `orientedVisibleOverlayRect`. */
@@ -79,13 +106,14 @@ export async function measurePreviewOverlay(
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
   targets: PreviewOverlayTargets,
+  priority: ReadPriority = "now",
 ): Promise<PreviewOverlayRects | null> {
   const handles = [...new Set([targets.selection, targets.hover, ...targets.group])].filter(
     (handle): handle is string => Boolean(handle),
   );
   // A selection with no handle is not in this frame; it draws nothing, as one not found there.
   const reply = handles.length
-    ? await previewGeometry(iframe, handles, targets.selection ?? undefined)
+    ? await previewGeometry(iframe, handles, targets.selection ?? undefined, priority)
     : { elements: [], children: null };
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;
@@ -110,14 +138,22 @@ export async function measurePreviewOverlay(
   };
 }
 
-/** `orientedGroupAwareOverlayRect` for each handle; null when the frame cannot answer. */
-export async function measurePreviewRects(
+/** `toVisibleOverlayRect` for each handle, with its frame rect and whether it renders. */
+export async function measurePreviewVisibleRects(
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
   handles: string[],
-): Promise<Array<OverlayRect | null> | null> {
-  const reply = await previewGeometry(iframe, handles);
-  const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
-  if (!reply || !scale) return null;
-  return reply.elements.map((geometry) => geometry && groupAwareRect(scale, geometry, true));
+) {
+  const measured: Array<{ rect: OverlayRect; frame: EditingRect; visible: boolean } | null> = [];
+  for (let at = 0; at < handles.length; at += MAX_DESCRIBE_HANDLES) {
+    const reply = await previewGeometry(iframe, handles.slice(at, at + MAX_DESCRIBE_HANDLES));
+    const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
+    if (!reply || !scale) return null;
+    for (const box of reply.elements) {
+      measured.push(
+        box && { rect: flatVisibleRect(scale, box), frame: box.rect, visible: box.visible },
+      );
+    }
+  }
+  return measured;
 }

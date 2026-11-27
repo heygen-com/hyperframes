@@ -1,31 +1,43 @@
-import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
+import {
+  MAX_ELEMENT_VALUE,
+  MAX_TIMELINE_TEXT,
+  readTextLayer,
+  type TextLayerRead,
+} from "@hyperframes/core/runtime/editing-port";
 import { parseCssColor } from "../../components/editor/colorValue";
 import type { TimelineText } from "../store/timelineElement";
-import {
-  getCuratedComputedStyles,
-  isEditableTextLeaf,
-  isTextBearingTag,
-} from "../../components/editor/domEditingDom";
 
-/** A layer that paints only text and a flat colour (a text tag whose children are all text leaves,
- *  no background image): its words and look. Anything painted beyond that keeps its picture. */
-export function readTimelineText(el: Element): TimelineText | undefined {
-  if (!isHtmlElement(el) || !isTextBearingTag(el.localName)) return undefined;
-  const children = Array.from(el.children);
-  if (!children.every((child) => isHtmlElement(child) && isEditableTextLeaf(child)))
-    return undefined;
-  const value = el.textContent?.replace(/\s+/g, " ").trim();
-  if (!value) return undefined;
-  const style = getCuratedComputedStyles(el);
-  if ((style["background-image"] ?? "none") !== "none") return undefined;
-  const background = style["background-color"];
+function timelineTextOf(read: TextLayerRead | null): TimelineText | undefined {
+  if (!read) return undefined;
+  const { backgroundColor, ...look } = read;
   return {
-    value,
-    fontFamily: style["font-family"],
-    fontWeight: style["font-weight"],
-    color: style.color,
-    background: background && parseCssColor(background)?.alpha === 1 ? background : undefined,
+    ...look,
+    background: parseCssColor(backgroundColor)?.alpha === 1 ? backgroundColor : undefined,
   };
+}
+
+const isSentText = (value: unknown, max: number): value is string =>
+  typeof value === "string" && value.length <= max;
+
+/** The runtime's text read from a clip message: null unless every field is text within the runtime's caps. */
+function receivedTextLayer(raw: unknown): TextLayerRead | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { value, fontFamily, fontWeight, color, backgroundColor } = raw as Record<string, unknown>;
+  return isSentText(value, MAX_TIMELINE_TEXT) &&
+    isSentText(fontFamily, MAX_ELEMENT_VALUE) &&
+    isSentText(fontWeight, MAX_ELEMENT_VALUE) &&
+    isSentText(color, MAX_ELEMENT_VALUE) &&
+    isSentText(backgroundColor, MAX_ELEMENT_VALUE)
+    ? { value, fontFamily, fontWeight, color, backgroundColor }
+    : null;
+}
+
+export function readTimelineText(el: Element): TimelineText | undefined {
+  return timelineTextOf(readTextLayer(el));
+}
+
+export function receivedTimelineText(raw: unknown): TimelineText | undefined {
+  return timelineTextOf(receivedTextLayer(raw));
 }
 
 export function sameTimelineText(a?: TimelineText, b?: TimelineText): boolean {

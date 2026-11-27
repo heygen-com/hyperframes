@@ -9,12 +9,15 @@ export async function listenOnLoopback(server: Server): Promise<string> {
   return `http://127.0.0.1:${address.port}`;
 }
 
-export async function launchTestChrome(executablePath: string | undefined): Promise<Browser> {
+export async function launchTestChrome(
+  executablePath: string | undefined,
+  extraArgs: readonly string[] = [],
+): Promise<Browser> {
   const startedAt = Date.now();
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    args: ["--no-sandbox", "--disable-dev-shm-usage", ...extraArgs],
   });
   const launchedAt = Date.now();
   await (await browser.newPage()).close();

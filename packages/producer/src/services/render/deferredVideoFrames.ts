@@ -66,6 +66,7 @@ export async function extractDeferredFrames(input: {
   shownBoxes?: ReadonlyMap<string, ShownBox>;
   /** The error to throw when the extractor returns no frame for an index the video shows. */
   onMissingFrame: (video: ExtractedFrames, index: number) => Error;
+  onProgress?: () => void;
 }): Promise<ExtractedFrames[]> {
   const deferred = input.extracted.filter((video) => video.deferredRange);
   if (deferred.length === 0) return [];
@@ -89,6 +90,7 @@ export async function extractDeferredFrames(input: {
           format: range.format,
           frameRanges: contiguousRuns(indexes),
           shownBox: input.shownBoxes?.get(video.videoId),
+          ...(input.onProgress && { onProgress: input.onProgress }),
         },
         input.signal,
         input.cfg,

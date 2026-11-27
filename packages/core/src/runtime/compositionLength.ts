@@ -2,13 +2,17 @@ import {
   resolveCompositionDuration,
   type CompositionDurationResult,
 } from "@hyperframes/parsers/composition-duration";
-import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
+import {
+  findRootCompositionElement,
+  parseCompositionDimension,
+  readCompositionSizeFromDocument,
+} from "./compositionDimension";
 import { isMediaElement } from "./domRealm";
 import { parseStrictFiniteTimingNumber, resolveMediaElementDurationSeconds } from "./playbackRate";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createRuntimeState } from "./state";
 
-export { findRootCompositionElement };
+export { findRootCompositionElement, readCompositionSizeFromDocument };
 
 export const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
 
@@ -203,4 +207,44 @@ export function readStaticCompositionMeta(
       resolveContentDerivedDuration(root, resolver, { unregisteredLottie: false }).seconds ?? 0,
   });
   return { ...readCompositionSize(root), fps: createRuntimeState().canonicalFps, durationSeconds };
+}
+
+export const STATIC_COMPOSITION = "static-composition";
+const MAX_STATIC_DURATION_SECONDS = 86_400;
+const MAX_STATIC_DIMENSION = 16_384;
+
+export type StaticComposition = {
+  durationSeconds: number;
+  compositionSize: { width: number; height: number } | null;
+};
+
+/** What the document alone says of its composition: the probe reads it, a sealed frame's runtime posts it. */
+export function readStaticComposition(doc: Document): StaticComposition | null {
+  const durationSeconds = readStaticCompositionMeta(doc)?.durationSeconds ?? 0;
+  if (!(durationSeconds > 0)) return null;
+  return { durationSeconds, compositionSize: readCompositionSizeFromDocument(doc) };
+}
+
+const boundedDimension = (value: unknown): number | null =>
+  typeof value === "number" && Number.isInteger(value) && value > 0 && value <= MAX_STATIC_DIMENSION
+    ? value
+    : null;
+
+/** A posted read with a finite length in (0, a day] and no size or a whole bounded one, else null. */
+export function parseStaticComposition(data: Record<string, unknown>): StaticComposition | null {
+  const seconds = data["durationSeconds"];
+  if (
+    typeof seconds !== "number" ||
+    !Number.isFinite(seconds) ||
+    seconds <= 0 ||
+    seconds > MAX_STATIC_DURATION_SECONDS
+  )
+    return null;
+  const { width, height } = data;
+  if (width == null && height == null) return { durationSeconds: seconds, compositionSize: null };
+  const w = boundedDimension(width);
+  const h = boundedDimension(height);
+  return w !== null && h !== null
+    ? { durationSeconds: seconds, compositionSize: { width: w, height: h } }
+    : null;
 }

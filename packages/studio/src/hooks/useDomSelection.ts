@@ -1,9 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { TimelineElement } from "../player";
-import {
-  getAllPreviewTargetsFromPointer,
-  getPreviewTargetFromPointer,
-} from "../utils/studioPreviewHelpers";
 import {
   domEditSelectionsEqual,
   domEditSelectionsTargetSame,
@@ -12,14 +8,14 @@ import {
   replaceDomEditGroupSelection,
   seedDomEditGroupWithSelection,
 } from "../utils/domEditHelpers";
+import { type DomEditSelection } from "../components/editor/domEditing";
 import {
-  findElementForTimelineElement,
-  type DomEditSelection,
-} from "../components/editor/domEditing";
-import {
-  findOpaqueTimelineElement,
+  elementWithin,
+  findPointerTarget,
+  findPointerTargets,
   findSelectionElement,
   resolveFoundSelection,
+  selectionElementLive,
 } from "../components/editor/previewSelection";
 import type { PreviewElement } from "../player/lib/previewElements";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
@@ -28,6 +24,7 @@ import { useStudioTestHooks } from "./useStudioTestHooks";
 import { logSelect } from "../utils/selectDebug";
 import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 import { announceTimelineSelection as announceSelectionToTimeline } from "./domSelectionTimelineMirror";
+import { buildTimelineSelection, sharingRunningBuilds } from "./timelineSelectionBuild";
 import type {
   ApplyDomSelectionOptions,
   ResolveDomSelectionOptions,
@@ -104,6 +101,7 @@ export function useDomSelection({
       announceSelectionToTimeline(
         {
           timelineElements,
+          activeCompPath,
           getTimelineSelectionSet,
           setSelectedTimelineElementId,
           setTimelineSelectionSet,
@@ -113,6 +111,7 @@ export function useDomSelection({
         replaceSet,
       ),
     [
+      activeCompPath,
       getTimelineSelectionSet,
       setSelectedTimelineElementId,
       setTimelineSelectionSet,
@@ -189,7 +188,7 @@ export function useDomSelection({
       // Selecting something outside the drilled-into group exits the drill-in, so
       // a later click on the group selects it as a unit again (non-sticky drill-in).
       const activeGroup = activeGroupElementRef.current;
-      if (activeGroup && nextSelection && !activeGroup.contains(nextSelection.element)) {
+      if (activeGroup && nextSelection && !elementWithin(activeGroup, nextSelection.element)) {
         activeGroupElementRef.current = null;
         setActiveGroupElementState(null);
       }
@@ -269,7 +268,7 @@ export function useDomSelection({
       } catch {
         /* cross-origin guard */
       }
-      const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
+      const target = await findPointerTarget(iframe, clientX, clientY);
       if (!target) return null;
       return buildDomSelectionFromTarget(
         target,
@@ -285,7 +284,7 @@ export function useDomSelection({
             },
       );
     },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
+    [buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
   );
 
   const resolveAllDomSelectionsFromPreviewPoint = useCallback(
@@ -298,7 +297,7 @@ export function useDomSelection({
       } catch {
         /* cross-origin guard */
       }
-      const targets = getAllPreviewTargetsFromPointer(iframe, clientX, clientY, activeCompPath);
+      const targets = await findPointerTargets(iframe, clientX, clientY);
       const results: DomEditSelection[] = [];
       for (const target of targets) {
         const sel = await buildDomSelectionFromTarget(target, { skipSourceProbe: true });
@@ -306,44 +305,29 @@ export function useDomSelection({
       }
       return results;
     },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
+    [buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
   );
 
   const updateDomEditHoverSelection = useCallback((selection: DomEditSelection | null) => {
-    if (domEditSelectionsTargetSame(domEditHoverSelectionRef.current, selection)) return;
+    const current = domEditHoverSelectionRef.current;
+    const sameHandle = current?.handle === selection?.handle;
+    if (domEditSelectionsTargetSame(current, selection) && sameHandle) return;
     domEditHoverSelectionRef.current = selection;
     setDomEditHoverSelection(selection);
   }, []);
 
-  const buildDomSelectionForTimelineElement = useCallback(
-    // fallow-ignore-next-line complexity
-    async (element: TimelineElement): Promise<DomEditSelection | null> => {
-      const iframe = previewIframeRef.current;
-      const lookup = { activeCompositionPath: activeCompPath, compIdToSrc, isMasterView };
-      let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        return null;
-      }
-      if (!doc) {
-        const found = await findOpaqueTimelineElement(iframe, element, lookup);
-        return found
-          ? buildDomSelectionFromTarget(found, { preferClipAncestor: false }, iframe)
-          : null;
-      }
-
-      const held = holdScenesOf(iframe, element);
-      if (held) await held;
-      reapplyPositionEditsAfterSeek(doc);
-
-      const targetElement = findElementForTimelineElement(doc, element, lookup);
-      return targetElement
-        ? buildDomSelectionFromTarget(targetElement, {
-            preferClipAncestor: false,
-          })
-        : null;
-    },
+  const buildDomSelectionForTimelineElement = useMemo(
+    () =>
+      sharingRunningBuilds(
+        (element, iframe) =>
+          buildTimelineSelection(
+            element,
+            iframe,
+            { activeCompositionPath: activeCompPath, compIdToSrc, isMasterView },
+            buildDomSelectionFromTarget,
+          ),
+        previewIframeRef,
+      ),
     [activeCompPath, buildDomSelectionFromTarget, compIdToSrc, isMasterView, previewIframeRef],
   );
 
@@ -481,7 +465,7 @@ export function useDomSelection({
       captionEditMode ||
       domEditSelectionsTargetSame(domEditHoverSelection, domEditSelection) ||
       domEditSelectionInGroup(domEditGroupSelections, domEditHoverSelection) ||
-      !domEditHoverSelection.element.isConnected;
+      !selectionElementLive(domEditHoverSelection);
     if (shouldClear) updateDomEditHoverSelection(null);
   }, [
     captionEditMode,

@@ -1,9 +1,11 @@
 import { TIMELINE_VIEWPORT_BUDGETS, type TimelineViewportBudgets } from "./timelineViewportBudgets";
 import {
   createThumbnailKey,
+  decodedImageBytes,
   type ThumbnailLoadedResult,
   type ThumbnailValue,
 } from "./thumbnailScheduler";
+import { scaledFrames } from "./thumbnailFrameSink";
 import { MediaFetchError, reportMediaFetchFailure } from "./mediaFetch";
 import {
   acquireThumbnailSource,
@@ -235,7 +237,7 @@ function loadedResult(
       : { kind: "filmstrip", urls, aspect };
   return {
     value,
-    weight: width * height * 4 * decoded.length,
+    weight: decodedImageBytes(width, height) * decoded.length,
     dispose: () => releaseDecodedResources(resources),
   };
 }
@@ -395,12 +397,11 @@ async function decodeMissingFrames(
         }
       }
       const target = targetDimensions(info.aspect, budgets);
-      const sink = new mediabunny.CanvasSink(track, {
-        width: target.width,
-        height: target.height,
-        fit: request.fit ?? "cover",
-        poolSize: 1,
-      });
+      const frames = new mediabunny.VideoSampleSink(track);
+      const sink: ThumbnailCanvasSink = {
+        canvasesAtTimestamps: (timestamps) =>
+          scaledFrames(frames, timestamps, target, request.fit ?? "cover"),
+      };
       const times = decodeTimesAtNearbyKeyframes();
       await decodeFrames(sink, times, slots, signal, resources, source.progress);
     }

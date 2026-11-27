@@ -1,16 +1,19 @@
 import { wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
+import { isStylableElement } from "./domRealm";
+import { servedToAnotherSite, type PreviewTarget } from "../studioPreviewMark";
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
   inspectRuntimeProtocol,
+  isMessageList,
   runtimeProtocolFpsToNumber,
   runtimeProtocolMetadata,
   type RuntimeProtocolV1,
 } from "./protocol";
 
 type BridgeDeps = {
-  onPlay: () => void;
+  onPlay: (playSeq?: number) => void;
   onPause: () => void;
   onStopMedia: () => void;
   onSeek: (timeSeconds: number, seekMode: "drag" | "commit") => void;
@@ -20,6 +23,8 @@ type BridgeDeps = {
   onSetMediaOutputMuted: (muted: boolean) => void;
   onSetNativeMediaSyncDisabled: (disabled: boolean) => void;
   onSetWebAudioMediaDisabled: (disabled: boolean) => void;
+  onSetParentAudio?: (clips: string[]) => void;
+  onAudioClock?: (sample: { time: number; rate: number; at: number } | null) => void;
   onSetPlaybackRate: (rate: number) => void;
   onSetIdleHeartbeat: (slow: boolean) => void;
   onSetRootDuration: (durationSeconds: number) => void;
@@ -38,6 +43,8 @@ type BridgeDeps = {
   onSetCopiesAhead?: (on: boolean) => void;
   onRetryPreviewCopies?: () => void;
   onRequestPreviewFacts?: () => void;
+  onAnnounceTimeline?: () => void;
+  onScrubAudio?: (target: PreviewTarget | null, time: number | null, volume: number) => void;
   getCanonicalFps: () => number;
 };
 
@@ -47,9 +54,35 @@ export function setRuntimeProtocolFps(fps: number): void {
   runtimeProtocolFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
 }
 
+// Another site framing the page learns only how playback stands: the timeline and the picker describe the composition.
+const ANOTHER_SITE_SEES = new Set<string>(["ready", "state", "stage-size"]);
+const ANOTHER_SITE_DRIVES = new Set<string>([
+  "play",
+  "pause",
+  "stop-media",
+  "seek",
+  "tick",
+  "set-muted",
+  "set-volume",
+  "set-media-output-muted",
+  "set-playback-rate",
+  "set-idle-heartbeat",
+  "set-display-scale",
+  "set-parent-audio",
+  "audio-clock",
+]);
+
+let markedForAnotherSite = false;
+const forAnotherSite = (): boolean =>
+  (markedForAnotherSite ||= typeof document !== "undefined" && servedToAnotherSite(document));
+
+const UNSEEDED_DOCUMENT_ID = crypto.randomUUID?.() ?? String(performance.timeOrigin);
+
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
+  if (forAnotherSite() && !ANOTHER_SITE_SEES.has(payload.type)) return;
   try {
-    window.parent.postMessage({ ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) }, "*");
+    const metadata = runtimeProtocolMetadata(runtimeProtocolFps);
+    window.parent.postMessage({ ...payload, ...metadata, documentId: UNSEEDED_DOCUMENT_ID }, "*");
   } catch (err) {
     // Cross-frame posting can throw if the parent is gone or origin-isolated.
     swallow("bridge.postMessage", err);
@@ -59,45 +92,150 @@ export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
 type BridgeControlData = Partial<RuntimeBridgeControlMessage & RuntimeProtocolV1>;
 type ControlHandler = (data: BridgeControlData, deps: BridgeDeps) => void;
 
+const FLASH_DEFAULT_DURATION_MS = 800;
+const FLASH_MAX_DURATION_MS = 5000;
+const MAX_FLASH_SELECTORS = 100;
+const MAX_SELECTOR_LENGTH = 1000;
+const MAX_PARENT_AUDIO_KEY = 8192;
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+// Absent (null or undefined) yields the fallback, a finite number yields itself,
+// and any other value yields null so the caller drops the message.
+function readNumber(value: unknown, fallback: number): number | null {
+  if (value == null) return fallback;
+  return isFiniteNumber(value) ? value : null;
+}
+
+function isBoundedString(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_SELECTOR_LENGTH;
+}
+
+function isOptionalBoundedString(value: unknown): boolean {
+  return value == null || isBoundedString(value);
+}
+
+function isGradingTarget(value: unknown): value is HfColorGradingTarget | string | null {
+  if (value === null || isBoundedString(value)) return true;
+  if (typeof value !== "object" || Array.isArray(value)) return false;
+  const target = value as Record<string, unknown>;
+  return (
+    isOptionalBoundedString(target.id) &&
+    isOptionalBoundedString(target.hfId) &&
+    isOptionalBoundedString(target.selector) &&
+    (target.selectorIndex == null || isFiniteNumber(target.selectorIndex))
+  );
+}
+
+function isScrubTarget(value: unknown): value is PreviewTarget | null {
+  if (value === null) return true;
+  if (typeof value !== "object" || Array.isArray(value)) return false;
+  const target = value as Record<string, unknown>;
+  return (
+    isBoundedString(target.id) &&
+    isOptionalBoundedString(target.hfId) &&
+    isOptionalBoundedString(target.domId) &&
+    isOptionalBoundedString(target.sourceFile)
+  );
+}
+
+function dispatchScrubAudio(data: BridgeControlData, deps: BridgeDeps): void {
+  const target = data.target ?? null;
+  if (!isScrubTarget(target)) return;
+  if (data.time === null) return deps.onScrubAudio?.(target, null, 0);
+  if (!isFiniteNumber(data.time) || !isFiniteNumber(data.volume)) return;
+  deps.onScrubAudio?.(target, Math.max(0, data.time), Math.max(0, Math.min(1, data.volume)));
+}
+
+function dispatchColorGrading(
+  target: unknown,
+  value: unknown,
+  apply: (target: HfColorGradingTarget | string | null, value: unknown) => void,
+): void {
+  const resolvedTarget = target ?? null;
+  if (isGradingTarget(resolvedTarget)) apply(resolvedTarget, value ?? null);
+}
+
 // Per-action dispatchers. Splitting the handler into a lookup table keeps the
 // top-level message listener trivial (one map lookup), and each action's logic
 // becomes individually testable / inheritable for fallow's CRAP analysis.
+// Each dispatcher checks its payload fields for type and range and drops the
+// message when a field is invalid.
 const CONTROL_HANDLERS = new Map<string, ControlHandler>(
   Object.entries({
-    play: (_d, deps) => deps.onPlay(),
+    play: (data, deps) => {
+      if (data.playSeq == null) return deps.onPlay();
+      if (!isFiniteNumber(data.playSeq) || !Number.isInteger(data.playSeq) || data.playSeq < 1)
+        return;
+      deps.onPlay(data.playSeq);
+    },
     pause: (_d, deps) => deps.onPause(),
     "stop-media": (_d, deps) => deps.onStopMedia(),
-    seek: (data, deps) =>
-      deps.onSeek(resolveSeekTimeSeconds(data, deps), data.seekMode ?? "commit"),
+    seek: (data, deps) => {
+      const timeSeconds = resolveSeekTimeSeconds(data, deps);
+      if (timeSeconds !== null)
+        deps.onSeek(timeSeconds, data.seekMode === "drag" ? "drag" : "commit");
+    },
     tick: (_d, deps) => deps.onTick(),
-    "set-muted": (data, deps) => deps.onSetMuted(Boolean(data.muted)),
-    "set-volume": (data, deps) =>
-      deps.onSetVolume(Math.max(0, Math.min(1, Number(data.volume ?? 1)))),
-    "set-media-output-muted": (data, deps) => deps.onSetMediaOutputMuted(Boolean(data.muted)),
+    "set-muted": (data, deps) => deps.onSetMuted(data.muted === true),
+    "set-volume": (data, deps) => {
+      const volume = readNumber(data.volume, 1);
+      if (volume !== null) deps.onSetVolume(Math.max(0, Math.min(1, volume)));
+    },
+    "set-media-output-muted": (data, deps) => deps.onSetMediaOutputMuted(data.muted === true),
     "set-native-media-sync-disabled": (data, deps) =>
-      deps.onSetNativeMediaSyncDisabled(Boolean(data.disabled)),
+      deps.onSetNativeMediaSyncDisabled(data.disabled === true),
     "set-web-audio-media-disabled": (data, deps) =>
-      deps.onSetWebAudioMediaDisabled(Boolean(data.disabled)),
-    "set-playback-rate": (data, deps) => deps.onSetPlaybackRate(Number(data.playbackRate ?? 1)),
-    "set-idle-heartbeat": (data, deps) => deps.onSetIdleHeartbeat(Boolean(data.slow)),
-    "set-display-scale": (data, deps) => deps.onSetDisplayScale?.(Number(data.scale)),
-    "set-preview-quality": (data, deps) => deps.onSetPreviewQuality?.(Number(data.level)),
-    "set-copies-ahead": (data, deps) => deps.onSetCopiesAhead?.(Boolean(data.on)),
+      deps.onSetWebAudioMediaDisabled(data.disabled === true),
+    "set-parent-audio": (data, deps) => {
+      const clips = data.clips;
+      if (!isMessageList(clips)) return;
+      if (!clips.every((clip) => typeof clip === "string" && clip.length <= MAX_PARENT_AUDIO_KEY))
+        return;
+      deps.onSetParentAudio?.(clips);
+    },
+    "audio-clock": (data, deps) => {
+      if (data.time === null) return deps.onAudioClock?.(null);
+      const { time, rate, at } = data;
+      if (!isFiniteNumber(time) || !isFiniteNumber(rate) || !isFiniteNumber(at) || rate <= 0)
+        return;
+      deps.onAudioClock?.({ time: Math.max(0, time), rate, at });
+    },
+    "set-playback-rate": (data, deps) => {
+      const rate = readNumber(data.playbackRate, 1);
+      if (rate !== null) deps.onSetPlaybackRate(rate);
+    },
+    "set-idle-heartbeat": (data, deps) => deps.onSetIdleHeartbeat(data.slow === true),
+    "set-display-scale": (data, deps) => {
+      if (isFiniteNumber(data.scale) && data.scale > 0) deps.onSetDisplayScale?.(data.scale);
+    },
+    "set-preview-quality": (data, deps) => {
+      if (isFiniteNumber(data.level)) deps.onSetPreviewQuality?.(data.level);
+    },
+    "set-copies-ahead": (data, deps) => deps.onSetCopiesAhead?.(data.on === true),
     "retry-preview-copies": (_d, deps) => deps.onRetryPreviewCopies?.(),
     "request-preview-facts": (_d, deps) => deps.onRequestPreviewFacts?.(),
-    "set-root-duration": (data, deps) => deps.onSetRootDuration(Number(data.durationSeconds ?? 0)),
-    "set-play-range": (data, deps) =>
-      deps.onSetPlayRange(
-        Number(data.startSeconds ?? 0),
-        data.endSeconds == null ? null : Number(data.endSeconds),
-      ),
+    "announce-timeline": (_d, deps) => deps.onAnnounceTimeline?.(),
+    "set-root-duration": (data, deps) => {
+      const durationSeconds = readNumber(data.durationSeconds, 0);
+      if (durationSeconds !== null) deps.onSetRootDuration(durationSeconds);
+    },
+    "set-play-range": (data, deps) => {
+      const startSeconds = readNumber(data.startSeconds, 0);
+      const endSeconds = data.endSeconds ?? null;
+      if (startSeconds === null || (endSeconds !== null && !isFiniteNumber(endSeconds))) return;
+      deps.onSetPlayRange(startSeconds, endSeconds);
+    },
     "set-color-grading": (data, deps) =>
-      deps.onSetColorGrading(data.target ?? null, data.grading ?? null),
+      dispatchColorGrading(data.target, data.grading, deps.onSetColorGrading),
     "set-color-grading-compare": (data, deps) =>
-      deps.onSetColorGradingCompare(data.target ?? null, data.compare ?? null),
+      dispatchColorGrading(data.target, data.compare, deps.onSetColorGradingCompare),
     "enable-pick-mode": (_d, deps) => deps.onEnablePickMode(),
     "disable-pick-mode": (_d, deps) => deps.onDisablePickMode(),
     "flash-elements": (data) => handleFlashElements(data),
+    "scrub-audio": dispatchScrubAudio,
     "set-runtime-data": (data, deps) => {
       if (typeof data.channel === "string")
         deps.onSetRuntimeData?.(data.channel, data.payload, data.requestId);
@@ -108,12 +246,15 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
   } satisfies Record<string, ControlHandler>),
 );
 
-function resolveSeekTimeSeconds(data: BridgeControlData, deps: BridgeDeps): number {
-  const explicitSeconds = Number(data.timeSeconds);
-  if (Number.isFinite(explicitSeconds)) return Math.max(0, explicitSeconds);
+function resolveSeekTimeSeconds(data: BridgeControlData, deps: BridgeDeps): number | null {
+  if (data.timeSeconds != null) {
+    return isFiniteNumber(data.timeSeconds) ? Math.max(0, data.timeSeconds) : null;
+  }
+  const frame = readNumber(data.frame, 0);
+  if (frame === null) return null;
   const messageFps = runtimeProtocolFpsToNumber(data.fps);
   const fps = messageFps ?? deps.getCanonicalFps();
-  return Math.max(0, Number(data.frame ?? 0)) / fps;
+  return Math.max(0, frame) / fps;
 }
 
 function rejectUnsupportedProtocol(data: BridgeControlData): boolean {
@@ -133,14 +274,23 @@ function rejectUnsupportedProtocol(data: BridgeControlData): boolean {
   return true;
 }
 
+function readFlashSelectors(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > MAX_FLASH_SELECTORS) return null;
+  return value.every(isBoundedString) ? value : null;
+}
+
 function handleFlashElements(data: BridgeControlData): void {
   // Briefly highlight elements — used by the chat-canvas bridge
   // to show what changed after an agent edit
-  const selectors = (data as Record<string, unknown>).selectors as string[] | undefined;
-  const duration = ((data as Record<string, unknown>).duration as number) || 800;
-  if (selectors) {
-    flashElements(selectors, duration);
-  }
+  const fields = data as Record<string, unknown>;
+  const selectors = readFlashSelectors(fields.selectors);
+  const duration = readNumber(fields.duration, FLASH_DEFAULT_DURATION_MS);
+  if (!selectors || duration === null || duration <= 0 || duration > FLASH_MAX_DURATION_MS) return;
+  flashElements(selectors, duration);
+}
+
+function isActionTakenHere(action: unknown): action is string {
+  return typeof action === "string" && (!forAnotherSite() || ANOTHER_SITE_DRIVES.has(action));
 }
 
 export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEvent) => void {
@@ -150,7 +300,7 @@ export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEv
     if (!data || data.source !== "hf-parent" || data.type !== "control") return;
     if (rejectUnsupportedProtocol(data)) return;
     const action = data.action;
-    if (typeof action !== "string") return;
+    if (!isActionTakenHere(action)) return;
     const fn = CONTROL_HANDLERS.get(action);
     if (fn) fn(data, deps);
   };
@@ -164,6 +314,18 @@ export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEv
   return handler;
 }
 
+const FLASH_STYLE_RULES = `
+  .__hf-flash {
+    outline: 2px solid rgba(59, 130, 246, 0.6) !important;
+    outline-offset: 2px !important;
+    animation: __hf-flash-pulse var(--hf-flash-duration, 800ms) ease-out forwards !important;
+  }
+  @keyframes __hf-flash-pulse {
+    0% { outline-color: rgba(59, 130, 246, 0.8); }
+    100% { outline-color: transparent; }
+  }
+`;
+
 /**
  * Flash elements — briefly highlight them with a blue outline.
  * Used by the chat-canvas bridge to show what changed after an agent edit.
@@ -172,17 +334,7 @@ function flashElements(selectors: string[], duration: number): void {
   if (!document.getElementById("__hf-flash-styles")) {
     const style = document.createElement("style");
     style.id = "__hf-flash-styles";
-    style.textContent = `
-      .__hf-flash {
-        outline: 2px solid rgba(59, 130, 246, 0.6) !important;
-        outline-offset: 2px !important;
-        animation: __hf-flash-pulse ${duration}ms ease-out forwards !important;
-      }
-      @keyframes __hf-flash-pulse {
-        0% { outline-color: rgba(59, 130, 246, 0.8); }
-        100% { outline-color: transparent; }
-      }
-    `;
+    style.textContent = FLASH_STYLE_RULES;
     document.head.appendChild(style);
   }
 
@@ -190,6 +342,7 @@ function flashElements(selectors: string[], duration: number): void {
     try {
       const els = document.querySelectorAll(selector);
       els.forEach((el) => {
+        if (isStylableElement(el)) el.style.setProperty("--hf-flash-duration", `${duration}ms`);
         el.classList.add("__hf-flash");
         wallSetTimeout(() => el.classList.remove("__hf-flash"), duration);
       });

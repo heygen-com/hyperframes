@@ -2,18 +2,22 @@
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
  * Each connect from `window.parent` gets a fresh port, so only the parent holds a channel and a
- * remounted client is served too; a connect from anything else is ignored. Earlier ports stay
- * open: a client may take any one of them, and a disposed client closes its own.
+ * remounted client is served too; any other connect, or any in a page served to another site, is
+ * ignored. Earlier ports stay open: a client may take any of them; a disposed one closes its own.
  * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   EDITING_CONNECT,
   EDITING_PORT,
   EDITING_PROTOCOL_VERSION,
   EDITING_REQUEST_KINDS,
+  EDITING_REQUEST_TIMEOUT_MS,
   isPlainRecord,
+  type FramePresentedParams,
   parseEditingRequest,
+  type EditingKeyMessage,
   type EditingParams,
   type EditingReply,
   type EditingRequestKind,
@@ -26,13 +30,58 @@ import {
   elementForHandle,
   elementsAtPoint,
   queryElements,
+  readEveryMatch,
 } from "./editingHandles";
 import { elementGeometry } from "./editingGeometry";
-import { getLogicalOpacity } from "../studioPreviewMark";
+import { pointerTargetsAt } from "./editingTargets";
+import { layersOf } from "./editingLayers";
+import { drawDrafts } from "./editingDraft";
+import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
+import { maxZIndex } from "./editing/maxZIndex";
+import { gestureBase, gestureStart } from "./editingGestureStart";
+import { gsapSnapshot } from "./editing/gsapSnapshot";
+import { motionPathHome } from "./editing/motionPathHome";
+import { cropLift } from "./editing/cropLift";
+import { stackingFamily } from "./editingLayers";
+import { gsapSet } from "./editing/gsapSet";
+import { patchTweens } from "./editing/patchTween";
+import { preloadMotionPath, restoreAttributesOrRerun, softReload } from "./editing/softReload";
+import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
+import { liveRetime } from "./editing/liveRetime";
+import { rebindTiming } from "./editing/rebindTiming";
+import { previewAssetsUnloaded } from "../lottieReadiness";
+import {
+  getLogicalOpacity,
+  markedForStudio,
+  previewConsoleErrorText,
+  STUDIO_PREVIEW_ERRORS,
+} from "../studioPreviewMark";
+import { MAX_QUERY_MATCHES } from "./editingElement";
+import { matchCombo, parseCombo, type Combo } from "../keyCombo";
+import { shouldIgnorePlaybackShortcutTarget } from "../typingTarget";
+import { captionWords } from "./editing/captionWords";
+import { captionTransform } from "./editing/captionTransform";
+import { colorGradingStatus } from "./editing/color-grading-status";
+import { colorGradingPreviews } from "./editing/color-grading-previews";
+import { colorGradingPlayback } from "./editing/color-grading-playback";
+import { assignAudioGroup } from "./editing/assignAudioGroup";
+import { audioMeter } from "./editing/audioMeter";
+import { documentMarkup } from "./editing/documentMarkup";
+import { removeElements } from "./editing/removeElements";
+import { authoredStyles, fontFaces } from "./editing/textStyleReads";
+import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
+import { editElement } from "./editing/editElement";
+import { endTextEdit, textEdit } from "./editing/textEdit";
+import { portPausedVideoProvider } from "./editing/pausedFrames";
+import { armCanvasKeys, resetCanvasKeys, resolveCanvasKeyAction } from "./editing/canvasKeys";
+import { closePort, createRuntimeChannel, onPortMessage, portMap, postOnPort } from "./runtimePort";
+import { measureStageDocument } from "./editing/stageMeasure";
+import { endStageAct, stageAct } from "./editing/stageAct";
 
 type Handlers = {
   [K in EditingRequestKind]: (
     params: EditingParams<K>,
+    port: MessagePort,
   ) => EditingResult<K> | Promise<EditingResult<K>>;
 };
 
@@ -42,6 +91,160 @@ function clipParents(nodes: readonly ClipNode[], out: Array<[string, string]> = 
     clipParents(node.children, out);
   }
   return out;
+}
+
+let consoleWatch: { seen: string[]; stop: () => void } | null = null;
+
+function watchConsoleErrors(): string[] {
+  if (consoleWatch) return consoleWatch.seen;
+  const raised: unknown = Reflect.get(window, STUDIO_PREVIEW_ERRORS);
+  const seen = Array.isArray(raised) ? raised.map(String) : [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    original.apply(console, args);
+    const text = previewConsoleErrorText(args);
+    if (text !== null) seen.push(text);
+  };
+  const onError = (e: ErrorEvent) => seen.push(e.message || String(e));
+  window.addEventListener("error", onError);
+  const stop = () => {
+    console.error = original;
+    window.removeEventListener("error", onError);
+  };
+  consoleWatch = { seen, stop };
+  return seen;
+}
+
+const keyWatches = portMap<{ combos: Combo[]; down: Set<string> }>();
+
+function forwardKey(port: MessagePort, e: KeyboardEvent): void {
+  const { type, key, code, altKey, ctrlKey, metaKey, shiftKey, repeat } = e;
+  const message: EditingKeyMessage = {
+    v: EDITING_PROTOCOL_VERSION,
+    event: "key",
+    key: {
+      type: type === "keyup" ? "keyup" : "keydown",
+      key,
+      code,
+      altKey,
+      ctrlKey,
+      metaKey,
+      shiftKey,
+      repeat,
+    },
+  };
+  postOnPort(port, message);
+}
+
+function onWatchedKeyDown(e: KeyboardEvent): void {
+  if (e.defaultPrevented || shouldIgnorePlaybackShortcutTarget(e.target)) return;
+  keyWatches.forEach((watch, port) => {
+    if (!watch.combos.some((combo) => matchCombo(e, combo))) return;
+    e.preventDefault();
+    watch.down.add(e.code || e.key);
+    forwardKey(port, e);
+  });
+}
+
+function onWatchedKeyUp(e: KeyboardEvent): void {
+  keyWatches.forEach((watch, port) => {
+    if (watch.down.delete(e.code || e.key)) forwardKey(port, e);
+  });
+}
+
+function listenForKeys(on: boolean): void {
+  if (on) {
+    window.addEventListener("keydown", onWatchedKeyDown, true);
+    window.addEventListener("keyup", onWatchedKeyUp, true);
+  } else {
+    window.removeEventListener("keydown", onWatchedKeyDown, true);
+    window.removeEventListener("keyup", onWatchedKeyUp, true);
+  }
+}
+
+function watchKeys(port: MessagePort, combos: string[]): { watching: number } {
+  if (combos.length === 0) keyWatches.delete(port);
+  else {
+    const down = keyWatches.get(port)?.down ?? new Set<string>();
+    keyWatches.set(port, { combos: combos.map((text) => parseCombo(text)!), down });
+  }
+  listenForKeys(keyWatches.size() > 0);
+  return { watching: combos.length };
+}
+
+function stylesOf(element: Element, properties: readonly string[]): Record<string, string> {
+  const computed = window.getComputedStyle(element);
+  const styles: Record<string, string> = {};
+  for (const name of properties) {
+    const value =
+      name === "opacity" ? getLogicalOpacity(element, computed) : computed.getPropertyValue(name);
+    if (value) styles[name] = value;
+  }
+  return styles;
+}
+
+const VIDEO_SETTLE_EVENTS = ["seeked", "error", "abort", "emptied"] as const;
+// Without a waitMs, answers before the client's default timeout gives up.
+const FRAME_PRESENTED_LIMIT_MS = EDITING_REQUEST_TIMEOUT_MS - 1_000;
+const pendingPresentedWaits = new Set<() => void>();
+
+type Cleanups = Array<() => void>;
+
+function whenVideosSettle(videos: HTMLVideoElement[], cleanups: Cleanups, settled: () => void) {
+  const waiting = new Set(videos);
+  const check = () => {
+    if (waiting.size === 0) return;
+    for (const video of waiting) if (!video.seeking || !video.isConnected) waiting.delete(video);
+    if (waiting.size === 0) settled();
+  };
+  for (const video of videos) {
+    for (const name of VIDEO_SETTLE_EVENTS) video.addEventListener(name, check, { once: true });
+    cleanups.push(() => {
+      for (const name of VIDEO_SETTLE_EVENTS) video.removeEventListener(name, check);
+    });
+  }
+  if (typeof MutationObserver === "function" && document.documentElement) {
+    const observer = new MutationObserver(check);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    cleanups.push(() => observer.disconnect());
+  }
+  check();
+}
+
+function whenTwoFramesPaint(cleanups: Cleanups, painted: () => void) {
+  if (typeof window.requestAnimationFrame !== "function") return painted();
+  let frame = window.requestAnimationFrame(() => {
+    frame = window.requestAnimationFrame(painted);
+  });
+  cleanups.push(() => window.cancelAnimationFrame(frame));
+}
+
+function waitForFramePresented({
+  waitMs = FRAME_PRESENTED_LIMIT_MS,
+}: FramePresentedParams): Promise<{
+  presented: boolean;
+}> {
+  return new Promise((resolve) => {
+    const cleanups: Cleanups = [];
+    let done = false;
+    const finish = (presented: boolean) => {
+      if (done) return;
+      done = true;
+      for (const clean of cleanups.splice(0)) clean();
+      pendingPresentedWaits.delete(expire);
+      resolve({ presented });
+    };
+    const expire = () => finish(false);
+    pendingPresentedWaits.add(expire);
+    const timer = wallSetTimeout(expire, waitMs);
+    cleanups.push(() => wallClearTimeout(timer));
+    const seeking = Array.from(document.querySelectorAll("video")).filter(
+      (video) => video.seeking && video.isConnected,
+    );
+    const paint = () => whenTwoFramesPaint(cleanups, () => finish(true));
+    if (seeking.length === 0) return paint();
+    whenVideosSettle(seeking, cleanups, paint);
+  });
 }
 
 const HANDLERS: Handlers = {
@@ -66,39 +269,88 @@ const HANDLERS: Handlers = {
   },
   "computed-styles": (params) => {
     const { properties } = params;
+    if ("every" in params)
+      return { styles: null, ...readEveryMatch(params.selector, (el) => stylesOf(el, properties)) };
     const element =
       "handle" in params
         ? elementForHandle(params.handle)
         : document.querySelector(params.selector);
-    if (!element) return { styles: null };
-    const computed = window.getComputedStyle(element);
-    const styles: Record<string, string> = {};
-    for (const name of properties) {
-      const value =
-        name === "opacity" ? getLogicalOpacity(element, computed) : computed.getPropertyValue(name);
-      if (value) styles[name] = value;
-    }
-    return { styles };
+    return { styles: element ? stylesOf(element, properties) : null };
   },
+  "authored-styles": authoredStyles,
+  "font-faces": () => fontFaces(),
   "elements-at-point": ({ x, y }) => ({ elements: elementsAtPoint(x, y) }),
+  "pointer-targets": ({ x, y }) => pointerTargetsAt(x, y),
   describe: ({ handles }) => ({ elements: describeHandles(handles) }),
   ancestors: ({ handles }) => ({ ancestors: ancestorHandles(handles) }),
   query: ({ selector }) => queryElements(selector),
   geometry: ({ handles, children }) => elementGeometry(handles, children),
+  layers: ({ group, offset }) => layersOf(group, offset),
+  draft: ({ drafts }) => ({ ...drawDrafts(drafts), gsapSetTakesDrafts: true as const }),
+  "gesture-start": ({ handles }) => gestureStart(handles),
+  "gesture-base": ({ handles }) => ({ elements: handles.map(gestureBase) }),
+  "console-errors": ({ from }) => {
+    const seen = watchConsoleErrors();
+    const errors = seen.slice(from, from + MAX_QUERY_MATCHES);
+    return { errors, truncated: from + errors.length < seen.length };
+  },
+  "watch-keys": ({ combos }, port) => watchKeys(port, combos),
+  "restore-attributes": restoreAttributesOrRerun,
+  "caption-words": captionWords,
+  "caption-transform": captionTransform,
+  "color-grading-status": colorGradingStatus,
+  "color-grading-previews": colorGradingPreviews,
+  "color-grading-playback": colorGradingPlayback,
+  "watch-geometry": (params, port) => watchGeometry(port, params, EDITING_PROTOCOL_VERSION),
+  "audio-meter": (params) => audioMeter(params, window.__hf?.audioMeter),
+  "document-markup": documentMarkup,
+  "set-audio-group-attribute": setAudioGroupAttribute,
+  "assign-audio-group": (params) => assignAudioGroup(params, elementForHandle),
+  "gsap-snapshot": () => gsapSnapshot(),
+  "motion-path-home": ({ selector }) => motionPathHome(selector),
+  "max-z-index": () => maxZIndex(),
+  "crop-lift": cropLift,
+  "edit-element": editElement,
+  "remove-elements": removeElements,
+  "stacking-family": stackingFamily,
+  "gsap-set": gsapSet,
+  "patch-tweens": patchTweens,
+  "soft-reload": softReload,
+  "hold-scenes": holdScenes,
+  "mark-scenes-stale": markScenesStale,
+  "swap-scenes": swapScenes,
+  "live-retime": liveRetime,
+  "rebind-timing": rebindTiming,
+  "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
+  "serve-paused-frames": ({ channel }) => {
+    const install = window.__hf?.setPausedVideoFrameProvider;
+    if (!install) {
+      channel.close();
+      return { served: false };
+    }
+    install(portPausedVideoProvider(channel));
+    return { served: true };
+  },
+  "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
+  "frame-presented": waitForFramePresented,
+  "arm-canvas-keys": (params, port) => armCanvasKeys(port, params, EDITING_PROTOCOL_VERSION),
+  "resolve-canvas-key-action": resolveCanvasKeyAction,
+  "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
+  "stage-act": (params, port) => stageAct(params, port, EDITING_PROTOCOL_VERSION),
 };
 
 function serve(port: MessagePort): void {
   const reply = (message: EditingReply) => {
     try {
-      port.postMessage(message);
+      postOnPort(port, message);
     } catch (err) {
       // A result that cannot be cloned still owes the parent an answer.
       if (message.ok) reply(failure(message.id, err));
       else swallow("editingAgent.reply", err);
     }
   };
-  port.onmessage = (event: MessageEvent<unknown>) => {
-    const request = parseEditingRequest(event.data);
+  onPortMessage(port, (data) => {
+    const request = parseEditingRequest(data);
     if (!request.ok) {
       reply({
         v: EDITING_PROTOCOL_VERSION,
@@ -108,14 +360,14 @@ function serve(port: MessagePort): void {
       });
       return;
     }
-    const handler = HANDLERS[request.kind] as (params: unknown) => unknown;
+    const handler = HANDLERS[request.kind] as (params: unknown, port: MessagePort) => unknown;
     Promise.resolve()
-      .then(() => handler(request.params))
+      .then(() => handler(request.params, port))
       .then(
         (result) => reply({ v: EDITING_PROTOCOL_VERSION, id: request.id, ok: true, result }),
         (err: unknown) => reply(failure(request.id, err)),
       );
-  };
+  });
 }
 
 function failure(id: number, err: unknown): EditingReply {
@@ -128,18 +380,26 @@ function failure(id: number, err: unknown): EditingReply {
   };
 }
 
-export function installEditingAgent(parent: Window = window.parent): { dispose: () => void } {
-  const ports = new Set<MessagePort>();
+const parentAtLoad = typeof window !== "undefined" ? window.parent : undefined;
+
+function isConnectRequest(event: MessageEvent<unknown>, parent: Window): boolean {
+  // A top-level page is its own parent, so a self-post would pass the source check.
+  if (parent === window || event.source !== parent) return false;
+  const data = event.data;
+  if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
+    return false;
+  return data.v === EDITING_PROTOCOL_VERSION && markedForStudio(document);
+}
+
+export function installEditingAgent(parent: Window = parentAtLoad ?? window.parent): {
+  dispose: () => void;
+} {
+  const ports = portMap<true>();
   const onMessage = (event: MessageEvent<unknown>) => {
-    // A top-level page is its own parent, so a self-post would pass the source check.
-    if (parent === window || event.source !== parent) return;
-    const data = event.data;
-    if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
-      return;
-    if (data.v !== EDITING_PROTOCOL_VERSION) return;
-    const channel = new MessageChannel();
+    const channel = isConnectRequest(event, parent) ? createRuntimeChannel() : null;
+    if (!channel) return;
     const port = channel.port1;
-    ports.add(port);
+    ports.set(port, true);
     serve(port);
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
@@ -150,16 +410,27 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       );
     } catch (err) {
       swallow("editingAgent.handoff", err);
-      port.close();
+      closePort(port);
       ports.delete(port);
+      return;
     }
+    preloadMotionPath();
   };
   window.addEventListener("message", onMessage);
   return {
     dispose() {
       window.removeEventListener("message", onMessage);
-      for (const port of ports) port.close();
+      ports.forEach((_, port) => closePort(port));
       ports.clear();
+      consoleWatch?.stop();
+      consoleWatch = null;
+      keyWatches.clear();
+      listenForKeys(false);
+      stopWatchingGeometry();
+      endTextEdit();
+      for (const expire of [...pendingPresentedWaits]) expire();
+      resetCanvasKeys(true);
+      endStageAct();
     },
   };
 }

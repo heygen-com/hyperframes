@@ -10,12 +10,22 @@
 import type { TimelineElement } from "../store/playerStore";
 import { readTimelineText } from "./timelineText";
 import type { ClipManifestClip } from "./playbackTypes";
+import {
+  previewElementFinder,
+  previewElementSourceFile as getTimelineElementSourceFile,
+} from "@hyperframes/core/studio-preview-mark";
+
+export type { PreviewTarget } from "@hyperframes/core/studio-preview-mark";
+export { getTimelineElementSourceFile, previewElementFinder };
 import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
 import { isHtmlElement, isImageElement, isMediaElement } from "@hyperframes/core/runtime/dom-realm";
 import { elementVolume } from "./storedVolume";
+import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core/color-grading";
+import { HF_AUDIO_CARVE_ATTR } from "@hyperframes/core/audio-carve";
+import { committedClipPath } from "../../components/editor/cropPresetStore";
 import {
   type AttrReader,
   clampPlaybackRate,
@@ -235,8 +245,20 @@ function applyFadeMetadataFromElement(entry: TimelineElement, el: Element): void
   setOptional(entry, "fadeOut", fades.fadeOut > 0 ? fades.fadeOut : undefined);
 }
 
+export function readBadgeFields(el: Element) {
+  return {
+    colorGrading: el.getAttribute(HF_COLOR_GRADING_ATTR) ?? undefined,
+    clipPath: committedClipPath(el) ?? undefined,
+    carve: el.getAttribute(HF_AUDIO_CARVE_ATTR) ?? undefined,
+  };
+}
+
 export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {
   setOptional(entry, "text", readTimelineText(el));
+  const badge = readBadgeFields(el);
+  setOptional(entry, "colorGrading", badge.colorGrading);
+  setOptional(entry, "clipPath", badge.clipPath);
+  setOptional(entry, "carve", badge.carve);
   applyPlaybackMetadataFromElement(entry, el);
   applyAudioMetadataFromElement(entry, el);
   applyFadeMetadataFromElement(entry, el);
@@ -256,6 +278,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   if (Number.isFinite(sourceDuration) && sourceDuration > 0) {
     entry.sourceDuration = sourceDuration;
   }
+  setOptional(entry, "loop", mediaEl.hasAttribute("loop") ? true : undefined);
 
   const playbackRate = mediaEl.defaultPlaybackRate;
   if (entry.playbackRate == null && Number.isFinite(playbackRate) && playbackRate > 0) {
@@ -294,15 +317,6 @@ export function getTimelineElementSelector(el: Element): string | undefined {
     if (firstClass) return `.${CSS.escape(firstClass)}`;
   }
   return undefined;
-}
-
-export function getTimelineElementSourceFile(el: Element): string | undefined {
-  const ownerRoot = el.parentElement?.closest("[data-composition-id]");
-  return (
-    ownerRoot?.getAttribute("data-composition-file") ??
-    ownerRoot?.getAttribute("data-composition-src") ??
-    undefined
-  );
 }
 
 export function getTimelineElementSelectorIndex(
@@ -489,39 +503,6 @@ function findInClipScope(
     if (nodes.length === 1) lone ??= nodes[0];
   }
   return lone;
-}
-
-export type PreviewTarget = Pick<TimelineElement, "hfId" | "domId" | "id" | "sourceFile">;
-
-/** Finds a row's preview element by `data-hf-id`, then id, preferring one in the row's own file: both repeat across
- * files. Indexes the document once, so a pass over every row costs one scan. */
-export function previewElementFinder(
-  doc: Document,
-  selector = "[data-hf-id], [id]",
-): (target: PreviewTarget) => Element | null {
-  const byKey = new Map<string, Element[]>();
-  const add = (key: string, node: Element) => {
-    const nodes = byKey.get(key);
-    if (nodes) nodes.push(node);
-    else byKey.set(key, [node]);
-  };
-  for (const node of doc.querySelectorAll(selector)) {
-    const hfId = node.getAttribute("data-hf-id");
-    const id = node.getAttribute("id");
-    if (hfId) add(`hf:${hfId}`, node);
-    if (id) add(`id:${id}`, node);
-  }
-  return (target) => {
-    const matches = [
-      ...((target.hfId && byKey.get(`hf:${target.hfId}`)) || []),
-      ...(byKey.get(`id:${target.domId ?? target.id}`) ?? []),
-    ];
-    return (
-      matches.find((node) => getTimelineElementSourceFile(node) === target.sourceFile) ??
-      matches[0] ??
-      null
-    );
-  };
 }
 
 export function findClipElementById(doc: Document, clip: ClipManifestClip): Element | null {

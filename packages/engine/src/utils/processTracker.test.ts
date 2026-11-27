@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { spawn } from "node:child_process";
-import { trackChildProcess, killTrackedProcesses } from "./processTracker.js";
+import {
+  trackChildProcess,
+  killTrackedProcesses,
+  onTrackedChildProcess,
+} from "./processTracker.js";
 
 // Reset tracked set between tests by killing everything
 beforeEach(() => {
@@ -91,5 +95,18 @@ describe("killTrackedProcesses", () => {
 
     killTrackedProcesses();
     killTrackedProcesses();
+  });
+
+  it("tells a listener about each tracked child until it unsubscribes", () => {
+    const seen: number[] = [];
+    const stop = onTrackedChildProcess((proc) => seen.push(proc.pid ?? -1));
+    const first = spawn("sleep", ["60"], { stdio: "ignore" });
+    trackChildProcess(first);
+    stop();
+    const second = spawn("sleep", ["60"], { stdio: "ignore" });
+    trackChildProcess(second);
+    killTrackedProcesses();
+
+    expect(seen).toEqual([first.pid]);
   });
 });

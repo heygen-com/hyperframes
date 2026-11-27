@@ -21,6 +21,7 @@ import {
   concatVideoFiles,
   createCaptureSession,
   getCapturePerfSummary,
+  retainCapturePerf,
   initializeSession,
   prepareCaptureSessionForReuse,
   resolveDeVerifyMinDb,
@@ -42,9 +43,10 @@ import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { reportFrameProgress } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrSegmentedCapturePlan } from "../capturePlan.js";
-import { planSegments, type SegmentSlice } from "../segmentPlan.js";
+import { planSegments, segmentOutputPath, type SegmentSlice } from "../segmentPlan.js";
 import type { SegmentVideoFrames, SegmentWorkerFrames } from "../segmentVideoFrames.js";
 import { createSegmentQueue } from "../segmentQueue.js";
+import { hashSegmentFile } from "../segmentManifest.js";
 import { isTargetLossError } from "../segmentRecycle.js";
 import {
   OPENING_CAPTURE_SESSION,
@@ -104,6 +106,7 @@ export interface CaptureSegmentedStageInput {
     endFrame: number;
     path: string;
     bytes: number;
+    sha256: string;
   }) => void;
   /** Parallel capture sessions pulling from one segment queue. Default 1. */
   workerCount?: number;
@@ -145,11 +148,6 @@ export type CaptureSegmentedStageResult =
     }
   /** The first segment's encoder could not spawn — caller replans to sdr_streaming. */
   | { success: false };
-
-/** Zero-padded so lexical order equals frame order in the concat list and on disk. */
-export function segmentOutputPath(segmentDir: string, index: number): string {
-  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.mp4`);
-}
 
 /**
  * One closed-GOP encoder per segment. `gopSize` is the segment's own frame
@@ -210,17 +208,23 @@ async function captureSegmentFrames(
   for (let i = segment.startFrame; i < segment.endFrame; i++) {
     ctx.assertNotAborted();
     const time = (i * ctx.job.config.fps.den) / ctx.job.config.fps.num;
-    const { buffer } = await raceAgainstStall(
-      ctx.captureFrame(ctx.session, i, time),
-      ctx.stallTimeoutMs - (Date.now() - lastProgressAt),
-      {
-        session: ctx.session,
-        frameIndex: i,
-        totalFrames: ctx.totalFrames,
-        stallTimeoutMs: ctx.stallTimeoutMs,
-      },
-      ctx.abortSignal,
-    );
+    let buffer: Buffer;
+    try {
+      ({ buffer } = await raceAgainstStall(
+        ctx.captureFrame(ctx.session, i, time),
+        ctx.stallTimeoutMs - (Date.now() - lastProgressAt),
+        {
+          session: ctx.session,
+          frameIndex: i,
+          totalFrames: ctx.totalFrames,
+          stallTimeoutMs: ctx.stallTimeoutMs,
+        },
+        ctx.abortSignal,
+      ));
+    } catch (error) {
+      if (ctx.abortSignal?.aborted) ctx.assertNotAborted();
+      throw error;
+    }
     await verifyDrawElementSample(ctx.session, i, buffer, {
       log: ctx.log,
       verifyMinDb: ctx.verifyMinDb,
@@ -272,6 +276,7 @@ async function captureSegmentToEncoder(
   segment: SegmentSlice,
 ): Promise<StreamingEncoderResult> {
   const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index);
+  rmSync(segmentPath, { force: true });
   let encoder: StreamingEncoder;
   try {
     encoder = await ctx.spawnEncoder(
@@ -302,6 +307,7 @@ async function captureSegmentToEncoder(
       // Recorded so resume can prove the file on disk is the one that
       // finished; absent only in unit tests, whose fake encoder writes none.
       bytes: existsSync(segmentPath) ? statSync(segmentPath).size : 0,
+      sha256: existsSync(segmentPath) ? await hashSegmentFile(segmentPath) : "",
     });
     return encodeResult;
   } finally {
@@ -520,7 +526,7 @@ async function recycleWorkerSession(
   why: "cadence" | "retry",
 ): Promise<void> {
   // Counters are only valid while the session is live, so harvest before close.
-  run.input.dedupPerfs.push(getCapturePerfSummary(worker.ctx.session));
+  retainCapturePerf(run.input.dedupPerfs, getCapturePerfSummary(worker.ctx.session));
   const memory = worker.ctx.session.chromeMemory?.stats();
   await run.deps.closeSession(worker.ctx.session);
   const { frames } = worker.ctx;
@@ -703,7 +709,8 @@ export async function runCaptureSegmentedStage(
     // every worker has to stop before the finally runs. The first error is
     // rethrown below.
     const outcomes = await Promise.allSettled(workers.map((w) => runWorkerLoop(w)));
-    for (const worker of workers) dedupPerfs.push(getCapturePerfSummary(worker.ctx.session));
+    for (const worker of workers)
+      retainCapturePerf(dedupPerfs, getCapturePerfSummary(worker.ctx.session));
     const failure = outcomes.find((o) => o.status === "rejected");
     if (failure && failure.status === "rejected") throw failure.reason;
   } catch (error) {

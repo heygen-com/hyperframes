@@ -1,14 +1,16 @@
 import { replacementTimelineAssetId } from "@hyperframes/core/timeline-asset-id";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { removeElementWithGsapCascade } from "@hyperframes/parsers";
 import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import selectorParser from "postcss-selector-parser";
+import { escapeCssIdentifier } from "@hyperframes/core/compiler/selector-id-tokens";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import {
-  EXCLUDED_TAGS,
   ensureHfIds,
+  isNonContentElement,
   mintHfId,
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
@@ -20,6 +22,7 @@ import {
 } from "@hyperframes/core/composition-contract";
 import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
+import { isHtmlTemplate } from "@hyperframes/parsers/sub-composition-validity";
 
 export interface SourceMutationTarget {
   id?: string | null;
@@ -66,7 +69,7 @@ function dropCssRulesForId(document: Document, id: string): void {
     if (!css.includes(idToken)) continue;
     let root: postcss.Root;
     try {
-      root = postcss.parse(css);
+      root = parseCss(css);
     } catch {
       continue;
     }
@@ -87,14 +90,14 @@ function duplicateCssRulesForId(document: Document, originalId: string, newId: s
   const idToken = `#${originalId}`;
   const transform = selectorParser((selectors) => {
     selectors.walkIds((node) => {
-      if (node.value === originalId) node.value = newId;
+      if (node.value === originalId) node.value = escapeCssIdentifier(newId);
     });
   });
   for (const styleEl of document.querySelectorAll("style")) {
     const css = styleEl.textContent ?? "";
     let root: postcss.Root;
     try {
-      root = postcss.parse(css);
+      root = parseCss(css);
     } catch {
       continue;
     }
@@ -198,7 +201,7 @@ export function removeElementsFromHtml(
   let removed = false;
   for (const target of targets) {
     const element = findTargetElement(document, target);
-    if (!element) continue;
+    if (!element || isNotALayerToRestructure(element)) continue;
     const id = element.getAttribute("id");
     removeElementWithGsapCascade(document, element);
     if (id && !document.getElementById(id)) dropCssRulesForId(document, id);
@@ -223,7 +226,7 @@ function mountsComposition(document: Document, host: Element, compositionId: str
   return (
     host.children.length === 0 &&
     querySelectorAllWithTemplates(document, "template").some(
-      (template) => template.id === `${compositionId}-template`,
+      (template) => isHtmlTemplate(template) && template.id === `${compositionId}-template`,
     )
   );
 }
@@ -298,9 +301,15 @@ function stampNewChildIds(parent: Element): void {
   });
   for (const el of parent.querySelectorAll("*")) {
     if (el.getAttribute("data-hf-id")) continue;
-    if (EXCLUDED_TAGS.has(el.tagName.toLowerCase())) continue;
+    if (isNonContentElement(el)) continue;
     el.setAttribute("data-hf-id", mintHfId(el, assigned));
   }
+}
+
+const PAGE_SHELL_TAGS = new Set(["html", "head", "body", "title"]);
+
+function isNotALayerToRestructure(el: Element): boolean {
+  return isNonContentElement(el) || PAGE_SHELL_TAGS.has(el.tagName.toLowerCase());
 }
 
 // fallow-ignore-next-line complexity
@@ -313,13 +322,14 @@ export function patchElementInHtml(
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false };
+  if (isNonContentElement(el)) return { html: source, matched: false };
   const htmlEl = el;
   const originalHtml = wrappedFragment ? document.body.innerHTML || "" : document.toString();
 
   const resolved: ResolvedPatchOperation[] = [];
   for (const op of operations) {
     const opTarget = resolveOperationTarget(htmlEl, op);
-    if (!opTarget) return { html: source, matched: false };
+    if (!opTarget || isNonContentElement(opTarget)) return { html: source, matched: false };
     resolved.push({ op, target: opTarget });
   }
 
@@ -340,6 +350,7 @@ export function patchElementInHtml(
         {
           const fullAttr = op.property.startsWith("data-") ? op.property : `data-${op.property}`;
           if (op.value != null) {
+            if (!isSafeAttributeValue(fullAttr, op.value)) break;
             opTarget.setAttribute(fullAttr, op.value);
           } else {
             opTarget.removeAttribute(fullAttr);
@@ -365,7 +376,8 @@ export function patchElementInHtml(
       case "text-content":
         if (op.value != null) {
           const inner = opTarget.children.length === 1 ? opTarget.firstElementChild : null;
-          const textTarget = inner && isHTMLElement(inner) ? inner : opTarget;
+          const textTarget =
+            inner && isHTMLElement(inner) && !isNonContentElement(inner) ? inner : opTarget;
           textTarget.textContent = op.value;
         }
         break;
@@ -428,6 +440,7 @@ export interface SplitElementResult {
   html: string;
   matched: boolean;
   newId: string | null;
+  originalId?: string | null;
   refusal?: SplitRefusal;
 }
 
@@ -476,7 +489,7 @@ export function splitElementInHtml(
   source: string,
   target: SourceMutationTarget,
   splitTime: number,
-  newId: string,
+  newId: string | null,
   fallbackTiming?: {
     start: number;
     duration: number;
@@ -491,7 +504,8 @@ export function splitElementInHtml(
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
-  if (!el || !isHTMLElement(el)) return refused(source, "target-not-found");
+  if (!el || !isHTMLElement(el) || isNotALayerToRestructure(el))
+    return refused(source, "target-not-found");
 
   // An untimed wrapper whose row is its timed media's own window is a view of that
   // media: cut the media and leave the wrappers untimed. A GSAP scene keeps its own window.
@@ -532,7 +546,7 @@ export function splitElementInHtml(
     return refused(source, "outside-clip");
   }
 
-  newId = nextUniqueId(document, newId);
+  newId = nextUniqueId(document, newId ?? `${el.getAttribute("id") || "clip"}-split`);
 
   const firstDuration = splitTime - start;
   const secondDuration = duration - firstDuration;
@@ -615,6 +629,7 @@ export function splitElementInHtml(
     html: ensureHfIds(html),
     matched: true,
     newId,
+    originalId,
   };
 }
 
@@ -703,7 +718,7 @@ export function wrapElementsInHtml(
   const seen = new Set<Element>();
   for (const target of targets) {
     const el = findTargetElement(document, target);
-    if (!el || !isHTMLElement(el) || seen.has(el)) continue;
+    if (!el || !isHTMLElement(el) || isNotALayerToRestructure(el) || seen.has(el)) continue;
     seen.add(el);
     els.push(el);
   }
@@ -835,7 +850,8 @@ export function unwrapElementsFromHtml(
 ): UnwrapElementsResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const group = findTargetElement(document, groupTarget);
-  if (!group || !isHTMLElement(group)) return { html: source, unwrapped: false };
+  if (!group || !isHTMLElement(group) || isNotALayerToRestructure(group))
+    return { html: source, unwrapped: false };
   // Shape guard mirroring the wrap-side contract: only ever dissolve an actual
   // group wrapper. A stale/desynced selection that resolves to a plain <div>
   // would otherwise be unwrapped — rebasing its children by the parent's origin

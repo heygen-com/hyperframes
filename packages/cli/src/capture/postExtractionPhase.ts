@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core/terminal-text";
 import { existsSync } from "node:fs";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { CaptureDirRefusedError } from "./captureErrors.js";
@@ -38,7 +39,8 @@ function hasVisionCredentials(skipVision: boolean): boolean {
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY ||
       (process.env.HYPERFRAMES_VERTEX_PROJECT_ID &&
-        process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT)),
+        (process.env.HYPERFRAMES_VERTEX_ACCESS_TOKEN ||
+          process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT))),
   );
 }
 
@@ -84,6 +86,10 @@ export interface PostExtractionResult {
   tokens: DesignTokens;
   animationCatalog: CaptureResult["animationCatalog"];
 }
+
+const SHARES_NO_FIRST_OR_LAST_LETTER_WITH_THE_MARKER = "hf-captured-composition-key";
+export const withoutCompositionMarker = (capturedHtml: string): string =>
+  capturedHtml.replace(/data-composition-id/gi, SHARES_NO_FIRST_OR_LAST_LETTER_WITH_THE_MARKER);
 
 export async function runPostExtraction(input: PostExtractionInput): Promise<PostExtractionResult> {
   let {
@@ -134,7 +140,9 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
       );
       if (fontsManifest.families.length > 0) {
         const summary = fontsManifest.families
-          .map((f) => `${f.family}${f.variable ? " (variable)" : ""} × ${f.fileCount}`)
+          .map(
+            (f) => `${terminalText(f.family)}${f.variable ? " (variable)" : ""} × ${f.fileCount}`,
+          )
           .join(", ");
         // stderr (via diag): `capture --json` writes its envelope to stdout, so
         // these progress/advisory lines must not land there.
@@ -146,7 +154,10 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
         }
       }
     } catch (err) {
-      diag.warn("Font metadata extraction failed (non-fatal):", normalizeErrorMessage(err));
+      diag.warn(
+        "Font metadata extraction failed (non-fatal):",
+        terminalLines(normalizeErrorMessage(err)),
+      );
     }
   };
   await runFontExtraction();
@@ -282,7 +293,9 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
 
   // Persist a self-contained page recreation under extracted/, with images already inlined.
   try {
-    const pageHtml = `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`;
+    const pageHtml = withoutCompositionMarker(
+      `<!doctype html>\n<html ${extracted.htmlAttrs || ""}>\n<head>\n${extracted.headHtml}\n</head>\n<body>\n${extracted.bodyHtml}\n</body>\n</html>\n`,
+    );
     state.pageHtml = pageHtml;
     if (canWrite())
       writeCaptureFileSync(join(outputDir, "extracted", "page.html"), pageHtml, "utf-8");
@@ -344,7 +357,7 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
       const hasVisionKey = hasVisionCredentials(skipVision);
       const header = hasVisionKey
         ? "# Asset Descriptions\n\nOne line per file. Read this instead of opening every image individually.\n\nTo find a specific brand or icon, **grep this file for the brand name in the description text** (e.g. `grep -i 'autodesk' asset-descriptions.md`). The Gemini Vision captions identify what's actually in each file — that's the agent's selector.\n\nThe `logo-<hash>.svg` filename prefix is a cheap structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). It is NOT a content claim — many `logo-*` files are nav icons or decorative shapes. Trust the captions, not the filename prefix.\n\n"
-        : "# Asset Descriptions\n\n⚠️  No vision credentials — descriptions below are catalog-derived (alt text, headings, section context, filename) instead of Vision-generated. To get richer Vision descriptions on the next capture, set GEMINI_API_KEY (or GOOGLE_API_KEY), or HYPERFRAMES_VERTEX_PROJECT_ID plus HYPERFRAMES_VERTEX_SERVICE_ACCOUNT for Vertex service-account auth, and re-run.\n\nThe `logo-<hash>.svg` filename prefix is a structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). To pick the actual brand logo without Vision, open the `logo-*` candidates in a previewer or rasterize them with `sharp` before referencing — composing a fake logo ships off-brand in the final video.\n\n";
+        : "# Asset Descriptions\n\n⚠️  No vision credentials — descriptions below are catalog-derived (alt text, headings, section context, filename) instead of Vision-generated. To get richer Vision descriptions on the next capture, set GEMINI_API_KEY (or GOOGLE_API_KEY), or HYPERFRAMES_VERTEX_PROJECT_ID plus HYPERFRAMES_VERTEX_SERVICE_ACCOUNT (or a short-lived HYPERFRAMES_VERTEX_ACCESS_TOKEN) for Vertex auth, and re-run.\n\nThe `logo-<hash>.svg` filename prefix is a structural hint (DOM said this SVG was inside a `<header>`, home-link `<a>`, or had an aria-label matching the page brand). To pick the actual brand logo without Vision, open the `logo-*` candidates in a previewer or rasterize them with `sharp` before referencing — composing a fake logo ships off-brand in the final video.\n\n";
       writeAssetDescriptionsFile(outputDir, lines, header);
       progress(
         "design",

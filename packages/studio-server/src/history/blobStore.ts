@@ -7,29 +7,29 @@ import {
   open,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { atomicTempPath } from "@hyperframes/core/atomic-file";
-import {
-  isWindowsHold,
-  renameWithRetry,
-  renameWithRetryAsync,
-} from "@hyperframes/core/rename-retry";
+import { atomicTempPath, refuseReadOnly } from "@hyperframes/core/atomic-file";
+import { isWindowsHold, renameWithRetryAsync } from "@hyperframes/core/rename-retry";
 import { stopServingAndClose } from "../helpers/servedFiles.js";
+import { assertLandedIn, assertStillWithin, folderWithin } from "./containedPath.js";
 
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
   /** Copies the file in (cloned where it can) and returns its hash; null while it keeps changing. */
-  put(absPath: string): Promise<string | null>;
+  put(absPath: string, pin?: boolean, onRead?: () => void): Promise<string | null>;
+  unpin(hash: string): void;
+  pinned(): Iterable<string>;
   reference(absPath: string): Promise<string>;
   has(hash: string): boolean;
   read(hash: string): Promise<Buffer>;
-  /** Writes the blob's bytes to `absPath` by clone-or-copy and rename, so a reader never sees half a file. */
-  writeTo(hash: string, absPath: string, beforeReplace?: () => void): Promise<void>;
+  /** Writes the blob's bytes, checked against `hash`, to `path` in `root` by clone and rename; no link is followed. */
+  writeTo(hash: string, root: string, path: string, beforeReplace?: () => void): Promise<void>;
   bytes(): number;
   size(hash: string): number;
   keep(path: string, absPath: string, remove: boolean): Promise<void>;
@@ -45,9 +45,6 @@ const READS_BEFORE_LEAVING_IT = 3;
 // Longer than the 20 ms a watcher gathers a burst for, so the sweep a save's first event starts sees it under way.
 export const SETTLE_MS = 100;
 
-export const isSettling = (file: { mtimeMs: number; ctimeMs: number }, now: number) =>
-  Math.abs(now - Math.max(file.mtimeMs, file.ctimeMs)) < SETTLE_MS;
-
 const unchanged = (before: Stats, after: Stats) =>
   before.size === after.size &&
   before.mtimeMs === after.mtimeMs &&
@@ -59,9 +56,20 @@ export function blobPath(dir: string, hash: string): string {
   return join(dir, hash.slice(0, 2), hash);
 }
 
-export const readBlob = (dir: string, hash: string) => readFile(blobPath(dir, hash));
+const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
-async function hashFile(path: string): Promise<string> {
+const damaged = () =>
+  new Error("History's copy of this version is damaged, so it was not used. Nothing was changed.");
+
+async function readChecked(path: string, hash: string): Promise<Buffer> {
+  const bytes = await readFile(path);
+  if (sha256(bytes) !== hash) throw damaged();
+  return bytes;
+}
+
+export const readBlob = (dir: string, hash: string) => readChecked(blobPath(dir, hash), hash);
+
+export async function hashFile(path: string): Promise<string> {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");
@@ -69,13 +77,17 @@ async function hashFile(path: string): Promise<string> {
 
 async function readIfSmall(
   path: string,
+  onRead: () => void,
 ): Promise<{ bytes: Buffer; mode: number; moved: boolean } | null> {
   const handle = await open(path, "r");
   try {
     const before = await handle.stat();
     if (before.size > READ_ONCE_AT_MOST_BYTES) return null;
     const bytes = await handle.readFile();
-    return { bytes, mode: before.mode, moved: !unchanged(before, await handle.stat()) };
+    const moved = !unchanged(before, await handle.stat());
+    // At the read itself, not after the close, which a slow drive can hold.
+    if (!moved) onRead();
+    return { bytes, mode: before.mode, moved };
   } finally {
     await handle.close();
   }
@@ -101,21 +113,32 @@ export function onRestoredInPlace(listener: InPlaceListener): () => void {
 
 async function cloneOrCopy(
   from: string,
-  to: string,
   hash: string,
+  root: string,
+  path: string,
   beforeReplace?: () => void,
 ): Promise<void> {
-  await mkdir(dirname(to), { recursive: true });
+  const folder = folderWithin(root, path, true)!;
+  const to = join(folder, basename(path));
+  const servedAs = join(root, path);
+  refuseReadOnly(to);
   const temp = atomicTempPath(to);
   try {
-    await copyFile(from, temp, constants.COPYFILE_FICLONE);
-    await stopServingAndClose(to);
-    beforeReplace?.();
+    await copyFile(from, temp, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
+    assertLandedIn(folder, temp);
+    if ((await hashFile(temp)) !== hash) throw damaged();
+    await stopServingAndClose(servedAs);
     try {
-      renameWithRetry(temp, to);
+      await renameWithRetryAsync(temp, to, {
+        rename: async (from, to) => {
+          beforeReplace?.();
+          assertStillWithin(folder);
+          await rename(from, to);
+        },
+      });
     } catch (error) {
       if (!isWindowsHold(error)) throw error;
-      await writeInPlace(temp, to, hash);
+      await writeInPlace(temp, folder, to, servedAs, hash);
     }
   } finally {
     await rm(temp, { force: true });
@@ -123,9 +146,16 @@ async function cloneOrCopy(
 }
 
 // Something outside the app still holds the file: write in place, sync, and fail on any mismatch with the blob.
-async function writeInPlace(temp: string, to: string, hash: string): Promise<void> {
+async function writeInPlace(
+  temp: string,
+  folder: string,
+  to: string,
+  servedAs: string,
+  hash: string,
+): Promise<void> {
   let outcome: InPlaceOutcome = "failed";
   try {
+    assertLandedIn(folder, to);
     await copyFile(temp, to);
     const handle = await open(to, "r+");
     try {
@@ -135,7 +165,7 @@ async function writeInPlace(temp: string, to: string, hash: string): Promise<voi
     }
     outcome = (await hashFile(to)) === hash ? "restored" : "mismatch";
   } finally {
-    for (const listener of inPlaceListeners) listener(to, outcome);
+    for (const listener of inPlaceListeners) listener(servedAs, outcome);
   }
   if (outcome === "mismatch")
     throw new Error("The file was written in place, but it does not match the copy history kept.");
@@ -170,11 +200,23 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
   for (const hash of asideSizes.keys()) holds.set(hash, new Set(["*"]));
   const pathOf = (hash: string) => blobPath(sizes.has(hash) ? dir : asideDir, hash);
   let total = [...sizes.values()].reduce((sum, size) => sum + size, 0);
-  const forget = async (hash: string) => {
-    await rm(blobPath(dir, hash), { force: true });
-    total -= sizes.get(hash) ?? 0;
-    sizes.delete(hash);
+  const pins = new Map<string, number>();
+  const pin = (hash: string) => pins.set(hash, (pins.get(hash) ?? 0) + 1);
+  const turns = new Map<string, Promise<unknown>>();
+  const inTurn = <T>(hash: string, step: () => Promise<T>): Promise<T> => {
+    const done = (turns.get(hash) ?? Promise.resolve()).then(step, step);
+    const tail = done.catch(() => {});
+    turns.set(hash, tail);
+    void tail.then(() => turns.get(hash) === tail && turns.delete(hash));
+    return done;
   };
+  const forget = (hash: string) =>
+    inTurn(hash, async () => {
+      if (pins.has(hash) || !sizes.has(hash)) return;
+      await rm(blobPath(dir, hash), { force: true });
+      total -= sizes.get(hash) ?? 0;
+      sizes.delete(hash);
+    });
   const forgetAside = async (hash: string) => {
     await rm(blobPath(asideDir, hash), { force: true });
     asideSizes.delete(hash);
@@ -192,9 +234,12 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       await write();
     });
   // The bytes hashed are the bytes filed, so a write racing the read can never file bytes under the wrong hash.
-  const putBytes = async (bytes: Buffer, mode: number) => {
-    const hash = createHash("sha256").update(bytes).digest("hex");
-    if (sizes.has(hash)) return hash;
+  const putBytes = async (bytes: Buffer, mode: number, pinned: boolean) => {
+    const hash = sha256(bytes);
+    return inTurn(hash, () => filedBytes(hash, bytes, mode, pinned));
+  };
+  const filedBytes = async (hash: string, bytes: Buffer, mode: number, pinned: boolean) => {
+    if (sizes.has(hash)) return pinned ? (pin(hash), hash) : hash;
     const temp = join(dir, `incoming-${randomUUID()}`);
     try {
       await withFolderMadeIfMissing(dir, () => writeFile(temp, bytes, { mode }));
@@ -207,12 +252,18 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       throw error;
     }
     file(hash, bytes.length);
+    if (pinned) pin(hash);
     return hash;
   };
 
-  const putIfUnchanged = async (absPath: string): Promise<string | null> => {
-    const small = await readIfSmall(absPath);
-    if (small) return small.moved ? null : putBytes(small.bytes, small.mode);
+  const putIfUnchanged = async (
+    absPath: string,
+    pinned: boolean,
+    onRead: () => void,
+  ): Promise<string | null> => {
+    const small = await readIfSmall(absPath, onRead);
+    if (small?.moved) return null;
+    if (small) return putBytes(small.bytes, small.mode, pinned);
     // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
     const temp = join(dir, `incoming-${randomUUID()}`);
     // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
@@ -228,31 +279,36 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       await rm(temp, { force: true });
       return null;
     }
+    onRead();
     const hash = await hashFile(temp);
-    if (sizes.has(hash)) {
-      await rm(temp, { force: true });
+    return inTurn(hash, async () => {
+      if (sizes.has(hash)) {
+        await rm(temp, { force: true });
+        if (pinned) pin(hash);
+        return hash;
+      }
+      await mkdir(dirname(blobPath(dir, hash)), { recursive: true });
+      const size = (await stat(temp)).size;
+      await renameWithRetryAsync(temp, blobPath(dir, hash));
+      file(hash, size);
+      if (pinned) pin(hash);
       return hash;
-    }
-    await mkdir(dirname(blobPath(dir, hash)), { recursive: true });
-    const size = (await stat(temp)).size;
-    await renameWithRetryAsync(temp, blobPath(dir, hash));
-    file(hash, size);
-    return hash;
+    });
   };
 
   return {
-    async put(absPath) {
+    async put(absPath, pinned = false, onRead = () => {}) {
       for (let read = 0; read < READS_BEFORE_LEAVING_IT; read += 1) {
-        const hash = await putIfUnchanged(absPath);
+        const hash = await putIfUnchanged(absPath, pinned, onRead);
         if (hash !== null) return hash;
       }
       return null;
     },
     reference: (absPath) => hashFile(absPath),
     has: (hash) => sizes.has(hash) || asideSizes.has(hash),
-    read: (hash) => readFile(pathOf(hash)),
-    writeTo: async (hash, absPath, beforeReplace) =>
-      cloneOrCopy(pathOf(hash), absPath, hash, beforeReplace),
+    read: (hash) => readChecked(pathOf(hash), hash),
+    writeTo: async (hash, root, path, beforeReplace) =>
+      cloneOrCopy(pathOf(hash), hash, root, path, beforeReplace),
     async release(held) {
       for (const [hash, path] of held) {
         holds.get(hash)?.delete(path);
@@ -290,6 +346,12 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     async drop(hashes) {
       for (const hash of hashes) if (sizes.has(hash)) await forget(hash);
     },
+    unpin(hash) {
+      const left = (pins.get(hash) ?? 0) - 1;
+      if (left > 0) pins.set(hash, left);
+      else pins.delete(hash);
+    },
+    pinned: () => pins.keys(),
     async prune(keep) {
       for (const hash of [...sizes.keys()]) if (!keep.has(hash)) await forget(hash);
       for (const hash of [...asideSizes.keys()]) if (!keep.has(hash)) await forgetAside(hash);

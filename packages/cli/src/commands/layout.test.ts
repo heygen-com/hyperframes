@@ -1,4 +1,6 @@
+import { runCommand } from "citty";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CliRuntimeError } from "../utils/commandResult.js";
 import {
   bundleToSingleHtmlFailureMock,
   metaDescription,
@@ -47,5 +49,39 @@ describe("layout command deprecation (U5)", () => {
     const jsonCall = await runAndFindJsonLogCall(createInspectCommand("inspect"));
     const parsed = JSON.parse(String(jsonCall?.[0]));
     expect(parsed._meta.deprecated).toBe(true);
+  });
+});
+
+describe("layout command terminal output", () => {
+  it("prints a folder name and a page error with control characters as visible escapes", async () => {
+    const { resolveProject } = await import("../utils/project.js");
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    vi.mocked(resolveProject).mockReturnValueOnce({
+      dir: "/fake-project",
+      name: "evil\u001b]0;title\u0007",
+      indexPath: "/fake-project/index.html",
+    });
+    vi.mocked(bundleToSingleHtml).mockRejectedValueOnce(
+      new Error("page threw \u001b[2J\u009b\nsecond line"),
+    );
+    const printed: string[] = [];
+    const keep = (...args: unknown[]) => {
+      printed.push(args.map(String).join(" "));
+    };
+    vi.spyOn(console, "log").mockImplementation(keep);
+    vi.spyOn(console, "error").mockImplementation(keep);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+
+    await runCommand(createInspectCommand("layout"), { rawArgs: [] }).catch((error: unknown) => {
+      if (!(error instanceof CliRuntimeError && error.result.presented)) throw error;
+    });
+
+    const text = printed.join("\n");
+    expect(text).toContain("evil\\x1b]0;title\\x07");
+    expect(text).toContain("page threw \\x1b[2J\\x9b\nsecond line");
+    for (const control of ["\u0007", "\u009b", "\u001b]", "\u001b[2J"]) {
+      expect(text).not.toContain(control);
+    }
   });
 });

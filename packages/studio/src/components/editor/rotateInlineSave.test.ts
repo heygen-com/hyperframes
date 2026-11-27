@@ -55,6 +55,7 @@ async function rotateWord(before: (word: HTMLElement) => void = () => {}) {
     overlayRef: ref<HTMLDivElement | null>(document.createElement("div")),
     iframeRef: ref<HTMLIFrameElement | null>(document.createElement("iframe")),
     boxRef: ref<HTMLDivElement | null>(document.createElement("div")),
+    handlesRef: { current: null },
     selectionRef: ref<DomEditSelection | null>(selection),
     hoverSelectionRef: ref<DomEditSelection | null>(null),
     overlayRectRef: ref({ left: 0, top: 0, width: 200, height: 100, editScaleX: 1, editScaleY: 1 }),

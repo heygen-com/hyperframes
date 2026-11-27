@@ -29,8 +29,11 @@ export const MEDIA_USE_COPY_NAMES = [
   "npx-sync.mjs",
   "parakeet-words.mjs",
   "prefs-store.mjs",
+  "received-env.mjs",
   "recipe-store.mjs",
   "telemetry.mjs",
+  "telemetry-opt-out.mjs",
+  "terminal-text.mjs",
   "transcriptCutFade.mjs",
   "words.mjs",
 ];

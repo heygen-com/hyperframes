@@ -108,8 +108,9 @@ function main() {
 
 function createDraft(options: Options): DraftOutput {
   const versionTag = `v${options.version}`;
-  const to = options.to ?? (tagExists(versionTag) ? versionTag : "HEAD");
+  const to = options.to ?? (tagExists(versionTag) ? versionTag : fetchDraftHead());
   const from = options.from ?? resolvePreviousTag(versionTag, to, options.version);
+  assertHasCommit(from);
   const commits = getCommits(from, to).filter((commit) => !shouldSkipCommit(commit));
   const parsedCommits = commits.map(parseCommit);
 
@@ -202,6 +203,21 @@ function git(args: string[]) {
     cwd: ROOT,
     encoding: "utf-8",
   }).trim();
+}
+
+/** The remote's main as of now: a stale checkout would otherwise leave out what merged since it was last pulled. */
+function fetchDraftHead() {
+  git(["fetch", "origin", "main", "--tags", "--force"]);
+  console.error(`Drafting from origin/main at ${git(["rev-parse", "--short=9", "origin/main"])}`);
+  return "origin/main";
+}
+
+function assertHasCommit(ref: string) {
+  try {
+    git(["cat-file", "-e", `${ref}^{commit}`]);
+  } catch {
+    fail(`This clone has no objects for ${ref}, so the draft would list the wrong commits.`);
+  }
 }
 
 function tagExists(tag: string) {

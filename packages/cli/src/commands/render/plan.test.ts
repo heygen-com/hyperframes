@@ -127,6 +127,12 @@ describe("createRenderPlan", () => {
     expect(plan.bestEffort).toBe(false);
   });
 
+  it("runs outside scripts only with --include-outside-files", () => {
+    expect(createRenderPlan({ dir: projectDir }).includeOutsideScripts).toBe(false);
+    const included = createRenderPlan({ dir: projectDir, "include-outside-files": true });
+    expect(included.includeOutsideScripts).toBe(true);
+  });
+
   it.each([undefined, "off"])("preserves page motion blur override %s", (value) => {
     expect(createRenderPlan({ dir: projectDir, "page-motion-blur": value }).pageMotionBlur).toBe(
       value,
@@ -299,7 +305,7 @@ describe("createRenderPlan", () => {
     }
   });
 
-  it("carries --start and --end into the plan, and refuses what a range cannot render", () => {
+  it("carries --start and --end into the plan for any format, frame rate and HDR, and refuses a bad span", () => {
     expect(createRenderPlan({ dir: projectDir, start: "2.5", end: "6" }).range).toEqual({
       startSeconds: 2.5,
       endSeconds: 6,
@@ -309,14 +315,16 @@ describe("createRenderPlan", () => {
       endSeconds: 4,
     });
     expect(createRenderPlan({ dir: projectDir }).range).toBeUndefined();
+    for (const flags of [{ format: "webm" }, { fps: "30000/1001" }, { fps: "50" }, { hdr: true }]) {
+      expect(createRenderPlan({ dir: projectDir, start: "1", ...flags }).range).toEqual({
+        startSeconds: 1,
+        endSeconds: undefined,
+      });
+    }
     const refused: Array<Record<string, string | boolean>> = [
       { start: "-1" },
       { start: "abc" },
       { start: "5", end: "5" },
-      { start: "1", format: "webm" },
-      { start: "1", fps: "29.97" },
-      { start: "1", fps: "50" },
-      { start: "1", hdr: true },
     ];
     for (const flags of refused) {
       expect(() => createRenderPlan({ dir: projectDir, ...flags })).toThrow(CliUsageError);

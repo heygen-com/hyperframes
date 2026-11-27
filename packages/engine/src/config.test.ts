@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -14,6 +14,7 @@ import {
   defaultExtractCacheDir,
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   validateEngineConfigSnapshot,
+  resolveRestrictPageNetwork,
 } from "./config.js";
 import type { EngineConfig } from "./config.js";
 import { isLowMemorySystem } from "./services/systemMemory.js";
@@ -1007,5 +1008,36 @@ describe("validateEngineConfigSnapshot fps", () => {
 
   it("rejects an fps outside the distributed set", () => {
     expect(() => validateEngineConfigSnapshot({ ...resolveConfig(), fps: 50 })).toThrow(/fps/);
+  });
+});
+
+describe("resolveRestrictPageNetwork", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it.each(["true", "1", "TRUE", "yes", "On", " true\n"])("restricts for %j", (value) => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", value);
+    expect(resolveRestrictPageNetwork()).toBe(true);
+  });
+
+  it.each(["", "  ", "false", "0", "NO", "off\n"])("stays open for %j", (value) => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", value);
+    expect(resolveRestrictPageNetwork()).toBe(false);
+  });
+
+  it("stays open when unset", () => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", undefined);
+    expect(resolveRestrictPageNetwork()).toBe(false);
+  });
+
+  it("restricts for an unrecognised value and warns once", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "maybe");
+    expect(resolveRestrictPageNetwork()).toBe(true);
+    expect(resolveRestrictPageNetwork()).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("PRODUCER_RESTRICT_PAGE_NETWORK"));
   });
 });

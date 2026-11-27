@@ -1,4 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
 import type { ShareService, ShareState } from "../share/service.js";
 import { mountShareRoutes } from "./shareRoutes.js";
@@ -17,8 +21,10 @@ const state: ShareState = {
   url: null,
   previousUrl: null,
   manageUrl: "https://hyperframes.dev/shares",
+  reviewId: null,
+  reviewTitle: null,
 };
-function fixture() {
+function fixture(dir = "/fixed/project") {
   const service: ShareService = {
     checkSession: vi.fn(async () => ({
       token: "secret",
@@ -27,6 +33,13 @@ function fixture() {
       heygenApi: "https://api.heygen.com",
     })),
     status: vi.fn(async () => state),
+    reconnect: {
+      available: vi.fn(async () => true),
+      list: vi.fn(async () => []),
+      confirm: vi.fn(async () => null),
+    },
+    sourceStatus: vi.fn(async () => "needs_sync" as const),
+    syncProjectFiles: vi.fn(async () => state),
     run: vi.fn(async () => state),
     spaces: vi.fn(async () => []),
     capabilities: vi.fn(async () => ({ versionSharing: true, shareFiles: false })),
@@ -38,7 +51,7 @@ function fixture() {
   const create = vi.fn(async () => service);
   const login = vi.fn(async () => {});
   const track = vi.fn();
-  mountShareRoutes(app, "/fixed/project", create, login, track);
+  mountShareRoutes(app, dir, create, login, track);
   return { app, service, create, login, track };
 }
 const LOCAL_PEER = { incoming: { socket: { remoteAddress: "127.0.0.1" } } };
@@ -55,7 +68,14 @@ async function token(app: Hono) {
     throw new Error("missing token");
   return body.csrf;
 }
+// What Studio sends after the person confirms: the id of the review the popover named, null for none.
+function confirmed(body: unknown) {
+  if (!body || typeof body !== "object" || !("action" in body) || body.action === "login")
+    return body;
+  return "confirmedReview" in body ? body : { ...body, confirmedReview: state.reviewId };
+}
 function request(app: Hono, path: string, csrf: string, body?: unknown) {
+  body = path === "actions" ? confirmed(body) : body;
   return app.request(
     `/api/share/${path}`,
     {
@@ -181,6 +201,7 @@ it("keeps one server job alive after the request completes and recovers it on re
     audience: "private",
     space: "team1",
     videoOnly: undefined,
+    confirmedReview: null,
   });
 });
 it("returns failed jobs without changing access or retrying automatically", async () => {
@@ -255,6 +276,7 @@ it("passes explicit video-only recovery and rejects nonboolean bypass values", a
       audience: undefined,
       space: undefined,
       videoOnly: true,
+      confirmedReview: null,
     }),
   );
 });
@@ -446,15 +468,153 @@ it("shows a completed login's admission failure to its initiating panel", async 
   });
 });
 
-it.each([undefined, true])("forwards only explicit source consent (%s)", async (includeSource) => {
+it("only the sync action can upload project files", async () => {
   const { app, service } = fixture();
   const csrf = await token(app);
-  const response = await request(app, "actions", csrf, {
-    action: "share",
-    audience: "public",
-    includeSource,
+  const digest = "a".repeat(64);
+  for (const body of [
+    { action: "share", audience: "public", includeSource: true },
+    { action: "update", expectedReferencedHiddenDigest: digest },
+    { action: "sync", space: "team1" },
+  ])
+    expect((await request(app, "actions", csrf, body)).status).toBe(400);
+  expect(
+    (
+      await request(app, "actions", csrf, {
+        action: "sync",
+        space: "team1",
+        expectedReferencedHiddenDigest: digest,
+      })
+    ).status,
+  ).toBe(202);
+  await vi.waitFor(() => expect(service.syncProjectFiles).toHaveBeenCalledWith("team1", digest));
+  expect(service.run).not.toHaveBeenCalled();
+});
+
+describe("share actions need the review the person confirmed", () => {
+  const existing = "existing-project";
+  it.each([
+    ["share", { action: "share", audience: "public" }],
+    ["update", { action: "update" }],
+    ["access", { action: "access", audience: "public" }],
+    ["off", { action: "off" }],
+    ["on", { action: "on" }],
+  ])("refuses %s without a confirmed review and changes nothing", async (_, body) => {
+    const { app, service } = fixture();
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, { ...body, confirmedReview: undefined });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "confirmation_required" });
+    for (const mutation of [service.run, service.setAccess, service.linkOff, service.linkOn])
+      expect(mutation).not.toHaveBeenCalled();
   });
-  expect(response.status).toBe(202);
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(service.run).toHaveBeenCalledWith(expect.objectContaining({ includeSource }));
+  it("refuses a first share when the folder's record already names a review the person was not shown", async () => {
+    const { app, service } = fixture();
+    vi.mocked(service.status).mockResolvedValue({ ...state, reviewId: existing });
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "share",
+      audience: "public",
+      confirmedReview: null,
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "share_target_changed" });
+    expect(service.run).not.toHaveBeenCalled();
+    const snapshot = await (await request(app, "snapshot", csrf)).json();
+    expect(snapshot.job).toBeNull();
+  });
+  it("refuses when the project now points to a different review than the one confirmed", async () => {
+    const { app, service } = fixture();
+    vi.mocked(service.status).mockResolvedValue({ ...state, reviewId: "another-project" });
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "access",
+      audience: "public",
+      confirmedReview: existing,
+    });
+    expect(response.status).toBe(409);
+    expect(service.setAccess).not.toHaveBeenCalled();
+  });
+  it("refuses a confirmation that is not a review id", async () => {
+    const { app, service } = fixture();
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "off",
+      confirmedReview: "https://hyperframes.studio/shares",
+    });
+    expect(response.status).toBe(400);
+    expect(service.linkOff).not.toHaveBeenCalled();
+  });
+  it("runs the action when the confirmed review is still the project's review", async () => {
+    const { app, service } = fixture();
+    vi.mocked(service.status).mockResolvedValue({ ...state, reviewId: existing });
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "access",
+      audience: "public",
+      confirmedReview: existing,
+    });
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(service.setAccess).toHaveBeenCalledWith("public"));
+  });
+  it("still signs in without a confirmed review", async () => {
+    const { app, login } = fixture();
+    const csrf = await token(app);
+    expect((await request(app, "actions", csrf, { action: "login" })).status).toBe(202);
+    await vi.waitFor(() => expect(login).toHaveBeenCalled());
+  });
+});
+
+it("lists referenced hidden assets only in the local sharing session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hf-share-summary-"));
+  try {
+    const font = "brand/.fonts/Inter.woff2";
+    const logo = "brand/.images/logo.png";
+    for (const path of ["brand/.fonts", "brand/.images", "styles", "modules"])
+      await mkdir(join(dir, path), { recursive: true });
+    await mkdir(join(dir, ".ssh"));
+    await writeFile(join(dir, font), "font");
+    await writeFile(join(dir, logo), "logo");
+    await writeFile(
+      join(dir, "styles/theme.css"),
+      `@font-face{font-family:Inter;src:url("../${font}")}`,
+    );
+    await writeFile(join(dir, "modules/brand.mjs"), `new URL("../${logo}", import.meta.url)`);
+    await writeFile(join(dir, "brand/.fonts/Unused.woff2"), "unused");
+    await writeFile(join(dir, ".ssh/photo.png"), "private");
+    await writeFile(
+      join(dir, "index.html"),
+      '<link rel="stylesheet" href="styles/theme.css"><script type="module" src="modules/brand.mjs"></script><img src=".ssh/photo.png">',
+    );
+    const { app } = fixture(dir);
+    expect((await request(app, "project-files?space=team1", "")).status).toBe(403);
+    const csrf = await token(app);
+    const summary = await (await request(app, "project-files?space=team1", csrf)).json();
+    expect(summary).toEqual({
+      state: "needs_sync",
+      canReconnect: true,
+      paths: [font, logo],
+      digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    const missing = await request(app, "actions", csrf, { action: "update", includeSource: true });
+    expect(missing.status).toBe(400);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("requires the local session and an explicit reconnect choice", async () => {
+  const { app, service } = fixture();
+  expect((await request(app, "reconnect?space=team1", "")).status).toBe(403);
+  const csrf = await token(app);
+  expect((await request(app, "reconnect?space=team1", csrf)).status).toBe(200);
+  expect(service.reconnect.list).toHaveBeenCalledWith("team1");
+  expect((await request(app, "reconnect", csrf, { project: "Launch" })).status).toBe(400);
+  expect(service.reconnect.confirm).not.toHaveBeenCalled();
+  const confirmLocalFiles = randomUUID();
+  vi.mocked(service.reconnect.confirm).mockResolvedValueOnce({ confirmLocalFiles });
+  const difference = await request(app, "reconnect", csrf, { choice: "selected-token" });
+  expect(await difference.json()).toEqual({ confirmLocalFiles });
+  expect(service.reconnect.confirm).toHaveBeenCalledWith("selected-token");
+  expect(service.syncProjectFiles).not.toHaveBeenCalled();
 });

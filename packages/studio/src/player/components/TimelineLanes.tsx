@@ -31,6 +31,7 @@ import { TimelineTrackRow } from "./TimelineTrackRow";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
 import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
+import { timelineRows } from "./timelineRowKeys";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
 import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
@@ -145,6 +146,7 @@ export function TimelineLanes({
     onDrillDown,
   });
   const clipActions = useRef<TimelineLaneClipActions>(null!);
+  const rows = timelineRows(tracks);
   clipActions.current = {
     gestures: {
       pps,
@@ -218,7 +220,7 @@ export function TimelineLanes({
           const logicalRow = trackLogicalRows[0];
           if (!logicalRow) return null;
           const rowHeight = rowGeometry.getRowHeight(row);
-          const els = tracks.find(([t]) => t === trackNum)?.[1] ?? [];
+          const els = rows.clips(trackNum);
           const renderElements = rowsVirtualized
             ? queryTimelineClipIndex(
                 clipIndex,
@@ -302,7 +304,7 @@ export function TimelineLanes({
               : undefined;
           return (
             <TimelineTrackRow
-              key={rowKey}
+              key={rows.reactKey(trackNum)}
               index={row}
               rowKey={rowKey}
               logicalRow={logicalRow}

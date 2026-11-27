@@ -1,8 +1,11 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { chmodSync, existsSync, lstatSync, readdirSync, rmSync, unlinkSync } from "node:fs";
+import { refuseReadOnly } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { makeOutputFolder } from "../utils/outputFolder.js";
-import { join, dirname, basename } from "node:path";
+import { join, dirname, basename, extname } from "node:path";
 import {
   ensureModel,
   ensureVoices,
@@ -12,7 +15,13 @@ import {
 } from "./manager.js";
 import { findPython, hasPythonPackage, workingPythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 // ---------------------------------------------------------------------------
 // Inline Python script for Kokoro synthesis
@@ -116,13 +125,17 @@ const ESPEAK_LANG_OVERRIDES: Partial<Record<SupportedLang, string>> = {
 // Cache the script to avoid rewriting it on every invocation.
 // The filename carries a version suffix so older installs automatically
 // upgrade when the script body changes (e.g., adding the `lang` kwarg).
-const SCRIPT_DIR = hyperframesCacheDir("tts");
+const CODE_ROOT = trustedCacheRoot();
+const SCRIPT_DIR = join(CODE_ROOT, "tts");
 const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v4.py");
 
 function ensureSynthScript(): string {
+  ensurePrivateCacheDir(SCRIPT_DIR, CODE_ROOT);
+  if (existsSync(SCRIPT_PATH) && foreignWritablePath(SCRIPT_PATH, CODE_ROOT))
+    unlinkSync(SCRIPT_PATH);
   if (!existsSync(SCRIPT_PATH)) {
-    mkdirSync(SCRIPT_DIR, { recursive: true });
     writeNewFileSync(SCRIPT_PATH, SYNTH_SCRIPT);
+    sealCacheInstall(SCRIPT_PATH, CODE_ROOT);
     // Best-effort: delete older versioned scripts left behind by previous
     // CLI releases so users don't accumulate stale files in ~/.cache.
     const currentName = basename(SCRIPT_PATH);
@@ -140,7 +153,34 @@ function ensureSynthScript(): string {
       // Ignore — directory read is best-effort.
     }
   }
-  return SCRIPT_PATH;
+  return assertPrivateCachePath(SCRIPT_PATH, CODE_ROOT);
+}
+
+/** Why a run that printed nothing failed. Never the error's own message for an exit: that repeats the whole command, text included. */
+function quietFailure(err: unknown): string {
+  if (!(err instanceof Error)) return "";
+  const { code, status, signal } = err as { code?: unknown; status?: unknown; signal?: unknown };
+  if (typeof code === "string" || (status == null && signal == null)) return err.message;
+  return typeof status === "number"
+    ? `The script exited with code ${status}`
+    : `The script was stopped by ${String(signal)}`;
+}
+
+function removeStaged(path: string): void {
+  try {
+    rmSync(path, { force: true, maxRetries: 3 });
+  } catch {
+    // a staged file that will not go must not replace the run's own result or error
+  }
+}
+
+function regularFileMode(path: string): number | undefined {
+  try {
+    const stats = lstatSync(path);
+    return stats.isFile() ? stats.mode & 0o777 : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -213,14 +253,16 @@ export async function synthesize(
 
   // 4. Ensure output directory exists
   makeOutputFolder(dirname(outputPath));
+  if (regularFileMode(outputPath) !== undefined) refuseReadOnly(outputPath);
 
-  // 5. Run synthesis
+  // 5. Run synthesis into a fresh name renamed over the output: the script writes through a link.
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);
+  const staged = join(dirname(outputPath), `.tmp-${randomUUID()}${extname(outputPath)}`);
   try {
     const espeakLang = ESPEAK_LANG_OVERRIDES[lang] ?? lang;
     const stdout = execFileSync(
       python,
-      [scriptPath, modelPath, voicesPath, text, voice, String(speed), outputPath, espeakLang],
+      [scriptPath, modelPath, voicesPath, text, voice, String(speed), staged, espeakLang],
       {
         encoding: "utf-8",
         timeout: 300_000,
@@ -229,9 +271,12 @@ export async function synthesize(
       },
     );
 
-    if (!existsSync(outputPath)) {
+    if (!existsSync(staged)) {
       throw new Error("Synthesis completed but no output file was created");
     }
+    const mode = regularFileMode(outputPath);
+    if (mode !== undefined) chmodSync(staged, mode);
+    renameWithRetry(staged, outputPath);
 
     // Parse the last line of stdout as JSON (in case Python printed warnings before it)
     const lines = stdout.trim().split("\n");
@@ -244,7 +289,7 @@ export async function synthesize(
     } = JSON.parse(jsonLine);
 
     return {
-      outputPath: result.outputPath,
+      outputPath,
       sampleRate: result.sampleRate,
       durationSeconds: result.durationSeconds,
       langApplied: result.langApplied,
@@ -258,11 +303,12 @@ export async function synthesize(
       );
     }
 
-    let detail = "";
-    if (err && typeof err === "object" && "stderr" in err) {
-      const stderr = String(err.stderr).trim();
-      if (stderr) detail = `\n${stderr.slice(-500)}`;
-    }
+    const stderr = err && typeof err === "object" && "stderr" in err ? err.stderr : "";
+    const said = typeof stderr === "string" || Buffer.isBuffer(stderr) ? String(stderr).trim() : "";
+    const reason = said ? said.slice(-500) : quietFailure(err);
+    const detail = reason ? `\n${reason}` : "";
     throw new Error(`Speech synthesis failed${detail}`);
+  } finally {
+    removeStaged(staged);
   }
 }

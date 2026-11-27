@@ -15,6 +15,12 @@ vi.mock("node:fs", async () => {
   };
   return { ...fs, existsSync, default: { ...fs, existsSync } };
 });
+// file: URLs read as Windows reads them: file://host/share/x is \\host\share\x.
+vi.mock("node:url", async () => {
+  const url = await vi.importActual<typeof import("node:url")>("node:url");
+  const fileURLToPath = (href: string | URL) => url.fileURLToPath(href, { windows: true });
+  return { ...url, fileURLToPath, default: { ...url, fileURLToPath } };
+});
 
 const {
   localAbsoluteAssetFile,
@@ -22,8 +28,11 @@ const {
   resolveAuthoredAssetFile,
   resolveCompositionSrc,
   resolveLocalAssetCandidates,
+  resolveProjectRelativeSrc,
   srcOnAnotherNetworkRoot,
+  projectAssetExists,
 } = await import("./assetResolution.js");
+const { rewriteAssetPath } = await import("./rewriteSubCompPaths.js");
 const { resolve } = await import("node:path");
 
 const PROJECT = "C:\\project";
@@ -100,6 +109,46 @@ describe("resolveCompositionSrc under Windows rules", () => {
   });
 });
 
+describe("projectAssetExists under Windows rules", () => {
+  it.each([
+    "\\\\attacker.example\\share/img.png",
+    "//attacker.example/share/img.png",
+    "/\\attacker.example\\share\\img.png",
+    "\\\\?\\UNC\\attacker.example\\share\\img.png",
+    "\\\\.\\pipe\\x",
+    "D:/media/img.png",
+    "C:\\Users\\me\\img.png",
+    "\\Users\\me\\img.png",
+    "..\\img.png",
+    "scenes\\..\\..\\img.png",
+  ])("reports %s missing without touching the disk, even when it is there", (path) => {
+    present.clear();
+    present.add(resolve(PROJECT, path));
+    touched.length = 0;
+    expect(projectAssetExists(PROJECT)(path)).toBe(false);
+    expect(touched).toEqual([]);
+  });
+
+  it("finds a file inside the project", () => {
+    present.clear();
+    present.add("C:\\project\\scenes\\img.png");
+    touched.length = 0;
+    expect(projectAssetExists(PROJECT)("scenes/img.png")).toBe(true);
+    expect(touched).toEqual(["C:\\project\\scenes\\img.png"]);
+  });
+
+  it("never stats a UNC-looking scene's sibling asset on that share", () => {
+    present.clear();
+    present.add("\\\\attacker.example\\share\\img.png");
+    touched.length = 0;
+    const exists = projectAssetExists(PROJECT);
+    expect(rewriteAssetPath("\\\\attacker.example\\share/scene.html", "img.png", exists)).toBe(
+      "img.png",
+    );
+    expect(touched).toEqual([]);
+  });
+});
+
 describe("localAbsoluteAssetFile under Windows rules", () => {
   it.each([
     ["C:\\media\\clip.mp4", "C:\\media\\clip.mp4"],
@@ -165,5 +214,44 @@ describe("srcOnAnotherNetworkRoot under Windows rules", () => {
 
   it("is false for a file on the share the project itself lives on", () => {
     expect(srcOnAnotherNetworkRoot("\\\\nas\\films\\project", "//NAS/films/voice.wav")).toBe(false);
+  });
+});
+
+describe("resolveProjectRelativeSrc under Windows rules", () => {
+  const COMPILED = "C:\\project\\.hyperframes\\compiled";
+  const onAShare = (path: string) => /^[\\/]{2}/.test(path);
+
+  it.each([
+    ["\\\\attacker.example\\share\\x.mp4", "\\\\attacker.example\\share\\x.mp4"],
+    ["//attacker.example/share/x.mp4", "//attacker.example/share/x.mp4"],
+    ["/\\attacker.example\\share\\x.mp4", "/\\attacker.example\\share\\x.mp4"],
+    ["file://attacker.example/share/x.mp4", "\\\\attacker.example\\share\\x.mp4"],
+    ["\\\\.\\pipe\\x", "\\\\.\\pipe\\x"],
+  ])("never looks at another computer's share for %s, even when it answers", (src, share) => {
+    present.clear();
+    present.add(share);
+    touched.length = 0;
+    const path = resolveProjectRelativeSrc(src, PROJECT, COMPILED);
+    expect(touched.filter(onAShare)).toEqual([]);
+    expect(onAShare(path)).toBe(false);
+  });
+
+  it("finds a file on the share the project itself lives on", () => {
+    present.clear();
+    present.add("//NAS/films/shared/clip.mp4");
+    expect(
+      resolveProjectRelativeSrc("//NAS/films/shared/clip.mp4", "\\\\nas\\films\\project"),
+    ).toBe("//NAS/films/shared/clip.mp4");
+  });
+
+  it("still finds a local absolute file", () => {
+    present.clear();
+    present.add("D:\\media\\clip.mp4");
+    expect(resolveProjectRelativeSrc("D:\\media\\clip.mp4", PROJECT, COMPILED)).toBe(
+      "D:\\media\\clip.mp4",
+    );
+    expect(resolveProjectRelativeSrc("file:///D:/media/clip.mp4", PROJECT)).toBe(
+      "D:\\media\\clip.mp4",
+    );
   });
 });

@@ -5,7 +5,7 @@ import {
   readPositiveDimension,
 } from "./domEditOverlayBasis";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
-import { hugRectForElement } from "./domEditOverlayCrop";
+import { hugRectForElement, type OwnScale } from "./domEditOverlayCrop";
 import {
   elementCornerPoints,
   readElementTransformSnapshot,
@@ -15,6 +15,7 @@ import {
   type ElementTransformSnapshot,
 } from "@hyperframes/core/runtime/editing-port";
 import { type OverlayMeasurePass, readThroughPass } from "./domEditOverlayMeasurePass";
+import type { PreviewGestureStart } from "./previewGestureStartRead";
 
 export const RESIZE_HANDLE_HIT_PX = 16;
 
@@ -25,6 +26,7 @@ export interface OverlayRect {
   height: number;
   editScaleX: number;
   editScaleY: number;
+  ownScale?: OwnScale;
   /** Live screen-space rotation; omitted for axis-aligned group bounds. */
   angle?: number;
 }
@@ -40,6 +42,7 @@ export interface GroupOverlayItem {
   selection: DomEditSelection;
   element: HTMLElement;
   rect: OverlayRect;
+  start?: PreviewGestureStart;
 }
 
 export type ResolvedElementRef = {
@@ -182,6 +185,7 @@ export function frameRectToOverlay(
   scale: OverlayRootScale,
   elementRect: { left: number; top: number; width: number; height: number },
   source: FrameSource,
+  ownScale?: OwnScale,
 ): OverlayRect {
   const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
   const editScale = resolveDomEditCoordinateScale({
@@ -200,6 +204,7 @@ export function frameRectToOverlay(
     height: elementRect.height * rootScaleY,
     editScaleX: editScale.scaleX,
     editScaleY: editScale.scaleY,
+    ...(ownScale && { ownScale }),
   };
 }
 
@@ -230,21 +235,6 @@ export type FixedCorner = "nw" | "ne" | "sw" | "se";
  *  can derive the same dimensions without a second orientedOverlayRect call. */
 export function cornerEdgeLength(a: { x: number; y: number }, b: { x: number; y: number }): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
-}
-
-/**
- * The centroid (rendered center) of the four transformed corners from
- * `elementCornerOverlayPoints`, in overlay px. This is the element's true rotation
- * center — the point a center-anchored resize keeps planted.
- */
-export function overlayCornersCentroid(corners: Record<FixedCorner, { x: number; y: number }>): {
-  x: number;
-  y: number;
-} {
-  return {
-    x: (corners.nw.x + corners.ne.x + corners.se.x + corners.sw.x) / 4,
-    y: (corners.nw.y + corners.ne.y + corners.se.y + corners.sw.y) / 4,
-  };
 }
 
 /**
@@ -343,6 +333,7 @@ export function orientOverlayRect(
     height,
     editScaleX: base.editScaleX,
     editScaleY: base.editScaleY,
+    ...(base.ownScale && { ownScale: base.ownScale }),
     angle,
   };
 }

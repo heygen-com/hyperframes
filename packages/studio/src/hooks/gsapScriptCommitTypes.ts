@@ -23,6 +23,7 @@ export interface MutationResult {
   before?: string;
   after?: string;
   scriptText?: string;
+  revision?: number;
 }
 
 export interface CommitMutationOptions {

@@ -1,6 +1,6 @@
 import type { PatchTarget } from "../../utils/sourcePatcher";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
-import type { EditingElementHandle } from "@hyperframes/core/runtime/editing-port";
+import type { EditingElementHandle, LayerKind } from "@hyperframes/core/runtime/editing-port";
 
 export const CURATED_STYLE_PROPERTIES = [
   "position",
@@ -75,11 +75,13 @@ export interface DomEditTextField {
   computedStyles: Record<string, string>;
   source: "self" | "child" | "text-node";
   sourceChildIndex?: number;
+  spaceBefore?: string;
 }
 
 export interface DomEditSelection extends PatchTarget {
   element: HTMLElement;
   handle?: EditingElementHandle;
+  textMarkup?: boolean;
   hasAudio?: boolean;
   src?: string | null;
   label: string;
@@ -112,6 +114,12 @@ export interface DomEditLayerItem {
   selector?: string;
   selectorIndex?: number;
   sourceFile: string;
+  preview?: {
+    handle: string;
+    zIndex: number;
+    kind: LayerKind;
+    dataAttributes: Record<string, string>;
+  };
 }
 
 export interface DomEditContextOptions {

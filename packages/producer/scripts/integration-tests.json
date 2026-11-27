@@ -5,6 +5,7 @@
   "src/regression-harness-audio.test.ts",
   "src/services/bundleScriptPolicy.test.ts",
   "src/services/coreRuntimeBrowser.test.ts",
+  "src/services/hiddenClipCascade.test.ts",
   "src/services/heifImagePrep.test.ts",
   "src/services/htmlCompiler.heif.test.ts",
   "src/services/vfxDeterminism.test.ts",
@@ -26,9 +27,13 @@
   "src/services/distributed/renderSpan.integration.test.ts",
   "src/services/fileServer.test.ts",
   "src/services/fileServer.file-race.test.ts",
+  "src/services/fileServer.host.test.ts",
   "src/services/fileServer.listenError.test.ts",
   "src/services/outsideProjectAssets.test.ts",
+  "src/services/compileInWorker.test.ts",
   "src/services/healthWorker.test.ts",
+  "src/services/hyperframeLint.worker.test.ts",
+  "src/server.lintWorker.test.ts",
   "src/services/scriptFailureAttribution.test.ts",
   "src/services/strictVariablesSession.test.ts",
   "src/services/hyperframeLint.file-race.test.ts",
@@ -67,5 +72,6 @@
   "src/services/render/planReferenceBackground.polling.test.ts",
   "src/services/render/deferredVideoFrames.integration.test.ts",
   "src/services/render/stages/extractVideosStage.integration.test.ts",
+  "src/services/render/stages/runtimeAudio.integration.test.ts",
   "src/services/render/videoShownBoxes.integration.test.ts"
 ]

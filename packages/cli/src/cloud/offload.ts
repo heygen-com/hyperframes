@@ -3,7 +3,7 @@
  * staged copy's references at the asset URLs. The project on disk is never touched.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   closeSync,
@@ -21,9 +21,10 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, relative, resolve } from "node:path";
 import { promisify } from "node:util";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { parseAnimatedGifMetadata } from "@hyperframes/core";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import {
   cleanAssetUrl,
   isRemoteOrInlineUrl,
@@ -33,7 +34,14 @@ import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg
 import { probeAudio } from "../audio/analysis/decode.js";
 import { formatBytes } from "../ui/format.js";
 import { bytesMatchExtension } from "./offloadSniff.js";
-import { AUDIO_EXTS, CONVERTIBLE_IMAGE_EXTS, VIDEO_EXTS } from "./mediaExtensions.js";
+import {
+  AUDIO_EXTS,
+  CONVERTIBLE_IMAGE_EXTS,
+  mediaInputArgs,
+  startsAsMediaPlaylist,
+  VIDEO_EXTS,
+} from "@hyperframes/studio-server/outside-file";
+import { followFfmpegProgress } from "@hyperframes/parsers/ff-binaries";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
   archiveKey,
@@ -48,14 +56,18 @@ import {
   TEXT_FILE_EXTS,
 } from "../utils/publishProject.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { runWithConcurrencyLimit } from "../utils/concurrency.js";
 
 const execFileAsync = promisify(execFile);
 
-/** Media at or above this size leaves the zip as a HeyGen asset. */
+/** Staged media this big stays on disk until it uploads; an entry GIF this big becomes a video first. */
 export const OFFLOAD_MIN_BYTES = 5 * 1024 * 1024;
+
+const OFFLOAD_CONCURRENCY = 8;
 
 const MiB = 1024 * 1024;
 const AUDIO_MAX_BYTES = 1_500_000_000;
+export const CACHE_CHECK_TIMEOUT_MS = 10_000;
 
 // What POST /v3/assets/direct-uploads takes as-is, and its per-type cap.
 const ACCEPTED: Record<string, { contentType: string; maxBytes: number }> = {
@@ -140,7 +152,19 @@ export interface OffloadOptions {
   /** Overrides the renderer's GIF preparation for tests. */
   gifPrep?: GifPrep;
   onFile?: (item: OffloadedMedia) => void;
+  /** Hears a re-encode's output seconds made so far; `totalSeconds` is null when the length is unknown. */
+  onReencodeProgress?: (event: ReencodeProgress) => void;
   variablesText?: string;
+  /** Media leaves the zip, largest first, only while the zip is over this; absent, all used media leaves. */
+  zipBudgetBytes?: number;
+  /** Runs once candidates are planned, on the projected post-offload archive, before any upload or encode. */
+  beforeUpload?: (projectedFileMap: Map<string, StagedFile>) => void;
+}
+
+export interface ReencodeProgress {
+  path: string;
+  doneSeconds: number;
+  totalSeconds: number | null;
 }
 
 type MediaKind = "video" | "audio" | "image";
@@ -156,6 +180,7 @@ export interface Reencoder {
     sourcePath: string,
     preset: PresetName,
     segments?: PlayedSegment[],
+    onProgress?: (doneSeconds: number, totalSeconds: number | null) => void,
   ) => Promise<UploadableFile>;
 }
 
@@ -168,6 +193,7 @@ export type GifPrep = (
     outputSrcPrefix: string;
     cacheDir: string;
     sourceAssets: Map<string, string>;
+    assetRoot: string;
   },
 ) => Promise<{ html: string; preparedGifs: Array<{ sourceSrc: string; outputPath: string }> }>;
 
@@ -198,11 +224,15 @@ function writeCache(path: string, cache: Record<string, CacheEntry>): void {
 
 // Asset URLs are public and unsigned, so HEAD needs no auth; a deleted or replaced asset fails it.
 async function stillServed(entry: CacheEntry, fetchImpl: typeof fetch): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CACHE_CHECK_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(entry.url, { method: "HEAD" });
+    const res = await fetchImpl(entry.url, { method: "HEAD", signal: controller.signal });
     return res.ok && Number(res.headers.get("content-length")) === entry.size_bytes;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -234,6 +264,7 @@ async function probeVideo(path: string): Promise<VideoProbe> {
     "stream=codec_name,pix_fmt,color_primaries,color_transfer,color_space:stream_tags",
     "-of",
     "json",
+    ...mediaInputArgs(path),
     "--",
     path,
   ]);
@@ -282,10 +313,16 @@ async function segmentArgs(
   segments: PlayedSegment[] | undefined,
   media: "audio" | "image" | "video",
 ): Promise<string[]> {
-  if (media === "image") return [...decoder, "-i", sourcePath];
+  if (media === "image") return [...decoder, ...mediaInputArgs(sourcePath), "-i", sourcePath];
   const audio = await keptAudio(sourcePath, media);
   const cuts = segments?.length ? segments : [undefined];
-  const inputs = cuts.flatMap((s) => [...decoder, ...seekArgs(s), "-i", sourcePath]);
+  const inputs = cuts.flatMap((s) => [
+    ...decoder,
+    ...seekArgs(s),
+    ...mediaInputArgs(sourcePath),
+    "-i",
+    sourcePath,
+  ]);
   const video = media === "video";
   return [
     ...inputs,
@@ -294,7 +331,7 @@ async function segmentArgs(
 }
 
 async function keptAudio(sourcePath: string, media: "audio" | "video"): Promise<number | null> {
-  const audio = (await probeAudio(sourcePath))?.audioStream ?? null;
+  const audio = (await probeAudio(sourcePath, mediaInputArgs(sourcePath)))?.audioStream ?? null;
   if (media === "audio" && audio === null) {
     throw new Error("the file has no audio track ffmpeg can decode");
   }
@@ -349,7 +386,15 @@ async function durationSeconds(sourcePath: string): Promise<number | null> {
   const ffprobe = findFFprobe();
   if (!ffprobe) return null;
   const { stdout } = await execFileAsync(ffprobe, [
-    ...["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", sourcePath],
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    ...mediaInputArgs(sourcePath),
+    "--",
+    sourcePath,
   ]);
   const value = Number(stdout.trim());
   return Number.isFinite(value) && value > 0 ? value : null;
@@ -360,6 +405,9 @@ const capOf = (presetName: PresetName) => ACCEPTED[REENCODE_PRESETS[presetName].
 const playedSeconds = (segments: PlayedSegment[]) =>
   segments.reduce((sum, s) => sum + s.end - s.start, 0);
 
+const outputSeconds = (sourcePath: string, segments: PlayedSegment[] | undefined) =>
+  segments?.length ? Promise.resolve(playedSeconds(segments)) : durationSeconds(sourcePath);
+
 export async function limitFor(
   sourcePath: string,
   presetName: PresetName,
@@ -367,7 +415,7 @@ export async function limitFor(
   maxBytes = capOf(presetName),
 ): Promise<string[]> {
   if (mediaOf(presetName) !== "video") return [];
-  const seconds = segments?.length ? playedSeconds(segments) : await durationSeconds(sourcePath);
+  const seconds = await outputSeconds(sourcePath, segments);
   const limit = sizeLimitArgs({
     maxBytes,
     seconds: seconds ?? 0,
@@ -377,10 +425,36 @@ export async function limitFor(
   return presetName === "alphaVideo" && limit.length ? [...limit, "-b:v", limit[1]!] : limit;
 }
 
+/** ffmpeg with `-progress` on stdout, so `onSeconds` hears the output time made; fails with ffmpeg's own stderr. */
+function runFfmpeg(
+  ffmpeg: string,
+  args: string[],
+  onSeconds: (seconds: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpeg, ["-progress", "pipe:1", "-nostats", ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    followFfmpegProgress(proc.stdout, onSeconds);
+    let stderr = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-16_384);
+    });
+    proc.on("error", reject);
+    proc.on("close", (code, signal) => {
+      if (code === 0) return resolve();
+      const ended = signal ? `was ended by ${signal}` : `exited with code ${code}`;
+      reject(new Error(`ffmpeg ${ended}: ${stderr.trim()}`));
+    });
+  });
+}
+
 async function ffmpegReencode(
   sourcePath: string,
   presetName: PresetName,
   segments?: PlayedSegment[],
+  onProgress?: (doneSeconds: number, totalSeconds: number | null) => void,
 ): Promise<UploadableFile> {
   const ffmpeg = findFFmpeg();
   if (!ffmpeg) throw new Error(`Re-encoding needs ffmpeg. Install it: ${getFFmpegInstallHint()}`);
@@ -388,10 +462,11 @@ async function ffmpegReencode(
   const probe = preset.contentType.startsWith("video/") ? await probeVideo(sourcePath) : undefined;
   const decoder = probe ? alphaDecoderArgs(probe) : [];
   const color = presetName === "hdrVideo" && probe ? hdrColorArgs(probe) : [];
+  const totalSeconds = onProgress ? await outputSeconds(sourcePath, segments) : null;
   const workDir = mkdtempSync(join(tmpdir(), "hf-offload-"));
   const outPath = join(workDir, `${basename(sourcePath, extname(sourcePath))}${preset.ext}`);
   try {
-    await execFileAsync(
+    await runFfmpeg(
       ffmpeg,
       [
         "-v",
@@ -404,7 +479,7 @@ async function ffmpegReencode(
         ...preset.audio,
         outPath,
       ],
-      { maxBuffer: 16 * MiB },
+      (doneSeconds) => onProgress?.(doneSeconds, totalSeconds),
     );
     // Never read an output the asset API would refuse: it can exceed what one read can hold.
     return {
@@ -439,6 +514,7 @@ async function isAnimatedImage(path: string): Promise<boolean> {
       "stream=nb_frames",
       "-of",
       "csv=p=0",
+      ...mediaInputArgs(path),
       "--",
       path,
     ]);
@@ -463,6 +539,7 @@ async function trimGrid(sourcePath: string, kind: MediaKind): Promise<number | n
     "stream=r_frame_rate,avg_frame_rate",
     "-of",
     "csv=p=0",
+    ...mediaInputArgs(sourcePath),
     "--",
     sourcePath,
   ]);
@@ -488,6 +565,7 @@ async function hasVideoStream(sourcePath: string): Promise<boolean> {
       "stream=codec_type",
       "-of",
       "csv=p=0",
+      ...mediaInputArgs(sourcePath),
       "--",
       sourcePath,
     ]);
@@ -546,7 +624,10 @@ function scriptCode(fileMap: Map<string, StagedFile>): string {
     if (text === undefined) continue;
     if (/\.html?$/i.test(path)) {
       const { document } = parseHTML(text);
-      const pages = [document, ...[...document.querySelectorAll("template")].map((t) => t.content)];
+      const pages = [
+        document,
+        ...[...document.querySelectorAll("template")].flatMap((t) => templateContent(t) ?? []),
+      ];
       for (const script of pages.flatMap((p) => [...p.querySelectorAll("script:not([src])")])) {
         parts.push(script.textContent ?? "");
       }
@@ -576,6 +657,7 @@ interface OffloadContext {
   /** Staged GIFs the entry composition no longer shows as images. */
   preparedGifSources: string[];
   fileMap: Map<string, StagedFile>;
+  uploadsInFlightByKey: Map<string, Promise<{ url: string; asset_id: string }>>;
 }
 
 interface FilePlan {
@@ -598,14 +680,19 @@ function readHead(file: StagedFile): Buffer {
   }
 }
 
+function mediaFileKind(path: string, file: StagedFile): MediaKind | null {
+  const kind = mediaKind(path);
+  return kind && !startsAsMediaPlaylist(readHead(file)) ? kind : null;
+}
+
 async function planFile(
   ctx: OffloadContext,
   path: string,
   file: StagedFile,
 ): Promise<FilePlan | null> {
-  let kind = mediaKind(path);
   const size = stagedSize(file);
-  if (!kind || size < OFFLOAD_MIN_BYTES) return null;
+  let kind = mediaFileKind(path, file);
+  if (!kind) return null;
   const ext = extname(path).toLowerCase();
   const accepted = ACCEPTED[ext];
   // The API reads the stored bytes, not the name: a file whose bytes differ from its extension is re-encoded.
@@ -645,12 +732,13 @@ async function planFileTrim(
   kind: MediaKind,
 ): Promise<PlayedSegment[] | null> {
   const entryPath = ctx.opts.entryPath ?? "index.html";
-  const entryHtml = textOf(entryPath, ctx.fileMap.get(entryPath));
-  const gridPerSecond = entryHtml ? await ctx.reencoder.trimGrid?.(sourcePath, kind) : null;
-  if (!entryHtml || !gridPerSecond) return null;
+  if (!textOf(entryPath, ctx.fileMap.get(entryPath))) return null;
+  const gridPerSecond = await ctx.reencoder.trimGrid?.(sourcePath, kind);
+  const entryHtmlAfterOthersPlanned = textOf(entryPath, ctx.fileMap.get(entryPath));
+  if (!entryHtmlAfterOthersPlanned || !gridPerSecond) return null;
   const name = basename(path);
   const plan = planTrim({
-    entryHtml,
+    entryHtml: entryHtmlAfterOthersPlanned,
     path,
     gridPerSecond,
     resolveKey: (raw) => htmlSrcKey(ctx.absDir, entryPath, raw, ctx.fileMap),
@@ -665,11 +753,18 @@ async function planFileTrim(
   return plan.segments;
 }
 
-async function offloadFile(
+interface PlannedOffload {
+  path: string;
+  file: StagedFile;
+  plan: FilePlan;
+  item: OffloadedMedia;
+}
+
+async function planOffloadFile(
   ctx: OffloadContext,
   path: string,
   file: StagedFile,
-): Promise<OffloadedMedia | null> {
+): Promise<PlannedOffload | null> {
   const plan = await planFile(ctx, path, file);
   if (!plan) return null;
   const item: OffloadedMedia = {
@@ -680,6 +775,13 @@ async function offloadFile(
       trimmed_to_seconds: plan.segments.reduce((sum, s) => sum + s.end - s.start, 0),
     }),
   };
+  return { path, file, plan, item };
+}
+
+async function executePlannedOffload(
+  ctx: OffloadContext,
+  { path, file, plan, item }: PlannedOffload,
+): Promise<OffloadedMedia> {
   const hit = plan.key === undefined ? undefined : ctx.cache[plan.key];
   if (hit && (!ctx.opts.upload || (await stillServed(hit, ctx.fetchImpl)))) {
     return { ...item, action: "cached", url: hit.url, asset_id: hit.asset_id };
@@ -695,9 +797,30 @@ async function uploadPlanned(
   staged: StagedFile,
   plan: FilePlan,
 ): Promise<{ url: string; asset_id: string }> {
+  if (plan.key === undefined) return uploadOnce(ctx, upload, path, staged, plan);
+  const pending = ctx.uploadsInFlightByKey.get(plan.key);
+  if (pending) return pending;
+  const started = uploadOnce(ctx, upload, path, staged, plan);
+  ctx.uploadsInFlightByKey.set(plan.key, started);
+  return started;
+}
+
+async function uploadOnce(
+  ctx: OffloadContext,
+  upload: NonNullable<OffloadOptions["upload"]>,
+  path: string,
+  staged: StagedFile,
+  plan: FilePlan,
+): Promise<{ url: string; asset_id: string }> {
   const filename = basename(path);
+  const report = ctx.opts.onReencodeProgress;
   const file: UploadableFile = plan.preset
-    ? await ctx.reencoder.run(plan.sourcePath, plan.preset, plan.segments)
+    ? await ctx.reencoder.run(
+        plan.sourcePath,
+        plan.preset,
+        plan.segments,
+        report && ((doneSeconds, totalSeconds) => report({ path, doneSeconds, totalSeconds })),
+      )
     : Buffer.isBuffer(staged)
       ? { bytes: staged, filename, contentType: plan.contentType! }
       : { path: staged.absPath, size: staged.size, filename, contentType: plan.contentType! };
@@ -736,6 +859,7 @@ async function prepareEntryGifs(
     outputSrcPrefix: posix.relative(posix.dirname(entryPath), GIF_PREFIX),
     cacheDir: hyperframesCacheDir("animated-gif"),
     sourceAssets,
+    assetRoot: outputDir,
   });
   if (result.preparedGifs.length === 0) return;
   fileMap.set(entryPath, Buffer.from(result.html, "utf-8"));
@@ -769,8 +893,8 @@ function entryGifSources(
 }
 
 /**
- * Upload each heavy media file as an asset (or reuse a cached one still served), point its references at the
- * asset URL and drop it from `fileMap`. Without `upload`, nothing uploads and only animated GIFs are encoded.
+ * Moves used media out of the zip as assets (cached ones reused), largest first, until the zip fits the budget.
+ * Without `upload`, nothing uploads and only animated GIFs are encoded.
  */
 export async function offloadHeavyMedia(
   projectDir: string,
@@ -795,6 +919,7 @@ export async function offloadHeavyMedia(
     tempFiles: [],
     preparedGifSources: [],
     fileMap,
+    uploadsInFlightByKey: new Map(),
   };
   const urls = new Map<string, string>();
   const report: OffloadedMedia[] = [];
@@ -803,39 +928,111 @@ export async function offloadHeavyMedia(
     await prepareEntryGifs(ctx, fileMap);
     // Only files a reference points at: one used through render-time --variables must stay in the zip.
     referenced = referencedFiles(ctx.absDir, fileMap);
-    for (const [path, file] of [...fileMap].sort(([a], [b]) => a.localeCompare(b))) {
-      if (!referenced.has(path)) continue;
-      const item = await offloadFile(ctx, path, file);
-      if (!item) continue;
-      // A dry run rewrites to a stand-in URL so the reported archive size matches the real one.
-      urls.set(path, item.url ?? `https://assets.invalid/${report.length}`);
-      report.push(item);
-      opts.onFile?.(item);
-    }
+    const budget = opts.zipBudgetBytes ?? 0;
+    const zipped = [...fileMap.values()].reduce((sum, file) => sum + stagedSize(file), 0);
+    const left = dropUnusedMediaWhileOver(ctx, referenced, zipped, budget);
+    await uploadLargestWhileOver(ctx, referenced, left, budget, urls, report);
+    report.sort((a, b) => a.path.localeCompare(b.path));
   } finally {
     for (const dir of ctx.tempFiles) rmSync(dir, { recursive: true, force: true });
   }
 
   if (urls.size > 0) rewriteReferences(ctx.absDir, fileMap, (key) => urls.get(key) ?? null);
   dropReplacedFiles(fileMap, report, ctx.preparedGifSources, [...urls.values()]);
-  dropUnusedHeavyFiles(ctx, referenced, [...urls.values()]);
   return report;
 }
 
-function dropUnusedHeavyFiles(
+/** Drops media no page, script or variable names, largest first, while the zip is over budget; returns its size. */
+function dropUnusedMediaWhileOver(
   ctx: OffloadContext,
   referenced: Set<string>,
-  assetUrls: string[],
-): void {
+  zipped: number,
+  budget: number,
+): number {
   const { fileMap } = ctx;
-  const withoutUrls = (text: string) =>
-    assetUrls.reduce((acc, url) => acc.replaceAll(url, ""), text);
-  const code = withoutUrls(scriptCode(fileMap));
+  const code = scriptCode(fileMap);
   const variables = ctx.opts.variablesText ?? "";
-  for (const [path, file] of [...fileMap]) {
-    if (referenced.has(path) || stagedSize(file) < OFFLOAD_MIN_BYTES) continue;
-    if (variables.includes(basename(path))) continue;
-    if (!isStillMentioned(fileMap, path, code, withoutUrls)) fileMap.delete(path);
+  const unused = [...fileMap]
+    .filter(([path]) => !referenced.has(path) && mediaKind(path) !== null)
+    .filter(([path]) => !variables.includes(basename(path)))
+    .filter(([path]) => !isStillMentioned(fileMap, path, code, (text) => text))
+    .sort(byLargest);
+  let left = zipped;
+  for (const [path, file] of unused) {
+    if (left <= budget) break;
+    fileMap.delete(path);
+    left -= stagedSize(file);
+  }
+  return left;
+}
+
+const byLargest = ([a, x]: [string, StagedFile], [b, y]: [string, StagedFile]) =>
+  stagedSize(y) - stagedSize(x) || a.localeCompare(b);
+
+async function planLargestWhileOver(
+  ctx: OffloadContext,
+  referenced: Set<string>,
+  zipped: number,
+  budget: number,
+): Promise<PlannedOffload[]> {
+  const used = [...ctx.fileMap].filter(([path]) => referenced.has(path)).sort(byLargest);
+  const planned: PlannedOffload[] = [];
+  let left = zipped;
+  let next = 0;
+  while (left > budget && next < used.length) {
+    const batch: [string, StagedFile][] = [];
+    for (let after = left; after > budget && next < used.length; next += 1) {
+      batch.push(used[next]!);
+      after -= stagedSize(used[next]![1]);
+    }
+    const items = await runWithConcurrencyLimit(batch, OFFLOAD_CONCURRENCY, ([path, file]) =>
+      planOffloadFile(ctx, path, file),
+    );
+    for (const entry of items) {
+      if (!entry) continue;
+      planned.push(entry);
+      left -= stagedSize(entry.file);
+    }
+  }
+  return planned;
+}
+
+function projectAfterOffload(
+  ctx: OffloadContext,
+  planned: PlannedOffload[],
+): Map<string, StagedFile> {
+  const projected = new Map(ctx.fileMap);
+  const urls = new Map<string, string>();
+  const dryReport = planned.map(({ item }, index) => {
+    urls.set(item.path, `https://assets.invalid/${index}`);
+    return { ...item };
+  });
+  if (urls.size > 0) rewriteReferences(ctx.absDir, projected, (key) => urls.get(key) ?? null);
+  dropReplacedFiles(projected, dryReport, ctx.preparedGifSources, [...urls.values()]);
+  return projected;
+}
+
+async function uploadLargestWhileOver(
+  ctx: OffloadContext,
+  referenced: Set<string>,
+  zipped: number,
+  budget: number,
+  urls: Map<string, string>,
+  report: OffloadedMedia[],
+): Promise<void> {
+  const planned = await planLargestWhileOver(ctx, referenced, zipped, budget);
+  if (ctx.opts.upload && ctx.opts.beforeUpload && planned.length > 0) {
+    ctx.opts.beforeUpload(projectAfterOffload(ctx, planned));
+  }
+  const items = await runWithConcurrencyLimit(planned, OFFLOAD_CONCURRENCY, async (entry) => {
+    const item = await executePlannedOffload(ctx, entry);
+    ctx.opts.onFile?.(item);
+    return item;
+  });
+  for (const item of items) {
+    // A dry run rewrites to a stand-in URL so the reported archive size matches the real one.
+    urls.set(item.path, item.url ?? `https://assets.invalid/${report.length}`);
+    report.push(item);
   }
 }
 

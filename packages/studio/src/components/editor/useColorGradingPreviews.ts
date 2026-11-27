@@ -1,4 +1,7 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
+import { previewFrameOpaque, previewRequest } from "../../player/lib/previewChannel";
+import type { EditingResult } from "@hyperframes/core/runtime/editing-port";
+import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
   HF_COLOR_GRADING_ACTIVE_EFFECT_KEYS,
@@ -29,18 +32,22 @@ export interface ColorGradingPreviewOptions {
   animatedPreview: { kind: ColorGradingPreviewKind; id: string };
 }
 
+type PreviewBatch = {
+  width: number;
+  height: number;
+  images: Array<{ id: string; dataUrl: string | null }>;
+};
+
 type RuntimeColorGradingPreview = {
   renderPreviews: (
     target: HfColorGradingTarget,
     candidates: Array<{ id: string; grading: unknown }>,
     options: { maxDimension: number; useMediaTime?: boolean },
-  ) => Promise<{
-    width: number;
-    height: number;
-    images: Array<{ id: string; dataUrl: string | null }>;
-  } | null>;
+  ) => Promise<PreviewBatch | null>;
   startPreviewPlayback?: (target: HfColorGradingTarget) => (() => void) | null;
 };
+
+type AnimatedSession = { stopPlayback: () => void; timer: number | null };
 
 type PreviewRequest = {
   kind: ColorGradingPreviewKind;
@@ -72,6 +79,80 @@ function readRuntime(
   } catch {
     return null;
   }
+}
+
+const PORT_PREVIEW_TIMEOUT_MS = 15_000;
+
+const isImageData = (value: unknown): value is string =>
+  typeof value === "string" && value.startsWith("data:image/");
+
+function portBatch(batch: unknown, cards: number): PreviewBatch | null {
+  if (typeof batch !== "object" || batch === null) return null;
+  const { width, height, images } = batch as Record<string, unknown>;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || !isMessageList(images, cards))
+    return null;
+  return {
+    width: width as number,
+    height: height as number,
+    images: images.map((image: unknown) => {
+      const { id, dataUrl } = (image ?? {}) as { id?: unknown; dataUrl?: unknown };
+      return { id: String(id), dataUrl: isImageData(dataUrl) ? dataUrl : null };
+    }),
+  };
+}
+
+function portRuntime(iframe: HTMLIFrameElement): RuntimeColorGradingPreview {
+  return {
+    renderPreviews: async (target, candidates, { maxDimension, useMediaTime = false }) => {
+      const params = { target, candidates, maxDimension, useMediaTime };
+      const reply = await previewRequest(
+        iframe,
+        "color-grading-previews",
+        params,
+        PORT_PREVIEW_TIMEOUT_MS,
+      );
+      return portBatch(reply?.batch, candidates.length);
+    },
+  };
+}
+
+function previewRuntime(
+  iframe: HTMLIFrameElement | null | undefined,
+): RuntimeColorGradingPreview | null {
+  return iframe && previewFrameOpaque(iframe) ? portRuntime(iframe) : readRuntime(iframe);
+}
+
+function playInSealedFrame(
+  iframe: HTMLIFrameElement | null | undefined,
+  target: HfColorGradingTarget,
+  sessionRef: { current: AnimatedSession | null },
+  animate: (runtime: RuntimeColorGradingPreview, session: AnimatedSession) => void,
+): boolean {
+  if (!iframe || !previewFrameOpaque(iframe)) return false;
+  const stopPlayback = () =>
+    void previewRequest(iframe, "color-grading-playback", { target: null });
+  const session: AnimatedSession = { stopPlayback, timer: null };
+  sessionRef.current = session;
+  void previewRequest(iframe, "color-grading-playback", { target }).then((reply) => {
+    if (sessionRef.current !== session) return;
+    if (reply?.started) animate(portRuntime(iframe), session);
+    else sessionRef.current = null;
+  });
+  return true;
+}
+
+type ColorGradingStatus = NonNullable<EditingResult<"color-grading-status">["status"]>;
+const STATUS_STATES = new Set(["missing", "inactive", "pending", "active", "unavailable"]);
+
+export async function readSealedColorGradingStatus(
+  iframe: HTMLIFrameElement,
+  target: HfColorGradingTarget,
+): Promise<ColorGradingStatus> {
+  const reply = await previewRequest(iframe, "color-grading-status", { target });
+  const { state, message } = (reply?.status ?? {}) as Partial<Record<string, unknown>>;
+  return STATUS_STATES.has(state as string) && typeof message === "string"
+    ? { state: state as ColorGradingStatus["state"], message }
+    : { state: "pending", message: "Waiting for runtime" };
 }
 
 function previewMaxDimension(): number {
@@ -149,7 +230,7 @@ export function useColorGradingPreviews({
     previews: emptyPreviews(),
   }));
   const [request, setRequest] = useState<PreviewRequest | null>(null);
-  const animatedRef = useRef<{ stopPlayback: () => void; timer: number | null } | null>(null);
+  const animatedRef = useRef<AnimatedSession | null>(null);
   if (state.identityKey !== identityKey) {
     setState({ identityKey, previews: emptyPreviews() });
     setRequest(null);
@@ -186,7 +267,7 @@ export function useColorGradingPreviews({
 
     const attempt = async () => {
       if (cancelled || complete || inFlight) return;
-      const runtime = readRuntime(iframe);
+      const runtime = previewRuntime(iframe);
       if (!runtime) return;
       inFlight = true;
       try {
@@ -270,45 +351,50 @@ export function useColorGradingPreviews({
       stopAnimatedPreview();
       postColorGrading(next ?? gradingRef.current);
       if (!next || !options) return;
-      const runtime = readRuntime(previewIframeRef?.current);
+      const animate = (runtime: RuntimeColorGradingPreview, session: AnimatedSession) => {
+        const renderFrame = async () => {
+          try {
+            const batch = await runtime.renderPreviews(
+              target,
+              [{ id: options.animatedPreview.id, grading: toPreviewColorGrading(next) }],
+              { maxDimension: previewMaxDimension(), useMediaTime: true },
+            );
+            const image = batch?.images[0]?.dataUrl;
+            if (animatedRef.current !== session || !batch || !image) return;
+            setState((current) => ({
+              ...current,
+              previews: {
+                ...current.previews,
+                [options.animatedPreview.kind]: {
+                  ...current.previews[options.animatedPreview.kind],
+                  status: "ready",
+                  images: {
+                    ...current.previews[options.animatedPreview.kind].images,
+                    [options.animatedPreview.id]: image,
+                  },
+                  width: batch.width,
+                  height: batch.height,
+                },
+              },
+            }));
+          } catch {
+            // A later frame can recover after media/runtime readiness races.
+          } finally {
+            if (animatedRef.current === session) {
+              session.timer = window.setTimeout(() => void renderFrame(), 100);
+            }
+          }
+        };
+        void renderFrame();
+      };
+      const iframe = previewIframeRef?.current;
+      if (playInSealedFrame(iframe, target, animatedRef, animate)) return;
+      const runtime = readRuntime(iframe);
       const stopPlayback = runtime?.startPreviewPlayback?.(target);
       if (!runtime || !stopPlayback) return;
       const session = { stopPlayback, timer: null as number | null };
       animatedRef.current = session;
-      const renderFrame = async () => {
-        try {
-          const batch = await runtime.renderPreviews(
-            target,
-            [{ id: options.animatedPreview.id, grading: toPreviewColorGrading(next) }],
-            { maxDimension: previewMaxDimension(), useMediaTime: true },
-          );
-          const image = batch?.images[0]?.dataUrl;
-          if (animatedRef.current !== session || !batch || !image) return;
-          setState((current) => ({
-            ...current,
-            previews: {
-              ...current.previews,
-              [options.animatedPreview.kind]: {
-                ...current.previews[options.animatedPreview.kind],
-                status: "ready",
-                images: {
-                  ...current.previews[options.animatedPreview.kind].images,
-                  [options.animatedPreview.id]: image,
-                },
-                width: batch.width,
-                height: batch.height,
-              },
-            },
-          }));
-        } catch {
-          // A later frame can recover after media/runtime readiness races.
-        } finally {
-          if (animatedRef.current === session) {
-            session.timer = window.setTimeout(() => void renderFrame(), 100);
-          }
-        }
-      };
-      void renderFrame();
+      animate(runtime, session);
     },
     [gradingRef, postColorGrading, previewIframeRef, stopAnimatedPreview, target],
   );
@@ -336,7 +422,7 @@ export function useColorGradingPreviews({
     }: {
       grading?: NormalizedHfColorGrading;
     } = {}): Promise<ColorGradingCapturedFrame | null> => {
-      const runtime = readRuntime(previewIframeRef?.current);
+      const runtime = previewRuntime(previewIframeRef?.current);
       if (!runtime) return null;
       const batch = await runtime.renderPreviews(
         target,

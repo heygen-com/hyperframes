@@ -31,10 +31,12 @@ import { enabledAudioFxNodes, type HfAudioFxChain } from "@hyperframes/core/audi
 import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { acquireBrowser, buildChromeArgs } from "./browserManager.js";
+import { openPage } from "./openPage.js";
 import { createEnvelopeWalker } from "./audioVolumeEnvelope.js";
 import { riffChunks, wavFormatTag } from "./wavChunks.js";
 import { windowPrerollSeconds } from "./audioFxWarmup.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
+import { terminalText } from "@hyperframes/core";
 
 export class AudioFxRenderError extends Error {
   constructor(message: string) {
@@ -424,7 +426,9 @@ function chainPrerollSeconds(
   );
   if (capped) {
     console.warn(
-      `Audio FX for track ${trackId}: the chain remembers longer than the ${limits.maxPrerollSeconds}s pre-roll cap, so its oldest repeats are cut at window seams`,
+      terminalText(
+        `Audio FX for track ${trackId}: the chain remembers longer than the ${limits.maxPrerollSeconds}s pre-roll cap, so its oldest repeats are cut at window seams`,
+      ),
     );
   }
   return seconds;
@@ -650,7 +654,7 @@ async function openFxPage(
   browser: Awaited<ReturnType<typeof acquireBrowser>>["browser"],
   hostDir: string,
 ): Promise<FxPage> {
-  const page = await browser.newPage();
+  const page = await openPage(browser);
   try {
     // AudioWorklet is only exposed in a secure context, and about:blank is
     // not one — the module would fail with an opaque error. A file:// page

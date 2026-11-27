@@ -349,8 +349,8 @@ export type TransitionFn = (
   progress: number,
 ) => void;
 
-/** Registry of all available transitions by name. */
-export const TRANSITIONS: Record<string, TransitionFn> = {};
+/** Registry of all available transitions by name; prototype-free, so `constructor` finds nothing. */
+export const TRANSITIONS: Record<string, TransitionFn> = Object.create(null);
 
 // ── crossfade ─────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { _resetChromeSandboxFallbackForTests } from "@hyperframes/core/chrome-sandbox";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -10,6 +11,12 @@ import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 
 import type { CaptureMode } from "./browserLeasePool.js";
 import { managedChromeVersion } from "./chromeHostCeiling.js";
+
+const BROWSER_VARS = [
+  "HYPERFRAMES_BROWSER_PATH",
+  "PRODUCER_HEADLESS_SHELL_PATH",
+  "PUPPETEER_EXECUTABLE_PATH",
+] as const;
 import { resolveConfig } from "../config.js";
 
 import {
@@ -46,6 +53,7 @@ describe("BeginFrame capability probe", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto,
         createCDPSession: vi.fn().mockResolvedValue({ send, detach }),
         close,
@@ -72,6 +80,7 @@ describe("BeginFrame capability probe", () => {
     const send = vi.fn().mockResolvedValue({ hasDamage: false });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -100,6 +109,7 @@ describe("BeginFrame capability probe", () => {
     const send = vi.fn().mockResolvedValue({ screenshotData: jpeg.toString("base64") });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -136,6 +146,7 @@ describe("BeginFrame capability probe", () => {
       });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -161,6 +172,7 @@ describe("BeginFrame capability probe", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -186,6 +198,7 @@ describe("BeginFrame capability probe", () => {
       .mockResolvedValueOnce({ hasDamage: true, screenshotData: png.toString("base64") });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -204,12 +217,14 @@ describe("BeginFrame capability probe", () => {
   it("marks a probe that ran out of time as timed out, and a rejection as not", async () => {
     const stuck = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockReturnValue(new Promise<never>(() => {})),
         close: vi.fn().mockResolvedValue(undefined),
       }),
     } as unknown as Browser;
     const rejecting = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send: vi.fn().mockRejectedValue(new Error("'HeadlessExperimental.enable' wasn't found")),
@@ -243,6 +258,17 @@ describe("BeginFrame capability probe", () => {
 
 describe("buildChromeArgs browser GPU mode", () => {
   const base = { width: 1920, height: 1080 };
+
+  // Windows ClearType otherwise paints red/blue fringes on glyph edges in every capture mode.
+  it.each(["beginframe", "screenshot", "drawelement"] as CaptureMode[])(
+    "always disables LCD text (%s)",
+    (captureMode) => {
+      expect(buildChromeArgs({ ...base, captureMode })).toContain("--disable-lcd-text");
+      expect(buildChromeArgs({ ...base, captureMode, platform: "win32" })).toContain(
+        "--disable-lcd-text",
+      );
+    },
+  );
 
   it("uses SwiftShader software GL by default for reproducible local renders", () => {
     const args = buildChromeArgs(base);
@@ -669,6 +695,28 @@ describe("browser launch capture-mode contract", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("puts the browser behind the public-only proxy only on a restricted host", () => {
+    const fingerprint = () =>
+      _createBrowserLaunchFingerprintForTests([], { pageServerUrl: "http://localhost:4321" });
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "");
+    expect(fingerprint().publicOnly).toBeUndefined();
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    expect(fingerprint().publicOnly).toEqual({ pageServerHost: "localhost:4321" });
+    vi.unstubAllEnvs();
+  });
+
+  // fails without the fix: a page server on its scheme's default port gave a direct host with no port, which
+  // Chrome's bypass list takes as every port on that host.
+  it("names the page server's port even when the URL leaves out the default", () => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    const host = (pageServerUrl: string) =>
+      _createBrowserLaunchFingerprintForTests([], { pageServerUrl }).publicOnly?.pageServerHost;
+    expect(host("http://localhost/")).toBe("localhost:80");
+    expect(host("https://127.0.0.1/")).toBe("127.0.0.1:443");
+    expect(host("http://[::1]:4321/")).toBe("[::1]:4321");
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("resolveBrowserGpuMode", () => {
@@ -676,7 +724,7 @@ describe("resolveBrowserGpuMode", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const evaluate = vi.fn().mockResolvedValue(info);
     const launch = vi.fn().mockResolvedValue({
-      newPage: vi.fn().mockResolvedValue({ evaluate }),
+      newPage: vi.fn().mockResolvedValue({ mainFrame: () => ({}), evaluate }),
       close,
     });
     _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
@@ -725,6 +773,36 @@ describe("resolveBrowserGpuMode", () => {
         expect(existsSync(marker)).toBe(false);
       } finally {
         rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("probes the GPU with Chrome's sandbox where the host allows it, as the render runs", async () => {
+    const { launch } = setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    await resolveBrowserGpuMode("auto", { sandbox: true });
+    const args: string[] = launch.mock.calls[0]?.[0]?.args ?? [];
+    expect(args).toContain("--enable-webgl");
+    for (const flag of ["--no-sandbox", "--disable-setuid-sandbox", "--no-zygote"])
+      expect(args).not.toContain(flag);
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "retries the GPU probe without the sandbox when Chrome refuses it, as the render does",
+    async () => {
+      const { launch } = setMockWebGlProbe({
+        hasWebGL: true,
+        vendor: "NVIDIA",
+        renderer: "NVIDIA",
+      });
+      const browser = await launch();
+      launch.mockReset();
+      launch.mockRejectedValueOnce(new Error("No usable sandbox!")).mockResolvedValue(browser);
+      try {
+        await resolveBrowserGpuMode("auto", { sandbox: true });
+        const args = launch.mock.calls.map(([options]) => options.args.includes("--no-sandbox"));
+        expect(args).toEqual([false, true]);
+      } finally {
+        _resetChromeSandboxFallbackForTests();
       }
     },
   );
@@ -841,7 +919,9 @@ describe("resolveBrowserGpuMode", () => {
       spy.mock.calls.map((call) => String(call[0])).join("\n");
     const neverAnsweringProbe = () => {
       const launch = vi.fn().mockResolvedValue({
-        newPage: vi.fn().mockResolvedValue({ evaluate: () => new Promise(() => {}) }),
+        newPage: vi
+          .fn()
+          .mockResolvedValue({ mainFrame: () => ({}), evaluate: () => new Promise(() => {}) }),
         close: () => new Promise(() => {}),
         process: () => ({ kill: vi.fn() }),
         disconnect: vi.fn().mockResolvedValue(undefined),
@@ -942,16 +1022,54 @@ describe("resolveBrowserGpuMode", () => {
     });
   });
 
-  it("finds no full Chrome, without throwing, when its cache cannot be read", () => {
+  it("starts HDR capture only in a full Chrome the environment names, never a cached one", () => {
     const home = mkdtempSync(join(tmpdir(), "hf-full-chrome-cache-"));
-    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    const names = ["HOME", "USERPROFILE", ...BROWSER_VARS] as const;
+    const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
     try {
-      mkdirSync(join(home, ".cache", "puppeteer"), { recursive: true });
-      writeFileSync(join(home, ".cache", "puppeteer", "chrome"), "not a folder");
+      const cached = join(
+        home,
+        ".cache",
+        "puppeteer",
+        "chrome",
+        "linux-150.0.1.1",
+        "chrome-linux64",
+      );
+      mkdirSync(cached, { recursive: true });
+      writeFileSync(join(cached, "chrome"), "a cached full Chrome");
+      for (const name of BROWSER_VARS) delete process.env[name];
       Object.assign(process.env, { HOME: home, USERPROFILE: home });
       expect(resolveFullChromePath()).toBeUndefined();
+      process.env.HYPERFRAMES_BROWSER_PATH = join(cached, "chrome");
+      expect(resolveFullChromePath()).toBe(join(cached, "chrome"));
     } finally {
-      Object.assign(process.env, saved);
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to start a browser it has not verified, and says how to get one", async () => {
+    const home = mkdtempSync(join(tmpdir(), "hf-no-verified-browser-"));
+    const names = ["HOME", "USERPROFILE", "HYPERFRAMES_CACHE_DIR", ...BROWSER_VARS] as const;
+    const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    try {
+      for (const name of BROWSER_VARS) delete process.env[name];
+      Object.assign(process.env, {
+        HOME: home,
+        USERPROFILE: home,
+        HYPERFRAMES_CACHE_DIR: join(home, "hf"),
+      });
+      await expect(acquireBrowser([], { enableBrowserPool: false })).rejects.toThrow(
+        /npx hyperframes browser ensure.*PRODUCER_HEADLESS_SHELL_PATH/,
+      );
+    } finally {
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -961,7 +1079,9 @@ describe("resolveBrowserGpuMode", () => {
     try {
       const kill = vi.fn();
       const launch = vi.fn().mockResolvedValue({
-        newPage: vi.fn().mockResolvedValue({ evaluate: () => new Promise(() => {}) }),
+        newPage: vi
+          .fn()
+          .mockResolvedValue({ mainFrame: () => ({}), evaluate: () => new Promise(() => {}) }),
         close: () => new Promise(() => {}),
         process: () => ({ kill }),
         disconnect: vi.fn().mockResolvedValue(undefined),
@@ -1133,7 +1253,23 @@ const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
     os.release = () => process.env.HF_TEST_OS_RELEASE;
     require("node:module").syncBuiltinESMExports();
   }
-  import(process.env.HF_TEST_MODULE_URL).then(({ resolveHeadlessShellPath }) => {
+  // Unless a case asks for the real check, a cached shell that is a non-empty file counts as a pinned build.
+  const { readdirSync, statSync } = require("node:fs");
+  const { join } = require("node:path");
+  const list = (dir) => { try { return readdirSync(dir); } catch { return []; } };
+  const isShell = (path) => { try { return statSync(path).isFile() && statSync(path).size > 0; } catch { return false; } };
+  const trust = !process.env.HF_TEST_TRUST_FAKE_SHELLS ? Promise.resolve() : import(process.env.HF_TEST_CEILING_URL)
+    .then(({ PINNED_SHELL_DIGESTS, headlessShellDigest }) => {
+      const cache = join(require("node:os").homedir(), ".cache");
+      for (const root of [join(cache, "hyperframes", "chrome", "chrome-headless-shell"), join(cache, "puppeteer", "chrome-headless-shell")])
+        for (const version of list(root))
+          for (const name of list(join(root, version))) {
+            const folder = join(root, version, name);
+            if (!["chrome-headless-shell", "chrome-headless-shell.exe"].some((shell) => isShell(join(folder, shell)))) continue;
+            try { PINNED_SHELL_DIGESTS["158.0.8127.88"].push(headlessShellDigest(folder)); } catch {}
+          }
+    });
+  trust.then(() => import(process.env.HF_TEST_MODULE_URL)).then(({ resolveHeadlessShellPath }) => {
     process.stdout.write(resolveHeadlessShellPath({}) ?? "");
   });
 `;
@@ -1141,14 +1277,17 @@ const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
 /** Runs resolveHeadlessShellPath in a subprocess with a faked platform/arch/os.release. */
 function resolveHeadlessShellInSubprocess(
   env: NodeJS.ProcessEnv,
-  fakes: { platform?: string; arch?: string; osRelease?: string } = {},
+  fakes: { platform?: string; arch?: string; osRelease?: string; realPinCheck?: boolean } = {},
 ): string {
   const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+  const { PUPPETEER_EXECUTABLE_PATH: _runnerBrowser, ...rest } = env;
   return execFileSync("bun", ["--eval", RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT], {
     encoding: "utf8",
     env: {
-      ...env,
+      ...rest,
       HF_TEST_MODULE_URL: moduleUrl,
+      HF_TEST_CEILING_URL: new URL("./chromeHostCeiling.ts", import.meta.url).href,
+      ...(fakes.realPinCheck ? {} : { HF_TEST_TRUST_FAKE_SHELLS: "1" }),
       ...(fakes.platform ? { HF_TEST_PLATFORM: fakes.platform } : {}),
       ...(fakes.arch ? { HF_TEST_ARCH: fakes.arch } : {}),
       ...(fakes.osRelease ? { HF_TEST_OS_RELEASE: fakes.osRelease } : {}),
@@ -1159,10 +1298,19 @@ function resolveHeadlessShellInSubprocess(
 describe("resolveHeadlessShellPath", () => {
   const originalHeadlessShellPath = process.env.PRODUCER_HEADLESS_SHELL_PATH;
   const originalHyperframesBrowserPath = process.env.HYPERFRAMES_BROWSER_PATH;
+  // Ubuntu's umask 002 makes these fake caches group-writable, which the cache check refuses.
+  let originalUmask = 0;
+  beforeAll(() => {
+    originalUmask = process.umask(0o022);
+  });
+  afterAll(() => {
+    process.umask(originalUmask);
+  });
 
   // A runner may export either var (the Windows job sets HYPERFRAMES_BROWSER_PATH); each case sets its own.
   beforeEach(() => {
     delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
+    delete process.env.PUPPETEER_EXECUTABLE_PATH;
     delete process.env.HYPERFRAMES_BROWSER_PATH;
   });
 
@@ -1219,6 +1367,7 @@ describe("resolveHeadlessShellPath", () => {
       const binary = join(dir, "chrome-headless-shell");
       writeFileSync(binary, "");
       delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete process.env.PUPPETEER_EXECUTABLE_PATH;
       process.env.HYPERFRAMES_BROWSER_PATH = binary;
 
       expect(resolveHeadlessShellPath({})).toBe(binary);
@@ -1286,6 +1435,7 @@ describe("resolveHeadlessShellPath", () => {
 
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.PUPPETEER_EXECUTABLE_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const stdout = resolveHeadlessShellInSubprocess(env, {
           platform: hostPlatform,
@@ -1326,6 +1476,7 @@ describe("resolveHeadlessShellPath", () => {
 
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.PUPPETEER_EXECUTABLE_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const stdout = resolveHeadlessShellInSubprocess(env, {
           platform: hostPlatform,
@@ -1350,6 +1501,7 @@ describe("resolveHeadlessShellPath", () => {
       writeFileSync(binary, "shell");
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
 
       expect(resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" })).toBe("");
@@ -1384,6 +1536,7 @@ describe("resolveHeadlessShellPath", () => {
       }
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
 
       expect(resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" })).toBe(
@@ -1419,6 +1572,7 @@ describe("resolveHeadlessShellPath", () => {
         shell("99.0.6533.123", "#!/bin/sh\nexit 0\n");
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.PUPPETEER_EXECUTABLE_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
 
         expect(resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" })).toBe(
@@ -1429,6 +1583,39 @@ describe("resolveHeadlessShellPath", () => {
       }
     },
   );
+
+  it("never resolves a cached shell whose folder is not a pinned build", () => {
+    const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-unpinned-"));
+    try {
+      for (const cache of [["hyperframes", "chrome"], ["puppeteer"]]) {
+        const folder = join(
+          home,
+          ".cache",
+          ...cache,
+          "chrome-headless-shell",
+          "linux-158.0.8127.88",
+        );
+        mkdirSync(join(folder, "chrome-headless-shell-linux64"), { recursive: true });
+        writeFileSync(
+          join(folder, "chrome-headless-shell-linux64", "chrome-headless-shell"),
+          "swapped",
+        );
+      }
+      const env = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
+      delete env.HYPERFRAMES_BROWSER_PATH;
+      const stdout = resolveHeadlessShellInSubprocess(env, {
+        platform: "linux",
+        arch: "x64",
+        realPinCheck: true,
+      });
+
+      expect(stdout).not.toContain(home);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 
   it("reuses chrome-headless-shell from the HyperFrames-managed cache", () => {
     const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-cache-"));
@@ -1452,6 +1639,7 @@ describe("resolveHeadlessShellPath", () => {
       // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
@@ -1477,7 +1665,7 @@ describe("resolveHeadlessShellPath", () => {
         );
       mkdirSync(shell("153.0.7990.1"), { recursive: true });
       for (const [version, content] of [
-        ["152.0.7977.30", ""],
+        ["158.0.8127.88", ""],
         ["150.0.7871.124", "shell"],
       ]) {
         mkdirSync(join(shell(version), ".."), { recursive: true });
@@ -1485,6 +1673,7 @@ describe("resolveHeadlessShellPath", () => {
       }
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
@@ -1519,6 +1708,7 @@ describe("resolveHeadlessShellPath", () => {
         chmodSync(lockedDir, 0o000);
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.PUPPETEER_EXECUTABLE_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
@@ -1550,6 +1740,7 @@ describe("resolveHeadlessShellPath", () => {
       }
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const stdout = resolveHeadlessShellInSubprocess(env, {
         platform: "darwin",
@@ -1629,6 +1820,7 @@ describe("browser pool", () => {
   let launchFn: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    vi.stubEnv("PRODUCER_HEADLESS_SHELL_PATH", process.execPath);
     _resetBrowserPoolForTests();
     const mockBrowser = makeMockBrowser();
     launchFn = vi.fn().mockResolvedValue(mockBrowser);
@@ -1638,6 +1830,7 @@ describe("browser pool", () => {
   afterEach(async () => {
     await drainBrowserPool();
     _setPuppeteerForTests(undefined);
+    vi.unstubAllEnvs();
   });
 
   it.each([undefined, "1"])(
@@ -1672,6 +1865,31 @@ describe("browser pool", () => {
 
     await first.release();
     await second.release();
+  });
+
+  // fails without the fix: launchBrowser left proc.stdio unguarded after PipeTransport.close.
+  it("absorbs late EPIPE on a launched browser's CDP pipe after Puppeteer drops its listener", async () => {
+    const pipe = new EventEmitter();
+    const puppeteerListener = () => {};
+    pipe.on("error", puppeteerListener);
+    const browser = {
+      ...makeMockBrowser(),
+      process: () => ({ kill: vi.fn(), killed: false, stdio: [null, null, null, pipe] }),
+      close: vi.fn(async () => {
+        pipe.off("error", puppeteerListener);
+      }),
+    } as unknown as Browser;
+    launchFn.mockResolvedValueOnce(browser);
+
+    const lease = await acquireBrowser(["--no-sandbox"], {
+      enableBrowserPool: false,
+      forceScreenshot: true,
+    });
+    await lease.release();
+
+    expect(() =>
+      pipe.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" })),
+    ).not.toThrow();
   });
 
   it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
@@ -1813,6 +2031,7 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     process: () => ({ kill: vi.fn(), killed: false }),
   };
   const healthyPage = () => ({
+    mainFrame: () => ({}),
     goto: vi.fn().mockResolvedValue(null),
     createCDPSession: vi.fn().mockResolvedValue({
       send: vi
@@ -1825,6 +2044,7 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     close: vi.fn().mockResolvedValue(undefined),
   });
   const slowPage = () => ({
+    mainFrame: () => ({}),
     goto: vi.fn().mockReturnValue(new Promise<never>(() => {})),
     close: vi.fn().mockResolvedValue(undefined),
   });
@@ -1876,5 +2096,77 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     const fallbackArgs = launch.mock.lastCall?.[0]?.args;
     expect(fallbackArgs).toContain("--disable-partial-raster");
     expect(fallbackArgs).not.toContain("--enable-begin-frame-control");
+  });
+});
+
+describe("acquireBrowser abort signal", () => {
+  const base = {
+    version: vi.fn().mockResolvedValue("Chrome/test"),
+    close: vi.fn().mockResolvedValue(undefined),
+    once: vi.fn(),
+  };
+
+  afterEach(async () => {
+    await drainBrowserPool();
+    _setPuppeteerForTests(undefined);
+  });
+
+  it("forwards signal to puppeteer.launch and rethrows abort without launch failure remediation", async () => {
+    _resetBrowserPoolForTests();
+    let launchSignal: AbortSignal | undefined;
+    const launch = vi.fn().mockImplementation((options: { signal?: AbortSignal }) => {
+      launchSignal = options.signal;
+      return new Promise<never>((_resolve, reject) => {
+        options.signal?.addEventListener(
+          "abort",
+          () => reject(new Error("spawn aborted by signal")),
+          { once: true },
+        );
+      });
+    });
+    const defaultArgs = vi.fn().mockResolvedValue([]);
+    _setPuppeteerForTests({ launch, defaultArgs } as unknown as PuppeteerNode);
+
+    const controller = new AbortController();
+    const pending = acquireBrowser(["--headless"], {
+      forceScreenshot: true,
+      enableBrowserPool: false,
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort(new Error("audio failed during launch"));
+
+    await expect(pending).rejects.toThrow("audio failed during launch");
+    expect(launchSignal?.aborted).toBe(true);
+    expect(defaultArgs).not.toHaveBeenCalled();
+  });
+
+  it("aborts and closes the browser when signal fires while browser.version() is in flight", async () => {
+    _resetBrowserPoolForTests();
+    let resolveVersion!: (v: string) => void;
+    const close = vi.fn().mockResolvedValue(undefined);
+    const launch = vi.fn().mockResolvedValue({
+      ...base,
+      close,
+      version: () =>
+        new Promise<string>((resolve) => {
+          resolveVersion = resolve;
+        }),
+    });
+    _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
+
+    const controller = new AbortController();
+    const pending = acquireBrowser(["--headless"], {
+      forceScreenshot: true,
+      enableBrowserPool: false,
+      signal: controller.signal,
+    });
+    for (let i = 0; i < 10 && !resolveVersion; i++) await Promise.resolve();
+    controller.abort(new Error("aborted during version"));
+    resolveVersion("Chrome/test");
+
+    await expect(pending).rejects.toThrow("aborted during version");
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(close).toHaveBeenCalled();
   });
 });

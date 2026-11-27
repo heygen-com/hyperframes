@@ -1,13 +1,13 @@
 import {
   captureStudioPathOffset,
+  readAppliedStudioPathOffset,
   restoreStudioPathOffset,
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
-import {
-  getOffsetDragGsap,
-  stampGestureBase,
-  type ManualOffsetDragMember,
-} from "./manualOffsetDrag";
+import { readTranslatePx } from "./plainTranslate";
+import { drawPreviewDraft, frameDraftTranslate } from "./previewDrafts";
+import { getOffsetDragGsap, type ManualOffsetDragMember } from "./manualOffsetDrag";
+import { stampGestureBase } from "../../hooks/draggedGsapPosition";
 import type { StudioEditRevert } from "../../utils/studioPendingEdits";
 
 interface MemberPosition {
@@ -46,7 +46,21 @@ function showMemberPosition(member: ManualOffsetDragMember, position: MemberPosi
   if (position.gsap) getOffsetDragGsap(member.element)?.set(member.element, { ...position.gsap });
   // The restore drops the gesture's base stamps; its save still reads them.
   if (!member.plainTranslate)
-    stampGestureBase(member.element, member.initialOffset, member.baseGsap);
+    stampGestureBase(member.element, member.initialOffset, member.baseGsap, !!member.moving);
+}
+
+function redrawMemberOnFrame(member: ManualOffsetDragMember): void {
+  const { element, committedOnFrame } = member;
+  if (member.frameDraftRoute === "gsap") {
+    if (committedOnFrame !== undefined) drawPreviewDraft(element, { translate: committedOnFrame });
+    return;
+  }
+  const offset = member.plainTranslate
+    ? readTranslatePx(element)
+    : readAppliedStudioPathOffset(element);
+  const translate = frameDraftTranslate(member, offset);
+  if (Number.isFinite(translate.x) && Number.isFinite(translate.y) && (translate.x || translate.y))
+    drawPreviewDraft(element, { translate });
 }
 
 /** Undo's live revert of a move: its members at gesture start. */
@@ -61,7 +75,11 @@ export function manualOffsetMoveRevert(members: ManualOffsetDragMember[]): Studi
         placement: startPlacement[i]!,
       }),
     );
-    return () => members.forEach((member, i) => showMemberPosition(member, shown[i]!));
+    return () =>
+      members.forEach((member, i) => {
+        showMemberPosition(member, shown[i]!);
+        redrawMemberOnFrame(member);
+      });
   };
 }
 

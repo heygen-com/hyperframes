@@ -217,6 +217,40 @@ export function timeRangesOverlap(
   return aStart < bEnd && bStart < aEnd;
 }
 
+export const LANE_OVERLAP_NOTICE = "Clips on the same track can't overlap.";
+export const LANE_OVERLAP_TONE = "info";
+
+export const laneOverlapRefusal = () =>
+  Object.assign(new Error(LANE_OVERLAP_NOTICE), { tone: LANE_OVERLAP_TONE });
+
+export type LaneLanding = { element: TimelineElement; start: number; track?: number };
+
+/** True when one of `checked` overlaps another clip in its lane, each clip placed where `moves` puts it. */
+export function landsOnLaneClip(
+  elements: readonly TimelineElement[],
+  moves: readonly LaneLanding[],
+  checked: readonly LaneLanding[] = moves,
+): boolean {
+  const keyOf = (e: TimelineElement) => e.key ?? e.id;
+  const landed = new Map(moves.map((m) => [keyOf(m.element), m]));
+  const place = (e: TimelineElement) => {
+    const move = landed.get(keyOf(e));
+    const start = move?.start ?? e.start;
+    return { start, end: start + e.duration, track: move?.track ?? e.track };
+  };
+  return checked.some(({ element }) => {
+    const self = place(element);
+    return elements.some((other) => {
+      const at = place(other);
+      return (
+        keyOf(other) !== keyOf(element) &&
+        at.track === self.track &&
+        timeRangesOverlap(self.start, self.end, at.start, at.end)
+      );
+    });
+  });
+}
+
 /**
  * True when no clip on `track` overlaps [start, end) — excluding the clip
  * identified by `excludeKey` (the one being dragged).

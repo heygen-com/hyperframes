@@ -83,6 +83,8 @@ declare global {
       setPausedVideoFrameProvider?: (provider: PausedVideoFrameProvider | null) => void;
       /** Where Studio's loop wraps to while it plays, or null: the clips due there stay loaded. */
       setLoopStart?: (seconds: number | null) => void;
+      /** Completed redraws of the page, a redraw at the same time included. */
+      redraws?: number;
       /** Read-only level taps for the Studio meters: nothing exists until
        *  `start()`, and `stop()` removes every tap. Peaks are linear per channel. */
       audioMeter?: {
@@ -122,8 +124,7 @@ declare global {
     __HF_PARITY_MODE?: boolean;
     /** Set by still-capture pages: seeks replay skipped frames at the composition fps, as a render does. */
     __HF_REPLAY_SKIPPED_FRAMES?: boolean;
-    /** Set by check and snapshot, which seek through a film: a clip that leaves its window is freed. */
-    __HF_RELEASE_PASSED_MEDIA?: boolean;
+
     /** Legacy debug-only fps hint. Render-mode runtime fps uses __HF_EXPORT_RENDER_SEEK_CONFIG.fps. */
     __HF_FPS?: number;
     __HF_MAX_DURATION_SEC?: number;

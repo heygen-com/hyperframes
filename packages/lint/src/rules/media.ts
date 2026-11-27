@@ -17,7 +17,7 @@ import {
   validateColorGradingContract,
 } from "@hyperframes/parsers/color-grading-contract";
 import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
-import { parseHTML } from "linkedom";
+import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { findLinkedClipFindings } from "./linkedClips";
 import { findUnreadableAudioAttributeFindings } from "./audioAttributes";
 
@@ -445,7 +445,7 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ]);
 
-const closeTag = (name: string) => new RegExp(`</${name}>`, "gi");
+const literalCloseTag = (name: string) => new RegExp(`</${escapeRegExp(name)}>`, "gi");
 
 function innermostTimedWrapper(
   source: string,
@@ -465,9 +465,9 @@ function innermostTimedWrapper(
       ...tags
         .filter((t) => t.name === parent.name && t.index > parent.index && t.index < media.index)
         .map((t): [number, 1] => [t.index, 1]),
-      ...[...source.substring(parent.index, media.index).matchAll(closeTag(parent.name))].map(
-        (m): [number, -1] => [parent.index + m.index, -1],
-      ),
+      ...[
+        ...source.substring(parent.index, media.index).matchAll(literalCloseTag(parent.name)),
+      ].map((m): [number, -1] => [parent.index + m.index, -1]),
     ];
     let depth = 1;
     for (const [, delta] of events.sort((x, y) => x[0] - y[0])) {
@@ -927,7 +927,10 @@ function findVolumeTweenOverridesGainFindings(ctx: LintContext): HyperframeLintF
       message: `#${id} has data-volume="${volume}" (${db}) and a GSAP tween on \`volume\`. Tween values are absolute: they REPLACE this gain rather than scale it, so wherever the tween names a value the clip plays at that value, not at ${db}.`,
       elementId: id,
       fixHint:
-        "Write the tween's targets in the same absolute gain (e.g. `volume: 1.95`, not `volume: 1`), or reset data-volume to 1 and let the tween carry the level on its own.",
+        (volume === 0
+          ? 'This clip is authored silent (`data-volume="0"`). To keep it silent, drop the volume tween; to let the tween carry the level, set `data-volume="1"` and choose its absolute volume targets deliberately. '
+          : `Keep the level you set: use an absolute gain for each level the tween should reach. Use \`volume: ${volume}\` where it should reach this clip's authored level; keep \`volume: 0\` at endpoints intended to be silent. `) +
+        "If the level is in doubt, measure the rendered file with `hyperframes audio render.mp4` (replace render.mp4 with your output file) before changing it.",
       snippet: truncateSnippet(tag.raw),
     });
   }

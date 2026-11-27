@@ -3,7 +3,7 @@ import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
-import { isTypingTarget, ownsPlainKeys } from "../utils/typingTarget";
+import { isTypingTarget, ownsPlainKeys } from "@hyperframes/core/typing-target";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
@@ -24,6 +24,13 @@ function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () 
   event.preventDefault();
   (isUndo ? onUndo : onRedo)();
   return true;
+}
+
+export function resetKeyframesMayClaim(state: {
+  selectedElementId: string | null;
+  keyframeCache: ReadonlyMap<string, unknown>;
+}): boolean {
+  return Boolean(state.selectedElementId && state.keyframeCache.has(state.selectedElementId));
 }
 
 export interface HotkeyCallbacks extends LinkShortcutCallbacks {
@@ -254,8 +261,7 @@ export function dispatchPlainKey(event: KeyboardEvent, _key: string, cb: HotkeyC
     // the press reaching the clip delete below.
     if (usePlayerStore.getState().automationSelection) return;
     if (matchesKey(event, "resetKeyframes")) {
-      const { selectedElementId, keyframeCache } = usePlayerStore.getState();
-      if (selectedElementId && keyframeCache.has(selectedElementId) && cb.onResetKeyframes()) {
+      if (resetKeyframesMayClaim(usePlayerStore.getState()) && cb.onResetKeyframes()) {
         event.preventDefault();
         return;
       }

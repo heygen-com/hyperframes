@@ -1,7 +1,7 @@
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { MutableRefObject, RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
-import type { TimelineStackingReorderIntent } from "../player/components/timelineEditing";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import type { CanEditTimelineElement } from "./timelineEditPermission";
 
@@ -13,6 +13,8 @@ interface RecordEditInput {
 
 // Resolves once the z-index patches are persisted, so a caller that also writes
 // the same file (e.g. a timing move) can order its write after this one.
+
+export type ApplyMarqueeSelection = (selections: DomEditSelection[], mode: "subtract") => unknown;
 export type TimelineZIndexReorderCommit = (
   entries: Array<{
     element: HTMLElement;
@@ -36,6 +38,8 @@ export interface UseTimelineEditingOptions {
   recordEdit: (input: RecordEditInput) => Promise<void>;
   reloadPreview: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
+  canvasSelectionsRef?: RefObject<readonly DomEditSelection[]>;
+  applyMarqueeSelectionRef?: RefObject<ApplyMarqueeSelection>;
   pendingTimelineEditPathRef: MutableRefObject<Set<string>>;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
   isRecordingRef?: RefObject<boolean>;
@@ -47,6 +51,7 @@ export interface UseTimelineEditingOptions {
   forceReloadSdkSession?: () => void;
   /** Reparse authored animations after a timing rewrite changes their positions. */
   invalidateGsapCache?: () => void;
+  /** @deprecated Ignored: a lane drag restacks through the timeline's own stacking sync. */
   handleDomZIndexReorderCommitRef?: MutableRefObject<TimelineZIndexReorderCommit | null>;
   /** Refuses a hand edit at the persist boundary when set; absent = Studio unchanged. */
   canEdit?: CanEditTimelineElement;
@@ -57,8 +62,7 @@ export type TimelineFileDropHandler = (
   placement?: { start: number; track: number },
 ) => Promise<void>;
 
-/** What a timeline move commits: the new start and track, plus the z-index
- *  reorder a vertical drag resolves to (absent for a pure horizontal move). */
 export type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
-  stackingReorder?: TimelineStackingReorderIntent | null;
+  /** @deprecated Ignored: a lane drag restacks through the timeline's own stacking sync. */
+  stackingReorder?: unknown;
 };

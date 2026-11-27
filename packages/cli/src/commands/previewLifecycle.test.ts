@@ -9,8 +9,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActiveServer } from "../server/portUtils.js";
+
+const realKills = vi.hoisted(() => [] as number[]);
+// fails without the fix: a case that faked spawn but not kill sent a real taskkill /T to its made-up pid, ending
+// whatever process held that number (a test worker on a Windows runner).
+vi.mock("../utils/processTree.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/processTree.js")>()),
+  terminateProcessTree: async (pid: number) => void realKills.push(pid),
+}));
+afterEach(() => expect(realKills.splice(0), "a real process kill").toEqual([]));
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 import {
   PreviewPortUnavailableError,
@@ -29,7 +38,9 @@ const server: ActiveServer = {
   projectName: "preview-lifecycle-project",
   projectDir,
   version: "test",
+  proven: true,
   pid: "4321",
+  pidSource: "os",
 };
 
 function tempDir(prefix: string): string {
@@ -476,6 +487,7 @@ describe("background preview lifecycle", () => {
                 projectName: "managed-custom-port",
                 projectDir: otherProjectDir,
                 version: "test",
+                proven: true,
                 pid: "8765",
                 pidSource: "os",
               },
@@ -1379,6 +1391,83 @@ describe("background preview lifecycle", () => {
     expect(kill).not.toHaveBeenCalled();
   });
 
+  it("refuses a PID the listener reported about itself when the system named no owner", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn();
+
+    await expect(
+      stopBackgroundPreview(projectDir, 3002, {
+        scan: async () => [claimed],
+        probe: async () => claimed,
+        kill,
+        sleep: async () => {},
+        stateHome,
+      }),
+    ).rejects.toThrow(/ownership could not be proven/);
+
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("stops only its own saved wrapper when the listener's PID is self-reported", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    writePreviewSession(
+      {
+        pid: 4321,
+        wrapperIdentity: "wrapper-birth",
+        port: 3210,
+        projectDir,
+        logPath: "/tmp/p.log",
+      },
+      stateHome,
+    );
+    let running = true;
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn((pid: number) => {
+      if (pid === 4321) running = false;
+    });
+
+    const result = await stopBackgroundPreview(projectDir, 3002, {
+      probe: async () => (running ? claimed : null),
+      kill,
+      isDescendant: () => false,
+      identity: (pid) => (pid === 4321 ? "wrapper-birth" : null),
+      sleep: async () => {},
+      stateHome,
+    });
+
+    expect(result).toBe(true);
+    expect(kill.mock.calls).toEqual([[4321]]);
+  });
+
+  it("refuses a self-reported PID when the saved wrapper's birth identity has changed", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    writePreviewSession(
+      {
+        pid: 4321,
+        wrapperIdentity: "wrapper-birth",
+        port: 3210,
+        projectDir,
+        logPath: "/tmp/p.log",
+      },
+      stateHome,
+    );
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn();
+
+    await expect(
+      stopBackgroundPreview(projectDir, 3002, {
+        probe: async () => claimed,
+        kill,
+        identity: () => "reused-pid-birth",
+        sleep: async () => {},
+        stateHome,
+      }),
+    ).rejects.toThrow(/ownership could not be proven/);
+
+    expect(kill).not.toHaveBeenCalled();
+  });
+
   it("reaps the saved wrapper when the live server is proven to be its descendant", async () => {
     const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
@@ -1505,5 +1594,30 @@ describe("where a preview's session is kept", () => {
     expect(previewSessionPath(projectDir).startsWith(cache)).toBe(true);
     expect(existsSync(previewSessionPath(projectDir))).toBe(true);
     expect(readdirSync(state)).toEqual([]);
+  });
+});
+
+describe("background preview log warning", () => {
+  it("shows control characters in a log path that cannot be opened as text", async () => {
+    const bell = String.fromCharCode(7);
+    // A file where the state folder should be, so the log's folder cannot be made.
+    const blocker = join(tempDir("hf-preview-state-"), "file");
+    writeFileSync(blocker, "");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+
+    await startBackgroundPreview(projectDir, 3002, {
+      forceNew: true,
+      scan: async () => [],
+      spawn: () => ({ pid: 5432, unref: vi.fn() }),
+      kill: vi.fn(),
+      sleep: async () => {},
+      stateHome: join(blocker, `state${bell}home`),
+    }).catch(() => {});
+
+    const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("background preview log not written: cannot open ");
+    expect(printed).toContain("state\\x07home");
+    expect(printed).not.toContain(bell);
   });
 });

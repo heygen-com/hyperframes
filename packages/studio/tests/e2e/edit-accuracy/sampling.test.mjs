@@ -5,8 +5,10 @@ import { sample, measure, shooter } from "./case.mjs";
 const quad = (x, width = 20, height = 10) => [x, 0, x + width, 0, x + width, height, x, height];
 function handle(element, read) {
   Object.defineProperties(element, { offsetWidth: { value: 20 }, offsetHeight: { value: 10 } });
+  const client = { send: async () => ({ quads: [read()] }) };
   return {
-    client: { send: async () => ({ quads: [read()] }) },
+    client,
+    frame: { client, parentFrame: () => null },
     remoteObject: () => ({ objectId: "element" }),
     evaluate: async (fn) => fn(element),
     dispose: async () => {},

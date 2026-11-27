@@ -22,8 +22,9 @@ vi.mock("../telemetry/events.js", () => ({
 }));
 
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
-import { createCheckCommand, parseCheckRange } from "./check.js";
+import { createCheckCommand, parseCheckRange, parseSafeZone } from "./check.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
+import { LINUX_ARM_BROWSER_STEPS } from "../utils/errorMessage.js";
 import { readConfig } from "../telemetry/config.js";
 import {
   CheckCopiesUnfinishedError,
@@ -78,7 +79,7 @@ import type {
   LayoutOverflow,
   LayoutRect,
 } from "../utils/layoutAudit.js";
-import type { CraftFrame, SeekClock } from "../utils/checkTypes.js";
+import type { CheckContrastFinding, CraftFrame, SeekClock } from "../utils/checkTypes.js";
 import type { ProjectDir } from "../utils/project.js";
 
 const PROJECT: ProjectDir = {
@@ -234,7 +235,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
 }
 
 interface GeometryFixture {
-  kind: "text" | "media";
+  kind: "text" | "media" | "block";
   tag: string;
   text: string;
   selector: string;
@@ -332,6 +333,7 @@ function dependencies(
     writeSnapshot?: CheckDependencies["writeSnapshot"];
     captureFindingCrops?: CheckDependencies["captureFindingCrops"];
     captureFindingFrames?: CheckDependencies["captureFindingFrames"];
+    collectMedia?: NonNullable<CheckDependencies["collectMedia"]>;
     inspectHdrAutoPromotion?: NonNullable<CheckDependencies["inspectHdrAutoPromotion"]>;
     inspectAudio?: NonNullable<CheckDependencies["inspectAudio"]>;
   } = {},
@@ -360,7 +362,8 @@ function dependencies(
     captureFindingCrops: options.captureFindingCrops ?? vi.fn(async () => []),
     captureFindingFrames:
       options.captureFindingFrames ?? vi.fn(async () => ({ written: [], inspected: [] })),
-    collectMedia: vi.fn(async () => ({ videos: [], images: [], audios: [], html: "" })),
+    collectMedia:
+      options.collectMedia ?? vi.fn(async () => ({ videos: [], images: [], audios: [], html: "" })),
     inspectHdrAutoPromotion: options.inspectHdrAutoPromotion ?? vi.fn(async () => null),
     inspectAudio: options.inspectAudio ?? vi.fn(async () => []),
   };
@@ -459,6 +462,204 @@ describe("check --prepare-media", () => {
       prepared: [{ file: "a.mov", state: "failed", reason: "ffmpeg exited with code 1" }],
     });
     expect(consumeCommandResult().exitCode).toBe(1);
+  });
+
+  it("prints a failed media file and its reason with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const { log } = await runPrepare(
+      [{ file: `a${esc}[2J.mov`, state: "failed", reason: `ffmpeg: bad${esc}]0;x` }],
+      ["--prepare-media"],
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("a\\x1b[2J.mov: ffmpeg: bad\\x1b]0;x");
+    consumeCommandResult();
+  });
+
+  it("keeps a failed media file's name on its line and the reason's own lines", async () => {
+    const { log } = await runPrepare(
+      [{ file: "a\nb.mov", state: "failed", reason: "ffmpeg: bad\nsecond line" }],
+      ["--prepare-media"],
+    );
+
+    expect(log.mock.calls.map(([line]) => String(line))).toContain(
+      "   a\\x0ab.mov: ffmpeg: bad\nsecond line",
+    );
+    consumeCommandResult();
+  });
+
+  it("prints snapshot paths with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const { report } = await runScenario(fakeDriver());
+    const folder = `/work/video${esc}]0;x${String.fromCharCode(7)}`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          snapshots: {
+            ...report.snapshots,
+            enabled: true,
+            files: [`${folder}/frame.png`],
+            findingFiles: [`${folder}/finding.png`],
+          },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("/work/video\\x1b]0;x\\x07/frame.png");
+    expect(human).toContain("/work/video\\x1b]0;x\\x07/finding.png");
+    consumeCommandResult();
+  });
+
+  // fails without the fix: a scope note was printed as it arrived
+  it("shows control characters in a scope note as text", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          scope: { hiddenFindings: 0, notes: ["Scoped to #hero\u0007\nsecond line"] },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human).toContain("Scoped to #hero\\x07\nsecond line");
+    expect(human).not.toContain("\u0007");
+    consumeCommandResult();
+  });
+
+  // fails without the fix: the revision read from the project's history reached stdout raw
+  it("prints the saved report's revision with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const { report } = await runScenario(fakeDriver());
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          saved: {
+            id: "check-1",
+            revision: `r1${esc}]0;owned${String.fromCharCode(7)}`,
+            report: "/work/.hyperframes/artifacts/checks/check-1.json",
+            attribution: "recorded-revision",
+          },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("Revision: r1\\x1b]0;owned\\x07 (recorded-revision)");
+    expect(human).toContain("Report: /work/.hyperframes/artifacts/checks/check-1.json");
+    consumeCommandResult();
+  });
+
+  it("prints a folder name with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const name = `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => ({ ...PROJECT, name }),
+        runPipeline: vi.fn(),
+        prepareMedia: vi.fn(async () => []),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: ["--prepare-media"] },
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J");
+    consumeCommandResult();
+  });
+
+  // fails without the fix: the setup commands were joined to the reason with `\x0a`
+  it("prints the setup commands of a failed check on lines of their own", async () => {
+    const reason = `No browser\nhere\n\n${LINUX_ARM_BROWSER_STEPS} (while launching)`;
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const run = (rawArgs: string[]) =>
+      runCommand(
+        createCheckCommand({
+          resolveProject: () => PROJECT,
+          runPipeline: vi.fn(async () => Promise.reject(new Error(reason))),
+          prepareMedia: vi.fn(async () => []),
+          withMeta: (value) => value,
+        }),
+        { rawArgs },
+      ).then(consumeCommandResult);
+    await run([]);
+    await run(["--json"]);
+    const { report } = await runScenario(fakeDriver());
+    const finding = { ...runtimeError(), code: "check_runtime_failure", message: reason };
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          runtime: { ...report.runtime, ok: false, errorCount: 1, findings: [finding] },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    ).then(consumeCommandResult);
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(human).toContain("check_runtime_failure: No browser\\x0ahere (while launching)\n");
+    expect(human).toContain(`\n\n${LINUX_ARM_BROWSER_STEPS}\n`);
+
+    const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain(
+      `Check failed: No browser\\x0ahere (while launching)\n\n${LINUX_ARM_BROWSER_STEPS}\n`,
+    );
+    const answer = log.mock.calls.map((call) => String(call[0])).find((text) => text[0] === "{");
+    expect(JSON.parse(answer!).error.message).toBe(reason);
+  });
+
+  it("keeps a finding with another code on one line even when it carries the setup text", async () => {
+    const message = `From the page\n\n${LINUX_ARM_BROWSER_STEPS}`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const { report } = await runScenario(fakeDriver());
+    const finding = { ...runtimeError(), message };
+    expect(finding.code).not.toBe("check_runtime_failure");
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          runtime: { ...report.runtime, ok: false, errorCount: 1, findings: [finding] },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    ).then(consumeCommandResult);
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(human).toContain(`${finding.code}: ${message.replaceAll("\n", "\\x0a")}\n`);
+    expect(human).not.toContain(LINUX_ARM_BROWSER_STEPS);
   });
 });
 
@@ -803,6 +1004,133 @@ it("distinguishes unavailable HDR inspection from no promotion", async () => {
   expect(report.hdr).toEqual({ autoPromotion: null, inspection: "unavailable" });
 });
 
+it("names the remote sources HDR inspection did not probe", async () => {
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    {
+      collectMedia: vi.fn(async () => ({
+        videos: [{ src: "https://media.example/clip.mp4?token=secret", hasAudio: false }],
+        images: [{ src: "assets/still.png" }, { src: "http://127.0.0.1:8080/still.png" }],
+        audios: [],
+        html: "",
+      })),
+    },
+  );
+
+  expect(report.hdr).toEqual({
+    autoPromotion: null,
+    inspection: "available",
+    remoteNotInspected: ["https://media.example/clip.mp4", "http://127.0.0.1:8080/still.png"],
+  });
+});
+
+it("prints composition text in a finding with its control characters as visible escapes", async () => {
+  const planted: CheckFinding = {
+    code: "audio_source_unreadable",
+    severity: "error",
+    message: "voice\u001b[2K.wav has no audio",
+    selector: "#v\u001b]0;t\u0007",
+    dataAttributes: {},
+    sourceFile: "scene\u009b2J.html",
+    fixHint: "use \u001b]52;c;Y2xpcA==\u0007",
+    bbox: { x: 0, y: 0, width: 0, height: 0 },
+    time: 1,
+  };
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    { inspectAudio: vi.fn(async () => [planted]) },
+  );
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline: vi.fn(async () => report),
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: [] }).catch(() => undefined);
+
+  const out = log.mock.calls.map((call) => String(call[0] ?? "")).join("\n");
+  for (const control of ["\u0007", "\u001b]", "\u001b[2K", "\u009b"])
+    expect(out).not.toContain(control);
+  expect(out).toContain("voice\\x1b[2K.wav has no audio");
+  expect(out).toContain("scene\\x9b2J.html #v\\x1b]0;t\\x07");
+  expect(out).toContain("Fix: use \\x1b]52;c;Y2xpcA==\\x07");
+});
+
+it("prints a replayed pass's time and finding code with control characters as visible escapes", async () => {
+  const planted: CheckFinding = {
+    code: "audio_quiet\u0007",
+    severity: "warning",
+    message: "voice.wav is quiet",
+    selector: "#v",
+    dataAttributes: {},
+    sourceFile: "scene.html",
+    bbox: { x: 0, y: 0, width: 0, height: 0 },
+    time: 1,
+  };
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    { inspectAudio: vi.fn(async () => [planted]) },
+  );
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline: vi.fn(async () => ({ ...report, cached: { at: "2026-01-02\u001b[2J" } })),
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: [] }).catch(() => undefined);
+
+  const out = log.mock.calls.map((call) => String(call[0] ?? "")).join("\n");
+  for (const control of ["\u0007", "\u001b[2J"]) expect(out).not.toContain(control);
+  expect(out).toContain("since the pass at 2026-01-02\\x1b[2J;");
+  expect(out).toContain("audio_quiet\\x07: voice.wav is quiet");
+});
+
+it("prints a contrast finding's selector, colour and source with control characters escaped", async () => {
+  const planted: CheckContrastFinding = {
+    code: "contrast_aa_failure",
+    severity: "error",
+    message: "low contrast",
+    selector: "#t\u001b]0;x\u0007",
+    dataAttributes: {},
+    sourceFile: "scene\u009b2J.html",
+    bbox: { x: 0, y: 0, width: 0, height: 0 },
+    time: 1,
+    fg: "#777",
+    bg: "#888",
+    ratio: 1.2,
+    requiredRatio: 4.5,
+    suggestedColor: "#000\u001b[2K",
+    large: false,
+  };
+  const { report } = await runScenario(fakeDriver());
+  const plantedReport = {
+    ...report,
+    contrast: { ...report.contrast, enabled: true, findings: [planted], errorCount: 1 },
+  };
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline: vi.fn(async () => plantedReport),
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: [] }).catch(() => undefined);
+
+  const out = log.mock.calls.map((call) => String(call[0] ?? "")).join("\n");
+  for (const control of ["\u0007", "\u001b]", "\u001b[2K", "\u009b"])
+    expect(out).not.toContain(control);
+  expect(out).toContain("#t\\x1b]0;x\\x07 1.2:1");
+  expect(out).toContain("Try #000\\x1b[2K; source scene\\x9b2J.html");
+});
+
 it("fails the check on an audio error and reports it in its own section", async () => {
   const unreadable: CheckFinding = {
     code: "audio_source_unreadable",
@@ -940,6 +1268,66 @@ it("rejects malformed caption-zone specs instead of silently disabling the gate"
   });
 });
 
+it.each([
+  ["--samples", "0"],
+  ["--samples", "ten"],
+  ["--samples", "5abc"],
+  ["--samples", "2.5"],
+  ["--max-issues", "-5"],
+  ["--max-transition-samples", "abc"],
+  ["--tolerance", "-1"],
+  ["--tolerance", "px"],
+  ["--tolerance", "2px"],
+])("rejects %s %s as a usage error instead of using the default", async (flag, value) => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async () => report);
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await expect(
+    runCommand(command, { rawArgs: ["--json", `${flag}=${value}`] }),
+  ).rejects.toMatchObject({ result: { exitCode: 2, kind: "usage_error" } });
+
+  expect(runPipeline).not.toHaveBeenCalled();
+  const output = JSON.parse(String(log.mock.calls[0]?.[0]));
+  expect(output.error.code).toBe("usage_error");
+  expect(output.error.message).toContain(`Invalid ${flag}: "${value}"`);
+});
+
+it("passes valid numeric check flags through and keeps defaults for absent ones", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, {
+    rawArgs: ["--json", "--samples", "3", "--max-transition-samples", "4", "--tolerance", "0.5"],
+  });
+  await runCommand(command, { rawArgs: ["--json", "--tolerance", "0"] });
+
+  expect(runPipeline.mock.calls[0]?.[1]).toMatchObject({
+    samples: 3,
+    maxTransitionSamples: 4,
+    maxIssues: DEFAULT_CHECK_OPTIONS.maxIssues,
+    tolerance: 0.5,
+  });
+  expect(runPipeline.mock.calls[1]?.[1]).toMatchObject({
+    samples: DEFAULT_CHECK_OPTIONS.samples,
+    maxTransitionSamples: undefined,
+    tolerance: 0,
+  });
+});
+
 it("flags text whose DOM box overlaps the caption band at the default end seek", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({
@@ -975,6 +1363,7 @@ it("flags text whose DOM box overlaps the caption band at the default end seek",
   expect(collectGeometryCandidates).toHaveBeenCalledWith(10, {
     text: true,
     media: false,
+    blocks: false,
     tolerance: 2,
   });
   expect(report.layout.samples).toEqual([5, 10]);
@@ -1150,6 +1539,7 @@ it("checks media overflow at the default midpoint and applies warning severity",
   expect(collectGeometryCandidates).toHaveBeenCalledWith(5, {
     text: false,
     media: true,
+    blocks: false,
     tolerance: 2,
   });
   expect(report.layout.findings[0]).toMatchObject({
@@ -1185,9 +1575,9 @@ it("converts progress seeks to time, gates each collector, and keeps distinct ca
 
   expect(report.layout.samples).toEqual([2, 4, 6]);
   expect(collectGeometryCandidates.mock.calls).toEqual([
-    [2, { text: true, media: false, tolerance: 2 }],
-    [4, { text: false, media: true, tolerance: 2 }],
-    [6, { text: true, media: false, tolerance: 2 }],
+    [2, { text: true, media: false, blocks: false, tolerance: 2 }],
+    [4, { text: false, media: true, blocks: false, tolerance: 2 }],
+    [6, { text: true, media: false, blocks: false, tolerance: 2 }],
   ]);
   expect(report.layout.findings).toEqual([
     expect.objectContaining({
@@ -1227,6 +1617,150 @@ it("does not collect or emit opt-in geometry findings when both flags are off", 
   expect(collectGeometryCandidates).not.toHaveBeenCalled();
   expect(JSON.stringify(report)).not.toContain("caption_zone_collision");
   expect(JSON.stringify(report)).not.toContain("frame_out_of_frame");
+});
+
+describe("social safe zones", () => {
+  const portrait = { width: 1080, height: 1920 };
+  const block = (selector: string, text: string, rect: LayoutRect, time: number) =>
+    geometryCandidate({ kind: "block", tag: "p", text, selector, rect, time });
+  // A caption in the bottom 30% and a title centred in the upper half.
+  const captionAndTitle = (time: number) => [
+    block("#caption", "Follow for part two", fixtureRect(140, 1400, 800, 120), time),
+    block("#title", "Centred title", fixtureRect(216, 600, 648, 120), time),
+  ];
+
+  async function safeZoneScenario(
+    candidates: (time: number) => ReturnType<typeof geometryCandidate>[],
+    options: Partial<CheckOptions> = {},
+    canvas = portrait,
+  ) {
+    const collectGeometryCandidates = vi.fn(async (time: number) => candidates(time));
+    const { report } = await runScenario(
+      fakeDriver({
+        getDuration: vi.fn(async () => 4),
+        getCanvas: vi.fn(async () => canvas),
+        collectGeometryCandidates,
+      }),
+      { samples: 2, contrast: false, safeZones: ["tiktok", "reels", "shorts"], ...options },
+    );
+    return { report, collectGeometryCandidates };
+  }
+
+  it("warns once, at the first time, for a caption below every platform's safe area", async () => {
+    const { report, collectGeometryCandidates } = await safeZoneScenario(captionAndTitle, {
+      strict: true,
+    });
+
+    expect(collectGeometryCandidates).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ blocks: true }),
+    );
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({
+        code: "outside_safe_zone",
+        severity: "warning",
+        selector: "#caption",
+        time: report.layout.samples[0],
+        message:
+          '<p> "Follow for part two" is outside the safe area: TikTok (bottom edge), Instagram Reels (bottom edge), YouTube Shorts (bottom edge).',
+      }),
+    ]);
+    expect(report.ok).toBe(true);
+  });
+
+  it("follows TikTok's stepped right edge", async () => {
+    const { report } = await safeZoneScenario((time) => [
+      block("#under-step", "Under the buttons", fixtureRect(756, 960, 108, 96), time),
+      block("#above-step", "Above the buttons", fixtureRect(756, 384, 108, 96), time),
+    ]);
+
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({
+        selector: "#under-step",
+        message: '<p> "Under the buttons" is outside the safe area: TikTok (right edge).',
+      }),
+    ]);
+  });
+
+  it("narrows to one platform", async () => {
+    const { report } = await safeZoneScenario(captionAndTitle, { safeZones: ["shorts"] });
+
+    expect(report.layout.findings.map((finding) => finding.message)).toEqual([
+      '<p> "Follow for part two" is outside the safe area: YouTube Shorts (bottom edge).',
+    ]);
+  });
+
+  it("skips text marked data-layout-allow-safe-zone", async () => {
+    const { report } = await safeZoneScenario((time) => [
+      geometryCandidate({
+        kind: "block",
+        tag: "p",
+        text: "Sticker",
+        selector: "#sticker",
+        rect: fixtureRect(140, 1400, 800, 120),
+        time,
+        dataAttributes: { "data-layout-allow-safe-zone": "" },
+      }),
+    ]);
+
+    expect(report.layout.findings).toEqual([]);
+  });
+
+  it("reports nothing when off or when the frame is not 9:16", async () => {
+    const off = await safeZoneScenario(captionAndTitle, { safeZones: [] });
+    const landscape = await safeZoneScenario(captionAndTitle, {}, { width: 1920, height: 1080 });
+
+    expect(off.collectGeometryCandidates).not.toHaveBeenCalled();
+    expect(landscape.collectGeometryCandidates).not.toHaveBeenCalled();
+    expect(off.report.layout.findings).toEqual([]);
+    expect(landscape.report.layout.findings).toEqual([]);
+  });
+
+  it("never lets a safe-zone warning push a defect warning past --max-issues", async () => {
+    const { report } = await safeZoneScenario(
+      (time) => [
+        ...captionAndTitle(time),
+        geometryCandidate({
+          kind: "text",
+          tag: "p",
+          text: "Lower third",
+          selector: "#lower-third",
+          rect: fixtureRect(140, 1700, 800, 80),
+          time,
+        }),
+      ],
+      { maxIssues: 1, strict: true, captionZone: { x0: 0, y0: 0.85, x1: 1, y1: 1 } },
+    );
+
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({ code: "caption_zone_collision", selector: "#lower-third" }),
+    ]);
+    expect(report.ok).toBe(false);
+  });
+
+  it("checks title-safe margins on any frame when asked for standard", async () => {
+    const landscape = { width: 1920, height: 1080 };
+    const { report } = await safeZoneScenario(
+      (time) => [
+        block("#edge-title", "Near the edge", fixtureRect(96, 400, 600, 100), time),
+        block("#centred", "Centred", fixtureRect(660, 490, 600, 100), time),
+      ],
+      { safeZones: ["standard"] },
+      landscape,
+    );
+
+    expect(report.layout.findings.map((finding) => finding.message)).toEqual([
+      '<p> "Near the edge" is outside the safe area: title-safe margins (left edge).',
+    ]);
+  });
+
+  it("parses --safe-zone", () => {
+    expect(parseSafeZone(undefined)).toEqual(["tiktok", "reels", "shorts"]);
+    expect(parseSafeZone("reels")).toEqual(["reels"]);
+    expect(parseSafeZone("standard")).toEqual(["standard"]);
+    expect(parseSafeZone("off")).toEqual([]);
+    expect(() => parseSafeZone("instagram")).toThrow(CliUsageError);
+  });
 });
 
 it("computes caption bands from a portrait composition viewport", async () => {
@@ -1423,6 +1957,7 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
       tolerance: 2,
       totalIssueCount: 0,
       truncated: false,
+      faceCheck: { ran: true, candidates: 0, faces: 0 },
     },
     motion: { ...emptySection(), enabled: false, samples: 0 },
     contrast: { ...emptySection(), enabled: true, samples: [], checked: 0, passed: 0 },
@@ -1704,6 +2239,50 @@ describe("check pipeline", () => {
     const said = log.mock.calls.map((call) => String(call[0])).join("\n");
     expect(said).toContain("the lint error above leaves no composition to load");
     expect(said).not.toContain("Browser session never ran");
+  });
+
+  it("marks a contrast finding by its severity and quotes the text it judged", async () => {
+    const finding = (severity: "error" | "warning", text: string): CheckContrastFinding => ({
+      ...checkFindingOf("contrast_aa_failure", severity, { x: 0, y: 0, width: 10, height: 10 }),
+      selector: "div > div:nth-of-type(35) > div:nth-of-type(3)",
+      text,
+      fg: "rgb(110,110,110)",
+      bg: "rgb(30,30,30)",
+      ratio: 2.39,
+      requiredRatio: 3,
+      suggestedColor: "rgb(219,108,80)",
+      large: true,
+    });
+    const report = reportWithFindings({
+      contrast: {
+        ...emptySection([
+          finding("warning", "passing through"),
+          finding("error", "held on screen"),
+        ]),
+        errorCount: 1,
+        warningCount: 1,
+        enabled: true,
+        samples: [1],
+        checked: 2,
+        passed: 0,
+      },
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => report),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runViaCli(command, { rawArgs: [] });
+
+    const lines = log.mock.calls.map((call) => String(call[0]));
+    const lineOf = (text: string) => lines.find((line) => line.includes(`"${text}"`)) ?? "";
+    expect(lineOf("passing through")).toContain("⚠");
+    expect(lineOf("passing through")).not.toContain("✗");
+    expect(lineOf("held on screen")).toContain("✗");
+    expect(lineOf("held on screen")).toContain("2.39:1 (need 3:1");
   });
 
   describe("remembers the newest check for hyperframes feedback", () => {
@@ -2368,7 +2947,7 @@ describe("check pipeline", () => {
     expect(report.layout.errorCount).toBeGreaterThan(0);
     expect(report.runtime.findings).toContainEqual(
       expect.objectContaining({
-        code: "check_runtime_failure",
+        code: "check_deadline",
         message: "Check did not finish within its deadline.",
       }),
     );
@@ -2479,14 +3058,15 @@ describe("check pipeline", () => {
       const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
       await vi.advanceTimersByTimeAsync(120_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toMatch(/^Check did not finish within its deadline/);
       expect(failure?.message).toContain(
         "while running the overlap pass (overlap probes from 0s).",
       );
       expect(failure?.message).toContain("checking samples 0.0, running the overlap pass 120.0.");
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_deadline" }),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -2505,11 +3085,12 @@ describe("check pipeline", () => {
       const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
       await vi.advanceTimersByTimeAsync(180_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toMatch(/^Chrome did not start within 180 s while starting Chrome/);
       expect(report.ok).toBe(false);
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_deadline" }),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -2542,9 +3123,7 @@ describe("check pipeline", () => {
       expect(aborted.aborted).toBe(false);
       await vi.advanceTimersByTimeAsync(110_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toContain("no progress for 410 s");
     } finally {
       vi.useRealTimers();
@@ -2587,9 +3166,9 @@ describe("check pipeline", () => {
         true,
       );
       expect(report.browserSkipped).toBe(false);
-      expect(
-        report.runtime.findings.some((finding) => finding.code === "check_runtime_failure"),
-      ).toBe(true);
+      expect(report.runtime.findings.some((finding) => finding.code === "check_deadline")).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -4025,6 +4604,33 @@ it("applies transition sample limits within the requested range", async () => {
   });
   expect(report.layout.transitionSamples).toEqual([7.8, 8]);
   expect(report.layout.transitionSamplesDropped).toBe(3);
+});
+
+describe("layout.faceCheck", () => {
+  it("says the face pass ran when no text was in front of a video", async () => {
+    const { report } = await runScenario(fakeDriver({ collectTextOverVideo: async () => [] }));
+    expect(report.layout.faceCheck).toEqual({ ran: true, candidates: 0, faces: 0 });
+  });
+
+  it("says why when the pass could not look", async () => {
+    const { report } = await runScenario(fakeDriver());
+    expect(report.layout.faceCheck).toEqual({
+      ran: false,
+      reason: "this check driver does not report text over video",
+    });
+  });
+
+  it("is present with a reason when the browser never ran", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = async () => {
+      throw new Error("Chrome did not start");
+    };
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+    expect(report.layout.faceCheck).toEqual({
+      ran: false,
+      reason: "the check stopped before looking for faces under text",
+    });
+  });
 });
 
 describe("check cache", () => {

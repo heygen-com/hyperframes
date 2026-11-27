@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { test } from "node:test";
 
-const BLOCKS = join(import.meta.dirname, "..", "registry", "blocks");
+const REGISTRY = join(import.meta.dirname, "..", "registry");
+const BLOCKS = join(REGISTRY, "blocks");
 
 interface ManifestFile {
   path: string;
@@ -29,6 +30,66 @@ function firstMatch(text: string, pattern: RegExp): string | undefined {
   return text.match(pattern)?.[1];
 }
 
+function usesProjectPackageManager(markdown: string): boolean {
+  const commands = markdown
+    .replace(/\\\r?\n/g, "")
+    .matchAll(/\b(npx|npm|bunx)[ \t]+([-@\w./"']+)/g);
+  return Array.from(commands).some(
+    ([, runner, argument]) => runner !== "npx" || argument !== "hyperframes",
+  );
+}
+
+function registryCommandViolations(root: string): string[] {
+  const violations: string[] = [];
+  for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const path = join(entry.parentPath, entry.name);
+    const name = relative(root, path);
+    const contents = readFileSync(path);
+    // Commands also appear in manifest strings, templates and source comments.
+    if (
+      contents.includes("hyperframes@") &&
+      /\b(?:npx|npm|bunx|dlx)\b[^\r\n`]*?\bhyperframes@|\bhyperframes@[^\s`]+[ \t]+[\w-]+/.test(
+        contents.toString("utf8"),
+      )
+    ) {
+      violations.push(name);
+      continue;
+    }
+    // Source READMEs document maintainer builds in a trusted checkout.
+    if (
+      /\.mdx?$/i.test(entry.name) &&
+      !(entry.name === "README.md" && basename(dirname(path)) === "source") &&
+      usesProjectPackageManager(contents.toString("utf8"))
+    ) {
+      violations.push(name);
+    }
+  }
+  return violations.sort();
+}
+
+test("only the launcher shorthand is a registry package-runner example", () => {
+  assert.equal(usesProjectPackageManager("Run `npx hyperframes add orbit-card`."), false);
+  for (const command of [
+    "npx --yes hyperframes render",
+    "npm exec hyperframes",
+    "bunx hyperframes render",
+  ]) {
+    assert.equal(usesProjectPackageManager(command), true, command);
+  }
+});
+
+test("registry instructions use the installed HyperFrames launcher", () => {
+  assert.deepEqual(registryCommandViolations(REGISTRY), []);
+});
+
+test("the registry check rejects a skill with a pinned render command", () => {
+  assert.deepEqual(
+    registryCommandViolations(join(import.meta.dirname, "fixtures", "registry-pinned-command")),
+    ["SKILL.md"],
+  );
+});
+
 const blocks = readdirSync(BLOCKS).filter((name) => existsSync(join(BLOCKS, name, "SKILL.md")));
 
 for (const name of blocks) {
@@ -52,6 +113,7 @@ for (const name of blocks) {
     const { files, skill } = readBlock(name);
     const target = files.find((file) => file.type === "hyperframes:composition")?.target;
     assert.equal(firstMatch(skill, /data-composition-src="([^"]+)"/), target);
-    assert.equal(firstMatch(skill, / render '([^']+)'/), target);
+    assert.ok(skill.includes('node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs"'));
+    assert.equal(firstMatch(skill, /^npx hyperframes render '([^']+)'/m), target);
   });
 }

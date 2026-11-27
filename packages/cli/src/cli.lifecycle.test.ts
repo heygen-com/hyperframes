@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -28,6 +28,39 @@ afterEach(async () => {
   for (const path of MOCKED_MODULES) vi.doUnmock(path);
   vi.resetModules();
 });
+
+const PLAIN = "(no --json)";
+
+async function answersWithItsTextAsGiven(argv: string[], given: string, exit: number) {
+  const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  let answered = "";
+  const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+    answered += String(chunk);
+    return true;
+  }) as never);
+  try {
+    mockTelemetry();
+    process.argv = ["node", "cli.ts", ...argv, "--json"];
+    await import("./cli.js");
+
+    const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(said).toContain(given.replace("\u0007", "\\x07"));
+    expect(said).not.toContain("\u0007");
+    const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
+      ok: boolean;
+      error: { message: string };
+    };
+    expect(body.ok).toBe(false);
+    expect(process.exitCode).toBe(exit);
+    expect(body.error.message).toContain(given);
+    expect(body.error.message).not.toContain("\\x07");
+  } finally {
+    outSpy.mockRestore();
+    errorSpy.mockRestore();
+    exitSpy.mockRestore();
+  }
+}
 
 describe("CLI lifecycle", () => {
   it("queues a command failure before exit, without waiting on a network flush", async () => {
@@ -322,6 +355,138 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  // fails without the fix: a program driving the CLI read exit 1 with no words, so its reports named a routine line
+  // ("Browser: env") as the cause.
+  it("says what crashed before the command delivered, then exits 1", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const priorListeners = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    try {
+      mockInitCommand(() => {
+        process.emit("uncaughtException", new Error("EBADF: bad file descriptor, read"));
+      });
+      mockTelemetry({ trackCommandResult: vi.fn() });
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+      expect(saidOnStderr(said)).toContain("Error: EBADF: bad file descriptor, read");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      process.removeAllListeners("uncaughtException");
+      for (const listener of priorListeners) process.on("uncaughtException", listener);
+      said.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
+  // fails without the fix: uncaughtException swallowed any EPIPE silently instead of only stdout/stderr.
+  it("reports a non-stdio EPIPE uncaughtException instead of silently exiting 1", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trackCliError = vi.fn();
+    // Capture what was written before the first process.exit (a no-op spy otherwise falls through).
+    let stderrAtExit: string | undefined;
+    let cliErrorsAtExit: number | undefined;
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      if (stderrAtExit === undefined) {
+        stderrAtExit = saidOnStderr(said);
+        cliErrorsAtExit = trackCliError.mock.calls.length;
+      }
+      return undefined as never;
+    }) as never);
+    const priorListeners = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    try {
+      mockRenderCommand(() => {
+        process.emit(
+          "uncaughtException",
+          Object.assign(new Error("write EPIPE"), { code: "EPIPE" }),
+        );
+      });
+      mockTelemetry({ trackCommandResult: vi.fn(), trackCliError });
+      process.argv = ["node", "cli.ts", "render"];
+      await import("./cli.js");
+      expect(stderrAtExit).toContain("Error: write EPIPE");
+      expect(cliErrorsAtExit).toBe(1);
+      expect(trackCliError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "uncaught_exception",
+          error_message: "write EPIPE",
+        }),
+      );
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      process.removeAllListeners("uncaughtException");
+      for (const listener of priorListeners) process.on("uncaughtException", listener);
+      said.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
+  it("says what an unhandled rejection was before the command delivered", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const priorListeners = process.listeners("unhandledRejection");
+    process.removeAllListeners("unhandledRejection");
+    try {
+      mockInitCommand(() => {
+        process.emit(
+          "unhandledRejection",
+          new Error("browser process would not stop"),
+          Promise.resolve(),
+        );
+      });
+      mockTelemetry({ trackCommandResult: vi.fn() });
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+      expect(saidOnStderr(said)).toContain("Error: browser process would not stop");
+    } finally {
+      process.removeAllListeners("unhandledRejection");
+      for (const listener of priorListeners) process.on("unhandledRejection", listener);
+      said.mockRestore();
+    }
+  });
+
+  it("a render ending non-zero with no failure shown says so, and reports where the failure was set", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trackCliError = vi.fn();
+    try {
+      mockRenderCommand(async () => {
+        const { setCommandExitCode } = await import("./utils/commandResult.js");
+        setCommandExitCode(1);
+      });
+      mockTelemetry({ trackCommandResult: vi.fn(), trackCliError });
+      process.argv = ["node", "cli.ts", "render"];
+      await import("./cli.js");
+      expect(saidOnStderr(said)).toContain("The command ended with code 1 without saying why");
+      expect(trackCliError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "silent_exit",
+          stack_trace: expect.stringContaining("cli.lifecycle.test.ts"),
+        }),
+      );
+    } finally {
+      said.mockRestore();
+    }
+  });
+
+  it("a command that answers with a non-zero code is not called silent", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trackCliError = vi.fn();
+    try {
+      mockInitCommand(async () => {
+        const { setCommandExitCode } = await import("./utils/commandResult.js");
+        setCommandExitCode(1);
+      });
+      mockTelemetry({ trackCommandResult: vi.fn(), trackCliError });
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+      expect(saidOnStderr(said)).not.toContain("without saying why");
+      expect(trackCliError).not.toHaveBeenCalled();
+    } finally {
+      said.mockRestore();
+    }
+  });
+
   it("exits 0 when a late uncaught exception follows a command that already delivered", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const priorListeners = process.listeners("uncaughtException");
@@ -365,6 +530,277 @@ describe("CLI lifecycle", () => {
       exitSpy.mockRestore();
     }
   });
+
+  it("prints a thrown error's control characters as visible escapes and keeps its lines", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      mockInitCommand(() => {
+        throw new Error("Install failed: a\u001b]52;c;eA==\u0007\n  b\u009b");
+      });
+      mockTelemetry();
+
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+
+      const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+      expect(said).toContain("Install failed: a\\x1b]52;c;eA==\\x07\n  b\\x9b");
+      for (const control of ["\u001b]", "\u0007", "\u009b"]) expect(said).not.toContain(control);
+    } finally {
+      errorSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  it.each([
+    [
+      "an unknown lambda subcommand",
+      ["lambda", "de\u0007ploy"],
+      "Unknown subcommand: de\u0007ploy",
+      2,
+    ],
+    ["an unknown lambda sites verb", ["lambda", "sites", "cr\u0007eate"], 'verb "cr\u0007eate"', 2],
+    [
+      "a lambda stack with no state",
+      ["lambda", "progress", "r1", "--stack-name", "st\u0007ack"],
+      'no stack state for "st\u0007ack"',
+      1,
+    ],
+    [
+      "an unknown cloudrun subcommand",
+      ["cloudrun", "de\u0007ploy"],
+      "Unknown subcommand: de\u0007ploy",
+      2,
+    ],
+    [
+      "an unknown cloudrun sites verb",
+      ["cloudrun", "sites", "cr\u0007eate"],
+      'verb "cr\u0007eate"',
+      2,
+    ],
+    [
+      "a missing cloudrun batch file",
+      [
+        "cloudrun",
+        "render-batch",
+        ".",
+        "--batch",
+        "ba\u0007tch.jsonl",
+        "--width",
+        "8",
+        "--height",
+        "8",
+      ],
+      "batch file not found: ba\u0007tch.jsonl",
+      1,
+    ],
+  ])("answers a --json run for %s with its text as given", async (_name, argv, given, exit) => {
+    await answersWithItsTextAsGiven(argv, given, exit);
+  });
+
+  const STACK = {
+    stackName: "other",
+    region: "us-east-1",
+    bucketName: "some-bucket",
+    stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:render",
+    functionName: "render",
+    lambdaMemoryMb: 1024,
+  };
+  const stackFile = (dir: string, text: string) => {
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(join(dir, ".hyperframes", "lambda-stack-st\u0007ack.json"), text);
+  };
+  const LAMBDA_PROGRESS = ["lambda", "progress", "r1", "--stack-name", "st\u0007ack"];
+
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  // A control character in a file name is refused on Windows.
+  it.skipIf(process.platform === "win32").each([
+    [
+      "a lambda stack file that cannot be read",
+      (dir: string) => stackFile(dir, "{"),
+      LAMBDA_PROGRESS,
+      "lambda-stack-st\u0007ack.json is not valid JSON",
+    ],
+    [
+      "a lambda stack file that names another stack",
+      (dir: string) => stackFile(dir, JSON.stringify(STACK)),
+      LAMBDA_PROGRESS,
+      'names stack "other", not "st\u0007ack"',
+    ],
+    [
+      "a beats run whose music file is missing",
+      (dir: string) =>
+        writeFileSync(
+          join(dir, "index.html"),
+          '<div data-composition-id="main" data-duration="5"><audio data-timeline-role="music" src="mu\u0007sic.mp3"></audio></div>',
+        ),
+      ["beats"],
+      "Audio file not found: mu\u0007sic.mp3",
+    ],
+  ])("answers a --json run for %s with its text as given", async (_name, write, argv, given) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cli-given-"));
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir);
+    try {
+      write(dir);
+      await answersWithItsTextAsGiven(argv, given, 1);
+    } finally {
+      cwd.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  it("answers a --json run for a missing file with the file's name as given", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let answered = "";
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      answered += String(chunk);
+      return true;
+    }) as never);
+    const missing = join(tmpdir(), "hf-mis\u0007sing.wav");
+    try {
+      mockTelemetry();
+      process.argv = ["node", "cli.ts", "transcribe", missing, "--json"];
+      await import("./cli.js");
+
+      const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+      expect(said).toContain("hf-mis\\x07sing.wav");
+      expect(said).not.toContain("\u0007");
+      const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
+        ok: boolean;
+        error: { message: string };
+      };
+      expect(body.ok).toBe(false);
+      expect(process.exitCode).toBe(1);
+      expect(body.error.message).toBe(`File not found: ${missing}`);
+      expect(body.error.message).not.toContain("\\x07");
+    } finally {
+      outSpy.mockRestore();
+      errorSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  it.each([
+    [
+      "a capture URL that does not parse",
+      ["capture", "ht tp\u0007"],
+      "Invalid URL: ht tp\u0007",
+      2,
+    ],
+    [
+      "a capture --video folder with no manifest",
+      ["capture", "--video", join(tmpdir(), "hf-no\u0007ne")],
+      `no video-manifest.json at ${join(tmpdir(), "hf-no\u0007ne", "extracted")}`,
+      1,
+    ],
+    [
+      "a refused remove-background device",
+      ["remove-background", "in.mp4", "-o", "out.webm", "--device", "g\u0007pu"],
+      "Invalid --device 'g\u0007pu'.",
+      2,
+    ],
+    [
+      "a refused remove-background quality",
+      ["remove-background", "in.mp4", "-o", "out.webm", "--quality", "be\u0007st"],
+      "Invalid --quality 'be\u0007st'.",
+      2,
+    ],
+    // The rows below run without --json: with it these commands refuse or answer in their own JSON.
+    ["an unknown docs topic", [PLAIN, "docs", "to\u0007pic"], "Unknown topic: to\u0007pic", 2],
+    [
+      "an unknown telemetry subcommand",
+      [PLAIN, "telemetry", "fo\u0007o"],
+      "Unknown subcommand: fo\u0007o",
+      2,
+    ],
+    [
+      "a telemetry preference that cannot be saved",
+      [PLAIN, "telemetry", "disable"],
+      "Reason: EACCES /ho\u0007me",
+      1,
+      () =>
+        vi.doMock("./telemetry/config.js", async () => ({
+          ...(await vi.importActual<typeof import("./telemetry/config.js")>(
+            "./telemetry/config.js",
+          )),
+          readConfigFresh: () => ({}),
+          writeConfigWithResult: () => ({ ok: false, error: "EACCES /ho\u0007me" }),
+        })),
+    ],
+    [
+      "a catalog query with no searchable words",
+      [PLAIN, "catalog", "--query", "!!\u0007"],
+      'No searchable words in query "!!\u0007".',
+      1,
+      () => mockCatalogRegistry(),
+    ],
+    [
+      "a catalog whose registry cannot be read",
+      ["catalog"],
+      "The registry could not be read: no route to ho\u0007st",
+      1,
+      () => mockCatalogRegistry("The registry could not be read: no route to ho\u0007st"),
+    ],
+    [
+      "speech that cannot be generated",
+      [PLAIN, "tts", "hello", "--voice", "af_\u0007x"],
+      "no model at /mo\u0007dels",
+      1,
+      () =>
+        vi.doMock("./tts/synthesize.js", () => ({
+          synthesize: async () => {
+            throw new Error("no model at /mo\u0007dels");
+          },
+        })),
+    ],
+  ] as [string, string[], string, number, (() => void)?][])(
+    "shows %s as text, and answers a --json run with the value as given",
+    async (_name, argv, given, exit, mock) => {
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let answered = "";
+      const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+        answered += String(chunk);
+        return true;
+      }) as never);
+      // A spinner's lines go straight to the stream when nobody is watching.
+      let written = "";
+      const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
+        written += String(chunk);
+        return true;
+      }) as never);
+      try {
+        mockTelemetry();
+        mock?.();
+        const plain = argv[0] === PLAIN;
+        process.argv = ["node", "cli.ts", ...(plain ? argv.slice(1) : [...argv, "--json"])];
+        await import("./cli.js");
+
+        const said =
+          errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n") + written;
+        expect(said).toContain(given.replace("\u0007", "\\x07"));
+        expect(said).not.toContain("\u0007");
+        expect(process.exitCode).toBe(exit);
+        if (plain) return;
+        const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
+          ok: boolean;
+          error: { message: string };
+        };
+        expect(body.ok).toBe(false);
+        expect(body.error.message).toContain(given);
+        expect(body.error.message).not.toContain("\\x07");
+      } finally {
+        errSpy.mockRestore();
+        outSpy.mockRestore();
+        errorSpy.mockRestore();
+        exitSpy.mockRestore();
+      }
+    },
+  );
 
   it("exits 1 and scores a failure when the pipe closes before the run delivered", async () => {
     const trackCommandResult = vi.fn();
@@ -437,6 +873,11 @@ describe("stale-skills notice under --json", () => {
 });
 
 const MOCKED_MODULES = [
+  "./telemetry/config.js",
+  "./tts/synthesize.js",
+  "./registry/remote.js",
+  "./registry/resolver.js",
+  "./registry/localModel.js",
   "./commands/init.js",
   "./telemetry/events.js",
   "./telemetry/index.js",
@@ -468,6 +909,39 @@ async function runCli(args: string[]): Promise<Record<string, unknown>[]> {
     logSpy.mockRestore();
   }
   return sent;
+}
+
+/** A one-item registry searched by words, or one that cannot be read for the given reason. */
+function mockCatalogRegistry(unreadable?: string): void {
+  vi.doMock("./registry/remote.js", async () => ({
+    ...(await vi.importActual<typeof import("./registry/remote.js")>("./registry/remote.js")),
+    readRegistryManifest: async () => {
+      if (unreadable) throw new Error(unreadable);
+      return { items: [{ name: "fade", type: "hyperframes:block" }] };
+    },
+  }));
+  vi.doMock("./registry/resolver.js", () => ({
+    loadAllItems: async () => [
+      { name: "fade", type: "hyperframes:block", title: "Fade", description: "A fade", tags: [] },
+    ],
+  }));
+  vi.doMock("./registry/localModel.js", async () => ({
+    ...(await vi.importActual<typeof import("./registry/localModel.js")>(
+      "./registry/localModel.js",
+    )),
+    localModelStatus: () => ({ status: "declined" }),
+  }));
+}
+
+function mockRenderCommand(run: () => void | Promise<void>): void {
+  vi.doMock("./commands/render.js", () => ({
+    default: { meta: { name: "render" }, args: {}, run },
+  }));
+}
+
+/** Everything the run wrote through console.error, colors and all, as one text. */
+function saidOnStderr(said: ReturnType<typeof vi.spyOn>): string {
+  return said.mock.calls.map((args: unknown[]) => args.join(" ")).join("\n");
 }
 
 function mockInitCommand(run: () => void | Promise<void>): void {

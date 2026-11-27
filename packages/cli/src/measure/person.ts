@@ -2,12 +2,25 @@
 // is clearly wrong (face centre or height off the original's, per shot), the generated clip carries the original's
 // words (its motion guide's text came along), or the lips are out of sync. The rest (motion energy, look, whether
 // each generated clip starts at one of the original's cuts) is reported, not judged.
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
+import { readableAsMediaWithinProbeLimit } from "../commands/snapshotHeldVideos.js";
 import { contrast } from "./drawn.js";
 import { faceBoxes } from "./face.js";
-import { pearson, probeVideo, round, runFfmpeg, sumOf, type Roi, type VideoInfo } from "./media.js";
+import {
+  ffmpegInput,
+  GUARDED_RUN_MS,
+  pearson,
+  probeVideo,
+  round,
+  runFfmpeg,
+  sumOf,
+  type Roi,
+  type VideoInfo,
+} from "./media.js";
 import { avSync, type SyncResult } from "./sync.js";
 
 /** A shot's framing is clearly wrong when, by the shot's medians, the face centre sits over FRAMING_SHIFT face heights
@@ -120,8 +133,13 @@ export function generatedClips(ledger: string): GeneratedClip[] {
 }
 
 /** Loudness every 10 ms of a file's sound. */
-function envelope(path: string): number[] {
-  const raw = runFfmpeg([...["-i", path, "-vn", "-ac", "1", "-ar", "8000", "-f", "f32le", "-"]]);
+function envelope(path: string, timeout?: number): number[] {
+  const raw = runFfmpeg(
+    [...ffmpegInput(path), ...["-vn", "-ac", "1", "-ar", "8000", "-f", "f32le", "-"]],
+    undefined,
+    undefined,
+    timeout,
+  );
   const s = new Float32Array(
     raw.buffer.slice(raw.byteOffset, raw.byteOffset + (raw.byteLength & ~3)),
   );
@@ -152,66 +170,98 @@ function bestLag(a: number[], b: number[]): { lag: number; r: number } {
   return best;
 }
 
+/**
+ * The file a ledger names, when its real path is a regular file inside the project, not private and not on another
+ * network root, and it reads as media the way `check` reads a composition's video; null otherwise, with nothing opened.
+ */
+export async function ledgerMediaFile(project: string, path: string): Promise<string | null> {
+  const named = resolve(project, path);
+  if (namesAnotherNetworkRoot(project, named)) return null;
+  let real: string;
+  try {
+    real = realpathSync(named);
+  } catch {
+    return null;
+  }
+  const inside = relative(realpathSync(project), real);
+  if (!inside || /^\.\.(?:[\\/]|$)/.test(inside) || isAbsolute(inside)) return null;
+  if (!statSync(real).isFile() || isPrivateFileUnder(project, named, isStudioPrivatePath))
+    return null;
+  return (await readableAsMediaWithinProbeLimit(real)) ? real : null;
+}
+
 /** Each generated clip on the film: it starts at the ledger's window, else where its sound lines up with the original,
  * and shows where the timeline's `uses` place it (by path), else over its whole window. Paths resolve in the project */
-export function placeClips(
+export async function placeClips(
   clips: GeneratedClip[],
   project: string | undefined,
   ref: VideoInfo,
   cuts: number[],
   shown: Map<string, ClipUse[]> = new Map(),
-): (GeneratedClip & { file?: string; info?: VideoInfo; still?: string })[] {
+): Promise<(GeneratedClip & { file?: string; info?: VideoInfo; still?: string })[]> {
   let whole: number[] | undefined;
-  // fallow-ignore-next-line complexity
-  return clips.map((c) => {
-    const file = project ? join(project, c.path) : undefined;
-    let info: VideoInfo | undefined;
-    try {
-      info = file ? probeVideo(file) : undefined;
-    } catch {
-      info = undefined;
-    }
-    if (!info || !file) return { ...c, note: "the clip's file is not in the project" };
-    const uses = shown.get(normalize(c.path));
-    let placed: GeneratedClip = c;
-    if (c.offset === undefined && info.audio && ref.audio) {
-      whole ??= envelope(ref.path);
-      const { lag, r } = bestLag(whole, envelope(file));
-      const offset = round(lag / ENVELOPE_RATE + ref.audioStart - info.audioStart, 3);
-      placed =
-        r >= LOCATE_MIN
-          ? { ...c, offset, match: round(r, 2) }
-          : { ...c, match: round(r, 2), note: "its sound does not match the original's" };
-    }
-    if (placed.offset === undefined && uses?.length)
-      placed = { ...placed, offset: round(uses[0]!.window[0] - uses[0]!.from / uses[0]!.rate, 3) };
-    if (placed.offset === undefined)
-      return {
-        ...placed,
-        file,
-        info,
-        note: placed.note ?? "no window in the ledger, no sound and no place in the project",
-      };
-    const offset = placed.offset;
-    const end = Math.min(ref.pictureDuration, offset + info.pictureDuration);
+  const placed: (GeneratedClip & { file?: string; info?: VideoInfo; still?: string })[] = [];
+  for (const c of clips) {
+    const file = project ? await ledgerMediaFile(project, c.path) : null;
+    const still = project && c.reference ? await ledgerMediaFile(project, c.reference) : null;
+    placed.push(placeClip(c, file, still, ref, cuts, shown, () => (whole ??= envelope(ref.path))));
+  }
+  return placed;
+}
+
+// fallow-ignore-next-line complexity
+function placeClip(
+  c: GeneratedClip,
+  file: string | null,
+  still: string | null,
+  ref: VideoInfo,
+  cuts: number[],
+  shown: Map<string, ClipUse[]>,
+  originalEnvelope: () => number[],
+): GeneratedClip & { file?: string; info?: VideoInfo; still?: string } {
+  let info: VideoInfo | undefined;
+  try {
+    info = file ? probeVideo(file, { guarded: true }) : undefined;
+  } catch {
+    info = undefined;
+  }
+  if (!info || !file) return { ...c, note: "the clip's file is not in the project" };
+  const uses = shown.get(normalize(c.path));
+  let placed: GeneratedClip = c;
+  if (c.offset === undefined && info.audio && ref.audio) {
+    const { lag, r } = bestLag(originalEnvelope(), envelope(file, GUARDED_RUN_MS));
+    const offset = round(lag / ENVELOPE_RATE + ref.audioStart - info.audioStart, 3);
+    placed =
+      r >= LOCATE_MIN
+        ? { ...c, offset, match: round(r, 2) }
+        : { ...c, match: round(r, 2), note: "its sound does not match the original's" };
+  }
+  if (placed.offset === undefined && uses?.length)
+    placed = { ...placed, offset: round(uses[0]!.window[0] - uses[0]!.from / uses[0]!.rate, 3) };
+  if (placed.offset === undefined)
     return {
       ...placed,
-      window: placed.window ?? [round(Math.max(0, offset), 3), round(end, 3)],
-      uses: uses ?? [
-        {
-          window: [round(Math.max(0, offset), 3), round(end, 3)],
-          from: Math.max(0, -offset),
-          rate: 1,
-        },
-      ],
-      at_cut: [0, ...cuts].some((t) => Math.abs(t - offset) <= AT_CUT_S),
       file,
       info,
-      ...(c.reference && existsSync(join(project!, c.reference))
-        ? { still: join(project!, c.reference) }
-        : {}),
+      note: placed.note ?? "no window in the ledger, no sound and no place in the project",
     };
-  });
+  const offset = placed.offset;
+  const end = Math.min(ref.pictureDuration, offset + info.pictureDuration);
+  return {
+    ...placed,
+    window: placed.window ?? [round(Math.max(0, offset), 3), round(end, 3)],
+    uses: uses ?? [
+      {
+        window: [round(Math.max(0, offset), 3), round(end, 3)],
+        from: Math.max(0, -offset),
+        rate: 1,
+      },
+    ],
+    at_cut: [0, ...cuts].some((t) => Math.abs(t - offset) <= AT_CUT_S),
+    file,
+    info,
+    ...(still ? { still } : {}),
+  };
 }
 
 /** Where a project's timeline shows each video file, by project-relative path. */
@@ -248,6 +298,7 @@ function boxAt(
   box: Roi,
   w: number,
   h: number,
+  timeout?: number,
 ): (Uint8Array | undefined)[] {
   const ks = times.map((t) => Math.max(0, Math.min(info.frames - 1, Math.round(t * info.fps))));
   const unique = [...new Set(ks)].sort((x, y) => x - y);
@@ -262,11 +313,19 @@ function boxAt(
     ].join(",");
     runFfmpeg(
       [
-        ...["-i", info.path, "-an", "-vf", filters, "-fps_mode", "passthrough"],
+        ...[
+          ...ffmpegInput(info.path, { playlists: info.guarded }),
+          "-an",
+          "-vf",
+          filters,
+          "-fps_mode",
+          "passthrough",
+        ],
         ...["-f", "rawvideo", "out.rgb"],
       ],
       undefined,
       work,
+      timeout,
     );
     const raw = readFileSync(join(work, "out.rgb"));
     const size = box[2] * box[3] * 3;
@@ -329,11 +388,16 @@ export function carriedFrame(
 /** One box of a still picture, scaled to cover `w`x`h` (the original's size) first. */
 function stillBox(path: string, box: Roi, w: number, h: number): Uint8Array | undefined {
   try {
-    const raw = runFfmpeg([
-      ...["-i", path, "-frames:v", "1", "-vf"],
-      `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=bicubic,format=rgb24,crop=${w}:${h},crop=${box[2]}:${box[3]}:${box[0]}:${box[1]}`,
-      ...["-f", "rawvideo", "-"],
-    ]);
+    const raw = runFfmpeg(
+      [
+        ...[...ffmpegInput(path), "-frames:v", "1", "-vf"],
+        `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=bicubic,format=rgb24,crop=${w}:${h},crop=${box[2]}:${box[3]}:${box[0]}:${box[1]}`,
+        ...["-f", "rawvideo", "-"],
+      ],
+      undefined,
+      undefined,
+      GUARDED_RUN_MS,
+    );
     return raw.length >= box[2] * box[3] * 3 ? new Uint8Array(raw) : undefined;
   } catch {
     return undefined;
@@ -379,6 +443,7 @@ function carriedText(
     drawn.box,
     ref.width,
     ref.height,
+    GUARDED_RUN_MS,
   );
   const mine = boxAt(
     yours,

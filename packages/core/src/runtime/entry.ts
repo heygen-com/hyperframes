@@ -20,6 +20,9 @@ import { createFilmBridge } from "./filmBridge";
 import { trackAcceleratedCanvases } from "./captureMotionBlur";
 import { parkFarScenesAtBoot } from "./sceneWindow";
 import { installPausedVideoCallbacks } from "./pausedVideoCallbacks";
+import { corsForSealedMedia } from "./sealedMediaCors";
+import { postStaticCompositionWhenParsed } from "./staticCompositionPost";
+import { installPreviewKeyShield } from "./editing/canvasKeys";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -46,6 +49,8 @@ type HyperframeWindow = Window & {
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
+corsForSealedMedia();
+installPreviewKeyShield();
 installPausedVideoCallbacks();
 installFlatGsapTransforms();
 trackAcceleratedCanvases();
@@ -98,6 +103,8 @@ function startAfterCompositionScripts(): void {
     throw err;
   }
 }
+
+postStaticCompositionWhenParsed();
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", startAfterCompositionScripts, { once: true });

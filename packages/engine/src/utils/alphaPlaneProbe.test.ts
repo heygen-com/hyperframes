@@ -67,6 +67,12 @@ describe("inputAlphaOpaqueWarning", () => {
     expect(line).not.toContain("yuva420p");
     expect(line.endsWith("\n")).toBe(true);
   });
+
+  it("shows control characters in the src as visible escapes", () => {
+    const line = inputAlphaOpaqueWarning("a\x1b]0;title\x07\x9bb.webm");
+    expect(line).toContain('src="a\\x1b]0;title\\x07\\x9bb.webm"');
+    for (const control of ["\u001b", "\u0007", "\u009b"]) expect(line).not.toContain(control);
+  });
 });
 
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;

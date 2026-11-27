@@ -18,6 +18,7 @@ const {
   fetchItemManifest,
   fetchRegistryManifest,
   readRegistryManifest,
+  isPublicRegistry,
   DEFAULT_REGISTRY_URL,
 } = await import("./remote.js");
 
@@ -495,4 +496,24 @@ describe("fetchItemFile retries", () => {
     await expect(fetchItemFile(item, file, DEFAULT_REGISTRY_URL)).rejects.toThrow();
     expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
+});
+
+describe("isPublicRegistry", () => {
+  it.each([DEFAULT_REGISTRY_URL, `${DEFAULT_REGISTRY_URL}/`, `${DEFAULT_REGISTRY_URL}/blocks`])(
+    "counts %s as the public registry",
+    (registry) => expect(isPublicRegistry(registry)).toBe(true),
+  );
+
+  it.each([
+    "https://registry.example.com",
+    `${DEFAULT_REGISTRY_URL}-mirror`,
+    `${DEFAULT_REGISTRY_URL}/../../../../someone/else/main/registry`,
+    `${DEFAULT_REGISTRY_URL}/%2e%2e/%2e%2e/%2e%2e/%2e%2e/someone/else/main/registry`,
+    `${DEFAULT_REGISTRY_URL}/..%2f..%2fpackages`,
+    `${DEFAULT_REGISTRY_URL}?from=elsewhere`,
+    DEFAULT_REGISTRY_URL.replace("https://", "https://user@"),
+    "not a url",
+  ])("does not count %s as the public registry", (registry) =>
+    expect(isPublicRegistry(registry)).toBe(false),
+  );
 });

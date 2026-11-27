@@ -13,9 +13,12 @@
 //   node wait-bgm.mjs --audio-meta ./audio_meta.json --hyperframes . \
 //     [--timeout-ms 120000] [--interval-ms 2000] [--out ./bgm_status.json]
 
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { replaceFile } from "../../scripts/lib/manifest.mjs";
 import { recordInManifest } from "./lib/media-record.mjs";
+import { engineBgmLog, projectPath } from "./lib/project-path.mjs";
+import { terminalText } from "../../scripts/lib/terminal-text.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, def) => {
@@ -24,7 +27,7 @@ const flag = (name, def) => {
 };
 
 function die(msg) {
-  console.error(`✗ wait-bgm.mjs: ${msg}`);
+  console.error(`✗ wait-bgm.mjs: ${msg}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 }
 
@@ -80,17 +83,25 @@ function writeStatus(status) {
     generated_at: new Date().toISOString(),
     ...status,
   };
-  writeFileSync(outPath, JSON.stringify(payload, null, 2) + "\n");
+  // Renamed into place, so a link planted at the status file is replaced, never written through.
+  replaceFile(outPath, JSON.stringify(payload, null, 2) + "\n");
   return payload;
 }
 
 if (!existsSync(audioMetaPath)) die(`audio_meta.json missing at ${audioMetaPath}`);
 
-const audioMeta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
-const bgmPath = audioMeta.bgm?.path || "";
-const bgmAbsPath = bgmPath ? join(hyperframesDir, bgmPath) : "";
-const logPath = audioMeta.bgm_log || "";
-const pid = audioMeta.bgm_pid || null;
+let audioMeta;
+try {
+  audioMeta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
+} catch (e) {
+  die(`audio_meta.json parse: ${e.message}`);
+}
+// A track path that leads outside the project counts as no track.
+const bgmAbsPath = (audioMeta.bgm?.path && projectPath(hyperframesDir, audioMeta.bgm.path)) || "";
+const bgmPath = bgmAbsPath ? audioMeta.bgm.path : "";
+// Only the engine's own log in assets/bgm is read; any other bgm_log counts as no log, and its pid goes with it.
+const logPath = engineBgmLog(hyperframesDir, audioMeta.bgm_log) || "";
+const pid = (logPath && audioMeta.bgm_pid) || null;
 
 const base = {
   enabled: Boolean(audioMeta.bgm_pending && bgmPath),
@@ -113,29 +124,38 @@ if (!base.enabled) {
     waited_ms: 0,
     message: "BGM not requested or disabled in audio_meta.json.",
   });
-  console.log(`✓ bgm: ${status.status} (${status.message})`);
+  console.log(terminalText(`✓ bgm: ${status.status} (${status.message})`));
   process.exit(0);
 }
 
-const started = Date.now();
+// The job leaves the track that was at the name in place until its own is complete, then renames its own over it.
+const before = audioMeta.bgm_replaces;
+const isFromBeforeTheJob = (file) =>
+  Boolean(before) &&
+  file.ino === before.ino &&
+  file.size === before.size &&
+  file.mtimeMs === before.mtime_ms;
+
+const started = performance.now();
 let lastFailure = "";
 let lastTail = "";
 
-while (Date.now() - started <= timeoutMs) {
-  if (existsSync(bgmAbsPath)) {
-    const size = statSync(bgmAbsPath).size;
+for (;;) {
+  const track = statSync(bgmAbsPath, { throwIfNoEntry: false });
+  if (track && !isFromBeforeTheJob(track)) {
+    const size = track.size;
     writeStatus({
       ...base,
       status: "ready",
       ready: true,
-      waited_ms: Date.now() - started,
+      waited_ms: Math.round(performance.now() - started),
       size_bytes: size,
       message: `BGM ready at ${bgmPath}.`,
     });
-    console.log(`✓ bgm: ready (${bgmPath}, ${size}B)`);
+    console.log(terminalText(`✓ bgm: ready (${bgmPath}, ${size}B)`));
     const generated = { path: bgmPath, type: "bgm", source: "generated", provider: base.provider };
     for (const anomaly of recordInManifest(hyperframesDir, [generated]))
-      console.error(`  ${anomaly}`);
+      console.error(terminalText(`  ${anomaly}`));
     process.exit(0);
   }
 
@@ -150,26 +170,27 @@ while (Date.now() - started <= timeoutMs) {
       ...base,
       status: "failed",
       ready: false,
-      waited_ms: Date.now() - started,
+      waited_ms: Math.round(performance.now() - started),
       process_alive: alive,
       message,
-      error_tail: lastFailure || lastTail.slice(-2000),
+      error_tail: (lastFailure || lastTail).slice(-2000),
     });
-    console.log(`! bgm: failed (${status.message})`);
+    console.log(terminalText(`! bgm: failed (${status.message})`));
     process.exit(0);
   }
 
-  if (timeoutMs === 0) break;
-  await sleep(Math.min(intervalMs, Math.max(0, timeoutMs - (Date.now() - started))));
+  const waited = performance.now() - started;
+  if (waited >= timeoutMs) break;
+  await sleep(Math.min(intervalMs, timeoutMs - waited));
 }
 
 const status = writeStatus({
   ...base,
   status: "timeout",
   ready: false,
-  waited_ms: Date.now() - started,
+  waited_ms: Math.round(performance.now() - started),
   process_alive: isProcessAlive(pid),
   message: `Timed out waiting for ${bgmPath}; assemble-index will skip BGM if still absent.`,
   log_tail: lastTail.slice(-2000),
 });
-console.log(`! bgm: timeout after ${status.waited_ms}ms (${bgmPath})`);
+console.log(terminalText(`! bgm: timeout after ${status.waited_ms}ms (${bgmPath})`));

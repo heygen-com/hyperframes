@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 export interface ProcessRssSample {
   pid: number;
@@ -19,7 +20,9 @@ function defaultExec(): ExecFileLike {
   // (same reason psnr.ts does this).
   const execFileP = promisify(execFile);
   return async (file, args) => {
-    const { stdout } = await execFileP(file, [...args], { windowsHide: true, timeout: 5_000 });
+    const binary = findTrustedExecutable(file);
+    if (!binary) throw new Error(`${file} is not in a trusted PATH folder`);
+    const { stdout } = await execFileP(binary, [...args], { windowsHide: true, timeout: 5_000 });
     return { stdout: String(stdout) };
   };
 }

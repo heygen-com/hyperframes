@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,14 +27,21 @@ describe("projectLink", () => {
   let writeProjectLink: typeof import("./projectLink.js").writeProjectLink;
   let readTeamProject: typeof import("./projectLink.js").readTeamProject;
   let writeTeamProject: typeof import("./projectLink.js").writeTeamProject;
+  let teamProjectLinkedHere: typeof import("./projectLink.js").teamProjectLinkedHere;
 
   beforeEach(async () => {
     osState.home = mkdtempSync(join(tmpdir(), "hf-home-"));
     projectsPath = join(osState.home, ".hyperframes", "projects.json");
     projectDirs = [];
     vi.resetModules();
-    ({ ensureProjectId, readProjectLink, writeProjectLink, readTeamProject, writeTeamProject } =
-      await import("./projectLink.js"));
+    ({
+      ensureProjectId,
+      readProjectLink,
+      writeProjectLink,
+      readTeamProject,
+      writeTeamProject,
+      teamProjectLinkedHere,
+    } = await import("./projectLink.js"));
   });
 
   afterEach(() => {
@@ -112,5 +127,62 @@ describe("projectLink", () => {
     // Team-space project: id + shared space id round-trip.
     writeTeamProject(dir, { projectId: "hfp_team", spaceId: "space-42" });
     expect(readTeamProject(dir)).toEqual({ projectId: "hfp_team", spaceId: "space-42" });
+  });
+
+  it("refuses a team descriptor that is a link, and replaces the link rather than writing through it", () => {
+    const dir = makeProjectDir();
+    const victim = join(makeProjectDir(), ".bashrc");
+    writeFileSync(victim, "victim bytes\n");
+    mkdirSync(join(dir, ".hyperframes"));
+    const descriptor = join(dir, ".hyperframes", "project.json");
+    symlinkSync(victim, descriptor);
+
+    expect(() => readTeamProject(dir)).toThrow(/is a link or not a plain file/);
+    writeTeamProject(dir, { projectId: "hfp_new" });
+
+    expect(readFileSync(victim, "utf-8")).toBe("victim bytes\n");
+    expect(lstatSync(descriptor).isFile()).toBe(true);
+    expect(readTeamProject(dir)).toEqual({ projectId: "hfp_new" });
+  });
+
+  it("refuses to read or write the team descriptor through a linked .hyperframes folder", () => {
+    const dir = makeProjectDir();
+    const outside = makeProjectDir();
+    const victim = join(outside, "project.json");
+    writeFileSync(victim, "victim bytes\n");
+    symlinkSync(outside, join(dir, ".hyperframes"));
+
+    expect(() => readTeamProject(dir)).toThrow(/is a link or not a plain file/);
+    expect(() => writeTeamProject(dir, { projectId: "hfp_new" })).toThrow(/Could not write/);
+    expect(readFileSync(victim, "utf-8")).toBe("victim bytes\n");
+  });
+
+  it("keeps the published space in the link record", () => {
+    const dir = makeProjectDir();
+    writeProjectLink(dir, { projectId: "hfp_1", url: "u", spaceId: "space-1" });
+    expect(readProjectLink(dir)).toEqual({ projectId: "hfp_1", url: "u", spaceId: "space-1" });
+  });
+
+  it("links a team descriptor only when this machine's record names its project and space", () => {
+    const dir = makeProjectDir();
+    const team = { projectId: "hfp_team", spaceId: "space-42" };
+
+    // A descriptor that came with the folder, and nothing on this machine.
+    expect(teamProjectLinkedHere(dir, team)).toBe(false);
+
+    writeProjectLink(dir, { projectId: "hfp_other", url: "u", spaceId: "space-42" });
+    expect(teamProjectLinkedHere(dir, team)).toBe(false);
+
+    writeProjectLink(dir, { projectId: "hfp_team", url: "u", spaceId: "" });
+    expect(teamProjectLinkedHere(dir, team)).toBe(false);
+
+    writeProjectLink(dir, { projectId: "hfp_team", url: "u", spaceId: "space-42" });
+    expect(teamProjectLinkedHere(dir, team)).toBe(true);
+    expect(teamProjectLinkedHere(makeProjectDir(), team)).toBe(false);
+
+    // A record from before the space was kept still links its own project.
+    writeProjectLink(dir, { projectId: "hfp_team", url: "u" });
+    expect(teamProjectLinkedHere(dir, team)).toBe(true);
+    expect(teamProjectLinkedHere(dir, { projectId: "hfp_team" })).toBe(true);
   });
 });

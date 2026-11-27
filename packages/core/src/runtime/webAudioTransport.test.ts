@@ -2,7 +2,13 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { MAX_AUDIO_GAIN } from "../audioGain.js";
 import { mediaElementTime } from "./mediaClock";
+import { reportMediaLoadFailure } from "./mediaLoadFailure";
 import { WebAudioTransport } from "./webAudioTransport";
+
+vi.mock("./mediaLoadFailure", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./mediaLoadFailure")>();
+  return { ...real, reportMediaLoadFailure: vi.fn(real.reportMediaLoadFailure) };
+});
 
 function createMockAudioContext(currentTime = 100) {
   const startFn = vi.fn();
@@ -542,6 +548,31 @@ describe("WebAudioTransport", () => {
       expect(mock.startFn).toHaveBeenCalledWith(108, 1.5);
     });
 
+    // fails without the fix: the buffer played a looped clip's source once, from past its end.
+    it("loops a looping element's buffer over [mediaStart, end], from the pass the playhead is in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true, duration: 10 } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // 20 s into a clip whose source loops 2..10 s: two passes and 4 s in, so 6 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 10 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 6, 10);
+    });
+
+    it("loops at the element's length, which media sync wraps at, when the decoded buffer runs longer", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const looping = { ...mockEl, loop: true, duration: 9.5 } as HTMLMediaElement;
+      const buffer = { duration: 10 } as AudioBuffer;
+
+      // Passes of 7.5 s (2..9.5): 20 s in is two passes and 5 s, so 7 s into the file.
+      await transport.schedulePlayback(looping, buffer, 0, 2, () => 20, 1, gen, 1, 30);
+
+      expect(mock.sourceNode).toMatchObject({ loop: true, loopStart: 2, loopEnd: 9.5 });
+      expect(mock.startFn).toHaveBeenCalledWith(0, 7, 10);
+    });
+
     it("starts clips at exact composition start time immediately", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
@@ -916,8 +947,8 @@ describe("WebAudioTransport", () => {
       return { ctx, gainNodes, analysers, masterGain, monitorGain, mediaElementSource };
     }
 
-    function setupGroupTransport(currentTime = 100) {
-      const transport = new WebAudioTransport();
+    function setupGroupTransport(currentTime = 100, opts?: { busDocument?: Document | null }) {
+      const transport = new WebAudioTransport(opts);
       const mock = createGroupMockAudioContext(currentTime);
       (transport as unknown as { _ctx: unknown })._ctx = mock.ctx;
       (transport as unknown as { _masterGain: unknown })._masterGain = mock.masterGain;
@@ -1597,6 +1628,30 @@ describe("WebAudioTransport", () => {
         expect(masterGain.connect).not.toHaveBeenCalledWith(busOut);
       });
 
+      // fails without the fix: the transport built its own context, which Safari keeps silent outside a tap.
+      it("plays on the context it is handed instead of making one", () => {
+        const made = vi.fn();
+        vi.stubGlobal("AudioContext", made);
+        const { ctx } = createMockAudioContext();
+        const transport = new WebAudioTransport({ context: ctx as unknown as AudioContext });
+
+        expect(transport.open()).toBe(true);
+
+        expect(transport.context).toBe(ctx);
+        expect(made).not.toHaveBeenCalled();
+        vi.unstubAllGlobals();
+      });
+
+      it("reads no master chain from the page when it is given no bus document", async () => {
+        document.body.innerHTML = `<div id="root" data-composition-id="main" data-fx-chain='${GAIN_CHAIN}'></div>`;
+        const setup = setupGroupTransport(100, { busDocument: null });
+        const busOut = withBusOut(setup);
+
+        await scheduleGrouped(setup.transport, setup.gen, "a");
+
+        expect(setup.mock.masterGain.disconnect).not.toHaveBeenCalledWith(busOut);
+      });
+
       it("feeds grouped members through the same master bus", async () => {
         document.body.innerHTML = `<div id="root" data-composition-id="main" data-fx-chain='${GAIN_CHAIN}'></div>`;
         const setup = setupGroupTransport();
@@ -1824,11 +1879,24 @@ describe("WebAudioTransport", () => {
       expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
       expect(t.fitsDecodeBudget(audio("b.mp4", 100))).toBe(false);
       expect(t.fitsDecodeBudget(audio("c.mp4", 10))).toBe(true);
+      // The decode is still in flight: unstubbed, it would reach the real network after this test.
+      t.destroy();
       vi.unstubAllGlobals();
     });
 
     it("leaves a clip that has not loaded to its source", () => {
       expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
+    });
+
+    it("never fetches an hour-long source, too long to decode in the page, on a path that skips the budget", async () => {
+      vi.stubGlobal("mediaHeaderSeconds", () => 3600);
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      const t = transport();
+      await expect(t.decodeAudioElement(audio("long.mp4", Number.NaN))).resolves.toBeNull();
+      await expect(t.decodeAudioElement(audio("hour.mp4", 3600))).resolves.toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
     });
   });
 
@@ -1850,6 +1918,74 @@ describe("WebAudioTransport", () => {
     // Keys are resolved against the document, so one asset has one key however it is written.
     const key = (src: string) => new URL(src, document.baseURI).href;
 
+    // fails without the fix: a fetch that settled after destroy() reported a load failure for a torn-down
+    // player; in this file's runs that report reached `window` after the test environment was gone.
+    it("makes no request for a decode started just before destroy()", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      const decoded = transport.decodeAudioElement(el("early.wav"));
+      transport.destroy();
+      expect(await decoded).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it("reports nothing for a decode fetch that settles after destroy()", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      let fail = (_reason: unknown) => {};
+      let fetched = () => {};
+      const started = new Promise<void>((resolve) => (fetched = resolve));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_src: string, init: RequestInit) =>
+            new Promise((_, reject) => {
+              fail = reject;
+              init.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+              fetched();
+            }),
+        ),
+      );
+      vi.mocked(reportMediaLoadFailure).mockClear();
+      const decoded = transport.decodeAudioElement(el("late.wav"));
+      await started;
+      transport.destroy();
+      fail(new TypeError("fetch failed"));
+      expect(await decoded).toBeNull();
+      expect(reportMediaLoadFailure).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it("reports and keeps nothing for a decode that settles after destroy()", async () => {
+      let fail = (_reason: unknown) => {};
+      let decoding = () => {};
+      const started = new Promise<void>((resolve) => (decoding = resolve));
+      const transport = transportWithDecode(
+        () =>
+          new Promise<AudioBuffer>((_, reject) => {
+            fail = reject;
+            decoding();
+          }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) })),
+      );
+      vi.mocked(reportMediaLoadFailure).mockClear();
+      const decoded = transport.decodeAudioElement(el("late.wav"));
+      await started;
+      transport.destroy();
+      fail(new DOMException("The context was closed", "InvalidStateError"));
+      expect(await decoded).toBeNull();
+      expect(reportMediaLoadFailure).not.toHaveBeenCalled();
+      expect(failedSrcs(transport).size).toBe(0);
+      vi.unstubAllGlobals();
+    });
+
     it("does NOT blacklist a transient fetch failure — a later play retries and succeeds", async () => {
       const transport = transportWithDecode(async () => ({}) as AudioBuffer);
       const fetchMock = vi
@@ -1865,6 +2001,31 @@ describe("WebAudioTransport", () => {
       const second = await transport.decodeAudioElement(el("tts.wav"));
       expect(second).not.toBeNull(); // self-heals once the asset is available
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      vi.unstubAllGlobals();
+    });
+
+    // fails without the fix: a player decoding a sealed film's files could not keep its fetches on the host.
+    it("sends every decode fetch with the request options it was made with, over no-store", async () => {
+      const transport = new WebAudioTransport({
+        fetchInit: { method: "GET", credentials: "same-origin", redirect: "error" },
+      });
+      (transport as unknown as { _ctx: unknown })._ctx = {
+        state: "running",
+        decodeAudioData: vi.fn(async () => ({}) as AudioBuffer),
+      };
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      await transport.decodeAudioElement(el("bed.m4a"));
+      expect(fetchMock).toHaveBeenCalledWith(key("bed.m4a"), {
+        cache: "no-store",
+        method: "GET",
+        credentials: "same-origin",
+        redirect: "error",
+        signal: expect.any(AbortSignal),
+      });
       vi.unstubAllGlobals();
     });
 

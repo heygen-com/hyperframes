@@ -5,12 +5,23 @@
 import {
   basename,
   join,
+  sep,
   resolve as nodeResolve,
   relative as nodeRelative,
   isAbsolute as nodeIsAbsolute,
 } from "node:path";
+import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { isSafePath } from "@hyperframes/core/safe-path";
+import { isPrivateFileUnder, isSafePath, isStudioPrivatePath } from "@hyperframes/core/safe-path";
+import {
+  isCopiedOutsideFileType,
+  isPrivateOutsideFile,
+  isUploadedOutsideFileType,
+  type LeftOutReason,
+  leftOutWarning,
+  linksOutside,
+} from "@hyperframes/studio-server/outside-file";
+import { realFilePath } from "@hyperframes/studio-server/safe-path";
 
 export interface RenderPaths {
   absoluteProjectDir: string;
@@ -68,6 +79,46 @@ export function isPathInside(
 /** True when `assetRoot` is set and `path`, symlinks resolved, leaves it. */
 export function escapesAssetRoot(path: string, assetRoot: string | undefined): boolean {
   return assetRoot !== undefined && !isSafePath(assetRoot, path);
+}
+
+export interface OutsideFilePolicy {
+  /** The person passed --include-outside-files, so scripts outside the project run too. */
+  includeScripts?: boolean;
+}
+
+/** Why a trusted local render leaves out `path`, which leads outside `projectDir`, as publish does; null to bring it in. */
+export function outsideAssetRefusal(
+  projectDir: string,
+  path: string,
+  policy: OutsideFilePolicy = {},
+): LeftOutReason | null {
+  if (!linksOutside(projectDir, path)) {
+    const privateByAnotherSpelling =
+      !isPathInside(path, projectDir) && isPrivateFileUnder(projectDir, path, isStudioPrivatePath);
+    return privateByAnotherSpelling ? "blocklisted" : null;
+  }
+  if (isPrivateOutsideFile(projectDir, path)) return "blocklisted";
+  const folder = statSync(path, { throwIfNoEntry: false })?.isDirectory();
+  if (folder || isUploadedOutsideFileType(path)) return null;
+  if (!isCopiedOutsideFileType(path)) return "file_type";
+  return policy.includeScripts ? null : "script";
+}
+
+export const leftOutOfRender = (file: string, reference: string, reason: LeftOutReason): string =>
+  leftOutWarning(file, reference, reason, "render");
+
+/** True, after a warning, when a trusted local render must not serve or copy `path`, a project file that leads outside. */
+export function refusesOutsideLink(
+  projectDir: string,
+  path: string,
+  warn: (line: string) => void,
+  policy: OutsideFilePolicy = {},
+) {
+  const refusal = outsideAssetRefusal(projectDir, path, policy);
+  if (!refusal) return false;
+  const file = nodeRelative(projectDir, path).split(sep).join("/");
+  warn(leftOutOfRender(file, realFilePath(path), refusal));
+  return true;
 }
 
 /**

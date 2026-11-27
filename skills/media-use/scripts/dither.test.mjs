@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync, lstatSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { once } from "node:events";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -174,3 +175,52 @@ test("rejects tagged PQ or HLG instead of silently producing SDR", { skip: !HAS_
   assert.equal(result.status, 1);
   assert.match(JSON.parse(result.stdout).error, /HDR arib-std-b67 input is not supported/);
 });
+
+async function runWithLinkAtOldTempName(input, output, outsideFile) {
+  const child = spawn(process.execPath, [SCRIPT, "--input", input, "--out", output, "--json"]);
+  let stdout = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  const extension = output.slice(output.lastIndexOf("."));
+  const oldTempName = `${output.slice(0, -extension.length)}.part-${child.pid}${extension}`;
+  symlinkSync(outsideFile, oldTempName);
+  const [status] = await once(child, "close");
+  return { status, stdout, oldTempName };
+}
+
+for (const [kind, source, outName, makeSource] of [
+  ["image", "source.png", "dithered.png", ["-frames:v", "1"]],
+  ["video", "source.mp4", "dithered.mp4", ["-t", "1", "-pix_fmt", "yuv420p"]],
+]) {
+  test(
+    `the ${kind} output is staged in a fresh folder, so a link at the old temp name is left alone`,
+    { skip: !HAS_FFMPEG || process.platform === "win32" },
+    async (t) => {
+      const { dir, cleanup } = fixture();
+      const elsewhere = fixture();
+      t.after(cleanup);
+      t.after(elsewhere.cleanup);
+      const input = join(dir, source);
+      const output = join(dir, outName);
+      const outsideFile = join(elsewhere.dir, "outside-the-project.bin");
+      const otherOutsideFile = join(elsewhere.dir, "also-outside-the-project.bin");
+      ffmpeg(["-f", "lavfi", "-i", "testsrc2=size=16x12:rate=3", ...makeSource, input]);
+      symlinkSync(otherOutsideFile, output);
+
+      const { status, stdout, oldTempName } = await runWithLinkAtOldTempName(
+        input,
+        output,
+        outsideFile,
+      );
+
+      assert.equal(status, 0, stdout);
+      assert.equal(existsSync(outsideFile), false);
+      assert.equal(existsSync(otherOutsideFile), false);
+      assert.equal(lstatSync(output).isFile(), true);
+      assert.equal(lstatSync(oldTempName).isSymbolicLink(), true);
+      assert.deepEqual(
+        readdirSync(dir).filter((name) => name.startsWith(".media-use-dither-")),
+        [],
+      );
+    },
+  );
+}

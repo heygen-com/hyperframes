@@ -1,7 +1,9 @@
-import { mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { createFileAtomically } from "@hyperframes/core/atomic-file";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { recordFolder } from "./projectRecords.js";
 import { readToolContext, type ToolContext } from "./toolContext.js";
 
 export class ProjectLockTimeout extends Error {}
@@ -78,7 +80,9 @@ function sayWaiting(current: Holder | null, waitMs: number): void {
   if (!current) return;
   const running = Math.round((Date.now() - current.startedAt) / 1000);
   console.error(
-    `[hyperframes] waiting for ${current.command} (pid ${current.pid}, running ${running}s) to finish with this project; waiting up to ${Math.round(waitMs / 1000)}s`,
+    terminalText(
+      `[hyperframes] waiting for ${current.command} (pid ${current.pid}, running ${running}s) to finish with this project; waiting up to ${Math.round(waitMs / 1000)}s`,
+    ),
   );
 }
 
@@ -90,7 +94,10 @@ export async function withProjectLock<T>(
 ): Promise<T> {
   if (!context.projectLock) return run();
   const path = projectLockPath(projectDir);
-  mkdirSync(dirname(path), { recursive: true });
+  if (!recordFolder(projectDir, ""))
+    throw new Error(
+      `${join(projectDir, ".hyperframes")} is a link or not a folder; remove it and run again`,
+    );
   const holder: Holder = { pid: process.pid, command, startedAt: Date.now() };
   const deadline = holder.startedAt + context.projectLock.waitMs;
   let nextNoticeAt = holder.startedAt + FIRST_NOTICE_MS;

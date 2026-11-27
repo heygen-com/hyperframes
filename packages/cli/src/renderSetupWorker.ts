@@ -1,6 +1,9 @@
 import "./utils/hideChildConsoles.js";
 import "./utils/windowsExeSearch.js";
+import { readFile, rm } from "node:fs/promises";
 import { constants, setPriority } from "node:os";
+import { terminalText } from "@hyperframes/core/terminal-text";
+import { lintHyperframeHtml } from "@hyperframes/lint";
 import { runBrowserInstall } from "./browser/installRun.js";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
 import { lintProject } from "./utils/lintProject.js";
@@ -29,7 +32,9 @@ function setOwnPriority(priority: number, whatStaysNormal: string): void {
   } catch (error) {
     if (SANDBOX_REFUSED_PRIORITY.has((error as { info?: { code?: string } }).info?.code ?? ""))
       return;
-    process.stderr.write(`${whatStaysNormal} at normal priority: ${(error as Error).message}\n`);
+    process.stderr.write(
+      `${whatStaysNormal} at normal priority: ${terminalText((error as Error).message)}\n`,
+    );
   }
 }
 
@@ -47,6 +52,13 @@ async function runMode(): Promise<unknown> {
       input.entryFile,
       input.host ? { host: input.host } : undefined,
     );
+  }
+  if (mode === "lint-html") {
+    try {
+      return await lintHyperframeHtml(await readFile(input.htmlPath, "utf-8"), input.opts);
+    } finally {
+      await rm(input.htmlPath, { force: true });
+    }
   }
   if (mode === "orphan-cleanup") {
     const killed = killOrphanedProcesses();

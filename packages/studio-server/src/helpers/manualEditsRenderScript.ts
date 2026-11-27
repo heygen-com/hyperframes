@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication
+import { htmlHasStudioReappliedMark } from "@hyperframes/core";
 export interface StudioManualEditsRenderScriptOptions {
   activeCompositionPath?: string | null;
 }
@@ -13,17 +14,22 @@ export function createStudioManualEditsRenderBodyScript(
   return `(${studioManualEditsRenderRuntime.toString()})(${JSON.stringify(manifestContent)}, ${JSON.stringify(options.activeCompositionPath ?? null)});`;
 }
 
-/**
- * Returns a self-contained IIFE string that re-applies studio position edits
- * (translate, rotate) after every GSAP seek by querying data attributes baked
- * into the HTML. Works without a JSON manifest — positions are already inlined
- * as CSS custom properties on the elements.
- */
+const positionSeekReapplyCall = (followFrames: "true" | "false") =>
+  `(${studioPositionSeekReapplyRuntime.toString()})(${followFrames});`;
+
+/** A self-contained script that puts the page's committed Studio edits back after every seek. */
 export function createStudioPositionSeekReapplyScript(): string {
-  return `(${studioPositionSeekReapplyRuntime.toString()})();`;
+  return positionSeekReapplyCall("false");
 }
 
-function studioPositionSeekReapplyRuntime(): void {
+export const htmlHasStudioPositionEdits = htmlHasStudioReappliedMark;
+
+/** The reapply for a preview frame Studio cannot script; Studio wraps one it can script itself. */
+export function createSealedPreviewSeekReapplyScript(): string {
+  return `(function(){try{if(window.parent===window||window.parent.document)return}catch(_){}${positionSeekReapplyCall("true")}})();`;
+}
+
+function studioPositionSeekReapplyRuntime(followFrames: boolean): void {
   const OFFSET_X_PROP = "--hf-studio-offset-x";
   const OFFSET_Y_PROP = "--hf-studio-offset-y";
   const WIDTH_PROP = "--hf-studio-width";
@@ -38,13 +44,16 @@ function studioPositionSeekReapplyRuntime(): void {
   const MOTION_TL_KEY = "studio-motion";
   const WRAPPED_PROP = "__hfStudioPositionSeekReapplyWrapped";
 
+  const sealedFrameArmsBeforeAnyEdit = followFrames;
   if (
+    !sealedFrameArmsBeforeAnyEdit &&
     !document.querySelector("[" + PATH_OFFSET_ATTR + '="true"]') &&
     !document.querySelector("[" + BOX_SIZE_ATTR + '="true"]') &&
     !document.querySelector("[" + ROTATION_ATTR + '="true"]') &&
     !document.querySelector("[" + MOTION_ATTR + "]")
   )
     return;
+  (window as unknown as Record<string, unknown>).__hfStudioSeekReapplyStarted = true;
 
   const splitTopLevelWhitespace = (value: string): string[] => {
     const parts: string[] = [];
@@ -263,10 +272,10 @@ function studioPositionSeekReapplyRuntime(): void {
     __player?: Record<string, unknown>;
   };
 
-  const isWrapped = (fn: (time: number) => unknown): boolean =>
+  const isWrapped = (fn: (...args: never[]) => unknown): boolean =>
     Boolean((fn as unknown as Record<string, unknown>)[WRAPPED_PROP]);
 
-  const markWrapped = (fn: (time: number) => unknown): void => {
+  const markWrapped = (fn: (...args: never[]) => unknown): void => {
     try {
       Object.defineProperty(fn, WRAPPED_PROP, {
         configurable: false,
@@ -282,52 +291,42 @@ function studioPositionSeekReapplyRuntime(): void {
     }
   };
 
-  const wrapFn = (get: () => unknown, set: (fn: (time: number) => unknown) => void): boolean => {
-    const fn = get();
+  type Seek = (time: number, ...rest: unknown[]) => unknown;
+  type SeekSlot = [owner: "__hf" | "__player", key: string];
+  const SEEKS: SeekSlot[] = [
+    ["__hf", "seek"],
+    ["__player", "renderSeek"],
+  ];
+
+  const wrapFn = ([owner, key]: SeekSlot): boolean => {
+    const fn = runtimeWindow[owner]?.[key];
     if (typeof fn !== "function") return false;
-    const seek = fn as (time: number) => unknown;
+    const seek = fn as Seek;
     if (isWrapped(seek)) {
       reapplyAll();
       return true;
     }
-    const wrapped = function (this: unknown, time: number): unknown {
+    const wrapped = function (this: unknown, time: number, ...rest: unknown[]): unknown {
       lastSeekTime = typeof time === "number" && Number.isFinite(time) ? Math.max(0, time) : 0;
-      const result = seek.call(this, time);
+      const result = seek.call(this, time, ...rest);
       reapplyAll();
       return result;
     };
     markWrapped(wrapped);
-    set(wrapped);
+    const target = runtimeWindow[owner];
+    if (target) target[key] = wrapped;
     reapplyAll();
     return true;
   };
 
-  const wrapSeekFunctions = (): boolean => {
-    const a = wrapFn(
-      () => runtimeWindow.__hf?.["seek"],
-      (fn) => {
-        if (runtimeWindow.__hf) runtimeWindow.__hf["seek"] = fn;
-      },
-    );
-    const b = wrapFn(
-      () => runtimeWindow.__player?.["renderSeek"],
-      (fn) => {
-        if (runtimeWindow.__player) runtimeWindow.__player["renderSeek"] = fn;
-      },
-    );
-    return a || b;
-  };
+  const wrapSeekFunctions = (): boolean => SEEKS.map(wrapFn).some(Boolean);
 
-  const installSeekTrap = (
-    obj: Record<string, unknown> | undefined,
-    key: string,
-    getter: () => unknown,
-    setter: (fn: (time: number) => unknown) => void,
-  ): void => {
+  const installSeekTrap = (slot: SeekSlot): void => {
+    const obj = runtimeWindow[slot[0]];
     if (!obj) return;
     try {
-      let current = obj[key];
-      Object.defineProperty(obj, key, {
+      let current = obj[slot[1]];
+      Object.defineProperty(obj, slot[1], {
         configurable: true,
         enumerable: true,
         get() {
@@ -335,9 +334,7 @@ function studioPositionSeekReapplyRuntime(): void {
         },
         set(value: unknown) {
           current = value;
-          if (typeof value === "function" && !isWrapped(value as (time: number) => unknown)) {
-            wrapFn(getter, setter);
-          }
+          if (typeof value === "function" && !isWrapped(value as Seek)) wrapFn(slot);
         },
       });
     } catch {
@@ -352,22 +349,29 @@ function studioPositionSeekReapplyRuntime(): void {
   }
 
   wrapSeekFunctions();
-  installSeekTrap(
-    runtimeWindow.__hf,
-    "seek",
-    () => runtimeWindow.__hf?.["seek"],
-    (fn) => {
-      if (runtimeWindow.__hf) runtimeWindow.__hf["seek"] = fn;
-    },
-  );
-  installSeekTrap(
-    runtimeWindow.__player as Record<string, unknown> | undefined,
-    "renderSeek",
-    () => runtimeWindow.__player?.["renderSeek"],
-    (fn) => {
-      if (runtimeWindow.__player) runtimeWindow.__player["renderSeek"] = fn;
-    },
-  );
+  for (const slot of SEEKS) installSeekTrap(slot);
+  // A sealed preview seeks and plays past every hook above: reapply on each frame where time moved.
+  const readNumber = (owner: Record<string, unknown> | undefined, key: string): number => {
+    const fn = owner?.[key];
+    return typeof fn === "function" ? Number(fn.call(owner)) : Number.NaN;
+  };
+  let drawnKey = "";
+  const followFrame = (): void => {
+    const time = readNumber(runtimeWindow.__player, "getTime");
+    const timelines = (runtimeWindow as { __timelines?: Record<string, Record<string, unknown>> })
+      .__timelines;
+    let key = time + "," + String(runtimeWindow.__hf?.["redraws"]);
+    for (const id in timelines)
+      if (id !== MOTION_TL_KEY) key += "," + readNumber(timelines[id], "totalTime");
+    if (key !== drawnKey) {
+      drawnKey = key;
+      lastSeekTime = Number.isFinite(time) ? Math.max(0, time) : lastSeekTime;
+      reapplyAll();
+    }
+    // Asked for after this paint, so the next frame runs it after the runtime's own tick.
+    window.setTimeout(() => window.requestAnimationFrame(followFrame), 0);
+  };
+  if (followFrames) window.requestAnimationFrame(followFrame);
   let remaining = 120;
   const interval = setInterval(() => {
     wrapSeekFunctions();
@@ -418,9 +422,7 @@ function studioManualEditsRenderRuntime(
   const sourceFileForElement = (element: HTMLElement): string => {
     let current: HTMLElement | null = element;
     while (current) {
-      const sourceFile =
-        current.getAttribute("data-composition-file") ??
-        current.getAttribute("data-composition-src");
+      const sourceFile = current.getAttribute("data-composition-file");
       if (sourceFile) return sourceFile;
       current = current.parentElement;
     }

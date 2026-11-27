@@ -38,3 +38,20 @@ export function cleanupStudioServerRoot(
   fs.rmSync(root, { recursive: true, force: true });
   onDone?.();
 }
+
+/** Windows refuses to rename a folder while a file in it is open: waits for the server's history there to finish writing. */
+export async function historyWritesSettled(
+  server: { adapter: { history?: (project: never) => unknown } },
+  projectDir: string,
+): Promise<void> {
+  const project = {
+    dir: projectDir,
+    id: path.basename(projectDir),
+    title: path.basename(projectDir),
+  };
+  const history = (await server.adapter.history?.(project as never)) as {
+    flush(): Promise<void>;
+  } | null;
+  if (!history) throw new Error(`No history is open for ${projectDir} to wait for`);
+  await history.flush();
+}

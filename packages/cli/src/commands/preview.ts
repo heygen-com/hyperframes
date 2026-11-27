@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { setCommandExitCode, requestCliExit } from "../utils/commandResult.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "../utils/defineCommand.js";
@@ -48,6 +49,7 @@ import { createRequire } from "node:module";
 import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { desktopHint, insideHostApp } from "../utils/desktopApp.js";
+import { shellArg } from "../utils/shellArg.js";
 import { isDevMode } from "../utils/env.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
@@ -198,7 +200,7 @@ export default defineCommand({
     },
     "lint-verbose": {
       type: "boolean",
-      description: "Show full lint findings on startup (default: a one-line summary)",
+      description: "Show full lint findings on startup instead of a one-line summary",
       default: false,
     },
     open: {
@@ -341,8 +343,8 @@ export default defineCommand({
           } else {
             console.log(
               stopped
-                ? `\n  ${c.success("Stopped background preview")} ${c.dim(project.dir)}\n`
-                : `\n  ${c.dim("No background preview is running for")} ${project.dir}\n`,
+                ? `\n  ${c.success("Stopped background preview")} ${c.dim(terminalText(project.dir))}\n`
+                : `\n  ${c.dim("No background preview is running for")} ${terminalText(project.dir)}\n`,
             );
           }
           return;
@@ -359,7 +361,9 @@ export default defineCommand({
               }),
             );
           } else {
-            console.log(`\n  ${c.dim("No background preview is running for")} ${project.dir}\n`);
+            console.log(
+              `\n  ${c.dim("No background preview is running for")} ${terminalText(project.dir)}\n`,
+            );
           }
           return;
         }
@@ -535,15 +539,12 @@ export default defineCommand({
           preferredPort: explicitPort,
         });
       } catch (error) {
-        const message = errorMessage(error);
-        if (args.json) {
-          writeLifecycleJson(
-            lifecycleFailurePayload("start", backgroundStartFailureCode(error), message),
-          );
-        } else {
-          clack.log.error(message);
-        }
-        setCommandExitCode(1);
+        reportPreviewFailure(
+          Boolean(args.json),
+          "start",
+          backgroundStartFailureCode(error),
+          errorMessage(error),
+        );
         return;
       }
       const url = `http://localhost:${background.port}`;
@@ -572,7 +573,7 @@ export default defineCommand({
               : `Running in the background. Log: ${background.logPath}`,
             "Changes reload automatically in the studio.",
           ],
-          footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
+          footer: `Stop with: ${stopBackgroundCommand(dir)}`,
         });
       }
       openStudioBrowser(url, projectName, {
@@ -649,7 +650,7 @@ async function printStartupLint(dir: string, verbose: boolean): Promise<void> {
       console.log(line);
     console.log();
   } catch (error) {
-    clack.log.warn(`Lint did not finish: ${errorMessage(error)}`);
+    clack.log.warn(terminalLines(`Lint did not finish: ${errorMessage(error)}`));
   }
 }
 
@@ -704,6 +705,16 @@ export function previewLaunchModeError(options: {
   return null;
 }
 
+export function stopBackgroundCommand(
+  dir: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const shown = shellArg(dir, platform);
+  return shown === null
+    ? "hyperframes preview --stop from the project folder"
+    : `hyperframes preview ${shown} --stop`;
+}
+
 export function previewPortError(port: string | undefined): string | null {
   try {
     parsePort(port ?? "3002");
@@ -728,7 +739,7 @@ function reportPreviewFailure(
   message: string,
 ): void {
   if (json) writeLifecycleJson(lifecycleFailurePayload(operation, code, message));
-  else clack.log.error(message);
+  else clack.log.error(terminalLines(message));
   setCommandExitCode(1);
 }
 
@@ -800,9 +811,9 @@ export async function handlePreviewList(
     }
     console.log(`\n  ${c.bold("Active preview servers:")}\n`);
     for (const server of servers) {
-      const pid = server.pid ? c.dim(` (PID ${server.pid})`) : "";
+      const pid = server.pid ? c.dim(` (PID ${terminalText(String(server.pid))})`) : "";
       console.log(
-        `  ${c.accent(`Port ${server.port}`)}  ${server.projectName}  ${c.dim(server.projectDir)}${pid}`,
+        `  ${c.accent(`Port ${server.port}`)}  ${terminalText(server.projectName)}  ${c.dim(terminalText(server.projectDir))}${pid}`,
       );
     }
     console.log(`\n  ${servers.length} server${servers.length === 1 ? "" : "s"} running.\n`);
@@ -854,7 +865,7 @@ export async function handlePreviewKillAll(
       );
     } else if (failures.length > 0 || unverified.length > 0) {
       console.log(`\n  Killed ${killed} preview server${killed === 1 ? "" : "s"}.`);
-      for (const failure of failures) clack.log.warn(`Could not stop ${failure}`);
+      for (const failure of failures) clack.log.warn(`Could not stop ${terminalText(failure)}`);
       if (unverified.length > 0) {
         const plural = unverified.length === 1 ? "" : "s";
         clack.log.warn(
@@ -898,7 +909,7 @@ function printSelectionFailure(code: string, message: string, json: boolean): vo
   if (json) {
     console.log(JSON.stringify({ ok: false, error: { code, message } }, null, 2));
   } else {
-    clack.log.error(message);
+    clack.log.error(terminalLines(message));
   }
   setCommandExitCode(1);
 }
@@ -1033,13 +1044,13 @@ async function printCurrentSelection(
     return;
   }
 
-  console.log(`${c.success("◇")}  ${c.accent(selection.label)} selected in Studio`);
-  console.log(`  ${c.dim("Source")}    ${selection.sourceFile}`);
-  console.log(
-    `  ${c.dim("Target")}    ${selection.target.hfId ?? selection.target.id ?? selection.target.selector ?? "(none)"}`,
-  );
+  const target =
+    selection.target.hfId ?? selection.target.id ?? selection.target.selector ?? "(none)";
+  console.log(`${c.success("◇")}  ${c.accent(terminalText(selection.label))} selected in Studio`);
+  console.log(`  ${c.dim("Source")}    ${terminalText(selection.sourceFile)}`);
+  console.log(`  ${c.dim("Target")}    ${terminalText(target)}`);
   console.log(`  ${c.dim("Time")}      ${selection.currentTime.toFixed(3)}s`);
-  console.log(`  ${c.dim("Thumbnail")} ${selection.thumbnailUrl}`);
+  console.log(`  ${c.dim("Thumbnail")} ${terminalText(selection.thumbnailUrl)}`);
   console.log();
   console.log(c.dim("Use --json for the full agent-readable selection payload."));
 }
@@ -1205,14 +1216,16 @@ async function printCurrentContext(
 
   console.log(`${c.success("◇")}  Studio context`);
   if (contextIncludes(fields, "server")) {
-    console.log(`  ${c.dim("Project")}   ${server.projectName}`);
-    console.log(`  ${c.dim("Studio")}    ${previewBaseUrl(server.port, server.host)}`);
+    console.log(`  ${c.dim("Project")}   ${terminalText(server.projectName)}`);
+    console.log(
+      `  ${c.dim("Studio")}    ${terminalText(previewBaseUrl(server.port, server.host))}`,
+    );
   }
   if (contextIncludes(fields, "selection")) {
     if (selection.ok) {
-      console.log(`  ${c.dim("Selection")} ${selection.value.label}`);
+      console.log(`  ${c.dim("Selection")} ${terminalText(selection.value.label)}`);
     } else {
-      console.log(`  ${c.dim("Selection")} ${selection.error.message}`);
+      console.log(`  ${c.dim("Selection")} ${terminalText(selection.error.message)}`);
     }
   }
   if (contextIncludes(fields, "lint")) {
@@ -1221,7 +1234,7 @@ async function printCurrentContext(
         `  ${c.dim("Lint")}      ${lint.summary.errors} error(s), ${lint.summary.warnings} warning(s)`,
       );
     } else {
-      console.log(`  ${c.dim("Lint")}      ${lint.error.message}`);
+      console.log(`  ${c.dim("Lint")}      ${terminalText(lint.error.message)}`);
     }
   }
   console.log();
@@ -1337,17 +1350,17 @@ function printStudioSummary(
 ): void {
   const urls = studioSummaryUrls(projectName, serverUrl);
   console.log();
-  console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
-  console.log(`  ${c.dim("Studio")}    ${c.accent(urls.studioUrl)}`);
-  console.log(`  ${c.dim("Server")}    ${c.accent(urls.serverUrl)}`);
+  console.log(`  ${c.dim("Project")}   ${c.accent(terminalText(projectName))}`);
+  console.log(`  ${c.dim("Studio")}    ${c.accent(terminalText(urls.studioUrl))}`);
+  console.log(`  ${c.dim("Server")}    ${c.accent(terminalText(urls.serverUrl))}`);
   const hint = desktopHint(projectDir, { preview: opts.preview });
-  if (hint) console.log(`  ${c.dim("Desktop")}   ${hint}`);
+  if (hint) console.log(`  ${c.dim("Desktop")}   ${terminalText(hint)}`);
   console.log();
   for (const detail of opts.details ?? []) {
-    console.log(`  ${c.dim(detail)}`);
+    console.log(`  ${c.dim(terminalText(detail))}`);
   }
   if (opts.details?.length && opts.footer) console.log();
-  if (opts.footer) console.log(`  ${c.dim(opts.footer)}`);
+  if (opts.footer) console.log(`  ${c.dim(terminalText(opts.footer))}`);
   console.log();
 }
 
@@ -1465,7 +1478,7 @@ function attachStudioReadyHandler(
       reportPreviewFailure(true, "start", "preview-start-failed", err.message);
     } else {
       spinner.stop(c.error("Failed to start studio"));
-      console.error(c.dim(err.message));
+      console.error(c.dim(terminalLines(err.message)));
     }
   });
 }
@@ -1637,7 +1650,7 @@ export async function runEmbeddedMode(
       console.error();
       console.error(`  ${c.dim("Could not find")} ${c.accent("index.html")} ${c.dim("in:")}`);
       for (const checkedPath of studioBundle.checkedPaths) {
-        console.error(`  ${c.dim("-")} ${checkedPath}`);
+        console.error(`  ${c.dim("-")} ${terminalText(checkedPath)}`);
       }
       console.error();
       console.error(`  ${c.dim("Rebuild the CLI package with")} ${c.accent("bun run build")}`);

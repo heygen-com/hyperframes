@@ -1,3 +1,4 @@
+import { namedWorkspace } from "./workspace.js";
 import {
   readShareActivity,
   withShareActivity,
@@ -7,6 +8,9 @@ import {
 import { basename } from "node:path";
 import { CliUsageError } from "../utils/commandResult.js";
 import {
+  projectFingerprint,
+  shareSources,
+  sourceReconnect,
   addVersion,
   pendingReviewExport,
   refreshReviewExport,
@@ -36,6 +40,8 @@ export interface ShareAction {
   waitSeconds?: number;
   videoOnly?: boolean;
   includeSource?: boolean;
+  expectedReferencedHiddenDigest?: string;
+  confirmedReview?: string | null;
 }
 function linkState(share: ReviewShare | null, ready: boolean, failed: boolean): string {
   if (!share) return "not_shared";
@@ -78,7 +84,22 @@ async function readStatus(
     ready,
     source: uncheckedSource(),
     ...statusLinks(activeUrl, ready, processing || failed, project),
+    ...(await reviewTarget(dir, client, share, project)),
   };
+}
+async function reviewTarget(
+  dir: string,
+  client: ReviewClient,
+  share: ReviewShare | null,
+  project: Awaited<ReturnType<typeof readProject>>,
+) {
+  const reviewId = share?.projectId ?? (await recordedReview(dir));
+  const linked = project ?? (reviewId ? await client.project(reviewId).catch(() => null) : null);
+  return { reviewId, reviewTitle: linked?.title ?? null };
+}
+async function recordedReview(dir: string) {
+  const record = await reviewRecord(dir);
+  return record && !record.removed ? record.projectId : null;
 }
 async function readProject(share: ReviewShare | null, client: ReviewClient) {
   return share?.projectId ? client.project(share.projectId) : null;
@@ -115,6 +136,11 @@ function assertUploadProject(
   if (!id || (expectedId && id !== expectedId))
     throw new ReviewFailed(409, "review_binding_changed");
 }
+function assertConfirmedReview(reviewId: string | null, input: ShareAction) {
+  if (input.confirmedReview !== undefined && reviewId !== input.confirmedReview)
+    throw new ReviewFailed(409, "review_binding_changed");
+}
+const confirmedId = (input: ShareAction) => input.confirmedReview ?? undefined;
 function assertExistingIntent(share: ReviewShare | null, input: ShareAction) {
   if (!share) {
     if (input.action === "update") throw new ReviewFailed(404, "not_shared");
@@ -251,8 +277,9 @@ export function createShareService(
           client,
           spaceId: space,
           audience: input.audience,
+          confirmed: input.confirmedReview,
         });
-    assertUploadProject(share, current?.projectId);
+    assertUploadProject(share, current?.projectId ?? confirmedId(input));
     if (share.takedown) throw new ReviewFailed(409, "moderation_hold");
     assertExistingIntent(share, {
       ...input,
@@ -279,6 +306,7 @@ export function createShareService(
     await auth.access();
     attempt.authenticated();
     let current = await readStatus(dir, client, undefined, attempt.recover);
+    assertConfirmedReview(current.reviewId, input);
     if (current.share && input.audience && changesAudience(input, current.share)) {
       assertExistingIntent(current.share, { ...input, audience: undefined });
       const projectId = current.share.projectId;
@@ -309,13 +337,76 @@ export function createShareService(
       auth.access,
       target.spaceId,
       input,
-      flags.shareFiles,
+      await canAttachSource(target.spaceId, flags),
+      options.surface === "local_studio",
     );
     if (sources.requireSource) await checkPreparedTarget(target);
     await phase("uploading_video");
     return upload(input, target.projectId, sources, attempt, phase);
   };
+  async function canAttachSource(
+    spaceId: string | undefined,
+    flags: Awaited<ReturnType<typeof client.reviewFlags>>,
+  ) {
+    if (options.surface !== "local_studio" || !flags.shareFiles) return flags.shareFiles;
+    return Boolean(spaceId && (await sourceWorkspace(spaceId, flags).catch(() => null)));
+  }
+  async function sourceWorkspace(
+    requested?: string,
+    knownFlags?: Awaited<ReturnType<typeof client.reviewFlags>>,
+  ) {
+    const [flags, spaces, record] = await Promise.all([
+      knownFlags ?? client.reviewFlags(),
+      client.spaces(),
+      reviewRecord(dir),
+    ]);
+    const space = selectSpace(spaces, registrationSpace(record, requested));
+    if (
+      !flags.versionSharing ||
+      !flags.shareFiles ||
+      !space?.can_create_review ||
+      space.review_entitlements?.can_offer_edit === false
+    )
+      return null;
+    return namedWorkspace(space);
+  }
+  const reconnect = sourceReconnect({
+    projectPath: dir,
+    access: auth.access,
+    workspace: sourceWorkspace,
+  });
   return {
+    reconnect,
+    sourceStatus: async (requested?: string) => {
+      const spaceId = (await sourceWorkspace(requested))?.id;
+      if (!spaceId) return "off" as const;
+      const source = shareSources({ access: auth.access, spaceId, reuseOnly: true });
+      const result = await source.prepare(dir, await projectFingerprint(dir));
+      if (result.at === "ready") return "synced" as const;
+      if (result.reason === "source_composition_limit") return "at_limit" as const;
+      return ["source_sync_required", "source_render_changed"].includes(result.reason)
+        ? ("needs_sync" as const)
+        : ("off" as const);
+    },
+    syncProjectFiles: async (space: string, digest: string) => {
+      const spaceId = (await sourceWorkspace(space))?.id;
+      if (!spaceId || space !== spaceId)
+        throw new Error("Project file sync is unavailable in this workspace.");
+      assertReviewUploadStorage();
+      const source = shareSources({
+        access: auth.access,
+        spaceId,
+        expectedReferencedHiddenDigest: digest,
+      });
+      const result = await source.prepare(dir, await projectFingerprint(dir));
+      if (result.at !== "ready")
+        throw new Error(
+          result.reason === "source_hidden_assets_changed"
+            ? "The referenced hidden files changed. Review the updated paths and sync again."
+            : `Project files could not be synced (${result.reason}).`,
+        );
+      return status();
+    },
     checkSession: (verifyIdentity = false) => auth.access(undefined, verifyIdentity),
     status,
     run: (input: ShareAction) =>
@@ -352,6 +443,17 @@ function hasFailedVersion(version: Awaited<ReturnType<typeof reviewVersion>>): b
   return Boolean(version.failure && !version.held);
 }
 
+export function changesNamedReview(current: ShareState, input: ShareAction): boolean {
+  if (!current.reviewId) return false;
+  if (input.action === "update" || shareStillInProgress(current)) return true;
+  if (input.action !== "share") return false;
+  if (current.share && changesAudience(input, current.share)) return true;
+  return !retrievesExisting(current, input);
+}
+
+function shareStillInProgress(current: ShareState) {
+  return Boolean(current.activity);
+}
 function changesAudience(input: ShareAction, share: ReviewShare) {
   return input.action === "share" && Boolean(input.audience) && share.access !== input.audience;
 }
@@ -367,8 +469,14 @@ async function prepareSelectedSource(
   spaceId: string | undefined,
   input: ShareAction,
   shareFiles: boolean,
+  reuseOnly: boolean,
 ): Promise<PreparedShareSource> {
-  if (input.includeSource !== true || input.videoOnly)
+  if ((!reuseOnly && input.includeSource !== true) || input.videoOnly || (reuseOnly && !spaceId))
     return { source: { at: "video_only", reason: "requested" }, requireSource: false };
-  return prepareCliShareSource(dir, access, spaceId, { includeSource: true, shareFiles });
+  return prepareCliShareSource(dir, access, spaceId, {
+    includeSource: true,
+    reuseOnly,
+    shareFiles,
+    expectedReferencedHiddenDigest: input.expectedReferencedHiddenDigest,
+  });
 }

@@ -24,6 +24,7 @@ import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
   type CanvasResolution,
+  terminalText,
 } from "@hyperframes/core";
 import {
   mediaIdPathSegment,
@@ -60,6 +61,10 @@ export interface CompositionMetadata {
  * slightly different `end` / `mediaStart` / `volume` than the compiled
  * HTML and we want to ignore sub-millisecond float noise.
  */
+export function audioWorkDir(workDir: string): string {
+  return join(workDir, "audio-work");
+}
+
 export const BROWSER_MEDIA_EPSILON = 0.0001;
 
 /**
@@ -164,7 +169,7 @@ export function writeCompiledArtifacts(
   for (const [srcPath, html] of compiled.subCompositions) {
     const outPath = join(compileDir, srcPath);
     if (!isPathInside(outPath, compileDir)) {
-      console.warn(`[Render] Skipping sub-composition with unsafe path: ${srcPath}`);
+      console.warn(`[Render] Skipping sub-composition with unsafe path: ${terminalText(srcPath)}`);
       continue;
     }
     mkdirSync(dirname(outPath), { recursive: true });
@@ -179,7 +184,9 @@ export function writeCompiledArtifacts(
   for (const [relativePath, absolutePath] of compiled.externalAssets) {
     const outPath = resolve(join(compileDir, relativePath));
     if (!isPathInside(outPath, compileDir)) {
-      console.warn(`[Render] Skipping external asset with unsafe path: ${relativePath}`);
+      console.warn(
+        `[Render] Skipping external asset with unsafe path: ${terminalText(relativePath)}`,
+      );
       continue;
     }
     mkdirSync(dirname(outPath), { recursive: true });
@@ -372,6 +379,34 @@ export function reportEncodeProgress(
   );
 }
 
+export const AUDIO_STAGE = "Processing audio tracks";
+const AUDIO_WAIT_REPORT_MS = 5_000;
+
+/** Once capture waits on the audio mix: a line at most every 5 s in which an FFmpeg of the mix wrote more, so whoever
+ * watches the render for silence hears it working, and a mix that writes nothing stays silent. */
+export function audioWaitReporter(job: RenderJob, onProgress: ProgressCallback | undefined) {
+  let waiting = false;
+  let reportedAt = -Infinity;
+  return {
+    progressed(): void {
+      const now = Date.now();
+      if (!waiting || now - reportedAt < AUDIO_WAIT_REPORT_MS) return;
+      reportedAt = now;
+      updateJobStatus(job, job.status, AUDIO_STAGE, job.progress, onProgress, {
+        code: "process_audio",
+      });
+    },
+    async wait<T>(audio: Promise<T>): Promise<T> {
+      waiting = true;
+      try {
+        return await audio;
+      } finally {
+        waiting = false;
+      }
+    },
+  };
+}
+
 const lastAssembleReportAt = new WeakMap<RenderJob, number>();
 
 /** Seconds of the final file written, 90% to 99%: only a complete file reaches 100. */
@@ -401,15 +436,15 @@ export function forgetWorkerPhases(job: object): void {
   workerPhasesByJob.delete(job);
 }
 
-const staticDedupActivityByJob = new WeakMap<object, number>();
+const captureActivityByJob = new WeakMap<object, number>();
 
-/** Counts a render's still-frame check screenshots; the capture stall watcher reads it as activity. */
-export function noteStaticDedupActivity(job: object): void {
-  staticDedupActivityByJob.set(job, (staticDedupActivityByJob.get(job) ?? 0) + 1);
+/** Counts capture work between frames (still checks, a chunk's video frames); the stall watcher reads it. */
+export function noteCaptureActivity(job: object): void {
+  captureActivityByJob.set(job, (captureActivityByJob.get(job) ?? 0) + 1);
 }
 
-export function staticDedupActivity(job: object): number {
-  return staticDedupActivityByJob.get(job) ?? 0;
+export function captureActivity(job: object): number {
+  return captureActivityByJob.get(job) ?? 0;
 }
 
 export function describeWorkerPhases(job: object): string | undefined {

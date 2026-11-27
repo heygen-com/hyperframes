@@ -3,15 +3,17 @@
 import "./lib/windows-exe-search.mjs";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
-import { dirname, extname, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
 import { text } from "node:stream/consumers";
 import { parseArgs } from "node:util";
+import { assertLiteralMediaPath, selfContainedInput } from "./lib/literal-media-input.mjs";
 import {
   ERROR_DIFFUSION_ALGORITHMS,
   applyErrorDiffusionRgba,
   errorDiffusionBufferLength,
 } from "./lib/error-diffusion.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"]);
 const OUTPUT_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
@@ -59,13 +61,13 @@ try {
   const result = await run();
   if (args.json) console.log(JSON.stringify({ ok: true, ...result }));
   else {
-    console.log(`dithered ${result.input} -> ${result.out} (${result.algorithm})`);
-    console.log(`next: resolve --from ${result.out} --type ${result.type}`);
+    console.log(terminalText(`dithered ${result.input} -> ${result.out} (${result.algorithm})`));
+    console.log(terminalText(`next: resolve --from ${result.out} --type ${result.type}`));
   }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   if (args.json) console.log(JSON.stringify({ ok: false, error: message }));
-  else console.error(`error: ${message}`);
+  else console.error(`error: ${message}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 }
 
@@ -73,6 +75,7 @@ async function run() {
   if (!args.input || !args.out) throw new Error("--input and --out are required");
   const inputPath = resolve(args.input);
   const outPath = resolve(args.out);
+  for (const path of [inputPath, outPath]) assertLiteralMediaPath(path);
   if (!existsSync(inputPath)) throw new Error(`input file not found: ${inputPath}`);
   if (inputPath === outPath) throw new Error("--out must differ from --input");
 
@@ -121,7 +124,10 @@ async function run() {
 function probe(filePath) {
   const raw = execFileSync(
     "ffprobe",
-    ["-v", "error", "-print_format", "json", "-show_streams", "-show_format", "--", filePath],
+    [
+      ...["-v", "error", ...selfContainedInput(filePath), "-print_format", "json"],
+      ...["-show_streams", "-show_format", "--", filePath],
+    ],
     { encoding: "utf8", timeout: 10_000 },
   );
   const parsed = JSON.parse(raw);
@@ -146,6 +152,7 @@ function processImage(inputPath, outPath, metadata, options) {
       "-loglevel",
       "error",
       "-nostdin",
+      ...selfContainedInput(inputPath),
       "-i",
       inputPath,
       "-frames:v",
@@ -162,7 +169,7 @@ function processImage(inputPath, outPath, metadata, options) {
     throw new Error(`decoded ${rgba.length} bytes; expected ${frameBytes}`);
   applyErrorDiffusionRgba(rgba, metadata.width, metadata.height, options);
 
-  const temporary = temporaryOutput(outPath);
+  const staging = privateStagingOutput(outPath);
   try {
     execFileSync(
       "ffmpeg",
@@ -181,28 +188,29 @@ function processImage(inputPath, outPath, metadata, options) {
         "-",
         "-frames:v",
         "1",
-        temporary,
+        staging.file,
       ],
       { input: rgba, maxBuffer: frameBytes + 1024 },
     );
-    renameSync(temporary, outPath);
+    renameSync(staging.file, outPath);
   } finally {
-    rmSync(temporary, { force: true });
+    rmSync(staging.folder, { recursive: true, force: true, maxRetries: 3 });
   }
 }
 
 async function processVideo(inputPath, outPath, metadata, options) {
-  const temporary = temporaryOutput(outPath);
   const frameBytes = metadata.width * metadata.height * 4;
   const keyframeInterval = String(Math.max(1, Math.round(frameRateNumber(metadata.fps))));
   const errors = new Float32Array(
     errorDiffusionBufferLength(metadata.width, metadata.height, options.pointSize),
   );
+  const staging = privateStagingOutput(outPath);
   const decoder = spawn("ffmpeg", [
     "-hide_banner",
     "-loglevel",
     "error",
     "-nostdin",
+    ...selfContainedInput(inputPath),
     "-i",
     inputPath,
     "-map",
@@ -228,6 +236,7 @@ async function processVideo(inputPath, outPath, metadata, options) {
     metadata.fps,
     "-i",
     "-",
+    ...selfContainedInput(inputPath),
     "-i",
     inputPath,
     "-map",
@@ -267,12 +276,14 @@ async function processVideo(inputPath, outPath, metadata, options) {
     "-shortest",
     "-movflags",
     "+faststart",
-    temporary,
+    staging.file,
   ]);
   const decoderError = text(decoder.stderr);
   const encoderError = text(encoder.stderr);
   const decoderDone = once(decoder, "close").then(([code]) => code ?? 1);
   const encoderDone = once(encoder, "close").then(([code]) => code ?? 1);
+  decoderDone.catch(() => {});
+  encoderDone.catch(() => {});
 
   try {
     const frame = Buffer.allocUnsafe(frameBytes);
@@ -296,13 +307,13 @@ async function processVideo(inputPath, outPath, metadata, options) {
     const [decoderCode, encoderCode] = await Promise.all([decoderDone, encoderDone]);
     if (decoderCode !== 0) throw new Error(`FFmpeg decode failed: ${(await decoderError).trim()}`);
     if (encoderCode !== 0) throw new Error(`FFmpeg encode failed: ${(await encoderError).trim()}`);
-    renameSync(temporary, outPath);
+    renameSync(staging.file, outPath);
   } catch (error) {
     decoder.kill("SIGKILL");
     encoder.kill("SIGKILL");
     throw error;
   } finally {
-    rmSync(temporary, { force: true });
+    rmSync(staging.folder, { recursive: true, force: true, maxRetries: 3 });
   }
 }
 
@@ -323,7 +334,7 @@ function frameRateNumber(value) {
   return Number(numerator) / Number(denominator);
 }
 
-function temporaryOutput(outPath) {
-  const extension = extname(outPath);
-  return `${outPath.slice(0, -extension.length)}.part-${process.pid}${extension}`;
+function privateStagingOutput(outPath) {
+  const folder = mkdtempSync(join(dirname(outPath), ".media-use-dither-"));
+  return { folder, file: join(folder, `out${extname(outPath)}`) };
 }

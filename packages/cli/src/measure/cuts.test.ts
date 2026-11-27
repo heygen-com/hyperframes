@@ -139,6 +139,38 @@ describe("findCuts on moving pictures", () => {
     expect(findCuts(frames)).toEqual([]);
   });
 
+  const backdrop = frame(20);
+  backdrop.fill(140, 3 * SIG_W + 12, 3 * SIG_W + 52);
+
+  function slidingCard(top: number): Uint8Array {
+    const image = backdrop.slice();
+    for (let y = top; y < Math.min(SIG_H, top + 23); y++) {
+      image.fill(220, y * SIG_W + 11, y * SIG_W + 53);
+    }
+    return image;
+  }
+
+  it.each([
+    { name: "split candidates", positions: [8, 9, 10, 11, 12, 15, 18, 22, 27, 35] },
+    { name: "consecutive candidates", positions: [8, 9, 10, 11, 12, 15, 19, 23, 28, 35] },
+  ])("keeps a card sliding out of the picture in one shot ($name)", ({ positions }) => {
+    const frames = [
+      ...Array<Uint8Array>(30).fill(slidingCard(8)),
+      ...positions.map(slidingCard),
+      ...Array<Uint8Array>(20).fill(backdrop),
+    ];
+    expect(classifiedCuts(frames).map((cut) => cut.kind)).toEqual(["fast"]);
+  });
+
+  it("keeps the cut when a moving card gives way to a different shot", () => {
+    const frames = [
+      ...Array<Uint8Array>(30).fill(slidingCard(8)),
+      ...[8, 9, 10, 11, 12, 15, 18, 20].map(slidingCard),
+      ...still(110, 20),
+    ];
+    expect(findCuts(frames).map((cut) => cut.frame)).toEqual([38]);
+  });
+
   it("keeps a punch-in out of a still picture as a cut", () => {
     const frames = [...Array<number>(13).fill(20), ...Array<number>(13).fill(28)].map(window);
     expect(findCuts(frames).map((c) => c.frame)).toEqual([13]);

@@ -1,14 +1,7 @@
 import { randomUUID } from "node:crypto";
-import {
-  accessSync,
-  constants,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { accessSync, constants } from "node:fs";
+import { join, resolve } from "node:path";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import {
   DEFAULT_HISTORY_ROOT,
   HistoryBusyError,
@@ -20,9 +13,11 @@ import {
   type HistoryResult,
   type HistoryWho,
   type UndoMode,
+  isHistoryId,
 } from "@hyperframes/studio-server/history";
 
 import { resolveProject } from "./project.js";
+import { readRecord, recordChangedAt, removeRecord, writeRecord } from "./projectRecords.js";
 import { findPreviewServerForProject, studioApiUrl } from "./studioSelectionClient.js";
 
 export type { UndoMode };
@@ -35,6 +30,7 @@ export interface Turn {
   label: string;
   startedAt: number;
   lastWriteAt: number;
+  writtenAt?: number;
   /** Entries this turn already filed: without a preview, each command mid-turn files the turn so far. */
   parts: string[];
 }
@@ -76,31 +72,70 @@ export const historyDeps = {
 /** A refusal is the caller's to fix: commands print its message, never a stack. */
 export class Refusal extends Error {}
 
-const turnFile = (dir: string) => join(dir, ".hyperframes", "history-turn.json");
+const TURN_FILE = "history-turn.json";
+const LAST_TURNS_FILE = "history-turns.json";
+const MAX_RECORD_BYTES = 1024 * 1024;
+
+const WHO_KINDS: readonly unknown[] = ["person", "agent", "outside"] satisfies HistoryWho["kind"][];
+const isId = (value: unknown): value is string => typeof value === "string" && isHistoryId(value);
+const isIds = (value: unknown): value is string[] => Array.isArray(value) && value.every(isId);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object";
+const isVia = (value: unknown): value is Turn["via"] => value === "preview" || value === "direct";
+
+function whoOf(value: unknown): HistoryWho | null {
+  if (!isRecord(value) || !WHO_KINDS.includes(value.kind) || typeof value.name !== "string")
+    return null;
+  return { kind: value.kind as HistoryWho["kind"], name: value.name };
+}
+
+const isTurnHead = (value: Record<string, unknown>) => isVia(value.via) && isId(value.id);
+const hasTurnFields = (value: Record<string, unknown>) =>
+  typeof value.label === "string" &&
+  typeof value.startedAt === "number" &&
+  typeof value.lastWriteAt === "number";
+
+function parseTurn(value: unknown): Turn | null {
+  if (!isRecord(value) || !isTurnHead(value) || !hasTurnFields(value)) return null;
+  const who = whoOf(value.who);
+  const parts = value.parts ?? [];
+  if (!who || !isIds(parts)) return null;
+  const { via, id, label, startedAt, lastWriteAt } = value as Omit<Turn, "who" | "parts">;
+  const writtenAt = typeof value.writtenAt === "number" ? value.writtenAt : undefined;
+  return { via, id, who, label, startedAt, lastWriteAt, writtenAt, parts };
+}
+
+function lastWriteFileTime(dir: string, turn: Turn): number | undefined {
+  const markedAt = recordChangedAt(dir, TURN_FILE);
+  if (turn.writtenAt === undefined || !markedAt) return undefined;
+  return markedAt - (turn.writtenAt - turn.lastWriteAt);
+}
 
 /** The open turn, or null; a marker with no last write time cannot say when the turn ended, so it has. */
 function readTurn(dir: string): Turn | null {
   try {
-    const turn = JSON.parse(readFileSync(turnFile(dir), "utf-8")) as Turn;
-    return typeof turn.lastWriteAt === "number" ? { ...turn, parts: turn.parts ?? [] } : null;
+    return parseTurn(JSON.parse(readRecord(dir, TURN_FILE, MAX_RECORD_BYTES)));
   } catch {
     return null;
   }
 }
 
+function writeRecordOrRefuse(dir: string, name: string, data: string): void {
+  if (!writeRecord(dir, name, data))
+    throw new Refusal(`Could not write ${join(dir, ".hyperframes", name)}.`);
+}
+
 export function writeTurn(dir: string, turn: Turn | null): void {
-  if (!turn) return rmSync(turnFile(dir), { force: true });
-  mkdirSync(dirname(turnFile(dir)), { recursive: true });
-  writeFileSync(turnFile(dir), JSON.stringify(turn));
+  if (!turn) return void removeRecord(dir, TURN_FILE);
+  writeRecordOrRefuse(dir, TURN_FILE, JSON.stringify({ ...turn, writtenAt: historyDeps.now() }));
 }
 
 /** Each agent's last ended turn, as the entries it filed; kept beside the marker, outside the history. */
-const lastTurnsFile = (dir: string) => join(dir, ".hyperframes", "history-turns.json");
-
 function readLastTurns(dir: string): Record<string, string[]> {
   try {
-    const turns: unknown = JSON.parse(readFileSync(lastTurnsFile(dir), "utf-8"));
-    return turns && typeof turns === "object" ? (turns as Record<string, string[]>) : {};
+    const turns: unknown = JSON.parse(readRecord(dir, LAST_TURNS_FILE, MAX_RECORD_BYTES));
+    if (!turns || typeof turns !== "object") return {};
+    return Object.fromEntries(Object.entries(turns).filter(([, parts]) => isIds(parts)));
   } catch {
     return {};
   }
@@ -130,10 +165,11 @@ export async function endTurn(
   const own = entry ? [entry.id] : [];
   const parts = [...new Set([...turn.parts, ...cut.map((part) => part.id), ...own])];
   // Recorded before the marker goes, so a crash between the two never leaves the older turn as the last one.
-  const draft = `${lastTurnsFile(dir)}.${process.pid}.tmp`;
-  mkdirSync(dirname(draft), { recursive: true });
-  writeFileSync(draft, JSON.stringify({ ...readLastTurns(dir), [turn.who.name]: parts }));
-  renameSync(draft, lastTurnsFile(dir));
+  writeRecordOrRefuse(
+    dir,
+    LAST_TURNS_FILE,
+    JSON.stringify({ ...readLastTurns(dir), [turn.who.name]: parts }),
+  );
   writeTurn(dir, null);
   return { entry, parts };
 }
@@ -160,7 +196,8 @@ function previewOwner(route: (path: string) => string): Owner {
     via: "preview",
     list,
     peek: async (point) => (await json(`/peek/${encodeURIComponent(point)}`)).files,
-    blob: async (hash) => Buffer.from(await (await call(`/blob/${hash}`)).arrayBuffer()),
+    blob: async (hash) =>
+      Buffer.from(await (await call(`/blob/${encodeURIComponent(hash)}`)).arrayBuffer()),
     undo: (id, who, mode) => json("/undo", { entryId: id, who, mode }),
     restore: (point, who) => json("/restore", { point, who }),
     pin: async (id, pinned) => void (await json("/pin", { entryId: id, pinned })),
@@ -175,12 +212,20 @@ function previewOwner(route: (path: string) => string): Owner {
     },
     // A preview restarted since begin committed the window on its way down.
     end: (id) =>
-      json(`/window/${id}/close`, {})
+      json(`/window/${encodeURIComponent(id)}/close`, {})
         .then((closed) => closed.entry as HistoryEntry | null)
         .catch(async () => (await list()).find((entry) => entry.id === id) ?? null),
     checkpoint: async () => void (await json("/checkpoint", {}, AbortSignal.timeout(5_000))),
     close: async () => {},
   };
+}
+
+async function relistWrites(projectDir: string, entry: HistoryEntry | null): Promise<void> {
+  if (!entry?.files.length) return;
+  const { relistHistoryWrites } = await import("./receivedRecordFollow.js");
+  await relistHistoryWrites(projectDir, entry).catch((error: unknown) =>
+    console.warn(`Could not update the received-files record: ${terminalText(String(error))}`),
+  );
 }
 
 async function directOwner(
@@ -203,6 +248,7 @@ async function directOwner(
             label: turn.label,
             startedAt: turn.startedAt,
             lastWriteAt: turn.lastWriteAt,
+            lastWriteFileTime: lastWriteFileTime(projectDir, turn),
             idleMs: historyDeps.turnIdleMs,
           }
         : undefined;
@@ -212,11 +258,22 @@ async function directOwner(
     turn,
     owner: {
       via: "direct",
-      list: async () => history.list(),
+      list: async () => {
+        await history.replacedNow();
+        return history.list();
+      },
       peek: async (point) => history.peek(point),
       blob: (hash) => history.readBlob(hash),
-      undo: (id, who, mode) => history.undo(id, { who, ...(mode && { mode }) }),
-      restore: (point, who) => history.restore(point, who),
+      undo: async (id, who, mode) => {
+        const undone = await history.undo(id, { who, ...(mode && { mode }) });
+        if (undone.ok) await relistWrites(projectDir, undone.entry);
+        return undone;
+      },
+      restore: async (point, who) => {
+        const restored = await history.restore(point, who);
+        await relistWrites(projectDir, restored);
+        return restored;
+      },
       pin: async (id, pinned) => history.pin(id, pinned),
       // Opening filed every earlier write; the turn's own writes are filed to it when the next open passes it.
       begin: async () => ({ id: randomUUID(), startedAt: historyDeps.now() }),
@@ -320,11 +377,11 @@ export async function withReader<T>(
     if (ran || !(error instanceof HistoryBusyError || unwritable)) throw error;
     if (unwritable)
       console.error(
-        `[hyperframes] Could not write this project's history (${(error as Error).message}); showing it as last recorded.`,
+        `[hyperframes] Could not write this project's history (${terminalText((error as Error).message)}); showing it as last recorded.`,
       );
   }
   // Opening failed, so the task has not run; an open turn's marker is left as it is.
-  const view = readProjectHistory({
+  const view = await readProjectHistory({
     projectDir: resolveProject(dir).dir,
     historyRoot: historyDeps.historyRoot,
   });

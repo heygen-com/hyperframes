@@ -11,11 +11,11 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fpsToNumber, parseFps } from "@hyperframes/core";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import { type Cut, classifiedCuts, confirmsCut, frameChanges, signatures } from "./cuts.js";
 import {
@@ -26,9 +26,12 @@ import {
   type DrawnVerdict,
 } from "./drawn.js";
 import { compareEnergy, energyCurve, type EnergyComparison } from "./energy.js";
+import { hiddenCopy, layerVerdict, scoreLayerFrame, type LayerVerdict } from "./layer.js";
 import { compareLook, look, sameLook, type LookComparison } from "./look.js";
 import {
   decode,
+  ffmpegInput,
+  ffmpegToFile,
   Fix,
   frameAt,
   pearson,
@@ -128,6 +131,8 @@ export interface DiffOptions {
   drawn?: { box: [number, number, number, number]; window?: [number, number] }[];
   /** Seconds yours runs behind the original (negative: ahead): the original's t meets yours' t + offset. */
   offset?: number;
+  /** A project's layer (a CSS selector) scored by what it adds: captured with and without it (layer.ts). */
+  hide?: string;
   log?: (message: string) => void;
 }
 
@@ -227,6 +232,8 @@ export interface DiffResult {
   person?: PersonSummary;
   /** Each `drawn` option's element (D1, D2, …), scored by itself: reported, not judged. */
   drawn?: (DrawnVerdict & { id: string })[];
+  /** The `hide` option's layer, scored at each compared frame: reported, not judged. */
+  layer?: LayerVerdict;
   sheet?: string;
   sbs?: string;
   log: string;
@@ -383,7 +390,7 @@ function ssimSeries(ref: Clip, yours: Clip, logPath: string): Series {
       undefined,
       work,
     ).toString();
-    writeFileSync(logPath, text);
+    replaceFileAtomically(logPath, text);
     const frame = all(text);
     const perCell = Array.from({ length: GRID * GRID }, (_, i) =>
       all(readFileSync(join(work, `cell${i}.log`), "utf8")),
@@ -596,7 +603,10 @@ async function captureProject(
   return {
     dir: seq,
     clip: {
-      input: ["-framerate", ref.fpsText, "-i", join(seq, "%06d.png")],
+      input: [
+        ...["-framerate", ref.fpsText, "-protocol_whitelist", "file", "-f", "image2"],
+        ...["-i", join(seq, "%06d.png")],
+      ],
       filters: [],
       width: ref.width,
       height: ref.height,
@@ -1168,7 +1178,7 @@ function onsetCurve(path: string): number[] {
   // On the sound's own timestamps (first_pts=0 pads up to its first decoded sample), not the probe's start_time:
   // ffmpeg 5.1 drops an HE-AAC edit list's skip twice, keeps the rest timestamped right, and still probes 0.
   const raw = runFfmpeg([
-    ...["-i", path, "-vn", "-af", "aresample=async=1:first_pts=0"],
+    ...[...ffmpegInput(path), "-vn", "-af", "aresample=async=1:first_pts=0"],
     ...["-t", "20", "-ac", "1", "-ar", "8000", "-f", "f32le", "-"],
   ]);
   const samples = new Float32Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 4));
@@ -1214,13 +1224,22 @@ function sideBySide(
   offset = 0,
 ): string {
   const skip = (seconds: number) => (seconds > 0 ? ["-ss", String(seconds)] : []);
-  runFfmpeg([
-    ...["-y", ...skip(-offset), "-i", reference, ...skip(offset), "-i", yours, "-filter_complex"],
-    `[0:v]setsar=1[a];[1:v]scale=${ref.width}:${ref.height},setsar=1[b];[a][b]hstack=inputs=2,pad=ceil(iw/2)*2:ceil(ih/2)*2[v]`,
-    ...["-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p"],
-    ...["-c:a", "aac", "-shortest", out],
-  ]);
-  return out;
+  return ffmpegToFile(
+    [
+      ...[
+        "-y",
+        ...skip(-offset),
+        ...ffmpegInput(reference),
+        ...skip(offset),
+        ...ffmpegInput(yours),
+      ],
+      "-filter_complex",
+      `[0:v]setsar=1[a];[1:v]scale=${ref.width}:${ref.height},setsar=1[b];[a][b]hstack=inputs=2,pad=ceil(iw/2)*2:ceil(ih/2)*2[v]`,
+      ...["-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p"],
+      ...["-c:a", "aac", "-shortest"],
+    ],
+    out,
+  );
 }
 
 function choosePick(opts: DiffOptions, ref: VideoInfo): Pick {
@@ -1269,6 +1288,11 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       Math.min(...opts.segments.map((s) => s.start)),
       Math.max(...opts.segments.map((s) => s.end)),
     ];
+  if (opts.hide !== undefined && mode !== "project")
+    throw new Fix(
+      "--hide needs a project folder to capture without the layer",
+      "pass the project folder as yours",
+    );
   if (mode === "project" && !opts.at && !opts.range)
     throw new Fix(
       "a project folder is compared at chosen times, not whole",
@@ -1305,9 +1329,21 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
   const refClip: Clip = { ...videoClip(opts.reference, 0, undefined, ref), filters: select };
   let yours: Clip;
   let seqDir: string | undefined;
+  let without: { clip: Clip; dir: string; copy: string } | undefined;
   if (mode === "project") {
-    const captured = await captureProject(opts.yours, captureTimes(ks, ref.fps, offset), opts, ref);
+    const times = captureTimes(ks, ref.fps, offset);
+    const captured = await captureProject(opts.yours, times, opts, ref);
     [yours, seqDir] = [captured.clip, captured.dir];
+    if (opts.hide !== undefined) {
+      const copy = hiddenCopy(opts.yours, opts.hide);
+      try {
+        without = { ...(await captureProject(copy, times, opts, ref)), copy };
+      } catch (err) {
+        rmSync(copy, { recursive: true, force: true });
+        rmSync(seqDir, { recursive: true, force: true });
+        throw err;
+      }
+    }
   } else {
     yours = {
       ...videoClip(opts.yours, 0, undefined, yoursInfo),
@@ -1330,7 +1366,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       warnings.push(`yours ends early: ${series.frame.length} of ${ks.length} frames compared`);
     const worstCell = series.cells.map((cells) => Math.min(...cells));
     // Every compared frame, to find the stretches that fail.
-    writeFileSync(
+    replaceFileAtomically(
       join(opts.outDir, "frames.tsv"),
       [
         "t\tframe\tssim\tworst_cell\tcell",
@@ -1401,7 +1437,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
     const ledgerText =
       opts.ledger && existsSync(opts.ledger) ? readFileSync(opts.ledger, "utf8") : undefined;
     const people = new Map<Segment, PersonVerdict>();
-    let clips: ReturnType<typeof placeClips> = [];
+    let clips: Awaited<ReturnType<typeof placeClips>> = [];
     const regenerated = opts.segments?.some((s) => s.regenerated || s.pixels === "regenerated");
     if (offset && regenerated && yoursInfo)
       warnings.push(
@@ -1417,7 +1453,9 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       const uses = project
         ? await clipUses(project).catch(() => new Map<string, never[]>())
         : new Map<string, never[]>();
-      clips = ledgerText ? placeClips(generatedClips(ledgerText), project, ref, refCuts, uses) : [];
+      clips = ledgerText
+        ? await placeClips(generatedClips(ledgerText), project, ref, refCuts, uses)
+        : [];
       if (clips.length && clips.every((c) => !c.info))
         warnings.push(
           "the ledger's generated clips are not found, so text carried in them is not checked: pass --project <folder>",
@@ -1463,6 +1501,29 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
           series.frame.length,
         )
       : undefined;
+    const layer =
+      without &&
+      layerVerdict(
+        opts.hide!,
+        series.frame.map((_, i) =>
+          scoreLayerFrame(
+            round(ks[i]! / ref.fps, 3),
+            ...([refClip, yours, without.clip].map((clip) =>
+              frameOf(clip, i, ref.width, ref.height),
+            ) as [Uint8Array, Uint8Array, Uint8Array]),
+            ref.width,
+            ref.height,
+          ),
+        ),
+      );
+    if (layer?.worse.length)
+      warnings.push(
+        `${opts.hide} is further from the original than leaving it out at ${layer.worse.map((t) => `${t} s`).join(", ")}`,
+      );
+    if (layer?.redundant.length)
+      warnings.push(
+        `the backdrop already shows what ${opts.hide} draws at ${layer.redundant.map((t) => `${t} s`).join(", ")}: not scored`,
+      );
     const ledger = ledgerText ? wholeFrameCuts(ledgerText, ref.width, ref.height) : undefined;
     const reuse =
       ledger && (ledger.windows.length || ledger.stills.length)
@@ -1529,6 +1590,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       ...(top ? top : {}),
       ...(segments ? { segments } : {}),
       ...(elements ? { drawn: elements } : {}),
+      ...(layer ? { layer } : {}),
       ...(sheet ? { sheet } : {}),
       ...(sbs ? { sbs } : {}),
       log: logPath,
@@ -1538,5 +1600,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
     };
   } finally {
     if (seqDir) rmSync(seqDir, { recursive: true, force: true });
+    if (without)
+      for (const dir of [without.dir, without.copy]) rmSync(dir, { recursive: true, force: true });
   }
 }

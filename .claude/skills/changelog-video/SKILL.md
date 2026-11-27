@@ -7,6 +7,8 @@ metadata:
 
 # Changelog → Branded Video
 
+<!-- skill-scripts: relative-ok, runs from the HyperFrames repo root -->
+
 Input: a changelog .md (themes + items, like the weekly HyperFrames digest).
 Output: a lint-clean, seam-gate-green HyperFrames project in
 `projects/active/weekly-changelog-<range>/`. Render only when asked.

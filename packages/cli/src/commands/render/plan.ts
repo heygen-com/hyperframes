@@ -1,11 +1,9 @@
 import { statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
-  DISTRIBUTED_FPS,
   formatRenderOutputTimestamp,
   fpsToNumber,
   isAspectAgnosticResolutionAlias,
-  isDistributedFps,
   normalizeResolutionFlag,
   parseFps,
   type CanvasResolution,
@@ -104,6 +102,8 @@ export interface RenderCommandArgs {
   wait?: boolean;
   strict?: boolean;
   "strict-all"?: boolean;
+  "include-outside-files"?: boolean;
+  "refuse-outside-files"?: boolean;
   "lint-verbose"?: boolean;
   "max-concurrent-renders"?: string;
   variables?: string;
@@ -131,6 +131,7 @@ export interface RenderPlan {
   renderTarget: string;
   fps: Fps;
   quality: RenderQuality;
+  qualityPreset: keyof typeof QUALITY_ALIASES;
   authoringSkill?: string;
   invalidAuthoringSkill?: string;
   /** Which resolution step provided authoringSkill: an explicit --skill flag, or the project's own config. */
@@ -167,6 +168,8 @@ export interface RenderPlan {
   /** Segmented capture: keep the segment directory after success. */
   keepSegments: boolean;
   bestEffort: boolean;
+  includeOutsideScripts: boolean;
+  refuseOutsideFiles: boolean;
   waitForRenderSlot: boolean;
   batchJson: boolean;
   effectiveQuiet: boolean;
@@ -222,12 +225,7 @@ export interface RenderRange {
   endSeconds?: number;
 }
 
-function parseRenderRange(
-  args: Pick<RenderCommandArgs, "start" | "end">,
-  format: RenderFormat,
-  fps: Fps,
-  hdr: boolean | undefined,
-): RenderRange | undefined {
+function parseRenderRange(args: Pick<RenderCommandArgs, "start" | "end">): RenderRange | undefined {
   if (args.start === undefined && args.end === undefined) return undefined;
   const seconds = (flag: string, raw: string): number => {
     const parsed = raw.trim() === "" ? Number.NaN : Number(raw);
@@ -243,25 +241,7 @@ function parseRenderRange(
     errorBox("Invalid range", `--end (${endSeconds}) must be after --start (${startSeconds}).`);
     failUsage();
   }
-  const limit = rangeLimit(format, fps, hdr);
-  if (limit) {
-    errorBox(
-      "A range renders what chunked renders can",
-      limit,
-      "Remove --start/--end to render the whole film.",
-    );
-    failUsage();
-  }
   return { startSeconds, endSeconds };
-}
-
-function rangeLimit(format: RenderFormat, fps: Fps, hdr: boolean | undefined): string | undefined {
-  if (format !== "mp4") return `--start/--end render MP4 only, not ${format}.`;
-  if (fps.den !== 1 || !isDistributedFps(fps.num)) {
-    return `--start/--end need a whole frame rate in ${DISTRIBUTED_FPS.join(", ")}, not ${fps.num}/${fps.den}.`;
-  }
-  if (hdr) return "--start/--end render SDR only, not --hdr.";
-  return undefined;
 }
 
 function positiveInteger(raw: string, title: string, message: string, min = 1): number {
@@ -629,7 +609,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     failUsage();
   }
 
-  const range = parseRenderRange(args, format, fps, args.hdr);
+  const range = parseRenderRange(args);
   const quiet = args.quiet ?? false;
   const batchJson = args.json ?? false;
   return Object.freeze({
@@ -638,6 +618,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     renderTarget,
     fps,
     quality,
+    qualityPreset: qualityRaw as keyof typeof QUALITY_ALIASES,
     authoringSkill,
     invalidAuthoringSkill,
     authoringSkillSource,
@@ -669,6 +650,8 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     resumeSegments: args.resume ?? false,
     keepSegments: args["keep-segments"] ?? false,
     bestEffort: args["best-effort"] ?? true,
+    includeOutsideScripts: args["include-outside-files"] ?? false,
+    refuseOutsideFiles: args["refuse-outside-files"] ?? false,
     waitForRenderSlot: args.wait ?? true,
     batchJson,
     effectiveQuiet: quiet || batchJson,

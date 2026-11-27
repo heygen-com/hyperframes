@@ -1,3 +1,4 @@
+import { referencedFontResponse } from "@hyperframes/share/referencedFont.mjs";
 import { failUsage, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -20,6 +21,7 @@ export const examples: Example[] = [
 ];
 import { resolve } from "node:path";
 import type { Hono } from "hono";
+import { terminalText } from "@hyperframes/core";
 import { requestSubPath } from "@hyperframes/studio-server";
 import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
@@ -36,6 +38,10 @@ import {
   resolveRuntimePath,
   resolvePlayerPath,
   listenOnFreePort,
+  refuseUnknownHosts,
+  sandboxForAnotherSite,
+  scriptsAfterWorkersDropped,
+  refuseProxyWorkForAnotherSite,
   injectRuntime,
   injectMediaCodecMap,
   buildRangeResponse,
@@ -43,6 +49,8 @@ import {
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
+import { escapeHtml } from "../utils/escapeHtml.js";
+import { refuseStrayRequestsInertly } from "../utils/strayRequestRefusal.js";
 import {
   resolveProxy,
   ProxyCapacityError,
@@ -91,7 +99,7 @@ export default defineCommand({
     try {
       startPort = parsePort(args.port ?? "3003");
     } catch (error) {
-      clack.log.error(normalizeErrorMessage(error));
+      clack.log.error(terminalText(normalizeErrorMessage(error)));
       failUsage();
     }
     const project = resolveProject(args.dir);
@@ -119,7 +127,7 @@ export default defineCommand({
         args["remote-debugging-port"] as string | undefined,
       );
     } catch (err) {
-      clack.log.error((err as Error).message);
+      clack.log.error(terminalText((err as Error).message));
       failUsage();
     }
 
@@ -141,36 +149,9 @@ export default defineCommand({
       return;
     }
 
-    const { Hono } = await import("hono");
     const { createAdaptorServer } = await import("@hono/node-server");
-
-    const app = new Hono();
-
-    // Serve the player JS
-    app.get("/player.js", (ctx) =>
-      revalidatedResponse(
-        readFileSync(playerPath, "utf-8"),
-        "application/javascript",
-        ctx.req.header("If-None-Match"),
-      ),
-    );
-
-    // Serve the runtime JS
-    app.get("/runtime.js", (ctx) =>
-      revalidatedResponse(
-        readFileSync(runtimePath, "utf-8"),
-        "application/javascript",
-        ctx.req.header("If-None-Match"),
-      ),
-    );
-
     const autoProxy = resolveAutoProxy(project.dir, args.proxy as boolean | undefined);
-    await registerCompositionRoute(app, project, autoProxy);
-
-    // Main page — the player wrapper
-    app.get("/", (ctx) => {
-      return ctx.html(buildPlayerPage(project.name));
-    });
+    const app = await buildPlayApp(project, autoProxy, { playerPath, runtimePath });
 
     clack.intro(c.bold("hyperframes play"));
     const s = clack.spinner();
@@ -185,7 +166,7 @@ export default defineCommand({
     if (actualPort !== startPort) {
       console.log(`  ${c.warn(`Port ${startPort} is in use, using ${actualPort} instead`)}`);
     }
-    console.log(`  ${c.dim("Project")}   ${c.accent(project.name)}`);
+    console.log(`  ${c.dim("Project")}   ${c.accent(terminalText(project.name))}`);
     console.log(`  ${c.dim("Player")}    ${c.accent(url)}`);
     console.log();
     console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
@@ -202,6 +183,39 @@ export default defineCommand({
     return new Promise<void>(() => {});
   },
 });
+
+/** The player page, its two bundles and the project's files, on one loopback origin. */
+export async function buildPlayApp(
+  project: ProjectDir,
+  autoProxy: boolean,
+  bundles: { playerPath: string; runtimePath: string },
+): Promise<Hono> {
+  const { Hono } = await import("hono");
+  const app = new Hono();
+  refuseStrayRequestsInertly(app);
+  refuseUnknownHosts(app);
+
+  app.get("/player.js", (ctx) =>
+    revalidatedResponse(
+      readFileSync(bundles.playerPath, "utf-8"),
+      "application/javascript",
+      ctx.req.header("If-None-Match"),
+    ),
+  );
+  app.get("/runtime.js", (ctx) =>
+    revalidatedResponse(
+      readFileSync(bundles.runtimePath, "utf-8"),
+      "application/javascript",
+      ctx.req.header("If-None-Match"),
+    ),
+  );
+
+  await registerCompositionRoute(app, project, autoProxy);
+
+  // Main page — the player wrapper
+  app.get("/", (ctx) => ctx.html(buildPlayerPage(project.name)));
+  return app;
+}
 
 /**
  * Registers the `/composition/*` route: serves composition HTML (runtime +
@@ -221,9 +235,12 @@ export async function registerCompositionRoute(
 ): Promise<void> {
   const { isSafePath } = await import("@hyperframes/core/studio-api");
 
+  sandboxForAnotherSite(app, "/composition/*");
+  refuseProxyWorkForAnotherSite(app, "/composition/*");
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
+    if (reqPath === null) return ctx.text("Not found", 404);
     const filePath = resolve(project.dir, reqPath);
 
     // Security: don't allow path traversal outside project dir. isSafePath
@@ -231,9 +248,13 @@ export async function registerCompositionRoute(
     // an in-project symlink to an external target nor a sibling dir whose name
     // shares the project-dir prefix (e.g. `<dir>-evil`) can escape.
     if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
-    if (isPrivateCompositionFile(project.dir, filePath) || !existsSync(filePath)) {
-      return ctx.text("Not found", 404);
+    if (isPrivateCompositionFile(project.dir, filePath)) {
+      return (
+        (await referencedFontResponse(project.dir, reqPath, ctx.req.raw.method)) ??
+        ctx.text("Not found", 404)
+      );
     }
+    if (!existsSync(filePath)) return ctx.text("Not found", 404);
 
     // HTML gets the runtime + codec-map injected; other assets pass through.
     if (filePath.endsWith(".html")) {
@@ -305,12 +326,13 @@ export async function registerCompositionRoute(
 }
 
 function buildPlayerPage(projectName: string): string {
+  const shownName = escapeHtml(projectName);
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${projectName} — HyperFrames Player</title>
+    <title>${shownName} — HyperFrames Player</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
@@ -335,8 +357,8 @@ function buildPlayerPage(projectName: string): string {
     <div class="player-wrap">
       <hyperframes-player src="/composition/index.html" controls muted></hyperframes-player>
     </div>
-    <div class="info">${projectName} — hyperframes play</div>
-    <script src="/player.js"></script>
+    <div class="info">${shownName} — hyperframes play</div>
+    ${scriptsAfterWorkersDropped(["/player.js"])}
   </body>
 </html>`;
 }

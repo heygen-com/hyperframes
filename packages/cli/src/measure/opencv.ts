@@ -1,24 +1,19 @@
 // OpenCV for the measuring tools that need it (template tracking, optical flow, faces), as opencv.js: one WebAssembly
 // file that gives every machine the same numbers. It is not shipped in the CLI; the first use downloads it and the
 // Haar face models, pinned by size and sha256, into ~/.cache/hyperframes/opencv/<version>/.
-import { mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
-import { downloadToFile } from "../cloud/download.js";
-import { verifies, type ModelFile } from "../whisper/modelFile.js";
-import { Fix } from "./media.js";
+import { trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import { ensurePinnedFiles, type PinnedFile } from "./pinnedFiles.js";
 
 const VERSION = "4.10.0";
-export const OPENCV_DIR = hyperframesCacheDir("opencv", VERSION);
-
-interface Pinned extends ModelFile {
-  url: string;
-}
+const CODE_ROOT = trustedCacheRoot();
+export const OPENCV_DIR = join(CODE_ROOT, "opencv", VERSION);
 
 // opencv.js is @techstark/opencv-js 4.10.0-release.1 (Apache-2.0); the cascades are OpenCV's own (BSD-3-Clause).
 const CASCADES = "https://raw.githubusercontent.com/opencv/opencv/4.10.0/data/haarcascades";
-const FILES: readonly Pinned[] = [
+const FILES: readonly PinnedFile[] = [
   {
     name: "opencv.js",
     bytes: 10_378_215,
@@ -116,42 +111,20 @@ export interface Cv {
 const isCv = (v: unknown): v is Cv =>
   typeof v === "object" && v !== null && "Mat" in v && "matFromArray" in v;
 
-/** Every pinned file present and verified; the missing ones fetched. */
-// fallow-ignore-next-line complexity
-async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void> {
-  const missing: Pinned[] = [];
-  for (const f of FILES) if (!(await verifies(join(OPENCV_DIR, f.name), f))) missing.push(f);
-  if (!missing.length) return;
-  mkdirSync(OPENCV_DIR, { recursive: true });
-  for (const f of missing) {
-    onStatus?.(`Downloading ${f.name} (${Math.round(f.bytes / 1e5) / 10} MB, once)...`);
-    const temp = join(OPENCV_DIR, `${f.name}.part-${process.pid}`);
-    try {
-      await downloadToFile(f.url, temp);
-      if (!(await verifies(temp, f)))
-        throw new Fix(
-          `${f.name} did not match its pinned size and sha256`,
-          "run the command again to retry the download",
-        );
-      renameSync(temp, join(OPENCV_DIR, f.name));
-    } catch (err) {
-      if (err instanceof Fix) throw err;
-      throw new Fix(
-        `could not download ${f.name} (${err instanceof Error ? err.message : String(err)})`,
-        "check the network and run the command again",
-      );
-    } finally {
-      rmSync(temp, { force: true });
-    }
-  }
+/** Every pinned file present and verified; the missing ones fetched into the folder once it is private. */
+function ensureOpenCv(onStatus?: (message: string) => void, signal?: AbortSignal): Promise<void> {
+  return ensurePinnedFiles(OPENCV_DIR, CODE_ROOT, FILES, onStatus, signal);
 }
 
 let loaded: Promise<Cv> | null = null;
 
 /** opencv.js, ready to call, with the face models in its file system. Loaded once per process. */
-export function loadOpenCv(onStatus?: (message: string) => void): Promise<Cv> {
+export function loadOpenCv(
+  onStatus?: (message: string) => void,
+  signal?: AbortSignal,
+): Promise<Cv> {
   loaded ??= (async () => {
-    await ensureOpenCv(onStatus);
+    await ensureOpenCv(onStatus, signal);
     const mod: unknown = createRequire(import.meta.url)(join(OPENCV_DIR, "opencv.js"));
     if (typeof mod !== "object" || mod === null) throw new Error("opencv.js did not load");
     // Wait on its init hook, never on the module: it is a thenable that does not settle under await.

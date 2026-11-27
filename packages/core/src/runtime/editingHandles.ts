@@ -19,6 +19,8 @@ import {
   type EditingElementMatch,
   type EditingElementSource,
 } from "./editingElement";
+import { buildElementLabel, NO_TEXT, renderedTextOf } from "./elementLabel";
+import { isEditableText } from "./editing/textMarkup";
 
 // Drawn on first use, not at load: a render seeds getRandomValues, and a draw here would shift the
 // composition's own random values.
@@ -34,7 +36,7 @@ const collected = new FinalizationRegistry<number>((n) => {
 });
 let lastNumber = 0;
 
-function handleFor(element: Element): EditingElementHandle {
+export function handleFor(element: Element): EditingElementHandle {
   let n = numbers.get(element);
   if (n === undefined) {
     n = ++lastNumber;
@@ -64,6 +66,15 @@ const sameSource = (a: EditingElementSource, b: EditingElementSource) =>
   a.compositionId === b.compositionId &&
   a.originalCompositionId === b.originalCompositionId;
 
+/** The element's source when every field fits the port; null otherwise, since a cut path or id names another file. */
+function boundedSource(element: Element): EditingElementSource | null {
+  const source = readElementSource(element);
+  const fields = [source.file, source.compositionId, source.originalCompositionId];
+  return fields.every((field) => field === null || field.length <= MAX_ELEMENT_VALUE)
+    ? source
+    : null;
+}
+
 function matchesBefore(element: Element, selector: string | undefined) {
   if (!selector?.startsWith(".")) return null;
   const groups: Array<{ source: EditingElementSource; count: number }> = [];
@@ -75,7 +86,8 @@ function matchesBefore(element: Element, selector: string | undefined) {
   }
   for (const match of matches) {
     if (match === element) return groups;
-    const source = readElementSource(match);
+    const source = boundedSource(match);
+    if (!source) return null;
     const group = groups.find((entry) => sameSource(entry.source, source));
     if (group) group.count += 1;
     else if (groups.push({ source, count: 1 }) > MAX_SOURCE_GROUPS) return null;
@@ -83,37 +95,18 @@ function matchesBefore(element: Element, selector: string | undefined) {
   return null;
 }
 
-const NO_TEXT = new Set(["script", "style"]);
-
 type Cut = { truncated: boolean };
 
-/** A `dataUrl` value starting `data:` keeps only its header; text is cut by length alone. */
+/** A value over `limit` is cut: a `dataUrl` one starting `data:` to its header, any other by length. */
 function cut(value: string, limit: number, state: Cut, dataUrl = false): string {
+  if (value.length <= limit) return value;
+  state.truncated = true;
   const header = dataUrl && value.startsWith("data:") ? value.slice(0, value.indexOf(",") + 1) : "";
-  const kept = header || value.slice(0, limit);
-  if (kept.length < value.length) state.truncated = true;
-  return kept.slice(0, limit);
+  return (header || value).slice(0, limit);
 }
 
 function renderedText(element: Element, state: Cut): string {
-  if (NO_TEXT.has(element.localName)) return "";
-  let text = "";
-  const walker = document.createTreeWalker(
-    element,
-    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-    {
-      acceptNode: (node) =>
-        node.nodeType === Node.ELEMENT_NODE && NO_TEXT.has((node as Element).localName)
-          ? NodeFilter.FILTER_REJECT
-          : NodeFilter.FILTER_ACCEPT,
-    },
-  );
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (node.nodeType !== Node.TEXT_NODE) continue;
-    text += node.nodeValue;
-    if (text.length > MAX_ELEMENT_TEXT) break;
-  }
-  return cut(text, MAX_ELEMENT_TEXT, state);
+  return cut(renderedTextOf(element, MAX_ELEMENT_TEXT), MAX_ELEMENT_TEXT, state);
 }
 
 function inlineStyles(element: Element, state: Cut): Record<string, string> {
@@ -123,14 +116,19 @@ function inlineStyles(element: Element, state: Cut): Record<string, string> {
   if (declared.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
   for (let index = 0; index < Math.min(declared.length, MAX_ELEMENT_ENTRIES); index += 1) {
     const name = declared.item(index);
+    if (name.length > MAX_ELEMENT_VALUE) {
+      state.truncated = true;
+      continue;
+    }
     styles[name] = cut(declared.getPropertyValue(name), MAX_ELEMENT_VALUE, state, true);
   }
   return styles;
 }
 
 function attributes(element: Element, state: Cut): EditingElementDescription["attributes"] {
-  const kept = Array.from(element.attributes).filter((attribute) => attribute.name !== "style");
-  if (kept.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
+  const named = Array.from(element.attributes).filter((attribute) => attribute.name !== "style");
+  const kept = named.filter((attribute) => attribute.name.length <= MAX_ELEMENT_VALUE);
+  if (kept.length < named.length || kept.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
   return kept
     .slice(0, MAX_ELEMENT_ENTRIES)
     .map((attribute) => [attribute.name, cut(attribute.value, MAX_ELEMENT_VALUE, state, true)]);
@@ -151,36 +149,43 @@ function children(element: Element, state: Cut): EditingElementDescription["chil
   return out;
 }
 
-function hit(element: Element): EditingElementHit {
+export function elementHit(element: Element): EditingElementHit {
   const rect = element.getBoundingClientRect();
   return {
     handle: handleFor(element),
-    tag: element.tagName.toLowerCase(),
+    tag: element.tagName.toLowerCase().slice(0, MAX_ELEMENT_VALUE),
     rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
   };
 }
 
-function describeElement(element: Element): EditingElementDescription {
-  const selector = buildStableSelector(element);
+const whole = (value: string | undefined) =>
+  value && value.length <= MAX_ELEMENT_VALUE ? value : undefined;
+
+function describeElement(element: Element): EditingElementDescription | null {
+  const source = boundedSource(element);
+  if (!source) return null;
+  const selector = whole(buildStableSelector(element));
   const state: Cut = { truncated: false };
   return {
-    ...hit(element),
+    ...elementHit(element),
+    label: buildElementLabel(element).slice(0, MAX_ELEMENT_VALUE),
     parent: element.parentElement ? handleFor(element.parentElement) : null,
-    id: element.id || null,
+    id: whole(element.id) ?? null,
     selector: selector ?? null,
     matchesBefore: matchesBefore(element, selector),
-    source: readElementSource(element),
+    source,
     locked: element.closest("[data-timeline-locked]") !== null,
     attributes: attributes(element, state),
     inlineStyles: inlineStyles(element, state),
     text: renderedText(element, state),
     children: children(element, state),
     truncated: state.truncated,
+    textMarkup: isEditableText(element),
   };
 }
 
 export function elementsAtPoint(x: number, y: number): EditingElementHit[] {
-  return document.elementsFromPoint(x, y).slice(0, MAX_POINT_STACK).map(hit);
+  return document.elementsFromPoint(x, y).slice(0, MAX_POINT_STACK).map(elementHit);
 }
 
 export function describeHandles(
@@ -207,14 +212,29 @@ export function ancestorHandles(
   });
 }
 
+export function readEveryMatch<T>(
+  selector: string,
+  read: (element: Element) => T,
+): { matches: Array<T | null>; truncated: boolean } {
+  const matches: Array<T | null> = [];
+  for (const element of document.querySelectorAll(selector)) {
+    if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
+    matches.push(boundedSource(element) ? read(element) : null);
+  }
+  return { matches, truncated: false };
+}
+
 export function queryElements(selector: string): {
   matches: EditingElementMatch[];
   truncated: boolean;
 } {
   const matches: EditingElementMatch[] = [];
+  let truncated = false;
   for (const element of document.querySelectorAll(selector)) {
     if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
-    matches.push({ handle: handleFor(element), source: readElementSource(element) });
+    const source = boundedSource(element);
+    if (source) matches.push({ handle: handleFor(element), source });
+    else truncated = true;
   }
-  return { matches, truncated: false };
+  return { matches, truncated };
 }

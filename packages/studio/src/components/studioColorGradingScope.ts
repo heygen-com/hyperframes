@@ -1,5 +1,8 @@
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
-import { patchMediaColorGradingInHtml } from "./editor/colorGradingScopePatch";
+import {
+  keepKnownColorGradingValues,
+  patchMediaColorGradingInHtml,
+} from "./editor/colorGradingScopePatch";
 import { hasRelativeLutSource } from "./studioMediaJobs";
 
 export type ColorGradingScope = "source-file" | "project";
@@ -55,7 +58,12 @@ export async function applyColorGradingScopeUpdate({
   showToast,
 }: ApplyColorGradingScopeOptions): Promise<ColorGradingScopeResult> {
   await waitForPendingDomEditSaves();
-  if (scope === "project" && hasRelativeLutSource(value)) {
+  const copied = value ? keepKnownColorGradingValues(value) : null;
+  if (value && copied === null) {
+    showToast("That color grading could not be read, so nothing was applied.", "error");
+    return EMPTY_COLOR_GRADING_SCOPE_RESULT;
+  }
+  if (scope === "project" && hasRelativeLutSource(copied)) {
     showToast(
       "Project-wide color grading cannot copy relative LUT paths. Apply to this file or use a URL/data LUT.",
       "error",
@@ -65,14 +73,14 @@ export async function applyColorGradingScopeUpdate({
 
   let changedElements = 0;
   const patchGrading = (before: string) => {
-    const result = patchMediaColorGradingInHtml(before, value);
+    const result = patchMediaColorGradingInHtml(before, copied);
     changedElements += result.count;
     return result.html;
   };
   const paths = colorGradingScopePaths(scope, selectedSourceFile, compositionPaths);
   const changedPaths = await saveProjectFilesWithHistory({
     projectId,
-    label: value ? "Apply color grading" : "Clear color grading",
+    label: copied ? "Apply color grading" : "Clear color grading",
     files: Object.fromEntries(paths.map((path) => [path, patchGrading])),
     readFile: readProjectFile,
     writeFile: writeProjectFile,
@@ -84,7 +92,7 @@ export async function applyColorGradingScopeUpdate({
   }
   reloadPreview();
   showToast(
-    `${value ? "Applied" : "Cleared"} color grading on ${changedElements} media item${changedElements === 1 ? "" : "s"}`,
+    `${copied ? "Applied" : "Cleared"} color grading on ${changedElements} media item${changedElements === 1 ? "" : "s"}`,
     "info",
   );
   return { changedFiles: changedPaths.length, changedElements };

@@ -1,7 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path, { join } from "node:path";
 import { tmpdir } from "node:os";
+import { get as httpGet } from "node:http";
 import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server/media-range";
 import {
   closeFileServerSafely,
@@ -397,6 +398,33 @@ describe("createFileServer", () => {
         const html = await response.text();
         expect(html).toContain(RENDER_CAPTURE_MODE_SHIM);
         expect(html.indexOf(RENDER_CAPTURE_MODE_SHIM)).toBeLessThan(html.indexOf(runtimeScript));
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the browser not to sniff a type, so an image cannot load as a script or stylesheet", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-nosniff-"));
+    try {
+      writeEmptyIndex(projectDir);
+      writeFileSync(join(projectDir, "scene.png"), "window.ran = true;");
+      writeFileSync(join(projectDir, "scene.js"), "window.ran = true;");
+      const server = await createFileServer({ projectDir, preHeadScripts: [], headScripts: [] });
+      try {
+        for (const [name, type] of [
+          ["scene.png", "image/png"],
+          ["scene.js", "application/javascript; charset=utf-8"],
+          ["index.html", "text/html; charset=utf-8"],
+        ]) {
+          const response = await fetch(`${server.url}/${name}`);
+          expect(response.headers.get("content-type")).toBe(type);
+          expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+        }
+        const missing = await fetch(`${server.url}/missing.js`);
+        expect(missing.headers.get("x-content-type-options")).toBe("nosniff");
       } finally {
         server.close();
       }
@@ -1112,6 +1140,123 @@ describe("HF_EARLY_STUB + HF_BRIDGE_SCRIPT integration", () => {
     expect(child.__hfReal).toBeInstanceOf(FakeTimeline);
     expect(child.__hfReal.parent).toBe(parent.__hfReal);
   });
+
+  // fails without the fix: wrapTimeline attached timeScale/kill/getChildren/etc. unconditionally,
+  // defeating runtime typeof guards and throwing TypeError on custom timelines that omit them.
+  it("does not fabricate timeline methods absent from the underlying timeline", () => {
+    const queued: unknown[][] = [];
+    let seekedTo = -1;
+    const minimal = {
+      to: (...args: unknown[]) => {
+        queued.push(args);
+        return minimal;
+      },
+      duration: () => 5,
+      seek: (t: number) => {
+        seekedTo = t;
+        return minimal;
+      },
+    };
+    const gsap = { timeline: () => minimal };
+    const win: Record<string, unknown> = {
+      __HF_VIRTUAL_TIME__: { originalRequestAnimationFrame: () => 0, originalSetTimeout: () => {} },
+    };
+    new Function("window", HF_EARLY_STUB)(win);
+    win.gsap = gsap;
+
+    const tl = gsap.timeline() as unknown as Record<string, unknown>;
+    expect(typeof tl.timeScale).toBe("undefined");
+    expect(typeof tl.kill).toBe("undefined");
+    expect(typeof tl.getChildren).toBe("undefined");
+    expect(typeof tl.paused).toBe("undefined");
+    expect(typeof tl.play).toBe("undefined");
+    expect(typeof tl.pause).toBe("undefined");
+    expect(typeof tl.from).toBe("undefined");
+
+    // Runtime feature guards must safely skip absent methods instead of crashing.
+    if (typeof tl.timeScale === "function") (tl.timeScale as (v: number) => unknown)(1);
+    if (typeof tl.kill === "function") (tl.kill as () => unknown)();
+
+    // Present methods still batch, flush and delegate.
+    expect((tl.to as (...a: unknown[]) => unknown)("#a", { x: 10 })).toBe(tl);
+    expect(queued).toHaveLength(0);
+    expect((tl.duration as () => number)()).toBe(5);
+    expect(queued).toHaveLength(1);
+    expect((tl.seek as (t: number) => unknown)(2.5)).toBe(tl);
+    expect(seekedTo).toBe(2.5);
+  });
+
+  it("returns non-object timeline values untouched without crashing wrapTimeline", () => {
+    const gsap = { timeline: () => null as unknown };
+    const win: Record<string, unknown> = {
+      __HF_VIRTUAL_TIME__: { originalRequestAnimationFrame: () => 0, originalSetTimeout: () => {} },
+    };
+    new Function("window", HF_EARLY_STUB)(win);
+    win.gsap = gsap;
+
+    expect(gsap.timeline()).toBeNull();
+  });
+
+  it("still delegates timeScale, kill, and non-array getChildren when the real timeline defines them", () => {
+    const calls: string[] = [];
+    class ClassTimeline {
+      private _scale = 1;
+      private _t = 0;
+      to() {
+        calls.push("to");
+        return this;
+      }
+      pause() {
+        calls.push("pause");
+        return this;
+      }
+      time(v?: number) {
+        if (v !== undefined) {
+          this._t = v;
+          return this;
+        }
+        return this._t;
+      }
+      timeScale(v?: number) {
+        if (v !== undefined) {
+          this._scale = v;
+          calls.push(`timeScale:${v}`);
+          return this;
+        }
+        return this._scale;
+      }
+      getChildren() {
+        return "not-an-array" as unknown as unknown[];
+      }
+      kill() {
+        calls.push(`kill:${this._scale}`);
+      }
+    }
+    const gsap = { timeline: () => new ClassTimeline() };
+    const win: Record<string, unknown> = {
+      __HF_VIRTUAL_TIME__: { originalRequestAnimationFrame: () => 0, originalSetTimeout: () => {} },
+    };
+    new Function("window", HF_EARLY_STUB)(win);
+    win.gsap = gsap;
+
+    const tl = gsap.timeline() as unknown as {
+      to: (...a: unknown[]) => unknown;
+      pause: () => unknown;
+      time: (v?: number) => unknown;
+      timeScale: (v?: number) => unknown;
+      getChildren: () => unknown[];
+      kill: () => void;
+    };
+    tl.to("#x", { opacity: 1 });
+    expect(tl.pause()).toBe(tl);
+    expect(tl.time(1.5)).toBe(tl);
+    expect(tl.time()).toBe(1.5);
+    expect(tl.timeScale(2)).toBe(tl);
+    expect(tl.timeScale()).toBe(2);
+    expect(tl.getChildren()).toEqual([]);
+    tl.kill();
+    expect(calls).toEqual(["to", "pause", "timeScale:2", "kill:2"]);
+  });
 });
 
 describe("createFileServer colour-tagged PNGs", () => {
@@ -1132,4 +1277,239 @@ describe("createFileServer colour-tagged PNGs", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
+});
+
+describe("createFileServer private project files", () => {
+  it.each(["/.env", "/.ENV.local", "/.env.production", "/.git/config", "/%2egit/HEAD", "/.envrc"])(
+    "answers %s with 404 and keeps ordinary assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-private-"));
+      try {
+        writeEmptyIndex(projectDir);
+        mkdirSync(join(projectDir, ".git"));
+        for (const name of [".env", ".ENV.local", ".env.production", ".envrc"]) {
+          writeFileSync(join(projectDir, name), "SECRET=1");
+        }
+        writeFileSync(join(projectDir, ".git", "config"), "SECRET=1");
+        writeFileSync(join(projectDir, ".git", "HEAD"), "SECRET=1");
+        writeFileSync(join(projectDir, "asset.txt"), "ok");
+        symlinkSync(join(projectDir, ".env"), join(projectDir, "linked.txt"));
+        await withFileServer(projectDir, async (server) => {
+          const response = await fetch(`${server.url}${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("SECRET");
+          const linked = await fetch(`${server.url}/linked.txt`);
+          expect(linked.status).toBe(404);
+          expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("createFileServer credential files", () => {
+  const credentials = [
+    ".npmrc",
+    ".mcp.json",
+    ".claude/x.json",
+    ".aws/credentials",
+    "id_ed25519",
+    "cert.pem",
+  ];
+  it.each(credentials.map((file) => `/${file}`))(
+    "answers %s with 404 and keeps ordinary assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-credentials-"));
+      try {
+        writeEmptyIndex(projectDir);
+        for (const folder of [".claude", ".aws"]) mkdirSync(join(projectDir, folder));
+        for (const file of credentials) writeFileSync(join(projectDir, file), "SECRET=1");
+        writeFileSync(join(projectDir, "asset.txt"), "ok");
+        await withFileServer(projectDir, async (server) => {
+          const response = await fetch(`${server.url}${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("SECRET");
+          expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+function getWithHost(url: string, host: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolveGet, rejectGet) => {
+    httpGet(url, { headers: { host } }, (res) => {
+      let body = "";
+      res.setEncoding("utf-8");
+      res.on("data", (chunk: string) => (body += chunk));
+      res.on("end", () => resolveGet({ status: res.statusCode ?? 0, body }));
+    }).on("error", rejectGet);
+  });
+}
+
+describe("createFileServer request Host", () => {
+  it.each(["/", "/index.html", "/asset.txt"])(
+    "refuses %s to a page name that is not loopback",
+    async (path) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-host-"));
+      try {
+        writeFileSync(join(projectDir, "index.html"), "<html><body>composition</body></html>");
+        writeFileSync(join(projectDir, "asset.txt"), "project-file");
+        await withFileServer(projectDir, async (server) => {
+          const res = await getWithHost(`${server.url}${path}`, `rebound.example:${server.port}`);
+          expect(res.status).toBe(403);
+          expect(res.body).not.toContain("composition");
+          expect(res.body).not.toContain("project-file");
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["localhost", "127.0.0.1", "[::1]"])(
+    "answers the capture browser on %s",
+    async (name) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-host-"));
+      try {
+        writeFileSync(join(projectDir, "asset.txt"), "project-file");
+        await withFileServer(projectDir, async (server) => {
+          const res = await getWithHost(`${server.url}/asset.txt`, `${name}:${server.port}`);
+          expect(res.status).toBe(200);
+          expect(res.body).toBe("project-file");
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("createFileServer page editing agent", () => {
+  it.each(["index.html", "scene.html"])(
+    "marks %s so its runtime offers a framing site no editing port",
+    async (name) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-mark-"));
+      try {
+        writeFileSync(join(projectDir, name), "<html><head></head><body></body></html>");
+        await withFileServer(projectDir, async (server) => {
+          const res = await fetch(`${server.url}/${name}`);
+          expect(res.status).toBe(200);
+          expect(await res.text()).toContain('<meta name="hyperframes-preview-for-another-site">');
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("createFileServer tool records", () => {
+  it.each([
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".hyperframes/comments.jsonl",
+    "%2ehyperframes/agent-handoff.json",
+    ".hyperframes%2fcomments.jsonl",
+    "linked-history.json",
+  ])(
+    "answers %s with 404 from either root and still serves prepared assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-records-"));
+      const compiledDir = mkdtempSync(join(tmpdir(), "hf-fs-records-compiled-"));
+      try {
+        writeEmptyIndex(projectDir);
+        for (const root of [projectDir, compiledDir]) {
+          mkdirSync(join(root, ".hyperframes", "prepared-assets"), { recursive: true });
+          for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {
+            writeFileSync(join(root, ".hyperframes", name), "PRIVATE_RECORD");
+          }
+        }
+        writeFileSync(join(projectDir, ".hyperframes", "prepared-assets", "clip.txt"), "prepared");
+        symlinkSync(
+          join(projectDir, ".hyperframes", "app-history.jsonl"),
+          join(projectDir, "linked-history.json"),
+        );
+        const server = await createFileServer({
+          projectDir,
+          compiledDir,
+          preHeadScripts: [],
+          headScripts: [],
+          bodyScripts: [],
+        });
+        try {
+          const response = await fetch(`${server.url}/${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("PRIVATE_RECORD");
+          const prepared = await fetch(`${server.url}/.hyperframes/prepared-assets/clip.txt`);
+          expect(await prepared.text()).toBe("prepared");
+        } finally {
+          server.close();
+        }
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+        rmSync(compiledDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+// fails without the fix: a name too long for the file system threw ENAMETOOLONG out of the file lookup, so the
+// server answered 500 and logged the page's whole path with a stack trace
+describe("createFileServer names the file system refuses", () => {
+  it("answers a name too long for the file system with 404 and logs it cut short", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-long-name-"));
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      writeEmptyIndex(projectDir);
+      await withFileServer(projectDir, async (server) => {
+        expect((await fetch(`${server.url}/${"a".repeat(10_000)}.png`)).status).toBe(404);
+      });
+      const logged = [...warn.mock.calls, ...error.mock.calls].map((args) =>
+        args.map(String).join(" "),
+      );
+      expect(logged.some((line) => line.includes("404 Not Found"))).toBe(true);
+      expect(Math.max(...logged.map((line) => line.length))).toBeLessThanOrEqual(2_100);
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+});
+
+it("loads the authored dot-font from the project even with a compiled overlay", async () => {
+  const projectDir = mkdtempSync(join(tmpdir(), "hf-render-font-"));
+  const compiledDir = mkdtempSync(join(tmpdir(), "hf-compiled-font-"));
+  try {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<link rel="preload" as="font" href=".My%20Font.woff2">',
+    );
+    writeFileSync(join(projectDir, ".My Font.woff2"), "authored font");
+    writeFileSync(join(compiledDir, ".My Font.woff2"), "different file");
+    const server = await createFileServer({
+      projectDir,
+      compiledDir,
+      headScripts: [],
+      bodyScripts: [],
+    });
+    try {
+      const response = await fetch(server.url + "/.My%20Font.woff2");
+      expect(response.headers.get("content-type")).toBe("font/woff2");
+      expect(await response.text()).toBe("authored font");
+      writeFileSync(join(projectDir, "index.html"), "<html></html>");
+      expect((await fetch(server.url + "/.My%20Font.woff2")).status).toBe(404);
+    } finally {
+      server.close();
+    }
+  } finally {
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(compiledDir, { recursive: true, force: true });
+  }
 });

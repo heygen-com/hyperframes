@@ -12,6 +12,8 @@ function leftOutCounts(references: readonly LeftOutReference[]) {
     received_count: references.filter((reference) => reference.reason === "received").length,
     blocklisted_count: references.filter((reference) => reference.reason === "blocklisted").length,
     file_type_count: references.filter((reference) => reference.reason === "file_type").length,
+    not_approved_count: references.filter((reference) => reference.reason === "not_approved")
+      .length,
     max_levels_up: Math.max(0, ...levels.map((n) => n ?? 0)),
     levels_up_1: counted((n) => n === 1),
     levels_up_2: counted((n) => n === 2),

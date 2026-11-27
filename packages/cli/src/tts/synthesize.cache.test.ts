@@ -9,9 +9,16 @@ vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
   homedir: () => paths.home,
 }));
+const ownedByAnotherAccount = vi.hoisted(() => new Set<string>());
 vi.mock("node:fs", async (importOriginal) => {
   const original = await importOriginal<typeof fs>();
-  return { ...original, existsSync: vi.fn(original.existsSync) };
+  const lstatSync = ((path: string, options?: object) => {
+    const stat = original.lstatSync(path, options as never);
+    return stat && ownedByAnotherAccount.has(path)
+      ? Object.assign(stat, { uid: process.getuid!() + 1 })
+      : stat;
+  }) as typeof fs.lstatSync;
+  return { ...original, existsSync: vi.fn(original.existsSync), lstatSync };
 });
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 vi.mock("./python.js", async (importOriginal) => ({
@@ -38,8 +45,8 @@ describe("synthesis script cache", () => {
     scriptPath = join(cacheDir, "synth-v4.py");
     outputPath = join(paths.home, "speech.wav");
     fs.mkdirSync(cacheDir, { recursive: true });
-    vi.mocked(execFileSync).mockImplementation(() => {
-      fs.writeFileSync(outputPath, "stub audio");
+    vi.mocked(execFileSync).mockImplementation((_cmd, args) => {
+      if (args?.[6]) fs.writeFileSync(args[6], "stub audio");
       return JSON.stringify({
         outputPath,
         sampleRate: 24000,
@@ -50,16 +57,31 @@ describe("synthesis script cache", () => {
   });
 
   afterEach(() => {
+    ownedByAnotherAccount.clear();
     expect(fs.readdirSync(cacheDir).filter((name) => name.startsWith(".hf-create-"))).toEqual([]);
     fs.rmSync(paths.home, { recursive: true, force: true });
   });
+
+  it.skipIf(!process.getuid)(
+    "neither writes nor runs a script in a tts folder another account owns",
+    async () => {
+      ownedByAnotherAccount.add(cacheDir);
+      const { synthesize } = await import("./synthesize.js");
+      await expect(synthesize("Hello", outputPath)).rejects.toThrow(
+        `${cacheDir} can be changed by another user account`,
+      );
+      expect(fs.existsSync(scriptPath)).toBe(false);
+      const ran = vi.mocked(execFileSync).mock.calls.flatMap(([, args]) => args ?? []);
+      expect(ran).not.toContain(scriptPath);
+    },
+  );
 
   it("runs the synthesis process in the environment the packages imported under", async () => {
     vi.mocked(execFileSync).mockImplementation((_cmd, args, options) => {
       const importing = String(args?.[0]) === "-c";
       const env = (options as { env?: NodeJS.ProcessEnv }).env;
       if (importing && env?.PYTHONPATH !== undefined) throw new Error("ModuleNotFoundError");
-      fs.writeFileSync(outputPath, "stub audio");
+      if (args?.[6]) fs.writeFileSync(args[6], "stub audio");
       return JSON.stringify({
         outputPath,
         sampleRate: 24000,
@@ -126,7 +148,7 @@ describe("synthesis script cache", () => {
         }
         expect(execFileSync).toHaveBeenCalledWith(
           "test-python",
-          expect.arrayContaining([scriptPath, "model.onnx", "voices.bin", "Hello", outputPath]),
+          expect.arrayContaining([scriptPath, "model.onnx", "voices.bin", "Hello"]),
           expect.objectContaining({ timeout: 300_000 }),
         );
       } finally {

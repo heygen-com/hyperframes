@@ -26,6 +26,8 @@ interface Shown {
   block?: number;
   /** The block's rendered text; defaults to `text`. */
   blockText?: string;
+  /** Top edge in px; defaults to a row per key. */
+  top?: number;
 }
 
 function part(shown: Shown): CraftTextPart {
@@ -40,7 +42,7 @@ function part(shown: Shown): CraftTextPart {
     blockText: shown.blockText ?? shown.text,
     opacity: 1,
     fontPx,
-    rect: { left: 100, top: 100 + shown.key * 10, width: 800, height: fontPx * 1.2 },
+    rect: { left: 100, top: shown.top ?? 100 + shown.key * 10, width: 800, height: fontPx * 1.2 },
     captions: shown.captions ?? false,
   };
 }
@@ -108,6 +110,16 @@ describe("readingWords", () => {
     expect(readingWords("a tooth can't get in")).toBe(5);
     expect(readingWords("a tooth can’t get in")).toBe(5);
     expect(readingWords("it's 'quoted'")).toBe(2);
+  });
+
+  it("counts a number with a thousands separator or a decimal point as one word", () => {
+    expect(readingWords("1,080")).toBe(1);
+    expect(readingWords("3.5%")).toBe(1);
+    expect(readingWords("$1,200.50 saved")).toBe(2);
+    expect(readingWords("1,080억 달러")).toBe(2);
+    expect(readingWords("one, two. 3 left")).toBe(4);
+    expect(readingWords("12/40")).toBe(2);
+    expect(readingWords("売上1,080億")).toBe(3);
   });
 });
 
@@ -216,6 +228,25 @@ describe("line_unread", () => {
     }));
     shown.push({ key: 2, text: "End card here", from: 6, to: 12 });
     expect(await detectLineUnread(film(12, shown), 12, CANVAS, probeFor(shown))).toEqual([]);
+  });
+
+  // fails without the fix: each instance of a split clip was timed alone, so its 0.5 s first half warned.
+  it("times a line held across a split clip's two instances as one hold", async () => {
+    const line = "Your reminder card holds here";
+    const shown: Shown[] = [
+      { key: 1, text: line, from: 3, to: 3.5, top: 800 },
+      { key: 2, text: line, from: 3.5, to: 8, top: 800 },
+    ];
+    expect(await detectLineUnread(film(8, shown), 8, CANVAS, probeFor(shown))).toEqual([]);
+  });
+
+  it("still times a different line that takes over the same place on its own", async () => {
+    const shown: Shown[] = [
+      { key: 1, text: "Every team gets one shared calendar now", from: 3, to: 3.5, top: 800 },
+      { key: 2, text: "Start your free trial today", from: 3.5, to: 8, top: 800 },
+    ];
+    const findings = await detectLineUnread(film(8, shown), 8, CANVAS, probeFor(shown));
+    expect(findings.map((finding) => finding.selector)).toEqual(["#t1"]);
   });
 
   it("skips text too small to be a reading line", async () => {

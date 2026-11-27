@@ -27,6 +27,7 @@ export type GsapEditBlockDetail =
   | "live-rotation-no-source-tween"
   | "live-resize-no-source-tween"
   | "zero-duration-tween"
+  | "frame-tweens-unreadable"
   | PlayheadEditRefusal;
 
 /** Why an edit at the playhead could not be written as keyframes of the file's tween. */
@@ -64,6 +65,7 @@ export type GsapEditOutcome =
        * and the element snapped back to its authored position on every drag.
        */
       ownsDragOffset?: boolean;
+      savedAsScale?: true;
     }
   | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail }
   | { status: "element-offset" }
@@ -90,6 +92,8 @@ const GSAP_EDIT_DETAIL_COPY: Partial<Record<GsapEditBlockDetail, string>> = {
   "array-step-computed": `${STEP_LIST} whose value comes from code, which Studio can't keep while it edits them. ${IN_CODE}`,
   "array-step-relative": `${STEP_LIST} with a relative value (like "+=40"), which an edit would apply again. ${IN_CODE}`,
   "array-step-random": `${STEP_LIST} with a random() value, which an edit would roll again. ${IN_CODE}`,
+  "frame-tweens-unreadable":
+    "This preview couldn't read the layer's animation, so Studio can't save the move. Move it in the Code tab.",
 };
 
 export function gsapEditBlockMessage(

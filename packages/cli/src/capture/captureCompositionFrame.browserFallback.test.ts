@@ -178,6 +178,31 @@ describe("openSettledCompositionPage Windows bundled-browser recovery", () => {
     expect(session.browser).toBe(fallback.browser);
   });
 
+  // fails without the fix: the system Chrome's path and the caller's wording for the not-ready warning were printed as given
+  it("shows control characters in the retry path and the not-render-ready warning as text", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.findSystemBrowser.mockReturnValue({
+      executablePath: "C:\\Tools\u0007\\chrome.exe",
+      source: "system",
+    });
+    const fallback = fakeBrowser();
+    fallback.page.waitForFunction.mockRejectedValue(new Error("not ready"));
+    mocks.launch.mockRejectedValueOnce(launchCrash()).mockResolvedValueOnce(fallback.browser);
+    try {
+      await openSettledCompositionPage(HTML, "http://127.0.0.1:3000", {
+        ...OPTIONS,
+        renderReadyWarningSuffix: 'comparison variant "b\u0007" may be inaccurate',
+      });
+
+      const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain("system Chrome at C:\\Tools\\x07\\chrome.exe.");
+      expect(printed).toContain('1000ms — comparison variant "b\\x07" may be inaccurate');
+      expect(printed).not.toContain("\u0007");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("adds STATUS_STACK_BUFFER_OVERRUN and browser-path guidance when no system Chrome exists", async () => {
     mocks.findSystemBrowser.mockReturnValue(undefined);
     mocks.launch.mockRejectedValueOnce(launchCrash());
@@ -276,15 +301,6 @@ describe("openSettledCompositionPage when nothing may listen", () => {
     await openSettledCompositionPage(HTML, "http://127.0.0.1:3000", OPTIONS);
     expect(opened.page.evaluateOnNewDocument).toHaveBeenCalledWith(
       "window.__HF_REPLAY_SKIPPED_FRAMES = true",
-    );
-  });
-
-  it("asks the page to free clips the playhead left, so a long film does not hold every decoder", async () => {
-    const opened = fakeBrowser();
-    mocks.launch.mockResolvedValue(opened.browser);
-    await openSettledCompositionPage(HTML, "http://127.0.0.1:3000", OPTIONS);
-    expect(opened.page.evaluateOnNewDocument).toHaveBeenCalledWith(
-      "window.__HF_RELEASE_PASSED_MEDIA = true",
     );
   });
 });

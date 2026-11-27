@@ -5,10 +5,21 @@
  * providing a CLI-specific adapter for single-project, in-process rendering.
  */
 
+import { PREVIEW_NONCE_HEADER, previewProof, previewToken } from "@hyperframes/core/preview-proof";
+import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { realpath } from "@hyperframes/core";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import { realpath, terminalLines, terminalText } from "@hyperframes/core";
+import { stackOrMessage } from "../utils/errorMessage.js";
+import {
+  createReadStream,
+  existsSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  unlinkSync,
+} from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -36,6 +47,7 @@ import {
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { startRenderCpuSampler } from "../telemetry/renderCpu.js";
 import { mountDesktopRoutes } from "./desktopRoutes.js";
+import { followReceivedRecords } from "./followReceivedRecords.js";
 import {
   hostHeaderAllowed,
   PREVIEW_ALLOWED_HOSTS_ENV,
@@ -43,8 +55,11 @@ import {
 } from "@hyperframes/studio-server/request-identity";
 import { mountShareRoutes } from "./shareRoutes.js";
 import { isDevMode } from "../utils/env.js";
+import { recordFolder } from "../utils/projectRecords.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import { lintHtmlOutOfProcess } from "../utils/lintHtmlWorker.js";
 import { acquireRenderLock, describeRenderLockHolder } from "../utils/renderLock.js";
 import type { ProjectLintResult } from "@hyperframes/lint";
 import { resolveRenderBrowser } from "../browser/preflight.js";
@@ -73,6 +88,9 @@ import {
   HistoryBusyError,
   HistoryClosedError,
   historyCache,
+  carriesOAuthReturn,
+  inertRefusal,
+  refuseOAuthReturn,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import { isLinkFreeWithinProject } from "@hyperframes/studio-server/safe-path";
@@ -80,11 +98,13 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
+  type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "@hyperframes/studio-server/screenshot-clip";
-import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
+import { SAME_ORIGIN_FRAMING_HEADERS } from "@hyperframes/engine";
 import { createThumbnailPages } from "./thumbnailPages.js";
 import {
   assertWebGpuAdapterAvailable,
@@ -105,13 +125,16 @@ const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 // before that watchdog can fire and skip this file's browser cleanup.
 const RENDER_SHUTDOWN_WAIT_MS = 2_000;
 
+const LINT_WORKER_TIMEOUT_MS = 120_000;
+const LINT_WORKER_HEAP_MB = 1024;
+
 // Vite emits only content-hashed files under dist/assets; hand-authored
 // public/ files land at the dist root. The route is the signal because the
 // filename is not: rollup's base64url hash may itself contain a hyphen.
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 const REMOTE_GIF_IMG_SRC_RE =
-  /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
+  /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"'?#]+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
 
 async function loadStudioProducer() {
   if (!isDevMode()) return await import("@hyperframes/producer");
@@ -230,6 +253,15 @@ function collectRemoteGifImageSources(html: string): string[] {
   return [...urls];
 }
 
+async function startsWithGifSignature(path: string): Promise<boolean> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of createReadStream(path, { start: 0, end: 5 })) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const signature = Buffer.concat(chunks).toString("latin1");
+  return signature === "GIF87a" || signature === "GIF89a";
+}
+
 async function downloadRemoteGifImageSources(
   html: string,
   downloadDir: string,
@@ -239,11 +271,16 @@ async function downloadRemoteGifImageSources(
   await Promise.all(
     collectRemoteGifImageSources(html).map(async (url) => {
       try {
-        sourceAssets.set(url, await downloadToTemp(url, downloadDir));
+        const path = await downloadToTemp(url, downloadDir);
+        if (!(await startsWithGifSignature(path))) {
+          rmSync(path, { force: true });
+          throw new Error("downloaded file is not a GIF");
+        }
+        sourceAssets.set(url, path);
       } catch (err) {
         console.warn(
           "[Studio] Remote animated GIF prep skipped:",
-          err instanceof Error ? err.message : err,
+          terminalText(err instanceof Error ? err.message : String(err)),
         );
       }
     }),
@@ -262,6 +299,7 @@ let _thumbnailBrowserModes: {
   requested: BrowserGpuMode;
   resolved: ResolvedBrowserGpuMode;
   softwareWebGpu: boolean;
+  pageServerOrigin: string;
 } | null = null;
 
 interface ThumbnailBrowserSession {
@@ -269,27 +307,38 @@ interface ThumbnailBrowserSession {
   requestedGpuMode: BrowserGpuMode;
   resolvedGpuMode: ResolvedBrowserGpuMode;
   softwareWebGpu: boolean;
+  pageServerOrigin: string;
 }
 
+// The page server is the Studio's own origin when known, never a request's Host: with PRODUCER_RESTRICT_PAGE_NETWORK
+// on, it is the one host and port the browser reaches directly, so another page server needs a new browser.
 async function getThumbnailBrowser(
   requestedGpuMode: BrowserGpuMode,
+  pageServerUrl: string,
   isShuttingDown: () => boolean,
 ): Promise<ThumbnailBrowserSession | null> {
   if (isShuttingDown()) return null;
+  const pageServerOrigin = new URL(pageServerUrl).origin;
   if (
     _thumbnailBrowserLease?.browser.connected &&
-    _thumbnailBrowserModes?.requested === requestedGpuMode
+    _thumbnailBrowserModes?.requested === requestedGpuMode &&
+    _thumbnailBrowserModes.pageServerOrigin === pageServerOrigin
   ) {
     return {
       browser: _thumbnailBrowserLease.browser,
       requestedGpuMode: _thumbnailBrowserModes.requested,
       resolvedGpuMode: _thumbnailBrowserModes.resolved,
       softwareWebGpu: _thumbnailBrowserModes.softwareWebGpu,
+      pageServerOrigin,
     };
   }
   if (_thumbnailBrowserInitializing) {
     const session = await _thumbnailBrowserInitializing;
-    if (session?.requestedGpuMode === requestedGpuMode) return session;
+    if (
+      session?.requestedGpuMode === requestedGpuMode &&
+      session.pageServerOrigin === pageServerOrigin
+    )
+      return session;
   }
   if (_thumbnailBrowserLease) await closeThumbnailBrowser();
 
@@ -322,13 +371,14 @@ async function getThumbnailBrowser(
           },
           gpuConfig,
         ),
-        { forceScreenshot: true },
+        { forceScreenshot: true, pageServerUrl },
       );
       _thumbnailBrowserLease = acquired;
       _thumbnailBrowserModes = {
         requested: requestedGpuMode,
         resolved: resolvedGpuMode,
         softwareWebGpu,
+        pageServerOrigin,
       };
       acquired.browser.on("disconnected", () => {
         if (_thumbnailBrowserLease !== acquired) return;
@@ -336,11 +386,17 @@ async function getThumbnailBrowser(
         _thumbnailBrowserModes = null;
         _thumbnailBrowserInitializing = null;
       });
-      return { browser: acquired.browser, requestedGpuMode, resolvedGpuMode, softwareWebGpu };
+      return {
+        browser: acquired.browser,
+        requestedGpuMode,
+        resolvedGpuMode,
+        softwareWebGpu,
+        pageServerOrigin,
+      };
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
-        err instanceof Error ? err.message : err,
+        terminalText(err instanceof Error ? err.message : String(err)),
       );
       _thumbnailBrowserInitializing = null;
       return null;
@@ -445,12 +501,17 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
   }
 }
 
+function previewDocumentStore(projectDir: string): PreviewApiAdapter["previewDocuments"] {
+  const secret = previewToken();
+  if (!secret) return undefined;
+  const salt = createHash("sha256")
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .digest("hex");
+  return createPreviewDocumentStore(projectDir, salt, secret);
+}
+
 function createStateFolderBeforeWatching(projectDir: string): void {
-  try {
-    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
-  } catch {
-    return;
-  }
+  recordFolder(projectDir, "");
 }
 
 export function createStudioServer(options: StudioServerOptions): StudioServer {
@@ -497,7 +558,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         return history;
       })
       .catch((error: unknown) => {
-        console.warn(`[studio] Project history is off: ${String(error)}`);
+        console.warn(`[studio] Project history is off: ${terminalText(String(error))}`);
         if (error instanceof HistoryBusyError) ownerWaitMs = 0;
         if (error instanceof HistoryBusyError || error instanceof HistoryClosedError)
           histories.forget(projectDir);
@@ -516,6 +577,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // launching a browser shutdown() has no way to know about and close.
   let shuttingDown = false;
 
+  const previewWarnings = new Set<string>();
+  const warnPreviewOnce = (line: string) => {
+    if (previewWarnings.has(line)) return;
+    previewWarnings.add(line);
+    console.warn(`[studio] ${line}`);
+  };
+
   const adapter: PreviewApiAdapter = {
     history: () => (hostAppOwnsHistory ? null : projectHistory()),
     loadSharp: () => loadSharpInBackground("image thumbnails"),
@@ -527,13 +595,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     listProjects: () => [project],
 
-    // Salted with the running CLI file, so an upgraded CLI never serves an older build's document.
-    previewDocuments: createPreviewDocumentStore(
-      projectDir,
-      createHash("sha256")
-        .update(readFileSync(fileURLToPath(import.meta.url)))
-        .digest("hex"),
-    ),
+    // Salted with the running CLI file; keyed with this user's preview token, so a shipped document is never served.
+    previewDocuments: previewDocumentStore(projectDir),
 
     resolveProject: (id: string) => (id === projectId ? project : null),
 
@@ -551,7 +614,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         );
         return html;
       } catch (err) {
-        console.error("[studio] Bundle failed:", err);
+        const { isCompositionTooLargeError } = await import("@hyperframes/core/compiler");
+        if (isCompositionTooLargeError(err)) throw err;
+        console.error("[studio] Bundle failed:", terminalLines(stackOrMessage(err)));
         return null;
       }
     },
@@ -570,18 +635,21 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const preparedDirs = [gifOutputDir, gifDownloadDir, heifOutputDir];
       if (!preparedDirs.every((dir) => isLinkFreeWithinProject(project.dir, dir)))
         return injectDeterministicFontFaces(html);
+      const allowOutsideFiles = outsideAssetsAllowed(project.dir, undefined, warnPreviewOnce);
       const { html: htmlWithJpegs } = await prepareHeifImageInputs(html, {
         projectDir: project.dir,
         downloadDir: gifDownloadDir,
         outputDir: heifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/heif",
-        onFailure: (error) => console.warn(`[studio] ${error.message}`),
+        allowOutsideFiles,
+        onFailure: (error) => console.warn(`[studio] ${terminalText(error.message)}`),
       });
       const prepared = await prepareAnimatedGifInputs(htmlWithJpegs, {
         projectDir: project.dir,
         downloadDir: gifDownloadDir,
         outputDir: gifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/gif",
+        allowOutsideFiles,
         cacheDir: gifOutputDir,
         sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, (url, destDir) =>
           downloadToTemp(url, destDir, undefined, undefined, undefined, {
@@ -597,18 +665,20 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       if (resolve(dir) === resolve(projectDir)) cachedProjectSignature = null;
     },
 
-    async lint(html, opts) {
-      const { lintHyperframeHtml } = await import("@hyperframes/lint");
-      return await lintHyperframeHtml(html, { ...opts, host: "studio" });
-    },
+    lint: (html, opts) => lintHtmlOutOfProcess(html, { ...opts, host: "studio" }),
 
     // Out of process: linting a large composition is seconds of synchronous parsing, and on
     // this event loop it stalls every other Studio request, the preview included.
-    lintProject: (dir: string) =>
+    lintProject: (dir: string, signal?: AbortSignal) =>
       runRenderSetupWorker<ProjectLintResult>(
         "lint",
         { projectDir: dir, host: "studio", background: true },
-        { maxBufferBytes: 8 * 1024 * 1024 },
+        {
+          execArgv: [`--max-old-space-size=${LINT_WORKER_HEAP_MB}`],
+          maxBufferBytes: 8 * 1024 * 1024,
+          signal,
+          timeoutMs: LINT_WORKER_TIMEOUT_MS,
+        },
       ),
 
     runtimeUrl: "/api/runtime.js",
@@ -667,6 +737,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
           }
 
+          const allowOutsideProjectAssets = outsideAssetsAllowed(
+            opts.project.dir,
+            opts.composition,
+            (line) => console.warn(`[studio] ${line}`),
+          );
           const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
           const manualEditsRenderScript = createStudioManualEditsRenderBodyScript(manifestContent);
           const job = createRenderJob({
@@ -680,10 +755,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...(manualEditsRenderScript ? { renderBodyScripts: [manualEditsRenderScript] } : {}),
             ...(opts.composition ? { entryFile: opts.composition } : {}),
             ...(opts.variables ? { variables: opts.variables } : {}),
+            ...(opts.range ? { range: opts.range } : {}),
             ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
-            allowOutsideProjectAssets: true,
+            allowOutsideProjectAssets,
           });
           renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {
@@ -781,7 +857,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async generateThumbnail(opts): Promise<Buffer | null> {
-      const session = await getThumbnailBrowser(browserGpuMode, () => shuttingDown);
+      const session = await getThumbnailBrowser(
+        browserGpuMode,
+        options.origin?.() ?? opts.previewUrl,
+        () => shuttingDown,
+      );
       if (!session) {
         if (!shuttingDown) {
           console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");
@@ -815,15 +895,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               requiresWebGpu && session.softwareWebGpu,
             );
             await page
-              .waitForFunction(
-                () => {
-                  const w = window as Window & {
-                    __timelines?: Record<string, unknown>;
-                  };
-                  return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
-                },
-                { timeout: 5000 },
-              )
+              .waitForFunction(thumbnailSeekReadyInBrowser, { timeout: 5000 })
               .catch(() => {});
           },
           async (page) => {
@@ -865,7 +937,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         if (!opts.signal.aborted) {
           console.warn(
             "[Studio] Thumbnail generation failed:",
-            err instanceof Error ? err.message : err,
+            terminalText(err instanceof Error ? err.message : String(err)),
           );
         }
         return null;
@@ -875,8 +947,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     async listRegistryCatalog() {
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
       const { loadProjectConfig } = await import("../utils/projectConfig.js");
+      const { fromReceivedRegistry } = await import("../commands/add.js");
       // The same registry `add` installs from, so the panel lists what can be installed.
-      const registry = { baseUrl: loadProjectConfig(projectDir).registry };
+      const baseUrl = loadProjectConfig(projectDir).registry;
+      const registry = { baseUrl, publicOnly: fromReceivedRegistry(projectDir, baseUrl) };
       const entries = await listRegistryItems(undefined, registry);
       const blockAndComponentEntries = entries.filter(
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
@@ -895,7 +969,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         source: "studio",
       });
       for (const warning of result.warnings) {
-        process.stderr.write(`hyperframes:registry ${warning}\n`);
+        process.stderr.write(`hyperframes:registry ${terminalText(warning)}\n`);
       }
       const written = result.written;
 
@@ -922,6 +996,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Extra hosts from HYPERFRAMES_PREVIEW_ALLOWED_HOSTS (Codespaces, tunnels).
   const allowedHosts = previewAllowedHostsFromEnv();
 
+  // No Studio route takes an OAuth return, and project script runs on this origin.
+  app.use(async function refuseOAuthReturnAtAnyPath(c, next) {
+    return carriesOAuthReturn(c.req.url) ? refuseOAuthReturn() : next();
+  });
+
   // Every route answers only loopback, the bind or an allowed host; a browser cannot forge Host.
   app.use(async function refuseUnknownHost(c, next) {
     const host = c.req.header("host") ?? new URL(c.req.url).host;
@@ -943,7 +1022,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/__hyperframes_config", (c) => {
     const serve = async () => {
       const serverBuildSignature = await loadPreviewServerBuildSignature();
-      return c.json({
+      const config = {
         isHyperframes: true,
         pid: process.pid,
         projectName: projectId,
@@ -951,7 +1030,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         serverBuildSignature,
         browserGpuMode,
         version,
-      });
+      };
+      const socket = (c.env as Partial<HttpBindings> | undefined)?.incoming?.socket;
+      const proof =
+        socket?.localAddress && socket.localPort
+          ? previewProof(
+              c.req.header(PREVIEW_NONCE_HEADER),
+              { address: socket.localAddress, port: socket.localPort },
+              config,
+            )
+          : null;
+      return c.json({ ...config, ...(proof && { proof }) });
     };
     return serve();
   });
@@ -1102,6 +1191,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   mountDesktopRoutes(app, projectDir);
   mountShareRoutes(app, projectDir);
+  followReceivedRecords(app, projectDir);
 
   // ── Pre-flight checks for render ────────────────────────────────────────
   // Intercept render requests before they reach the shared API so we can
@@ -1122,10 +1212,14 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Mount the shared studio API at /api.
   // Use fetch() forwarding (not .route()) so the sub-app sees paths without
   // the /api prefix — the shared module's path extraction uses c.req.path.
-  const api = createStudioApi(adapter, { allowedHosts, sandboxThumbnailCaptures: true });
+  const api = createStudioApi(adapter, {
+    allowedHosts,
+    sandboxThumbnailCaptures: true,
+    sandboxDirectOpens: true,
+  });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
-    url.pathname = url.pathname.slice(4); // Strip "/api" prefix
+    url.pathname = url.pathname.replace(/^\/[^/]*/, ""); // Strip the "/api" segment however it is spelled
     const forwardReq = new Request(url.toString(), {
       method: c.req.method,
       headers: c.req.raw.headers,
@@ -1171,8 +1265,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return `<script>window.__HF_STUDIO_ENV__=${JSON.stringify(overrides)};</script>`;
   }
 
-  // SPA fallback
-  app.get("*", (c) => {
+  // Studio routes by hash, so only its entry paths get the shell, and only its own pages may frame it.
+  const serveStudioShell = (c: Context) => {
+    for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) c.header(name, value);
     const indexPath = resolve(studioDir, "index.html");
     const indexContent = readBundleFile(indexPath);
     if (indexContent === null) {
@@ -1254,7 +1349,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     // `no-cache` not `no-store`: same refetch without an ETag, but `no-store`
     // would blocklist the document from Chrome's bfcache.
     return c.html(html, 200, { "Cache-Control": "no-cache" });
-  });
+  };
+  app.get("/", serveStudioShell);
+  app.get("/index.html", serveStudioShell);
+  app.all("*", () => inertRefusal(404, "Not found."));
 
   const shutdown = async (): Promise<void> => {
     shuttingDown = true;

@@ -3,6 +3,8 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    // Beside the chunks that start it (subCompositionBuild.ts looks next to itself).
+    subCompositionWorker: "src/helpers/subCompositionWorker.ts",
     "helpers/screenshotClip": "src/helpers/screenshotClip.ts",
     "helpers/mediaCodecMap": "src/helpers/mediaCodecMap.ts",
     "helpers/proxyTranscoder": "src/helpers/proxyTranscoder.ts",
@@ -19,6 +21,7 @@ export default defineConfig({
     "helpers/encoderOptions": "src/helpers/encoderOptions.ts",
     "helpers/mediaRange": "src/helpers/mediaRange.ts",
     "helpers/mime": "src/helpers/mime.ts",
+    "helpers/outsideFile": "src/helpers/outsideFile.ts",
     "history/index": "src/history/index.ts",
   },
   format: ["esm"],

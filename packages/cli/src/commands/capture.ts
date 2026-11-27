@@ -3,13 +3,16 @@ import { failCommand, scheduleCliExit, failUsage } from "../utils/commandResult.
 import { defineCommand } from "../utils/defineCommand.js";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, SetupStepsError } from "../utils/errorMessage.js";
 import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
 import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
-import { jsonFailure } from "../utils/jsonError.js";
+import { jsonFailure, printFailureLine } from "../utils/jsonError.js";
+import { terminalText } from "@hyperframes/core";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";
+const DEFAULT_CAPTURE_TIMEOUT_MS = 120_000;
 
 function emitCapturePhase(event: CapturePhaseProgress): void {
   diag.notice(`${CAPTURE_PHASE_PREFIX}${JSON.stringify(event)}`);
@@ -94,7 +97,8 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: "Page load timeout in ms (default: 120000)",
+      description:
+        "Page load timeout: a number of ms, or a duration such as 30s or 2m (default: 120000)",
     },
     "capture-budget": {
       type: "string",
@@ -127,11 +131,11 @@ export default defineCommand({
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
-    const { captureUpstreamProxy } = await import("../capture/upstreamProxy.js");
+    const { captureUpstreamProxy } = await import("@hyperframes/engine/public-network");
     try {
       captureUpstreamProxy();
     } catch (error) {
-      console.error(normalizeErrorMessage(error));
+      printFailureLine((show) => show(normalizeErrorMessage(error)));
       failCommand();
     }
 
@@ -158,7 +162,7 @@ export default defineCommand({
       try {
         url = resolveLocalCaptureTarget(localFile, localRoot).fileUrl;
       } catch (err) {
-        console.error(normalizeErrorMessage(err));
+        printFailureLine((show) => show(normalizeErrorMessage(err)));
         failCommand();
       }
     } else {
@@ -175,7 +179,7 @@ export default defineCommand({
       try {
         new URL(url);
       } catch {
-        console.error(`Invalid URL: ${url}`);
+        printFailureLine((show) => `Invalid URL: ${show(String(url))}`);
         failUsage();
       }
     }
@@ -216,7 +220,7 @@ export default defineCommand({
     if (!isJson) {
       const { c } = await import("../ui/colors.js");
       console.log();
-      console.log(c.dim("◆") + "  Capturing " + c.bold(url));
+      console.log(c.dim("◆") + "  Capturing " + c.bold(terminalText(url)));
       if (isDefaultOutput && outputName !== "capture") {
         console.log(`  ${c.dim(`(./capture/ exists; writing to ./${outputName}/)`)}`);
       }
@@ -236,7 +240,7 @@ export default defineCommand({
           skipAssets: args["skip-assets"] as boolean,
           skipVision: args["skip-vision"] as boolean,
           maxScreenshots,
-          timeout: args.timeout ? parseInt(args.timeout as string) : undefined,
+          timeout: parseTimeoutMs(args.timeout, DEFAULT_CAPTURE_TIMEOUT_MS),
           postNavigationBudgetMs: captureBudgetMs,
           captureDeadlineMs: parseCaptureDeadline(process.env.HYPERFRAMES_CAPTURE_DEADLINE_MS),
           json: isJson,
@@ -256,7 +260,7 @@ export default defineCommand({
                 done: "  Done",
               };
               const label = stages[stage] || `  ${stage}`;
-              console.log(detail ? `${label} ${detail}` : label);
+              console.log(terminalText(detail ? `${label} ${detail}` : label));
             },
       );
 
@@ -292,7 +296,10 @@ export default defineCommand({
         console.log();
         const icon = result.ok ? c.success("◇") : c.error("✗");
         const status = result.ok ? "Captured" : "Capture failed";
-        console.log(icon + `  ${status} ${c.bold(result.title)} → ${c.dim(outputDir)}`);
+        console.log(
+          icon +
+            `  ${status} ${c.bold(terminalText(result.title))} → ${c.dim(terminalText(outputDir))}`,
+        );
         console.log();
         console.log(`  ${c.dim("Screenshots:")} ${result.screenshots.length}`);
         console.log(`  ${c.dim("Assets:")} ${result.assets.length}`);
@@ -310,23 +317,25 @@ export default defineCommand({
         }
         console.log(`  ${c.dim("Sections:")} ${result.tokens.sections.length}`);
         console.log(
-          `  ${c.dim("Fonts:")} ${result.tokens.fonts
-            .map(function (f) {
-              return (
-                f.family +
-                " (" +
-                (f.variable && f.weightRange
-                  ? f.weightRange[0] + "-" + f.weightRange[1] + " variable"
-                  : f.weights.join(",")) +
-                ")"
-              );
-            })
-            .join(", ")}`,
+          `  ${c.dim("Fonts:")} ${terminalText(
+            result.tokens.fonts
+              .map(function (f) {
+                return (
+                  f.family +
+                  " (" +
+                  (f.variable && f.weightRange
+                    ? f.weightRange[0] + "-" + f.weightRange[1] + " variable"
+                    : f.weights.join(",")) +
+                  ")"
+                );
+              })
+              .join(", "),
+          )}`,
         );
         if (result.warnings.length > 0) {
           console.log();
           for (const w of result.warnings) {
-            console.log(`  ${c.warn("⚠")} ${w}`);
+            console.log(`  ${c.warn("⚠")} ${terminalText(w)}`);
           }
         }
         console.log();
@@ -350,7 +359,9 @@ export default defineCommand({
       if (isJson) {
         console.log(JSON.stringify(jsonFailure("runtime_error", errMsg)));
       } else {
-        console.error(`\n  ✗ Capture failed: ${errMsg}\n`);
+        const setup = err instanceof SetupStepsError ? err : undefined;
+        console.error(`\n  ✗ Capture failed: ${terminalText(setup?.summary ?? errMsg)}\n`);
+        if (setup) console.error(`${setup.stepsWrittenByCli}\n`);
       }
       scheduleCliExit(1);
       failCommand();

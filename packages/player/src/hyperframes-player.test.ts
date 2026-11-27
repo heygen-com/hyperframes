@@ -1,6 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
+import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
+import { ParentAudio, type ParentAudioHost } from "./parent-audio.js";
+import { PLAY_START_GRACE_MS } from "./playback-state.js";
+
+type SealedAudioReader = {
+  _sealedAudio(): ParentAudio | null;
+  _parentAudioLoad: Promise<void> | null;
+  _paused: boolean;
+};
+
+async function loadedSealedAudio(player: HTMLElement): Promise<ParentAudio> {
+  const sealed = player as unknown as SealedAudioReader;
+  sealed._sealedAudio();
+  await sealed._parentAudioLoad;
+  const audio = sealed._sealedAudio();
+  if (!audio) throw new Error("expected a sealed WebKit player to play audio from the parent");
+  return audio;
+}
 
 // Install a stubbed contentDocument getter on the given iframe element. The
 // new stopMedia / muted tests repeat this `Object.defineProperty(... { get })`
@@ -696,6 +714,60 @@ describe("HyperframesPlayer adoptedStyleSheets", () => {
   });
 });
 
+describe("HyperframesPlayer page glyph slots", () => {
+  function slotAt(root: ParentNode | null, selector: string): HTMLSlotElement {
+    const slot = root?.querySelector(selector);
+    if (!(slot instanceof HTMLSlotElement)) throw new Error(`no slot at ${selector}`);
+    return slot;
+  }
+
+  function onlyAssigned(slot: HTMLSlotElement): Element | undefined {
+    const assigned = slot.assignedElements();
+    return assigned.length === 1 ? assigned[0] : undefined;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("keeps the page's play glyph in the controls after they are rebuilt or the player moves", () => {
+    const player = document.createElement("hyperframes-player");
+    player.setAttribute("controls", "");
+    const glyph = document.createElement("span");
+    glyph.slot = "play-icon";
+    player.appendChild(glyph);
+    document.body.appendChild(player);
+    const expectGlyphShown = () => {
+      expect(glyph.parentElement).toBe(player);
+      expect(onlyAssigned(slotAt(player.shadowRoot, ".hfp-ico-play slot"))).toBe(glyph);
+    };
+
+    expectGlyphShown();
+
+    player.removeAttribute("controls");
+    player.setAttribute("controls", "");
+    expectGlyphShown();
+
+    player.remove();
+    document.body.appendChild(player);
+    expectGlyphShown();
+  });
+
+  it("shows the page's loading mark in the loader card", () => {
+    const player = document.createElement("hyperframes-player");
+    const mark = document.createElement("img");
+    mark.slot = "loading-mark";
+    player.appendChild(mark);
+    document.body.appendChild(player);
+
+    expect(onlyAssigned(slotAt(player.shadowRoot, ".hfp-shader-loader-mark slot"))).toBe(mark);
+  });
+});
+
 // ── Media MutationObserver scoping ──
 //
 // The observer that catches late-attached `<audio data-start>` from
@@ -812,12 +884,16 @@ describe("HyperframesPlayer seek() sync path", () => {
     postMessage?: ReturnType<typeof vi.fn>;
   };
   type PlayerInternal = HTMLElement & {
-    seek: (t: number) => void;
+    seek: (t: number, options?: { keepPlaying?: boolean }) => void;
     play: () => void;
     pause: () => void;
     stopMedia: () => void;
     iframe: HTMLIFrameElement;
     _currentTime: number;
+    _ready: boolean;
+    _assetsReady: boolean;
+    currentTime: number;
+    paused: boolean;
     duration: number;
     _parentMedia: Array<{
       el: { pause: ReturnType<typeof vi.fn>; src: string };
@@ -1045,22 +1121,15 @@ describe("HyperframesPlayer seek() sync path", () => {
     stubIframeContentDocument(player.iframe, doc);
     stubContentWindow({ postMessage: post });
 
+    player.setAttribute("audio-src", "https://cdn.example.com/background.mp3");
+    const globalProxyPause = vi.spyOn(player._parentMedia[0]!.el, "pause");
     const slideProxyPause = vi.fn();
-    const globalProxyPause = vi.fn();
-    player._parentMedia.push(
-      {
-        el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
-        start: 0,
-        duration: 5,
-        source: iframeVideo,
-      },
-      {
-        el: { pause: globalProxyPause, src: "https://cdn.example.com/background.mp3" },
-        start: 0,
-        duration: Infinity,
-        source: null,
-      },
-    );
+    player._parentMedia.push({
+      el: { pause: slideProxyPause, src: "https://cdn.example.com/slide.mp4" },
+      start: 0,
+      duration: 5,
+      source: iframeVideo,
+    });
 
     player.stopMedia();
 
@@ -1069,6 +1138,329 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(iframeAudioPause).toHaveBeenCalledOnce();
     expect(slideProxyPause).toHaveBeenCalledOnce();
     expect(globalProxyPause).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: the parent's decoded copies and the clock it posts played on after stopMedia().
+  it("stopMedia stops a sealed film's decoded audio and the clock it posts", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    const pause = vi.spyOn(audio, "pause");
+
+    player.stopMedia();
+
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: a list without a removed clip left its claim standing, so the film kept a layer silent.
+  it("re-posts the parent's claims on every list from a sealed film, even while paused", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    const postClaims = vi.spyOn(audio, "postClaims");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: player.iframe.contentWindow,
+        data: { source: "hf-preview", type: "parent-copies", media: [] },
+      }),
+    );
+
+    expect(postClaims).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: every player carried the decoded-audio code, so nothing was left to load.
+  it("loads a sealed WebKit player's decoded audio on first need, and plays it if the film is playing", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const play = vi.spyOn(ParentAudio.prototype, "play").mockImplementation(() => {});
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._paused = false;
+
+    expect(sealed._sealedAudio()).toBeNull();
+    await sealed._parentAudioLoad;
+
+    expect(sealed._sealedAudio()).toBeInstanceOf(ParentAudio);
+    expect(play).toHaveBeenCalledOnce();
+  });
+
+  // fails without the fix: a tap before the code loaded made no context in the tap, so Safari kept the audio silent.
+  it("opens the audio context inside a tap that lands before the decoded-audio code", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    vi.spyOn(ParentAudio.prototype, "play").mockImplementation(() => {});
+    const resume = vi.fn(() => Promise.resolve());
+    const made: object[] = [];
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        resume = resume;
+        close = () => Promise.resolve();
+        constructor() {
+          made.push(this);
+        }
+      },
+    );
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._sealedAudio();
+
+    player.play();
+
+    expect(made).toHaveLength(1);
+    expect(resume).toHaveBeenCalledOnce();
+    await sealed._parentAudioLoad;
+    const host = (sealed._sealedAudio() as unknown as { _host: ParentAudioHost })._host;
+    expect(host.takeTapContext?.()).toBe(made[0]);
+    expect(host.takeTapContext?.()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("reports decoded-audio code that fails to load, and tries again on the next need", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.doMock("./parent-audio.js", () => {
+      throw new Error("chunk missing");
+    });
+    player.setAttribute("sandbox-origin", "");
+    const sealed = player as unknown as SealedAudioReader;
+    sealed._sealedAudio();
+    await sealed._parentAudioLoad;
+    vi.doUnmock("./parent-audio.js");
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("sealed audio code failed to load"),
+      expect.anything(),
+    );
+    expect(sealed._parentAudioLoad).toBeNull();
+  });
+
+  it("never loads the decoded-audio code for a player that isn't sealed", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    const sealed = player as unknown as SealedAudioReader;
+
+    expect(sealed._sealedAudio()).toBeNull();
+    expect(sealed._parentAudioLoad).toBeNull();
+  });
+
+  // fails without the fix: a pre-play parked heartbeat paused ParentAudio and aborted its decode.
+  it("ignores a paused heartbeat before the frame answers play, keeping sealed audio alive", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    vi.spyOn(audio, "play").mockImplementation(() => {});
+    const pause = vi.spyOn(audio, "pause");
+    const sendState = (frame: number, isPlaying: boolean) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame, isPlaying, ended: false },
+        }),
+      );
+
+    player.play();
+    sendState(0, false);
+
+    expect(pause).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(1, true);
+    sendState(10, false);
+
+    expect(pause).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
+  });
+
+  // fails without the fix: the same pre-play heartbeat called pauseAll on parent-owned media before the frame started.
+  it("ignores a paused heartbeat before the frame answers play without bouncing parent media", () => {
+    const media = (
+      player as unknown as { _media: { _audioOwner: string; pauseAll(): void; playAll(): void } }
+    )._media;
+    media._audioOwner = "parent";
+    const pauseAll = vi.spyOn(media, "pauseAll").mockImplementation(() => {});
+    vi.spyOn(media, "playAll").mockImplementation(() => {});
+    const sendState = (frame: number, isPlaying: boolean) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame, isPlaying, ended: false },
+        }),
+      );
+
+    player.play();
+    sendState(0, false);
+
+    expect(pauseAll).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(1, true);
+    sendState(10, false);
+
+    expect(pauseAll).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
+  });
+
+  // fails without the bound: a frame that never starts playing would drop every paused heartbeat forever.
+  it("settles back to paused and stops sealed audio if the frame never answers play", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+      );
+      player.setAttribute("sandbox-origin", "");
+      const audio = await loadedSealedAudio(player);
+      vi.spyOn(audio, "play").mockImplementation(() => {});
+      const pause = vi.spyOn(audio, "pause");
+      const sendPaused = () =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: player.iframe.contentWindow,
+            data: { source: "hf-preview", type: "state", frame: 0, isPlaying: false, ended: false },
+          }),
+        );
+
+      player.play();
+      vi.advanceTimersByTime(50);
+      sendPaused();
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      vi.advanceTimersByTime(PLAY_START_GRACE_MS);
+      sendPaused();
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // fails without playSeq keying: slow frame (>200 ms) drops stale playSeq=0, answered playSeq settles now.
+  it("keys the play latch on echoed playSeq across slow starts and immediate refusals", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+      );
+      player.setAttribute("sandbox-origin", "");
+      const audio = await loadedSealedAudio(player);
+      vi.spyOn(audio, "play").mockImplementation(() => {});
+      const pause = vi.spyOn(audio, "pause");
+      const posted: Array<Record<string, unknown>> = [];
+      stubContentWindow({
+        postMessage: vi.fn((msg: Record<string, unknown>) => {
+          posted.push(msg);
+        }),
+      });
+      const sendState = (isPlaying: boolean, playSeq: number) =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: player.iframe.contentWindow,
+            data: {
+              source: "hf-preview",
+              type: "state",
+              frame: 0,
+              isPlaying,
+              ended: false,
+              playSeq,
+            },
+          }),
+        );
+
+      player.play();
+      const firstSeq = posted.find((m) => m["action"] === "play")?.["playSeq"] as number;
+      expect(firstSeq).toBeGreaterThanOrEqual(1);
+
+      // Slow frame past the legacy grace window: stale pre-play heartbeat (playSeq < firstSeq) is still ignored.
+      vi.advanceTimersByTime(PLAY_START_GRACE_MS + 500);
+      sendState(false, firstSeq - 1);
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      // Frame handled this play and refused/stayed paused (playSeq === firstSeq): settles immediately.
+      sendState(false, firstSeq);
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+
+      // Second play increments playSeq; stale paused reply is ignored, then isPlaying:true clears.
+      pause.mockClear();
+      player.play();
+      const secondSeq = posted.filter((m) => m["action"] === "play").at(-1)?.["playSeq"] as number;
+      expect(secondSeq).toBeGreaterThan(firstSeq);
+      sendState(false, firstSeq);
+      expect(pause).not.toHaveBeenCalled();
+      expect(player.paused).toBe(false);
+
+      sendState(true, secondSeq);
+      sendState(false, secondSeq);
+      expect(pause).toHaveBeenCalledOnce();
+      expect(player.paused).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // fails without nextAwaitingPlay: in-flight playing state at N cleared N+1 before seek's paused state at N arrived.
+  it("keeps the playSeq latch across stale playing states during seek(t, { keepPlaying: true })", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+    );
+    player.setAttribute("sandbox-origin", "");
+    const audio = await loadedSealedAudio(player);
+    vi.spyOn(audio, "play").mockImplementation(() => {});
+    const pause = vi.spyOn(audio, "pause");
+    const posted: Array<Record<string, unknown>> = [];
+    stubContentWindow({
+      postMessage: vi.fn((msg: Record<string, unknown>) => {
+        posted.push(msg);
+      }),
+    });
+    const sendState = (isPlaying: boolean, playSeq: number) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: {
+            source: "hf-preview",
+            type: "state",
+            frame: 10,
+            isPlaying,
+            ended: false,
+            playSeq,
+          },
+        }),
+      );
+
+    player.play();
+    const firstSeq = posted.find((m) => m["action"] === "play")?.["playSeq"] as number;
+    sendState(true, firstSeq);
+    pause.mockClear();
+
+    player.seek(2, { keepPlaying: true });
+    const nextSeq = posted.filter((m) => m["action"] === "play").at(-1)?.["playSeq"] as number;
+    expect(nextSeq).toBeGreaterThan(firstSeq);
+    pause.mockClear();
+
+    sendState(true, firstSeq);
+    sendState(false, firstSeq);
+    expect(pause).not.toHaveBeenCalled();
+    expect(player.paused).toBe(false);
+
+    sendState(true, nextSeq);
+    sendState(false, nextSeq);
+    expect(pause).toHaveBeenCalledOnce();
+    expect(player.paused).toBe(true);
   });
 
   it("stopMedia pauses iframe-realm media elements", () => {
@@ -1168,6 +1560,107 @@ describe("HyperframesPlayer seek() sync path", () => {
     stubContentWindow({ postMessage: vi.fn() });
     player.seek(11);
     expect(player._currentTime).toBe(11);
+  });
+
+  function fakeTimeline(duration: number) {
+    const state = { time: 0, playing: false };
+    const timeline: TimelineStub = {
+      duration: () => duration,
+      time: () => state.time,
+      seek: (t) => void (state.time = t),
+      play: () => void (state.playing = true),
+      pause: () => void (state.playing = false),
+    };
+    return { timeline, state };
+  }
+
+  function recordPlayAndPause(): string[] {
+    const events: string[] = [];
+    for (const type of ["play", "pause"]) player.addEventListener(type, () => events.push(type));
+    return events;
+  }
+
+  it("keeps playing from the new time when seek() is asked to keep playing", () => {
+    const { timeline, state } = fakeTimeline(10);
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: vi.fn() });
+    player.play();
+    const events = recordPlayAndPause();
+
+    player.seek(3, { keepPlaying: true });
+
+    expect(player.paused).toBe(false);
+    expect(player.currentTime).toBe(3);
+    expect(state).toEqual({ time: 3, playing: true });
+    expect(events).toEqual([]);
+  });
+
+  it("stays paused when seek() is asked to keep playing a paused film", () => {
+    const { timeline, state } = fakeTimeline(10);
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: vi.fn() });
+    const events = recordPlayAndPause();
+
+    player.seek(3, { keepPlaying: true });
+
+    expect(player.paused).toBe(true);
+    expect(state).toEqual({ time: 3, playing: false });
+    expect(events).toEqual([]);
+  });
+
+  it("asks a cross-origin runtime to play on after a seek that keeps playing", () => {
+    const post = vi.fn();
+    stubContentWindow({ postMessage: post });
+    player._ready = true;
+    player._assetsReady = true;
+    player.play();
+    post.mockClear();
+
+    player.seek(3, { keepPlaying: true });
+
+    const actions = post.mock.calls
+      .map(([message]) => message.action)
+      .filter((action) => action === "seek" || action === "play");
+    expect(actions).toEqual(["seek", "play"]);
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "seek", timeSeconds: 3 }),
+      "*",
+    );
+    expect(player.paused).toBe(false);
+  });
+
+  it("keeps a playing film playing from where the viewer releases the scrubber", () => {
+    const { timeline, state } = fakeTimeline(10);
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: vi.fn() });
+    player.setAttribute("controls", "");
+    player.play();
+    const events = recordPlayAndPause();
+    const scrubber = player.shadowRoot!.querySelector<HTMLElement>(".hfp-scrubber")!;
+    scrubber.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect;
+
+    scrubber.dispatchEvent(new MouseEvent("mousedown", { clientX: 20 }));
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 70 }));
+    document.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(player.paused).toBe(false);
+    expect(player.currentTime).toBe(7);
+    expect(state).toEqual({ time: 7, playing: true });
+    expect(events).toEqual(["pause", "play"]);
+  });
+
+  it("leaves a paused film paused when the viewer clicks the scrubber", () => {
+    const { timeline, state } = fakeTimeline(10);
+    stubContentWindow({ __timelines: { main: timeline }, postMessage: vi.fn() });
+    player.setAttribute("controls", "");
+    player.seek(0);
+    const events = recordPlayAndPause();
+    const scrubber = player.shadowRoot!.querySelector<HTMLElement>(".hfp-scrubber")!;
+    scrubber.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect;
+
+    scrubber.dispatchEvent(new MouseEvent("mousedown", { clientX: 70 }));
+    document.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(player.paused).toBe(true);
+    expect(state).toEqual({ time: 7, playing: false });
+    expect(events).toEqual([]);
   });
 });
 
@@ -2271,7 +2764,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
 
     expect(player.ready).toBe(true);
     expect(player.duration).toBe(4);
-    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1920, compositionHeight: 1080 }]);
+    expect(readyEvents).toEqual([
+      {
+        duration: 4,
+        compositionWidth: 1920,
+        compositionHeight: 1080,
+        readyMs: null,
+        loadLimitMs: expect.any(Number),
+      },
+    ]);
   });
 
   it("reports the picture size in ready and as public properties", () => {
@@ -2282,7 +2783,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
 
     player._onMessage(timelineMessage(120, { compositionWidth: 1080, compositionHeight: 1920 }));
 
-    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(readyEvents).toEqual([
+      {
+        duration: 4,
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        readyMs: null,
+        loadLimitMs: expect.any(Number),
+      },
+    ]);
     expect(player.compositionWidth).toBe(1080);
     expect(player.compositionHeight).toBe(1920);
   });
@@ -2299,7 +2808,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
       compositionSize: { width: 1080, height: 1350 },
     });
 
-    expect(readyEvents).toEqual([{ duration: 5, compositionWidth: 1080, compositionHeight: 1350 }]);
+    expect(readyEvents).toEqual([
+      {
+        duration: 5,
+        compositionWidth: 1080,
+        compositionHeight: 1350,
+        readyMs: null,
+        loadLimitMs: expect.any(Number),
+      },
+    ]);
   });
 
   it("fires a timeline message's events only after the whole message is applied", () => {
@@ -2916,7 +3433,15 @@ describe("HyperframesPlayer video mode", () => {
 
     loadMetadata(videoOf(player));
 
-    expect(readies).toEqual([{ duration: 6, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(readies).toEqual([
+      {
+        duration: 6,
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        readyMs: null,
+        loadLimitMs: null,
+      },
+    ]);
     expect(player.ready).toBe(true);
   });
 
@@ -3550,6 +4075,67 @@ describe("HyperframesPlayer click-to-play", () => {
   });
 });
 
+describe("HyperframesPlayer fullscreen", () => {
+  type FullscreenPlayer = HTMLElement & {
+    play: () => void;
+    disableFullscreen: boolean;
+  };
+
+  let player: FullscreenPlayer;
+
+  function fullscreenButton(): HTMLButtonElement {
+    const button = player.shadowRoot?.querySelector<HTMLButtonElement>(".hfp-fullscreen-btn");
+    if (!button) throw new Error("no fullscreen button");
+    return button;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    player = document.createElement("hyperframes-player") as FullscreenPlayer;
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+  });
+
+  afterEach(() => {
+    player.remove();
+    Reflect.deleteProperty(document, "fullscreenEnabled");
+    vi.restoreAllMocks();
+  });
+
+  it("disableFullscreen property toggles the disable-fullscreen attribute", () => {
+    player.disableFullscreen = true;
+    expect(player.hasAttribute("disable-fullscreen")).toBe(true);
+
+    player.disableFullscreen = false;
+    expect(player.hasAttribute("disable-fullscreen")).toBe(false);
+  });
+
+  it("fullscreens the player element, and the click does not play", () => {
+    const requestFullscreen = vi.fn(async () => {});
+    player.requestFullscreen = requestFullscreen;
+    const play = vi.spyOn(player, "play").mockImplementation(() => undefined);
+
+    fullscreenButton().click();
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(requestFullscreen.mock.contexts[0]).toBe(player);
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("disable-fullscreen hides the button", () => {
+    expect(getComputedStyle(fullscreenButton()).display).not.toBe("none");
+
+    player.remove();
+    player = document.createElement("hyperframes-player") as FullscreenPlayer;
+    player.setAttribute("controls", "");
+    player.setAttribute("disable-fullscreen", "");
+    document.body.appendChild(player);
+
+    expect(getComputedStyle(fullscreenButton()).display).toBe("none");
+  });
+});
+
 describe("HyperframesPlayer retained runtime data", () => {
   interface RuntimeDataPlayer extends HTMLElement {
     iframeElement: HTMLIFrameElement;
@@ -3656,7 +4242,10 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(player.iframeElement.sandbox.contains("allow-scripts")).toBe(true);
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
     expect(player.iframeElement.sandbox.contains("allow-top-navigation")).toBe(false);
-    expect(player.iframeElement.referrerPolicy).toBe("no-referrer");
+  });
+
+  it("sends its host page's URL only to a composition on the same origin", () => {
+    expect(player.iframeElement.referrerPolicy).toBe("same-origin");
   });
 
   it("supports an opaque-origin sandbox for hosts that do not need direct iframe DOM access", () => {
@@ -3667,6 +4256,19 @@ describe("HyperframesPlayer retained runtime data", () => {
 
     player.removeAttribute("sandbox-origin");
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
+  });
+
+  it("offers fullscreen to an unsealed film only", () => {
+    expect(player.iframeElement.allow).toBe("autoplay; fullscreen");
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.allow).toBe("autoplay");
+    player.removeAttribute("sandbox-origin");
+    expect(player.iframeElement.allow).toBe("autoplay; fullscreen");
+  });
+
+  it("names its frame, the one mark a composition in an opaque sandbox can still read", () => {
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.name).toBe(PLAYER_FRAME_NAME);
   });
 
   it("treats every non-null sandbox-origin value as restrictive", () => {
@@ -3807,7 +4409,7 @@ describe("HyperframesPlayer asset-ready gate", () => {
     _onIframeLoad(): void;
     play(): void;
     pause(): void;
-    seek(timeInSeconds: number): void;
+    seek(timeInSeconds: number, options?: { keepPlaying?: boolean }): void;
     shaderLoader: {
       showAssetsLoading(): void;
       hide(): void;
@@ -3877,6 +4479,100 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     expect(readyAtHostLoad[1]).toBe(false);
     player.remove();
+  });
+
+  describe("a timeline between a navigation and the next document's load", () => {
+    const protocol = (capabilities: string[]) => ({
+      protocolVersion: 1,
+      fps: { numerator: 30, denominator: 1 },
+      capabilities,
+    });
+    async function navigatedUnreadable() {
+      const player = (await createConnectedPlayer()) as PlayerInternal & {
+        probe: { start(): void };
+        _abandonComposition(reason: string): void;
+        _getSameOriginIframeDocument(): Document | null;
+      };
+      const start = vi.spyOn(player.probe, "start");
+      const sent = vi.spyOn(player.iframe.contentWindow!, "postMessage");
+      vi.spyOn(player, "_getSameOriginIframeDocument").mockReturnValue(null);
+      player._abandonComposition("navigated");
+      return { player, start, sent };
+    }
+    const announced = (sent: { mock: { calls: unknown[][] } }) =>
+      sent.mock.calls.filter(
+        ([data]) => (data as { action?: string })?.action === "announce-timeline",
+      );
+
+    // fails without the fix: the old document's late timeline made the next sealed load skip its probe.
+    it("drops a late message the left document stamped, and takes the next document's before its load", async () => {
+      const { player, start } = await navigatedUnreadable();
+      const stamped = (documentId: string) => ({
+        type: "timeline",
+        durationInFrames: 60,
+        documentId,
+        ...protocol(["seconds-time", "announce-timeline"]),
+      });
+      post(player, stamped("old"));
+      player.iframe.dispatchEvent(new Event("load"));
+      post(player, stamped("old"));
+      expect(player._ready).toBe(true);
+      start.mockClear();
+
+      player._abandonComposition("navigated again");
+      post(player, stamped("old"));
+      expect(player._ready).toBe(false);
+      post(player, stamped("new"));
+      expect(player._ready).toBe(true);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).not.toHaveBeenCalled();
+      player.remove();
+    });
+
+    it("asks a document that never stamped a message again, and only its answer makes it ready", async () => {
+      const { player, start, sent } = await navigatedUnreadable();
+      const capable = protocol(["seconds-time", "announce-timeline"]);
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect(player._ready).toBe(false);
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(start).toHaveBeenCalledOnce();
+      expect(announced(sent)).toHaveLength(1);
+      expect(player._ready).toBe(false);
+
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect(player._ready).toBe(true);
+      player.remove();
+    });
+
+    it("takes a runtime's timeline as today when the runtime cannot be asked again", async () => {
+      const { player, start, sent } = await navigatedUnreadable();
+      post(player, { type: "timeline", durationInFrames: 60, ...protocol(["seconds-time"]) });
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(player._ready).toBe(true);
+      expect(start).not.toHaveBeenCalled();
+      expect(announced(sent)).toHaveLength(0);
+      player.remove();
+    });
+
+    it("keeps a static-composition ready at load and still asks for the runtime's timeline", async () => {
+      const { player, sent } = await navigatedUnreadable();
+      const capable = protocol(["seconds-time", "announce-timeline"]);
+      post(player, { type: "static-composition", durationSeconds: 2, width: 640, height: 360 });
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+
+      player.iframe.dispatchEvent(new Event("load"));
+      expect(player._ready).toBe(true);
+      expect(announced(sent)).toHaveLength(1);
+
+      post(player, { type: "timeline", durationInFrames: 60, ...capable });
+      expect((player as unknown as { _readyBeforeRuntime: boolean })._readyBeforeRuntime).toBe(
+        false,
+      );
+      player.remove();
+    });
   });
 
   it("paints a document before its load when nothing first-frame is pending", async () => {
@@ -4386,6 +5082,29 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 
+  it("keeps a queued play if a seek asks to keep playing while assets are still buffering", async () => {
+    const player = await createConnectedPlayer();
+
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    player.seek(1.5, { keepPlaying: true });
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._paused).toBe(false);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
   it("settles a play() called twice while buffering into exactly one playback start (pre-existing idempotency, not the pause/seek cancel)", async () => {
     const player = await createConnectedPlayer();
 
@@ -4562,6 +5281,146 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     expect(playSpy).toHaveBeenCalledTimes(1);
 
+    player.remove();
+  });
+});
+
+describe("HyperframesPlayer sealed src", () => {
+  type SealedPlayer = HTMLElement & {
+    iframe: HTMLIFrameElement;
+    _pageRead: boolean;
+    _pageUnreadable: boolean;
+    _onIframeLoad(): void;
+    _showSealedDocument(html: string, base: string | undefined, load: number): void;
+  };
+  const SRC = "/api/projects/p/preview/~T";
+  const RUNTIME_PAGE = `<script src="/hyperframe.runtime.iife.js"></script>`;
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  /** A sealed player for SRC, with every navigation recorded with whether the frame was sealed when it began. */
+  function sealedPlayer(vouched: boolean): {
+    player: SealedPlayer;
+    navigations: [string, boolean][];
+  } {
+    const player = document.createElement("hyperframes-player") as SealedPlayer;
+    player.setAttribute("sandbox-origin", "");
+    if (vouched) player.setAttribute("src-carries-runtime", "");
+    player.setAttribute("src", SRC);
+    const navigations: [string, boolean][] = [];
+    const src = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, "src")!;
+    Object.defineProperty(player.iframe, "src", {
+      configurable: true,
+      get() {
+        return src.get!.call(this);
+      },
+      set(value: string) {
+        navigations.push([value, !this.sandbox.contains("allow-same-origin")]);
+        src.set!.call(this, value);
+      },
+    });
+    return { player, navigations };
+  }
+
+  const page = (body: string, headers: Record<string, string> = {}) =>
+    ({
+      ok: true,
+      type: "basic",
+      url: `${location.origin}${SRC}`,
+      headers: new Headers({ "content-type": "text/html", ...headers }),
+      arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+    }) as unknown as Response;
+  const settle = async () => {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  };
+
+  // fails without the fix: the player read the page first, and set src only once that read came back.
+  it("loads a src its host vouches for at once, sealed before it navigates, without reading it", () => {
+    const read = vi.spyOn(globalThis, "fetch");
+    const { player, navigations } = sealedPlayer(true);
+    document.body.appendChild(player);
+
+    expect(navigations).toEqual([[SRC, true]]);
+    expect(read).not.toHaveBeenCalled();
+    expect(player._pageRead).toBe(true);
+    player.setAttribute("src", `${SRC}?v=2`);
+    expect(navigations).toEqual([
+      [SRC, true],
+      [`${SRC}?v=2`, true],
+    ]);
+    expect(player.iframe.getAttribute("src")).toBe(`${SRC}?v=2`);
+    player.remove();
+  });
+
+  it("reports an error by the load limit when a vouched page never brings the runtime", () => {
+    vi.useFakeTimers();
+    try {
+      const { player } = sealedPlayer(true);
+      document.body.appendChild(player);
+      const errors: Event[] = [];
+      player.addEventListener("error", (event) => errors.push(event));
+      player._onIframeLoad();
+      vi.advanceTimersByTime(130_000);
+      expect(errors).toHaveLength(1);
+      player.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still reads a page no one vouches for, then loads one that brings the runtime by src, once", async () => {
+    const read = vi.spyOn(globalThis, "fetch").mockResolvedValue(page(RUNTIME_PAGE));
+    const { player, navigations } = sealedPlayer(false);
+    document.body.appendChild(player);
+    expect(navigations).toEqual([]);
+    await settle();
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(navigations).toEqual([[SRC, true]]);
+    expect(player._pageRead).toBe(true);
+    player.remove();
+  });
+
+  it("loads a page that may carry its own policy by src, unread, as before", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      page(RUNTIME_PAGE, { "content-security-policy": "default-src 'self'" }),
+    );
+    const { player, navigations } = sealedPlayer(false);
+    document.body.appendChild(player);
+    await settle();
+
+    expect(navigations).toEqual([[SRC, true]]);
+    expect(player._pageRead).toBe(false);
+    expect(player._pageUnreadable).toBe(true);
+    player.remove();
+  });
+
+  it("loads a page its read could not reach by src, as before", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+    const { player, navigations } = sealedPlayer(false);
+    document.body.appendChild(player);
+    await settle();
+
+    expect(navigations).toEqual([[SRC, true]]);
+    player.remove();
+  });
+
+  it("shows a page without the runtime as a sealed document, never by src, as before", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(page("<p>no runtime</p>"));
+    const { player, navigations } = sealedPlayer(false);
+    const shown = vi.spyOn(player, "_showSealedDocument").mockImplementation(() => {});
+    document.body.appendChild(player);
+    await settle();
+
+    expect(navigations).toEqual([]);
+    expect(shown).toHaveBeenCalledWith(
+      "<p>no runtime</p>",
+      `${location.origin}${SRC}`,
+      expect.any(Number),
+    );
     player.remove();
   });
 });

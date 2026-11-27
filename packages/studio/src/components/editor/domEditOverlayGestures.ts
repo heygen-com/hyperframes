@@ -9,7 +9,11 @@ import type {
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
 import type { StudioElementLook } from "./gestureUndoRevert";
 import type { CssRotationTarget, RotationCommit } from "./rotationDraft";
-import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
+import {
+  resolveDomEditGroupOverlayRect,
+  type GroupOverlayItem,
+  type OverlayRect,
+} from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
@@ -86,16 +90,8 @@ export interface GestureState {
   resizeHandle?: ResizeHandle;
   /** Last anchoring translation applied during a corner resize (overlay px). */
   lastResizeAnchor?: { dx: number; dy: number };
-  /**
-   * The element's rendered CENTER in overlay px at gesture start (the centroid of
-   * its four real — possibly rotated — corners). A center-anchored resize keeps this
-   * point pinned; the per-frame anchor translation is computed as the shift of this
-   * exact center, not an AABB width/height delta (which only holds the center still
-   * when the element grows symmetrically from an unrotated layout box). Undefined
-   * when the corner geometry can't be measured (member creation still succeeded).
-   */
-  resizeFixedCenterStart?: { x: number; y: number };
   resizePressFromCorner?: { x: number; y: number };
+  resizeGrow?: { a: number; b: number; c: number; d: number };
 }
 
 export interface GroupGestureState {
@@ -118,6 +114,51 @@ export function movesGesture(
   return e.pointerId === gesture.pointerId && (e.buttons & 1) === 1;
 }
 
+function drawOutline(
+  outline: (HTMLElement | null)[],
+  rect: { left?: number; top?: number; width?: number; height?: number },
+) {
+  for (const el of outline) {
+    for (const side of ["left", "top", "width", "height"] as const) {
+      const v = rect[side];
+      if (el && v !== undefined) el.style[side] = `${v}px`;
+    }
+  }
+}
+
+export function drawGroupOutline(overlay: HTMLElement | null, items: GroupOverlayItem[]) {
+  if (!overlay) return;
+  const boxes = new Map<string, HTMLElement>();
+  for (const box of overlay.querySelectorAll<HTMLElement>("[data-dom-edit-group-member]")) {
+    boxes.set(box.dataset.domEditGroupMember ?? "", box);
+  }
+  for (const item of items) drawOutline([boxes.get(item.key) ?? null], item.rect);
+  const bounds = resolveDomEditGroupOverlayRect(items.map((item) => item.rect));
+  const groupBox = overlay.querySelector<HTMLElement>("[data-dom-edit-group-box]");
+  if (bounds) drawOutline([groupBox], bounds);
+}
+
+export function drawSelectionOutline(
+  box: HTMLElement | null | undefined,
+  handles: HTMLElement | null | undefined,
+  rect: { left: number; top: number; width: number; height: number },
+  options?: { syncCropFrame?: boolean },
+) {
+  drawOutline([box ?? null, handles ?? null], rect);
+  const chrome = box?.closest<HTMLElement>("[data-dom-edit-chrome]");
+  if (!chrome) return;
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  chrome.style.transformOrigin = `${cx}px ${cy}px`;
+  if (!options?.syncCropFrame) return;
+  const cropFrame = chrome.parentElement?.querySelector<HTMLElement>("[data-dom-edit-crop-frame]");
+  if (!cropFrame) return;
+  const w = Number.parseFloat(cropFrame.style.width);
+  const h = Number.parseFloat(cropFrame.style.height);
+  cropFrame.style.left = `${Number.isFinite(w) ? cx - w / 2 : rect.left}px`;
+  cropFrame.style.top = `${Number.isFinite(h) ? cy - h / 2 : rect.top}px`;
+}
+
 export interface BlockedMoveState {
   pointerId: number;
   startX: number;
@@ -128,6 +169,9 @@ export interface BlockedMoveState {
 export const PRESS_WAITING_ATTR = "data-dom-edit-press-waiting";
 
 /** A press that landed while the preview reloads: it starts once the new preview shows what it pressed. */
+export const pressStillHeld = (press: WaitingPressState | null): press is WaitingPressState =>
+  press !== null && !press.released;
+
 export interface WaitingPressState {
   pointerId: number;
   startX: number;
@@ -138,6 +182,8 @@ export interface WaitingPressState {
   released: React.PointerEvent<HTMLDivElement> | null;
   after: WaitingPressState | null;
   ended: boolean;
+  refused: boolean;
+  drawBack: () => void;
 }
 
 export type FocusableDomEditOverlay = {
@@ -187,26 +233,6 @@ export function resolveShiftClickCandidate<T extends { element: Element }>(input
     cacheIsAboutThisPoint: describes,
   });
   return describes ? input.cached : null;
-}
-
-/**
- * Overlay-px translation that keeps the element's CENTER fixed while a corner
- * resizes: a CSS width/height change grows the layout box from its top-left, so
- * the center drifts by half the size change on each axis; translating back by that
- * half-delta re-pins the center. This is the UNROTATED (AABB) fallback used only
- * when the element's real transformed corners can't be measured — the primary path
- * pins the measured center (rotation-safe) in useDomEditOverlayGestures.
- */
-export function resolveResizeCenterAnchorOffset(input: {
-  originWidth: number;
-  originHeight: number;
-  overlayWidth: number;
-  overlayHeight: number;
-}): { dx: number; dy: number } {
-  return {
-    dx: (input.originWidth - input.overlayWidth) / 2,
-    dy: (input.originHeight - input.overlayHeight) / 2,
-  };
 }
 
 function pointerAngleDegrees(centerX: number, centerY: number, x: number, y: number): number {
@@ -268,6 +294,7 @@ export type UseDomEditOverlayGesturesOptions = {
   overlayRef: RefObject<HTMLDivElement | null>;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   boxRef: RefObject<HTMLDivElement | null>;
+  handlesRef: RefObject<HTMLDivElement | null>;
   selectionRef: RefObject<DomEditSelection | null>;
   hoverSelectionRef: RefObject<DomEditSelection | null>;
   overlayRectRef: RefObject<OverlayRect | null>;
@@ -316,7 +343,7 @@ export type UseDomEditOverlayGesturesOptions = {
 
 export function isDomEditGestureTap(
   g: { startX: number; startY: number; travelled?: boolean },
-  e: React.PointerEvent,
+  e: Pick<PointerEvent, "clientX" | "clientY">,
 ) {
   return (
     !g.travelled &&

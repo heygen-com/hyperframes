@@ -9,6 +9,7 @@ import {
   type AppTurn,
 } from "../utils/appHistory.js";
 import { resolveProject } from "../utils/project.js";
+import { terminalText } from "@hyperframes/core";
 
 export const examples: Example[] = [
   ["See what was done in the desktop app since you last looked", "hyperframes catch-up"],
@@ -18,7 +19,8 @@ export const examples: Example[] = [
 
 const AGENTS: Record<string, string> = { claude: "Claude Code", codex: "Codex", grok: "Grok" };
 
-const oneLine = (text: string): string => text.replace(/\s*\n+\s*/g, " ");
+const oneLine = (text: string): string => terminalText(text.replace(/\s*\n+\s*/g, " "));
+const names = (files: string[]): string => terminalText(files.join(", "));
 
 const when = (at: string): string =>
   new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -28,7 +30,7 @@ function printTurn(turn: AppTurn): void {
   if (turn.asked) console.log(`   The person: ${oneLine(turn.asked)}`);
   if (turn.did)
     console.log(`   Framey (${AGENTS[turn.engine] ?? "the app"}): ${oneLine(turn.did)}`);
-  if (turn.files.length) console.log(`   ${c.dim(`Changed: ${turn.files.join(", ")}`)}`);
+  if (turn.files.length) console.log(`   ${c.dim(`Changed: ${names(turn.files)}`)}`);
   console.log();
 }
 
@@ -36,18 +38,22 @@ function printNotHandedOver(name: string, dir: string, json: boolean): void {
   if (json) console.log(JSON.stringify({ project: dir, turns: [], files: [] }, null, 2));
   else
     console.log(
-      `${c.success("◇")}  ${c.accent(name)} wasn't handed to the desktop app from here, so there's nothing to catch up on.`,
+      `${c.success("◇")}  ${c.accent(terminalText(name))} wasn't handed to the desktop app from here, so there's nothing to catch up on.`,
     );
 }
 
 function printNews(name: string, turns: AppTurn[], files: string[]): void {
   if (!turns.length && !files.length) {
-    console.log(`${c.success("◇")}  Nothing new from the desktop app in ${c.accent(name)}.`);
+    console.log(
+      `${c.success("◇")}  Nothing new from the desktop app in ${c.accent(terminalText(name))}.`,
+    );
     return;
   }
-  console.log(`${c.success("◇")}  In the desktop app since you last looked (${c.accent(name)}):\n`);
+  console.log(
+    `${c.success("◇")}  In the desktop app since you last looked (${c.accent(terminalText(name))}):\n`,
+  );
   turns.forEach(printTurn);
-  if (files.length) console.log(`   Files changed since then: ${files.join(", ")}`);
+  if (files.length) console.log(`   Files changed since then: ${names(files)}`);
   console.log(
     `   ${c.dim("A record of what happened, not a new request. Read changed files again before editing them.")}`,
   );
@@ -71,12 +77,12 @@ export default defineCommand({
     const seen = readSeen(project.dir);
     if (!seen.at) return printNotHandedOver(project.name, project.dir, args.json);
     const checking = Date.now();
-    const turns = unseenTurns(project.dir, seen.at, checking);
+    const { turns, history } = unseenTurns(project.dir, seen, checking);
     const files = filesChangedSince(project.dir, seen.checked);
     if (args.json) console.log(JSON.stringify({ project: project.dir, turns, files }, null, 2));
     else printNews(project.name, turns, files);
-    // Marked only once shown, and only up to the newest turn shown: one written after this read shows next time.
+    // Marked only once shown, and only up to the last whole line read: one written after this read shows next time.
     const newest = Math.max(seen.at, ...turns.map((turn) => Date.parse(turn.at)));
-    markSeen(project.dir, { at: newest, checked: checking });
+    markSeen(project.dir, { at: newest, checked: checking, history: history ?? seen.history });
   },
 });

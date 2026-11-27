@@ -14,6 +14,7 @@ export interface SyncCaptureProblem {
 }
 
 export interface ManifestFile {
+  include_hidden?: true;
   path: string;
   sha256: string;
   size: number;
@@ -61,7 +62,10 @@ export interface PathRule {
 /** The fields of contract/path-policy.json this client reads. */
 export interface PolicyDocument {
   policy_version: string;
-  stored_manifest: { legacy_agent_state_regex: string };
+  stored_manifest: {
+    legacy_rule_regexes: Record<string, string>;
+    legacy_short_name_alias_names: string[];
+  };
   unicode: { version: string };
   rules: PathRule[];
   path: {
@@ -70,6 +74,8 @@ export interface PolicyDocument {
     forbidden_characters: string;
     reserved_segment_regex: string;
     canonical_spelling_roots: string[];
+    short_name_alias_names: string[];
+    short_name_alias_shape: string;
   };
   client_prefilter: { names: string[] };
   client_symlinks: { skip_prefixes: string[] };
@@ -92,6 +98,7 @@ export type SyncLimitsRead =
 
 /** A file a capture lists, before hashing. */
 export interface Found {
+  include_hidden?: true;
   path: string;
   full: string;
   size: number;
@@ -101,6 +108,7 @@ export interface Found {
 }
 
 export interface Walk {
+  directoryEntries: Map<string, Set<string>>;
   files: Found[];
   problems: CaptureProblem[];
   waiting: string[];
@@ -291,7 +299,7 @@ export interface InflightUpload {
 
 export interface Binding extends BindingKey {
   version: 1;
-  /** Client-generated, kept before the first request so a retried create names the same composition. */
+  /** Client-generated destination ID, saved after the service confirms creation. */
   compositionId: string;
   ownerSpaceId: string;
   /** The owner workspace as the account's list last named it, so a project whose workspace the account left can

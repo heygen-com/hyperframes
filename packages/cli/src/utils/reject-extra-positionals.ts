@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import type { ArgsDef, CommandDef } from "citty";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { CliUsageError } from "./commandResult.js";
 import { isTextFile } from "./textFile.js";
 import { jsonFailure } from "./jsonError.js";
@@ -87,12 +88,13 @@ export function resolveExtraPositionals(
 
   const plural = extra.length === 1 ? "" : "s";
   const spaced = spacedPath(process.argv.slice(2));
-  const message =
-    `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.join(", ")}\n` +
-    (spaced ? `'${spaced}' is one path with spaces: quote it.\n` : "") +
+  const message = (show: (text: string) => string) =>
+    `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.map(show).join(", ")}\n` +
+    (spaced ? `'${show(spaced)}' is one path with spaces: quote it.\n` : "") +
     `Usage: ${usageLine(path, args)}`;
-  if (wantsJson(parsed?.json)) console.log(JSON.stringify(jsonFailure("usage_error", message)));
-  else console.error(message);
+  if (wantsJson(parsed?.json))
+    console.log(JSON.stringify(jsonFailure("usage_error", message(String))));
+  else console.error(message(terminalText));
   // Telemetry reads the thrown message: the command path and a count, never the arguments.
   throw new CliUsageError(
     `${extra.length} unexpected extra argument${plural} for hyperframes ${path}`,

@@ -3,6 +3,7 @@
 // because a runtime posts its first `timeline` while it boots.
 import type { PlaybackAdapter } from "./playbackTypes";
 import { inspectStudioRuntimeMessage, postRuntimeControlMessage } from "./runtimeProtocol";
+import { previewFrameOpaque } from "./previewChannel";
 
 interface PlaybackMirror {
   iframe: HTMLIFrameElement;
@@ -14,6 +15,9 @@ interface PlaybackMirror {
   seekUntil: number;
   /** The composition's declared size from the runtime's `stage-size` post. */
   stageSize: { width: number; height: number } | null;
+  /** The paused time the runtime last said it shows. */
+  shown: number | null;
+  timelinePosted: boolean;
 }
 
 const SEEK_CONFIRM_MS = 500;
@@ -36,6 +40,8 @@ function mirrorOf(iframe: HTMLIFrameElement): PlaybackMirror | null {
       seekTo: null,
       seekUntil: 0,
       stageSize: null,
+      shown: null,
+      timelinePosted: false,
     };
     mirrors.set(frame, mirror);
   }
@@ -56,10 +62,34 @@ export function previewStageSize(
   return (frame && mirrors.get(frame)?.stageSize) ?? null;
 }
 
-/** The origins a post from this frame can carry, given its sandbox and what it loads. */
+/** The runtime answered with its timeline but never a size: its root measures 0x0 or isn't laid out. */
+export function previewRootHasNoSize(iframe: HTMLIFrameElement): boolean {
+  const frame = iframe.contentWindow;
+  const mirror = frame ? mirrors.get(frame) : undefined;
+  return !!mirror?.timelinePosted && !mirror.stageSize;
+}
+
+/** Resolves once the frame's runtime has posted its size, or after `maxMs` without one. */
+export function whenPreviewStageSized(iframe: HTMLIFrameElement, maxMs: number): Promise<void> {
+  const until = performance.now() + maxMs;
+  return new Promise((resolve) => {
+    const check = () => {
+      if (previewStageSize(iframe) || performance.now() >= until) resolve();
+      else requestAnimationFrame(check);
+    };
+    check();
+  });
+}
+
+/** The origins a post from this frame can carry; a page its server sandboxed posts as `null` without the attribute. */
 export function frameOrigins(iframe: HTMLIFrameElement): string[] {
   const sandbox = iframe.getAttribute("sandbox")?.toLowerCase().split(/\s+/);
   if (sandbox && !sandbox.includes("allow-same-origin")) return ["null"];
+  const loaded = loadedOrigins(iframe);
+  return previewFrameOpaque(iframe) && !loaded.includes("null") ? [...loaded, "null"] : loaded;
+}
+
+function loadedOrigins(iframe: HTMLIFrameElement): string[] {
   const src = iframe.getAttribute("src");
   if (iframe.hasAttribute("srcdoc") || !src) return [window.location.origin];
   try {
@@ -106,23 +136,44 @@ function mirrorState(
   mirror.seekTo = null;
   mirror.time = currentTime;
   mirror.playing = playing;
+  if (playing || mirror.shown === currentTime) return;
+  mirror.shown = currentTime;
+  for (const listener of shownListeners) listener(mirror.iframe);
+}
+
+const shownListeners = new Set<(iframe: HTMLIFrameElement) => void>();
+
+/** Calls `listener` with a registered frame each time its runtime says it shows a new paused time: a seek applied. */
+export function onFrameShowsTime(listener: (iframe: HTMLIFrameElement) => void): () => void {
+  shownListeners.add(listener);
+  return () => void shownListeners.delete(listener);
 }
 
 function mirrorPost(mirror: PlaybackMirror, message: Record<string, unknown>, fps: number | null) {
   if (message.type === "timeline" && finiteAtLeastZero(message.durationSeconds)) {
     mirror.duration = message.durationSeconds;
+    mirror.timelinePosted = true;
   } else if (message.type === "state" && finiteAtLeastZero(message.currentTime)) {
     mirrorState(mirror, message.currentTime, message.isPlaying === true, fps);
   } else if (message.type === "stage-size") {
-    const { width, height } = message;
+    const measured = message.measuredSize as Record<string, unknown> | undefined;
+    const { width, height } = measured ?? message;
     if (finitePositive(width) && finitePositive(height)) mirror.stageSize = { width, height };
   }
 }
 
-function mirrorRuntimePlayback(event: MessageEvent): void {
-  // Only a frame Studio built, posting from an origin that frame can have.
+function studioPreviewMirror(event: MessageEvent): PlaybackMirror | undefined {
   const mirror = event.source ? mirrors.get(event.source) : undefined;
-  if (!mirror || !frameOrigins(mirror.iframe).includes(event.origin)) return;
+  return mirror && frameOrigins(mirror.iframe).includes(event.origin) ? mirror : undefined;
+}
+
+/** Whether `event` came from a preview frame Studio built, a sealed one's opaque origin included. */
+export const fromStudioPreview = (event: MessageEvent): boolean =>
+  studioPreviewMirror(event) !== undefined;
+
+function mirrorRuntimePlayback(event: MessageEvent): void {
+  const mirror = studioPreviewMirror(event);
+  if (!mirror) return;
   const post = runtimePost(event.data);
   if (post) mirrorPost(mirror, post.message, post.fps);
 }

@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { failCommand, setCommandExitCode } from "../../utils/commandResult.js";
 /**
  * `hyperframes auth status` — print the active credential's source,
@@ -32,7 +33,7 @@ import {
 import { refreshIfNeeded } from "../../cloud/auth.js";
 import { getSystemMeta } from "../../telemetry/system.js";
 import { c } from "../../ui/colors.js";
-import { pageUrl, readPlan, type Plan } from "../../heygen/plan.js";
+import { MANAGE_LABEL, pageUrl, readPlan, type Plan } from "../../heygen/plan.js";
 import { resolveMusic, resolveVoice } from "../../audio/providers.js";
 import {
   buildUnconfiguredJson,
@@ -66,7 +67,7 @@ interface VerifiedStatus {
   apiError: string | null;
   /** The HyperFrames plan and credits, when the server (or the mock) answers. */
   plan?: Plan | null;
-  upgradeUrl?: string;
+  planUrl?: string;
 }
 
 /** True for credentials resolved from the HyperFrames store (not env). */
@@ -165,8 +166,8 @@ function handleResolveError(err: unknown, asJson: boolean): never {
       JSON.stringify({ configured: false, ...jsonFailure("auth_error", err.message, err.hint) }),
     );
   } else {
-    console.error(c.error(err.message));
-    if (err.hint) console.error(c.dim(err.hint));
+    console.error(c.error(terminalLines(err.message)));
+    if (err.hint) console.error(c.dim(terminalLines(err.hint)));
   }
   failCommand(1, new AuthStatusUnavailable(err.code));
 }
@@ -284,7 +285,7 @@ function persistedUserJson(u: StoredUserInfo | null): Record<string, unknown> | 
 async function printHumanStatus(s: VerifiedStatus): Promise<void> {
   const rows = collectStatusRows({
     ...s,
-    ...(s.plan?.plan === "none" ? { upgradeUrl: await pageUrl("plans") } : {}),
+    ...(s.plan ? { planUrl: await pageUrl(s.plan.plan === "none" ? "plans" : "manage") } : {}),
   });
   for (const [label, value] of rows) console.log(`${c.bold(label)} ${value}`);
 }
@@ -297,11 +298,11 @@ function collectStatusRows(s: VerifiedStatus): [string, string][] {
   ];
   if (s.credential.type === "oauth") rows.push(...oauthRows(s.credential));
   if (s.apiError) {
-    rows.push([c.error("API check failed:"), s.apiError]);
+    rows.push([c.error("API check failed:"), terminalLines(s.apiError)]);
     // Fall back to the persisted identity so the user still sees who
     // they're logged in as when the live probe is unreachable.
     const cached = s.persistedUser && userDisplayName(s.persistedUser);
-    if (cached) rows.push(["Account:", `${cached} ${c.dim("(cached)")}`]);
+    if (cached) rows.push(["Account:", `${terminalText(cached)} ${c.dim("(cached)")}`]);
     return rows;
   }
   if (s.user) rows.push(...identityRows(s.user, billingProduct(s.credential), !!s.plan));
@@ -311,9 +312,10 @@ function collectStatusRows(s: VerifiedStatus): [string, string][] {
     rows.push([
       "HyperFrames:",
       plan.plan === "none"
-        ? `Free · Upgrade to Pro: ${s.upgradeUrl}${tag}`
-        : `${plan.plan} plan, ${plan.credits.toLocaleString("en-US")} credits${tag}`,
+        ? `Free · Upgrade to Pro: ${terminalText(String(s.planUrl))}${tag}`
+        : `${terminalText(plan.plan)} plan, ${plan.credits.toLocaleString("en-US")} credits${tag}`,
     ]);
+    if (plan.plan !== "none" && s.planUrl) rows.push([MANAGE_LABEL, terminalText(s.planUrl)]);
   }
   return rows;
 }
@@ -327,7 +329,7 @@ function oauthRows(credential: Extract<ResolvedCredential, { type: "oauth" }>): 
     const refresh = credential.refreshable ? c.dim(" · refreshable") : "";
     rows.push(["Expires:", `${credential.expires_at.toISOString()} ${tag}${refresh}`]);
   }
-  if (credential.scope) rows.push(["Scope: ", credential.scope]);
+  if (credential.scope) rows.push(["Scope: ", terminalText(credential.scope)]);
   return rows;
 }
 
@@ -338,7 +340,7 @@ function identityRows(
   hasPlan = false,
 ): [string, string][] {
   const identity = user.email ?? user.username ?? "(unknown user)";
-  const rows: [string, string][] = [["Account:", identity]];
+  const rows: [string, string][] = [["Account:", terminalText(identity)]];
   if (product === "hyperframes")
     return [
       ...rows,
@@ -365,14 +367,15 @@ const SOURCE_LABELS = {
 };
 
 function describeSource(source: ResolvedCredential["source"]): string {
-  if (source === "file_legacy") return `file (${credentialPath()} — legacy plaintext)`;
-  if (source === "file_json") return `file (${credentialPath()})`;
+  if (source === "file_legacy")
+    return `file (${terminalText(credentialPath())} — legacy plaintext)`;
+  if (source === "file_json") return `file (${terminalText(credentialPath())})`;
   return SOURCE_LABELS[source];
 }
 
 function billingRows(user: UserInfo): [string, string][] {
   const rows: [string, string][] = [];
-  if (user.billing_type) rows.push(["Billing:", user.billing_type]);
+  if (user.billing_type) rows.push(["Billing:", terminalText(user.billing_type)]);
   pushWalletRow(rows, user);
   pushSubscriptionRows(rows, user);
   pushUsageRow(rows, user);
@@ -384,12 +387,12 @@ function pushWalletRow(rows: [string, string][], user: UserInfo): void {
   const balance = user.wallet?.remaining_balance;
   if (balance === undefined) return;
   const currency = user.wallet?.currency ? ` ${user.wallet.currency}` : "";
-  rows.push(["Wallet: ", `${balance}${currency}`]);
+  rows.push(["Wallet: ", terminalText(`${balance}${currency}`)]);
 }
 
 // fallow-ignore-next-line complexity
 function pushSubscriptionRows(rows: [string, string][], user: UserInfo): void {
-  if (user.subscription?.plan) rows.push(["Plan:   ", user.subscription.plan]);
+  if (user.subscription?.plan) rows.push(["Plan:   ", terminalText(user.subscription.plan)]);
   pushCreditRow(rows, "Premium credits:", user.subscription?.credits?.premium_credits);
   pushCreditRow(rows, "Add-on credits: ", user.subscription?.credits?.add_on_credits);
 }
@@ -402,7 +405,7 @@ function pushCreditRow(
 ): void {
   if (!credit || credit.remaining === undefined) return;
   const resets = credit.resets_at ? ` (resets ${credit.resets_at.slice(0, 10)})` : "";
-  rows.push([label, `${credit.remaining}${resets}`]);
+  rows.push([label, terminalText(`${credit.remaining}${resets}`)]);
 }
 
 // fallow-ignore-next-line complexity
@@ -411,5 +414,5 @@ function pushUsageRow(rows: [string, string][], user: UserInfo): void {
   if (current === undefined) return;
   const cap = user.usage_based?.spending_cap_usd;
   const capPart = cap !== undefined ? ` / $${cap}` : "";
-  rows.push(["Usage:  ", `$${current}${capPart}`]);
+  rows.push(["Usage:  ", terminalText(`$${current}${capPart}`)]);
 }

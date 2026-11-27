@@ -224,6 +224,12 @@ stylesheet links in `<head>`, so those styles never apply in preview, snapshot o
 
 **Fix:** Use hardcoded string selectors instead of interpolated ones.
 
+### `three_d_layer_far_larger_than_stage`
+
+**Warning.** An element with a 3D transform (`rotateX`, `rotateY`, `translateZ`, `perspective()` and similar) is more than 4 times the stage area. A 3D-transformed layer is drawn nearly whole, not only the part on stage, so it holds GPU memory for pixels nobody sees, and in an editor's preview it can blank the editor's own panels.
+
+**Fix:** Size the element to what the camera can see, or use a repeating background on a stage-sized element.
+
 ### `timed_element_missing_clip_class`
 
 **Warning.** An element has timing attributes but no `class="clip"`. The runtime still times it, but the browser editor and the clip-ownership rules use `.clip` to recognise it, so it is harder to edit and to lint.
@@ -232,7 +238,7 @@ stylesheet links in `<head>`, so those styles never apply in preview, snapshot o
 
 ### `timeline_track_too_dense`
 
-**Warning.** One track in this file carries more than 3 timed elements (audio, video, caption cues and sub-composition mounts are not counted), which makes the timeline harder to read, iterate on, and diff.
+**Warning.** This file has more than 3 timed elements, whatever tracks they sit on (audio, video, caption cues and sub-composition mounts are not counted), which makes the timeline harder to read, iterate on, and diff.
 
 **Fix:** Split the elements into sub-compositions and mount them from the parent with `data-composition-src`.
 
@@ -279,6 +285,12 @@ The preview slows to a crawl.
 **Fix:** Let the runtime hide hidden clips; it already hides their contents.
 For a state of your own, toggle a class or data attribute from your script and select on that.
 
+### `html_read_unlike_browser`
+
+**Error.** The file holds markup that a browser reads differently from HyperFrames' HTML reader. One example is tags or comments in a `title`, `style`, `script`, `textarea` or `xmp` inside an `<svg>` or `<math>` element. Preview, render and edit all refuse the file. Lint reports this one error for the file and lints the rest of the project. The message names what was found.
+
+**Fix:** Keep only plain text in the element the message names, with no tags or comments.
+
 ### `invalid_inline_script_syntax`
 
 **Error.** An inline `<script>` is closed with malformed syntax.
@@ -290,6 +302,12 @@ For a state of your own, toggle a class or data attribute from your script and s
 **Error.** The composition registers no `window.__timelines` registry at all.
 
 **Fix:** Register each composition timeline on `window.__timelines[compositionId]`.
+
+### `linked_files_not_checked`
+
+**Warning.** The stylesheets and scripts a file links add up to more than one page may hold (64 MB), so lint stopped reading them. Each file is read once, under any of its names; the ones past the limit are not checked, and `missing_timeline_registry` is not reported when a skipped script could hold the registry.
+
+**Fix:** Link each file once, and keep large data out of linked stylesheets and scripts.
 
 ### `non_deterministic_code`
 
@@ -584,7 +602,7 @@ Source: `packages/lint/src/rules/media.ts`.
 
 **Warning.** An element has `data-volume` gain and a GSAP tween on `volume`; tween values are absolute and replace the gain rather than scale it.
 
-**Fix:** Write tween targets as absolute gains that already include the gain, or reset `data-volume` to 1 and let the tween carry the level.
+**Fix:** Keep the level you set. Use an absolute gain for each level the tween should reach: for `data-volume="0.3"`, use `volume: 0.3` where it should reach that level, and keep `volume: 0` at endpoints intended to be silent. If `data-volume="0"`, the clip is authored silent: drop the volume tween to keep it silent, or deliberately set `data-volume="1"` and let the tween carry the level. If the level is in doubt, measure the rendered file with `hyperframes audio render.mp4` (replace `render.mp4` with your output file) before changing it.
 
 ### `base64_media_prohibited`
 
@@ -916,9 +934,9 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 
 ### `duplicate_audio_track`
 
-**Warning.** Two audible elements overlap on the same track index, so their audio doubles up.
+**Warning.** Two audible clips overlap in time on the same `data-track-index`. Both play at once: the render mixes every audible clip whatever its track, and `data-track-index` only picks the Studio lane, so Studio draws the two over each other in that lane. An overlap like this is either an accidental duplicate or two sounds sharing one lane.
 
-**Fix:** Use non-overlapping time windows or different track indices.
+**Fix:** If both should sound (a whoosh into a hit), give one its own `data-track-index`; the mix does not change. If one is a leftover duplicate, remove it or move it so the windows do not overlap.
 
 ### `texture_mask_asset_not_found`
 

@@ -23,7 +23,7 @@ it("previews on the selected element, not an earlier same-id copy in a sub-compo
 
 it("previews on the copy in the selection's own file when a sub-composition repeats its hf-id", () => {
   document.body.innerHTML =
-    '<div data-composition-id="strip" data-composition-src="compositions/strip.html">' +
+    '<div data-composition-id="strip" data-composition-src="compositions/strip.html" data-composition-file="compositions/strip.html">' +
     '<div id="card" data-hf-id="hf-card"></div></div><div id="card" data-hf-id="hf-card" class="root"></div>';
   const set = vi.fn();
   const iframe = { contentWindow: { gsap: { set } }, contentDocument: document };
@@ -106,3 +106,22 @@ it.each([
     expect(props).toEqual(read);
   },
 );
+
+/** A preview on an opaque origin: every read of its window but postMessage throws, as a browser's does. */
+function sealedPreview(): HTMLIFrameElement {
+  const iframe = document.createElement("iframe");
+  const win = new Proxy({} as Record<string, unknown>, {
+    get: (_target, key) => {
+      if (key === "postMessage") return () => undefined;
+      throw new DOMException(`blocked read of ${String(key)}`, "SecurityError");
+    },
+  });
+  Object.defineProperty(iframe, "contentWindow", { value: win });
+  Object.defineProperty(iframe, "contentDocument", { value: null });
+  return iframe;
+}
+
+it("draws nothing on a sealed preview, whose window refuses the read", () => {
+  const preview = createGsapLivePreview({ current: sealedPreview() });
+  expect(() => preview({ id: "card" } as DomEditSelection, { x: 10 })).not.toThrow();
+});

@@ -24,6 +24,8 @@ MP4.
 
 > **Tailwind v4 projects** (`hyperframes init --tailwind`): see `hyperframes-cli/references/init-and-scaffold.md` (Tailwind).
 
+> Follow the loaded skill’s launcher instructions for every CLI command below.
+>
 > **Using a HyperFrames plugin?** Load skills from that installed bundle and follow
 > its `hyperframes/references/plugin-installation.md` execution rules. The person updates
 > the plugin through its plugin manager; the standalone commands below do not apply.
@@ -60,7 +62,7 @@ npx hyperframes docs <topic> # reference docs in terminal
 
 > **Back from the desktop app.** Once this project was opened in the HyperFrames desktop app, run `npx hyperframes catch-up` before your next change here: it lists what the person asked Framey in the app and which files changed since.
 
-> **Pinned CLI version.** These scripts pin an exact `hyperframes@X.Y.Z` so this project re-renders identically over time. Weeks later that pin lags fixes shipped since. To move up: `npx hyperframes@latest upgrade --project . --check` (shows the delta), then `npx hyperframes@latest upgrade --project .` to rewrite the pins. Always unpinned — the pinned script re-runs the old version against itself.
+> **Pinned CLI version.** These scripts pin an exact `hyperframes@X.Y.Z` so this project re-renders identically over time. Weeks later that pin lags fixes shipped since. With standalone skills, run the installed launcher with `--cli-version latest upgrade --project . --check` to see the delta. Repeat without `--check` to rewrite the pins. Plugin workflows keep their bundled CLI.
 
 ## Documentation
 

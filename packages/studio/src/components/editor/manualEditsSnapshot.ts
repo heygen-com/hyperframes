@@ -36,6 +36,8 @@ import {
   STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
   STUDIO_ROTATION_DRAFT_ATTR,
 } from "./manualEditsTypes";
+import { endPreviewDraft } from "./previewDrafts";
+import { DRAG_MOVING_ATTR } from "../../hooks/draggedGsapPosition";
 import type {
   StudioBoxSizeSnapshot,
   StudioRotationSnapshot,
@@ -117,6 +119,7 @@ function restoreStyleProperty(element: HTMLElement, property: string, value: str
 }
 
 export function restoreStudioBoxSize(element: HTMLElement, previous: StudioBoxSizeSnapshot): void {
+  endPreviewDraft(element, "restore");
   forgetStudioBoxSizeDraftBase(element);
   restoreStyleProperty(element, "width", previous.width);
   restoreStyleProperty(element, "height", previous.height);
@@ -177,6 +180,14 @@ export function restoreStudioPathOffset(
   element: HTMLElement,
   previous: StudioPathOffsetSnapshot,
 ): void {
+  endPreviewDraft(element, "restore");
+  restoreStudioPathOffsetStyles(element, previous);
+}
+
+export function restoreStudioPathOffsetStyles(
+  element: HTMLElement,
+  previous: StudioPathOffsetSnapshot,
+): void {
   if (previous.translate) element.style.setProperty("translate", previous.translate);
   else element.style.removeProperty("translate");
 
@@ -208,6 +219,7 @@ export function restoreStudioPathOffset(
     }
     element.removeAttribute("data-hf-drag-gsap-base-x");
     element.removeAttribute("data-hf-drag-gsap-base-y");
+    element.removeAttribute(DRAG_MOVING_ATTR);
   }
 }
 

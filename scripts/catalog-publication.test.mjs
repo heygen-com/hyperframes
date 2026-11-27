@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { parse } from "yaml";
-import { catalogChanges, commitBatches } from "./publish-catalog.mjs";
+import { catalogChanges, commitBatches, copyGeneratedCatalog } from "./publish-catalog.mjs";
 import { GENERATED_CATALOG_PATHS } from "./catalog-generated-paths.mjs";
 import { committedCatalogOutputs } from "./check-catalog-source-pr.mjs";
 
@@ -59,6 +59,32 @@ test("publication includes changed, new and deleted generated files and excludes
     { path: "docs/public/catalog/blocks/new.json", kind: "write", contents: "AP8E" },
     { path: "registry/registry.json", kind: "write", contents: "bmV3" },
   ]);
+});
+
+test("the publisher takes only regular files under the generated paths from the build's output", (t) => {
+  const base = mkdtempSync(join(tmpdir(), "catalog-take-test-"));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const [built, root] = [join(base, "built"), join(base, "root")];
+  const write = (dir, path, content) => {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), content);
+  };
+  write(root, "registry/registry.json", "old");
+  write(root, "docs/public/catalog/blocks/gone.json", "old");
+  write(root, "scripts/publish-catalog.mjs", "first-party");
+  write(built, "registry/registry.json", "new");
+  write(built, "docs/public/catalog/blocks/new.json", "new");
+  write(built, "scripts/publish-catalog.mjs", "from the build");
+  copyGeneratedCatalog(built, root);
+  assert.equal(readFileSync(join(root, "registry/registry.json"), "utf8"), "new");
+  assert.equal(readFileSync(join(root, "docs/public/catalog/blocks/new.json"), "utf8"), "new");
+  assert.ok(!existsSync(join(root, "docs/public/catalog/blocks/gone.json")));
+  assert.equal(readFileSync(join(root, "scripts/publish-catalog.mjs"), "utf8"), "first-party");
+  symlinkSync(
+    join(root, "scripts/publish-catalog.mjs"),
+    join(built, "docs/public/catalog/blocks/link.json"),
+  );
+  assert.throws(() => copyGeneratedCatalog(built, root), /must be a regular file/);
 });
 
 test("signed API batches preserve deletions and limit each request to 100 changes", () => {
@@ -115,7 +141,10 @@ const args = process.argv.slice(2);
 const endpoint = args[1];
 const method = args[args.indexOf("--method") + 1];
 const body = args.includes("--input") ? JSON.parse(fs.readFileSync(0, "utf8")) : undefined;
-fs.appendFileSync(process.env.API_CALLS, JSON.stringify({ endpoint, method, body }) + "\\n");
+fs.appendFileSync(process.env.API_CALLS, JSON.stringify({ endpoint, method, body, token: process.env.GH_TOKEN }) + "\\n");
+const mainAdvanced = () =>
+  process.env.MAIN_ADVANCES === "before" ||
+  (process.env.MAIN_ADVANCES === "after-commit" && fs.readFileSync(process.env.API_CALLS, "utf8").includes('"graphql"'));
 if (!process.env.PUBLISH_SUCCESS && (endpoint === "graphql" || method === "DELETE")) {
   console.error(endpoint === "graphql" ? "commit rejected" : "cleanup rejected");
   process.exit(1);
@@ -123,7 +152,7 @@ if (!process.env.PUBLISH_SUCCESS && (endpoint === "graphql" || method === "DELET
 if (endpoint === "graphql") console.log("c".repeat(40));
 else if (endpoint.includes("/runs?")) console.log(JSON.stringify({ workflow_runs: JSON.parse(process.env.WORKFLOW_RUNS || "[]") }));
 else if (endpoint.endsWith("/dispatches") && process.env.DISPATCH_FAIL) process.exit(1);
-else if (endpoint.endsWith("/ref/heads/main")) console.log(process.env.BASE);
+else if (endpoint.endsWith("/ref/heads/main")) console.log(mainAdvanced() ? "b".repeat(40) : process.env.BASE);
 else if (endpoint.includes("/matching-refs/")) console.log(process.env.NO_BRANCH ? "" : "refs/heads/bot/catalog-publish");
 else if (endpoint.includes("/ref/heads/bot/catalog-publish")) console.log("a".repeat(40));
 else if (endpoint.includes("/pulls?")) console.log(process.env.NO_OPEN_PR ? "" : "42");
@@ -157,6 +186,8 @@ catch (error) {
           GITHUB_REPOSITORY: "test/catalog",
           GITHUB_RUN_ID: "123",
           GITHUB_RUN_ATTEMPT: "1",
+          GH_TOKEN: "actions-token",
+          CATALOG_PR_TOKEN: "app-token",
           ...apiEnv,
         },
         stdio: ["pipe", "pipe", "pipe"],
@@ -181,13 +212,74 @@ test("reverting unpublished sources closes the obsolete PR and resets its branch
   assert.deepEqual(
     fixture.calls().filter((call) => call.method !== "GET"),
     [
-      { endpoint: "repos/test/catalog/pulls/42", method: "PATCH", body: { state: "closed" } },
+      {
+        endpoint: "repos/test/catalog/pulls/42",
+        method: "PATCH",
+        body: { state: "closed" },
+        token: "app-token",
+      },
       {
         endpoint: "repos/test/catalog/git/refs/heads/bot/catalog-publish",
         method: "PATCH",
         body: { sha: fixture.base, force: true },
+        token: "actions-token",
       },
     ],
+  );
+});
+
+test("the app opens the publish PR and the Actions token makes every other write", (t) => {
+  const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1", NO_OPEN_PR: "1" });
+  fixture.run();
+  const writes = fixture.calls().filter((call) => call.method !== "GET");
+  const prWrites = writes.filter((call) => /\/pulls(\/\d+)?$/.test(call.endpoint));
+  assert.deepEqual(
+    prWrites.map(({ endpoint, method, token }) => ({ endpoint, method, token })),
+    [{ endpoint: "repos/test/catalog/pulls", method: "POST", token: "app-token" }],
+  );
+  assert.ok(writes.length > prWrites.length);
+  for (const call of writes.filter((write) => !prWrites.includes(write)))
+    assert.equal(call.token, "actions-token", call.endpoint);
+});
+
+test("the app edits a standing PR whose body is out of date", (t) => {
+  const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1" });
+  fixture.run();
+  const edit = fixture
+    .calls()
+    .find((call) => call.endpoint === "repos/test/catalog/pulls/42" && call.method === "PATCH");
+  assert.equal(edit.token, "app-token");
+});
+
+test("a run without the app token fails before any write", (t) => {
+  const fixture = publicationFixture(t, true, { PUBLISH_SUCCESS: "1", CATALOG_PR_TOKEN: "" });
+  assert.throws(fixture.run, (error) => {
+    assert.match(error.stdout, /CATALOG_PR_TOKEN must hold the app token/);
+    return true;
+  });
+  assert.equal(existsSync(join(fixture.root, "calls.jsonl")), false);
+});
+
+test("a run that main overtook before it started ends clean and writes nothing", (t) => {
+  const fixture = publicationFixture(t, true, { MAIN_ADVANCES: "before" });
+  assert.match(fixture.run(), /^::notice::Main advanced during publication/m);
+  assert.deepEqual(
+    fixture.calls().filter((call) => call.method !== "GET"),
+    [],
+  );
+});
+
+test("a run that main overtook after its commits ends clean and leaves the publication alone", (t) => {
+  const fixture = publicationFixture(t, true, {
+    MAIN_ADVANCES: "after-commit",
+    PUBLISH_SUCCESS: "1",
+  });
+  assert.match(fixture.run(), /^::notice::Main advanced during publication/m);
+  const writes = fixture.calls().filter((call) => call.method !== "GET");
+  assert.equal(writes.at(-1).method, "DELETE");
+  assert.equal(
+    writes.some((call) => call.method === "PATCH" || call.endpoint.endsWith("/dispatches")),
+    false,
   );
 });
 
@@ -420,6 +512,7 @@ test("vector noise over a standing branch already in main opens no empty PR", (t
       endpoint: "repos/test/catalog/git/refs/heads/bot/catalog-publish",
       method: "PATCH",
       body: { sha: fixture.git("rev-parse", "HEAD"), force: true },
+      token: "actions-token",
     },
   ]);
 });

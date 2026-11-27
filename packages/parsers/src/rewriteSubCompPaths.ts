@@ -16,11 +16,11 @@
 // submodule so Windows builds don't emit backslash-separated paths (or worse,
 // drive-letter-prefixed artifacts from `resolve("/", ...)`).
 import { posix } from "path";
+import { cssUrlMatches, replaceMatches } from "./cssUrlScans.js";
 import { rewriteSrcsetUrls } from "./srcset.js";
 const { join, resolve, dirname } = posix;
 
 import {
-  CSS_URL_RE,
   PATH_ATTRS,
   isNonRelativeUrl,
   splitUrlSuffix,
@@ -29,6 +29,9 @@ import {
 } from "./assetPaths.js";
 
 const isAbsoluteOrSpecial = isNonRelativeUrl;
+
+/** Gets the length a rebased path added over the authored one. */
+export type ChargeRebase = (addedBytes: number) => void;
 
 /**
  * Returns true only for paths that traverse up with `../`.
@@ -74,6 +77,7 @@ export function rewriteAssetPath(
   compSrcPath: string,
   relativePath: string,
   assetExists?: AssetExists,
+  charge?: ChargeRebase,
 ): string {
   if (isAbsoluteOrSpecial(relativePath)) return relativePath;
   const compDir = dirname(compSrcPath);
@@ -82,9 +86,14 @@ export function rewriteAssetPath(
   const slashed = basePath.replace(/\\/g, "/");
   if (!slashed || slashed.startsWith("/")) return relativePath;
   const filePath = decodeWellFormedEscapes(slashed);
-  const sibling = resolve("/", join(compDir, filePath)).slice(1);
-  if (!needsRewrite(filePath) && (!assetExists || !assetExists(sibling))) return relativePath;
-  return encodeUrlPath(sibling) + suffix;
+  const siblingOf = (name: string) => resolve("/", join(compDir, name)).slice(1);
+  const sibling = needsRewrite(filePath)
+    ? siblingOf(filePath)
+    : [filePath, slashed].map(siblingOf).find((name) => assetExists?.(name));
+  if (sibling === undefined) return relativePath;
+  const rebased = encodeUrlPath(sibling) + suffix;
+  charge?.(rebased.length - relativePath.length);
+  return rebased;
 }
 
 /**
@@ -103,11 +112,12 @@ export function rewriteAssetPaths<T>(
   getAttr: (el: T, attr: string) => string | null | undefined,
   setAttr: (el: T, attr: string, value: string) => void,
   assetExists?: AssetExists,
+  charge?: ChargeRebase,
 ): void {
   for (const el of elements) {
     for (const attr of PATH_ATTRS) {
       const val = (getAttr(el, attr) || "").trim();
-      const rewritten = rewriteAssetPath(compSrcPath, val, assetExists);
+      const rewritten = rewriteAssetPath(compSrcPath, val, assetExists, charge);
       if (rewritten !== val) {
         setAttr(el, attr, rewritten);
       }
@@ -115,7 +125,7 @@ export function rewriteAssetPaths<T>(
     const srcset = getAttr(el, "srcset");
     if (!srcset) continue;
     const rewritten = rewriteSrcsetUrls(srcset, (url) =>
-      rewriteAssetPath(compSrcPath, url, assetExists),
+      rewriteAssetPath(compSrcPath, url, assetExists, charge),
     );
     if (rewritten !== srcset) setAttr(el, "srcset", rewritten);
   }
@@ -130,6 +140,7 @@ export function rewriteInlineStyleAssetUrls<T>(
   getStyle: (el: T) => string | null | undefined,
   setStyle: (el: T, value: string) => void,
   assetExists?: AssetExists,
+  charge?: ChargeRebase,
 ): void {
   const compDir = dirname(compSrcPath);
   if (!compDir || compDir === ".") return;
@@ -137,7 +148,7 @@ export function rewriteInlineStyleAssetUrls<T>(
   for (const el of elements) {
     const style = getStyle(el);
     if (!style) continue;
-    const rewritten = rewriteCssAssetUrls(style, compSrcPath, assetExists);
+    const rewritten = rewriteCssAssetUrls(style, compSrcPath, assetExists, charge);
     if (rewritten !== style) {
       setStyle(el, rewritten);
     }
@@ -152,11 +163,12 @@ export function rewriteCssAssetUrls(
   cssText: string,
   compSrcPath: string,
   assetExists?: AssetExists,
+  charge?: ChargeRebase,
 ): string {
   if (!cssText) return cssText;
-  return cssText.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+  return replaceMatches(cssText, cssUrlMatches(cssText), (full, quote, rawUrl) => {
     const urlValue = (rawUrl || "").trim();
-    const rewritten = rewriteAssetPath(compSrcPath, urlValue, assetExists);
+    const rewritten = rewriteAssetPath(compSrcPath, urlValue, assetExists, charge);
     if (rewritten === urlValue) return full;
     return `url(${quote || ""}${rewritten}${quote || ""})`;
   });

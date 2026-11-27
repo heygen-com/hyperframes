@@ -139,6 +139,24 @@ Make any video by asking for it; the `/hyperframes` skill carries the contract a
 
 You can name a skill directly, but you do not need to memorize the names to start.
 
+## How the agent runs the CLI
+
+The skills have your agent start the CLI through a launcher that ships with them,
+`hyperframes/scripts/plugin-cli.mjs`, from your project folder. The launcher starts npm in
+your home folder, so a project's `package.json`, `node_modules` or `.npmrc` cannot swap in a
+different program. This matters most for a project someone sent you. With standalone skills it
+runs the newest published CLI; in a plugin it runs the version the plugin pins. The pin counts
+only when the plugin folder's name does not start with a dot, the folder is not the one the
+agent works in and does not contain it, and, if it lies inside that folder, a folder whose name
+starts with a dot (such as `.claude`) sits between them. For a standalone workflow that needs a
+particular release, the agent passes `--cli-version latest` or `--cli-version <exact-version>` to
+the installed launcher before the CLI command. This also works for releases with a prerelease
+suffix. A project's `package.json` pin does not choose that release; the agent runs a pinned
+release only when you ask for it. The launcher refuses a release older than its floor, whether a
+plugin pins it or the agent selects it. The floor (currently 0.9.80) is the oldest release with
+the protections for projects you receive from others. Plugin installs keep their pin.
+The agent runs a project's own npm scripts only when you ask for one by name.
+
 ## Install more only when you need it
 
 Install the complete published set deliberately with:

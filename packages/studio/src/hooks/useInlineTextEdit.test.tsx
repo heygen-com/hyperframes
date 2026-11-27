@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PreviewReadOnlyProvider } from "../components/editor/previewReadOnlyContext";
 import { useInlineTextEdit, type InlineTextEditControls } from "./useInlineTextEdit";
 import { applyUndoRestoreToPreview } from "../utils/gsapUndoRestore";
+import { usePlayerStore } from "../player/store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -201,6 +202,7 @@ describe("useInlineTextEdit", () => {
     act(() => {
       controls.current!.start(element);
     });
+    element.textContent = "Typed";
     act(() => root.render(<Probe onCommit={second} />));
 
     expect(controls.current!.session?.element).toBe(element);
@@ -268,10 +270,22 @@ describe("useInlineTextEdit", () => {
     act(() => {
       controls().start(element);
     });
+    element.textContent = "Typed";
     act(() => controls().commit());
     act(() => controls().commit());
 
     expect(onCommit).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+  });
+
+  it("saves nothing when the text was not changed", () => {
+    const element = heading();
+    const { controls, root, onCommit } = mount();
+    act(() => {
+      controls().start(element);
+    });
+    act(() => controls().commit());
+    expect([onCommit.mock.calls.length, controls().session]).toEqual([0, null]);
     act(() => root.unmount());
   });
 
@@ -413,6 +427,7 @@ describe("useInlineTextEdit", () => {
       act(() => {
         controls().start(element);
       });
+      element.textContent = "Typed";
       act(() => controls().commit());
 
       press(element, "Enter");
@@ -582,11 +597,12 @@ describe("useInlineTextEdit with styled runs", () => {
     act(() => {
       controls().start(element);
     });
+    element.textContent = "plain words, typed";
     act(() => controls().commit());
 
     expect(onCommit).toHaveBeenCalledWith({
       element,
-      html: "plain words",
+      html: "plain words, typed",
       previousHtml: "plain words",
     });
     act(() => root.unmount());
@@ -656,7 +672,10 @@ describe("an undo that lands while a text edit is open", () => {
       controls().start(element);
     });
     const contentWindow = { __player: { seek: vi.fn() }, __hfStudioManualEditsApply: vi.fn() };
-    const iframe = { contentWindow, contentDocument: document } as unknown as HTMLIFrameElement;
+    const iframe = Object.assign(new EventTarget(), {
+      contentWindow,
+      contentDocument: document,
+    }) as unknown as HTMLIFrameElement;
     const files = {
       "index.html": { previous: wrap(moved), restored: wrap(`<h1 id="t">Title</h1>`) },
     };
@@ -667,6 +686,35 @@ describe("an undo that lands while a text edit is open", () => {
     expect(element.style.getPropertyValue("translate")).toBe("");
     expect(element.getAttribute("contenteditable")).toBe("true");
     expect(element.style.getPropertyValue("outline")).not.toBe("");
+    act(() => root.unmount());
+  });
+
+  it("saves an open edit when the preview fails, as leaving it does", () => {
+    const element = heading("Motion");
+    const { controls, root, onCommit } = mount();
+    act(() => {
+      controls().start(element);
+    });
+    element.textContent = "Motion kept";
+    act(() => usePlayerStore.getState().setPreviewFailed(true));
+    usePlayerStore.getState().setPreviewFailed(false);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ html: "Motion kept" }));
+    act(() => root.unmount());
+  });
+
+  it("refuses to open an edit while the preview has failed, so a press already on its way does nothing", () => {
+    const element = heading();
+    const { controls, root, onPause } = mount();
+    usePlayerStore.getState().setPreviewFailed(true);
+    let opened = true;
+    act(() => {
+      opened = controls().start(element);
+    });
+    usePlayerStore.getState().setPreviewFailed(false);
+    expect(opened).toBe(false);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(onPause).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 });

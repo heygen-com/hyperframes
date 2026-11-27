@@ -50,4 +50,5 @@ export interface TimelineProps
   trackPadding?: TimelineTrackPadding;
   readOnly?: boolean;
   onReadOnlyPress?: () => void;
+  insertOnClipDrop?: boolean;
 }

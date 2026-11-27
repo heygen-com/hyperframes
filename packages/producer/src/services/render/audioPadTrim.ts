@@ -19,6 +19,7 @@
  * can stretch the terminal packet in the final MP4.
  */
 
+import { ffmpegCwd, localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import {
@@ -34,6 +35,7 @@ import {
   trackChildProcess,
   type AudioMetadata,
   type RunFfmpegResult,
+  withPublicOnlyProxy,
 } from "@hyperframes/engine";
 import { redactKnownPaths, redactTelemetryString } from "@hyperframes/core";
 import { measureTruePeakDbfs } from "./audioTruePeak.js";
@@ -72,6 +74,7 @@ export interface AudioProbeInfo {
 }
 
 export interface PadTrimAudioInput {
+  audioContainer?: "mov";
   /** Path to the assembled video. Used to derive `frameCount / fps`. */
   videoPath: string;
   /** Path to the pre-mixed audio (typically `<planDir>/audio.m4a`). */
@@ -235,11 +238,16 @@ export async function padOrTrimAudioToVideoFrameCount(
   const probeVideo =
     input.probeVideoFrameInfo ??
     ((videoPath: string) => defaultProbeVideoFrameInfo(videoPath, input.signal));
-  const probeAudio = input.probeAudioInfo ?? defaultProbeAudioInfo;
+  const probeAudio =
+    input.probeAudioInfo ??
+    ((path: string, signal?: AbortSignal) =>
+      defaultProbeAudioInfo(path, signal, input.audioContainer));
   const timeoutMs = input.timeoutMs ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const runner =
     input.runFfmpeg ?? ((args: string[]) => defaultRunFfmpeg(args, timeoutMs, input.signal));
-  const encode = input.encodeAac ?? defaultAacEncoder(timeoutMs, input.signal, input.sourcePath);
+  const encode =
+    input.encodeAac ??
+    defaultAacEncoder(timeoutMs, input.signal, input.sourcePath, input.audioContainer);
   // Injected runners usually do not materialize media. Tests that exercise
   // peak correction opt in with a matching probe; production always uses the
   // real post-codec measurement.
@@ -312,7 +320,7 @@ export async function padOrTrimAudioToVideoFrameCount(
     for (const step of plan.steps) {
       const ffmpegResult =
         step.kind === "copy"
-          ? await runner(step.args)
+          ? await runner([...localContainerInputArgs(input.audioContainer), ...step.args])
           : await encode(
               input.sourcePath ?? input.audioPath,
               input.outputPath,
@@ -568,11 +576,13 @@ interface FfprobeOutput {
 export async function defaultProbeVideoFrameInfo(
   videoPath: string,
   signal?: AbortSignal,
+  container?: "mov" | "matroska",
 ): Promise<ProbeVideoFrameInfo> {
   // Try the container header (`nb_frames`) first — single moov atom read,
   // no decode. Closed-GOP, B-frame-free streams (the only ones we'll ever
   // ask to pad/trim) reliably set it. Fall back to `-count_packets` which
   // walks the packet stream when the header doesn't carry the count.
+  const inputArgs = localContainerInputArgs(container);
   const fastInfo = await runFfprobeJson<FfprobeOutput>(
     [
       "-v",
@@ -583,6 +593,7 @@ export async function defaultProbeVideoFrameInfo(
       "stream=nb_frames,r_frame_rate",
       "-of",
       "json",
+      ...inputArgs,
       "--",
       videoPath,
     ],
@@ -604,6 +615,7 @@ export async function defaultProbeVideoFrameInfo(
       "stream=nb_read_packets,r_frame_rate",
       "-of",
       "json",
+      ...inputArgs,
       "--",
       videoPath,
     ],
@@ -631,10 +643,11 @@ function parseFrameRate(rate: string): { fpsNum: number; fpsDen: number } {
 async function defaultProbeAudioInfo(
   audioPath: string,
   signal?: AbortSignal,
+  inputContainer?: "mov",
 ): Promise<AudioProbeInfo> {
   // The shared ffprobe wrapper corrects for a lying container duration so
   // every consumer sees the same VBR-safe metadata while preserving cancellation.
-  const metadata: AudioMetadata = await extractAudioMetadata(audioPath, { signal });
+  const metadata: AudioMetadata = await extractAudioMetadata(audioPath, { signal, inputContainer });
   return {
     durationSeconds: metadata.durationSeconds,
     sampleRate: metadata.sampleRate,
@@ -655,12 +668,13 @@ function defaultAacEncoder(
   timeoutMs: number,
   signal?: AbortSignal,
   pcmSourcePath?: string,
+  inputContainer?: "mov",
 ): AacEncoder {
   return async (inputPath, outputPath, durationSeconds, filter) => {
     // Each segment decodes its input from the start: cheap from PCM, a second lossy pass from AAC.
     const options = pcmSourcePath
       ? { signal, timeout: timeoutMs, filter }
-      : { signal, timeout: timeoutMs, filter, segments: 1 };
+      : { signal, timeout: timeoutMs, filter, segments: 1, inputContainer };
     return toStepResult(
       await encodeAac(pcmSourcePath ?? inputPath, outputPath, durationSeconds, options),
       timeoutMs,
@@ -686,8 +700,25 @@ export async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): P
   if (!args.includes("--")) {
     throw new Error('[audioPadTrim] ffprobe args must terminate options with "--".');
   }
+  // With a restricted page network, a URL input not declared by the render reaches only public hosts.
+  const proxying = withPublicOnlyProxy(args, [args.indexOf("--") + 1]);
+  const routed = proxying && (await proxying);
+  try {
+    return await spawnFfprobeJson<T>(routed?.args ?? args, routed?.env, signal);
+  } finally {
+    await routed?.close();
+  }
+}
+
+async function spawnFfprobeJson<T>(
+  args: string[],
+  env: NodeJS.ProcessEnv | undefined,
+  signal?: AbortSignal,
+): Promise<T> {
   const proc = spawn(getFfprobeBinary(), args, {
+    ...(env && { env }),
     stdio: ["ignore", "pipe", "pipe"],
+    cwd: ffmpegCwd(),
     windowsHide: true,
   });
   trackChildProcess(proc);

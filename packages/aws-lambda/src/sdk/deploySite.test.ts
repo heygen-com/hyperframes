@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -45,6 +52,18 @@ const HTML = "<html><body>hi</body></html>";
 const CSS = "body { color: red; }";
 
 describe("deploySite", () => {
+  it("names expectedBucketOwner as the bucket's owner on every request", async () => {
+    const s3 = new FakeS3();
+    await deploySite({
+      projectDir,
+      bucketName: "test-bucket",
+      expectedBucketOwner: "123456789012",
+      s3: asS3Client(s3),
+    });
+    expect(s3.ops.length).toBeGreaterThan(0);
+    expect(s3.ops.filter((op) => op.owner !== "123456789012")).toEqual([]);
+  });
+
   it("uploads each file once under its content hash, then the site manifest", async () => {
     const s3 = new FakeS3();
     const result = await deploySite({
@@ -190,7 +209,7 @@ describe("deploySite", () => {
     expect(after.siteId).toBe(before.siteId);
   });
 
-  it("ships a symlinked project and its symlinked files and folders as content", async () => {
+  it("ships a symlinked project, and its files linked in from outside only when included", async () => {
     mkdirSync(join(scratch, "media"));
     writeFileSync(join(scratch, "media", "clip.txt"), "clip");
     writeFileSync(join(scratch, "logo.txt"), "logo");
@@ -198,12 +217,23 @@ describe("deploySite", () => {
     symlinkSync(join(scratch, "logo.txt"), join(projectDir, "logo.txt"));
     symlinkSync(projectDir, join(scratch, "fx"));
     const s3 = new FakeS3();
-    const result = await deploySite({
+    const notices: string[] = [];
+    const leftOut = await deploySite({
       projectDir: join(scratch, "fx"),
       bucketName: "test-bucket",
+      onNotice: (line) => notices.push(line),
       s3: asS3Client(s3),
     });
-    expect(sitePaths(s3, result.siteId)).toEqual([
+    expect(sitePaths(s3, leftOut.siteId)).toEqual(["assets/style.css", "index.html"]);
+    expect(notices.join("\n")).toContain("outside the project: logo.txt, media.");
+
+    const included = await deploySite({
+      projectDir: join(scratch, "fx"),
+      bucketName: "test-bucket",
+      includeOutsideFiles: true,
+      s3: asS3Client(s3),
+    });
+    expect(sitePaths(s3, included.siteId)).toEqual([
       "assets/style.css",
       "index.html",
       "logo.txt",
@@ -214,23 +244,38 @@ describe("deploySite", () => {
 
 const FFMPEG = process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg";
 const HAS_FFMPEG = spawnSync(FFMPEG, ["-version"]).status === 0;
+const FFPROBE = process.env.HYPERFRAMES_FFPROBE_PATH?.trim() || "ffprobe";
+const HAS_FFMPEG_AND_FFPROBE = HAS_FFMPEG && spawnSync(FFPROBE, ["-version"]).status === 0;
 
-describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", { timeout: 60_000 }, () => {
+describe.skipIf(!HAS_FFMPEG_AND_FFPROBE)("deploySite audio sidecars", () => {
+  function appendMp4FreeBoxEveryReaderSkips(file: string, bytes: number): void {
+    const free = Buffer.alloc(bytes);
+    free.writeUInt32BE(bytes, 0);
+    free.write("free", 4, "latin1");
+    appendFileSync(file, free);
+  }
+
   function addLargeVideo(): void {
+    const take = join(projectDir, "assets", "take.mp4");
     const made = spawnSync(FFMPEG, [
-      ...[
-        "-v",
-        "error",
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        "color=c=gray:size=640x360:rate=25:duration=30,noise=alls=100:allf=t+u",
-      ],
-      ...["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=30"],
-      ...["-c:v", "mpeg4", "-b:v", "16M", "-c:a", "aac", join(projectDir, "assets", "take.mp4")],
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=25:duration=2"],
+      ...["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2"],
+      ...["-c:v", "mpeg4", "-c:a", "aac", take],
     ]);
     expect(made.status).toBe(0);
+    appendMp4FreeBoxEveryReaderSkips(take, AUDIO_SIDECAR_MIN_BYTES);
+  }
+
+  function streamTypes(media: Buffer): string[] {
+    const file = join(scratch, "probed.m4a");
+    writeFileSync(file, media);
+    const probed = spawnSync(
+      FFPROBE,
+      ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", "--", file],
+      { encoding: "utf8" },
+    );
+    expect(probed.status).toBe(0);
+    return probed.stdout.trim().split("\n");
   }
 
   it("stores a large video's audio beside it, and leaves the site's file list as it was", async () => {
@@ -244,7 +289,7 @@ describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", { timeout: 60_000 }, (
     expect(take?.sizeBytes).toBeGreaterThan(AUDIO_SIDECAR_MIN_BYTES);
     const sidecar = audioSidecarUri("test-bucket", take?.sha256 ?? "").replace("s3://", "");
     expect(s3.existing.has(sidecar)).toBe(true);
-    expect(s3.bodies.get(sidecar)?.length).toBeLessThan((take?.sizeBytes ?? 0) / 4);
+    expect(streamTypes(s3.bodies.get(sidecar) ?? Buffer.alloc(0))).toEqual(["audio"]);
     expect(sitePaths(s3, site.siteId)).toEqual([
       "assets/style.css",
       "assets/take.mp4",
@@ -276,7 +321,7 @@ describe.skipIf(!HAS_FFMPEG)("deploySite audio sidecars", { timeout: 60_000 }, (
   });
 });
 
-describe.skipIf(!HAS_FFMPEG)("deploySite probe facts", { timeout: 60_000 }, () => {
+describe.skipIf(!HAS_FFMPEG_AND_FFPROBE)("deploySite probe facts", () => {
   function addVideo(): void {
     const made = spawnSync(FFMPEG, [
       ...["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=25:duration=2"],

@@ -97,6 +97,19 @@ export interface StudioSelectionResponse {
   updatedAt: string | null;
 }
 
+export type StudioRefusalWhy =
+  | "nul"
+  | "outside_project"
+  | "protected_path"
+  | "another_site"
+  | "cross_origin_write"
+  | "other";
+
+export interface StudioRefusal {
+  route: string;
+  why: StudioRefusalWhy;
+}
+
 /**
  * Adapter interface — injected by each consumer to handle host-specific behavior.
  * The shared API module calls these methods; each host (vite dev, CLI embedded)
@@ -138,10 +151,16 @@ export interface StudioApiAdapter {
    * adapters provide this; the single-file method remains as a compatibility
    * fallback for third-party adapters compiled against older releases.
    */
-  lintProject?: (projectDir: string) => Promise<ProjectLintResult> | ProjectLintResult;
+  lintProject?: (
+    projectDir: string,
+    signal?: AbortSignal,
+  ) => Promise<ProjectLintResult> | ProjectLintResult;
 
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;
+
+  /** Hears each 403 as the endpoint's route pattern and the server's reason code (`other` if none); never a path. */
+  onRefusal?: (refusal: StudioRefusal) => void;
 
   gsapLocalRoot?: `/${string}`;
 
@@ -207,6 +226,7 @@ export interface StudioApiAdapter {
      * the same channel `hyperframes render --variables` uses.
      */
     variables?: Record<string, unknown>;
+    range?: import("./helpers/renderRange.js").RenderRange;
     useGpu?: boolean;
     /**
      * Telemetry id of the browser user who triggered the render. Lets the

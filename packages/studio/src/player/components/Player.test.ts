@@ -3,12 +3,10 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  hasUnloadedAssets,
-  Player,
-  readPreviewErrorMessage,
-  shouldShowCompositionLoadingOverlay,
-} from "./Player";
+import { Player, readPreviewErrorMessage, shouldShowCompositionLoadingOverlay } from "./Player";
+import { hasUnloadedAssets } from "./previewAssetWait";
+import { previewEditingClient } from "../lib/previewChannel";
+import { FRAME_TOKEN_DEADLINE_MS, primeFrameToken } from "../lib/frameToken";
 import { usePlayerStore } from "../store/playerStore";
 import { onPreviewDocumentLoaded } from "../sceneSwap";
 
@@ -18,12 +16,14 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 let root: Root | null = null;
 let lifecycleLog: string[] = [];
+const playersMade: HTMLElement[] = [];
 
 class TestHyperframesPlayer extends HTMLElement {
   readonly iframeElement = document.createElement("iframe");
 
   constructor() {
     super();
+    playersMade.push(this);
     this.attachShadow({ mode: "open" });
 
     const addIframeListener = this.iframeElement.addEventListener.bind(this.iframeElement);
@@ -129,6 +129,26 @@ describe("preview errors", () => {
     root = null;
   });
 
+  // fails without the fix: a frame whose agent never answered kept its client, and its window listener held the
+  // retired frame, until a load that never comes.
+  it("disposes the frame's editing-port client when it unmounts", async () => {
+    const ref = vi.fn();
+    await mountPlayer({ ref } as Partial<PlayerProps>);
+    const client = previewEditingClient(ref.mock.calls[0]?.[0] as HTMLIFrameElement);
+
+    act(() => root?.unmount());
+    root = null;
+
+    const outcome = await Promise.race([
+      client.request("assets-unloaded", {}).then(
+        () => "answered",
+        (error: { code?: string }) => error.code,
+      ),
+      new Promise((resolve) => setTimeout(() => resolve("pending"), 50)),
+    ]);
+    expect(outcome).toBe("disposed");
+  });
+
   it("leaves a callback ref alone on unmount, so a frame its owner made live since is kept", async () => {
     // A shadow reload's promotion makes its frame the live one without calling the live Player's ref.
     const ref = vi.fn();
@@ -195,6 +215,271 @@ describe("preview errors", () => {
 
     act(() => void player.dispatchEvent(new Event("painted")));
     expect(onPainted.mock.calls.map(([details]) => details.loadId)).toEqual([1, 2]);
+  });
+});
+
+describe("a host's sandbox origin", () => {
+  const token = "T".repeat(43);
+  const stubFrameToken = (body: { token?: string } | null) =>
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe("/api/projects/demo/frame-token");
+      return { ok: body !== null, json: async () => body } as Response;
+    });
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    });
+  afterEach(() => {
+    primeFrameToken(null);
+    vi.restoreAllMocks();
+  });
+
+  // fails without the fix: a stale primed token left the player on a path the server refuses.
+  it("loads a sealed preview again under the current token when the primed one is stale", async () => {
+    stubFrameToken({ token });
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    const { player } = await mountPlayer({
+      directUrl: undefined,
+      projectId: "demo",
+      sandboxOrigin: "opaque",
+    });
+    await settle();
+    expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
+
+    // A later retry keeps the current token, never the stale one.
+    act(() => {
+      player.dispatchEvent(new CustomEvent("error", { detail: { message: "refused" } }));
+    });
+    const retry = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent === "Retry preview",
+    );
+    if (!retry) throw new Error("retry action did not render");
+    act(() => retry.click());
+    await settle();
+    expect(player.getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+    );
+  });
+
+  // fails without the fix: when the background check failed, Retry preview kept loading the unconfirmed primed token.
+  it("asks for the current token again on Retry preview when the primed one was never confirmed", async () => {
+    const answers: ({ token: string } | null)[] = [null, { token }];
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      const body = answers.shift() ?? null;
+      return { ok: body !== null, json: async () => body } as Response;
+    });
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    const { player } = await mountPlayer({
+      directUrl: undefined,
+      projectId: "demo",
+      sandboxOrigin: "opaque",
+    });
+    await settle();
+    expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${"S".repeat(43)}`);
+
+    act(() => {
+      player.dispatchEvent(new CustomEvent("error", { detail: { message: "refused" } }));
+    });
+    const retry = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent === "Retry preview",
+    );
+    if (!retry) throw new Error("retry action did not render");
+    act(() => retry.click());
+    await settle();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(player.getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+    );
+  });
+
+  /** Token lookups answered in the order the test releases them. */
+  const heldLookups = () => {
+    const held: ((token: string) => void)[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) =>
+          held.push((answer) =>
+            resolve({ ok: true, json: async () => ({ token: answer }) } as Response),
+          ),
+        ),
+    );
+    return held;
+  };
+  const retryAfterError = () => {
+    act(() => {
+      player().dispatchEvent(new CustomEvent("error", { detail: { message: "refused" } }));
+    });
+    const retry = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent === "Retry preview",
+    );
+    if (!retry) throw new Error("retry action did not render");
+    act(() => retry.click());
+  };
+  const player = () => document.querySelector("hyperframes-player") as HTMLElement;
+
+  // fails without the fix: the first load's late token check replaced the retry's URL with an older token.
+  it("keeps Retry preview's load when the first load's token check answers late", async () => {
+    const held = heldLookups();
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    retryAfterError();
+    held[1]?.(token);
+    await settle();
+    held[0]?.("O".repeat(43));
+    await settle();
+    expect(player().getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+    );
+  });
+
+  // fails without the fix: a retry whose token lookup never answered stayed on the failed address with no Retry, and
+  // then dropped the token that was working.
+  it("starts a bounded load under the working token when Retry preview's token lookup never answers", async () => {
+    const held = heldLookups();
+    primeFrameToken({ projectId: "demo", token });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    held[0]?.(token);
+    await settle();
+    vi.useFakeTimers();
+    try {
+      retryAfterError();
+      await vi.advanceTimersByTimeAsync(FRAME_TOKEN_DEADLINE_MS);
+      expect(player().getAttribute("src")).toBe(
+        `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // fails without the fix: a retry took a token primed for the project while its preview was open, and kept it.
+  it("asks for the current token on Retry preview even when the host primed another one meanwhile", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => ({ ok: true, json: async () => ({ token }) }) as Response,
+    );
+    primeFrameToken({ projectId: "demo", token });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    retryAfterError();
+    await settle();
+    expect(player().getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+    );
+  });
+
+  // fails without the fix: a second retry whose lookup failed went back to the first load's token, not the last one.
+  it("keeps the token the last Retry preview loaded when a later retry's lookup fails", async () => {
+    const answers: ({ token: string } | null)[] = [{ token }, { token: "N".repeat(43) }, null];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      const body = answers.shift() ?? null;
+      return { ok: body !== null, json: async () => body } as Response;
+    });
+    primeFrameToken({ projectId: "demo", token });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    retryAfterError();
+    await settle();
+    retryAfterError();
+    await settle();
+    expect(player().getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${"N".repeat(43)}?_hfStudioRetry=2`,
+    );
+  });
+
+  // fails without the fix: an earlier retry answering last loaded over the later one.
+  it("keeps the latest Retry preview's load when an earlier retry answers last", async () => {
+    const held = heldLookups();
+    primeFrameToken({ projectId: "demo", token });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    retryAfterError();
+    retryAfterError();
+    held[2]?.(token);
+    await settle();
+    held[1]?.("O".repeat(43));
+    held[0]?.(token);
+    await settle();
+    expect(player().getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=2`,
+    );
+  });
+
+  it.each([
+    ["/api/projects/demo/preview", `/api/projects/demo/preview/~${token}`],
+    [
+      "/api/projects/demo/preview/comp/scene.html",
+      `/api/projects/demo/preview/~${token}/comp/scene.html`,
+    ],
+    ["/api/projects/demo/preview?_t=1", `/api/projects/demo/preview/~${token}?_t=1`],
+    // A reload starts from the frame's own src, which already carries a token, maybe a stale one.
+    [`/api/projects/demo/preview/~${token}?_t=2`, `/api/projects/demo/preview/~${token}?_t=2`],
+    [
+      `/api/projects/demo/preview/~${"S".repeat(43)}/comp/scene.html`,
+      `/api/projects/demo/preview/~${token}/comp/scene.html`,
+    ],
+  ])(
+    "seals an opaque preview of %s and loads it under its project's frame token",
+    async (directUrl, sealed) => {
+      stubFrameToken({ token });
+      const { player } = await mountPlayer({ directUrl, sandboxOrigin: "opaque" });
+      await settle();
+      expect(player.hasAttribute("sandbox-origin")).toBe(true);
+      expect(player.getAttribute("src")).toBe(sealed);
+    },
+  );
+
+  it("still seals the preview when the project has no frame token to give", async () => {
+    stubFrameToken(null);
+    const { player } = await mountPlayer({ sandboxOrigin: "opaque" });
+    await settle();
+    expect(player.hasAttribute("sandbox-origin")).toBe(true);
+    expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
+  });
+
+  it("keeps the seal a host puts on the player from its ref", async () => {
+    const seal = (iframe: HTMLIFrameElement | null) =>
+      iframe && playersMade.at(-1)?.setAttribute("sandbox-origin", "opaque");
+    const { player } = await mountPlayer({ ref: seal });
+    await settle();
+    expect(player.getAttribute("sandbox-origin")).toBe("opaque");
+  });
+
+  it("leaves a same-origin preview on its plain path without asking for a token", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch");
+    const { player } = await mountPlayer();
+    await settle();
+    expect(player.hasAttribute("sandbox-origin")).toBe(false);
+    expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: the player read the sealed preview before loading it, after the editor's first render.
+  it("vouches that the sealed project preview it builds carries the runtime", async () => {
+    stubFrameToken({ token });
+    const { player } = await mountPlayer({
+      directUrl: undefined,
+      projectId: "demo",
+      sandboxOrigin: "opaque",
+    });
+    await settle();
+    expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
+    expect(player.hasAttribute("src-carries-runtime")).toBe(true);
+  });
+
+  it("vouches for no page a host hands it directly", async () => {
+    stubFrameToken({ token });
+    const { player } = await mountPlayer({ sandboxOrigin: "opaque" });
+    await settle();
+    expect(player.hasAttribute("src-carries-runtime")).toBe(false);
+  });
+
+  it("vouches for nothing on an unsealed preview", async () => {
+    const { player } = await mountPlayer({ directUrl: undefined, projectId: "demo" });
+    await settle();
+    expect(player.hasAttribute("src-carries-runtime")).toBe(false);
   });
 });
 

@@ -1,3 +1,5 @@
+import { allowPortStandInsForTests } from "../../core/src/runtime/runtimePort";
+
 if (typeof globalThis.CSS === "undefined") {
   (globalThis as Record<string, unknown>).CSS = {};
 }
@@ -12,3 +14,7 @@ if (typeof CSS.escape !== "function") {
 if (typeof globalThis.confirm !== "function") {
   (globalThis as Record<string, unknown>).confirm = () => false;
 }
+
+(globalThis as Record<string, unknown>).BASE_UI_ANIMATIONS_DISABLED = true;
+
+allowPortStandInsForTests();

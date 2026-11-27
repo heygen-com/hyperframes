@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { basename, extname, join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -35,6 +36,10 @@ export const examples: Example[] = [
   [
     "Score one drawn element (a title's box) by itself at chosen moments of a project",
     "hyperframes diff original.mp4 . --at 1,1.5,2 --drawn 120,670,485,115",
+  ],
+  [
+    "Score a project's captions by what they add: captured with and without them, with where to move each",
+    'hyperframes diff original.mp4 . --at 1,2.5,4 --hide ".cap"',
   ],
   [
     "Judge each segment of the final render and write a side-by-side",
@@ -99,11 +104,11 @@ function printHuman(r: DiffResult) {
     );
   if (r.duration)
     console.log(
-      `   duration: original ${r.duration.reference} s, yours ${r.duration.yours} s${r.duration.pass === null ? ` (${r.duration.note})` : r.duration.pass ? "" : " (differ)"}`,
+      `   duration: original ${r.duration.reference} s, yours ${r.duration.yours} s${r.duration.pass === null ? ` (${terminalText(String(r.duration.note))})` : r.duration.pass ? "" : " (differ)"}`,
     );
   if (r.sound)
     console.log(
-      `   sound: ${"offset_ms" in r.sound ? (r.sound.offset_ms === null ? (r.sound.note ?? "not aligned") : `${r.sound.offset_ms} ms off`) : `original ${r.sound.original ? "has" : "has no"} sound, yours ${r.sound.yours ? "has" : "has no"}`}${r.sound.pass ? "" : " (fails)"}`,
+      `   sound: ${"offset_ms" in r.sound ? (r.sound.offset_ms === null ? terminalText(r.sound.note ?? "not aligned") : `${r.sound.offset_ms} ms off`) : `original ${r.sound.original ? "has" : "has no"} sound, yours ${r.sound.yours ? "has" : "has no"}`}${r.sound.pass ? "" : " (fails)"}`,
     );
   if (r.components)
     console.log(
@@ -112,12 +117,12 @@ function printHuman(r: DiffResult) {
   if (r.person) {
     const g = r.person.gates;
     const mark = (v: boolean | null, failed: string[]) =>
-      v === null ? "unmeasured" : v ? "ok" : `fails in ${failed.join(", ")}`;
+      v === null ? "unmeasured" : v ? "ok" : `fails in ${terminalText(failed.join(", "))}`;
     console.log(
       `   person: framing ${mark(g.framing, r.person.failed.framing)}, text in the clip ${mark(g.text, r.person.failed.text)}, lips ${mark(g.sync, r.person.failed.sync)}; reported: motion ×${r.person.energy ?? "?"}, ${r.person.shots_at_cuts.at_cuts} of ${r.person.shots_at_cuts.total} clips start at a cut${r.person.shots_at_cuts.cuts_without_shot.length ? `, no new clip at ${r.person.shots_at_cuts.cuts_without_shot.join(", ")} s` : ""}`,
     );
   }
-  console.log(`   every frame: ${r.frames}`);
+  console.log(`   every frame: ${terminalText(String(r.frames))}`);
   for (const s of r.segments ?? []) {
     const state = s.pass === null ? c.dim("—") : s.pass ? c.success("✓") : c.error("✗");
     const detail =
@@ -131,7 +136,7 @@ function printHuman(r: DiffResult) {
       (s.note ?? "");
     const region = s.regenerated ? `; person in ${s.regenerated.roi.join(",")}` : "";
     console.log(
-      `   ${state} ${s.id} ${s.window[0]}–${s.window[1]} s ${s.pixels}${s.regenerated ? " outside the region" : ""}: ${detail}${region}`,
+      `   ${state} ${terminalText(s.id)} ${s.window[0]}–${s.window[1]} s ${s.pixels}${s.regenerated ? " outside the region" : ""}: ${terminalText(detail)}${region}`,
     );
   }
   for (const d of r.drawn ?? []) {
@@ -141,12 +146,31 @@ function printHuman(r: DiffResult) {
         ? "no ink found in the box (crop it tight around the letters)"
         : `score ${d.score} / p05 ${d.p05}, off by ${d.offset!.join(",")} px${d.ink === undefined ? "" : `, ink ×${d.ink}`}`;
     console.log(
-      `   ${state} ${d.id} ${d.box.join(",")} ${d.window[0]}–${d.window[1]} s: ${detail}`,
+      `   ${state} ${terminalText(d.id)} ${d.box.join(",")} ${d.window[0]}–${d.window[1]} s: ${detail}`,
     );
   }
-  for (const w of r.warnings) console.log(`   ${c.warn("⚠")} ${w}`);
-  if (r.sheet) console.log(`   sheet ${r.sheet}`);
-  if (r.sbs) console.log(`   side by side ${r.sbs}`);
+  if (r.layer)
+    console.log(
+      `   layer ${terminalText(r.layer.selector)}: benefit median ${r.layer.benefit_median ?? "—"} (1 matches the original, 0 is no better than without it)`,
+    );
+  for (const f of r.layer?.frames ?? []) {
+    const state =
+      f.benefit === undefined || f.benefit === null
+        ? c.dim("—")
+        : f.benefit >= 0
+          ? c.success("✓")
+          : c.error("✗");
+    const detail =
+      f.benefit === undefined
+        ? "the layer draws nothing here"
+        : f.benefit === null
+          ? f.note
+          : `benefit ${f.benefit}, ${f.instruction} (box ${f.bbox!.join(",")})`;
+    console.log(`   ${state} ${f.t} s: ${terminalText(String(detail))}`);
+  }
+  for (const w of r.warnings) console.log(`   ${c.warn("⚠")} ${terminalLines(w)}`);
+  if (r.sheet) console.log(`   sheet ${terminalText(r.sheet)}`);
+  if (r.sbs) console.log(`   side by side ${terminalText(r.sbs)}`);
 }
 
 export default defineCommand({
@@ -212,6 +236,11 @@ export default defineCommand({
       description:
         "A drawn element's box x,y,w,h in the original's pixels, optionally its seconds a-b (repeatable): scored by itself whatever is behind it, with its offset and ink (yours over the original's: under 1 is lighter, thinner or smaller)",
     },
+    hide: {
+      type: "string",
+      description:
+        'A CSS selector for one layer of a project (".cap"): captured with and without it, each moment scores what the layer adds (benefit, 1 matches the original, under 0 is worse than without it) and where to move or resize it',
+    },
     json: { type: "boolean", description: "Print one JSON result", default: false },
   },
   // fallow-ignore-next-line complexity
@@ -242,6 +271,7 @@ export default defineCommand({
         project: args.project === undefined ? undefined : resolve(String(args.project)),
         drawn: repeated(rawArgs, "--drawn").map(parseDrawn),
         offset: args.offset === undefined ? undefined : parseOffset(args.offset),
+        hide: args.hide === undefined ? undefined : String(args.hide),
         thresholds: {
           mean: number(args["min-mean"], "--min-mean"),
           p05: number(args["min-p05"], "--min-p05"),
@@ -251,7 +281,7 @@ export default defineCommand({
         sbs: args.sbs === true,
         outDir: outDir(args.out, join("diff", stem)),
         timeoutMs: number(args.timeout, "--timeout"),
-        log: (message) => console.error(message),
+        log: (message) => console.error(terminalLines(message)),
       });
       if (json) console.log(formatJson(withMeta({ ok: true, ...result })));
       else printHuman(result);
@@ -265,7 +295,10 @@ export default defineCommand({
       const message = normalizeErrorMessage(err);
       if (json)
         console.log(formatJson(withMeta({ ok: false, error: message, ...(fix ? { fix } : {}) })));
-      else console.error(`${c.error("✗")} ${message}${fix ? `\n  Fix: ${fix}` : ""}`);
+      else
+        console.error(
+          `${c.error("✗")} ${terminalLines(message)}${fix ? `\n  Fix: ${terminalLines(fix)}` : ""}`,
+        );
       failCommand(1, err);
     } finally {
       scheduleCliExit(exitCode);

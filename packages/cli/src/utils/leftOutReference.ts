@@ -1,8 +1,20 @@
+import { terminalText } from "@hyperframes/core";
 import { isAbsolute, relative } from "node:path";
+import {
+  INCLUDE_OUTSIDE_FILES_HINT,
+  type LeftOutReason,
+  leftOutWarning as leftOutText,
+} from "@hyperframes/studio-server/outside-file";
 import { realFilePath } from "@hyperframes/studio-server/safe-path";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 
-/** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy. */
-export type LeftOutReason = "blocklisted" | "received" | "file_type";
+export { INCLUDE_OUTSIDE_FILES_HINT };
+export type { LeftOutReason };
+
+export const leftOutWarning = (file: string, reference: string, reason: LeftOutReason): string =>
+  terminalText(leftOutText(file, reference, reason));
+
+export type UnreadableCause = "locked" | "denied" | "missing" | "drive";
 
 /** One file an upload left out. `path` is from the project folder; `levels_up` is null on another drive. */
 export interface LeftOutReference {
@@ -11,19 +23,26 @@ export interface LeftOutReference {
   path: string;
   reason: LeftOutReason;
   levels_up: number | null;
+  cause?: UnreadableCause;
 }
 
 export type OnLeftOut = (warning: string, reference: LeftOutReference) => void;
 
-const WHY: Record<LeftOutReason, string> = {
-  blocklisted: "which is outside the project in a private location",
-  received: "which leads outside the project and came in with an imported project",
-  file_type: "which is outside the project and is not an image, video, audio, font, CSS or JS file",
-};
+export type OutsideFileReference = Omit<LeftOutReference, "reason">;
 
-export function leftOutWarning(file: string, reference: string, reason: LeftOutReason): string {
-  const warning = `${file} references ${reference}, ${WHY[reason]}; it was left out of the upload.`;
-  return reason === "file_type" ? `${warning} Move it into the project to include it.` : warning;
+export type OnOutsideFile = (reference: OutsideFileReference) => boolean | void;
+
+export function outsideFileReference(
+  projectDir: string,
+  file: string,
+  reference: string,
+  absPath: string,
+): OutsideFileReference {
+  const onAnotherShare = namesAnotherNetworkRoot(projectDir, absPath);
+  const target = onAnotherShare ? absPath : realFilePath(absPath);
+  const path = relative(realFilePath(projectDir), target).replaceAll("\\", "/");
+  const levels_up = isAbsolute(path) ? null : path.split("/").filter((s) => s === "..").length;
+  return { file, reference, path, levels_up };
 }
 
 export function leftOutReference(
@@ -33,7 +52,30 @@ export function leftOutReference(
   absPath: string,
   reason: LeftOutReason,
 ): LeftOutReference {
-  const path = relative(realFilePath(projectDir), realFilePath(absPath)).replaceAll("\\", "/");
-  const levels_up = isAbsolute(path) ? null : path.split("/").filter((s) => s === "..").length;
+  const { path, levels_up } = outsideFileReference(projectDir, file, reference, absPath);
   return { file, reference, path, reason, levels_up };
+}
+
+function outsideFileLines(references: OutsideFileReference[]): string[] {
+  return references.map(({ file, reference, path }) =>
+    terminalText(
+      file === reference ? `  ${path} (linked from ${file})` : `  ${path} (referenced by ${file})`,
+    ),
+  );
+}
+
+const fileCount = (references: OutsideFileReference[]) =>
+  references.length === 1 ? "1 file" : `${references.length} files`;
+
+export function outsideFilesNotice(references: OutsideFileReference[]): string {
+  const heading = `Uploading ${fileCount(references)} from outside the project folder:`;
+  return [heading, ...outsideFileLines(references)].join("\n");
+}
+
+export function outsideFilesQuestion(references: OutsideFileReference[]): string {
+  return [
+    `The project uses ${fileCount(references)} from outside its folder:`,
+    ...outsideFileLines(references),
+    "Upload them too? Yes is remembered for this project; No leaves them out.",
+  ].join("\n");
 }

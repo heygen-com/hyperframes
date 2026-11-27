@@ -2,7 +2,8 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { NotWritable, uploadNeeded } from "./uploadFiles.mjs";
-import { parseStoredManifest } from "./manifest.mjs";
+import { canReplayUploadFile } from "./pathPolicy.mjs";
+import { readUploadIntent } from "./manifest.mjs";
 import { SyncApiError } from "./errors.mjs";
 
 /** @typedef {import("./adapterTypes.js").SourceRun} SourceRun
@@ -123,18 +124,36 @@ async function cancelPending({ binding, api }, receipt) {
   }
 }
 
+/** An unconfirmed Begin has to re-list its original files to recover its ID. Every marked file must
+ * still be part of the current capture with the same bytes. @param {import("./types.js").Manifest} saved
+ * @param {import("./types.js").Manifest} current */
+function mayReplayManifest(saved, current) {
+  const disclosed = new Map(
+    current.document.files.filter((file) => file.include_hidden).map((file) => [file.path, file]),
+  );
+  return saved.document.files.every((file) => {
+    if (!canReplayUploadFile(file)) return false;
+    if (!file.include_hidden) return true;
+    const approved = disclosed.get(file.path);
+    return approved?.sha256 === file.sha256 && approved.size === file.size;
+  });
+}
+
 /** Resolve an older capture before starting an upload for the current files.
- * @param {SourceUpload} job @returns {Promise<import("./adapterTypes.js").SourceResult | null>} */
+ * @param {SourceUpload & Pick<SourceRun, "manifest">} job @returns {Promise<import("./adapterTypes.js").SourceResult | null>} */
 export async function recoverSourceUpload(job) {
   const { binding, api } = job;
   const saved = binding.inflight;
   if (!saved) return null;
-  const manifest = parseStoredManifest(saved.manifest);
-  if (manifest.sha256 !== saved.manifestSha256)
-    throw new Error("Saved source upload manifest does not match its checksum.");
-  let receipt = saved.uploadId
-    ? await api.status(binding.ownerSpaceId, binding.compositionId, saved.uploadId)
-    : await begin({ ...job, manifest });
+  const intent = readUploadIntent(saved);
+  if (!intent || ("manifest" in intent && !mayReplayManifest(intent.manifest, job.manifest))) {
+    await clearIntent(job);
+    return null;
+  }
+  let receipt =
+    "uploadId" in intent
+      ? await api.status(binding.ownerSpaceId, binding.compositionId, intent.uploadId)
+      : await begin({ ...job, manifest: intent.manifest });
   assertReceipt(binding, receipt);
   if (receipt.status === "pending") receipt = await cancelPending(job, receipt);
   assertReceipt(binding, receipt);

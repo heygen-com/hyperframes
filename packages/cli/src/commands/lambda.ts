@@ -16,6 +16,7 @@ import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import type { VideoArch } from "./lambda/videoImage.js";
 import { c } from "../ui/colors.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import { deliveryFlagArgs, parseDeliveryFlags } from "../utils/deliveryFlags.js";
 import { defaultCloudFps } from "../utils/compositionFps.js";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
@@ -83,6 +84,22 @@ ${c.bold("REQUIREMENTS:")}
   • bun on PATH (used to build the handler ZIP)
 `;
 
+/** The Lambda SDK for `subcommand`, loaded once its own checks passed, so a usage error never waits on it. It is a
+ * workspace devDependency (the published CLI stays small), so a missing one gets an install hint. */
+async function requireLambdaSdk(subcommand: string): Promise<void> {
+  try {
+    await import("@hyperframes/aws-lambda/sdk");
+  } catch (err) {
+    if (isMissingPackageError(err, "@hyperframes/aws-lambda")) {
+      console.error(
+        missingPackageMessage("@hyperframes/aws-lambda", `hyperframes lambda ${subcommand}`),
+      );
+      failCommand();
+    }
+    throw err;
+  }
+}
+
 export default defineCommand({
   meta: { name: "lambda", description: "Deploy and drive renders on AWS Lambda" },
   args: {
@@ -136,6 +153,12 @@ export default defineCommand({
 
     // sites / render
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files a link brings in from outside the project folder. Otherwise they are left out and named.",
+      default: false,
+    },
     width: {
       type: "string",
       description:
@@ -247,26 +270,6 @@ export default defineCommand({
     const regionFlag = args.region as string | undefined;
     if (regionFlag) process.env.AWS_REGION = regionFlag;
 
-    // The lambda subverbs dynamic-import `@hyperframes/aws-lambda` at call
-    // time. We keep aws-lambda as a workspace devDependency (not a runtime
-    // dep) so the published CLI install stays small for users who don't
-    // deploy to Lambda. These subverbs need it and get a friendly hint when it
-    // is missing; `deploy` reports that itself and `destroy` needs only SAM.
-    const verbsNeedingSDK = new Set(["sites", "render", "render-batch", "progress"]);
-    if (verbsNeedingSDK.has(subcommand)) {
-      try {
-        await import("@hyperframes/aws-lambda/sdk");
-      } catch (err) {
-        if (isMissingPackageError(err, "@hyperframes/aws-lambda")) {
-          console.error(
-            missingPackageMessage("@hyperframes/aws-lambda", `hyperframes lambda ${subcommand}`),
-          );
-          failCommand();
-        }
-        throw err;
-      }
-    }
-
     switch (subcommand) {
       case "deploy": {
         const { runDeploy } = await import("./lambda/deploy.js");
@@ -286,8 +289,9 @@ export default defineCommand({
       }
       case "sites": {
         if (args.target !== "create") {
-          console.error(
-            `[lambda sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
+          printFailureLine(
+            (show) =>
+              `[lambda sites] unknown verb "${show(String(args.target))}". Only "create" is supported.`,
           );
           failUsage();
         }
@@ -298,11 +302,13 @@ export default defineCommand({
           );
           failUsage();
         }
+        await requireLambdaSdk("sites");
         const { runSitesCreate } = await import("./lambda/sites.js");
         await runSitesCreate({
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           json: Boolean(args.json),
         });
         return;
@@ -328,12 +334,14 @@ export default defineCommand({
           );
           failUsage();
         }
+        await requireLambdaSdk("render");
         const { runRender } = await import("./lambda/render.js");
         const renderResolution = parseOutputResolution(args["output-resolution"]);
         await runRender({
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           fps: fpsRaw,
           width,
           height,
@@ -385,6 +393,7 @@ export default defineCommand({
           );
           failUsage();
         }
+        await requireLambdaSdk("render-batch");
         const { runRenderBatch } = await import("./lambda/render-batch.js");
         const batchResolution = parseOutputResolution(args["output-resolution"]);
         await runRenderBatch({
@@ -392,6 +401,7 @@ export default defineCommand({
           stackName,
           batch,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           fps: fpsRaw,
           width,
           height,
@@ -419,6 +429,7 @@ export default defineCommand({
           );
           failUsage();
         }
+        await requireLambdaSdk("progress");
         const { runProgress } = await import("./lambda/progress.js");
         await runProgress({ target, stackName, json: Boolean(args.json) });
         return;
@@ -445,7 +456,9 @@ export default defineCommand({
         return;
       }
       default:
-        console.error(`${c.error("Unknown subcommand:")} ${subcommand}\n${HELP}`);
+        printFailureLine(
+          (show) => `${c.error("Unknown subcommand:")} ${show(subcommand)}\n${HELP}`,
+        );
         failUsage();
     }
   },

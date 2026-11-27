@@ -1,4 +1,9 @@
-import { SVG_REFERENCE_ALIASES_ATTR, readSvgReferenceAliases } from "./svgSelectorAliases";
+import {
+  SVG_REFERENCE_ALIASES_ATTR,
+  dropAuthoredSvgReferenceAliases,
+  readSvgReferenceAliases,
+  type SvgReferenceAlias,
+} from "./svgSelectorAliases";
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
 import { parseImportMap, type ImportMap } from "./importMaps";
 import {
@@ -37,6 +42,7 @@ import {
   namespaceCollidingSvgIds,
   sceneClipRoots,
   rewriteSvgIdReferencesInCss,
+  type SvgIdMap,
   type SvgIdScope,
 } from "./svgIdNamespacing";
 import {
@@ -49,6 +55,8 @@ import {
   extractedCompositionAssets,
 } from "./compositionAssembly";
 import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+import { terminalText } from "../terminalText";
+import { COMPOSITION_SRC_ATTR, dropAuthoredCompositionFiles } from "../compositionSource";
 
 // Anything a scene script can leave running, pending or registered outside its timeline, or that
 // throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
@@ -215,6 +223,9 @@ export interface InlineSubCompositionsOptions {
    */
   resolveHtml: (srcPath: string) => string | null;
 
+  /** The project-relative file `resolveHtml` read for a src; asset paths rebase from its folder. */
+  resolveFilePath?: (srcPath: string) => string | null;
+
   /**
    * Parse an HTML string into a Document. The returned object must expose
    * standard DOM APIs (querySelector, querySelectorAll, body, head, etc.).
@@ -305,6 +316,27 @@ export interface InlineSubCompositionsOptions {
   /** Tag each top-level host with `data-hf-scene` and report every part's scene, for preview swaps. */
   tagScenes?: boolean;
   readProjectScript?: (path: string) => string | null;
+  /**
+   * Told the size of each script and stylesheet generated for a mount: each wrapped script once
+   * built, and each scoped sheet rule by rule as `scopeCssToComposition` reports it. May throw.
+   */
+  chargeEmitted?: (srcPath: string, bytes: number) => void;
+  /** Told how many elements each mount copies, before it is copied. May throw. */
+  chargeElements?: (srcPath: string, count: number) => void;
+}
+
+/** Every element under `root`, an HTML template's content included. */
+function countElements(root: ParentNode): number {
+  let count = 0;
+  const pending: ParentNode[] = [root];
+  for (let node = pending.pop(); node; node = pending.pop()) {
+    for (const el of Array.from(node.children)) {
+      count += 1;
+      const html = el.localName === "template" && !el.firstElementChild && "content" in el;
+      pending.push(html ? (el as HTMLTemplateElement).content : el);
+    }
+  }
+  return count;
 }
 
 export interface ExternalLink {
@@ -356,7 +388,7 @@ export interface InlineSubCompositionsResult {
 const isDocument = (node: Node): node is Document => node.nodeType === 9;
 
 function defaultBuildScopeSelector(compId: string): string {
-  const escaped = compId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escaped = compId.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3c ");
   return `[data-composition-id="${escaped}"]`;
 }
 
@@ -387,6 +419,7 @@ export function inlineSubCompositions(
 ): InlineSubCompositionsResult {
   const {
     resolveHtml,
+    resolveFilePath,
     parseHtml,
     hostIdentityMap,
     rewriteInlineStyles = false,
@@ -400,6 +433,8 @@ export function inlineSubCompositions(
     assetExists,
     tagScenes = false,
     readProjectScript,
+    chargeEmitted,
+    chargeElements,
   } = options;
 
   const rootStyles = [...document.querySelectorAll("style")];
@@ -412,7 +447,7 @@ export function inlineSubCompositions(
   const moduleScripts: string[] = [];
   const externalLinks: ExternalLink[] = [];
   const variablesByComp: Record<string, Record<string, unknown>> = {};
-  const svgIdScopes: Array<SvgIdScope & { styleStart: number; styleEnd: number }> = [];
+  const svgIdScopes: Array<SvgIdScope & { src: string; styleStart: number; styleEnd: number }> = [];
   // A file mounted many times reads the same; only its scope, ids and variables differ per mount.
   // Each file is parsed once and only read; a mount edits its own copy.
   const parsed = new Map<string, Document>();
@@ -424,6 +459,12 @@ export function inlineSubCompositions(
     }
     return doc;
   };
+  const elementCounts = new Map<string, number>();
+  const elementCount = (html: string) => {
+    let count = elementCounts.get(html);
+    if (count === undefined) elementCounts.set(html, (count = countElements(parseOnce(html))));
+    return count;
+  };
   const parseCopy = (html: string): Document => {
     const copy = parseOnce(html).cloneNode(true);
     return isDocument(copy) ? copy : parseHtml(html);
@@ -433,6 +474,7 @@ export function inlineSubCompositions(
   const scopeCssToComposition = createCompositionCssScoper();
 
   const sceneHosts = new Map<string, Element>();
+
   const queue = hosts.map((element) => ({
     element,
     ancestry: [] as string[],
@@ -440,7 +482,7 @@ export function inlineSubCompositions(
   }));
   for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
     const { element: hostEl, ancestry, scene: parentScene } = queue[queueIndex]!;
-    const src = hostEl.getAttribute("data-composition-src");
+    const src = hostEl.getAttribute(COMPOSITION_SRC_ATTR);
     if (!src) continue;
 
     const compHtml = resolveHtml(src);
@@ -467,6 +509,7 @@ export function inlineSubCompositions(
       continue;
     }
 
+    chargeElements?.(src, elementCount(compHtml));
     const compDoc = parseCopy(compHtml);
 
     // Determine composition IDs
@@ -491,6 +534,7 @@ export function inlineSubCompositions(
       onMissingComposition?.(src);
       continue;
     }
+    dropAuthoredCompositionFiles(contentDoc);
 
     // Which node is the composition root, which id its CSS scopes to, which
     // id its scripts scope to, where its assets come from and in what order —
@@ -525,14 +569,26 @@ export function inlineSubCompositions(
     // document element (full-document sub-comps) AND the inner composition root
     // (template/fragment sub-comps store their schema on the root div, not a
     // synthetic <html>), then let per-instance host values override.
-    if (readVariableDefaults && parseHostVariables && runtimeCompId) {
+    //
+    // An anonymous host has no runtime id of its own. Its wrapper keeps the
+    // authored composition id (restored below), so that id is the scope its
+    // bound media and scripts resolve variables through (runtime/variableScope.ts)
+    // and the key the producer's probe gate reads — a full-document sub-comp's
+    // `<html data-composition-variables>` is dropped by inlining, so the table
+    // is the only place its declared defaults survive to compile time (#7505).
+    // A named mount of the same file shares that scope and its explicit
+    // instance values win, so an anonymous mount only fills the entry while
+    // nothing holds it; a named mount processed later still overwrites it.
+    const variablesCompId = runtimeCompId || scopeCompId;
+    if (readVariableDefaults && parseHostVariables && variablesCompId) {
       const mergedVariables: Record<string, unknown> = {};
       for (const carrier of plan.variableDefaultCarriers) {
         Object.assign(mergedVariables, readVariableDefaults(carrier));
       }
       Object.assign(mergedVariables, parseHostVariables(hostEl));
-      if (Object.keys(mergedVariables).length > 0) {
-        variablesByComp[runtimeCompId] = mergedVariables;
+      const holdsEntry = !runtimeCompId && Object.hasOwn(variablesByComp, variablesCompId);
+      if (Object.keys(mergedVariables).length > 0 && !holdsEntry) {
+        variablesByComp[variablesCompId] = mergedVariables;
       }
       // Compile time is the only place this defect is visible on the sub-comp
       // path: the instance value is baked into `__hfVariablesByComp` right
@@ -540,15 +596,18 @@ export function inlineSubCompositions(
       // runtime's identical guard never runs. Same helper, so the message and
       // the per-process dedupe set are shared with the runtime path and the
       // author sees one warning either way.
-      warnUnknownEnumValues(compDoc.documentElement, mergedVariables, runtimeCompId);
-      warnUnknownEnumValues(innerRoot, mergedVariables, runtimeCompId);
+      warnUnknownEnumValues(compDoc.documentElement, mergedVariables, variablesCompId);
+      warnUnknownEnumValues(innerRoot, mergedVariables, variablesCompId);
     }
+
+    const filePath = resolveFilePath?.(src) ?? src;
+    const chargeRebase = chargeEmitted && ((bytes: number) => chargeEmitted(src, bytes));
 
     // `<head>` <link>/<script src> are hoisted into the ROOT document, so they
     // need the same directory rewrite the body's [src]/[href] pass applies —
     // without it even the documented `../` form escapes the project and 404s.
     const resolveSubAssetPath = (raw: string | null): string =>
-      rewriteAssetPath(src, (raw || "").trim(), assetExists);
+      rewriteAssetPath(filePath, (raw || "").trim(), assetExists, chargeRebase);
 
     // Scope one sub-composition <style> body. scopeRootSelectors keeps the
     // sub-comp's html/body/:root rules from clobbering the host document (they
@@ -557,15 +616,18 @@ export function inlineSubCompositions(
       const sheetKey = JSON.stringify([src, raw]);
       let css = sheetsWithAssetUrls.get(sheetKey);
       if (css === undefined) {
-        css = rewriteCssAssetUrls(raw, src, assetExists);
+        css = rewriteCssAssetUrls(raw, filePath, assetExists, chargeRebase);
         sheetsWithAssetUrls.set(sheetKey, css);
       }
-      return scopeCompId
-        ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
-            compoundAuthoredRoot: compoundAuthoredRoot === true,
-            scopeRootSelectors: true,
-          })
-        : css;
+      if (!scopeCompId) {
+        chargeEmitted?.(src, css.length);
+        return css;
+      }
+      return scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
+        compoundAuthoredRoot: compoundAuthoredRoot === true,
+        scopeRootSelectors: true,
+        ...(chargeEmitted ? { charge: (bytes: number) => chargeEmitted(src, bytes) } : {}),
+      });
     };
 
     // <link> hoisting is unconditional. A templated sub-composition's webfont
@@ -625,14 +687,17 @@ export function inlineSubCompositions(
           return authored.endsWith("/") && !urlLike.endsWith("/") ? `${urlLike}/` : urlLike;
         });
         if (map) importMaps.push(map);
-        else console.warn(`[HyperFrames] ${src}: import map is not valid JSON, so it is skipped.`);
+        else
+          console.warn(
+            terminalText(`[HyperFrames] ${src}: import map is not valid JSON, so it is skipped.`),
+          );
       } else if (type === "module" && !externalSrc) {
         const prelude = scriptCompositionId
           ? scopedModulePrelude(runtimeCompId || scopeCompId || scriptCompositionId, src)
           : "";
-        moduleScripts.push(
-          `${prelude}${AUTHORED_SOURCE_BEGIN}\n${scriptEl.textContent || ""}\n${AUTHORED_SOURCE_END}`,
-        );
+        const moduleScript = `${prelude}${AUTHORED_SOURCE_BEGIN}\n${scriptEl.textContent || ""}\n${AUTHORED_SOURCE_END}`;
+        chargeEmitted?.(src, moduleScript.length);
+        moduleScripts.push(moduleScript);
       } else if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
@@ -655,6 +720,7 @@ export function inlineSubCompositions(
               src,
             )
           : wrapInlineScriptWithErrorBoundary(scriptEl.textContent || "", scriptErrorLabel);
+        chargeEmitted?.(src, wrappedScript.length);
         scripts.push(wrappedScript);
         scriptItems.push({ kind: "inline", content: wrappedScript, ...(scene ? { scene } : {}) });
       }
@@ -668,12 +734,13 @@ export function inlineSubCompositions(
       : contentDoc.querySelectorAll("[src], [href], [srcset]");
     rewriteAssetPaths(
       assetEls,
-      src,
+      filePath,
       (el: Element, attr: string) => el.getAttribute(attr),
       (el: Element, attr: string, val: string) => {
         el.setAttribute(attr, val);
       },
       assetExists,
+      chargeRebase,
     );
 
     if (rewriteInlineStyles) {
@@ -682,12 +749,13 @@ export function inlineSubCompositions(
         : contentDoc.querySelectorAll("[style]");
       rewriteInlineStyleAssetUrls(
         styledEls,
-        src,
+        filePath,
         (el: Element) => el.getAttribute("style"),
         (el: Element, val: string) => {
           el.setAttribute("style", val);
         },
         assetExists,
+        chargeRebase,
       );
     }
 
@@ -746,7 +814,7 @@ export function inlineSubCompositions(
       hostEl.insertAdjacentHTML("beforeend", el.outerHTML);
 
     hostEl.setAttribute("data-composition-file", src);
-    hostEl.removeAttribute("data-composition-src");
+    hostEl.removeAttribute(COMPOSITION_SRC_ATTR);
 
     const nestedAncestry = [...ancestry, src];
     const nested = enumerateNestedCompositionHosts(hostEl, nestedAncestry);
@@ -763,6 +831,7 @@ export function inlineSubCompositions(
     // scoping and script scoping already key on. Nested hosts are excluded
     // because each of them is recorded as its own scope when dequeued.
     svgIdScopes.push({
+      src,
       root: hostEl,
       namespace: runtimeCompId || scopeCompId,
       exclude: nested.hosts.map((nestedHost) => nestedHost.host),
@@ -779,28 +848,55 @@ export function inlineSubCompositions(
   // `<style>` text gets the same substitution its DOM just received. See
   // svgIdNamespacing.ts for why this is a rename, unlike the sibling
   // getElementById/media-id fixes.
+  dropAuthoredSvgReferenceAliases(document);
   const hostRoots = svgIdScopes.map(({ root }) => root);
   const clips = sceneClipRoots(document, hostRoots);
-  const svgIdMaps = namespaceCollidingSvgIds(document, [
-    ...svgIdScopes.map(({ root, namespace, exclude, styleStart, styleEnd }) => ({
-      root,
-      namespace,
-      exclude,
-      cssTexts: styles.slice(styleStart, styleEnd).map((style) => style.css),
-    })),
-    {
-      root: document.documentElement,
-      namespace: "",
-      referenceTarget: "document",
-      exclude: [...hostRoots, ...clips],
-      cssTexts: rootStyles.map((style) => style.textContent ?? ""),
-    },
-    ...clips.map((root, index) => ({
-      root,
-      namespace: `clip-${index}`,
-      exclude: hostRoots.filter((host) => root.contains(host)),
-    })),
-  ]);
+  // Clips are outermost, so each host sits in at most one: its nearest clip ancestor.
+  const clipIndex = new Map(clips.map((clip, index) => [clip, index]));
+  const hostsInClip = clips.map((): Element[] => []);
+  for (const host of hostRoots) {
+    let at = host.parentElement;
+    while (at && !clipIndex.has(at)) at = at.parentElement;
+    if (at) hostsInClip[clipIndex.get(at)!]!.push(host);
+  }
+  const svgIdMaps = namespaceCollidingSvgIds(
+    document,
+    [
+      ...svgIdScopes.map(({ root, namespace, exclude, styleStart, styleEnd }) => ({
+        root,
+        namespace,
+        exclude,
+        cssTexts: styles.slice(styleStart, styleEnd).map((style) => style.css),
+      })),
+      {
+        root: document.documentElement,
+        namespace: "",
+        referenceTarget: "document",
+        exclude: [...hostRoots, ...clips],
+        cssTexts: rootStyles.map((style) => style.textContent ?? ""),
+      },
+      ...clips.map((root, index) => ({
+        root,
+        namespace: `clip-${index}`,
+        exclude: hostsInClip[index],
+      })),
+    ],
+    undefined,
+    chargeEmitted &&
+      ((index, bytes) => chargeEmitted(svgIdScopes[index]?.src ?? "the page", bytes)),
+  );
+  const rewriteCss = (
+    src: string,
+    css: string,
+    idMap: SvgIdMap,
+    references: readonly SvgReferenceAlias[],
+  ) =>
+    rewriteSvgIdReferencesInCss(
+      css,
+      idMap,
+      references,
+      chargeEmitted && ((bytes) => chargeEmitted(src, bytes)),
+    );
   svgIdMaps.slice(0, svgIdScopes.length).forEach((idMap, index) => {
     const { styleStart, styleEnd } = svgIdScopes[index]!;
     const references = readSvgReferenceAliases(
@@ -808,7 +904,7 @@ export function inlineSubCompositions(
       SVG_REFERENCE_ALIASES_ATTR,
     );
     for (let i = styleStart; i < styleEnd; i += 1) {
-      styles[i]!.css = rewriteSvgIdReferencesInCss(styles[i]!.css, idMap, references);
+      styles[i]!.css = rewriteCss(svgIdScopes[index]!.src, styles[i]!.css, idMap, references);
     }
   });
 
@@ -817,11 +913,8 @@ export function inlineSubCompositions(
     SVG_REFERENCE_ALIASES_ATTR,
   );
   for (const style of rootStyles) {
-    style.textContent = rewriteSvgIdReferencesInCss(
-      style.textContent ?? "",
-      svgIdMaps[svgIdScopes.length]!,
-      rootReferences,
-    );
+    const css = style.textContent ?? "";
+    style.textContent = rewriteCss("the page", css, svgIdMaps[svgIdScopes.length]!, rootReferences);
   }
 
   return {

@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import {
+  setStudioPendingEditsSettled,
   addStudioPendingEditFlushListener,
   adoptingStudioPendingEdit,
   beginStudioPendingEdit,
+  beginStudioShownRestore,
   flushStudioPendingEdits,
   afterStudioPendingEdits,
   hasStudioPendingEdits,
@@ -38,6 +40,33 @@ describe("a canvas press still waiting to run", () => {
     } finally {
       setStudioWaitingPressCancel(null);
     }
+  });
+});
+
+// fails without the fix: nothing on the page said an edit was still saving, so the edit-accuracy bench read the file
+// after a sealed press replayed and before that press's own save landed.
+describe("the page's word that an edit is still saving", () => {
+  const saving = () => document.documentElement.hasAttribute("data-studio-edits-saving");
+
+  // Each ends its edit before asserting, so a failure leaves no edit pending for the tests after it.
+  it("holds from a pending edit's start until its save lands", async () => {
+    let save!: () => void;
+    const edit = beginStudioPendingEdit(null);
+    const atStart = saving();
+    edit.settle(new Promise<void>((resolve) => (save = resolve)));
+    await Promise.resolve();
+    const whileSaving = saving();
+    save();
+    await vi.waitFor(() => expect(saving()).toBe(false));
+    expect([atStart, whileSaving]).toEqual([true, true]);
+  });
+
+  it("holds while a shown undo or redo waits for its save", async () => {
+    const landed = beginStudioShownRestore();
+    const whileWaiting = saving();
+    landed();
+    await vi.waitFor(() => expect(saving()).toBe(false));
+    expect(whileWaiting).toBe(true);
   });
 });
 
@@ -513,4 +542,23 @@ it("counts an edit whose later write failed as saved once an earlier write lande
   edit.settle(committed.catch(() => undefined));
   const shown = paintBackNewestStudioPendingEdit()!;
   await expect(shown.landed()).resolves.toBe(true);
+});
+
+describe("every pending edit settled", () => {
+  it("is told once, when the last of two overlapping edits settles", async () => {
+    const told = vi.fn();
+    setStudioPendingEditsSettled(told);
+    try {
+      const first = beginStudioPendingEdit(null);
+      const second = beginStudioPendingEdit(null);
+      first.settle();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(told).not.toHaveBeenCalled();
+      second.settle();
+      await vi.waitFor(() => expect(told).toHaveBeenCalledOnce());
+    } finally {
+      setStudioPendingEditsSettled(null);
+    }
+  });
 });

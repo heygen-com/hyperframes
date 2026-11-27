@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -152,25 +153,30 @@ function printCheck(cli: CliReport, skills: SkillsReport): void {
     ? c.warn(`${cli.current} → ${cli.latest} available`)
     : c.success(`${cli.current} (${cli.checkedAt ? "latest" : "npm registry not reached"})`);
   console.log(`  ${c.bold("CLI".padEnd(8))}${version}`);
-  console.log(`  ${" ".repeat(8)}${c.dim(where)}`);
+  console.log(`  ${" ".repeat(8)}${c.dim(terminalText(where))}`);
   if (cli.command) {
-    console.log(`  ${" ".repeat(8)}${c.accent(`For the user: run ${cli.command}`)}`);
+    console.log(`  ${" ".repeat(8)}${c.accent(`For the user: run ${terminalText(cli.command)}`)}`);
   }
   console.log(`  ${c.bold("Skills".padEnd(8))}${skillsLine(skills)}`);
   if (skills.status === "checked" && skills.command) {
-    console.log(`  ${" ".repeat(8)}${c.accent(`For the user: run ${skills.command}`)}`);
+    console.log(
+      `  ${" ".repeat(8)}${c.accent(`For the user: run ${terminalText(skills.command)}`)}`,
+    );
   }
   console.log();
 }
 
 function skillsLine(skills: SkillsReport): string {
   if (skills.status === "skipped") return c.dim(skills.reason);
-  if (skills.status === "error") return c.warn(`Could not check: ${skills.error}`);
+  if (skills.status === "error") return c.warn(`Could not check: ${terminalText(skills.error)}`);
   if (!skills.location) return c.warn("No HyperFrames skills installed");
   const at = skills.ref ? ` at ${skills.ref}` : "";
-  if (!skills.updateAvailable) return c.success(`Up to date${at} · ${skills.location}`);
+  if (!skills.updateAvailable)
+    return c.success(terminalText(`Up to date${at} · ${skills.location}`));
   return c.warn(
-    `${skills.outdated} outdated, ${skills.missing} core missing${at} · ${skills.location}`,
+    terminalText(
+      `${skills.outdated} outdated, ${skills.missing} core missing${at} · ${skills.location}`,
+    ),
   );
 }
 
@@ -179,13 +185,17 @@ function cliOutcomeLine(cli: UpdateOutcome["cli"]): string {
     case "upgraded":
       return c.success(`CLI upgraded to v${cli.version}.`);
     case "unchanged":
-      return c.warn(`CLI stays at v${cli.version}: ${cli.reason}.`);
+      return c.warn(terminalText(`CLI stays at v${cli.version}: ${cli.reason}.`));
     case "unverified":
-      return c.warn(`CLI: ran ${cli.command}, but ${cli.reason}.`);
+      return c.warn(terminalText(`CLI: ran ${cli.command}, but ${cli.reason}.`));
     case "manual":
-      return c.warn(`CLI: run ${cli.command} (${cli.reason}).`);
+      return c.warn(terminalText(`CLI: run ${cli.command} (${cli.reason}).`));
     case "failed":
-      return c.error(`CLI upgrade failed. Run: ${cli.command}`);
+      return c.error(
+        terminalLines(
+          cli.reason ?? `CLI upgrade failed. From your home directory, run: ${cli.command}`,
+        ),
+      );
     default:
       return c.success("CLI is up to date.");
   }
@@ -199,14 +209,14 @@ function printOutcome(outcome: UpdateOutcome): void {
     console.log(
       c.success(
         n > 0
-          ? `Updated ${n} skill(s): ${skills.result.installed.join(", ")}`
+          ? `Updated ${n} skill(s): ${terminalText(skills.result.installed.join(", "))}`
           : "Skills are up to date.",
       ),
     );
   } else if (skills.status === "current") {
     console.log(c.success("Skills are up to date."));
   } else if (skills.status === "failed") {
-    console.log(c.error(`Skills update failed: ${skills.error}`));
+    console.log(c.error(`Skills update failed: ${terminalLines(skills.error)}`));
   } else {
     console.log(c.dim(skills.reason));
   }

@@ -110,6 +110,12 @@
       "types": "./dist/helpers/mime.d.ts",
       "environments": ["bun", "node"]
     },
+    "./outside-file": {
+      "source": "./src/helpers/outsideFile.ts",
+      "runtime": "./dist/helpers/outsideFile.js",
+      "types": "./dist/helpers/outsideFile.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./media-range": {
       "source": "./src/helpers/mediaRange.ts",
       "runtime": "./dist/helpers/mediaRange.js",

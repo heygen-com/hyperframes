@@ -96,6 +96,29 @@ describe.skipIf(!ffmpeg)("an odd box", () => {
   });
 });
 
+describe.skipIf(!ffmpeg)("a guarded probe", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-guarded-"));
+  const clip = join(dir, "clip.mp4");
+  const art = join(dir, "notes.ans");
+  beforeAll(() => {
+    execFileSync("ffmpeg", [
+      ...["-v", "error", "-f", "lavfi", "-i", "testsrc=d=1:r=10:s=64x64"],
+      ...["-pix_fmt", "yuv420p", "-y", clip],
+    ]);
+    writeFileSync(art, "SECRET=abc\n");
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("reads a video as the plain probe does", () => {
+    expect(probeVideo(clip, { guarded: true })).toEqual({ ...probeVideo(clip), guarded: true });
+  });
+
+  it("refuses text that a text-art demuxer would show as a picture", () => {
+    expect(() => probeVideo(art)).toThrow(Fix);
+    expect(() => probeVideo(art, { guarded: true })).toThrow(Fix);
+  });
+});
+
 describe("a path that is not there", () => {
   it("says the shell dropped a Windows path's backslashes", () => {
     expect(missingFileFix("D:videoclip.mp4")).toMatch(/dropped the backslashes/);

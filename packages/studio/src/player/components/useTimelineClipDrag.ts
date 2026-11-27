@@ -48,6 +48,7 @@ import {
   type TimelineTrackInsertLayout,
 } from "./timelineTrackInsertLayout";
 import type { TimelineRowGeometry } from "./timelineLayout";
+import type { DragCommitDeps } from "./timelineClipDragCommit";
 import {
   mountTimelineClipDragGestureLifecycle,
   type TimelineGestureKind,
@@ -63,7 +64,7 @@ export type {
 const EMPTY_BEAT_TIMES: number[] = [];
 
 /* ── Hook ───────────────────────────────────────────────────────── */
-interface UseTimelineClipDragInput {
+interface UseTimelineClipDragInput extends ClipDropOptions {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   ppsRef: React.RefObject<number>;
   durationRef: React.RefObject<number>;
@@ -90,7 +91,7 @@ interface UseTimelineClipDragInput {
    * iframe + the canvas z-order persist path; forwarded straight to
    * commitDraggedClipMove. Both optional → absent = no-op (backward compatible).
    */
-  readZIndex?: (element: TimelineElement) => number;
+  readZIndex?: DragCommitDeps["readZIndex"];
   onStackingPatches?: (patches: StackingPatch[]) => Promise<unknown> | void;
   refreshAfterLaneMove?: () => void;
   sessionEpoch?: number;
@@ -115,6 +116,8 @@ export function useTimelineClipDrag({
   onStackingPatches,
   refreshAfterLaneMove,
   sessionEpoch = 0,
+  insertOnClipDrop,
+  onDropRefused,
 }: UseTimelineClipDragInput) {
   const getClipCapabilities = useTimelineClipCapabilities();
   const commitGestureRef = useRef<() => void>(() => {});
@@ -296,6 +299,8 @@ export function useTimelineClipDrag({
   onStackingPatchesRef.current = onStackingPatches;
   const refreshAfterLaneMoveRef = useRef(refreshAfterLaneMove);
   refreshAfterLaneMoveRef.current = refreshAfterLaneMove;
+  const dropOptionsRef = useRef({ insertOnClipDrop, onDropRefused });
+  dropOptionsRef.current = { insertOnClipDrop, onDropRefused };
 
   const clipDragScrollRaf = useRef(0);
   const clipDragPointerRef = useRef<{
@@ -460,6 +465,7 @@ export function useTimelineClipDrag({
       commitGestureRef,
       onStackingPatchesRef,
       refreshAfterLaneMoveRef,
+      dropOptionsRef,
       readZIndexRef,
       onBlockedEditAttemptRef,
       onLinkEditRef,
@@ -587,3 +593,5 @@ export function useTimelineClipDrag({
     stopClipDragAutoScroll,
   };
 }
+
+export type ClipDropOptions = Pick<DragCommitDeps, "insertOnClipDrop" | "onDropRefused">;

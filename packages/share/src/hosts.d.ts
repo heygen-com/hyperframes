@@ -28,6 +28,8 @@ export interface ShareHost {
   latestExportFile(dir: string): { path: string; fingerprint?: string; id: string } | null;
   /** Trusted video upload origins configured by the host independently of the review API response. */
   reviewUploadOrigins?: readonly string[];
+  /** This install's own secret: change-of-space journals are sealed with it; one it did not seal reads as none. */
+  journalKey?: Uint8Array;
   /** The project as change detection sees it, as one hash. */
   projectFingerprint(dir: string): Promise<string>;
   /** The path of the host's FFmpeg tool `name`. */

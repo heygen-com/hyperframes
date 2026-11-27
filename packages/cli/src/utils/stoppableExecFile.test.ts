@@ -96,7 +96,7 @@ describe("stoppableExecFile", () => {
     let dir: string;
     afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-    it("ends the child and the process it started, then rejects with the reason", async () => {
+    async function stopsTheTree() {
       dir = mkdtempSync(join(tmpdir(), "hf-stoppable-exec-"));
       const pids = join(dir, "pids");
       const script = join(dir, "tool.sh");
@@ -119,7 +119,27 @@ describe("stoppableExecFile", () => {
       for (const pid of readFileSync(pids, "utf8").trim().split(" ").map(Number)) {
         expect(() => process.kill(pid, 0), `pid ${pid}`).toThrow();
       }
-    });
+    }
+
+    it("ends the child and the process it started, then rejects with the reason", stopsTheTree);
+
+    // fails without the fix: a pgrep that failed or ran past its 2 s on a loaded runner found no children, so the
+    // orphaned grandchild kept the output pipes open and the stop waited it out (CI: timed out at 20 s).
+    it.skipIf(process.platform !== "linux")(
+      "finds the process it started on Linux without pgrep",
+      async () => {
+        const bin = mkdtempSync(join(tmpdir(), "hf-no-pgrep-"));
+        writeFileSync(join(bin, "pgrep"), "#!/bin/sh\nexit 2\n", { mode: 0o755 });
+        const path = process.env.PATH;
+        process.env.PATH = `${bin}:${path}`;
+        try {
+          await stopsTheTree();
+        } finally {
+          process.env.PATH = path;
+          rmSync(bin, { recursive: true, force: true });
+        }
+      },
+    );
 
     it("starts nothing for a signal that is already aborted", async () => {
       dir = mkdtempSync(join(tmpdir(), "hf-stoppable-exec-"));

@@ -1,4 +1,4 @@
-import { MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
+import { isWebKit, MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { applyNativeVideoLook } from "./nativeVideoLook";
 import {
@@ -13,6 +13,7 @@ import {
   PREVIEW_VIDEO_SOURCE_ATTR,
   PREVIEW_VIDEO_CANVAS_ATTR,
 } from "../studioPreviewMark";
+import { PAUSED_FRAME_BYTES as SURFACE_BUDGET } from "./editing/pausedFrames";
 
 export interface PausedVideoFrameRequest {
   video: HTMLVideoElement;
@@ -44,7 +45,6 @@ export interface PreparedPausedVideoFrames {
   release(): void;
 }
 
-const SURFACE_BUDGET = 128 * 1024 * 1024;
 type Presented = {
   video: HTMLVideoElement;
   canvas: HTMLCanvasElement;
@@ -80,9 +80,23 @@ export function captureNativeVideoFrame(video: HTMLVideoElement): HTMLCanvasElem
   canvas.height = video.videoHeight;
   const context = canvas.getContext("2d");
   if (!context) return null;
+  const frame = videoFrameOf(video);
   try {
-    context.drawImage(video, 0, 0);
+    context.drawImage(frame ?? video, 0, 0);
     return canvas;
+  } catch {
+    return null;
+  } finally {
+    frame?.close();
+  }
+}
+
+const videoFrameOfAVideoCanHangThePage = isWebKit;
+
+function videoFrameOf(video: HTMLVideoElement): VideoFrame | null {
+  if (videoFrameOfAVideoCanHangThePage()) return null;
+  try {
+    return new VideoFrame(video);
   } catch {
     return null;
   }
@@ -221,12 +235,18 @@ export function createPausedVideoFrames() {
       else if (records.some((record) => record.target.contains(entry.video))) refresh(entry);
     }
   });
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ["src", "style", "class", "hidden", "data-hidden"],
-  });
+  const mountStyle = () => {
+    if (!style.isConnected) (document.head ?? document.documentElement)?.append(style);
+  };
+  const observeRoot = document.body ?? document.documentElement;
+  if (observeRoot) {
+    observer.observe(observeRoot, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["src", "style", "class", "hidden", "data-hidden"],
+    });
+  }
 
   const clear = (
     keep?: Set<HTMLVideoElement>,
@@ -285,7 +305,7 @@ export function createPausedVideoFrames() {
         markFrameCanvas(canvas);
         presented.set(video, entry);
         video.setAttribute(PREVIEW_VIDEO_SOURCE_ATTR, "");
-        if (!style.isConnected) document.head.append(style);
+        mountStyle();
         refresh(entry);
       }
       return () => {
@@ -390,7 +410,7 @@ export function createPausedVideoFrames() {
           }
           const wanted = new Set(requests.map(({ video }) => video));
           for (const entry of [...presented.values()]) if (!wanted.has(entry.video)) remove(entry);
-          if (!style.isConnected) document.head.append(style);
+          mountStyle();
           for (const [index, next] of staged.entries()) {
             adoptStagedFrame(next, reusable.get(next));
             const { timestamp, width, height } = frames[index]!;

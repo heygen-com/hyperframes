@@ -4,7 +4,7 @@ import { expect, it, vi } from "vitest";
 
 const launch = vi.hoisted(() =>
   vi.fn(async (_options: LaunchOptions) => ({
-    newPage: async () => ({ setViewport: async () => undefined }),
+    newPage: async () => ({ mainFrame: () => ({}), setViewport: async () => undefined }),
   })),
 );
 vi.mock("puppeteer", () => ({ default: { launch } }));

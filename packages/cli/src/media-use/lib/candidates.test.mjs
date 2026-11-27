@@ -153,3 +153,45 @@ test("formatCandidates shows reuse handles by scope; empty message", () => {
   assert.match(out, /--reuse ffffffffffffffff/);
   assert.match(formatCandidates([], {}), /no reuse candidates/);
 });
+
+test("formatCandidates prints control characters from the manifest as visible escapes", () => {
+  const text = formatCandidates([
+    {
+      scope: "project",
+      id: "bgm_001",
+      path: ".media/audio/bgm/\x1b[2Kbgm_001.wav",
+      description: "calm piano\x1b]52;c;aGk=\x07",
+      score: 1,
+    },
+  ]);
+  assert.ok(text.includes("calm piano\\x1b]52;c;aGk=\\x07"), text);
+  assert.ok(text.includes(".media/audio/bgm/\\x1b[2Kbgm_001.wav"), text);
+  for (const raw of ["\x07", "\x1b"])
+    assert.ok(!text.includes(raw), "no raw control character is left");
+});
+
+// fails without the fix: a project record's path was listed as written, so a sender-chosen path reached grades.json.
+test("lists a project record's path only when it is inside the project", () => {
+  const { root, project } = sandbox();
+  try {
+    const grade = (id, path) => ({ id, type: "grade", path, description: `look ${id}` });
+    seedManifest(project, [
+      grade("in", ".media/luts/in.cube"),
+      grade("unc", "\\\\attacker\\share\\x.cube"),
+      grade("slashes", "//attacker/share/x.cube"),
+      grade("abs", "/etc/x.cube"),
+      grade("up", "../outside.cube"),
+    ]);
+    const { candidates } = listCandidates({ projectDir: project, type: "grade" });
+    const paths = Object.fromEntries(candidates.map((c) => [c.id, c.path]));
+    assert.deepEqual(paths, {
+      in: ".media/luts/in.cube",
+      unc: null,
+      slashes: null,
+      abs: null,
+      up: null,
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

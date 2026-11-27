@@ -54,6 +54,12 @@
       "runtime": "./dist/utils/networkPolicy.js",
       "types": "./dist/utils/networkPolicy.d.ts",
       "environments": ["bun", "node"]
+    },
+    "./public-network": {
+      "source": "./src/services/publicNetwork/index.ts",
+      "runtime": "./dist/services/publicNetwork/index.js",
+      "types": "./dist/services/publicNetwork/index.d.ts",
+      "environments": ["bun", "node"]
     }
   }
 }

@@ -1,24 +1,63 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
-import { isInHiddenOrVendorDir, isPrivateProjectPath, walkDir } from "../helpers/safePath.js";
-import { isCompositionSource } from "../helpers/hfIdPersist.js";
+import { isPrivateProjectPath, walkDir } from "../helpers/safePath.js";
+import { isCompositionPath } from "../helpers/hfIdPersist.js";
+import { runOffThread } from "../helpers/subCompositionBuild.js";
 import { resolveProjectSignature } from "../helpers/projectSignature.js";
 
-async function filterCompositionFiles(projectDir: string, files: string[]): Promise<string[]> {
-  const htmlFiles = files.filter((f) => f.endsWith(".html") && !isInHiddenOrVendorDir(f));
-  const checks = await Promise.all(
-    htmlFiles.map(async (f) => {
-      try {
-        const content = await readFile(join(projectDir, f), "utf-8");
-        return isCompositionSource(content);
-      } catch {
-        return false;
-      }
-    }),
-  );
-  return htmlFiles.filter((_, i) => checks[i]);
+const WHOLE_SCAN_LIMIT_MS = 30_000;
+const PAGE_IN_PROGRESS_GRACE_MS = 5_000;
+
+type OneReadingOfAProject = Promise<{ files: string[]; compositions: string[] | undefined }>;
+
+async function scan(projectDir: string, files: string[]): OneReadingOfAProject {
+  const htmlFiles = files.filter(isCompositionPath);
+  if (htmlFiles.length === 0) return { files, compositions: [] };
+  const job = {
+    kind: "compositions" as const,
+    projectDir,
+    files: htmlFiles,
+    keptBackForPageInProgressMs: PAGE_IN_PROGRESS_GRACE_MS,
+  };
+  const deadline = performance.now() + WHOLE_SCAN_LIMIT_MS + PAGE_IN_PROGRESS_GRACE_MS;
+  const listing = `[hyperframes] listing ${projectDir}: the compositions are left out of this answer,`;
+  try {
+    const { compositions, unchecked } = await runOffThread(job, deadline, projectDir);
+    if (unchecked === 0) return { files, compositions };
+    console.warn(`${listing} ${unchecked} of ${htmlFiles.length} HTML files were not read in time`);
+  } catch (error) {
+    console.warn(`${listing} the scan did not end:`, error);
+  }
+  return { files, compositions: undefined };
+}
+
+const scans = new Map<
+  string,
+  { last: OneReadingOfAProject; waiting?: { files: string[]; answer: OneReadingOfAProject } }
+>();
+
+/** A project folder has one scan with the worker and at most one waiting behind it. Every listing that arrives
+ * meanwhile shares the waiting one and its answer: the files the latest of them saw, and the compositions among those. */
+function listingOf(projectDir: string, files: string[]): OneReadingOfAProject {
+  const now = scans.get(projectDir);
+  if (now?.waiting) {
+    now.waiting.files = files;
+    return now.waiting.answer;
+  }
+  const start = (seen: string[]): OneReadingOfAProject => {
+    const answer = scan(projectDir, seen).finally(() => {
+      if (scans.get(projectDir)?.last === answer) scans.delete(projectDir);
+    });
+    scans.set(projectDir, { last: answer });
+    return answer;
+  };
+  if (!now) return start(files);
+  const waiting: { files: string[]; answer: OneReadingOfAProject } = {
+    files,
+    answer: now.last.then(() => start(waiting.files)),
+  };
+  now.waiting = waiting;
+  return waiting.answer;
 }
 
 export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): void {
@@ -50,8 +89,8 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
   api.get("/projects/:id", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
-    const files = walkDir(project.dir).filter((file) => !isPrivateProjectPath(file));
-    const compositions = await filterCompositionFiles(project.dir, files);
+    const seen = walkDir(project.dir).filter((file) => !isPrivateProjectPath(file));
+    const { files, compositions } = await listingOf(project.dir, seen);
     return c.json({ id: project.id, dir: project.dir, title: project.title, files, compositions });
   });
 }

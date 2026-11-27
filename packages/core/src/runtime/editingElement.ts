@@ -1,4 +1,6 @@
 // How an element is addressed in source: one rule for Studio and the runtime's editing agent.
+import { COMPOSITION_ROOT_ATTRS, SOURCE_HOST_ATTRS } from "../compositionSource";
+import { isHtmlElement } from "./domRealm";
 
 /** Names an element's source file. The parent resolves it: `file`, else its composition map. */
 export interface EditingElementSource {
@@ -28,10 +30,11 @@ export interface EditingElementHit {
 }
 
 /**
- * An element as plain data, cut at the MAX_ELEMENT_* limits; a `data:` value keeps only its header.
+ * An element as plain data, cut at the MAX_ELEMENT_* limits; a `data:` value over its limit keeps only its header.
  * `truncated` says something was cut, so the description is not safe to write back to source.
  */
 export interface EditingElementDescription extends EditingElementHit {
+  label?: string;
   parent: EditingElementHandle | null;
   id: string | null;
   selector: string | null;
@@ -50,6 +53,7 @@ export interface EditingElementDescription extends EditingElementHit {
   text: string;
   children: Array<{ handle: EditingElementHandle } | { text: string }>;
   truncated: boolean;
+  textMarkup?: boolean;
 }
 
 export interface EditingElementMatch {
@@ -60,10 +64,57 @@ export interface EditingElementMatch {
 export const MAX_ELEMENT_ENTRIES = 256;
 export const MAX_ELEMENT_TEXT = 10_000;
 export const MAX_ELEMENT_VALUE = 2_000;
+export const MAX_DRAFT_PX = 100_000;
 export const MAX_SOURCE_GROUPS = 64;
 export const MAX_DESCRIBE_HANDLES = 256;
 export const MAX_POINT_STACK = 64;
 export const MAX_QUERY_MATCHES = 2_048;
+export const MAX_TIMELINE_TEXT = 200;
+
+const TEXT_TAGS = new Set(["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"]);
+
+function isTextBearingTag(tagName: string): boolean {
+  return TEXT_TAGS.has(tagName);
+}
+
+export function isEditableTextLeaf(el: HTMLElement): boolean {
+  return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
+}
+
+/** A text layer's words and computed look, as its timeline row draws them. */
+export interface TextLayerRead {
+  value: string;
+  fontFamily: string;
+  fontWeight: string;
+  color: string;
+  backgroundColor: string;
+}
+
+/** A layer that paints only text on a flat colour, read; null for anything painted beyond that. */
+export function readTextLayer(el: Element): TextLayerRead | null {
+  if (!isHtmlElement(el) || !isTextBearingTag(el.localName)) return null;
+  if (!Array.from(el.children).every((child) => isHtmlElement(child) && isEditableTextLeaf(child)))
+    return null;
+  const words = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+  if (!words) return null;
+  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
+  if (!style || (style.backgroundImage || "none") !== "none") return null;
+  const { fontFamily, fontWeight, color, backgroundColor } = style;
+  return { value: words, fontFamily, fontWeight, color, backgroundColor };
+}
+
+/** A text layer as the runtime's clip list sends it: the words and each style value capped. */
+export function readSentTextLayer(el: Element): TextLayerRead | null {
+  const read = readTextLayer(el);
+  if (!read) return null;
+  return {
+    value: read.value.slice(0, MAX_TIMELINE_TEXT),
+    fontFamily: read.fontFamily.slice(0, MAX_ELEMENT_VALUE),
+    fontWeight: read.fontWeight.slice(0, MAX_ELEMENT_VALUE),
+    color: read.color.slice(0, MAX_ELEMENT_VALUE),
+    backgroundColor: read.backgroundColor.slice(0, MAX_ELEMENT_VALUE),
+  };
+}
 
 // fallow-ignore-next-line complexity
 function escapeCssIdentifier(value: string): string {
@@ -110,7 +161,7 @@ export function escapeCssString(value: string): string {
 }
 
 export function buildStableSelector(el: Element): string | undefined {
-  if (el.id) return `#${escapeCssIdentifier(el.id)}`;
+  if (el.id && typeof el.id === "string") return `#${escapeCssIdentifier(el.id)}`;
 
   const compositionId = el.getAttribute("data-composition-id");
   if (compositionId) return `[data-composition-id="${escapeCssString(compositionId)}"]`;
@@ -122,6 +173,18 @@ export function buildStableSelector(el: Element): string | undefined {
   if (group) return `[data-hf-group="${escapeCssString(group)}"]`;
 
   return getPreferredClassSelector(el);
+}
+
+const ESCAPED_IDENTIFIER = String.raw`(?:[A-Za-z0-9_-]|[^\x00-\x7f]|\\[0-9a-f]{1,6} |\\[^0-9a-f\n\r\f])+`;
+const ESCAPED_STRING = String.raw`"(?:[^"\\\n\r\f]|\\\\|\\"|\\a |\\d |\\c )+"`;
+const CLASS_SELECTOR = new RegExp(`^\\.(?!-?[0-9]|-$)${ESCAPED_IDENTIFIER}$`);
+const ATTRIBUTE_SELECTOR = new RegExp(`^\\[data-(?:composition-id|hf-group)=${ESCAPED_STRING}\\]$`);
+
+/** Is `selector` one `buildStableSelector` makes for an element whose id is `id`. */
+export function isStableSelector(selector: string, id: string | null): boolean {
+  if (selector.startsWith("#"))
+    return Boolean(id) && selector === `#${escapeCssIdentifier(id ?? "")}`;
+  return !id && (CLASS_SELECTOR.test(selector) || ATTRIBUTE_SELECTOR.test(selector));
 }
 
 export function getPreferredClassSelector(el: Element): string | undefined {
@@ -143,14 +206,13 @@ function closestWithAny(el: Element, names: readonly string[]): Element | null {
 }
 
 export function readElementSource(el: Element): EditingElementSource {
-  const host = closestWithAny(el, ["data-composition-file", "data-composition-src"]);
-  const root = closestWithAny(el, ["data-composition-id"]);
+  const [fileAttr] = SOURCE_HOST_ATTRS;
+  const [idAttr, originalIdAttr] = COMPOSITION_ROOT_ATTRS;
+  const host = closestWithAny(el, [fileAttr]);
+  const root = closestWithAny(el, [idAttr]);
   return {
-    file:
-      host?.getAttribute("data-composition-file") ??
-      host?.getAttribute("data-composition-src") ??
-      null,
-    compositionId: root?.getAttribute("data-composition-id") ?? null,
-    originalCompositionId: root?.getAttribute("data-hf-original-composition-id") ?? null,
+    file: host?.getAttribute(fileAttr) || null,
+    compositionId: root?.getAttribute(idAttr) ?? null,
+    originalCompositionId: root?.getAttribute(originalIdAttr) ?? null,
   };
 }

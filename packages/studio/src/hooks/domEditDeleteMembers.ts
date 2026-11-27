@@ -28,8 +28,9 @@ export interface RecordEditInput {
 export function membersForDelete(
   selection: DomEditSelection,
   group: DomEditSelection[],
-  options?: { expandGroup?: boolean },
+  options?: { expandGroup?: boolean; members?: readonly DomEditSelection[] },
 ): DomEditSelection[] {
+  if (options?.members) return [...options.members];
   return options?.expandGroup && group.length > 0 ? group : [selection];
 }
 

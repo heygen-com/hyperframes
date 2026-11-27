@@ -940,6 +940,51 @@ describe("an audio clip stays inside its partner video", () => {
   });
 });
 
+describe("computeResizePreview — clips that run past their source", () => {
+  // A 120s music bed built from a 30s file, as a looped library track is.
+  const bed = (over: Partial<TimelineElement> = {}): TimelineElement => ({
+    ...clip("bed", 3, 0, 120, 0, "audio"),
+    sourceDuration: 30,
+    ...over,
+  });
+  const trimEnd = (element: TimelineElement, deltaSeconds: number) =>
+    computeResizePreview(
+      {
+        element,
+        edge: "end",
+        originClientX: 0,
+        previewStart: element.start,
+        previewDuration: element.duration,
+        started: true,
+      },
+      deltaSeconds * 50,
+      { scroll: fakeScroll(), pps: 50, buildSnapTargets: () => [] },
+    );
+
+  it("shortens a looping clip by the drag, not down to its source length", () => {
+    expect(trimEnd(bed({ loop: true }), -0.2).previewDuration).toBe(119.8);
+  });
+
+  it("lets a looping clip grow past its source length", () => {
+    expect(trimEnd(bed({ loop: true }), 10).previewDuration).toBe(130);
+  });
+
+  it("shortens a clip already longer than its source without jumping to the source end", () => {
+    expect(trimEnd(bed(), -0.2).previewDuration).toBe(119.8);
+    expect(trimEnd(bed({ sourceDuration: 120, playbackStart: 115 }), -0.2).previewDuration).toBe(
+      119.8,
+    );
+  });
+
+  it("still stops a clip that is not looping from growing past its current end", () => {
+    expect(trimEnd(bed(), 10).previewDuration).toBe(120);
+  });
+
+  it("still stops a clip that fits its source at the source end", () => {
+    expect(trimEnd(bed({ duration: 20 }), 30).previewDuration).toBe(30);
+  });
+});
+
 describe("trimPreviewTime", () => {
   it.each([25, 60])("shows the last frame of the clip at %s fps", (fps) => {
     useLinkedClipPreferences.getState().setCompositionFps(fps);

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
+import { _setDownloadFetchForTests } from "@hyperframes/engine";
 import { compileForRender } from "./htmlCompiler.js";
 
 const tempDirs: string[] = [];
@@ -12,6 +13,7 @@ const tempDirs: string[] = [];
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   vi.unstubAllGlobals();
+  _setDownloadFetchForTests();
 });
 
 function project(files: Record<string, string>): string {
@@ -78,7 +80,7 @@ describe("compileForRender script order", () => {
   });
 
   it("still runs a mounted composition's CDN script before its inline scripts", async () => {
-    vi.stubGlobal("fetch", async () => new Response("window.CDN_LIB = 1;"));
+    _setDownloadFetchForTests(async () => new Response("window.CDN_LIB = 1;"));
     const dir = project({
       "index.html": `<!doctype html>
 <html><body>
@@ -103,7 +105,7 @@ describe("compileForRender script order", () => {
   });
 
   it("defers every body script it emits until fonts, the position edit script and CDN libraries too", async () => {
-    vi.stubGlobal("fetch", async () => new Response("window.CDN_LIB = 1;"));
+    _setDownloadFetchForTests(async () => new Response("window.CDN_LIB = 1;"));
     const dir = project({
       "index.html": `<!doctype html>
 <html><body>

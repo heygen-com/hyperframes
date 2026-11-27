@@ -20,6 +20,68 @@ import {
   readDragPositions,
 } from "../../utils/dragDebug";
 
+type PointerLike = Pick<PointerEvent, "clientX" | "clientY" | "shiftKey" | "altKey">;
+
+/** Snap the group's delta to nearby edges, publishing the guides drawn for it. */
+// fallow-ignore-next-line complexity
+function snapGroupDelta(
+  groupG: GroupGestureState,
+  e: PointerLike,
+  proposed: AxisLockedDelta,
+  snapGuidesRef: UseDomEditOverlayGesturesOptions["snapGuidesRef"],
+) {
+  const sc = groupG.snapContext;
+  if (!sc?.snapEnabled || sc.targets.length === 0) return proposed;
+  if (!snapEngagedForTravel(proposed.dx, proposed.dy)) {
+    snapGuidesRef.current = null;
+    return proposed;
+  }
+  const groupBounds = resolveDomEditGroupOverlayRect(groupG.originItems.map((i) => i.rect));
+  if (!groupBounds) return proposed;
+  const allTargets = sc.compositionTarget ? [...sc.targets, sc.compositionTarget] : sc.targets;
+  const snap = resolveSnapAdjustment({
+    movingRect: groupBounds,
+    proposedDx: proposed.dx,
+    proposedDy: proposed.dy,
+    targets: allTargets,
+    gridEdges: sc.gridEdges ?? undefined,
+    threshold: SNAP_THRESHOLD_PX,
+    disabled: e.altKey,
+    lockedAxis: proposed.lockedAxis,
+  });
+  const movingRect = {
+    ...groupBounds,
+    left: groupBounds.left + snap.dx,
+    top: groupBounds.top + snap.dy,
+  };
+  const spacingGuides = e.altKey
+    ? []
+    : resolveEquidistanceGuides({
+        movingRect,
+        targets: allTargets,
+        threshold: SNAP_THRESHOLD_PX,
+      });
+  snapGuidesRef.current = { guides: snap.guides, spacingGuides };
+  return { dx: snap.dx, dy: snap.dy };
+}
+
+/** A group drag's step for this pointer: axis lock, then edge snapping; sets the snap guides. */
+export function groupDragDelta(
+  groupG: GroupGestureState,
+  e: PointerLike,
+  snapGuidesRef: UseDomEditOverlayGesturesOptions["snapGuidesRef"],
+) {
+  const delta = snapGroupDelta(
+    groupG,
+    e,
+    lockDragToDominantAxis(e.clientX - groupG.startX, e.clientY - groupG.startY, e.shiftKey),
+    snapGuidesRef,
+  );
+  groupG.lastSnappedDx = delta.dx;
+  groupG.lastSnappedDy = delta.dy;
+  return delta;
+}
+
 /**
  * One frame of a group drag, kept out of onPointerMove — which already handles
  * four gesture kinds and reads better without this one's snapping arithmetic.
@@ -33,61 +95,13 @@ export function createGroupDragMover(
   let lastGroupPositions: Record<string, string> = {};
   let lastGesture: GroupGestureState | null = null;
 
-  /** Snap the group's delta to nearby edges, publishing the guides drawn for it. */
-  // fallow-ignore-next-line complexity
-  const snapGroupDelta = (
-    groupG: GroupGestureState,
-    e: React.PointerEvent<HTMLDivElement>,
-    proposed: AxisLockedDelta,
-  ) => {
-    const sc = groupG.snapContext;
-    if (!sc?.snapEnabled || sc.targets.length === 0) return proposed;
-    if (!snapEngagedForTravel(proposed.dx, proposed.dy)) {
-      opts.snapGuidesRef.current = null;
-      return proposed;
-    }
-    const groupBounds = resolveDomEditGroupOverlayRect(groupG.originItems.map((i) => i.rect));
-    if (!groupBounds) return proposed;
-    const allTargets = sc.compositionTarget ? [...sc.targets, sc.compositionTarget] : sc.targets;
-    const snap = resolveSnapAdjustment({
-      movingRect: groupBounds,
-      proposedDx: proposed.dx,
-      proposedDy: proposed.dy,
-      targets: allTargets,
-      gridEdges: sc.gridEdges ?? undefined,
-      threshold: SNAP_THRESHOLD_PX,
-      disabled: e.altKey,
-      lockedAxis: proposed.lockedAxis,
-    });
-    const movingRect = {
-      ...groupBounds,
-      left: groupBounds.left + snap.dx,
-      top: groupBounds.top + snap.dy,
-    };
-    const spacingGuides = e.altKey
-      ? []
-      : resolveEquidistanceGuides({
-          movingRect,
-          targets: allTargets,
-          threshold: SNAP_THRESHOLD_PX,
-        });
-    opts.snapGuidesRef.current = { guides: snap.guides, spacingGuides };
-    return { dx: snap.dx, dy: snap.dy };
-  };
-
   /** One frame of a group drag: snap the delta, redraw the boxes, move every member. */
   const moveGroupDrag = (groupG: GroupGestureState, e: React.PointerEvent<HTMLDivElement>) => {
     if (groupG !== lastGesture) {
       lastGesture = groupG;
       lastGroupPositions = {};
     }
-    const { dx, dy } = snapGroupDelta(
-      groupG,
-      e,
-      lockDragToDominantAxis(e.clientX - groupG.startX, e.clientY - groupG.startY, e.shiftKey),
-    );
-    groupG.lastSnappedDx = dx;
-    groupG.lastSnappedDy = dy;
+    const { dx, dy } = groupDragDelta(groupG, e, opts.snapGuidesRef);
 
     setDraftGroupOverlayItems(
       groupG.originItems.map((i) => ({

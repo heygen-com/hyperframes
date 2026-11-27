@@ -8,10 +8,20 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { isOutsideFilm } from "./appOwnedPaths.mjs";
 
+export { readSourceIgnore };
+export { listReferencedHiddenSourceAssets } from "./sources/capture.mjs";
+export { isEligibleHiddenSourcePath } from "./sources/pathPolicy.mjs";
+export { isPrivateSourcePath, privateSourceSpelling } from "./sources/privateSource.mjs";
+
 export const HF_ID_ATTRIBUTE = /\sdata-hf-id\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/g;
 
 const sha256 = (/** @type {import("node:crypto").BinaryLike} */ data) =>
   createHash("sha256").update(data).digest("hex");
+
+/** Identity of the hidden paths shown with the normal share action. @param {readonly string[]} paths */
+export function referencedHiddenDigest(paths) {
+  return sha256(JSON.stringify([...new Set(paths)].sort()));
+}
 
 // A write that only adds data-hf-id stamps must not count as a change, or reload -> stamp -> reload never ends (KTD4).
 /** @param {string} html */

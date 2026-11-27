@@ -1,3 +1,4 @@
+import { htmlReadUnlikeBrowserFinding } from "./readableHtml.js";
 import type {
   HyperframeLintFinding,
   HyperframeLintResult,
@@ -21,6 +22,7 @@ import { slideshowRules } from "./rules/slideshow";
 import { structureRules } from "./rules/structure";
 import { shaderRules } from "./rules/shaders";
 import { rootPathRules } from "./rules/rootPaths";
+import { layerRules } from "./rules/layers";
 
 // Rules are grouped by source module so a timing can be attributed to
 // something a human can act on. Individual rules stay anonymous: an
@@ -50,6 +52,7 @@ const RULE_GROUPS: ReadonlyArray<{
   { group: "structure", rules: structureRules },
   { group: "shaders", rules: shaderRules },
   { group: "rootPaths", rules: rootPathRules },
+  { group: "layers", rules: layerRules },
 ];
 
 /**
@@ -135,6 +138,23 @@ export async function lintHyperframeHtml(
   options: HyperframeLinterOptions = {},
 ): Promise<HyperframeLintResult> {
   const startedAt = performance.now();
+  const refusal = htmlReadUnlikeBrowserFinding(html);
+  if (refusal) {
+    const finding = options.filePath ? { ...refusal, file: options.filePath } : refusal;
+    return {
+      ok: false,
+      errorCount: 1,
+      warningCount: 0,
+      infoCount: 0,
+      findings: [finding],
+      timings: {
+        totalMs: performance.now() - startedAt,
+        groupMs: {},
+        slowestRule: "",
+        slowestRuleMs: 0,
+      },
+    };
+  }
   const ctx = buildLintContext(html, options);
   const { findings: rawFindings, timings } = await runRules(ctx, options.filePath);
   const locate = createSourceLocator(html);
