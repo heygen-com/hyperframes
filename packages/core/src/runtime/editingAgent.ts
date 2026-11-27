@@ -77,6 +77,7 @@ import {
   resolveCanvasKeyAction,
 } from "./editing/canvasKeys";
 import { measureStageDocument } from "./editing/stageMeasure";
+import { endStageAct, stageAct } from "./editing/stageAct";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -272,6 +273,7 @@ const HANDLERS: Handlers = {
     armCanvasKeys(port, params, EDITING_PROTOCOL_VERSION, activeAgentParent),
   "resolve-canvas-key-action": resolveCanvasKeyAction,
   "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
+  "stage-act": (params, port) => stageAct(params, port, EDITING_PROTOCOL_VERSION),
 };
 
 let activeAgentParent: Window = window.parent;
@@ -359,6 +361,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       stopWatchingGeometry();
       endTextEdit();
       resetCanvasKeys(true);
+      endStageAct();
     },
   };
 }
