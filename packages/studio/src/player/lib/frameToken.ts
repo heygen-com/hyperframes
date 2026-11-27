@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "../../utils/projectRouting";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 
 export const PREVIEW_PATH = /^(\/api\/projects\/[^/?#]+)\/preview(?:\/~[\w-]{43})?(?=[/?#]|$)/;
@@ -19,10 +20,21 @@ export function previewWithoutFrameToken(href: string): string {
   return url.href;
 }
 
+const warmed = new Map<string, Promise<string | null>>();
+
+/** Asks for the project's frame token now, so a sealed preview mounting later need not wait for it. Used once. */
+export function warmFrameToken(projectId: string): void {
+  const path = buildProjectApiPath(projectId, "/frame-token");
+  if (!warmed.has(path)) warmed.set(path, fetchFrameToken(path));
+}
+
 /** The preview path under its project's frame token, where an opaque frame's own loads are let through. */
 export async function previewUnderFrameToken(src: string): Promise<string> {
   const project = PREVIEW_PATH.exec(src)?.[1];
   if (!project) return src;
-  const token = await fetchFrameToken(`${project}/frame-token`);
+  const path = `${project}/frame-token`;
+  const pending = warmed.get(path);
+  warmed.delete(path);
+  const token = await (pending ?? fetchFrameToken(path));
   return token ? src.replace(PREVIEW_PATH, `$1/preview/~${token}`) : src;
 }

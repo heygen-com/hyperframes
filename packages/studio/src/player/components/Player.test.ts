@@ -278,6 +278,32 @@ describe("a host's sandbox origin", () => {
     expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  // fails without the fix: the player read the sealed preview before loading it, after the editor's first render.
+  it("vouches that the sealed project preview it builds carries the runtime", async () => {
+    stubFrameToken({ token });
+    const { player } = await mountPlayer({
+      directUrl: undefined,
+      projectId: "demo",
+      sandboxOrigin: "opaque",
+    });
+    await settle();
+    expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
+    expect(player.hasAttribute("src-carries-runtime")).toBe(true);
+  });
+
+  it("vouches for no page a host hands it directly", async () => {
+    stubFrameToken({ token });
+    const { player } = await mountPlayer({ sandboxOrigin: "opaque" });
+    await settle();
+    expect(player.hasAttribute("src-carries-runtime")).toBe(false);
+  });
+
+  it("vouches for nothing on an unsealed preview", async () => {
+    const { player } = await mountPlayer({ directUrl: undefined, projectId: "demo" });
+    await settle();
+    expect(player.hasAttribute("src-carries-runtime")).toBe(false);
+  });
 });
 
 describe("callbacks after the player is already mounted", () => {

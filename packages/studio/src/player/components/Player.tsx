@@ -179,6 +179,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       const previewSource =
         directUrl || (projectId ? buildProjectApiPath(projectId, "/preview") : null);
       if (!previewSource) return;
+      // The Studio server puts the runtime in every project preview it serves; a direct URL may be any page.
+      const carriesRuntime = !directUrl;
 
       let canceled = false;
       let cleanup: (() => void) | undefined;
@@ -284,6 +286,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         // Sealed before the ref (useTimelinePlayer's bridge) sees the frame, never unsealed: a host may seal it too.
         if (opaque) player.toggleAttribute("sandbox-origin", true);
+        if (opaque && carriesRuntime) player.toggleAttribute("src-carries-runtime", true);
         if (typeof ref === "function") {
           ref(iframe);
         } else if (ref) {

@@ -5,6 +5,7 @@ export * from "./ui";
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
+export { warmFrameToken } from "./player/lib/frameToken";
 export {
   DEFAULT_SHORTCUT_SECTIONS,
   DEFAULT_STUDIO_KEYS,
