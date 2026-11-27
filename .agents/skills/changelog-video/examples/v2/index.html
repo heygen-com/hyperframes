@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1080, height=1080" />
+  <title>HyperFrames weekly: Nov 2-9, 2026</title>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="assets/framey-v4.js"></script>
+  <script src="assets/prism.js"></script>
+  <script>
+    /* Pacing: each scene's timeline is written in its first-cut times; insertHolds(tl, [[t, extra], ...])
+       pushes everything that starts at or after t by `extra` seconds (negative pulls it in). HOLDS comes
+       from tools/build_audio.py, which also moves the voice clips and sound cues by the same map. */
+    window.insertHolds = function (tl, holds) {
+      holds.slice().sort(function (a, b) { return b[0] - a[0]; }).forEach(function (h) {
+        tl.getChildren(false, true, true).forEach(function (c) {
+          if (c.startTime() >= h[0] - 1e-6) c.startTime(c.startTime() + h[1]);
+        });
+      });
+    };
+  </script>
+  <style>
+    /* ---------- shared kit: every scene uses these (references/look-v2.md) ---------- */
+    @font-face { font-family: "TT Norms"; src: url("assets/fonts/TT_Norms_Pro_Light.woff2") format("woff2"); font-weight: 300; }
+    @font-face { font-family: "TT Norms"; src: url("assets/fonts/TT_Norms_Pro_Normal.woff2") format("woff2"); font-weight: 400; }
+    @font-face { font-family: "TT Norms"; src: url("assets/fonts/TT_Norms_Pro_Bold.woff2") format("woff2"); font-weight: 700; }
+    @font-face { font-family: "TT Mono"; src: url("assets/fonts/tt_norms_pro_mono_regular-webfont.woff2") format("woff2"); font-weight: 400; }
+    :root {
+      --paper: #f6f5f1; --ink: #131109; --ink2: rgba(19,17,9,.62); --ink3: rgba(19,17,9,.38);
+      --mint: #3ce6ac; --mint-ink: #06281c; --dark: #0f0f11; --line: rgba(19,17,9,.09); --coral: #e5533d;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 1080px; height: 1080px; overflow: hidden; background: #f6f5f1; }
+    #root { position: relative; width: 1080px; height: 1080px; overflow: hidden; background: #f6f5f1;
+      font-family: "TT Norms", Inter, sans-serif; color: #131109; }
+    .scene-host { position: absolute; inset: 0; }
+
+    /* grounds */
+    .k-paper { position: absolute; inset: 0; background: #f6f5f1; }
+    .k-stage { position: absolute; inset: 0; background: linear-gradient(104deg, #3ce6ac 0%, #27cdb8 38%, #2a9fd8 70%, #2f6fe0 100%); }
+    .k-stage::after { content: ""; position: absolute; inset: 0;
+      background: linear-gradient(180deg, #f4f4f1 0%, #f2f4f2 34%, rgba(242,244,242,.55) 58%, rgba(242,244,242,0) 88%); }
+
+    /* headline: one bold run + one light run (BRAND-V4 §5) */
+    .k-hl { position: absolute; left: 72px; top: 76px; width: 936px; font-size: 68px; line-height: 1.04;
+      letter-spacing: -0.045em; color: #131109; font-weight: 300; }
+    .k-hl b { font-weight: 700; letter-spacing: -0.052em; }
+    .k-hl .k-line { display: block; white-space: nowrap; }
+    .k-hl code, .k-code { font-family: "TT Mono", ui-monospace, monospace; font-weight: 400; letter-spacing: -0.02em; }
+
+    /* Studio window, as a floating card */
+    .k-win { position: absolute; background: #fbfbfa; border-radius: 22px; overflow: hidden;
+      box-shadow: 0 34px 90px rgba(19,17,9,.20), 0 2px 0 rgba(255,255,255,.7) inset; border: 1px solid rgba(19,17,9,.08); }
+    .k-bar { position: absolute; left: 0; right: 0; top: 0; height: 60px; border-bottom: 1px solid rgba(19,17,9,.07);
+      display: flex; align-items: center; padding: 0 22px; gap: 10px; font-size: 22px; color: rgba(19,17,9,.62); }
+    .k-dot { width: 14px; height: 14px; border-radius: 50%; background: rgba(19,17,9,.14); }
+    .k-dark { position: absolute; background: #0f0f11; border-radius: 18px; overflow: hidden; border: 1px solid rgba(255,255,255,.08); }
+    .k-label { font-size: 22px; font-weight: 400; color: rgba(19,17,9,.55); letter-spacing: -0.01em; }
+    .k-chip { display: inline-flex; align-items: center; gap: 10px; height: 46px; padding: 0 20px; border-radius: 23px;
+      background: rgba(255,255,255,.86); border: 1px solid rgba(19,17,9,.08); font-size: 22px; color: #131109; white-space: nowrap; }
+    .k-chip.mint { background: #3ce6ac; color: #06281c; border-color: rgba(6,40,28,.12); }
+    .k-chip.ink { background: #131109; color: #fff; border-color: transparent; }
+    .k-cursor { position: absolute; width: 44px; height: 44px; left: 0; top: 0; z-index: 50; }
+  </style>
+  <script id="holds">window.HOLDS = {"hook": [[3.45, 0.8], [4.4, 0.4]], "t1": [[2.85, 0.5], [6.95, 0.9]], "t2": [[3.0, 0.4], [5.2, 0.7]], "t3": [[3.1, 0.4], [5.3, 0.6]], "t4": [[1.6, 0.3], [3.6, 0.3], [6.6, 1.0]], "t5": [[3.0, 0.9]], "outro": [[1.1, -0.25]]};</script>
+</head>
+<body>
+  <div id="root" data-composition-id="main" data-start="0" data-duration="47.7" data-width="1080" data-height="1080">
+    <div id="hook" class="scene-host clip" data-composition-id="hook" data-composition-src="compositions/hook.html"
+         data-start="0.0" data-duration="6.25" data-track-index="1" data-track-kind="graphics" data-width="1080" data-height="1080" style="z-index:1"></div>
+    <div id="t1" class="scene-host clip" data-composition-id="t1" data-composition-src="compositions/t1.html"
+         data-start="6.25" data-duration="8.6" data-track-index="2" data-track-kind="graphics" data-width="1080" data-height="1080" style="z-index:2"></div>
+    <div id="t2" class="scene-host clip" data-composition-id="t2" data-composition-src="compositions/t2.html"
+         data-start="14.85" data-duration="6.7" data-track-index="1" data-track-kind="graphics" data-width="1080" data-height="1080" style="z-index:3"></div>
+    <div id="t3" class="scene-host clip" data-composition-id="t3" data-composition-src="compositions/t3.html"
+         data-start="21.55" data-duration="6.7" data-track-index="2" data-track-kind="graphics" data-width="1080" data-height="1080" style="z-index:4"></div>
+    <div id="t4" class="scene-host clip" data-composition-id="t4" data-composition-src="compositions/t4.html"
+         data-start="28.25" data-duration="8.65" data-track-index="1" data-track-kind="graphics" data-width="1080" data-height="1080" style="z-index:5"></div>
+    <div id="t5" class="scene-host clip" data-composition-id="t5" data-composition-src="compositions/t5.html"
+         data-start="36.9" data-duration="4.15" data-track-index="2" data-track-kind="graphics" data-width="1080" data-height="1080" style="z-index:6"></div>
+    <div id="outro" class="scene-host clip" data-composition-id="outro" data-composition-src="compositions/outro.html"
+         data-start="41.05" data-duration="6.65" data-track-index="1" data-track-kind="graphics" data-width="1080" data-height="1080" style="z-index:7"></div>
+    <!-- AUDIO:START -->
+    <audio id="vo01" class="clip" src="assets/audio/vo.wav" data-start="1.600" data-duration="1.650" data-media-start="0.200" data-volume="1" data-track-index="9"></audio>
+    <audio id="vo02" class="clip" src="assets/audio/vo.wav" data-start="4.050" data-duration="1.500" data-media-start="1.850" data-volume="1" data-track-index="10"></audio>
+    <audio id="vo03" class="clip" src="assets/audio/vo.wav" data-start="5.950" data-duration="2.990" data-media-start="3.350" data-volume="1" data-track-index="9"></audio>
+    <audio id="vo04" class="clip" src="assets/audio/vo.wav" data-start="9.440" data-duration="4.370" data-media-start="6.340" data-volume="1" data-track-index="10"></audio>
+    <audio id="vo05" class="clip" src="assets/audio/vo.wav" data-start="14.710" data-duration="2.990" data-media-start="10.710" data-volume="1" data-track-index="9"></audio>
+    <audio id="vo06" class="clip" src="assets/audio/vo.wav" data-start="18.100" data-duration="2.480" data-media-start="13.700" data-volume="1" data-track-index="10"></audio>
+    <audio id="vo07" class="clip" src="assets/audio/vo.wav" data-start="21.280" data-duration="3.220" data-media-start="16.180" data-volume="1" data-track-index="9"></audio>
+    <audio id="vo08" class="clip" src="assets/audio/vo.wav" data-start="24.900" data-duration="2.510" data-media-start="19.400" data-volume="1" data-track-index="10"></audio>
+    <audio id="vo09" class="clip" src="assets/audio/vo.wav" data-start="28.010" data-duration="1.780" data-media-start="21.910" data-volume="1" data-track-index="9"></audio>
+    <audio id="vo10" class="clip" src="assets/audio/vo.wav" data-start="30.090" data-duration="1.960" data-media-start="23.690" data-volume="1" data-track-index="10"></audio>
+    <audio id="vo11" class="clip" src="assets/audio/vo.wav" data-start="32.350" data-duration="3.460" data-media-start="25.650" data-volume="1" data-track-index="9"></audio>
+    <audio id="vo12" class="clip" src="assets/audio/vo.wav" data-start="36.810" data-duration="3.180" data-media-start="29.110" data-volume="1" data-track-index="10"></audio>
+    <audio id="vo13" class="clip" src="assets/audio/vo.wav" data-start="40.890" data-duration="1.030" data-media-start="32.290" data-volume="1" data-track-index="9"></audio>
+    <audio id="vo14" class="clip" src="assets/audio/vo.wav" data-start="41.670" data-duration="3.700" data-media-start="33.320" data-volume="1" data-track-index="10"></audio>
+    <audio id="music" class="clip" src="assets/audio/bgm.mp3" data-start="0" data-duration="45.10" data-media-start="0" data-volume="0.1" data-fade-in="0.3" data-track-index="11"></audio>
+    <audio id="music-end" class="clip" src="assets/audio/bgm.mp3" data-start="45.10" data-duration="2.60" data-media-start="45.10" data-volume="0.220" data-fade-out="1.8" data-track-index="11"></audio>
+    <audio id="a-type" class="clip" src="assets/sfx/typing.mp3" data-start="0.000" data-duration="1.500" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-type2" class="clip" src="assets/sfx/typing.mp3" data-start="0.423" data-duration="1.500" data-volume="0.096" data-track-index="13"></audio>
+    <audio id="a-send" class="clip" src="assets/sfx/click.mp3" data-start="1.183" data-duration="0.370" data-volume="0.360" data-track-index="14"></audio>
+    <audio id="a-zoom" class="clip" src="assets/sfx/whoosh-short.mp3" data-start="1.493" data-duration="0.570" data-volume="0.240" data-track-index="15"></audio>
+    <audio id="a-chip0" class="clip" src="assets/sfx/click.mp3" data-start="1.743" data-duration="0.370" data-volume="0.080" data-track-index="12"></audio>
+    <audio id="a-chip4" class="clip" src="assets/sfx/click-soft.mp3" data-start="1.895" data-duration="0.370" data-volume="0.080" data-track-index="14"></audio>
+    <audio id="a-chip8" class="clip" src="assets/sfx/key-press.mp3" data-start="2.037" data-duration="0.400" data-volume="0.080" data-track-index="13"></audio>
+    <audio id="a-chip12" class="clip" src="assets/sfx/click.mp3" data-start="2.199" data-duration="0.370" data-volume="0.080" data-track-index="12"></audio>
+    <audio id="a-chip16" class="clip" src="assets/sfx/click-soft.mp3" data-start="2.351" data-duration="0.370" data-volume="0.080" data-track-index="14"></audio>
+    <audio id="a-flip0" class="clip" src="assets/sfx/key-press.mp3" data-start="4.693" data-duration="0.400" data-volume="0.128" data-track-index="12"></audio>
+    <audio id="a-flip1" class="clip" src="assets/sfx/key-press.mp3" data-start="4.763" data-duration="0.400" data-volume="0.128" data-track-index="13"></audio>
+    <audio id="a-flip2" class="clip" src="assets/sfx/key-press.mp3" data-start="4.833" data-duration="0.400" data-volume="0.128" data-track-index="14"></audio>
+    <audio id="a-flip3" class="clip" src="assets/sfx/key-press.mp3" data-start="4.903" data-duration="0.400" data-volume="0.128" data-track-index="15"></audio>
+    <audio id="a-flip4" class="clip" src="assets/sfx/key-press.mp3" data-start="4.973" data-duration="0.400" data-volume="0.128" data-track-index="16"></audio>
+    <audio id="a-open" class="clip" src="assets/sfx/whoosh.mp3" data-start="5.973" data-duration="0.570" data-volume="0.176" data-track-index="12"></audio>
+    <audio id="a-t1-ok" class="clip" src="assets/sfx/pop.mp3" data-start="8.343" data-duration="0.720" data-volume="0.128" data-track-index="12"></audio>
+    <audio id="a-t1-done0" class="clip" src="assets/sfx/click-soft.mp3" data-start="10.663" data-duration="0.370" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-t1-done1" class="clip" src="assets/sfx/click-soft.mp3" data-start="11.063" data-duration="0.370" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-t1-done2" class="clip" src="assets/sfx/click-soft.mp3" data-start="11.563" data-duration="0.370" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-t1-stack" class="clip" src="assets/sfx/whoosh-short.mp3" data-start="12.023" data-duration="0.570" data-volume="0.160" data-track-index="12"></audio>
+    <audio id="a-t1-same" class="clip" src="assets/sfx/pop.mp3" data-start="12.163" data-duration="0.720" data-volume="0.112" data-track-index="13"></audio>
+    <audio id="a-t1-count" class="clip" src="assets/sfx/typing.mp3" data-start="12.423" data-duration="1.500" data-volume="0.064" data-track-index="14"></audio>
+    <audio id="a-t1-whip" class="clip" src="assets/sfx/whoosh.mp3" data-start="14.673" data-duration="0.570" data-volume="0.176" data-track-index="12"></audio>
+    <audio id="a-t2-sweep" class="clip" src="assets/sfx/whoosh-short.mp3" data-start="15.423" data-duration="0.570" data-volume="0.144" data-track-index="12"></audio>
+    <audio id="a-t2-hi" class="clip" src="assets/sfx/key-press.mp3" data-start="16.523" data-duration="0.400" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-t2-cut" class="clip" src="assets/sfx/click-soft.mp3" data-start="18.513" data-duration="0.370" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-t2-back" class="clip" src="assets/sfx/click-soft.mp3" data-start="19.513" data-duration="0.370" data-volume="0.096" data-track-index="12"></audio>
+    <audio id="a-t2-slide" class="clip" src="assets/sfx/typing.mp3" data-start="19.323" data-duration="1.500" data-volume="0.080" data-track-index="13"></audio>
+    <audio id="a-t3-scrub" class="clip" src="assets/sfx/typing.mp3" data-start="22.223" data-duration="1.500" data-volume="0.064" data-track-index="12"></audio>
+    <audio id="a-t3-tab" class="clip" src="assets/sfx/click.mp3" data-start="25.513" data-duration="0.370" data-volume="0.320" data-track-index="12"></audio>
+    <audio id="a-t3-step0" class="clip" src="assets/sfx/click.mp3" data-start="26.213" data-duration="0.370" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-t3-step1" class="clip" src="assets/sfx/click.mp3" data-start="26.563" data-duration="0.370" data-volume="0.112" data-track-index="13"></audio>
+    <audio id="a-t3-step2" class="clip" src="assets/sfx/click.mp3" data-start="26.913" data-duration="0.370" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-t3-burst" class="clip" src="assets/sfx/glitch-1.mp3" data-start="27.163" data-duration="2.640" data-volume="0.144" data-track-index="13"></audio>
+    <audio id="a-t4-font0" class="clip" src="assets/sfx/click.mp3" data-start="29.113" data-duration="0.370" data-volume="0.096" data-track-index="12"></audio>
+    <audio id="a-t4-font1" class="clip" src="assets/sfx/click.mp3" data-start="29.263" data-duration="0.370" data-volume="0.096" data-track-index="14"></audio>
+    <audio id="a-t4-font2" class="clip" src="assets/sfx/click.mp3" data-start="29.413" data-duration="0.370" data-volume="0.096" data-track-index="15"></audio>
+    <audio id="a-t4-pack" class="clip" src="assets/sfx/pop.mp3" data-start="29.533" data-duration="0.720" data-volume="0.096" data-track-index="12"></audio>
+    <audio id="a-t4-split" class="clip" src="assets/sfx/click-soft.mp3" data-start="31.193" data-duration="0.370" data-volume="0.096" data-track-index="12"></audio>
+    <audio id="a-t4-part0" class="clip" src="assets/sfx/click-soft.mp3" data-start="31.513" data-duration="0.370" data-volume="0.064" data-track-index="13"></audio>
+    <audio id="a-t4-part1" class="clip" src="assets/sfx/click-soft.mp3" data-start="31.813" data-duration="0.370" data-volume="0.064" data-track-index="12"></audio>
+    <audio id="a-t4-part2" class="clip" src="assets/sfx/click-soft.mp3" data-start="32.413" data-duration="0.370" data-volume="0.064" data-track-index="12"></audio>
+    <audio id="a-t4-drop" class="clip" src="assets/sfx/error.mp3" data-start="32.203" data-duration="1.620" data-volume="0.128" data-track-index="13"></audio>
+    <audio id="a-t4-resend" class="clip" src="assets/sfx/key-press.mp3" data-start="33.703" data-duration="0.400" data-volume="0.112" data-track-index="12"></audio>
+    <audio id="a-t4-done" class="clip" src="assets/sfx/pop.mp3" data-start="34.863" data-duration="0.720" data-volume="0.128" data-track-index="12"></audio>
+    <audio id="a-t5-type" class="clip" src="assets/sfx/typing.mp3" data-start="36.893" data-duration="1.500" data-volume="0.096" data-track-index="12"></audio>
+    <audio id="a-t5-done" class="clip" src="assets/sfx/pop.mp3" data-start="39.713" data-duration="0.720" data-volume="0.144" data-track-index="12"></audio>
+    <audio id="a-t5-whip" class="clip" src="assets/sfx/whoosh.mp3" data-start="40.873" data-duration="0.570" data-volume="0.160" data-track-index="12"></audio>
+    <audio id="a-o-logo" class="clip" src="assets/sfx/chime.mp3" data-start="41.713" data-duration="2.500" data-volume="0.240" data-track-index="12"></audio>
+    <audio id="a-o-url" class="clip" src="assets/sfx/key-press.mp3" data-start="42.653" data-duration="0.400" data-volume="0.096" data-track-index="13"></audio>
+    <!-- AUDIO:END -->
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    window.__timelines["main"] = gsap.timeline({ paused: true });
+  </script>
+</body>
+</html>
