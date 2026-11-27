@@ -6,6 +6,7 @@ import type {
   CanvasKeyNudgeCombo,
   EditingElementHandle,
 } from "@hyperframes/core/runtime/editing-port";
+import { resetKeyframesMayClaim } from "../../hooks/appHotkeysDispatch";
 import { membersForDelete } from "../../hooks/domEditDeleteMembers";
 import { noteFrameRemovedHandles } from "../../hooks/previewTimingPatch";
 import { useStudioKeys, type StudioKeys } from "../../player/components/studioShortcuts";
@@ -34,6 +35,7 @@ export interface RuntimeNudgeStep {
   totalDx: number;
   totalDy: number;
   drafts: Record<string, number>;
+  baseGsap: Record<string, { x: number; y: number }>;
 }
 
 export type CanvasDeleteHandler = (
@@ -141,14 +143,19 @@ function buildArmParams(input: {
   studioKeys: StudioKeys;
   allowNudge: boolean;
   allowDelete: boolean;
+  resetMayClaim: boolean;
 }): ArmCanvasKeysParams {
   const { deleteMembers, nudgeMembers } = resolveCanvasTargets(
     input.selection,
     input.groupSelections,
   );
   const deleteHandles = input.allowDelete ? (handlesFor(deleteMembers) ?? []) : [];
+  const { deleteSelected, deleteSelectedAlt, resetKeyframes } = input.studioKeys;
+  // A combo Reset Keyframes may claim stays with Studio's dispatcher, which tries reset first.
   const deleteCombos = deleteHandles.length
-    ? [input.studioKeys.deleteSelected, input.studioKeys.deleteSelectedAlt]
+    ? [deleteSelected, deleteSelectedAlt].filter(
+        (combo) => !input.resetMayClaim || combo !== resetKeyframes,
+      )
     : [];
   const nudgeHandles =
     input.allowNudge && canCanvasNudgeTargets(nudgeMembers) ? handlesFor(nudgeMembers) : null;
@@ -178,6 +185,23 @@ function focusSealedIframe(iframe: HTMLIFrameElement): void {
   }
 }
 
+type CanvasActionRoute = { current: ((event: CanvasKeyActionEvent) => void) | null };
+const actionRoutes = new WeakMap<object, CanvasActionRoute>();
+
+/** One action listener per frame load: a Delete no session takes is rolled back, never left detached. */
+function canvasActionRoute(iframe: HTMLIFrameElement): CanvasActionRoute {
+  const client = previewEditingClient(iframe);
+  const known = actionRoutes.get(client);
+  if (known) return known;
+  const route: CanvasActionRoute = { current: null };
+  client.onCanvasKeyAction((event) => {
+    if (route.current) route.current(event);
+    else if (event.action === "delete") resolveAction(iframe, event.actionId, "rollback");
+  });
+  actionRoutes.set(client, route);
+  return route;
+}
+
 function attachSealedCanvasPort(input: {
   iframe: HTMLIFrameElement;
   overlayRef: React.RefObject<HTMLDivElement | null>;
@@ -188,10 +212,11 @@ function attachSealedCanvasPort(input: {
 }): () => void {
   const { iframe, overlayRef, sameLoad, armedRef, onDeleteRef, applyNudgeRef } = input;
   const client = previewEditingClient(iframe);
-  const stopActions = client.onCanvasKeyAction((event) => {
-    if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
+  const route = canvasActionRoute(iframe);
+  const onAction = (event: CanvasKeyActionEvent) => {
+    if (!sameLoad()) return;
     const active = armedRef.current;
-    if (!active || active.revision !== event.revision) {
+    if (!hasSealedCanvasKeyboardHold(iframe) || !active || active.revision !== event.revision) {
       if (event.action === "delete") resolveAction(iframe, event.actionId, "rollback");
       return;
     }
@@ -201,11 +226,13 @@ function attachSealedCanvasPort(input: {
         totalDx: event.totalDx,
         totalDy: event.totalDy,
         drafts: event.drafts,
+        baseGsap: event.baseGsap,
       });
       return;
     }
     runDeleteAction(iframe, onDeleteRef.current, active.selection, event);
-  });
+  };
+  route.current = onAction;
   const stopKeys = client.onKey((key) => {
     if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
     (overlayRef.current ?? window).dispatchEvent(
@@ -223,7 +250,7 @@ function attachSealedCanvasPort(input: {
     );
   });
   return () => {
-    stopActions();
+    if (route.current === onAction) route.current = null;
     stopKeys();
   };
 }
@@ -241,6 +268,7 @@ function startSealedCanvasSession(input: {
   studioKeys: StudioKeys;
   allowNudge: boolean;
   allowDelete: boolean;
+  resetMayClaim: boolean;
 }): () => void {
   const {
     iframe,
@@ -262,6 +290,7 @@ function startSealedCanvasSession(input: {
     studioKeys: input.studioKeys,
     allowNudge: input.allowNudge,
     allowDelete: input.allowDelete,
+    resetMayClaim: input.resetMayClaim,
   });
   const sameLoad = samePreviewLoad(iframe);
   const releaseHold = holdSealedCanvasKeyboard(iframe);
@@ -362,13 +391,15 @@ function useSealedCanvasPermissions(
   allowCanvasMovement: boolean,
   nudgeSaving: boolean,
   hasDeleteHandler: boolean,
-): { allowNudge: boolean; allowDelete: boolean } {
+): { allowNudge: boolean; allowDelete: boolean; resetMayClaim: boolean } {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const hasKeyframes = usePlayerStore((s) => s.selectedKeyframes.size > 0);
   const hasAutomation = usePlayerStore((s) => s.automationSelection !== null);
+  const resetMayClaim = usePlayerStore(resetKeyframesMayClaim);
   return {
     allowNudge: !isPlaying && !nudgeSaving && allowCanvasMovement,
     allowDelete: !hasKeyframes && !hasAutomation && hasDeleteHandler,
+    resetMayClaim,
   };
 }
 
@@ -395,7 +426,7 @@ export function useSealedCanvasKeys({
   const [nudgeEpoch, setNudgeEpoch] = useState(0);
   const armedRef = useRef<{ revision: number; selection: DomEditSelection } | null>(null);
   const studioKeys = useStudioKeys();
-  const { allowNudge, allowDelete } = useSealedCanvasPermissions(
+  const { allowNudge, allowDelete, resetMayClaim } = useSealedCanvasPermissions(
     allowCanvasMovement,
     nudgeSaving,
     Boolean(onDeleteSelection),
@@ -429,6 +460,7 @@ export function useSealedCanvasKeys({
       studioKeys,
       allowNudge,
       allowDelete,
+      resetMayClaim,
     });
   }, [
     allowDelete,
@@ -439,6 +471,7 @@ export function useSealedCanvasKeys({
     nudgeEpoch,
     overlayRef,
     pointerDownRef,
+    resetMayClaim,
     selection,
     studioKeys,
   ]);

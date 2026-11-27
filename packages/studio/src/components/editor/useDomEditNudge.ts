@@ -71,6 +71,7 @@ interface SealedStartRead {
   accum: { x: number; y: number };
   dropped: boolean;
   runtimeDrafts?: Record<string, number>;
+  baseGsap?: RuntimeNudgeStep["baseGsap"];
 }
 
 export interface UseDomEditNudgeParams {
@@ -201,6 +202,30 @@ function shouldIgnoreNudgeKey(p: UseDomEditNudgeParams, event: KeyboardEvent): b
   return ownsPlainKeys(event.target);
 }
 
+const handleOf = (element: HTMLElement, selection: DomEditSelection) =>
+  previewStandInHandle(element) ?? selection.handle;
+
+/** The frame drew this burst before Studio read its start: GSAP members start from the pre-draw x/y. */
+function withPreDrawGsap(
+  targets: NudgeTarget[],
+  baseGsap: RuntimeNudgeStep["baseGsap"] | undefined,
+): NudgeTarget[] {
+  if (!baseGsap) return targets;
+  return targets.map((target) => {
+    const handle = handleOf(target.element, target.selection);
+    const base = handle ? baseGsap[handle] : undefined;
+    const { start } = target;
+    if (!base || !start?.gsap) return target;
+    return { ...target, start: { ...start, gsap: { ...start.gsap, x: base.x, y: base.y } } };
+  });
+}
+
+function joinRuntimeStep(read: SealedStartRead, step: RuntimeNudgeStep): void {
+  read.accum = { x: step.totalDx, y: step.totalDy };
+  read.runtimeDrafts = step.drafts;
+  read.baseGsap ??= step.baseGsap;
+}
+
 function recordRuntimeDrafts(
   members: readonly ManualOffsetDragMember[],
   accum: { x: number; y: number },
@@ -208,7 +233,7 @@ function recordRuntimeDrafts(
 ): void {
   if (!drafts) return;
   for (const member of members) {
-    const handle = previewStandInHandle(member.element) ?? member.selection.handle;
+    const handle = handleOf(member.element, member.selection);
     const draftId = handle ? drafts[handle] : undefined;
     const offset = { x: member.initialOffset.x + accum.x, y: member.initialOffset.y + accum.y };
     noteFrameDrawnDraft(
@@ -314,9 +339,11 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): {
   const beginSession = (
     found: { targets: NudgeTarget[]; isGroup: boolean },
     repeat: boolean,
+    baseGsap?: RuntimeNudgeStep["baseGsap"],
   ): NudgeSession | "refused" | null => {
     const p = paramsRef.current;
-    const { targets, isGroup } = found;
+    const { isGroup } = found;
+    const targets = withPreDrawGsap(found.targets, baseGsap);
     // Same side effect a drag start has (pauses preview playback).
     p.onManualDragStartRef.current?.();
     const members: ManualOffsetDragMember[] = [];
@@ -345,6 +372,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): {
     iframe: HTMLIFrameElement,
     found: { targets: NudgeTarget[]; isGroup: boolean },
     repeat: boolean,
+    baseGsap?: RuntimeNudgeStep["baseGsap"],
   ): NudgeSession | "refused" | null => {
     const p = paramsRef.current;
     const overlay = p.overlayRef.current;
@@ -355,7 +383,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): {
     if (!read || typeof shown !== "object" || !shown) return null;
     checkReadAheadWithFrame(iframe, read);
     const targets = found.targets.map((target, i) => ({ ...target, ...shown.shown[i] }));
-    return beginSession({ targets, isGroup: found.isGroup }, repeat);
+    return beginSession({ targets, isGroup: found.isGroup }, repeat, baseGsap);
   };
 
   // A sealed frame's stand-in has no GSAP or translate: its members start from the frame's read, as a press does.
@@ -382,7 +410,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): {
         p.onBlockedMoveRef.current(selections[0], unansweredMoveReason(iframe));
       if (!answer || answer === UNANSWERED) return;
       const targets = found.targets.map((target, i) => ({ ...target, ...answer.shown[i] }));
-      const session = beginSession({ targets, isGroup: found.isGroup }, false);
+      const session = beginSession({ targets, isGroup: found.isGroup }, false, read.baseGsap);
       if (!session || session === "refused") return;
       session.accum = read.accum;
       recordRuntimeDrafts(session.members, session.accum, read.runtimeDrafts);
@@ -401,20 +429,15 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): {
       startBurst(session);
     };
     if (sessionRef.current) return burst(sessionRef.current);
-    if (readingRef.current) {
-      readingRef.current.accum = accum;
-      readingRef.current.runtimeDrafts = step.drafts;
-      return;
-    }
+    if (readingRef.current) return joinRuntimeStep(readingRef.current, step);
     const iframe = p.iframeRef.current;
     const found = nudgeTargets();
     if (!iframe || !found || !previewFrameOpaque(iframe)) return;
-    const session = startFromReadAhead(iframe, found, false);
+    const session = startFromReadAhead(iframe, found, false, step.baseGsap);
     if (session === "refused") return;
     if (session) return burst(session);
     const read = readSealedStart(iframe, found);
-    read.accum = accum;
-    read.runtimeDrafts = step.drafts;
+    joinRuntimeStep(read, step);
     readingRef.current = read;
   }, []);
 

@@ -26,6 +26,16 @@ import { useSealedCanvasKeys, type CanvasDeleteHandler } from "./useSealedCanvas
 
 installReactActEnvironment();
 
+const readAhead = vi.hoisted(() => ({ cold: false }));
+vi.mock("./gestureStartReadAhead", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./gestureStartReadAhead")>();
+  return {
+    ...actual,
+    gestureStartReadAhead: (...args: Parameters<typeof actual.gestureStartReadAhead>) =>
+      readAhead.cold ? null : actual.gestureStartReadAhead(...args),
+  };
+});
+
 vi.mock("../../player/lib/previewChannel", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../player/lib/previewChannel")>();
   return { ...actual, previewRequest: vi.fn(actual.previewRequest) };
@@ -168,6 +178,7 @@ async function setupSealedCanvas(options?: {
 }
 
 beforeEach(() => {
+  readAhead.cold = false;
   __resetForTests();
   vi.mocked(previewRequest).mockClear();
   usePlayerStore.getState().reset();
@@ -175,6 +186,8 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.innerHTML = "";
+  delete (window as { gsap?: unknown }).gsap;
+  delete (window as { __timelines?: unknown }).__timelines;
   vi.useRealTimers();
 });
 
@@ -317,4 +330,95 @@ it("forwards non-local Studio shortcuts only while canvas focus hold is active, 
   expect(document.getElementById("target")).not.toBeNull();
   expect(onDelete).not.toHaveBeenCalled();
   await vi.waitFor(() => expect(studioSaw).toContain("Delete"));
+});
+
+function clickCanvas(overlay: HTMLElement) {
+  act(() => {
+    overlay.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+  });
+}
+
+it("starts a cold first nudge on a GSAP clip from its pre-draw position, so the step lands once", async () => {
+  // The save writes GSAP x/y from the stamped gesture base plus the offset, as a reload shows it.
+  const savedBase: Array<string | null> = [];
+  const commit = vi.fn((sel: DomEditSelection) => {
+    savedBase.push(sel.element.getAttribute("data-hf-drag-gsap-base-x"));
+  });
+  const { overlay, targetEl } = await setupSealedCanvas({ onCommit: commit });
+  const gsapState = { x: 40, y: 10 };
+  Object.assign(window, {
+    gsap: {
+      getProperty: (el: Element, prop: string) =>
+        el === targetEl ? (prop === "x" ? gsapState.x : prop === "y" ? gsapState.y : 0) : 0,
+      set: (el: Element, vars: Record<string, number>) => {
+        if (el !== targetEl) return;
+        if (typeof vars.x === "number") gsapState.x = vars.x;
+        if (typeof vars.y === "number") gsapState.y = vars.y;
+      },
+    },
+    __timelines: {
+      main: {
+        getChildren: () => [{ vars: { x: 100 }, targets: () => [targetEl], duration: () => 0 }],
+      },
+    },
+  });
+  readAhead.cold = true;
+  clickCanvas(overlay);
+  await waitForArm((p) => p.nudge !== null);
+
+  window.dispatchEvent(trustedKey("keydown", { key: "ArrowRight", code: "ArrowRight" }));
+  expect(gsapState).toEqual({ x: 41, y: 10 });
+
+  await vi.waitFor(() => expect(commit).toHaveBeenCalledTimes(1), {
+    timeout: CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 1000,
+  });
+  expect(commit.mock.calls[0]?.[1]).toEqual({ x: 1, y: 0 });
+  expect(savedBase).toEqual(["40"]);
+  expect(gsapState).toEqual({ x: 41, y: 10 });
+});
+
+it("leaves Backspace with Studio while Reset Keyframes may claim it for the selected clip", async () => {
+  const onDelete = vi.fn();
+  const { overlay } = await setupSealedCanvas({ onDeleteSelection: onDelete });
+  const studioSaw: string[] = [];
+  const onStudioKey = (e: KeyboardEvent) => studioSaw.push(e.key);
+  window.addEventListener("keydown", onStudioKey, true);
+  onTestFinished(() => window.removeEventListener("keydown", onStudioKey, true));
+  act(() => {
+    usePlayerStore.setState({
+      selectedElementId: "target",
+      keyframeCache: new Map([["target", {}]]) as never,
+    });
+  });
+  clickCanvas(overlay);
+  await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
+
+  window.dispatchEvent(trustedKey("keydown", { key: "Backspace", code: "Backspace" }));
+  expect(document.getElementById("target")).not.toBeNull();
+  await vi.waitFor(() => expect(studioSaw).toContain("Backspace"));
+  expect(onDelete).not.toHaveBeenCalled();
+
+  // Delete itself never resets keyframes, so it still runs in-frame.
+  window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+  expect(document.getElementById("target")).toBeNull();
+  await vi.waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
+});
+
+it("restores an in-frame Delete when the canvas loses focus before Studio takes it", async () => {
+  const onDelete = vi.fn();
+  const { overlay } = await setupSealedCanvas({ onDeleteSelection: onDelete });
+  clickCanvas(overlay);
+  await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
+
+  window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+  expect(document.getElementById("target")).toBeNull();
+  // The timeline takes focus before the frame's Delete notification reaches Studio.
+  act(() => {
+    document
+      .getElementById("tl-clip")!
+      .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  });
+  await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
+  expect(onDelete).not.toHaveBeenCalled();
 });
