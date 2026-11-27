@@ -227,13 +227,14 @@ it("acquires canvas focus hold on canvas click, releases on timeline click, and 
 
   expect(hasSealedCanvasKeyboardHold(iframe)).toBe(false);
 
-  // Clicking the canvas overlay arms runtime keys and focuses the sealed iframe once armed.
+  // Clicking the canvas overlay arms runtime keys; the keyboard stays with Studio.
   act(() => {
     overlay.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
   });
   await vi.waitFor(() => expect(hasSealedCanvasKeyboardHold(iframe)).toBe(true));
-  await vi.waitFor(() => expect(focusSpy).toHaveBeenCalled());
+  await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
+  expect(focusSpy).not.toHaveBeenCalled();
 
   // Clicking the timeline releases the canvas hold and disarms the runtime.
   const timelineBtn = document.getElementById("tl-clip")!;
@@ -479,8 +480,9 @@ it("rolls back a Delete whose arm Studio does not know", async () => {
     forwardCombos: [],
   });
   window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
-  await vi.waitFor(() => expect(document.getElementById("target")).toBeNull());
-  await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
+  // Studio's press names Studio's own arm, so the frame's newer unknown arm draws nothing.
+  await previewRequest(iframe, "hello", {});
+  expect(document.getElementById("target")).not.toBeNull();
   expect(onDelete).not.toHaveBeenCalled();
 });
 

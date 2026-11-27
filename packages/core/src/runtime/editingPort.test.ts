@@ -121,6 +121,7 @@ describe("createEditingPortClient", () => {
           "serve-paused-frames",
           "frame-presented",
           "arm-canvas-keys",
+          "canvas-key",
           "resolve-canvas-key-action",
           "stage-measure",
           "stage-act",
