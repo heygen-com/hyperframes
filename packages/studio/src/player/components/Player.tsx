@@ -107,7 +107,7 @@ async function playerSrc(
   return opaque ? previewUnderFrameToken(src, onStale) : src;
 }
 
-/** A primed frame token found stale: the preview loads again under the current one, now or once the player exists. */
+/** A primed frame token found stale, or never confirmed: the preview loads again under the current one. */
 function staleTokenSwap(canceled: () => boolean) {
   let shown: HyperframesPlayerElement | null = null;
   let fresher: string | null = null;
@@ -120,6 +120,12 @@ function staleTokenSwap(canceled: () => boolean) {
     src: (primed: string) => fresher ?? primed,
     show(player: HyperframesPlayerElement) {
       shown = player;
+    },
+    retry(primed: string, load: (src: string) => void, askAgain?: () => Promise<string>) {
+      if (!askAgain) return load(fresher ?? primed);
+      void askAgain().then((current) => {
+        if (!canceled()) load(current);
+      });
     },
   };
 }
@@ -219,14 +225,19 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
         const retryPreview = () => {
           retryCountRef.current += 1;
-          const retryUrl = new URL(swap.src(primed), window.location.origin);
-          retryUrl.searchParams.set("_hfStudioRetry", String(retryCountRef.current));
+          const attempt = retryCountRef.current;
           setPreviewError(null);
           setCompositionLoading(true);
           loadStartedAtRef.current = performance.now();
           loadIdRef.current += 1;
           player.removeAttribute("no-load-timeout");
-          player.setAttribute("src", retryUrl.pathname + retryUrl.search);
+          const load = (current: string) => {
+            const retryUrl = new URL(current, window.location.origin);
+            retryUrl.searchParams.set("_hfStudioRetry", String(attempt));
+            player.setAttribute("src", retryUrl.pathname + retryUrl.search);
+          };
+          const askAgain = () => playerSrc(previewSource, opaque, swap.onStale);
+          swap.retry(primed, load, opaque ? askAgain : undefined);
         };
         retryPreviewRef.current = retryPreview;
         const iframe = player.iframeElement;

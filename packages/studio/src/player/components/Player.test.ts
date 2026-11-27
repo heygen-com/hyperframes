@@ -255,6 +255,38 @@ describe("a host's sandbox origin", () => {
     );
     if (!retry) throw new Error("retry action did not render");
     act(() => retry.click());
+    await settle();
+    expect(player.getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+    );
+  });
+
+  // fails without the fix: when the background check failed, Retry preview kept loading the unconfirmed primed token.
+  it("asks for the current token again on Retry preview when the primed one was never confirmed", async () => {
+    const answers: ({ token: string } | null)[] = [null, { token }];
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      const body = answers.shift() ?? null;
+      return { ok: body !== null, json: async () => body } as Response;
+    });
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    const { player } = await mountPlayer({
+      directUrl: undefined,
+      projectId: "demo",
+      sandboxOrigin: "opaque",
+    });
+    await settle();
+    expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${"S".repeat(43)}`);
+
+    act(() => {
+      player.dispatchEvent(new CustomEvent("error", { detail: { message: "refused" } }));
+    });
+    const retry = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent === "Retry preview",
+    );
+    if (!retry) throw new Error("retry action did not render");
+    act(() => retry.click());
+    await settle();
+    expect(fetch).toHaveBeenCalledTimes(2);
     expect(player.getAttribute("src")).toBe(
       `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
     );

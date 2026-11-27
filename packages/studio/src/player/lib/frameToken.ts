@@ -22,14 +22,11 @@ export function previewWithoutFrameToken(href: string): string {
 
 let primed: { projectId: string; token: string } | null = null;
 
-/** The frame token the next sealed preview of `projectId` loads under, from a host that already holds it, so the
- * preview need not ask first. Used once; another prime, or `null`, replaces it. */
 export function primeFrameToken(next: { projectId: string; token: string } | null): void {
   primed = next;
 }
 
-/** The preview path under its project's frame token, where an opaque frame's own loads are let through. A primed
- * token is checked in the background, and `onStale` gets the path under the current one if it has changed. */
+/** The preview path under its project's frame token, where an opaque frame's own loads are let through. */
 export async function previewUnderFrameToken(
   src: string,
   onStale?: (fresh: string) => void,

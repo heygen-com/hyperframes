@@ -61,7 +61,6 @@ function parseUrl(src: string): URL | null {
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
-// The host vouches that a sealed same-site `src` already carries the runtime, so it loads without being read first.
 const SRC_CARRIES_RUNTIME_ATTR = "src-carries-runtime";
 const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
 
