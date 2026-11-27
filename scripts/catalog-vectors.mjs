@@ -22,5 +22,6 @@ function rowCosine(a, b, start, end) {
     normA += x * x;
     normB += y * y;
   }
+  if (normA === 0 || normB === 0) return normA === normB ? 1 : 0;
   return dot / Math.sqrt(normA * normB);
 }

@@ -58,6 +58,26 @@ test("vectors that differ only by float noise between machines are not stale", (
   rmSync(committed, { recursive: true });
 });
 
+test("an all-zero row shared by two vectors is not stale", () => {
+  const generated = tree({
+    "a/local-vectors.json": meta,
+    "a/local-vectors.bin": vectors([
+      [0, 0, 0, 0],
+      [1, 0, 0, 0],
+    ]),
+  });
+  const committed = tree({
+    "a/local-vectors.json": meta,
+    "a/local-vectors.bin": vectors([
+      [0, 0, 0, 0],
+      [1, 0.001, 0, 0],
+    ]),
+  });
+  assert.deepEqual(treeDifferences(generated, committed), []);
+  rmSync(generated, { recursive: true });
+  rmSync(committed, { recursive: true });
+});
+
 test("vectors with a row that points elsewhere, or a different row count, are stale", () => {
   // a: cosine 0.984, below the closest two different catalog items (0.9897).
   const generated = tree({
