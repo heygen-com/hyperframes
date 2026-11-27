@@ -1867,6 +1867,31 @@ describe("browser pool", () => {
     await second.release();
   });
 
+  // fails without the fix: launchBrowser left proc.stdio unguarded after PipeTransport.close.
+  it("absorbs late EPIPE on a launched browser's CDP pipe after Puppeteer drops its listener", async () => {
+    const pipe = new EventEmitter();
+    const puppeteerListener = () => {};
+    pipe.on("error", puppeteerListener);
+    const browser = {
+      ...makeMockBrowser(),
+      process: () => ({ kill: vi.fn(), killed: false, stdio: [null, null, null, pipe] }),
+      close: vi.fn(async () => {
+        pipe.off("error", puppeteerListener);
+      }),
+    } as unknown as Browser;
+    launchFn.mockResolvedValueOnce(browser);
+
+    const lease = await acquireBrowser(["--no-sandbox"], {
+      enableBrowserPool: false,
+      forceScreenshot: true,
+    });
+    await lease.release();
+
+    expect(() =>
+      pipe.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" })),
+    ).not.toThrow();
+  });
+
   it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
     const [a, b, c] = await Promise.all([
       acquireBrowser(["--no-sandbox"], poolCfg),
