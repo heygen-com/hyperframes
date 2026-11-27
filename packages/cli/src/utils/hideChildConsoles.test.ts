@@ -1,6 +1,6 @@
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
-import { hideChildConsoles } from "./hideChildConsoles.js";
+import { hideChildConsoles, TASKKILL_TIMEOUT_MS } from "./hideChildConsoles.js";
 
 function fakeModule() {
   const calls: unknown[][] = [];
@@ -65,13 +65,21 @@ describe("hideChildConsoles", () => {
     expect(calls[3]?.at(-1)).toBe(callback);
   });
 
-  it("silences taskkill's stderr when its target is already gone", () => {
+  it("silences and time-limits taskkill, however it is started", () => {
     const calls = run("win32", (m) => {
       m.execSync("taskkill /pid 1 /T /F");
+      m.spawn("taskkill", ["/PID", "1", "/T", "/F"], { stdio: "ignore" });
       m.execSync("echo hi");
     });
-    expect(calls[0]?.[2]).toEqual({ windowsHide: true, stdio: "ignore" });
-    expect(calls[1]?.[2]).toEqual({ windowsHide: true });
+    const taskkill = { windowsHide: true, stdio: "ignore", timeout: TASKKILL_TIMEOUT_MS };
+    expect(calls[0]).toStrictEqual([
+      "execFileSync",
+      "taskkill",
+      ["/pid", "1", "/T", "/F"],
+      taskkill,
+    ]);
+    expect(calls[1]?.[3]).toStrictEqual(taskkill);
+    expect(calls[2]?.[2]).toEqual({ windowsHide: true });
   });
 
   it("leaves a caller that wants the window alone", () => {
