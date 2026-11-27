@@ -117,6 +117,8 @@ import {
 import {
   canvasKeyActionEvent,
   parseArmCanvasKeys,
+  parseCanvasKeyPress,
+  type CanvasKeyPress,
   parseResolveCanvasKeyAction,
   type ArmCanvasKeysParams,
   type ArmCanvasKeysResult,
@@ -290,6 +292,7 @@ export const EDITING_REQUEST_KINDS = [
   "serve-paused-frames",
   "frame-presented",
   "arm-canvas-keys",
+  "canvas-key",
   "resolve-canvas-key-action",
   "stage-measure",
   "stage-act",
@@ -492,6 +495,7 @@ export interface EditingRequests {
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
   "frame-presented": { params: NoParams; result: { presented: boolean } };
   "arm-canvas-keys": { params: ArmCanvasKeysParams; result: ArmCanvasKeysResult };
+  "canvas-key": { params: CanvasKeyPress; result: { handled: boolean } };
   "resolve-canvas-key-action": {
     params: ResolveCanvasKeyActionParams;
     result: ResolveCanvasKeyActionResult;
@@ -817,6 +821,7 @@ const PARAM_PARSERS: {
       : null,
   "frame-presented": noParams,
   "arm-canvas-keys": parseArmCanvasKeys,
+  "canvas-key": parseCanvasKeyPress,
   "resolve-canvas-key-action": parseResolveCanvasKeyAction,
   "stage-measure": parseStageMeasureParams,
   "stage-act": parseStageActParams,

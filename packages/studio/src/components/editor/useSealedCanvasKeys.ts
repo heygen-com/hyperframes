@@ -28,6 +28,7 @@ import {
   canCanvasNudgeTargets,
 } from "./domEditNudge";
 import { filterNestedDomEditGroupItems } from "./domEditOverlayGeometry";
+import { matchCombo, parseCombo } from "../../keys";
 import { previewStandInHandle } from "./previewDrafts";
 
 export interface RuntimeNudgeStep {
@@ -187,13 +188,18 @@ function buildArmParams(input: {
   };
 }
 
-function focusSealedIframe(iframe: HTMLIFrameElement): void {
-  iframe.focus({ preventScroll: true });
-  try {
-    iframe.contentWindow?.focus();
-  } catch {
-    /* cross-origin guard */
-  }
+// Studio keeps the keyboard in sealed mode: its own trusted press of an armed combo asks the frame to draw it.
+let sealedPress: ((event: KeyboardEvent) => boolean) | null = null;
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      if (!event.isTrusted || !sealedPress?.(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    },
+    true,
+  );
 }
 
 type CanvasActionHandler = (event: CanvasKeyActionEvent) => void;
@@ -251,12 +257,12 @@ function startSealedCanvasSession(input: {
   allowDelete: boolean;
   resetMayClaim: boolean;
 }): () => void {
-  const { iframe, armedReadyRef, pointerDownRef, onDeleteRef, applyNudgeRef, selection } = input;
+  const { iframe, armedReadyRef, onDeleteRef, applyNudgeRef, selection } = input;
   const revision = ++lastCanvasKeyRevision;
   armedReadyRef.current = false;
   const { params, armedDeletes } = buildArmParams({
     revision,
-    focus: !pointerDownRef.current,
+    focus: false,
     selection,
     groupSelections: input.groupSelections,
     studioKeys: input.studioKeys,
@@ -283,13 +289,35 @@ function startSealedCanvasSession(input: {
     });
   });
   const stopKeys = forwardSealedKeys(iframe, input.overlayRef, sameLoad);
+  const deleteCombos = params.deleteCombos.map((text) => parseCombo(text)!);
+  const nudgeCombos = (params.nudge?.combos ?? []).map(({ combo }) => parseCombo(combo)!);
+  const press = (event: KeyboardEvent) => {
+    if (!live || !armedReadyRef.current || !sameLoad()) return false;
+    const armedKey =
+      (!event.repeat && deleteCombos.some((combo) => matchCombo(event, combo))) ||
+      nudgeCombos.some((combo) => matchCombo(event, combo));
+    if (!armedKey) return false;
+    const { key, code, altKey, ctrlKey, metaKey, shiftKey, repeat } = event;
+    void previewRequest(iframe, "canvas-key", {
+      revision,
+      key,
+      code,
+      altKey,
+      ctrlKey,
+      metaKey,
+      shiftKey,
+      repeat,
+    });
+    return true;
+  };
+  sealedPress = press;
   void previewRequest(iframe, "arm-canvas-keys", params).then((res) => {
     if (!live || !sameLoad() || !res?.armed) return;
     armedReadyRef.current = true;
-    if (!pointerDownRef.current && hasSealedCanvasKeyboardHold(iframe)) focusSealedIframe(iframe);
   });
   return () => {
     live = false;
+    if (sealedPress === press) sealedPress = null;
     armedReadyRef.current = false;
     stopKeys();
     releaseHold();
@@ -340,15 +368,6 @@ function useCanvasFocusOwnership(
     const onPointerUp = () => {
       if (!pointerDownRef.current) return;
       pointerDownRef.current = false;
-      const iframe = iframeRef.current;
-      if (
-        iframe &&
-        armedReadyRef.current &&
-        previewFrameOpaque(iframe) &&
-        hasSealedCanvasKeyboardHold(iframe)
-      ) {
-        focusSealedIframe(iframe);
-      }
     };
     const onFocusIn = (event: FocusEvent) => {
       if (!eventInsideCanvas(event, overlayRef.current, iframeRef.current)) setCanvasFocused(false);

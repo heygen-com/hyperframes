@@ -42,6 +42,30 @@ export interface ArmCanvasKeysResult {
   revision: number;
 }
 
+export interface CanvasKeyPress {
+  revision: number;
+  key: string;
+  code: string;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  repeat: boolean;
+}
+
+const PRESS_KEYS = "altKey,code,ctrlKey,key,metaKey,repeat,revision,shiftKey";
+const isShortText = (value: unknown): value is string =>
+  typeof value === "string" && value.length <= MAX_COMBO_LENGTH;
+
+export function parseCanvasKeyPress(params: unknown): CanvasKeyPress | null {
+  if (!isRecord(params) || Object.keys(params).sort().join() !== PRESS_KEYS) return null;
+  const { revision, key, code, altKey, ctrlKey, metaKey, shiftKey, repeat } = params;
+  if (!isNonNegInt(revision) || !isShortText(key) || !isShortText(code)) return null;
+  const flags = [altKey, ctrlKey, metaKey, shiftKey, repeat];
+  if (!flags.every((flag) => typeof flag === "boolean")) return null;
+  return params as unknown as CanvasKeyPress;
+}
+
 export interface ResolveCanvasKeyActionParams {
   actionId: number;
   outcome: "commit" | "rollback";
@@ -422,22 +446,30 @@ function forwardTrustedKey(state: ArmedState, event: KeyboardEvent): void {
   });
 }
 
-function handleTrustedKeyDown(state: ArmedState, event: KeyboardEvent): void {
+function runArmedAction(state: ArmedState, press: Omit<CanvasKeyPress, "revision">): boolean {
   if (
-    !event.repeat &&
+    !press.repeat &&
     state.deleteHandles.length > 0 &&
-    state.deleteCombos.some((combo) => matchCombo(event, combo))
+    state.deleteCombos.some((combo) => matchCombo(press, combo))
   ) {
-    preventEvent(event);
     runLocalDelete(state);
-    return;
+    return true;
   }
-  const nudgeHit = state.nudge?.combos.find(({ combo }) => matchCombo(event, combo));
-  if (state.nudge && nudgeHit) {
-    preventEvent(event);
-    runLocalNudge(state, state.nudge, nudgeHit.dx, nudgeHit.dy);
-    return;
-  }
+  const nudgeHit = state.nudge?.combos.find(({ combo }) => matchCombo(press, combo));
+  if (!state.nudge || !nudgeHit) return false;
+  runLocalNudge(state, state.nudge, nudgeHit.dx, nudgeHit.dy);
+  return true;
+}
+
+/** Studio's own press of an armed combo: the frame draws it as it would a press in the frame. */
+export function pressCanvasKey(port: MessagePort, press: CanvasKeyPress): { handled: boolean } {
+  const state = armed;
+  if (!state || state.port !== port || state.revision !== press.revision) return { handled: false };
+  return { handled: runArmedAction(state, press) };
+}
+
+function handleTrustedKeyDown(state: ArmedState, event: KeyboardEvent): void {
+  if (runArmedAction(state, event)) return preventEvent(event);
   if (state.forwardCombos.some((combo) => matchCombo(event, combo))) preventEvent(event);
   state.down.add(event.code || event.key);
   forwardTrustedKey(state, event);

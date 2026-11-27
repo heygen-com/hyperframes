@@ -74,6 +74,7 @@ import { endTextEdit, textEdit } from "./editing/textEdit";
 import { portPausedVideoProvider } from "./editing/pausedFrames";
 import {
   armCanvasKeys,
+  pressCanvasKey,
   createRuntimeChannel,
   resetCanvasKeys,
   resolveCanvasKeyAction,
@@ -333,6 +334,7 @@ const HANDLERS: Handlers = {
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
   "frame-presented": waitForFramePresented,
   "arm-canvas-keys": (params, port) => armCanvasKeys(port, params, EDITING_PROTOCOL_VERSION),
+  "canvas-key": (params, port) => pressCanvasKey(port, params),
   "resolve-canvas-key-action": resolveCanvasKeyAction,
   "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
   "stage-act": (params, port) => stageAct(params, port, EDITING_PROTOCOL_VERSION),

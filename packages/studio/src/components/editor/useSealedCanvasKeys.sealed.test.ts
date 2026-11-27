@@ -281,7 +281,7 @@ it("runs in-frame Delete with Studio commit and restores on persist rollback", a
 
   // Trusted Delete removes #target immediately in-frame, then Studio fails save -> runtime restores #target.
   window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
-  expect(document.getElementById("target")).toBeNull();
+  await vi.waitFor(() => expect(document.getElementById("target")).toBeNull());
   await vi.waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
 
   await act(async () => resolveDelete(false));
@@ -313,8 +313,8 @@ it("commits rapid repeat Arrow nudges once with exact cumulative delta and zero 
   window.dispatchEvent(
     trustedKey("keydown", { key: "ArrowDown", code: "ArrowDown", shiftKey: true }),
   );
+  await vi.waitFor(() => expect(targetEl.style.getPropertyValue("translate")).toContain("10px"));
   expect(targetEl.style.getPropertyValue("translate")).toContain("3px");
-  expect(targetEl.style.getPropertyValue("translate")).toContain("10px");
 
   // Wait for Studio's 400ms nudge debounce commit.
   await vi.waitFor(() => expect(commit).toHaveBeenCalledTimes(1), {
@@ -398,7 +398,7 @@ it("starts a cold first nudge on a GSAP clip from its pre-draw position, so the 
   await waitForArm((p) => p.nudge !== null);
 
   window.dispatchEvent(trustedKey("keydown", { key: "ArrowRight", code: "ArrowRight" }));
-  expect(gsapState).toEqual({ x: 41, y: 10 });
+  await vi.waitFor(() => expect(gsapState).toEqual({ x: 41, y: 10 }));
 
   await vi.waitFor(() => expect(commit).toHaveBeenCalledTimes(1), {
     timeout: CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 1000,
@@ -431,7 +431,7 @@ it("leaves Backspace with Studio while Reset Keyframes may claim it for the sele
 
   // Delete itself never resets keyframes, so it still runs in-frame.
   window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
-  expect(document.getElementById("target")).toBeNull();
+  await vi.waitFor(() => expect(document.getElementById("target")).toBeNull());
   await vi.waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
 });
 
@@ -451,7 +451,7 @@ it("saves an in-frame Delete when the canvas loses focus before Studio takes it"
   await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
 
   window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
-  expect(document.getElementById("target")).toBeNull();
+  await vi.waitFor(() => expect(document.getElementById("target")).toBeNull());
   // The timeline takes focus before the frame's Delete notification reaches Studio.
   act(() => {
     document
@@ -460,7 +460,7 @@ it("saves an in-frame Delete when the canvas loses focus before Studio takes it"
   });
   // It was pressed while armed, so it saves as it would unsealed; a failed save still restores it.
   await vi.waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
-  expect(document.getElementById("target")).toBeNull();
+  await vi.waitFor(() => expect(document.getElementById("target")).toBeNull());
   await act(async () => resolveDelete(false));
   await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
 });
@@ -479,7 +479,7 @@ it("rolls back a Delete whose arm Studio does not know", async () => {
     forwardCombos: [],
   });
   window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
-  expect(document.getElementById("target")).toBeNull();
+  await vi.waitFor(() => expect(document.getElementById("target")).toBeNull());
   await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
   expect(onDelete).not.toHaveBeenCalled();
 });
@@ -503,7 +503,9 @@ it("saves a delayed group Delete on the members the frame removed, not the group
   await waitForArm((p) => (p.deleteHandles as string[]).length === 2);
 
   window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
-  expect([document.getElementById("a"), document.getElementById("b")]).toEqual([null, null]);
+  await vi.waitFor(() =>
+    expect([document.getElementById("a"), document.getElementById("b")]).toEqual([null, null]),
+  );
   // The selection moves to C+D before the frame's notification reaches Studio.
   select("c", ["c", "d"]);
 
