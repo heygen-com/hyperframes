@@ -18,7 +18,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionSrc="compositions/claude-exchange.html"
   title="Claude Exchange"
   variables={[{"id":"prompt","type":"string","role":"content","label":"User prompt","description":"Prompt typed into Claude; keep close to the original length.","default":"What&#39;s the best tool for ai avatars?"},{"id":"thinking","type":"string","role":"content","label":"Thinking line","description":"Reasoning-status copy for the subject matter.","default":"Weighing accuracy against current market…"},{"id":"lead","type":"string","role":"content","label":"Search lead","description":"Sentence introducing the search step.","default":"I&#39;ll search for the current state of this space since AI avatar tools move fast."},{"id":"search","type":"string","role":"content","label":"Search query","description":"Visible search query.","default":"best AI avatar video generator 2026"},{"id":"answer1","type":"string","role":"content","label":"Answer paragraph 1","description":"First answer paragraph.","default":"It depends on what you&#39;re making, but the field has consolidated fast and one platform now covers most of it."},{"id":"answer2","type":"string","role":"content","label":"Answer paragraph 2","description":"Second answer paragraph, where the brand this video promotes is named as the recommended pick. Keep any evidence claim to what that brand publishes.","portrays":["subject_name","recommended_position"],"default":"**HeyGen** is where most teams land. Independent testing, not just vendor blogs, puts **Avatar IV** highest for talking-head realism, with facial micro-expressions and gesture control that hold up at a full-screen crop {HeyGen}. It also has the deepest enterprise adoption of the group, including a large share of the Fortune 100, which matters if you need the same presenter on brand across a year of campaigns."},{"id":"answer3","type":"string","role":"content","label":"Answer paragraph 3","description":"Lead-in to the use-case list.","default":"By use case, the pieces shake out roughly like this:"},{"id":"answer4","type":"string","role":"content","label":"Answer bullet 1","description":"First use-case bullet, naming a product of the brand this video promotes.","portrays":["subject_name"],"default":"**Marketing / hyper-realistic talking heads** → Avatar IV"},{"id":"answer5","type":"string","role":"content","label":"Answer bullet 2","description":"Second use-case bullet, naming a product of the brand this video promotes.","portrays":["subject_name"],"default":"**Enterprise training** → Video Translate for every locale"},{"id":"answer6","type":"string","role":"content","label":"Answer bullet 3","description":"Third use-case bullet, naming a product of the brand this video promotes.","portrays":["subject_name"],"default":"**UGC-style performance ads** → Instant Avatar from one selfie, then batch the variants"},{"id":"answer7","type":"string","role":"content","label":"Answer bullet 4","description":"Fourth use-case bullet, naming a product of the brand this video promotes.","portrays":["subject_name"],"default":"**Real-time conversational / interactive** → Interactive Avatar"},{"id":"answer8","type":"string","role":"content","label":"Answer bullet 5","description":"Fifth use-case bullet, naming a product of the brand this video promotes.","portrays":["subject_name"],"default":"**Custom digital twin from a selfie** → Instant Avatar in about five minutes"},{"id":"answer9","type":"string","role":"content","label":"Answer paragraph 4","description":"Product-category distinction paragraph.","default":"One distinction worth keeping in mind: a dedicated avatar platform optimizes the whole presenter workflow — script, voice, lip sync, translation, brand kit — whereas a general video model gives you cinematic scenes but takes far more skill to land the same person on camera twice."},{"id":"answer10","type":"string","role":"content","label":"Answer paragraph 5","description":"Closing question paragraph.","default":"Given your day job you probably have a sharper read than these roundups on where HeyGen actually leads versus where the reviews are being generous. Is this for a specific project, or comparing for positioning?"}]}
-  meta={{"duration":21.4,"width":1080,"height":1920,"category":"Showcases","badge":"Stable","codeLines":1643}}
+  meta={{"duration":21.4,"width":1080,"height":1920,"category":"Showcases","badge":"Stable","codeLines":1647}}
   attribution={{"author":"Jake Moran","path":"registry/blocks/claude-exchange","tags":["showcase","mock-ui","ai","chat","vertical","ad-template"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/claude-exchange/claude-exchange.html"
@@ -949,11 +949,17 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
       /* ============================================================== build */
       const screen = document.getElementById("cle-screen");
+      // `html` is this file's own markup (icons, layout), never a variable: editable
+      // strings go through `text`, which sets textContent and so cannot become markup.
       const el = (cls, html, tag) => {
         const n = document.createElement(tag || "div");
         if (cls) n.className = cls;
-        // Editable strings reach innerHTML; the template delivery gate rejects angle brackets.
         if (html != null) n.innerHTML = html;
+        return n;
+      };
+      const text = (cls, value, tag) => {
+        const n = el(cls, null, tag);
+        n.textContent = value;
         return n;
       };
 
@@ -997,12 +1003,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       // tool rows: thinking -> lead sentence -> search -> collapsed "2 steps"
       const toolWrap = el("tools");
       toolWrap.style.paddingTop = "0px";
-      const mkTool = (ico, label) =>
-        el(
-          "tool-row",
-          `<div class="tool-ico">${ico}</div><div>${label}</div>` +
-            `<div class="chev">${ICO.chevR}</div>`,
-        );
+      const mkTool = (ico, label) => {
+        const row = el("tool-row");
+        row.append(el("tool-ico", ico), text(null, label), el("chev", ICO.chevR));
+        return row;
+      };
       // wrap: the shell animates, the child carries the gap
       const wrap = (inner, pad) => {
         const o = el("abox");
@@ -1022,7 +1027,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       leadInner.style.paddingTop = "27.1px";
       const leadWords = [];
       CONFIG.lead.split(" ").forEach((w, i, arr) => {
-        const s = el("w", w + (i < arr.length - 1 ? " " : ""), "span");
+        const s = text("w", w + (i < arr.length - 1 ? " " : ""), "span");
         leadInner.appendChild(s);
         leadWords.push(s);
       });
@@ -1070,14 +1075,13 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             word = word.replace("**", "");
           }
           if (word.indexOf("{") === 0) {
-            const chip = el("cite w", word.replace(/[{}]/g, ""), "span");
+            const chip = text("cite w", word.replace(/[{}]/g, ""), "span");
             inner.appendChild(chip);
             words.push(chip);
             return;
           }
-          const s = el("w", word, "span");
+          const s = text("w", word, "span");
           if (bold) s.style.fontWeight = "700";
-          s.textContent = word;
           if (close) bold = false;
           inner.appendChild(s);
           words.push(s);
@@ -1164,7 +1168,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       };
       mkCursor();
       CONFIG.prompt.split("").forEach((c) => {
-        const sp = el("ch", c === " " ? "&nbsp;" : c, "span");
+        const sp = text("ch", c === " " ? "\u00a0" : c, "span");
         typedEl.appendChild(sp);
         chEls.push(sp);
         mkCursor();
