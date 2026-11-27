@@ -39,11 +39,12 @@ describe.skipIf(process.platform === "win32")("extraction ffmpeg threads", () =>
       [
         "#!/bin/sh",
         `case " $* " in *" -i "*) ;; *) exec "${getFfmpegBinary()}" "$@" ;; esac`,
-        'd="$HF_TEST_SHIM_DIR"; t=0; prev=',
+        // A run without thread flags takes ffmpeg's default: every CPU.
+        'd="$HF_TEST_SHIM_DIR"; t=32; prev=',
         'for a in "$@"; do [ "$prev" = -filter_threads ] && t=$a; prev=$a; done',
         `printf '%s\\037' "$@" > "$d/args-$$"`,
         'echo "$t" > "$d/running/$$"',
-        'cat "$d"/running/* | awk \'{ s += $1 } END { print s }\' >> "$d/alive-threads"',
+        'cat "$d"/running/* | awk \'{ s += $1 } END { print s, NR }\' >> "$d/alive-threads"',
         // Hold each run until the expected number have started, so every one runs beside the others.
         'n=0; until [ "$(wc -l < "$d/alive-threads")" -ge "$HF_TEST_TOGETHER" ] || [ $n -ge 200 ]; do sleep 0.05; n=$((n+1)); done',
         `"${getFfmpegBinary()}" "$@"; rc=$?`,
@@ -102,32 +103,33 @@ describe.skipIf(process.platform === "win32")("extraction ffmpeg threads", () =>
           ...valuesOf(args, "-filter_threads"),
         ];
       });
-    const aliveThreads = readFileSync(join(shimDir, "alive-threads"), "utf8")
+    const alive = readFileSync(join(shimDir, "alive-threads"), "utf8")
       .trim()
-      .split(/\s+/)
-      .map(Number);
-    return { threads, aliveThreads };
+      .split("\n")
+      .map((line) => line.split(" ").map(Number));
+    const threadsPastTheBudget = alive.map(([threads = 0, runs = 0]) => threads - 32 - runs);
+    return { threads, alive, threadsPastTheBudget };
   }
 
-  it("gives a lone clip every CPU for decoding, filtering and encoding", async () => {
+  it("leaves a lone clip in one segment to ffmpeg's own thread counts, as main does", async () => {
     process.env.HF_TEST_TOGETHER = "1";
     const { threads } = await extractThroughShim("lone", 1, 1, 10);
-    expect(threads).toEqual([["32", "32", "32"]]);
+    expect(threads).toEqual([[]]);
   }, 60_000);
 
   // One 4K run measured 211 MB at 2 threads and 1057 MB at 32, so runs alive together split the CPUs.
-  it("splits the CPUs between clips extracted together, never past the budget", async () => {
+  it("splits the CPUs between clips extracted together, a thread past the share each", async () => {
     process.env.HF_TEST_TOGETHER = "3";
-    const { threads, aliveThreads } = await extractThroughShim("three", 3, 1, 10);
-    expect(threads).toEqual(Array(3).fill(Array(3).fill(String(Math.floor(32 / 3)))));
-    expect(aliveThreads).toHaveLength(3);
-    expect(Math.max(...aliveThreads)).toBeLessThanOrEqual(32);
+    const { threads, alive, threadsPastTheBudget } = await extractThroughShim("three", 3, 1, 10);
+    expect(threads).toEqual(Array(3).fill(Array(3).fill(String(Math.floor(32 / 3) + 1))));
+    expect(alive).toHaveLength(3);
+    expect(Math.max(...threadsPastTheBudget)).toBeLessThanOrEqual(0);
   }, 60_000);
 
   it("splits the CPUs between the segments of one long clip", async () => {
     process.env.HF_TEST_TOGETHER = "2";
-    const { threads, aliveThreads } = await extractThroughShim("segments", 1, 125, 1);
-    expect(threads).toEqual(Array(2).fill(Array(3).fill("16")));
-    expect(Math.max(...aliveThreads)).toBeLessThanOrEqual(32);
+    const { threads, threadsPastTheBudget } = await extractThroughShim("segments", 1, 125, 1);
+    expect(threads).toEqual(Array(2).fill(Array(3).fill("17")));
+    expect(Math.max(...threadsPastTheBudget)).toBeLessThanOrEqual(0);
   }, 60_000);
 });

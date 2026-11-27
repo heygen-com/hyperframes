@@ -1104,7 +1104,8 @@ async function whileExtractionRunsArePlanned<T>(runs: number, task: () => Promis
 }
 function withThreadShareOfPlannedRuns(args: string[]): string[] {
   const runsSharingTheCpus = Math.min(EXTRACTION_SLOTS, Math.max(1, extractionRunsPlanned));
-  const threads = String(Math.max(1, Math.floor(cpuBudget() / runsSharingTheCpus)));
+  if (runsSharingTheCpus === 1) return args;
+  const threads = String(Math.floor(cpuBudget() / runsSharingTheCpus) + 1);
   return [
     ...["-filter_threads", threads, "-threads", threads],
     ...args.slice(0, -1),
