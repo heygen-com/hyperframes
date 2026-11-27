@@ -199,6 +199,8 @@ function focusSealedIframe(iframe: HTMLIFrameElement): void {
 type CanvasActionHandler = (event: CanvasKeyActionEvent) => void;
 const actionRoutes = new WeakMap<object, Map<number, CanvasActionHandler>>();
 
+const personActedJustNow = () => navigator.userActivation?.isActive === true;
+
 /** One action listener per frame load, routing by arm revision; a Delete for no known arm rolls back. */
 function canvasActionRoute(iframe: HTMLIFrameElement): Map<number, CanvasActionHandler> {
   const client = previewEditingClient(iframe);
@@ -206,7 +208,7 @@ function canvasActionRoute(iframe: HTMLIFrameElement): Map<number, CanvasActionH
   if (known) return known;
   const sessions = new Map<number, CanvasActionHandler>();
   client.onCanvasKeyAction((event) => {
-    const handler = sessions.get(event.revision);
+    const handler = personActedJustNow() ? sessions.get(event.revision) : undefined;
     if (handler) handler(event);
     else if (event.action === "delete") resolveAction(iframe, event.actionId, "rollback");
   });
@@ -220,7 +222,7 @@ function forwardSealedKeys(
   sameLoad: () => boolean,
 ): () => void {
   return previewEditingClient(iframe).onKey((key) => {
-    if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
+    if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe) || !personActedJustNow()) return;
     (overlayRef.current ?? window).dispatchEvent(
       new KeyboardEvent(key.type, {
         key: key.key,
