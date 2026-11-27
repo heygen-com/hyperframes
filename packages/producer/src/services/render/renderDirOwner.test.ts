@@ -57,4 +57,12 @@ describe("createRenderWorkDir", () => {
 
     expect(readdirSync(parent)).toContain(staging);
   });
+
+  it("creates a missing temp parent before reserving the render work dir", () => {
+    const missingTemp = join(parent, "absent-temp", "nested");
+    const created = createRenderWorkDir(join(missingTemp, "hf-render-"), parent);
+
+    expect(created.startsWith(join(missingTemp, "hf-render-"))).toBe(true);
+    expect(readdirSync(created)).toContain("owner.json");
+  });
 });
