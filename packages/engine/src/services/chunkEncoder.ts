@@ -50,7 +50,7 @@ import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.typ
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
-import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { createStagingDir, toWin32LongPath } from "@hyperframes/core/atomic-file";
 import {
   concatListInputArgs,
   concatListText,
@@ -1129,8 +1129,10 @@ export async function applyFaststart(
 ): Promise<MuxResult> {
   // faststart is MP4-only (moves moov atom to file start for streaming).
   // WebM and MOV don't need it — skip the re-mux.
-  if (outputPath.endsWith(".webm") || outputPath.endsWith(".mov")) {
-    if (inputPath !== outputPath) copyFileSync(inputPath, outputPath);
+  if (/\.(webm|mov)$/i.test(outputPath)) {
+    if (inputPath !== outputPath) {
+      copyFileSync(toWin32LongPath(inputPath), toWin32LongPath(outputPath));
+    }
     return { success: true, outputPath, durationMs: 0 };
   }
   const args = ["-i", inputPath, "-c", "copy", "-movflags", "+faststart"];
