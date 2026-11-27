@@ -2,6 +2,7 @@
 // The parent owns every motion and easing; the frame only borrows named properties, writes validated values and
 // reports boxes, so a sealed act paints what an open one does without the parent touching the frame's document.
 import { MAX_DRAFT_PX, MAX_ELEMENT_TEXT, type EditingRect } from "../editingElement";
+import { listenFrameKeydown } from "./canvasKeys";
 import {
   captureStageGhosts,
   inertStageGhost,
@@ -94,6 +95,7 @@ export type StageInputEvent = {
   ctrlKey: boolean;
 };
 const STAGE_INPUTS = ["pointerdown", "drop", "keydown"] as const;
+const STAGE_POINTER_INPUTS = ["pointerdown", "drop"] as const;
 
 // ---- validation (both ends: the frame checks the parent's params, the parent checks the frame's replies)
 
@@ -519,7 +521,7 @@ function start(
     const { metaKey = false, ctrlKey = false } = event as KeyboardEvent;
     port.postMessage({ v: version, event: "stage-input", type: event.type, key, metaKey, ctrlKey });
   };
-  for (const type of STAGE_INPUTS) view?.addEventListener(type, onInput, true);
+  const stopInputs = view ? listenStageInputs(view, onInput) : () => {};
   // Observer callbacks run before the frame paints: an element its seek reveals is held before it shows.
   const watch =
     open.waiting.size > 0 && view
@@ -534,9 +536,18 @@ function start(
   open.stop = () => {
     watch?.disconnect();
     if (cap) view?.clearTimeout(cap);
-    for (const type of STAGE_INPUTS) view?.removeEventListener(type, onInput, true);
+    stopInputs();
   };
   return { op: "hold" as const, held };
+}
+
+function listenStageInputs(view: Window, onInput: (event: Event) => void): () => void {
+  for (const type of STAGE_POINTER_INPUTS) view.addEventListener(type, onInput, true);
+  const stopKeys = listenFrameKeydown(view, onInput);
+  return () => {
+    for (const type of STAGE_POINTER_INPUTS) view.removeEventListener(type, onInput, true);
+    stopKeys();
+  };
 }
 
 export function stageAct(

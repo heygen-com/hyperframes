@@ -1,6 +1,7 @@
 // Capture-first preview key handler: runs armed Delete/nudge in-frame and forwards Studio shortcuts.
 import { matchCombo, parseCombo, type Combo } from "../../keyCombo";
 import { capturePageIn, markedForStudio } from "../../studioPreviewMark";
+import { swallow } from "../diagnostics";
 import { isDomNode, isElementNode, isStylableElement } from "../domRealm";
 import { drawDrafts } from "../editingDraft";
 import {
@@ -291,6 +292,20 @@ let armed: ArmedState | null = null;
 let lastActionId = 0;
 const pendingDeletes = new Map<number, DetachedNode[]>();
 let shieldDispose: (() => void) | null = null;
+let shieldWindow: Window | null = null;
+const frameKeydownListeners = new Set<(event: KeyboardEvent) => void>();
+
+export function listenFrameKeydown(
+  view: Window,
+  listener: (event: KeyboardEvent) => void,
+): () => void {
+  if (view !== shieldWindow) {
+    view.addEventListener("keydown", listener, true);
+    return () => view.removeEventListener("keydown", listener, true);
+  }
+  frameKeydownListeners.add(listener);
+  return () => frameKeydownListeners.delete(listener);
+}
 
 function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -444,7 +459,16 @@ function handleShieldKey(state: ArmedState, event: KeyboardEvent): void {
   if (state.down.delete(event.code || event.key)) forwardTrustedKey(state, event);
 }
 
+function hear(listener: (event: KeyboardEvent) => void, event: Event): void {
+  try {
+    listener(event as KeyboardEvent);
+  } catch (err) {
+    swallow("canvasKeys.frameKeydown", err);
+  }
+}
+
 function onShieldEvent(event: Event): void {
+  if (event.type === "keydown") for (const listener of frameKeydownListeners) hear(listener, event);
   const state = armed;
   if (!state || !isTrustedEvent(event) || isActiveTextEditTarget(event.target)) return;
   stopEvent(event);
@@ -479,11 +503,13 @@ export function installPreviewKeyShield(
   for (const type of SHIELD_EVENTS) {
     targetWindow.addEventListener(type, onShieldEvent, { capture: true });
   }
+  shieldWindow = targetWindow;
   shieldDispose = () => {
     for (const type of SHIELD_EVENTS) {
       targetWindow.removeEventListener(type, onShieldEvent, { capture: true });
     }
     shieldDispose = null;
+    shieldWindow = null;
   };
   return shieldDispose;
 }

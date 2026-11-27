@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_PREVIEW_CAPTURE_MODE, STUDIO_PREVIEW_MARK_META } from "../../studioPreviewMark";
 import { installEditingAgent } from "../editingAgent";
 import { EDITING_CONNECT, EDITING_PORT, EDITING_PROTOCOL_VERSION } from "../editingPort";
-import { installPreviewKeyShield, resetCanvasKeys } from "./canvasKeys";
+import { installPreviewKeyShield, listenFrameKeydown, resetCanvasKeys } from "./canvasKeys";
 
 function markStudio(content?: string): HTMLMetaElement {
   const meta = document.createElement("meta");
@@ -433,6 +433,82 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     window.dispatchEvent(trustedKey("keydown", { key: " ", code: "Space" }));
     await vi.waitFor(() => expect(forwarded).toEqual(["Space", "Space", "Space"]));
     expect(filmSaw).toEqual(["Space", "Space"]);
+  });
+
+  it("still reports keys to a live stage-act hold while canvas keys are armed", async () => {
+    markStudio();
+    loadShield();
+    document.body.innerHTML = `<div data-composition-id="main"><div id="target" data-hf-id="hf-t">box</div></div>`;
+    const { port, dispose } = connectAgent(fakeParent);
+    disposeAgent = dispose;
+    const pushed: Array<Record<string, unknown>> = [];
+    port.addEventListener("message", (e: MessageEvent<Record<string, unknown>>) => {
+      if (e.data?.event === "stage-input" || e.data?.event === "canvas-key-action")
+        pushed.push(e.data);
+    });
+    const handle = (
+      (await ask(port, "query", { selector: "#target" })).result as {
+        matches: Array<{ handle: string }>;
+      }
+    ).matches[0]!.handle;
+    await ask(port, "stage-act", {
+      op: "hold",
+      acts: [
+        { key: "hf-t", hfId: "hf-t", borrow: ["opacity"], draw: { styles: { opacity: "0.5" } } },
+      ],
+      deferred: false,
+      caretColor: "#3ce6ac",
+    });
+    await ask(port, "arm-canvas-keys", {
+      revision: 1,
+      deleteHandles: [handle],
+      deleteCombos: ["Delete"],
+      nudge: null,
+      forwardCombos: [],
+    });
+
+    window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+    window.dispatchEvent(untrustedKey("keydown", { key: "x" }));
+    await vi.waitFor(() => expect(pushed).toHaveLength(3));
+    expect(pushed.map((m) => [m.event, m.key ?? m.action])).toEqual([
+      ["stage-input", "Delete"],
+      ["canvas-key-action", "delete"],
+      ["stage-input", "x"],
+    ]);
+  });
+
+  it("still stops and handles an armed key when a frame keydown listener throws", async () => {
+    markStudio();
+    loadShield();
+    document.body.innerHTML = `<div data-composition-id="main"><div id="target">box</div></div>`;
+    const { port, dispose } = connectAgent(fakeParent);
+    const stopThrowing = listenFrameKeydown(window, () => {
+      throw new Error("reporting failed");
+    });
+    const pageSaw: string[] = [];
+    const onPageKey = (e: KeyboardEvent) => pageSaw.push(e.code);
+    window.addEventListener("keydown", onPageKey, true);
+    disposeAgent = () => {
+      stopThrowing();
+      window.removeEventListener("keydown", onPageKey, true);
+      dispose();
+    };
+    const handle = (
+      (await ask(port, "query", { selector: "#target" })).result as {
+        matches: Array<{ handle: string }>;
+      }
+    ).matches[0]!.handle;
+    await ask(port, "arm-canvas-keys", {
+      revision: 1,
+      deleteHandles: [handle],
+      deleteCombos: ["Delete"],
+      nudge: null,
+      forwardCombos: [],
+    });
+
+    window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+    expect(document.getElementById("target")).toBeNull();
+    expect(pageSaw).toEqual([]);
   });
 
   it("never installs the key shield in same-origin, render, capture, or non-studio pages", () => {
