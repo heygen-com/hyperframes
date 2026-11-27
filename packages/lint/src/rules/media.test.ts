@@ -1663,6 +1663,124 @@ describe("placeholder_media_url", () => {
   });
 });
 
+describe("base64_media_prohibited", () => {
+  const payload = "GkXfo59ChoEBQveBAULygQRC8oEIQoKEd2VibQ==";
+  const audioTag = (value: string, quote = '"') =>
+    `<audio id="a1" src=${quote}${value}${quote} data-start="0"></audio>`;
+
+  const findingsFor = async (value: string, quote = '"') =>
+    (await lintHyperframeHtml(audioTag(value, quote))).findings.filter(
+      (finding) => finding.code === "base64_media_prohibited",
+    );
+
+  it.each([
+    ["plain audio", `data:audio/webm;base64,${payload}`],
+    ["plain video", `data:video/webm;base64,${payload}`],
+    ["an audio codecs parameter", `data:audio/webm;codecs=opus;base64,${payload}`],
+    ["several video parameters", `data:video/webm;codecs=vp9;profile=0;base64,${payload}`],
+    [
+      "a payload wrapped with LF",
+      `data:audio/mpeg;base64,${payload.slice(0, 20)}\n${payload.slice(20)}`,
+    ],
+    [
+      "a payload wrapped with CRLF",
+      `data:video/webm;codecs=vp9;base64,${payload.slice(0, 20)}\r\n${payload.slice(20)}`,
+    ],
+    [
+      "tabs, spaces and a form feed in the payload",
+      `data:audio/webm;base64, \t${payload.slice(0, 20)}\f${payload.slice(20)} `,
+    ],
+    ["an uppercase scheme and marker", `DATA:AUDIO/WEBM;BASE64,${payload}`],
+    ["exactly 20 payload characters", `data:audio/webm;base64,${payload.slice(0, 20)}`],
+    [
+      "a mixed-case payload ending in padding",
+      "data:audio/webm;base64,QUJDREVGR0hJSktMTU5PUFFSUFQ=",
+    ],
+    [
+      "a payload using the '+' and '/' alphabet characters",
+      `data:audio/webm;base64,${"+".repeat(10)}${"/".repeat(10)}`,
+    ],
+  ])("reports %s", async (_name, value) => {
+    const findings = await findingsFor(value);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.severity).toBe("error");
+  });
+
+  it("reports a double-quoted src", async () => {
+    expect(await findingsFor(`data:audio/webm;base64,${payload}`, '"')).toHaveLength(1);
+  });
+
+  it("reports a single-quoted src", async () => {
+    expect(await findingsFor(`data:video/webm;base64,${payload}`, "'")).toHaveLength(1);
+  });
+
+  it("reports a single-quoted src whose MIME parameter is double-quoted", async () => {
+    expect(await findingsFor(`data:audio/webm;codecs="opus";base64,${payload}`, "'")).toHaveLength(
+      1,
+    );
+  });
+
+  it.each([
+    ["a relative path", "assets/music.mp3"],
+    ["an HTTPS URL", "https://example.com/video.mp4"],
+    ["an image data URI", `data:image/png;base64,${payload}`],
+    ["a font data URI", `data:font/woff2;base64,${payload}`],
+    ["a 4-character payload", "data:audio/webm;base64,AAAA"],
+    ["a short payload after a codecs parameter", "data:audio/webm;codecs=opus;base64,AAAA"],
+    ["a 19-character payload", `data:audio/webm;base64,${"A".repeat(19)}`],
+    ["a whitespace-only payload", "data:audio/webm;base64, \n\t\r\f \n\t\r\f "],
+  ])("stays silent on %s", async (_name, value) => {
+    expect(await findingsFor(value)).toEqual([]);
+  });
+
+  it("stops at the attribute's closing quote rather than joining nearby text", async () => {
+    const html = `<audio id="a1" src="data:audio/webm;base64,AAAAAAAAAAAA" data-copy="BBBBBBBBBBBBBBBBBBBBBBBB" data-start="0"></audio>`;
+
+    expect(
+      (await lintHyperframeHtml(html)).findings.filter(
+        (finding) => finding.code === "base64_media_prohibited",
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not run past the tag into the next media element", async () => {
+    const html =
+      `<audio id="a1" src="data:audio/webm;base64,AAAAAAAAAAAA" data-start="0"></audio>` +
+      `<audio id="a2" src="data:audio/webm;base64,BBBBBBBBBBBB" data-start="0"></audio>`;
+
+    expect(
+      (await lintHyperframeHtml(html)).findings.filter(
+        (finding) => finding.code === "base64_media_prohibited",
+      ),
+    ).toEqual([]);
+  });
+
+  it("reports the size of the payload with the wrapping removed", async () => {
+    // 46 repeats put the unfolded payload just under 1.5 KB, so counting the 26 CRLFs
+    // instead of stripping them would round the message up to 2 KB.
+    const longPayload = payload.repeat(46);
+    const wrappedPayload = longPayload.match(/.{1,76}/g)?.join("\r\n") ?? longPayload;
+    const plain = await findingsFor(`data:audio/webm;base64,${longPayload}`);
+    const wrapped = await findingsFor(`data:audio/webm;codecs=opus;base64,${wrappedPayload}`);
+
+    expect(plain).toHaveLength(1);
+    expect(wrapped).toHaveLength(1);
+    expect(plain[0]?.message).toContain("(1 KB)");
+    expect(wrapped[0]?.message).toBe(plain[0]?.message);
+  });
+
+  it("handles very long payloads without backtracking", async () => {
+    const started = performance.now();
+    const matched = await findingsFor(`data:audio/webm;base64,${"A".repeat(100_000)}`);
+    const unmatched = await findingsFor(`data:audio/webm;codecs=${"A".repeat(100_000)}`);
+
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(matched).toHaveLength(1);
+    expect(unmatched).toEqual([]);
+  });
+});
+
 describe("speed_ramp_on_non_media", () => {
   const RATE = `data-automation='{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":1},{"t":2,"v":3}]}]}'`;
   const page = (tag: string) => `<!DOCTYPE html><html><body>
