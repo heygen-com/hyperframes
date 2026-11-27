@@ -1,24 +1,15 @@
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  type Dirent,
-  type Stats,
-} from "node:fs";
-import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
+import { constants, lstatSync, readdirSync, statSync, type Dirent, type Stats } from "node:fs";
+import { lstat, open, readdir, stat, type FileHandle } from "node:fs/promises";
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
   mkdirWithinProjectAsync,
   nodeMayRun,
   projectPathSegments,
+  ProjectRootMissingError,
   realFilePath,
+  realpathOff,
   resolveWithinProject as resolveInProject,
   toolTrustedFileKind,
   type EntryKind,
@@ -35,6 +26,7 @@ export {
   mkdirWithinProject,
   realFilePath,
   realpath,
+  realpathOff,
   realProjectRoot,
   type EntryKind,
 } from "@hyperframes/core/safe-path";
@@ -227,6 +219,22 @@ export function isProjectCacheFile(root: string, file: string): boolean {
   return stat !== undefined && isPlainFileWithOneName(stat);
 }
 
+export async function isProjectCacheFileAsync(root: string, file: string): Promise<boolean> {
+  if (!(await isLinkFreeWithinProjectAsync(root, dirname(file)))) return false;
+  const found = await lstat(file).catch(missingAsUndefined);
+  return found !== undefined && isPlainFileWithOneName(found);
+}
+
+export async function realProjectRootAsync(root: string): Promise<string> {
+  try {
+    return await realpathOff(root);
+  } catch (error) {
+    if ((await stat(root).catch(missingAsUndefined)) === undefined)
+      throw new ProjectRootMissingError(root);
+    throw error;
+  }
+}
+
 const isPlainFileWithOneName = (stat: Stats) => stat.isFile() && stat.nlink === 1;
 
 const NO_FOLLOW_READ =
@@ -235,34 +243,8 @@ const NO_FOLLOW_READ =
 const sameFile = (a: Stats | undefined, b: Stats) =>
   a !== undefined && !a.isSymbolicLink() && a.dev === b.dev && a.ino === b.ino;
 
-/** `isProjectCacheFile`'s bytes, opened without following a link, or null; a hard link or one over `maxBytes` is a miss too. */
-export function readProjectCacheFile(root: string, file: string, maxBytes: number): Buffer | null {
-  if (!isLinkFreeWithinProject(root, dirname(file))) return null;
-  let fd: number;
-  try {
-    fd = openSync(file, NO_FOLLOW_READ);
-  } catch {
-    return null;
-  }
-  try {
-    const stat = fstatSync(fd);
-    if (!isPlainFileWithOneName(stat) || stat.size > maxBytes) return null;
-    // Without O_NOFOLLOW (Windows) the open followed a link, so the name must still be this plain file.
-    if (
-      constants.O_NOFOLLOW === undefined &&
-      !sameFile(lstatSync(file, { throwIfNoEntry: false }), stat)
-    )
-      return null;
-    return readFileSync(fd);
-  } catch {
-    return null;
-  } finally {
-    closeSync(fd);
-  }
-}
-
-/** `readProjectCacheFile` with every check, open and read on libuv's thread pool: a disk that stops answering holds
- * the request, never the server's thread. */
+/** `isProjectCacheFile`'s bytes, opened without following a link, or null (a hard link or one over `maxBytes` too),
+ * all off the server's thread: a disk that stops answering holds only the request. */
 export async function readProjectCacheFileAsync(
   root: string,
   file: string,

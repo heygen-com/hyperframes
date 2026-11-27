@@ -208,9 +208,12 @@ async function setupSealedCanvas(options?: {
   };
 }
 
+const activation = { isActive: true };
+Object.defineProperty(navigator, "userActivation", { configurable: true, value: activation });
 const overlayHold = { held: false };
 
 beforeEach(() => {
+  activation.isActive = true;
   overlayHold.held = false;
   readAhead.cold = false;
   __resetForTests();
@@ -514,6 +517,27 @@ it("saves a delayed group Delete on the members the frame removed, not the group
   await vi.waitFor(() => expect(deleted).toEqual([["a", "b"]]));
   expect(document.getElementById("c")).not.toBeNull();
   expect(document.getElementById("d")).not.toBeNull();
+});
+
+it("acts on a frame's Delete or forwarded key only while the person has just clicked or pressed a key", async () => {
+  const onDelete = vi.fn();
+  const { overlay } = await setupSealedCanvas({ onDeleteSelection: onDelete });
+  const forwarded: string[] = [];
+  const onStudioKey = (e: KeyboardEvent) => {
+    if (!e.isTrusted) forwarded.push(e.code);
+  };
+  window.addEventListener("keydown", onStudioKey, true);
+  onTestFinished(() => window.removeEventListener("keydown", onStudioKey, true));
+  clickCanvas(overlay);
+  await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
+
+  activation.isActive = false;
+  window.dispatchEvent(trustedKey("keydown", { key: " ", code: "Space" }));
+  window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+  expect(document.getElementById("target")).toBeNull();
+  await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
+  expect(onDelete).not.toHaveBeenCalled();
+  expect(forwarded).toEqual([]);
 });
 
 it("lets a drag released on the canvas finish before the keyboard moves into the frame", async () => {

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { TextEditSelectionEvent } from "@hyperframes/core/runtime/editing-port";
 
 const fake = vi.hoisted(() => ({
@@ -17,22 +17,13 @@ vi.mock("@hyperframes/core/runtime/editing-port", async (importOriginal) => ({
   }),
 }));
 
-const { previewEditingClient, retirePreviewEditingClient } = await import("./previewChannel");
+const { frameStyleValue, previewEditingClient, retirePreviewEditingClient } =
+  await import("./previewChannel");
 
 const BEACON = "url(https://probe.invalid/beacon)";
 const HANDLE = "0123456789abcdef:1";
 
-// happy-dom's CSS.supports says yes to any value; Chrome's says no to a url() as a colour, as
-// InlineTextToolbar.browser.test.ts checks through this same filter.
-beforeEach(() => {
-  vi.stubGlobal("CSS", {
-    supports: (property: string, value?: string) =>
-      property === "color" && !/url\(|;/i.test(value ?? ""),
-  });
-});
-
 afterEach(() => {
-  vi.unstubAllGlobals();
   fake.listeners.clear();
   document.body.innerHTML = "";
 });
@@ -74,4 +65,13 @@ it("hands Studio a sealed frame's selection colours only when they are colours",
   expect(event?.selection?.styles).toEqual({ "font-weight": "700" });
   expect(event?.selection?.colours).toEqual(["rgb(4, 5, 6)"]);
   expect(event?.selection?.painted).toBeNull();
+});
+
+it("keeps a frame's style value only when it is a value of the property it answers for", () => {
+  expect(frameStyleValue("border-top-width", "3px")).toBe("3px");
+  expect(frameStyleValue("border-top-width", "url(/api/x)")).toBeNull();
+  expect(frameStyleValue("border-top-style", "dashed;color:red")).toBeNull();
+  expect(frameStyleValue("background-color", BEACON)).toBeNull();
+  expect(frameStyleValue("color", 7)).toBeNull();
+  expect(frameStyleValue("--accent", BEACON)).toBeNull();
 });

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import "./hideChildConsoles.js";
 import { processIsAlive } from "./processTree.js";
+import { warmTestExecutable } from "./processTestUtils.js";
 
 // Loaded into a node copy named taskkill.exe: stands in for a taskkill stuck on a hung WMI, up to 60 s.
 const HANG = `const { existsSync, writeFileSync } = require("node:fs");
@@ -21,6 +22,7 @@ describe.runIf(process.platform === "win32")("a hung taskkill", () => {
   it("is ended within its limit when puppeteer runs it synchronously", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-taskkill-"));
     copyFileSync(process.execPath, join(dir, "taskkill.exe"));
+    warmTestExecutable(join(dir, "taskkill.exe"), ["-e", ""]);
     writeFileSync(join(dir, "hang.cjs"), HANG);
     const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "Path";
     const env = {

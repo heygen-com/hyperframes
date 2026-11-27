@@ -9,7 +9,7 @@ import type { StudioApiAdapter } from "../types";
 
 vi.mock("../helpers/proxyTranscoder.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../helpers/proxyTranscoder.js")>()),
-  proxyActivityMark: vi.fn(() => "0"),
+  proxyActivityMark: vi.fn(async () => "0"),
 }));
 
 const dirs: string[] = [];

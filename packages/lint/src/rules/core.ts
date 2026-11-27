@@ -731,7 +731,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
           ),
           code: "css_parse_error",
           severity: "error",
-          message: `CSS parse error: ${error instanceof Error ? error.message : "unknown"}`,
+          message:
+            error instanceof postcss.CssSyntaxError
+              ? `CSS parse error: ${error.message}`
+              : "CSS parse error: this style block could not be read.",
           fixHint:
             "Check the CSS at the reported line for an unclosed brace, quote, or comment, or a missing semicolon between declarations.",
         });

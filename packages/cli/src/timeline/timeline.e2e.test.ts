@@ -13,9 +13,18 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isClipVisibleAt } from "@hyperframes/core";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { warmTestExecutable } from "../utils/processTestUtils.js";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
+
+beforeAll(
+  () =>
+    warmTestExecutable("bun", ["run", cliEntry, "timeline", "--help"], {
+      env: { ...process.env, HYPERFRAMES_SKIP_UPDATE_CHECK: "1" },
+    }),
+  130_000,
+);
 
 function project(): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-timeline-cli-"));
