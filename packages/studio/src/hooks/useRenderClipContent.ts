@@ -42,7 +42,7 @@ export function normalizeCompositionSrc(
   } catch {
     // already relative
   }
-  return climbsOut(compSrc) ? "" : compSrc;
+  return compSrc;
 }
 
 /**
@@ -168,6 +168,7 @@ export function useRenderClipContent({
           compIdToSrc.get(compSrc.replace(/^compositions\//, "").replace(/\.html$/, ""));
         if (resolved) compSrc = resolved;
       }
+      if (compSrc && climbsOut(compSrc)) compSrc = undefined;
 
       // Composition clips — always use the comp's own preview URL for thumbnails.
       // This renders the composition in isolation so we get clean frames

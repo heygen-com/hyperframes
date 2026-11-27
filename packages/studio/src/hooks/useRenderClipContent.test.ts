@@ -82,6 +82,7 @@ describe("useRenderClipContent", () => {
     el: TimelineElement,
     activePreviewUrl: string | null = "/api/projects/my-project/preview",
     context?: TimelineClipRenderContext,
+    compIdToSrc = new Map<string, string>(),
   ): ReactNode {
     const host = document.createElement("div");
     document.body.append(host);
@@ -91,7 +92,7 @@ describe("useRenderClipContent", () => {
     function Harness() {
       const render = useRenderClipContent({
         projectIdRef: { current: "my-project" },
-        compIdToSrc: new Map(),
+        compIdToSrc,
         activePreviewUrl,
         effectiveTimelineDuration: 12,
       });
@@ -544,6 +545,25 @@ describe("useRenderClipContent", () => {
       const urls = partsOf(content).filter((part): part is string => typeof part === "string");
       expect(urls.filter((url) => url.split("/").includes(".."))).toEqual([]);
     }
+  });
+
+  it("asks for no picture of a composition clip whose index entry climbs out of the project", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
+    const content = renderClipContent(
+      {
+        id: "scene",
+        tag: "div",
+        start: 0,
+        duration: 4,
+        track: 0,
+        compositionSrc: "compositions/scene.html",
+      },
+      null,
+      undefined,
+      new Map([["scene", "../../other/x.html"]]),
+    );
+    const urls = partsOf(content).filter((part): part is string => typeof part === "string");
+    expect(urls.filter((url) => url.split("/").includes(".."))).toEqual([]);
   });
 
   it.each(["compositions/scene-0.html", "compositions/scene [v2].html", "compositions/100%.html"])(
