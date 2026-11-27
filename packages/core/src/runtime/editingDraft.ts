@@ -263,7 +263,9 @@ export function drawDrafts(
     if (saved) numbers[draft.handle] = saved.draft;
   }
   if (restored) redrawKeepingLiveDrafts();
-  if (chrome !== undefined) drawDragChrome(chrome);
-  else if (!liveDrafts.size) clearDragChrome();
-  return { drawn, drafts: numbers };
+  if (chrome === undefined) {
+    if (!liveDrafts.size) clearDragChrome();
+    return { drawn, drafts: numbers };
+  }
+  return { drawn, drafts: numbers, chromeDrawn: drawDragChrome(chrome) };
 }

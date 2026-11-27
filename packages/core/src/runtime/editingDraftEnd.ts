@@ -11,7 +11,12 @@ export type EditingDraftEnd =
     };
 
 /** `drafts` numbers each element still drawn, for the end that names its draft. */
-export type EditingDraftReply = { drawn: number; drafts: Record<EditingElementHandle, number> };
+/** `chromeDrawn` answers a request that carried chrome: false when the frame had no copy that place fits. */
+export type EditingDraftReply = {
+  drawn: number;
+  drafts: Record<EditingElementHandle, number>;
+  chromeDrawn?: boolean;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
