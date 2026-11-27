@@ -10,6 +10,7 @@ export default defineConfig({
     springEase: "src/springEase.ts",
     hfIds: "src/hfIds.ts",
     linkedom: "src/linkedom.ts",
+    postcss: "src/postcss.ts",
     gsapParser: "src/gsapParser.ts",
     slideshow: "src/slideshow/index.ts",
     assets: "src/assets.ts",

@@ -13,10 +13,21 @@ import { checkSkills, MANIFEST_FILE } from "./skillsManifest.js";
 
 // A process start can take seconds on a busy Windows runner, so the fixture counts its git starts.
 const fixtureGit = vi.hoisted(() => ({ starts: 0 }));
+// The lookup's 4 s cut-off is for a person's network; on a busy Windows runner just starting git took longer,
+// so the check fell back to main and this test read the wrong URL. Here git runs without that cut-off.
 vi.mock("node:child_process", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:child_process")>();
+  const { promisify } = await import("node:util");
+  const execFile = Object.assign(
+    (...args: Parameters<typeof real.execFile>) => real.execFile(...args),
+    {
+      [promisify.custom]: (file: string, args: string[], options: object) =>
+        promisify(real.execFile)(file, args, { ...options, timeout: 0 }),
+    },
+  );
   return {
     ...real,
+    execFile: execFile as unknown as typeof real.execFile,
     execFileSync: ((...args: Parameters<typeof real.execFileSync>) => {
       fixtureGit.starts++;
       return real.execFileSync(...args);

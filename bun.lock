@@ -262,6 +262,7 @@
         "entities": "^7.0.1",
         "linkedom": "^0.18.12",
         "magic-string": "^0.30.21",
+        "postcss": "^8.5.8",
         "recast": "^0.23.11",
       },
       "devDependencies": {

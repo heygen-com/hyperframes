@@ -31,6 +31,7 @@ import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { previewReloadBegun, requestPreviewReload } from "../player/previewReloading";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
 import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
+import { setStudioTextEditAway, type StudioTextEditAway } from "./textEditAway";
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -1387,4 +1388,81 @@ it("ends a sealed text edit the frame never ends once Studio takes focus back, a
   focus.inFrame = true;
   window.dispatchEvent(new Event("blur"));
   await vi.waitFor(() => expect(focus.inFrame).toBe(false));
+});
+
+describe("a host's picker and menu for presses in the film during a sealed edit", () => {
+  function hostTakesAway() {
+    const host = vi.fn<StudioTextEditAway>();
+    setStudioTextEditAway(host);
+    onTestFinished(() => setStudioTextEditAway(null));
+    return host;
+  }
+  const rightClick = (target: Element) =>
+    target.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+    );
+
+  it("asks the frame for no presses with no host, so the frame's own menu stays", async () => {
+    const { title, selection } = await sealedTitle();
+    const { controls } = inlineEditor();
+    act(() => void controls().start(selection.element));
+    await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+    expect(rightClick(document.getElementById("other")!)).toBe(true);
+  });
+
+  // fails without the fix: a sealed frame's presses never reached the host, so it could not re-pick or open a menu.
+  it("hands the host a right-click during the edit, and a click away only after the text it ended is saved", async () => {
+    const host = hostTakesAway();
+    const { title, iframe, selection } = await sealedTitle();
+    const { onCommit, controls } = inlineEditor();
+    act(() => void controls().start(selection.element));
+    await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+    const other = document.getElementById("other")!;
+    expect(rightClick(other)).toBe(false);
+    await vi.waitFor(() =>
+      expect(host).toHaveBeenCalledWith(
+        expect.objectContaining({ handle: selection.handle, button: 2 }),
+        iframe,
+      ),
+    );
+    title.innerHTML = "Kept";
+    other.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    title.dispatchEvent(new FocusEvent("blur"));
+    await vi.waitFor(() =>
+      expect(host).toHaveBeenLastCalledWith(expect.objectContaining({ button: 0 }), iframe),
+    );
+    const saved = onCommit.mock.invocationCallOrder[0]!;
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ html: "Kept" }));
+    expect(saved).toBeLessThan(host.mock.invocationCallOrder.at(-1)!);
+  });
+
+  it("drops an away press for another element, and any after the ended edit's own", async () => {
+    const host = hostTakesAway();
+    const ports: MessagePort[] = [];
+    const { title, selection } = await sealedTitle(ports);
+    const { controls } = inlineEditor();
+    act(() => void controls().start(selection.element));
+    await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+    const forge = (handle: string) => {
+      const data = {
+        v: EDITING_PROTOCOL_VERSION,
+        event: "text-edit-away",
+        handle,
+        button: 0,
+        point: { x: 1, y: 1 },
+        viewportWidth: 100,
+        keys: { shiftKey: false, metaKey: false, ctrlKey: false },
+      };
+      act(() => void ports[0]!.onmessage?.(new MessageEvent("message", { data })));
+    };
+    forge("0123456789abcdef:999");
+    expect(host).not.toHaveBeenCalled();
+    document
+      .getElementById("other")!
+      .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    title.dispatchEvent(new FocusEvent("blur"));
+    await vi.waitFor(() => expect(host).toHaveBeenCalledOnce());
+    forge(selection.handle!);
+    expect(host).toHaveBeenCalledOnce();
+  });
 });

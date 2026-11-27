@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
+import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { AudibleVideoClipContent } from "../player/components/AudibleVideoClipContent";
 import { TextClipContent } from "../player/components/TextClipContent";
 import { ClipPeakMarks } from "../player/components/ClipPeakMarks";
@@ -81,6 +82,7 @@ describe("useRenderClipContent", () => {
     el: TimelineElement,
     activePreviewUrl: string | null = "/api/projects/my-project/preview",
     context?: TimelineClipRenderContext,
+    compIdToSrc = new Map<string, string>(),
   ): ReactNode {
     const host = document.createElement("div");
     document.body.append(host);
@@ -90,7 +92,7 @@ describe("useRenderClipContent", () => {
     function Harness() {
       const render = useRenderClipContent({
         projectIdRef: { current: "my-project" },
-        compIdToSrc: new Map(),
+        compIdToSrc,
         activePreviewUrl,
         effectiveTimelineDuration: 12,
       });
@@ -489,6 +491,79 @@ describe("useRenderClipContent", () => {
         contentRevision: 13,
       });
     }
+  });
+
+  function partsOf(node: unknown, seen = new Set<unknown>()): unknown[] {
+    if (typeof node === "string") return [node];
+    if (!node || typeof node !== "object" || seen.has(node)) return [];
+    seen.add(node);
+    if (Array.isArray(node)) return node.flatMap((child) => partsOf(child, seen));
+    if (!isValidElement<Record<string, unknown>>(node)) return [];
+    return [node.type, ...Object.values(node.props).flatMap((value) => partsOf(value, seen))];
+  }
+
+  it.each(["img", "video", "audio"])(
+    "asks for no media of a %s clip whose src names a route outside the project's files",
+    (tag) => {
+      usePlayerStore.setState({ thumbnailMode: "adaptive" });
+      const origin = window.location.origin;
+      for (const src of [
+        `${origin}/api/projects/my-project/thumbnail/a.png?t=1`,
+        `${origin}/api/projects/other/preview/a.mp4`,
+        "../../lint",
+      ]) {
+        const content = renderRaw({
+          id: "clip",
+          tag,
+          start: 0,
+          duration: 4,
+          track: 0,
+          src,
+          hasAudio: true,
+          sourceDuration: 4,
+        });
+        const parts = partsOf(content);
+        const loaders = [ImageThumbnail, VideoThumbnail, AudioWaveform];
+        expect(parts.filter((part) => loaders.includes(part as never))).toEqual([]);
+        const urls = parts.filter((part): part is string => typeof part === "string");
+        expect(urls.filter((url) => /thumbnail\/a|other|lint/.test(url))).toEqual([]);
+      }
+    },
+  );
+
+  it("asks for no picture of a composition clip whose src climbs out of the project", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
+    for (const compositionSrc of [
+      "../../other/preview/x.html",
+      "/../../../lint",
+      "a/../../b.html",
+    ]) {
+      const content = renderClipContent(
+        { id: "scene", tag: "div", start: 0, duration: 4, track: 0, compositionSrc },
+        null,
+      );
+      const urls = partsOf(content).filter((part): part is string => typeof part === "string");
+      expect(urls.filter((url) => url.split("/").includes(".."))).toEqual([]);
+    }
+  });
+
+  it("asks for no picture of a composition clip whose index entry climbs out of the project", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
+    const content = renderClipContent(
+      {
+        id: "scene",
+        tag: "div",
+        start: 0,
+        duration: 4,
+        track: 0,
+        compositionSrc: "compositions/scene.html",
+      },
+      null,
+      undefined,
+      new Map([["scene", "../../other/x.html"]]),
+    );
+    const urls = partsOf(content).filter((part): part is string => typeof part === "string");
+    expect(urls.filter((url) => url.split("/").includes(".."))).toEqual([]);
   });
 
   it.each(["compositions/scene-0.html", "compositions/scene [v2].html", "compositions/100%.html"])(

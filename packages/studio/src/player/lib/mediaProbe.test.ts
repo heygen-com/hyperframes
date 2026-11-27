@@ -147,6 +147,23 @@ describe("media probe registry", () => {
     ]);
   });
 
+  it("probes nothing for a clip whose src names another API route", async () => {
+    await probeMissingSourceDurations(
+      [
+        {
+          id: "v",
+          tag: "video",
+          src: `${window.location.origin}/api/projects/other/preview/a.mp4`,
+        },
+        { id: "a", tag: "audio", src: "../../lint" },
+      ],
+      "project-a",
+      vi.fn(),
+    );
+
+    expect(requestedSources).toEqual([]);
+  });
+
   it("probes same-origin rooted media through the active project preview", async () => {
     const apply = vi.fn();
     await probeMissingSourceDurations(

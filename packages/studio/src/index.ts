@@ -5,6 +5,7 @@ export * from "./ui";
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
+export { primeFrameToken } from "./player/lib/frameToken";
 export {
   DEFAULT_SHORTCUT_SECTIONS,
   DEFAULT_STUDIO_KEYS,
@@ -236,6 +237,8 @@ export type {
 export { flushStudioPendingEdits } from "./utils/studioPendingEdits";
 export { revertNewestStudioPendingEdit } from "./utils/studioPendingEdits";
 export { cancelNewestStudioWaitingPress } from "./utils/studioPendingEdits";
+export { setStudioTextEditAway } from "./hooks/textEditAway";
+export type { StudioTextEditAway } from "./hooks/textEditAway";
 export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,

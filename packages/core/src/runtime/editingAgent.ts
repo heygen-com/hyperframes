@@ -15,6 +15,7 @@ import {
   EDITING_REQUEST_KINDS,
   EDITING_REQUEST_TIMEOUT_MS,
   isPlainRecord,
+  type FramePresentedParams,
   parseEditingRequest,
   type EditingKeyMessage,
   type EditingParams,
@@ -75,10 +76,10 @@ import { portPausedVideoProvider } from "./editing/pausedFrames";
 import {
   armCanvasKeys,
   pressCanvasKey,
-  createRuntimeChannel,
   resetCanvasKeys,
   resolveCanvasKeyAction,
 } from "./editing/canvasKeys";
+import { closePort, createRuntimeChannel, onPortMessage, portMap, postOnPort } from "./runtimePort";
 import { measureStageDocument } from "./editing/stageMeasure";
 import { endStageAct, stageAct } from "./editing/stageAct";
 
@@ -119,7 +120,7 @@ function watchConsoleErrors(): string[] {
   return seen;
 }
 
-const keyWatches = new Map<MessagePort, { combos: Combo[]; down: Set<string> }>();
+const keyWatches = portMap<{ combos: Combo[]; down: Set<string> }>();
 
 function forwardKey(port: MessagePort, e: KeyboardEvent): void {
   const { type, key, code, altKey, ctrlKey, metaKey, shiftKey, repeat } = e;
@@ -137,23 +138,23 @@ function forwardKey(port: MessagePort, e: KeyboardEvent): void {
       repeat,
     },
   };
-  port.postMessage(message);
+  postOnPort(port, message);
 }
 
 function onWatchedKeyDown(e: KeyboardEvent): void {
   if (e.defaultPrevented || shouldIgnorePlaybackShortcutTarget(e.target)) return;
-  for (const [port, watch] of keyWatches) {
-    if (!watch.combos.some((combo) => matchCombo(e, combo))) continue;
+  keyWatches.forEach((watch, port) => {
+    if (!watch.combos.some((combo) => matchCombo(e, combo))) return;
     e.preventDefault();
     watch.down.add(e.code || e.key);
     forwardKey(port, e);
-  }
+  });
 }
 
 function onWatchedKeyUp(e: KeyboardEvent): void {
-  for (const [port, watch] of keyWatches) {
+  keyWatches.forEach((watch, port) => {
     if (watch.down.delete(e.code || e.key)) forwardKey(port, e);
-  }
+  });
 }
 
 function listenForKeys(on: boolean): void {
@@ -172,7 +173,7 @@ function watchKeys(port: MessagePort, combos: string[]): { watching: number } {
     const down = keyWatches.get(port)?.down ?? new Set<string>();
     keyWatches.set(port, { combos: combos.map((text) => parseCombo(text)!), down });
   }
-  listenForKeys(keyWatches.size > 0);
+  listenForKeys(keyWatches.size() > 0);
   return { watching: combos.length };
 }
 
@@ -188,7 +189,7 @@ function stylesOf(element: Element, properties: readonly string[]): Record<strin
 }
 
 const VIDEO_SETTLE_EVENTS = ["seeked", "error", "abort", "emptied"] as const;
-// Answers before the caller's own timeout, so the frame never outlives the request it serves.
+// Without a waitMs, answers before the client's default timeout gives up.
 const FRAME_PRESENTED_LIMIT_MS = EDITING_REQUEST_TIMEOUT_MS - 1_000;
 const pendingPresentedWaits = new Set<() => void>();
 
@@ -223,7 +224,11 @@ function whenTwoFramesPaint(cleanups: Cleanups, painted: () => void) {
   cleanups.push(() => window.cancelAnimationFrame(frame));
 }
 
-function waitForFramePresented(): Promise<{ presented: boolean }> {
+function waitForFramePresented({
+  waitMs = FRAME_PRESENTED_LIMIT_MS,
+}: FramePresentedParams): Promise<{
+  presented: boolean;
+}> {
   return new Promise((resolve) => {
     const cleanups: Cleanups = [];
     let done = false;
@@ -236,7 +241,7 @@ function waitForFramePresented(): Promise<{ presented: boolean }> {
     };
     const expire = () => finish(false);
     pendingPresentedWaits.add(expire);
-    const timer = wallSetTimeout(expire, FRAME_PRESENTED_LIMIT_MS);
+    const timer = wallSetTimeout(expire, waitMs);
     cleanups.push(() => wallClearTimeout(timer));
     const seeking = Array.from(document.querySelectorAll("video")).filter(
       (video) => video.seeking && video.isConnected,
@@ -343,15 +348,15 @@ const HANDLERS: Handlers = {
 function serve(port: MessagePort): void {
   const reply = (message: EditingReply) => {
     try {
-      port.postMessage(message);
+      postOnPort(port, message);
     } catch (err) {
       // A result that cannot be cloned still owes the parent an answer.
       if (message.ok) reply(failure(message.id, err));
       else swallow("editingAgent.reply", err);
     }
   };
-  port.onmessage = (event: MessageEvent<unknown>) => {
-    const request = parseEditingRequest(event.data);
+  onPortMessage(port, (data) => {
+    const request = parseEditingRequest(data);
     if (!request.ok) {
       reply({
         v: EDITING_PROTOCOL_VERSION,
@@ -368,7 +373,7 @@ function serve(port: MessagePort): void {
         (result) => reply({ v: EDITING_PROTOCOL_VERSION, id: request.id, ok: true, result }),
         (err: unknown) => reply(failure(request.id, err)),
       );
-  };
+  });
 }
 
 function failure(id: number, err: unknown): EditingReply {
@@ -381,18 +386,26 @@ function failure(id: number, err: unknown): EditingReply {
   };
 }
 
-export function installEditingAgent(parent: Window = window.parent): { dispose: () => void } {
-  const ports = new Set<MessagePort>();
+const parentAtLoad = typeof window !== "undefined" ? window.parent : undefined;
+
+function isConnectRequest(event: MessageEvent<unknown>, parent: Window): boolean {
+  // A top-level page is its own parent, so a self-post would pass the source check.
+  if (parent === window || event.source !== parent) return false;
+  const data = event.data;
+  if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
+    return false;
+  return data.v === EDITING_PROTOCOL_VERSION && markedForStudio(document);
+}
+
+export function installEditingAgent(parent: Window = parentAtLoad ?? window.parent): {
+  dispose: () => void;
+} {
+  const ports = portMap<true>();
   const onMessage = (event: MessageEvent<unknown>) => {
-    // A top-level page is its own parent, so a self-post would pass the source check.
-    if (parent === window || event.source !== parent) return;
-    const data = event.data;
-    if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
-      return;
-    if (data.v !== EDITING_PROTOCOL_VERSION || !markedForStudio(document)) return;
-    const channel = createRuntimeChannel();
+    const channel = isConnectRequest(event, parent) ? createRuntimeChannel() : null;
+    if (!channel) return;
     const port = channel.port1;
-    ports.add(port);
+    ports.set(port, true);
     serve(port);
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
@@ -403,7 +416,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       );
     } catch (err) {
       swallow("editingAgent.handoff", err);
-      port.close();
+      closePort(port);
       ports.delete(port);
       return;
     }
@@ -413,7 +426,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
   return {
     dispose() {
       window.removeEventListener("message", onMessage);
-      for (const port of ports) port.close();
+      ports.forEach((_, port) => closePort(port));
       ports.clear();
       consoleWatch?.stop();
       consoleWatch = null;

@@ -28,6 +28,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "@hyperframes/parsers/linkedom";
+import { compositionRootSize } from "@hyperframes/parsers";
 import { bundledGsapStandIn, bundledScript } from "./bundledScripts.js";
 import {
   inlineScriptBlocks,
@@ -3041,8 +3042,7 @@ async function compileWithAssets(
   const { document } = parseHTML(html);
   const rootEl = document.querySelector("[data-composition-id]");
 
-  const width = rootEl ? parseInt(rootEl.getAttribute("data-width") || "1080", 10) : 1080;
-  const height = rootEl ? parseInt(rootEl.getAttribute("data-height") || "1920", 10) : 1920;
+  const { width, height } = compositionRootSize(rootEl);
 
   // Static duration (may be 0 if set at runtime by GSAP)
   const staticDuration = rootEl

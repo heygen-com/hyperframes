@@ -29,7 +29,7 @@
   },
   "@hyperframes/parsers": {
     "packed": 229500,
-    "unpacked": 930000
+    "unpacked": 939306
   },
   "@hyperframes/player": {
     "packed": 540044,
@@ -48,8 +48,8 @@
     "unpacked": 825937
   },
   "@hyperframes/share": {
-    "packed": 162094,
-    "unpacked": 622749
+    "packed": 165237,
+    "unpacked": 634432
   },
   "@hyperframes/studio": {
     "packed": 6589635,
