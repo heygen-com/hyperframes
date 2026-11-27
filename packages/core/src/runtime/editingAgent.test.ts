@@ -1123,6 +1123,47 @@ describe("installEditingAgent", () => {
       },
     );
 
+    // fails without the fix: a seek that never settled kept its listeners and observer alive past the caller's timeout.
+    it("answers presented false and lets go of the video when its seek never settles", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+      try {
+        const port = connectedPort();
+        const { video } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const removeSpy = vi.spyOn(video, "removeEventListener");
+        const pending = ask(port, { v: 1, id: 53, kind: "frame-presented" });
+        while (addSpy.mock.calls.length === 0) await new Promise((r) => setImmediate(r));
+        vi.advanceTimersByTime(4_000);
+        expect(await pending).toEqual({ v: 1, id: 53, ok: true, result: { presented: false } });
+        for (const name of ["seeked", "error", "abort", "emptied"])
+          expect(removeSpy).toHaveBeenCalledWith(name, expect.any(Function));
+        expect(disconnect).toHaveBeenCalled();
+      } finally {
+        disconnect.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    // fails without the fix: disposal let the two-frame stage's callbacks run on.
+    it("cancels a pending animation frame when the agent is disposed", async () => {
+      const rafs: FrameRequestCallback[] = [];
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (rafs.push(cb), rafs.length));
+      const cancelSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+      try {
+        const port = connectedPort();
+        void ask(port, { v: 1, id: 54, kind: "frame-presented" });
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        agent.dispose();
+        expect(cancelSpy).toHaveBeenCalledWith(1);
+      } finally {
+        rafSpy.mockRestore();
+        cancelSpy.mockRestore();
+      }
+    });
+
     it("settles and removes listeners when a seeking video is disconnected from the document", async () => {
       const rafSpy = vi
         .spyOn(window, "requestAnimationFrame")

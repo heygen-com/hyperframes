@@ -7,11 +7,13 @@
  * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   EDITING_CONNECT,
   EDITING_PORT,
   EDITING_PROTOCOL_VERSION,
   EDITING_REQUEST_KINDS,
+  EDITING_REQUEST_TIMEOUT_MS,
   isPlainRecord,
   parseEditingRequest,
   type EditingKeyMessage,
@@ -179,40 +181,63 @@ function stylesOf(element: Element, properties: readonly string[]): Record<strin
 }
 
 const VIDEO_SETTLE_EVENTS = ["seeked", "error", "abort", "emptied"] as const;
-const activePresentedWaits = new Set<() => void>();
+// Answers before the caller's own timeout, so the frame never outlives the request it serves.
+const FRAME_PRESENTED_LIMIT_MS = EDITING_REQUEST_TIMEOUT_MS - 1_000;
+const pendingPresentedWaits = new Set<() => void>();
 
-function waitForVideoSettled(video: HTMLVideoElement): Promise<void> {
-  if (!video.seeking || !video.isConnected) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    let observer: MutationObserver | null = null;
-    const done = () => {
-      for (const name of VIDEO_SETTLE_EVENTS) video.removeEventListener(name, done);
-      observer?.disconnect();
-      observer = null;
-      activePresentedWaits.delete(done);
-      resolve();
-    };
-    activePresentedWaits.add(done);
-    for (const name of VIDEO_SETTLE_EVENTS) video.addEventListener(name, done, { once: true });
-    if (typeof MutationObserver === "function" && document.documentElement) {
-      observer = new MutationObserver(() => {
-        if (!video.isConnected || !video.seeking) done();
-      });
-      observer.observe(document.documentElement, { childList: true, subtree: true });
-    }
-    if (!video.seeking || !video.isConnected) done();
-  });
+type Cleanups = Array<() => void>;
+
+function whenVideosSettle(videos: HTMLVideoElement[], cleanups: Cleanups, settled: () => void) {
+  const waiting = new Set(videos);
+  const check = () => {
+    if (waiting.size === 0) return;
+    for (const video of waiting) if (!video.seeking || !video.isConnected) waiting.delete(video);
+    if (waiting.size === 0) settled();
+  };
+  for (const video of videos) {
+    for (const name of VIDEO_SETTLE_EVENTS) video.addEventListener(name, check, { once: true });
+    cleanups.push(() => {
+      for (const name of VIDEO_SETTLE_EVENTS) video.removeEventListener(name, check);
+    });
+  }
+  if (typeof MutationObserver === "function" && document.documentElement) {
+    const observer = new MutationObserver(check);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    cleanups.push(() => observer.disconnect());
+  }
+  check();
 }
 
-async function waitForFramePresented(): Promise<{ presented: boolean }> {
-  const seeking = Array.from(document.querySelectorAll("video")).filter((video) => video.seeking);
-  if (seeking.length > 0) await Promise.all(seeking.map(waitForVideoSettled));
-  if (typeof window.requestAnimationFrame === "function") {
-    await new Promise<void>((done) =>
-      window.requestAnimationFrame(() => window.requestAnimationFrame(() => done())),
+function whenTwoFramesPaint(cleanups: Cleanups, painted: () => void) {
+  if (typeof window.requestAnimationFrame !== "function") return painted();
+  let frame = window.requestAnimationFrame(() => {
+    frame = window.requestAnimationFrame(painted);
+  });
+  cleanups.push(() => window.cancelAnimationFrame(frame));
+}
+
+function waitForFramePresented(): Promise<{ presented: boolean }> {
+  return new Promise((resolve) => {
+    const cleanups: Cleanups = [];
+    let done = false;
+    const finish = (presented: boolean) => {
+      if (done) return;
+      done = true;
+      for (const clean of cleanups.splice(0)) clean();
+      pendingPresentedWaits.delete(expire);
+      resolve({ presented });
+    };
+    const expire = () => finish(false);
+    pendingPresentedWaits.add(expire);
+    const timer = wallSetTimeout(expire, FRAME_PRESENTED_LIMIT_MS);
+    cleanups.push(() => wallClearTimeout(timer));
+    const seeking = Array.from(document.querySelectorAll("video")).filter(
+      (video) => video.seeking && video.isConnected,
     );
-  }
-  return { presented: true };
+    const paint = () => whenTwoFramesPaint(cleanups, () => finish(true));
+    if (seeking.length === 0) return paint();
+    whenVideosSettle(seeking, cleanups, paint);
+  });
 }
 
 const HANDLERS: Handlers = {
@@ -386,7 +411,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       listenForKeys(false);
       stopWatchingGeometry();
       endTextEdit();
-      for (const settle of [...activePresentedWaits]) settle();
+      for (const expire of [...pendingPresentedWaits]) expire();
       endStageAct();
     },
   };
