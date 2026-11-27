@@ -236,6 +236,8 @@ describe("installEditingAgent", () => {
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
+          "arm-canvas-keys",
+          "resolve-canvas-key-action",
           "stage-measure",
           "stage-act",
         ],

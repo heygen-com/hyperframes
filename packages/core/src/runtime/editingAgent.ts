@@ -70,6 +70,12 @@ import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
 import { portPausedVideoProvider } from "./editing/pausedFrames";
+import {
+  armCanvasKeys,
+  createRuntimeChannel,
+  resetCanvasKeys,
+  resolveCanvasKeyAction,
+} from "./editing/canvasKeys";
 import { measureStageDocument } from "./editing/stageMeasure";
 import { endStageAct, stageAct } from "./editing/stageAct";
 
@@ -263,9 +269,14 @@ const HANDLERS: Handlers = {
     return { served: true };
   },
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
+  "arm-canvas-keys": (params, port) =>
+    armCanvasKeys(port, params, EDITING_PROTOCOL_VERSION, activeAgentParent),
+  "resolve-canvas-key-action": resolveCanvasKeyAction,
   "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
   "stage-act": (params, port) => stageAct(params, port, EDITING_PROTOCOL_VERSION),
 };
+
+let activeAgentParent: Window = window.parent;
 
 function serve(port: MessagePort): void {
   const reply = (message: EditingReply) => {
@@ -309,6 +320,7 @@ function failure(id: number, err: unknown): EditingReply {
 }
 
 export function installEditingAgent(parent: Window = window.parent): { dispose: () => void } {
+  activeAgentParent = parent;
   const ports = new Set<MessagePort>();
   const onMessage = (event: MessageEvent<unknown>) => {
     // A top-level page is its own parent, so a self-post would pass the source check.
@@ -317,7 +329,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
     if (data.v !== EDITING_PROTOCOL_VERSION || !markedForStudio(document)) return;
-    const channel = new MessageChannel();
+    const channel = createRuntimeChannel();
     const port = channel.port1;
     ports.add(port);
     serve(port);
@@ -348,6 +360,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       listenForKeys(false);
       stopWatchingGeometry();
       endTextEdit();
+      resetCanvasKeys(true);
       endStageAct();
     },
   };
