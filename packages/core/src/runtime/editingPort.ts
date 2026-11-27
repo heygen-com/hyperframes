@@ -286,6 +286,7 @@ export const EDITING_REQUEST_KINDS = [
   "assets-unloaded",
   "text-edit",
   "serve-paused-frames",
+  "frame-presented",
   "arm-canvas-keys",
   "resolve-canvas-key-action",
   "stage-measure",
@@ -487,6 +488,7 @@ export interface EditingRequests {
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
+  "frame-presented": { params: NoParams; result: { presented: boolean } };
   "arm-canvas-keys": { params: ArmCanvasKeysParams; result: ArmCanvasKeysResult };
   "resolve-canvas-key-action": {
     params: ResolveCanvasKeyActionParams;
@@ -811,6 +813,7 @@ const PARAM_PARSERS: {
     hasKeys(params, "channel") && params.channel instanceof MessagePort
       ? { channel: params.channel }
       : null,
+  "frame-presented": noParams,
   "arm-canvas-keys": parseArmCanvasKeys,
   "resolve-canvas-key-action": parseResolveCanvasKeyAction,
   "stage-measure": parseStageMeasureParams,

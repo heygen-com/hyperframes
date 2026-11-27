@@ -308,6 +308,21 @@ export type PlaybackHeldBy = {
   fetchMs: number | FetchNotSeenToStart;
 };
 
+export type PlaybackMotionBlurReport = {
+  attr: string | null;
+  shutter: string | null;
+  state: "on" | "off";
+  tier: "filter" | "capture" | null;
+  movers: number | null;
+};
+
+export type PreviewFrameShape = {
+  canvas: number;
+  svg: number;
+  filter: number;
+  tweens: number | null;
+};
+
 /** How playback went over the last few seconds of play. */
 export type PlaybackHealthReport = {
   droppedShare: number;
@@ -322,6 +337,10 @@ export type PlaybackHealthReport = {
   gapP95Ms: number;
   clockSource: "audio" | "webaudio" | "monotonic";
   heldBy: PlaybackHeldBy | null;
+  mediaStepP90Ms?: number | null;
+  over16?: number;
+  over33?: number;
+  motionBlur?: PlaybackMotionBlurReport | null;
   mode: "play";
 };
 
@@ -349,6 +368,7 @@ export type RuntimePreviewFactsMessage = {
     /** The lower levels at which at least one video gets a lighter copy. */
     lighterAt: number[];
     copiesReady: boolean;
+    frameShape?: PreviewFrameShape;
   };
 };
 

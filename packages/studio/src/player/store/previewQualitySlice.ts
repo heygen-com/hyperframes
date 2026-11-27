@@ -1,7 +1,11 @@
 import type { StoreApi } from "zustand";
 import { isPreviewQuality, type PreviewQuality } from "@hyperframes/core/preview-quality";
 import { isMessageList } from "@hyperframes/core/runtime/protocol";
-import type { PlaybackHealthReport } from "@hyperframes/core";
+import type {
+  PlaybackHealthReport,
+  PlaybackMotionBlurReport,
+  PreviewFrameShape,
+} from "@hyperframes/core";
 import type { MediaLoadFailure } from "@hyperframes/core/runtime/protocol";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
@@ -28,6 +32,7 @@ export interface PreviewFacts {
   videos: Array<{ codec: string; width: number; height: number; bitDepth: number; count: number }>;
   lighterAt: PreviewQuality[];
   copiesReady: boolean;
+  frameShape?: PreviewFrameShape;
 }
 
 export type PreviewQualityChosenBy = "person" | "app";
@@ -108,6 +113,55 @@ export function parsePreviewCopies(value: unknown): PreviewCopies | null {
 }
 
 const optionalNumber = (n: unknown) => (typeof n === "number" ? n : undefined);
+const MAX_METRIC_COUNT = 1_000_000;
+const MAX_MEDIA_STEP_MS = 60_000;
+const MAX_BLUR_ATTR_LEN = 32;
+const BLUR_STATES = ["on", "off"] as const;
+const BLUR_TIERS = ["filter", "capture"] as const;
+
+const boundedNonNegInt = (value: unknown, max: number): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.min(Math.round(value), max)
+    : undefined;
+
+const optionalBoundedNullableInt = (value: unknown, max: number): number | null | undefined =>
+  value === null ? null : boundedNonNegInt(value, max);
+
+const nullableShortString = (value: unknown, maxLen: number): string | null | undefined =>
+  value === null ? null : typeof value === "string" && value.length <= maxLen ? value : undefined;
+
+function parseMotionBlur(value: unknown): PlaybackMotionBlurReport | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const state = BLUR_STATES.find((known) => known === raw.state);
+  const tier = raw.tier === null ? null : BLUR_TIERS.find((known) => known === raw.tier);
+  const attr = nullableShortString(raw.attr, MAX_BLUR_ATTR_LEN);
+  const shutter = nullableShortString(raw.shutter, MAX_BLUR_ATTR_LEN);
+  const movers = optionalBoundedNullableInt(raw.movers, MAX_METRIC_COUNT);
+  if (
+    !state ||
+    tier === undefined ||
+    attr === undefined ||
+    shutter === undefined ||
+    movers === undefined
+  )
+    return undefined;
+  return { attr, shutter, state, tier, movers };
+}
+
+function parseFrameShape(value: unknown): PreviewFrameShape | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  const canvas = boundedNonNegInt(raw.canvas, MAX_METRIC_COUNT);
+  const svg = boundedNonNegInt(raw.svg, MAX_METRIC_COUNT);
+  const filter = boundedNonNegInt(raw.filter, MAX_METRIC_COUNT);
+  const tweens = optionalBoundedNullableInt(raw.tweens, MAX_METRIC_COUNT);
+  if (canvas === undefined || svg === undefined || filter === undefined || tweens === undefined)
+    return undefined;
+  return { canvas, svg, filter, tweens };
+}
+
 const CLOCK_SOURCES = ["audio", "webaudio", "monotonic"] as const;
 const optionalClock = (clock: unknown) => CLOCK_SOURCES.find((known) => known === clock);
 function parseHeldBy(value: unknown): PlaybackHealth["heldBy"] {
@@ -139,14 +193,25 @@ export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {
     gapP95Ms: optionalNumber(extra.gapP95Ms),
     clockSource: optionalClock(extra.clockSource),
     heldBy: parseHeldBy(extra.heldBy),
+    mediaStepP90Ms: optionalBoundedNullableInt(extra.mediaStepP90Ms, MAX_MEDIA_STEP_MS),
+    over16: boundedNonNegInt(extra.over16, MAX_METRIC_COUNT),
+    over33: boundedNonNegInt(extra.over33, MAX_METRIC_COUNT),
+    motionBlur: parseMotionBlur(extra.motionBlur),
     mode: "play",
   };
 }
 
 export function parsePreviewFacts(value: unknown): PreviewFacts | null {
   if (typeof value !== "object" || value === null) return null;
-  const { sceneCount, mountedElementCount, durationSeconds, videos, copiesReady, lighterAt } =
-    value as Record<string, unknown>;
+  const {
+    sceneCount,
+    mountedElementCount,
+    durationSeconds,
+    videos,
+    copiesReady,
+    lighterAt,
+    frameShape,
+  } = value as Record<string, unknown>;
   const numbers = [sceneCount, mountedElementCount, durationSeconds].every(
     (n) => typeof n === "number",
   );
@@ -169,6 +234,7 @@ export function parsePreviewFacts(value: unknown): PreviewFacts | null {
         ]
       : [];
   });
+  const shape = parseFrameShape(frameShape);
   return {
     lighterAt: isMessageList(lighterAt) ? lighterAt.filter(isPreviewQuality) : [],
     sceneCount: sceneCount as number,
@@ -176,5 +242,6 @@ export function parsePreviewFacts(value: unknown): PreviewFacts | null {
     durationSeconds: durationSeconds as number,
     videos: grouped,
     copiesReady,
+    ...(shape ? { frameShape: shape } : {}),
   };
 }
