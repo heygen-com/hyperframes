@@ -337,18 +337,24 @@ function useCanvasFocusOwnership(
       pointerDownRef.current = inside;
       setCanvasFocused(inside);
     };
-    const onPointerUp = () => {
-      if (!pointerDownRef.current) return;
-      pointerDownRef.current = false;
+    let focusOnceDropLands = 0;
+    const focusFrameAfterDrop = () => {
       const iframe = iframeRef.current;
       if (
         iframe &&
+        !pointerDownRef.current &&
         armedReadyRef.current &&
         previewFrameOpaque(iframe) &&
         hasSealedCanvasKeyboardHold(iframe)
       ) {
         focusSealedIframe(iframe);
       }
+    };
+    const onPointerUp = () => {
+      if (!pointerDownRef.current) return;
+      pointerDownRef.current = false;
+      window.clearTimeout(focusOnceDropLands);
+      focusOnceDropLands = window.setTimeout(focusFrameAfterDrop);
     };
     const onFocusIn = (event: FocusEvent) => {
       if (!eventInsideCanvas(event, overlayRef.current, iframeRef.current)) setCanvasFocused(false);
@@ -359,6 +365,7 @@ function useCanvasFocusOwnership(
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("pointerup", onPointerUp, true);
+      window.clearTimeout(focusOnceDropLands);
       document.removeEventListener("focusin", onFocusIn, true);
     };
   }, [armedReadyRef, iframeRef, overlayRef]);

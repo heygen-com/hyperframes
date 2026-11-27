@@ -511,3 +511,20 @@ it("saves a delayed group Delete on the members the frame removed, not the group
   expect(document.getElementById("c")).not.toBeNull();
   expect(document.getElementById("d")).not.toBeNull();
 });
+
+it("lets a drag released on the canvas finish before the keyboard moves into the frame", async () => {
+  const { overlay, iframe } = await setupSealedCanvas();
+  // As in a browser: focus entering the frame blurs Studio's window, which cancels a held drag.
+  vi.spyOn(iframe, "focus").mockImplementation(() => void window.dispatchEvent(new Event("blur")));
+  const order: string[] = [];
+  const onBlur = () => order.push("blur");
+  window.addEventListener("blur", onBlur);
+  onTestFinished(() => window.removeEventListener("blur", onBlur));
+  overlay.addEventListener("pointerup", () => order.push("drop"));
+
+  act(() => void overlay.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })));
+  await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
+  act(() => void overlay.dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
+  await vi.waitFor(() => expect(order).toContain("blur"));
+  expect(order).toEqual(["drop", "blur"]);
+});
