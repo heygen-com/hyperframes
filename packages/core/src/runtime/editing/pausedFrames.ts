@@ -130,8 +130,7 @@ export function portPausedVideoProvider(port: MessagePort): PausedVideoFrameProv
     for (const frame of reply.frames)
       if (isRecord(frame)) (frame.image as ImageBitmap | undefined)?.close?.();
   };
-  onPortMessage(port, (event: MessageEvent<unknown>) => {
-    const reply = event.data;
+  onPortMessage(port, (reply) => {
     const entry = isRecord(reply) && isId(reply.id) ? pending.get(reply.id) : undefined;
     if (!entry) return closeImages(reply);
     pending.delete((reply as { id: number }).id);

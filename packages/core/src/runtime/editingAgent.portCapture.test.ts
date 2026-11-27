@@ -102,3 +102,56 @@ it("hands its port to the parent it loaded with, not one a composition put on wi
   connect(stranger);
   expect(handoff).not.toHaveBeenCalled();
 });
+
+it("keeps its port from a composition that patched the channel's port getters, Set.add or Map.set", async () => {
+  const parent = frameWindow();
+  const handoff = vi.fn();
+  parent.postMessage = handoff as unknown as Window["postMessage"];
+  const agent = installEditingAgent(parent);
+  cleanups.push(() => agent.dispose());
+  const seen = new Set<unknown>();
+  const keep = (value: unknown) => {
+    if (value && typeof value === "object" && "postMessage" in value) seen.add(value);
+  };
+  const channelProto = MessageChannel.prototype;
+  const port1 = Object.getOwnPropertyDescriptor(channelProto, "port1");
+  if (port1?.get) {
+    Object.defineProperty(channelProto, "port1", {
+      configurable: true,
+      get() {
+        const port = port1.get!.call(this);
+        keep(port);
+        return port;
+      },
+    });
+    cleanups.push(() => Object.defineProperty(channelProto, "port1", port1));
+  }
+  const add = Set.prototype.add;
+  const set = Map.prototype.set;
+  Set.prototype.add = function (value) {
+    keep(value);
+    return add.call(this, value);
+  };
+  Map.prototype.set = function (key, value) {
+    keep(key);
+    return set.call(this, key, value);
+  };
+  cleanups.push(() => {
+    Set.prototype.add = add;
+    Map.prototype.set = set;
+  });
+
+  connect(parent);
+  const studio = (handoff.mock.calls[0][2] as MessagePort[])[0]!;
+  cleanups.push(() => studio.close());
+  seen.delete(studio);
+  const replies: Array<Record<string, unknown>> = [];
+  onmessage.set!.call(studio, (event: MessageEvent<Record<string, unknown>>) => {
+    replies.push(event.data);
+  });
+  nativePost.call(studio, { v: 1, id: 1, kind: "watch-keys", params: { combos: ["Space"] } });
+  nativePost.call(studio, { v: 1, id: 2, kind: "watch-geometry", params: { handles: [] } });
+  await vi.waitFor(() => expect(replies.map((reply) => reply.id)).toEqual([1, 2]));
+  seen.delete(studio);
+  expect([...seen]).toEqual([]);
+});
