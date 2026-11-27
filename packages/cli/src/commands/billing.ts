@@ -97,6 +97,8 @@ async function offerCheckout(
   source: CheckoutSource,
   done: (p: Plan | null) => boolean,
 ): Promise<CheckoutError | null> {
+  // Add-on credits sell only beside an active plan (the server refuses Free); the open page shows Free the plans.
+  if (kind === "credits" && before.plan === "none") return null;
   const offer = await readOffer(signal);
   if (signal.aborted) return null;
   const shortBy = (p: Plan) => (needed ? needed - p.credits : undefined);
