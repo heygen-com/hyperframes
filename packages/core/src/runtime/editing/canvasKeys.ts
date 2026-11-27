@@ -68,6 +68,8 @@ export type CanvasKeyActionEvent =
       totalDx: number;
       totalDy: number;
       drafts: Record<string, number>;
+      /** GSAP x/y of each GSAP-owned handle before the burst's first draw. */
+      baseGsap: Record<string, { x: number; y: number }>;
     };
 
 type Fields = Record<string, unknown>;
@@ -140,6 +142,21 @@ export function parseResolveCanvasKeyAction(params: unknown): ResolveCanvasKeyAc
   return { actionId: params.actionId, outcome: params.outcome };
 }
 
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+function isBaseGsapMap(value: unknown): value is Record<string, { x: number; y: number }> {
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(
+    ([k, v]) =>
+      isHandle(k) &&
+      isRecord(v) &&
+      Object.keys(v).sort().join() === "x,y" &&
+      isFiniteNumber(v.x) &&
+      isFiniteNumber(v.y),
+  );
+}
+
 function isDraftMap(value: unknown): value is Record<string, number> {
   if (!isRecord(value)) return false;
   return Object.entries(value).every(
@@ -158,16 +175,15 @@ export function canvasKeyActionEvent(data: unknown, version: number): CanvasKeyA
   }
   if (data.action === "nudge") {
     const keys = Object.keys(data).sort().join();
-    if (keys !== "action,actionId,drafts,dx,dy,event,handles,revision,totalDx,totalDy,v")
+    if (keys !== "action,actionId,baseGsap,drafts,dx,dy,event,handles,revision,totalDx,totalDy,v")
       return null;
     if (
       !isStep(data.dx) ||
       !isStep(data.dy) ||
-      typeof data.totalDx !== "number" ||
-      !Number.isFinite(data.totalDx) ||
-      typeof data.totalDy !== "number" ||
-      !Number.isFinite(data.totalDy) ||
-      !isDraftMap(data.drafts)
+      !isFiniteNumber(data.totalDx) ||
+      !isFiniteNumber(data.totalDy) ||
+      !isDraftMap(data.drafts) ||
+      !isBaseGsapMap(data.baseGsap)
     )
       return null;
     return {
@@ -180,6 +196,7 @@ export function canvasKeyActionEvent(data: unknown, version: number): CanvasKeyA
       totalDx: data.totalDx,
       totalDy: data.totalDy,
       drafts: data.drafts,
+      baseGsap: data.baseGsap,
     };
   }
   return null;
@@ -354,6 +371,8 @@ function runLocalNudge(state: ArmedState, nudge: ArmedNudge, dx: number, dy: num
     };
   });
   const reply = drawDrafts(drafts);
+  const baseGsap: Record<string, { x: number; y: number }> = {};
+  for (const { handle, gsap } of nudge.bases) if (gsap) baseGsap[handle] = { x: gsap.x, y: gsap.y };
   const actionId = ++lastActionId;
   postRuntimePort(state.port, {
     v: state.version,
@@ -367,6 +386,7 @@ function runLocalNudge(state: ArmedState, nudge: ArmedNudge, dx: number, dy: num
     totalDx: nudge.totalDx,
     totalDy: nudge.totalDy,
     drafts: reply.drafts,
+    baseGsap,
   });
 }
 

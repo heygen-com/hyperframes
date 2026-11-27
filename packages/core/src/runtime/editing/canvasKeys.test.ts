@@ -233,6 +233,8 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
       [hPlain]: expect.any(Number),
       [hAnim]: expect.any(Number),
     });
+    // Every step reports the GSAP start from before the first draw, never the drawn position.
+    expect(actions.map((a) => a.baseGsap)).toEqual(Array(4).fill({ [hAnim]: { x: 40, y: 10 } }));
   });
 
   it("handles a second Delete while an actionId is in-flight and restores only rolled-back elements", async () => {
