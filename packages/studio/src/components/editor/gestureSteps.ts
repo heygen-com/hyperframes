@@ -1,4 +1,6 @@
 import {
+  drawGroupOutline,
+  drawSelectionOutline,
   isDomEditGestureTap,
   movesGesture,
   resolveDomEditRotationGesture,
@@ -14,6 +16,7 @@ import { applyRotationDraft } from "./rotationDraft";
 import { snappedDragDelta } from "./snappedDragDelta";
 import { armRawPointerSteps } from "./rawPointerSteps";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { paintChromeInFrameWhile } from "./frameDragChrome";
 
 type PointerLike = Pick<PointerEvent, "clientX" | "clientY" | "shiftKey" | "altKey">;
 
@@ -48,14 +51,24 @@ function drawGestureStep(
   opts: UseDomEditOverlayGesturesOptions,
 ) {
   if (g.kind === "rotate") return applyRotationDraft(element, rotationAt(g, e), g.plainRotation);
+  // The outline moves before the draft goes out, so the frame's copy of it is this step's.
+  const outline = (rect: { left: number; top: number; width: number; height: number }) =>
+    drawSelectionOutline(opts.boxRef.current, opts.handlesRef.current, rect, {
+      syncCropFrame: g.kind === "drag",
+    });
   if (g.kind === "drag") {
     const { dx, dy } = snappedDragDelta(g, e, opts.snapGuidesRef);
+    const { originWidth: width, originHeight: height } = g;
+    outline({ left: g.originLeft + dx, top: g.originTop + dy, width, height });
     if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
     return;
   }
   const wanted = resizeSizeAt(g, e);
   const written = applyStudioBoxSizeDraft(element, wanted);
-  resolveResizeDraftRect(g, element, null, opts.iframeRef.current, () => null, { wanted, written });
+  const measure = () => null;
+  outline(
+    resolveResizeDraftRect(g, element, null, opts.iframeRef.current, measure, { wanted, written }),
+  );
 }
 
 /** The sealed frame's drafts for this pointer, whatever gesture is held; false once none is. */
@@ -69,6 +82,11 @@ function drawSealedRawStep(opts: UseDomEditOverlayGesturesOptions, e: PointerEve
   if (!isDomEditGestureTap(held, e)) held.travelled = true;
   if (groupG) {
     const { dx, dy } = groupDragDelta(groupG, e, opts.snapGuidesRef);
+    const shifted = groupG.originItems.map((item) => ({
+      ...item,
+      rect: { ...item.rect, left: item.rect.left + dx, top: item.rect.top + dy },
+    }));
+    drawGroupOutline(opts.overlayRef.current, shifted);
     for (const member of groupG.members) applyManualOffsetDragDraft(member, dx, dy);
     return true;
   }
@@ -80,6 +98,12 @@ function drawSealedRawStep(opts: UseDomEditOverlayGesturesOptions, e: PointerEve
 /** Armed at press, so a sealed gesture's first draft already goes out on the first raw update. */
 export function armSealedRawSteps(opts: UseDomEditOverlayGesturesOptions) {
   const iframe = opts.iframeRef.current;
-  if (iframe && previewFrameOpaque(iframe))
-    armRawPointerSteps(opts.gestureRef, (e) => drawSealedRawStep(opts, e));
+  if (!iframe || !previewFrameOpaque(iframe)) return;
+  armRawPointerSteps(opts.gestureRef, (e) => drawSealedRawStep(opts, e));
+  const held = opts.groupGestureRef.current ?? opts.gestureRef.current;
+  paintChromeInFrameWhile(
+    iframe,
+    opts.overlayRef.current,
+    () => (opts.groupGestureRef.current ?? opts.gestureRef.current) === held,
+  );
 }

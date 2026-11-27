@@ -8,6 +8,7 @@ import { DomEditCropHandles } from "./DomEditCropHandles";
 import { DomEditRotateHandle } from "./DomEditRotateHandle";
 import { resolveRotatedResizeCursor } from "./domEditResizeLocal";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
+import { CHROME_PLANE_ATTR } from "./frameDragChrome";
 
 // Corner resize handles, Canva-style: one per corner, diagonal cursors.
 // Corners scale about the element center; the translate keeps the center
@@ -25,6 +26,9 @@ const RESIZE_HANDLE_DEFS: Array<{
 ];
 
 type GestureHandlers = ReturnType<typeof createDomEditOverlayGestureHandlers>;
+
+// A sealed drag clips this to what lies outside the frame, which paints the rest (frameDragChrome).
+const CHROME_PLANE = { [CHROME_PLANE_ATTR]: "", className: "pointer-events-none absolute inset-0" };
 
 interface DomEditGroupChromeProps {
   groupOverlayItems: GroupOverlayItem[];
@@ -49,7 +53,7 @@ export function DomEditGroupChrome({
 }: DomEditGroupChromeProps) {
   const canManipulate = allowCanvasMovement && !usePreviewReadOnly();
   return (
-    <>
+    <div {...CHROME_PLANE}>
       {groupOverlayItems.map((item) => (
         <div
           key={item.key}
@@ -81,7 +85,7 @@ export function DomEditGroupChrome({
         }}
         onClick={onBoxClick}
       />
-    </>
+    </div>
   );
 }
 
@@ -224,7 +228,7 @@ export function DomEditSelectionChrome({
   const canManipulate = allowCanvasMovement && !readOnly;
 
   return (
-    <>
+    <div {...CHROME_PLANE}>
       <div
         data-dom-edit-chrome="true"
         className="pointer-events-none absolute inset-0"
@@ -300,6 +304,6 @@ export function DomEditSelectionChrome({
           onStyleCommit={onStyleCommit}
         />
       )}
-    </>
+    </div>
   );
 }

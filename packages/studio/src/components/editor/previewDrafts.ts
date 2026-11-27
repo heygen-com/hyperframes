@@ -5,6 +5,7 @@
  */
 import {
   MAX_DESCRIBE_HANDLES,
+  type EditingDragChrome,
   type EditingDraft,
   type EditingDraftEnd,
   type EditingDraftProps,
@@ -24,6 +25,12 @@ type Drawn = {
 /** One gesture's draft: `draft` is the frame's number for it, `saving` the selector its save will patch. */
 type Entry = Drawn & { gesture: object; draft?: number; saving?: string };
 
+/** What each draft request carries of Studio's chrome; `shown` runs once the frame painted a copy. */
+export interface DraftChromeCarrier {
+  read: () => EditingDragChrome | undefined;
+  shown: () => void;
+}
+
 interface Queue {
   ops: EditingDraft[];
   drawn: Map<string, Entry>;
@@ -31,6 +38,7 @@ interface Queue {
   sent: Array<() => void>;
   sendQueued: boolean;
   gsapSetTakesDrafts?: boolean;
+  chrome?: DraftChromeCarrier;
 }
 
 const standIns = new WeakMap<Element, { iframe: HTMLIFrameElement; handle: string }>();
@@ -64,13 +72,29 @@ function queueFor(iframe: HTMLIFrameElement): Queue {
 
 const opGesture = new WeakMap<EditingDraft, object>();
 
+const CLEAR_CHROME: DraftChromeCarrier = { read: () => null, shown: () => {} };
+
+function chromeShown(
+  queue: Queue,
+  carrier: DraftChromeCarrier | undefined,
+  sent: EditingDragChrome | undefined,
+  reply: unknown,
+): void {
+  if (reply && sent?.nodes && carrier && queue.chrome === carrier) carrier.shown();
+}
+
 function send(iframe: HTMLIFrameElement, queue: Queue): void {
   if (queue.sending) return;
-  if (!queue.ops.length) return void queue.sent.splice(0).forEach((done) => done());
+  const carrier = queue.chrome;
+  if (!queue.ops.length && carrier !== CLEAR_CHROME)
+    return void queue.sent.splice(0).forEach((done) => done());
+  if (carrier === CLEAR_CHROME) delete queue.chrome;
+  const chrome = carrier?.read();
   const drafts = queue.ops.splice(0, MAX_DESCRIBE_HANDLES);
   queue.sending = true;
-  void previewRequest(iframe, "draft", { drafts })
+  void previewRequest(iframe, "draft", { drafts, ...(chrome !== undefined && { chrome }) })
     .then((reply) => {
+      chromeShown(queue, carrier, chrome, reply);
       if (reply?.gsapSetTakesDrafts) queue.gsapSetTakesDrafts = true;
       for (const op of drafts) {
         const entry = queue.drawn.get(op.handle);
@@ -242,4 +266,17 @@ export function previewDraftsSent(iframe: HTMLIFrameElement): Promise<void> {
   const queue = queueFor(iframe);
   if (!queue.sending && !queue.ops.length) return Promise.resolve();
   return new Promise((done) => queue.sent.push(done));
+}
+
+/** Every draft request to `iframe` carries `carrier`'s chrome until `endPreviewDraftChrome`. */
+export function carryPreviewDraftChrome(iframe: HTMLIFrameElement, carrier: DraftChromeCarrier) {
+  queueFor(iframe).chrome = carrier;
+}
+
+/** Takes the frame's copy of the chrome away, unless a later gesture carries its own by now. */
+export function endPreviewDraftChrome(iframe: HTMLIFrameElement, carrier: DraftChromeCarrier) {
+  const queue = queueFor(iframe);
+  if (queue.chrome !== carrier) return;
+  queue.chrome = CLEAR_CHROME;
+  send(iframe, queue);
 }

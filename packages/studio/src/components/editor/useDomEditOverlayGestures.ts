@@ -55,6 +55,7 @@ import { createGroupDragMover } from "./groupDragMove";
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
 import { releaseEndedGestureHolds } from "../../player/lib/previewChannel";
+import { endChromeInFrameIfReleased } from "./frameDragChrome";
 import { snappedDragDelta } from "./snappedDragDelta";
 import { resizeSizeAt, rotationAt } from "./gestureSteps";
 
@@ -62,6 +63,11 @@ function logGestureCommitFailure(message: string, error: unknown): void {
   if (error instanceof DomEditSaveQueueOpenError) return;
   console.error(message, error);
 }
+
+const releaseHolds = () => {
+  releaseEndedGestureHolds();
+  endChromeInFrameIfReleased();
+};
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect, syncCropFrame = false) => {
@@ -232,7 +238,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (groupG) {
       opts.groupGestureRef.current = null;
-      releaseEndedGestureHolds();
+      releaseHolds();
       const rawDx = e.clientX - groupG.startX;
       const rawDy = e.clientY - groupG.startY;
       // Consume the release click so it cannot deselect the moved group.
@@ -296,7 +302,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     opts.gestureRef.current = null;
-    releaseEndedGestureHolds();
+    releaseHolds();
     if (!g || !sel) return;
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
 
@@ -479,7 +485,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.blockedMoveRef.current = null;
     opts.groupGestureRef.current = null;
     opts.gestureRef.current = null;
-    releaseEndedGestureHolds();
+    releaseHolds();
     opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
   };
 
