@@ -51,7 +51,7 @@
   "commands/preview.ts": 9,
   "commands/publish.ts": 3,
   "commands/remove-background.ts": 7,
-  "commands/render.ts": 12,
+  "commands/render.ts": 11,
   "commands/render/execute.ts": 6,
   "commands/render/present.ts": 4,
   "commands/share.ts": 9,

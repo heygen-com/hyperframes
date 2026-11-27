@@ -2095,7 +2095,27 @@ The flags that come up most:
 | `--variables`       | —                             | JSON object merged over the composition's `data-composition-variables` defaults                                                                    |
 | `--variables-file`  | —                             | Read those overrides from a JSON file instead                                                                                                     |
 | `--batch`           | —                             | Render one output per variables row, from a JSON array or a `{ "rows": [...] }` object                                                             |
-| `--json`            | off                           | With `--batch`, print one final JSON result document instead of progress                                                                            |
+| `--json`            | off                           | Print exactly one JSON object on stdout and nothing else. Without `--batch`: a success object, a failure envelope, or a cancel object. With `--batch`: one final batch result document. |
+
+`render --json` answers with one of three shapes, never more than one object.
+A successful render prints its path and stats (`durationMs` when the result
+reports it, `bytes` for a file output):
+
+```json
+{"ok":true,"outputPath":"renders/out.mp4","durationMs":53200,"renderTimeMs":31178,"bytes":1843200}
+```
+
+A failure prints the shared error envelope, with a cause-specific `code` such as
+`chrome_not_found`, `ffmpeg_not_found`, `ffprobe_not_found` or `render_locked`
+(`runtime_error` otherwise). A SIGINT, SIGTERM or SIGHUP during a local render
+prints the cancel object and still exits 1; the human `Render cancelled:` line
+stays on stderr:
+
+```json
+{"ok":false,"error":{"code":"cancelled","signal":"SIGINT","message":"Render cancelled: render_cancelled_by_sigint"}}
+```
+
+With `--batch`, stdout carries only the final batch result document instead.
 
 Quality and file size:
 

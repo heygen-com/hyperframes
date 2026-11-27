@@ -279,6 +279,10 @@ const PRINTS_FOR_ANOTHER_PROGRAM: Record<string, { calls: number; why: string }>
   "ui/renderResult.ts": { calls: 1, why: "the `@hf-result` line a parent process parses" },
   "utils/cancellableProcess.ts": { calls: 2, why: "passes on its own worker's stderr" },
   "utils/jsonError.ts": { calls: 1, why: "the `--json` failure body, one JSON line" },
+  "utils/renderJsonResult.ts": {
+    calls: 1,
+    why: "the `--json` result or cancel body, one JSON line",
+  },
   "whisper/sherpaWorker.ts": { calls: 3, why: "prefixed lines `whisper/sherpa.ts` parses" },
 };
 
