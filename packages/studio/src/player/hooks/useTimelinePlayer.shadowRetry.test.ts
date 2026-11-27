@@ -4,7 +4,9 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPreviewReload";
-import { SHADOW_RETRY_DELAY_MS } from "./useShadowReloadRetry";
+import { BUSY_PAGE_RETRIES, SHADOW_RETRY_DELAY_MS } from "./useShadowReloadRetry";
+import { refusedPreviewMessage } from "@hyperframes/core/studio-preview-mark";
+import type { TimelinePlayerApi } from "./timelinePlayerTestHarness";
 import {
   makeAdapterWindow,
   makeFakeIframe,
@@ -81,5 +83,51 @@ describe("a shadow reload that timed out", () => {
 
     act(() => void vi.advanceTimersByTime(SHADOW_RETRY_DELAY_MS));
     expect(shadows(getApi().previewSlots)).toEqual(newer);
+  });
+});
+
+/** The shadow's frame given a page its server refused with `status`, then that refusal reported. */
+function refuse(getApi: () => TimelinePlayerApi, status: number, retryAfterS?: number) {
+  const gen = shadows(getApi().previewSlots)[0]!.gen;
+  const page = makeFakeIframe({
+    ...(retryAfterS !== undefined && { __hfPreviewRetryAfter: retryAfterS }),
+  });
+  act(() => getApi().setShadowIframeNode(page));
+  act(() => getApi().onShadowError(gen, refusedPreviewMessage(status)));
+  return gen;
+}
+
+// A server answers 503 with Retry-After when a project's folder or a page build is too slow right now: the reload asks
+// again after it, instead of keeping the old preview until the next edit.
+describe("a shadow reload whose page the server refused with 503", () => {
+  it("asks for the page again after the server's Retry-After, a bounded number of times", () => {
+    const { getApi, onPreviewReloadFailed } = beginReload();
+    for (let tries = 0; tries < BUSY_PAGE_RETRIES; tries++) {
+      const gen = refuse(getApi, 503, 5);
+      expect(shadows(getApi().previewSlots)).toHaveLength(0);
+      act(() => void vi.advanceTimersByTime(4_999));
+      expect(shadows(getApi().previewSlots)).toHaveLength(0);
+      act(() => void vi.advanceTimersByTime(1));
+      expect(shadows(getApi().previewSlots)[0]!.gen).toBeGreaterThan(gen);
+    }
+    refuse(getApi, 503, 5);
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect(shadows(getApi().previewSlots)).toHaveLength(0);
+    expect(onPreviewReloadFailed).toHaveBeenCalledTimes(BUSY_PAGE_RETRIES + 1);
+  });
+
+  it("asks again after the short retry delay when the page carries no Retry-After", () => {
+    const { getApi } = beginReload();
+    refuse(getApi, 503);
+    act(() => void vi.advanceTimersByTime(SHADOW_RETRY_DELAY_MS));
+    expect(shadows(getApi().previewSlots)).toHaveLength(1);
+  });
+
+  it("does not ask again for a page the server said is missing", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { getApi } = beginReload();
+    refuse(getApi, 404, 5);
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect(shadows(getApi().previewSlots)).toHaveLength(0);
   });
 });

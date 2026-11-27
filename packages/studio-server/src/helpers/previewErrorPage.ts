@@ -2,6 +2,7 @@ import { RUNTIME_BOOTSTRAP_ATTR } from "@hyperframes/core/compiler";
 import {
   refusedPreviewMessage,
   STUDIO_PREVIEW_ERRORS,
+  STUDIO_PREVIEW_RETRY_AFTER,
 } from "@hyperframes/core/studio-preview-mark";
 
 const htmlText = (text: string) =>
@@ -10,11 +11,21 @@ const htmlText = (text: string) =>
 export const previewRuntimeTag = (runtimeUrl: string) =>
   `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
 
-export function previewRefusalPage(message: string, runtimeUrl: string): string {
+export function previewRefusalPage(
+  message: string,
+  runtimeUrl: string,
+  retryAfterS?: number,
+): string {
   const script = JSON.stringify(message).replace(/</g, "\\u003c");
-  return `<!doctype html><meta charset="utf-8"><script>window.${STUDIO_PREVIEW_ERRORS}=[${script}]</script>${previewRuntimeTag(runtimeUrl)}<p>${htmlText(message)}</p>`;
+  const retry =
+    retryAfterS === undefined ? "" : `window.${STUDIO_PREVIEW_RETRY_AFTER}=${retryAfterS};`;
+  return `<!doctype html><meta charset="utf-8"><script>window.${STUDIO_PREVIEW_ERRORS}=[${script}];${retry}</script>${previewRuntimeTag(runtimeUrl)}<p>${htmlText(message)}</p>`;
 }
 
-export function previewErrorPage(status: number, runtimeUrl: string): string {
-  return previewRefusalPage(refusedPreviewMessage(status), runtimeUrl);
+export function retryAfterSeconds(header: string | null): number | undefined {
+  return header !== null && /^\d{1,4}$/.test(header.trim()) ? Number(header.trim()) : undefined;
+}
+
+export function previewErrorPage(status: number, runtimeUrl: string, retryAfterS?: number): string {
+  return previewRefusalPage(refusedPreviewMessage(status), runtimeUrl, retryAfterS);
 }

@@ -10,6 +10,7 @@ import {
 } from "../../components/editor/manualEditGesture";
 import {
   refusedPreviewStatus,
+  STUDIO_PREVIEW_RETRY_AFTER,
   STUDIO_PREVIEW_ERROR_KINDS,
 } from "@hyperframes/core/studio-preview-mark";
 import { gestureDocumentOf } from "../../components/editor/previewSelection";
@@ -108,6 +109,19 @@ function firstErrorFrom(iframe: HTMLIFrameElement | null): string {
     ? (kinds[0] as { origin?: unknown } | undefined)?.origin
     : null;
   return typeof origin === "string" ? ` Its first page error came from: ${origin}.` : "";
+}
+
+function pageRetryAfterMs(iframe: HTMLIFrameElement | null): number | undefined {
+  try {
+    const seconds = (iframe?.contentWindow as Record<string, unknown> | null | undefined)?.[
+      STUDIO_PREVIEW_RETRY_AFTER
+    ];
+    return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
+      ? seconds * 1000
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function hyperframesPlayerOf(iframe: HTMLIFrameElement): Element | null {
@@ -245,6 +259,7 @@ export function useShadowPreviewReload({
                 : "its timeline to be ready";
       const got = sealed ? " Its page had got to: sealed." : pageGotTo(shadow);
       const errorFrom = sealed ? "" : firstErrorFrom(shadow);
+      const retryAfterMs = sealed ? undefined : pageRetryAfterMs(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();
@@ -262,7 +277,7 @@ export function useShadowPreviewReload({
       const pageMissingNow = refused !== null && refused < 500;
       (pageMissingNow ? console.warn : console.error)(`[studio] ${message}${errorFrom}`);
       onReloadFailedRef.current?.(message);
-      retry.afterFailure(cause, failedGen);
+      retry.afterFailure(cause, failedGen, retryAfterMs);
     },
     [stopPendingShadow, retry, isRefreshingRef, pendingSeekRef, restoreLive],
   );
