@@ -461,7 +461,6 @@ function runArmedAction(state: ArmedState, press: Omit<CanvasKeyPress, "revision
   return true;
 }
 
-/** Studio's own press of an armed combo: the frame draws it as it would a press in the frame. */
 export function pressCanvasKey(port: MessagePort, press: CanvasKeyPress): { handled: boolean } {
   const state = armed;
   if (!state || state.port !== port || state.revision !== press.revision) return { handled: false };
