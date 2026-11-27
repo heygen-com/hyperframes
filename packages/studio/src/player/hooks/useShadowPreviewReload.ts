@@ -91,12 +91,16 @@ function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
   return "no-player";
 }
 
+const givenAddress = (iframe: HTMLIFrameElement | null) =>
+  !/^(about:blank)?$/.test(iframe?.getAttribute("src") ?? "");
+const waitsOnServer = (iframe: HTMLIFrameElement | null) =>
+  givenAddress(iframe) && shadowPagePhase(iframe) === "blank";
 const frameAddedAt = new WeakMap<HTMLIFrameElement, number>();
 function pageGotTo(iframe: HTMLIFrameElement | null): string {
   const phase = shadowPlayerReachable(iframe) ? null : shadowPagePhase(iframe);
   if (phase !== "blank" && phase !== "unreadable")
     return phase ? ` Its page had got to: ${phase}.` : "";
-  const given = /^(about:blank)?$/.test(iframe!.getAttribute("src") ?? "") ? "was never" : "was";
+  const given = givenAddress(iframe) ? "was" : "was never";
   return ` Its page had got to: ${phase}. Its frame ${given} given a page address and was added ${Date.now() - frameAddedAt.get(iframe!)!} ms ago.`;
 }
 
@@ -440,6 +444,11 @@ export function useShadowPreviewReload({
         if (frame && !frame.isConnected) {
           shadowFrameLeftPageRef.current = true;
           logReload("shadow-detached", { gen });
+          return;
+        }
+        if (waitsOnServer(frame)) {
+          logReload("shadow-awaiting-server", { gen });
+          armReadyTimerRef.current(gen);
           return;
         }
         budgetsSpentRef.current += 1;
