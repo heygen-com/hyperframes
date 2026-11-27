@@ -9,6 +9,7 @@ import { elementForHandle } from "./editingHandles";
 import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
 import type { EditingDraft, EditingDraftProps, EditingDraftRotate } from "./editingPort";
 import { revealClip } from "./clipReveal";
+import { clearDragChrome, drawDragChrome, type EditingDragChrome } from "./editing/dragChrome";
 import { computedTranslateAxes, movedTranslate, SIZE_PROPERTIES, writeDrawnSize } from "./drawnBox";
 import type { RuntimeTimelineLike } from "./types";
 
@@ -245,8 +246,12 @@ function redrawKeepingLiveDrafts(): void {
   putLiveDraftsBack();
 }
 
-/** Applies each draft in order; one for an element this load no longer has is skipped. */
-export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
+/** Applies each draft in order; one for an element this load no longer has is skipped. `chrome` is
+ * painted in the same turn, so it shows in the same frame as the drafts. */
+export function drawDrafts(
+  drafts: readonly EditingDraft[],
+  chrome?: EditingDragChrome,
+): EditingDraftReply {
   let drawn = 0;
   let restored = false;
   const numbers: Record<string, number> = {};
@@ -259,5 +264,7 @@ export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
     if (saved) numbers[draft.handle] = saved.draft;
   }
   if (restored) redrawKeepingLiveDrafts();
+  if (chrome !== undefined) drawDragChrome(chrome);
+  else if (!liveDrafts.size) clearDragChrome();
   return { drawn, drafts: numbers };
 }

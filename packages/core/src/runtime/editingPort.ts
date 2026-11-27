@@ -33,6 +33,7 @@ import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
 import { parsePatchTweensRequest, type PatchTweensParams } from "./editing/patchTween";
 import { parseDraftEnd, type EditingDraftEnd, type EditingDraftReply } from "./editingDraftEnd";
+import { parseDragChrome, type EditingDragChrome } from "./editing/dragChrome";
 import {
   parseRestoreAttributesRerun,
   parseSoftReload,
@@ -168,6 +169,13 @@ export {
 export type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export { MAX_EDIT_ENTRIES } from "./editing/editElement";
+export {
+  MAX_DRAG_CHROME_BYTES,
+  MAX_DRAG_CHROME_NODES,
+  parseDragChrome,
+  type EditingDragChrome,
+  type EditingDragChromeNode,
+} from "./editing/dragChrome";
 export { MAX_FONT_FACES } from "./editing/textStyleReads";
 export {
   MAX_STAGE_CLIP_KEYS,
@@ -424,9 +432,10 @@ export interface EditingRequests {
     params: { group?: EditingElementHandle; offset?: number };
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
-  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
+  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here.
+   * `chrome` is Studio's selection chrome painted with them; null takes it away. */
   draft: {
-    params: { drafts: EditingDraft[] };
+    params: { drafts: EditingDraft[]; chrome?: EditingDragChrome };
     result: EditingDraftReply & { gsapSetTakesDrafts?: true };
   };
   "gesture-start": {
@@ -682,14 +691,23 @@ function gsapSetWithDrafts(params: unknown): GsapSetParams | null {
   if (!isPlainRecord(params) || !("drafts" in params)) return parseGsapSet(params);
   const { drafts, ...set } = params;
   const parsed = parseGsapSet(set);
-  const drawn = draftList({ drafts });
+  const drawn = draftsOnly({ drafts });
   return parsed && drawn ? { ...parsed, drafts: drawn.drafts } : null;
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {
+  if (!isPlainRecord(params) || !("chrome" in params)) return draftsOnly(params);
+  const { chrome, ...rest } = params;
+  const drawn = draftsOnly(rest, true);
+  const parsed = parseDragChrome(chrome);
+  return drawn && parsed !== undefined ? { ...drawn, chrome: parsed } : null;
+}
+
+/** `chromeOnly` lets a request that carries chrome name no draft. */
+function draftsOnly(params: unknown, chromeOnly = false): { drafts: EditingDraft[] } | null {
   if (!hasKeys(params, "drafts") || !Array.isArray(params.drafts)) return null;
   const { drafts } = params;
-  if (!drafts.length || drafts.length > MAX_DESCRIBE_HANDLES) return null;
+  if ((!drafts.length && !chromeOnly) || drafts.length > MAX_DESCRIBE_HANDLES) return null;
   const parsed = drafts.map(draftEntry);
   return parsed.includes(null) ? null : { drafts: parsed as EditingDraft[] };
 }
