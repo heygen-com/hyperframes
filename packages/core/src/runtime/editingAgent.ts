@@ -36,6 +36,7 @@ import { elementGeometry } from "./editingGeometry";
 import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
+import { clearDragChrome } from "./editing/dragChrome";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
 import { maxZIndex } from "./editing/maxZIndex";
 import { gestureBase, gestureStart } from "./editingGestureStart";
@@ -286,7 +287,10 @@ const HANDLERS: Handlers = {
   query: ({ selector }) => queryElements(selector),
   geometry: ({ handles, children }) => elementGeometry(handles, children),
   layers: ({ group, offset }) => layersOf(group, offset),
-  draft: ({ drafts }) => ({ ...drawDrafts(drafts), gsapSetTakesDrafts: true as const }),
+  draft: ({ drafts, chrome }) => ({
+    ...drawDrafts(drafts, chrome),
+    gsapSetTakesDrafts: true as const,
+  }),
   "gesture-start": ({ handles }) => gestureStart(handles),
   "gesture-base": ({ handles }) => ({ elements: handles.map(gestureBase) }),
   "console-errors": ({ from }) => {
@@ -431,6 +435,7 @@ export function installEditingAgent(parent: Window = parentAtLoad ?? window.pare
       for (const expire of [...pendingPresentedWaits]) expire();
       resetCanvasKeys(true);
       endStageAct();
+      clearDragChrome();
     },
   };
 }
