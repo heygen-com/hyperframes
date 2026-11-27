@@ -1,5 +1,13 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { Hono } from "hono";
@@ -159,13 +167,13 @@ async function projectWithIndexedCopy() {
   const earlier = join(dirname(fresh), `${"a".repeat(64)}.mp4`);
   writeFileSync(earlier, "copy");
   writeCopyIndex(fastIndexPath(fresh), earlier);
-  return dir;
+  return { dir, earlier };
 }
 
 // fails without the fix: the route's zero wait started before the copy lookup, so a slow disk turned a made copy into
 // "being made" on every retry.
 it("a preview copy that was already made is served while each read waits on the disk", async () => {
-  const dir = await projectWithIndexedCopy();
+  const { dir } = await projectWithIndexedCopy();
   const app = new Hono();
   registerPreviewRoutes(app, stubAdapter(dir));
   let res: Response | undefined;
@@ -178,7 +186,7 @@ it("a preview copy that was already made is served while each read waits on the 
 
 // fails without the fix: a lookup that failed while an earlier one held its project's turn had no handler yet.
 it("a copy lookup that fails while it waits its turn reaches only its caller", async () => {
-  const dir = await projectWithIndexedCopy();
+  const { dir } = await projectWithIndexedCopy();
   const unhandled: unknown[] = [];
   const note = (reason: unknown) => unhandled.push(reason);
   process.on("unhandledRejection", note);
@@ -196,4 +204,20 @@ it("a copy lookup that fails while it waits its turn reaches only its caller", a
     process.off("unhandledRejection", note);
   }
   expect(unhandled).toEqual([]);
+});
+
+// fails without the fix: a copy idle past the sweep's limit is spared by the sweep its own hit starts, which runs
+// before the hit's "just used" time lands.
+it("a preview copy idle for months is served, not swept by the request that found it", async () => {
+  const { dir, earlier } = await projectWithIndexedCopy();
+  const longAgo = new Date(Date.now() - 365 * 24 * 3600_000);
+  utimesSync(earlier, longAgo, longAgo);
+  const app = new Hono();
+  registerPreviewRoutes(app, stubAdapter(dir));
+  let res: Response | undefined;
+  await pingedThroughStalls(dir, async () => {
+    res = await app.request("http://localhost/projects/p/preview/clip.mp4?hf-proxy=h264");
+  });
+  expect(res?.status).toBe(200);
+  expect(await res?.text()).toBe("copy");
 });

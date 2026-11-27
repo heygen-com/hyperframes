@@ -424,10 +424,12 @@ function maintainProxyCache(cacheDir: string, staleTempMs?: number, justServed?:
   }
 }
 
-function markCacheEntryUsed(cachePath: string): void {
+function servedFromCache(cachePath: string): string {
   const now = new Date();
   // expected: a concurrent cleanup may have removed the entry; the next request's miss path recreates it
   void utimes(cachePath, now, now).catch(() => undefined);
+  maintainProxyCache(dirname(cachePath), undefined, cachePath);
+  return cachePath;
 }
 
 // --- negative cache ---------------------------------------------------------
@@ -1273,9 +1275,7 @@ export async function resolveProxy(
   );
   options.signal?.throwIfAborted();
   if (cached) {
-    markCacheEntryUsed(cachePath);
-    maintainProxyCache(dirname(cachePath));
-    return cachePath;
+    return servedFromCache(cachePath);
   }
 
   const rememberedFailure = failedTranscodes.get(cachePath);
@@ -1408,9 +1408,7 @@ export async function resolveStill(
   );
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
   if (await isProjectCacheFileAsync(source.projectDir, cachePath)) {
-    markCacheEntryUsed(cachePath);
-    maintainProxyCache(dirname(cachePath), undefined, cachePath);
-    return cachePath;
+    return servedFromCache(cachePath);
   }
   signal?.throwIfAborted();
   let job = stillsInFlight.get(cachePath);
