@@ -1,6 +1,7 @@
 // Capture-first preview key handler: runs armed Delete/nudge in-frame and forwards Studio shortcuts.
 import { matchCombo, parseCombo, type Combo } from "../../keyCombo";
 import { capturePageIn, markedForStudio } from "../../studioPreviewMark";
+import { swallow } from "../diagnostics";
 import { isDomNode, isElementNode, isStylableElement } from "../domRealm";
 import { drawDrafts } from "../editingDraft";
 import {
@@ -458,9 +459,16 @@ function handleShieldKey(state: ArmedState, event: KeyboardEvent): void {
   if (state.down.delete(event.code || event.key)) forwardTrustedKey(state, event);
 }
 
+function hear(listener: (event: KeyboardEvent) => void, event: Event): void {
+  try {
+    listener(event as KeyboardEvent);
+  } catch (err) {
+    swallow("canvasKeys.frameKeydown", err);
+  }
+}
+
 function onShieldEvent(event: Event): void {
-  if (event.type === "keydown")
-    for (const listener of frameKeydownListeners) listener(event as KeyboardEvent);
+  if (event.type === "keydown") for (const listener of frameKeydownListeners) hear(listener, event);
   const state = armed;
   if (!state || !isTrustedEvent(event) || isActiveTextEditTarget(event.target)) return;
   stopEvent(event);

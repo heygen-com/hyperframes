@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_PREVIEW_CAPTURE_MODE, STUDIO_PREVIEW_MARK_META } from "../../studioPreviewMark";
 import { installEditingAgent } from "../editingAgent";
 import { EDITING_CONNECT, EDITING_PORT, EDITING_PROTOCOL_VERSION } from "../editingPort";
-import { installPreviewKeyShield, resetCanvasKeys } from "./canvasKeys";
+import { installPreviewKeyShield, listenFrameKeydown, resetCanvasKeys } from "./canvasKeys";
 
 function markStudio(content?: string): HTMLMetaElement {
   const meta = document.createElement("meta");
@@ -475,6 +475,40 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
       ["canvas-key-action", "delete"],
       ["stage-input", "x"],
     ]);
+  });
+
+  it("still stops and handles an armed key when a frame keydown listener throws", async () => {
+    markStudio();
+    loadShield();
+    document.body.innerHTML = `<div data-composition-id="main"><div id="target">box</div></div>`;
+    const { port, dispose } = connectAgent(fakeParent);
+    const stopThrowing = listenFrameKeydown(window, () => {
+      throw new Error("reporting failed");
+    });
+    const pageSaw: string[] = [];
+    const onPageKey = (e: KeyboardEvent) => pageSaw.push(e.code);
+    window.addEventListener("keydown", onPageKey, true);
+    disposeAgent = () => {
+      stopThrowing();
+      window.removeEventListener("keydown", onPageKey, true);
+      dispose();
+    };
+    const handle = (
+      (await ask(port, "query", { selector: "#target" })).result as {
+        matches: Array<{ handle: string }>;
+      }
+    ).matches[0]!.handle;
+    await ask(port, "arm-canvas-keys", {
+      revision: 1,
+      deleteHandles: [handle],
+      deleteCombos: ["Delete"],
+      nudge: null,
+      forwardCombos: [],
+    });
+
+    window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+    expect(document.getElementById("target")).toBeNull();
+    expect(pageSaw).toEqual([]);
   });
 
   it("never installs the key shield in same-origin, render, capture, or non-studio pages", () => {
