@@ -56,6 +56,12 @@
       "types": "./dist/linkedom.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./postcss": {
+      "source": "./src/postcss.ts",
+      "runtime": "./dist/postcss.js",
+      "types": "./dist/postcss.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./gsap-parser-recast": {
       "source": "./src/gsapParser.ts",
       "runtime": "./dist/gsapParser.js",

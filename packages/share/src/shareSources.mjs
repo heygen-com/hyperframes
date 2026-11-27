@@ -199,15 +199,24 @@ async function snapshotFor(job, manifest, limits) {
   if (job.readOnly) return unavailable("source_sync_required");
   if (!job.own && limits.compositions >= limits.maxCompositions)
     return unavailable("source_composition_limit");
+  binding.composition = await confirmSyncDestination(api, binding);
   await store.write(binding);
-  binding.composition = await api.create(
+  return uploadSource({ binding, manifest, api, store, signal, ...uploadOptions(options) });
+}
+/** @param {import("./sources/api.mjs").SourceApi} api @param {Binding} binding */
+async function confirmSyncDestination(api, binding) {
+  const { created, ...composition } = await api.create(
     binding.ownerSpaceId,
     binding.compositionId,
     basename(binding.projectPath),
   );
-  await store.write(binding);
-  return uploadSource({ binding, manifest, api, store, signal, ...uploadOptions(options) });
+  if (composition.id !== binding.compositionId || composition.spaceId !== binding.ownerSpaceId)
+    throw new Error("Source sync returned a different composition or workspace.");
+  if (created !== true && !binding.composition)
+    throw new Error("Source sync requires a new composition. Retry to choose a fresh destination.");
+  return composition;
 }
+
 /** @param {Preparation} job @param {import("./sources/types.js").Manifest} manifest */
 function recoverEarlierCapture({ readOnly, binding, api, store }, manifest) {
   const inflight = binding.inflight;

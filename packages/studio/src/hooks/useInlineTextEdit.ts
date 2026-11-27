@@ -4,6 +4,7 @@ import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext"
 import { usePlayerStore } from "../player/store/playerStore";
 import { holdSealedFrameKeyboard } from "../player/lib/sealedFrameKeyboard";
 import { settleOnDrain, trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import { sealedTextEditAway } from "./textEditAway";
 import {
   isTextTargetWriting,
   landedTextFor,
@@ -333,7 +334,12 @@ export function useInlineTextEdit({
         setSession(open);
         onPause?.();
         sealed.iframe.focus();
-        const params = { handle: sealed.handle, action: "start" as const, caret: caretAt ?? null };
+        const params = {
+          handle: sealed.handle,
+          action: "start" as const,
+          caret: caretAt ?? null,
+          ...sealedTextEditAway(sealed.iframe, sealed.handle),
+        };
         // Saves land in gesture order, as a scriptable preview applies them, so the edit opens on their text.
         const begin = () =>
           openRef.current === open ? previewTextEdit(sealed.iframe, params) : Promise.resolve(null);

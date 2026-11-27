@@ -44,9 +44,10 @@ let root: Root;
 let host: HTMLDivElement;
 let snapshot: LocalShareSnapshot;
 let calls: unknown[];
+let divergentFiles: boolean;
 let hiddenAssets: string[];
 let hiddenDigest: string;
-let sourceState: "off" | "synced" | "needs_sync";
+let sourceState: "off" | "synced" | "needs_sync" | "at_limit";
 let confirmedReviews: unknown[];
 let confirm: ReturnType<typeof vi.fn<(message?: string) => boolean>>;
 let job: LocalShareJob;
@@ -54,6 +55,7 @@ const token = "a".repeat(43);
 beforeEach(() => {
   interaction.mockReset();
   calls = [];
+  divergentFiles = false;
   hiddenAssets = [];
   sourceState = "needs_sync";
   hiddenDigest = "d".repeat(64);
@@ -94,7 +96,22 @@ beforeEach(() => {
     vi.fn(async (url: string, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("X-Hyperframes-Share-CSRF")).toBe(token);
       if (url.includes("/project-files?space="))
-        return Response.json({ state: sourceState, paths: hiddenAssets, digest: hiddenDigest });
+        return Response.json({
+          state: sourceState,
+          paths: hiddenAssets,
+          digest: hiddenDigest,
+          canReconnect: true,
+        });
+      if (url.includes("/reconnect?"))
+        return Response.json([
+          {
+            token: "offer",
+            id: "cloud",
+            title: "Launch",
+            workspace: { id: "team1", name: "Design team" },
+          },
+        ]);
+      if (url.endsWith("/reconnect")) return reconnectReply(init);
       if (url.endsWith("/snapshot")) return Response.json(snapshot);
       if (url.endsWith("/actions")) {
         const { confirmedReview, ...body } = JSON.parse(String(init?.body));
@@ -107,6 +124,14 @@ beforeEach(() => {
   );
   vi.stubGlobal("confirm", confirm);
 });
+function reconnectReply(init?: RequestInit) {
+  const input = JSON.parse(String(init?.body));
+  calls.push(input);
+  if (divergentFiles && input.choice === "offer")
+    return Response.json({ confirmLocalFiles: "reviewed-files" });
+  sourceState = "synced";
+  return Response.json({ reconnected: true });
+}
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
@@ -773,4 +798,41 @@ it("keeps video sharing available when the sync summary cannot be verified", asy
   expect(button("Sync project files")).toBeUndefined();
   await choose("public");
   expect(button("Create share link")?.disabled).toBe(false);
+});
+
+it.each([false, true])(
+  "confirms the destination and asks separately for divergent files (%s)",
+  async (divergent) => {
+    divergentFiles = divergent;
+    await mount();
+    await act(async () => button("Reconnect a moved or upgraded project")!.click());
+    expect(button("Confirm reconnect")!.disabled).toBe(true);
+    const select = host
+      .querySelector<HTMLSelectElement>('option[value="offer"]')!
+      .closest("select")!;
+    await act(async () => {
+      select.value = "offer";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(host.textContent).toContain(
+      "Future syncs will publish versions of Launch in Design team (team1)",
+    );
+    expect(calls).toEqual([]);
+    await act(async () => button("Confirm reconnect")!.click());
+    expect(calls).toEqual([{ choice: "offer" }]);
+    if (divergent) {
+      expect(host.textContent).toContain("may undo cloud edits");
+      expect(button("Cancel")?.disabled).toBe(false);
+      await act(async () => button("Reconnect using local files")!.click());
+      expect(calls).toEqual([{ choice: "offer" }, { choice: "reviewed-files" }]);
+    }
+    expect(host.textContent).toContain("Project files synced.");
+  },
+);
+
+it("offers reconnect when the workspace has no free composition slot", async () => {
+  sourceState = "at_limit";
+  await mount();
+  expect(button("Sync project files")?.disabled).toBe(true);
+  expect(button("Reconnect a moved or upgraded project")?.disabled).toBe(false);
 });

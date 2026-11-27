@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "../editingAgent";
 import { STUDIO_PREVIEW_MARK_META } from "../../studioPreviewMark";
-import { MAX_STAGE_ITEMS, measureStageDocument, parseStageMeasureParams } from "./stageMeasure";
+import {
+  locateStageKey,
+  MAX_STAGE_ITEMS,
+  measureStageDocument,
+  parseStageMeasureParams,
+} from "./stageMeasure";
+
+// jsdom has no CSS.escape; browsers do (capturedMediaIdleRoute.test.ts stubs it the same way).
+(globalThis as typeof globalThis & { CSS?: { escape?: (v: string) => string } }).CSS ??= {};
+globalThis.CSS.escape ??= (v: string) => v.replace(/["\\]/g, "\\$&");
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -72,11 +81,11 @@ describe("measureStageDocument", () => {
 
     const { items, truncated } = measureStageDocument(document);
     expect(truncated).toBe(false);
-    expect(items.map((item) => item.key)).toEqual(["2", "hf-hero", "hf-hero>0"]);
+    expect(items.map((item) => item.key)).toEqual(["2", "#hf-hero", "#hf-hero>0"]);
 
     const heroItem = items[1]!;
     expect(heroItem).toMatchObject({
-      key: "hf-hero",
+      key: "#hf-hero",
       hfId: "hf-hero",
       id: "hero",
       tag: "div",
@@ -93,11 +102,11 @@ describe("measureStageDocument", () => {
 
     const subItem = items[2]!;
     expect(subItem).toMatchObject({
-      key: "hf-hero>0",
+      key: "#hf-hero>0",
       hfId: null,
       id: "sub",
       tag: "span",
-      parent: "hf-hero",
+      parent: "#hf-hero",
       text: "Inner text",
       box: { x: 12, y: 24, width: 100, height: 20 },
       placed: false,
@@ -174,5 +183,38 @@ describe("measureStageDocument", () => {
     } finally {
       agent.dispose();
     }
+  });
+});
+
+describe("stage keys", () => {
+  const keyOf = (element: Element) => {
+    const { items } = measureStageDocument(document);
+    const index = [...document.body.querySelectorAll("*")].indexOf(element);
+    return items[index]!.key;
+  };
+
+  it.each([
+    ["all digits, the index of another body child", "12"],
+    ["with a path separator in it", "a>1"],
+    ["with a backslash in it", "a\\>0"],
+  ])("never reads an hf id %s as a path: it and its children resolve to themselves", (_, hfId) => {
+    const others = Array.from(
+      { length: 13 },
+      (_, i) => `<section><b>other ${i}</b></section>`,
+    ).join("");
+    document.body.innerHTML = `<div><i>child</i></div>${others}`;
+    const owner = document.body.firstElementChild!;
+    owner.setAttribute("data-hf-id", hfId);
+    const child = owner.firstElementChild!;
+    expect(locateStageKey(document, { key: keyOf(owner), hfId: null })).toBe(owner);
+    expect(locateStageKey(document, { key: keyOf(child), hfId: null })).toBe(child);
+  });
+
+  it("resolves an index path from the body when no ancestor has an hf id", () => {
+    document.body.innerHTML = `<div></div><div><p><i>deep</i></p></div>`;
+    const deep = document.querySelector("i")!;
+    expect(keyOf(deep)).toBe("1>0>0");
+    expect(locateStageKey(document, { key: "1>0>0", hfId: null })).toBe(deep);
+    expect(locateStageKey(document, { key: "1>x", hfId: null })).toBeNull();
   });
 });

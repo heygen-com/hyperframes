@@ -1,5 +1,6 @@
 import { getSvgSelectorAliasesScript } from "../generated/svg-selector-aliases-inline";
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
+import { parseCss as parseProjectCss } from "@hyperframes/parsers/postcss";
 import { escapeCssIdentifier, replaceSelectorIdTokens } from "./selectorIdTokens";
 import { SCENE_PARTS_META } from "../sceneParts";
 
@@ -242,7 +243,7 @@ function scopedSelectorsBound(
 
 function parseCss(css: string): postcss.Root | null {
   try {
-    return postcss.parse(css);
+    return parseProjectCss(css);
   } catch {
     return null;
   }
@@ -405,7 +406,7 @@ function dropFontFaces(styleTexts: string[], hoisted?: string[]): string[] {
       if (!css || !/@font-face/i.test(css)) return css;
       let root: postcss.Root;
       try {
-        root = postcss.parse(css);
+        root = parseProjectCss(css);
       } catch {
         return css; // unparseable text ships as authored and takes no part
       }

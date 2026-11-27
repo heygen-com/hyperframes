@@ -113,51 +113,43 @@ export function encodePreviewPath(relativePath: string): string {
   return relativePath.split("/").map(encodeURIComponent).join("/");
 }
 
+/** True when a project-relative `path` has a `..` segment, which the browser resolves above the project. */
+export function climbsOut(path: string): boolean {
+  return path.split("/").includes("..");
+}
+
 /**
- * Resolve a timeline element's media src to a URL loadable from the studio
- * (parent) document. Composition-relative paths (e.g. "assets/image.png") are
- * routed through the project preview endpoint with each segment encoded.
- *
- * External http(s), `data:`, and `blob:` URLs pass through untouched. A
- * same-origin absolute URL outside the project preview endpoint is the browser's
- * resolved form of a root-relative authored path, so route it back through the
- * active project instead of accidentally fetching the Studio shell.
+ * A timeline element's media src as a file on this project's preview route (query dropped: the host adds
+ * options), or an external http(s), `data:` or `blob:` URL; "" (load nothing) for any other API route or a climb.
  */
 export function resolveMediaPreviewUrl(
   src: string,
   projectId: string,
   studioOrigin?: string,
 ): string {
-  if (!src) return src;
-  if (/^(?:data:|blob:)/i.test(src)) return src;
-
-  let relativePath = src;
-  let suffix = "";
+  if (!src || /^(?:data:|blob:)/i.test(src)) return src;
+  let relativePath: string | null = src;
+  let hash = "";
   if (/^https?:/i.test(src)) {
-    let parsed: URL;
-    try {
-      parsed = new URL(src);
-    } catch {
-      return src;
-    }
-    if (!studioOrigin || parsed.origin !== studioOrigin) return src;
-    const previewPath = new URL(buildProjectApiPath(projectId, `/preview/`), studioOrigin).pathname;
-    if (parsed.pathname.startsWith(previewPath)) return src;
-    if (parsed.pathname.startsWith("/api/")) return src;
-    try {
-      relativePath = parsed.pathname
-        .replace(/^\/+/, "")
-        .split("/")
-        .map(decodeURIComponent)
-        .join("/");
-    } catch {
-      return src;
-    }
-    suffix = `${parsed.search}${parsed.hash}`;
+    if (!URL.canParse(src)) return "";
+    const url = new URL(src);
+    if (url.origin !== studioOrigin) return src;
+    relativePath = sameOriginProjectPath(url, projectId);
+    hash = url.hash;
   }
+  const path = relativePath?.replace(/^\/+/, "");
+  if (path === undefined || climbsOut(path)) return "";
+  return buildProjectApiPath(projectId, `/preview/${encodePreviewPath(path)}${hash}`);
+}
 
-  return buildProjectApiPath(
-    projectId,
-    `/preview/${encodePreviewPath(relativePath.replace(/^\/+/, ""))}${suffix}`,
-  );
+/** The project file a same-origin `url` names (a rooted path is one), or null for any other API route. */
+function sameOriginProjectPath(url: URL, projectId: string): string | null {
+  const previewPath = new URL(buildProjectApiPath(projectId, `/preview/`), url.origin).pathname;
+  const inPreview = url.pathname.startsWith(previewPath);
+  if (!inPreview && url.pathname.startsWith("/api/")) return null;
+  try {
+    return decodeURIComponent(url.pathname.slice(inPreview ? previewPath.length : 0));
+  } catch {
+    return null;
+  }
 }

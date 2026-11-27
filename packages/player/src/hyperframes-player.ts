@@ -61,6 +61,7 @@ function parseUrl(src: string): URL | null {
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
+const SRC_CARRIES_RUNTIME_ATTR = "src-carries-runtime";
 const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
 
 type FrameTarget = { src: string; read?: boolean } | { srcdoc: string | null };
@@ -1220,12 +1221,15 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     const url = parseUrl(src);
-    if (url && this.hasAttribute(SANDBOX_ORIGIN_ATTR) && url.origin === location.origin) {
+    const sealedSameSite =
+      url !== null && this.hasAttribute(SANDBOX_ORIGIN_ATTR) && url.origin === location.origin;
+    const vouched = sealedSameSite && this.hasAttribute(SRC_CARRIES_RUNTIME_ATTR);
+    if (sealedSameSite && !vouched) {
       this._showSealedSrc(src, url.href);
       return;
     }
     this.probe.markNavigation();
-    this._writeSrcOverSrcdoc(src);
+    this._writeSrcOverSrcdoc(src, vouched);
   }
 
   /** Loads src in place of a sealed srcdoc this player may be showing. */

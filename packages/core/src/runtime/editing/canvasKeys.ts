@@ -3,6 +3,7 @@ import { matchCombo, parseCombo, type Combo } from "../../keyCombo";
 import { capturePageIn, markedForStudio } from "../../studioPreviewMark";
 import { swallow } from "../diagnostics";
 import { isDomNode, isElementNode, isStylableElement } from "../domRealm";
+import { postOnPort } from "../runtimePort";
 import { drawDrafts } from "../editingDraft";
 import {
   EDITING_ELEMENT_HANDLE,
@@ -211,30 +212,6 @@ const nativeIsTrustedGetter =
   typeof Event !== "undefined"
     ? Object.getOwnPropertyDescriptor(Event.prototype, "isTrusted")?.get
     : undefined;
-const NativeMessageChannel = typeof MessageChannel !== "undefined" ? MessageChannel : null;
-const nativePortPostMessage: ((message: unknown) => void) | null = (() => {
-  if (!NativeMessageChannel) return null;
-  try {
-    const probe = new NativeMessageChannel();
-    const post = Object.getPrototypeOf(probe.port1)?.postMessage;
-    probe.port1.close();
-    probe.port2.close();
-    return typeof post === "function" ? post : null;
-  } catch {
-    return null;
-  }
-})();
-
-export function createRuntimeChannel(): MessageChannel {
-  const Ctor = NativeMessageChannel ?? MessageChannel;
-  return new Ctor();
-}
-
-function postRuntimePort(port: MessagePort, message: unknown): void {
-  if (nativePortPostMessage) nativePortPostMessage.call(port, message);
-  else port.postMessage(message);
-}
-
 function stopEvent(event: Event): void {
   if (nativeStopImmediatePropagation) nativeStopImmediatePropagation.call(event);
   else event.stopImmediatePropagation();
@@ -351,7 +328,7 @@ function runLocalDelete(state: ArmedState): void {
   }
   const actionId = ++lastActionId;
   pendingDeletes.set(actionId, detached);
-  postRuntimePort(state.port, {
+  postOnPort(state.port, {
     v: state.version,
     event: "canvas-key-action",
     action: "delete",
@@ -389,7 +366,7 @@ function runLocalNudge(state: ArmedState, nudge: ArmedNudge, dx: number, dy: num
   const baseGsap: Record<string, { x: number; y: number }> = {};
   for (const { handle, gsap } of nudge.bases) if (gsap) baseGsap[handle] = { x: gsap.x, y: gsap.y };
   const actionId = ++lastActionId;
-  postRuntimePort(state.port, {
+  postOnPort(state.port, {
     v: state.version,
     event: "canvas-key-action",
     action: "nudge",
@@ -406,7 +383,7 @@ function runLocalNudge(state: ArmedState, nudge: ArmedNudge, dx: number, dy: num
 }
 
 function forwardTrustedKey(state: ArmedState, event: KeyboardEvent): void {
-  postRuntimePort(state.port, {
+  postOnPort(state.port, {
     v: state.version,
     event: "key",
     key: {
