@@ -1,6 +1,7 @@
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   readlinkSync,
@@ -11,7 +12,7 @@ import { execFileSync } from "node:child_process";
 import { hostname, uptime } from "node:os";
 import { basename, dirname, join, win32 } from "node:path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
-import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { createStagingDir, toWin32LongPath } from "@hyperframes/core/atomic-file";
 
 const OWNER_FILE = "owner.json";
 /** Where a staging dir parks the previous output while swapping in the new one. */
@@ -83,7 +84,7 @@ function pidScope(): { host: string; boot?: string; pidns?: string; machine?: st
 export function createOwnedRenderDir(prefix: string): string {
   const dir = createStagingDir(dirname(prefix), basename(prefix));
   const owner = { pid: process.pid, ...pidScope() };
-  writeFileSync(join(dir, OWNER_FILE), JSON.stringify(owner));
+  writeFileSync(toWin32LongPath(join(dir, OWNER_FILE)), JSON.stringify(owner));
   return dir;
 }
 
@@ -200,7 +201,9 @@ export function listAbandonedRenderDirs(
 
 /** Creates a render's work dir after reclaiming dirs of renders that were killed outright (no cleanup ran). */
 export function createRenderWorkDir(prefix: string, outputDir: string): string {
-  for (const parent of new Set([outputDir, dirname(prefix)])) {
+  const workParent = dirname(prefix);
+  mkdirSync(toWin32LongPath(workParent), { recursive: true });
+  for (const parent of new Set([outputDir, workParent])) {
     for (const dir of listAbandonedRenderDirs(parent)) {
       try {
         rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
