@@ -111,9 +111,10 @@ async function playerSrc(
 function staleTokenSwap(canceled: () => boolean) {
   let shown: HyperframesPlayerElement | null = null;
   let fresher: string | null = null;
+  let retries = 0;
   return {
     onStale(fresh: string) {
-      if (canceled()) return;
+      if (canceled() || retries > 0) return;
       fresher = fresh;
       shown?.setAttribute("src", fresh);
     },
@@ -122,9 +123,10 @@ function staleTokenSwap(canceled: () => boolean) {
       shown = player;
     },
     retry(primed: string, load: (src: string) => void, askAgain?: () => Promise<string>) {
+      const attempt = ++retries;
       if (!askAgain) return load(fresher ?? primed);
       void askAgain().then((current) => {
-        if (!canceled()) load(current);
+        if (!canceled() && attempt === retries) load(current);
       });
     },
   };

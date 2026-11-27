@@ -292,6 +292,65 @@ describe("a host's sandbox origin", () => {
     );
   });
 
+  /** Token lookups answered in the order the test releases them. */
+  const heldLookups = () => {
+    const held: ((token: string) => void)[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) =>
+          held.push((answer) =>
+            resolve({ ok: true, json: async () => ({ token: answer }) } as Response),
+          ),
+        ),
+    );
+    return held;
+  };
+  const retryAfterError = () => {
+    act(() => {
+      player().dispatchEvent(new CustomEvent("error", { detail: { message: "refused" } }));
+    });
+    const retry = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent === "Retry preview",
+    );
+    if (!retry) throw new Error("retry action did not render");
+    act(() => retry.click());
+  };
+  const player = () => document.querySelector("hyperframes-player") as HTMLElement;
+
+  // fails without the fix: the first load's late token check replaced the retry's URL with an older token.
+  it("keeps Retry preview's load when the first load's token check answers late", async () => {
+    const held = heldLookups();
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    retryAfterError();
+    held[1]?.(token);
+    await settle();
+    held[0]?.("O".repeat(43));
+    await settle();
+    expect(player().getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
+    );
+  });
+
+  // fails without the fix: an earlier retry answering last loaded over the later one.
+  it("keeps the latest Retry preview's load when an earlier retry answers last", async () => {
+    const held = heldLookups();
+    primeFrameToken({ projectId: "demo", token });
+    await mountPlayer({ directUrl: undefined, projectId: "demo", sandboxOrigin: "opaque" });
+    await settle();
+    retryAfterError();
+    retryAfterError();
+    held[2]?.(token);
+    await settle();
+    held[1]?.("O".repeat(43));
+    held[0]?.(token);
+    await settle();
+    expect(player().getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${token}?_hfStudioRetry=2`,
+    );
+  });
+
   it.each([
     ["/api/projects/demo/preview", `/api/projects/demo/preview/~${token}`],
     [
