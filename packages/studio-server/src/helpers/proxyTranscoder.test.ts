@@ -1653,13 +1653,12 @@ describe("resolveProxy", () => {
         resolveProxy(projectDir, clip.second!, "h264", undefined, { priority: true }),
       ];
       await flush();
-      succeed(calls[0]!);
+      // The preview's copy takes the priority slot at once; "first" waits for the running one's slot.
+      expect(startedClips(calls).sort()).toEqual(["running", "second"]);
+      for (const name of ["running", "second"]) succeed(callFor(calls, name));
       await flush(12);
-
-      expect(clipOf(calls[1]!)).toBe("second");
-      succeed(calls[1]!);
-      await flush(12);
-      succeed(calls[2]!);
+      expect(startedClips(calls).slice(2)).toEqual(["first"]);
+      succeed(callFor(calls, "first"));
       await Promise.all(asks);
       expect(calls).toHaveLength(3);
     });
@@ -2215,7 +2214,7 @@ describe("resolveProxy", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
     const { spawn, calls } = createSpawnSpy();
     let ffmpegPath: string | undefined;
-    const { resolveProxy, waitForProxy, ProxyWaitTimeoutError } = await loadWithSlowProbe(
+    const { resolveProxy, ProxyWaitTimeoutError } = await loadWithSlowProbe(
       spawn,
       () => ffmpegPath,
       async () => ({ kind: "video", color: { isHdr: false } }),
@@ -2224,13 +2223,13 @@ describe("resolveProxy", () => {
     const sourcePath = join(projectDir, "video.mov");
     writeFileSync(sourcePath, "source-bytes");
 
-    await expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toBeInstanceOf(
-      ProxyWaitTimeoutError,
-    );
+    await expect(
+      resolveProxy(projectDir, sourcePath, "h264", undefined, { waitMs: 0 }),
+    ).rejects.toBeInstanceOf(ProxyWaitTimeoutError);
     await vi.waitFor(() =>
-      expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toThrow(
-        "ffmpeg binary not found",
-      ),
+      expect(
+        resolveProxy(projectDir, sourcePath, "h264", undefined, { waitMs: 0 }),
+      ).rejects.toThrow("ffmpeg binary not found"),
     );
 
     ffmpegPath = FFMPEG_PATH;
@@ -2247,7 +2246,7 @@ describe("resolveProxy", () => {
     const probe = vi.fn(async () => {
       throw new Error("EBUSY: file locked");
     });
-    const { resolveProxy, waitForProxy, ProxyWaitTimeoutError } = await loadWithSlowProbe(
+    const { resolveProxy, ProxyWaitTimeoutError } = await loadWithSlowProbe(
       spawn,
       () => FFMPEG_PATH,
       probe,
@@ -2256,11 +2255,13 @@ describe("resolveProxy", () => {
     const sourcePath = join(projectDir, "video.mov");
     writeFileSync(sourcePath, "source-bytes");
 
-    await expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toBeInstanceOf(
-      ProxyWaitTimeoutError,
-    );
+    await expect(
+      resolveProxy(projectDir, sourcePath, "h264", undefined, { waitMs: 0 }),
+    ).rejects.toBeInstanceOf(ProxyWaitTimeoutError);
     await vi.waitFor(() =>
-      expect(waitForProxy(resolveProxy(projectDir, sourcePath), 0)).rejects.toThrow("EBUSY"),
+      expect(
+        resolveProxy(projectDir, sourcePath, "h264", undefined, { waitMs: 0 }),
+      ).rejects.toThrow("EBUSY"),
     );
     expect(probe).toHaveBeenCalledTimes(1);
   });
