@@ -9,7 +9,11 @@ import type {
 import { resetKeyframesMayClaim } from "../../hooks/appHotkeysDispatch";
 import { membersForDelete } from "../../hooks/domEditDeleteMembers";
 import { noteFrameRemovedHandles } from "../../hooks/previewTimingPatch";
-import { useStudioKeys, type StudioKeys } from "../../player/components/studioShortcuts";
+import {
+  getStudioKeys,
+  useStudioKeys,
+  type StudioKeys,
+} from "../../player/components/studioShortcuts";
 import {
   previewEditingClient,
   previewFrameOpaque,
@@ -201,12 +205,18 @@ type CanvasActionHandler = (event: CanvasKeyActionEvent) => void;
 const actionRoutes = new WeakMap<object, Map<number, CanvasActionHandler>>();
 
 const personActedJustNow = () => navigator.userActivation?.isActive === true;
-const escapeNeedsNoActivation = (key: {
-  key: string;
-  altKey: boolean;
-  ctrlKey: boolean;
-  metaKey: boolean;
-}) => key.key === "Escape" && !key.altKey && !key.ctrlKey && !key.metaKey;
+function studioOwnEscapeWhileItCancels(
+  type: "keydown" | "keyup",
+  key: string,
+): KeyboardEvent | null {
+  if (key !== "Escape" || getStudioKeys().cancel !== "Escape") return null;
+  return new KeyboardEvent(type, {
+    key: "Escape",
+    code: "Escape",
+    bubbles: true,
+    cancelable: true,
+  });
+}
 
 /** One action listener per frame load, routing by arm revision; a Delete for no known arm rolls back. */
 function canvasActionRoute(iframe: HTMLIFrameElement): Map<number, CanvasActionHandler> {
@@ -230,8 +240,13 @@ function forwardSealedKeys(
 ): () => void {
   return previewEditingClient(iframe).onKey((key) => {
     if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
-    if (!personActedJustNow() && !escapeNeedsNoActivation(key)) return;
-    (overlayRef.current ?? window).dispatchEvent(
+    const target = overlayRef.current ?? window;
+    if (!personActedJustNow()) {
+      const cancel = studioOwnEscapeWhileItCancels(key.type, key.key);
+      if (cancel) target.dispatchEvent(cancel);
+      return;
+    }
+    target.dispatchEvent(
       new KeyboardEvent(key.type, {
         key: key.key,
         code: key.code,

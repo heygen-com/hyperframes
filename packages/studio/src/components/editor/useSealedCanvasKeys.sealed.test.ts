@@ -13,6 +13,7 @@ import {
   keepKeyboardOutOfSealedFrame,
 } from "../../player/lib/sealedFrameKeyboard";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
+import { getStudioKeys, setStudioKeys } from "../../player/components/studioShortcuts";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
 import type { DomEditSelection } from "./domEditing";
@@ -521,10 +522,10 @@ it("saves a delayed group Delete on the members the frame removed, not the group
 
 it("acts on a frame's Delete or forwarded key only while the person has just clicked or pressed a key", async () => {
   const onDelete = vi.fn();
-  const { overlay } = await setupSealedCanvas({ onDeleteSelection: onDelete });
+  const { overlay, iframe } = await setupSealedCanvas({ onDeleteSelection: onDelete });
   const forwarded: string[] = [];
   const onStudioKey = (e: KeyboardEvent) => {
-    if (!e.isTrusted) forwarded.push(e.code);
+    if (!e.isTrusted) forwarded.push(`${e.shiftKey ? "Shift+" : ""}${e.key}/${e.code}`);
   };
   window.addEventListener("keydown", onStudioKey, true);
   onTestFinished(() => window.removeEventListener("keydown", onStudioKey, true));
@@ -537,9 +538,20 @@ it("acts on a frame's Delete or forwarded key only while the person has just cli
   expect(document.getElementById("target")).toBeNull();
   await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
   expect(onDelete).not.toHaveBeenCalled();
-  // Escape never activates a page, and it only cancels: it still reaches Studio.
+  // Escape never activates a page, and it only cancels: Studio sends its own plain Escape, never the
+  // frame's code or modifiers, so an Escape reported with Delete's code cannot delete.
+  window.dispatchEvent(trustedKey("keydown", { key: "Escape", code: "Delete", shiftKey: true }));
+  await vi.waitFor(() => expect(forwarded).toEqual(["Escape/Escape"]));
+  expect(document.getElementById("target")).not.toBeNull();
+  expect(onDelete).not.toHaveBeenCalled();
+
+  // A host that binds Escape to another action gets no Escape without a real press.
+  setStudioKeys({ cancel: "Shift+Escape", deleteSelected: "Escape" });
+  expect(getStudioKeys().deleteSelected).toBe("Escape");
+  onTestFinished(() => setStudioKeys(null));
   window.dispatchEvent(trustedKey("keydown", { key: "Escape", code: "Escape" }));
-  await vi.waitFor(() => expect(forwarded).toEqual(["Escape"]));
+  await previewRequest(iframe, "hello", {});
+  expect(forwarded).toEqual(["Escape/Escape"]);
 });
 
 it("lets a drag released on the canvas finish before the keyboard moves into the frame", async () => {
