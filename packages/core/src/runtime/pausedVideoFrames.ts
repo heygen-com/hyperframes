@@ -235,12 +235,18 @@ export function createPausedVideoFrames() {
       else if (records.some((record) => record.target.contains(entry.video))) refresh(entry);
     }
   });
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ["src", "style", "class", "hidden", "data-hidden"],
-  });
+  const mountStyle = () => {
+    if (!style.isConnected) (document.head ?? document.documentElement)?.append(style);
+  };
+  const observeRoot = document.body ?? document.documentElement;
+  if (observeRoot) {
+    observer.observe(observeRoot, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["src", "style", "class", "hidden", "data-hidden"],
+    });
+  }
 
   const clear = (
     keep?: Set<HTMLVideoElement>,
@@ -299,7 +305,7 @@ export function createPausedVideoFrames() {
         markFrameCanvas(canvas);
         presented.set(video, entry);
         video.setAttribute(PREVIEW_VIDEO_SOURCE_ATTR, "");
-        if (!style.isConnected) document.head.append(style);
+        mountStyle();
         refresh(entry);
       }
       return () => {
@@ -404,7 +410,7 @@ export function createPausedVideoFrames() {
           }
           const wanted = new Set(requests.map(({ video }) => video));
           for (const entry of [...presented.values()]) if (!wanted.has(entry.video)) remove(entry);
-          if (!style.isConnected) document.head.append(style);
+          mountStyle();
           for (const [index, next] of staged.entries()) {
             adoptStagedFrame(next, reusable.get(next));
             const { timestamp, width, height } = frames[index]!;

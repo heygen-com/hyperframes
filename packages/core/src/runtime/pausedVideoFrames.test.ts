@@ -16,17 +16,17 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const session of sessions.splice(0)) session.destroy();
-  document.body.innerHTML = "";
   vi.restoreAllMocks();
+  document.body.innerHTML = "";
 });
 
-function fixture() {
+function fixture(root: HTMLElement = document.body) {
   const session = createPausedVideoFrames();
   sessions.push(session);
   const video = document.createElement("video");
   video.src = "/original.webm";
   video.style.cssText = "position:absolute;width:64px;height:36px;transform:translateX(10px)";
-  document.body.append(video);
+  root.append(video);
   Object.defineProperty(video, "videoWidth", { value: 64 });
   Object.defineProperty(video, "videoHeight", { value: 36 });
   const release = vi.fn();
@@ -379,4 +379,31 @@ it("draws a held picture from the video itself in WebKit, making no VideoFrame",
   expect(framesMade).toBe(0);
   expect(draws).toEqual([video]);
   vi.unstubAllGlobals();
+});
+
+// fails without the fix: createPausedVideoFrames passed document.body directly to
+// MutationObserver.observe, throwing TypeError when a document has no body yet.
+it("starts without throwing when document.body is null and still watches documentElement", async () => {
+  vi.spyOn(document, "body", "get").mockReturnValue(null as unknown as HTMLElement);
+  const { session, video, request } = fixture(document.documentElement);
+  const batch = await session.prepare(request, new AbortController().signal);
+  expect(batch!.present()).toBe(true);
+  batch!.refresh();
+  expect(getPausedVideoFrame(video)).not.toBeNull();
+  video.src = "/changed.webm";
+  await Promise.resolve();
+  expect(getPausedVideoFrame(video)).toBeNull();
+  video.remove();
+});
+
+// fails without the fix: presenting a paused frame called document.head.append(style)
+// unconditionally, throwing TypeError when document.head is null.
+it("falls back to documentElement when document.head is null on present", async () => {
+  vi.spyOn(document, "head", "get").mockReturnValue(null as unknown as HTMLHeadElement);
+  const { session, video, request } = fixture();
+  const batch = await session.prepare(request, new AbortController().signal);
+  expect(batch!.present()).toBe(true);
+  expect(getPausedVideoFrame(video)).not.toBeNull();
+  session.clear();
+  expect(getPausedVideoFrame(video)).toBeNull();
 });

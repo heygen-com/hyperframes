@@ -567,9 +567,6 @@ function exitAfterCliFailure(
 }
 
 process.on("uncaughtException", (error) => {
-  if ((error as NodeJS.ErrnoException).code === "EPIPE") {
-    handleStreamEpipe();
-  }
   // Post-artifact-validated shutdown throws must not turn a valid render
   // into an exit-1 "no final error message" failure. The render command
   // sets `renderSucceeded` right after the producer resolves and the

@@ -96,6 +96,7 @@ export {
 // ── Browser management ─────────────────────────────────────────────────────────
 export { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 export {
+  absorbBrowserPipeErrors,
   acquireBrowser,
   setHostHandlesSigint,
   releaseBrowser,

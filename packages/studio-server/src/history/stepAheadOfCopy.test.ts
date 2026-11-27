@@ -505,7 +505,7 @@ describe("an agent step that began while a file's first copy was pending", () =>
     await history.undo(entry.id, { who: agent }).catch(() => undefined);
     expect(read("parts/p1.js")).toBe("// person\n");
     expect(history.list().find((item) => item.id === entry.id)).toBeDefined();
-    const log = readLog(join(homeIn(historyRoot), "log.jsonl"), () => {});
+    const log = await readLog(join(homeIn(historyRoot), "log.jsonl"), () => {});
     const agentEntry = log!.entries.find((logged) => logged.id === entry.id)!;
     const recorded = agentEntry.files.filter((change) => change.before !== change.after);
     expect(recorded.map((change) => change.path)).toEqual(["index.html"]);

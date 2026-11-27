@@ -239,6 +239,7 @@ describe("installEditingAgent", () => {
           "arm-canvas-keys",
           "resolve-canvas-key-action",
           "stage-measure",
+          "stage-act",
         ],
       },
     });

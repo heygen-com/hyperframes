@@ -75,6 +75,20 @@ export {
   type StageTextStart,
 } from "./player/lib/previewStageMeasure";
 export {
+  holdPreviewStage,
+  onPreviewStageActReady,
+  onPreviewStageInput,
+  previewStageDrawer,
+  readyPreviewStage,
+  restorePreviewStage,
+  STAGE_ACT_TIMEOUT_MS,
+  type StageActDraw,
+  type StageActHeld,
+  type StageActHold,
+  type StageActTarget,
+  type StageInputEvent,
+} from "./player/lib/previewStageAct";
+export {
   editSealedSelection,
   findPreviewElementForSelection,
   findPreviewElementForTimelineElement,

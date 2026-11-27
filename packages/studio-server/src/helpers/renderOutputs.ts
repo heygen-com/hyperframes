@@ -62,6 +62,6 @@ export async function registerRenderOutput(projectDir: string, output: string): 
     const paths = [...new Set([...readRenderOutputs(projectDir), path])].sort();
     replaceFileAtomically(registry, JSON.stringify({ version: 1, paths }) + "\n", 0o644);
   } finally {
-    release();
+    await release();
   }
 }
