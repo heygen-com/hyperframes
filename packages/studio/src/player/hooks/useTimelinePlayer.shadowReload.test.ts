@@ -8,6 +8,7 @@ import { SHADOW_READY_BUDGETS, SHADOW_READY_TIMEOUT_MS } from "./useShadowPrevie
 import {
   refusedPreviewMessage,
   STUDIO_PREVIEW_ERROR_KINDS,
+  STUDIO_PREVIEW_PAGE_DEADLINE_MS,
 } from "@hyperframes/core/studio-preview-mark";
 import { usePlayerStore } from "../store/playerStore";
 import { isPreviewChanging } from "../previewReloading";
@@ -473,31 +474,68 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
-  it.each([
-    ["/api/projects/demo/preview", "was given"],
-    [null, "was never given"],
-  ])(
-    "says whether a blank shadow frame was given a page address (%s) and when it was added",
-    (src, given) => {
-      vi.useFakeTimers();
-      vi.spyOn(console, "error").mockImplementation(() => {});
-      const onPreviewReloadFailed = vi.fn();
-      const { getApi, root } = beginReload({ onPreviewReloadFailed });
-      act(() => void vi.advanceTimersByTime(1000));
-      const shadow = makeFakeIframe({});
-      if (src) shadow.setAttribute("src", src);
-      Object.defineProperty(shadow, "contentDocument", {
-        value: { ...loaded, URL: "about:blank" },
-      });
-      act(() => getApi().setShadowIframeNode(shadow));
-      act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
-      const [message] = onPreviewReloadFailed.mock.calls[0]!;
-      expect(message).toContain(
-        `Its page had got to: blank. Its frame ${given} a page address and was added ${FULL_WAIT_MS - 1000} ms ago.`,
-      );
-      unmount(root);
-    },
-  );
+  it("says a blank shadow frame was never given a page address, and when it was added", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    act(() => void vi.advanceTimersByTime(1000));
+    const shadow = makeFakeIframe({});
+    Object.defineProperty(shadow, "contentDocument", {
+      value: { ...loaded, URL: "about:blank" },
+    });
+    act(() => getApi().setShadowIframeNode(shadow));
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    const [message] = onPreviewReloadFailed.mock.calls[0]!;
+    expect(message).toContain(
+      `Its page had got to: blank. Its frame was never given a page address and was added ${FULL_WAIT_MS - 1000} ms ago.`,
+    );
+    unmount(root);
+  });
+
+  it("waits while its frame waits on the server for the page, and spends its budget once the page arrives", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeFakeIframe({});
+    shadow.setAttribute("src", "/api/projects/demo/preview");
+    const page = { ...loaded, URL: "about:blank" };
+    Object.defineProperty(shadow, "contentDocument", { get: () => page });
+    act(() => getApi().setShadowIframeNode(shadow));
+
+    act(() => void vi.advanceTimersByTime(61_000));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    page.URL = loaded.URL;
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    expect(onPreviewReloadFailed).toHaveBeenCalledTimes(1);
+    expect(onPreviewReloadFailed.mock.calls[0]![0]).toContain(
+      "Its page had got to: runtime-not-run.",
+    );
+    unmount(root);
+  });
+
+  it("gives up on a frame whose page never arrives once the server's own page deadline has passed", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeFakeIframe({});
+    shadow.setAttribute("src", "/api/projects/demo/preview");
+    Object.defineProperty(shadow, "contentDocument", { value: { ...loaded, URL: "about:blank" } });
+    act(() => getApi().setShadowIframeNode(shadow));
+
+    act(() => void vi.advanceTimersByTime(STUDIO_PREVIEW_PAGE_DEADLINE_MS));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS + FULL_WAIT_MS));
+    expect(onPreviewReloadFailed).toHaveBeenCalledTimes(1);
+    expect(onPreviewReloadFailed.mock.calls[0]![0]).toContain(
+      "Its page had got to: blank. Its frame was given a page address",
+    );
+    unmount(root);
+  });
 
   it("names the timeline when a shadow's runtime runs but never reports a length", () => {
     vi.useFakeTimers();
