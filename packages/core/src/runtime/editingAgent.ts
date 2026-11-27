@@ -15,6 +15,7 @@ import {
   EDITING_REQUEST_KINDS,
   EDITING_REQUEST_TIMEOUT_MS,
   isPlainRecord,
+  type FramePresentedParams,
   parseEditingRequest,
   type EditingKeyMessage,
   type EditingParams,
@@ -183,7 +184,7 @@ function stylesOf(element: Element, properties: readonly string[]): Record<strin
 }
 
 const VIDEO_SETTLE_EVENTS = ["seeked", "error", "abort", "emptied"] as const;
-// Answers before the caller's own timeout, so the frame never outlives the request it serves.
+// Without a waitMs, answers before the client's default timeout gives up.
 const FRAME_PRESENTED_LIMIT_MS = EDITING_REQUEST_TIMEOUT_MS - 1_000;
 const pendingPresentedWaits = new Set<() => void>();
 
@@ -218,7 +219,11 @@ function whenTwoFramesPaint(cleanups: Cleanups, painted: () => void) {
   cleanups.push(() => window.cancelAnimationFrame(frame));
 }
 
-function waitForFramePresented(): Promise<{ presented: boolean }> {
+function waitForFramePresented({
+  waitMs = FRAME_PRESENTED_LIMIT_MS,
+}: FramePresentedParams): Promise<{
+  presented: boolean;
+}> {
   return new Promise((resolve) => {
     const cleanups: Cleanups = [];
     let done = false;
@@ -231,7 +236,7 @@ function waitForFramePresented(): Promise<{ presented: boolean }> {
     };
     const expire = () => finish(false);
     pendingPresentedWaits.add(expire);
-    const timer = wallSetTimeout(expire, FRAME_PRESENTED_LIMIT_MS);
+    const timer = wallSetTimeout(expire, waitMs);
     cleanups.push(() => wallClearTimeout(timer));
     const seeking = Array.from(document.querySelectorAll("video")).filter(
       (video) => video.seeking && video.isConnected,

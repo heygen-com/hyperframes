@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMarkedEditingAgent } from "./editingAgent.test-helpers";
-import { createEditingPortClient, EditingPortError, type EditingPortClient } from "./editingPort";
+import {
+  createEditingPortClient,
+  EditingPortError,
+  parseEditingRequest,
+  type EditingPortClient,
+} from "./editingPort";
 
 type Listener = (event: Partial<MessageEvent>) => void;
 
@@ -368,6 +373,46 @@ describe("createEditingPortClient", () => {
     const late = client.request("runtime-snapshot", {}, { timeoutMs: 5 });
     await expect(late).rejects.toBeInstanceOf(EditingPortError);
     await expect(late).rejects.toMatchObject({ code: "timeout" });
+  });
+
+  it("takes a frame-presented wait only as a bounded number of ms", () => {
+    const parse = (params: unknown) =>
+      parseEditingRequest({ v: 1, id: 1, kind: "frame-presented", params });
+    expect(parse({})).toMatchObject({ ok: true, params: {} });
+    expect(parse({ waitMs: 10_000 })).toMatchObject({ ok: true, params: { waitMs: 10_000 } });
+    for (const bad of [
+      { waitMs: 0 },
+      { waitMs: 15_001 },
+      { waitMs: NaN },
+      { waitMs: "1" },
+      { waitMs: 1, x: 1 },
+    ])
+      expect(parse(bad)).toMatchObject({ ok: false, code: "invalid-params" });
+  });
+
+  // fails without the fix: the client gave up at its fixed timeout while the frame was still asked to wait.
+  it("waits for a frame-presented answer a second past the frame's wait, never less than its default", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { iframe } = previewFrame();
+      const { host } = fakeHost();
+      const client = createEditingPortClient({ iframe, host, timeoutMs: 10 });
+      clients.push(client);
+      const outcome = vi.fn();
+      void client.request("frame-presented", { waitMs: 3_000 }).catch(outcome);
+      await vi.advanceTimersByTimeAsync(3_900);
+      expect(outcome).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(outcome).toHaveBeenCalledWith(expect.objectContaining({ code: "timeout" }));
+      const short = vi.fn();
+      const patient = createEditingPortClient({ iframe, host, timeoutMs: 5_000 });
+      clients.push(patient);
+      void patient.request("frame-presented", { waitMs: 100 }).catch(short);
+      await vi.advanceTimersByTimeAsync(4_900);
+      expect(short).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("hands each geometry push to its listeners, drops off-shape ones, and stops the watch on dispose", async () => {
