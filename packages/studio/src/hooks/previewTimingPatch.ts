@@ -80,6 +80,29 @@ async function patchSealedTiming(
   return editPreviewElement(iframe, found.handle, { attributes }).drawn;
 }
 
+const frameRemovedHandles = new WeakMap<HTMLIFrameElement, Set<string>>();
+
+export function noteFrameRemovedHandles(
+  iframe: HTMLIFrameElement | null,
+  handles: readonly string[],
+): void {
+  if (!iframe || !handles.length) return;
+  const shown = shownPreviewFrame(iframe);
+  const held = frameRemovedHandles.get(shown) ?? new Set<string>();
+  for (const handle of handles) held.add(handle);
+  frameRemovedHandles.set(shown, held);
+}
+
+function consumeFrameRemovedHandles(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+): boolean {
+  const held = frameRemovedHandles.get(iframe);
+  if (!held || !handles.length || !handles.every((handle) => held.has(handle))) return false;
+  for (const handle of handles) held.delete(handle);
+  return true;
+}
+
 export function removeIframeTimelineElements(
   given: HTMLIFrameElement | null,
   elements: TimelineElement[],
@@ -93,6 +116,10 @@ export function removeIframeTimelineElements(
       return selected && currentLoadHandle(iframe, selected);
     });
     const known = handles.length > 0 && handles.every((handle) => handle !== undefined);
+    if (known && consumeFrameRemovedHandles(iframe, handles)) {
+      inOrder(iframe, async () => syncContentDuration(iframe, await previewDocumentCopy(iframe)));
+      return;
+    }
     if (writesWaiting(iframe) || !known) {
       inOrder(iframe, () => removeSealedElements(iframe, elements, activeCompositionPath));
       return;

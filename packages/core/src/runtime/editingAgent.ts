@@ -269,14 +269,11 @@ const HANDLERS: Handlers = {
     return { served: true };
   },
   "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
-  "arm-canvas-keys": (params, port) =>
-    armCanvasKeys(port, params, EDITING_PROTOCOL_VERSION, activeAgentParent),
+  "arm-canvas-keys": (params, port) => armCanvasKeys(port, params, EDITING_PROTOCOL_VERSION),
   "resolve-canvas-key-action": resolveCanvasKeyAction,
   "stage-measure": ({ maxItems }) => measureStageDocument(document, maxItems),
   "stage-act": (params, port) => stageAct(params, port, EDITING_PROTOCOL_VERSION),
 };
-
-let activeAgentParent: Window = window.parent;
 
 function serve(port: MessagePort): void {
   const reply = (message: EditingReply) => {
@@ -320,7 +317,6 @@ function failure(id: number, err: unknown): EditingReply {
 }
 
 export function installEditingAgent(parent: Window = window.parent): { dispose: () => void } {
-  activeAgentParent = parent;
   const ports = new Set<MessagePort>();
   const onMessage = (event: MessageEvent<unknown>) => {
     // A top-level page is its own parent, so a self-post would pass the source check.

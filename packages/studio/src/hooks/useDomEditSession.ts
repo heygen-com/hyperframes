@@ -61,7 +61,11 @@ export interface UseDomEditSessionParams extends DomEditTimelineParams {
   forceReloadSdkSession?: () => void;
   /** The timeline context menu's delete op — a canvas selection that IS a
    *  timeline row hands off here instead of the REST remove-elements path. */
-  handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
+  handleTimelineElementsDelete: (
+    elements: TimelineElement[],
+    alsoUnlink?: readonly TimelineElement[],
+    onSettled?: (ok: boolean) => void,
+  ) => Promise<void>;
   readOnlyPreview: boolean;
 }
 
@@ -304,20 +308,33 @@ export function useDomEditSession({
   });
 
   const handleDomEditElementDelete = useCallback(
-    async (selection: DomEditSelection, options?: { expandGroup?: boolean }) => {
+    async (
+      selection: DomEditSelection,
+      options?: {
+        expandGroup?: boolean;
+        members?: readonly DomEditSelection[];
+        onSettled?: (ok: boolean) => void;
+      },
+    ) => {
       // Same structural edit the timeline delete refuses mid-recording.
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
+        options?.onSettled?.(false);
         return;
       }
       const members = membersForDelete(selection, domEditGroupSelectionsRef.current, options);
       // A selection that is itself timeline rows shares the context menu's delete op.
       const timelineTargets = timelineElementsForDelete(members, timelineElements);
       if (timelineTargets) {
-        await handleTimelineElementsDelete(timelineTargets);
+        if (options?.onSettled) {
+          await handleTimelineElementsDelete(timelineTargets, [], options.onSettled);
+        } else {
+          await handleTimelineElementsDelete(timelineTargets);
+        }
         return;
       }
-      await handleDomEditElementsDelete(members);
+      const outcome = await handleDomEditElementsDelete(members);
+      options?.onSettled?.(outcome.ok);
     },
     [
       domEditGroupSelectionsRef,
