@@ -114,6 +114,16 @@ import {
   type TextEditParams,
   type TextEditResult,
 } from "./editing/textEdit";
+import {
+  canvasKeyActionEvent,
+  parseArmCanvasKeys,
+  parseResolveCanvasKeyAction,
+  type ArmCanvasKeysParams,
+  type ArmCanvasKeysResult,
+  type CanvasKeyActionEvent,
+  type ResolveCanvasKeyActionParams,
+  type ResolveCanvasKeyActionResult,
+} from "./editing/canvasKeys";
 
 export {
   buildStableSelector,
@@ -276,6 +286,8 @@ export const EDITING_REQUEST_KINDS = [
   "assets-unloaded",
   "text-edit",
   "serve-paused-frames",
+  "arm-canvas-keys",
+  "resolve-canvas-key-action",
   "stage-measure",
   "stage-act",
 ] as const;
@@ -475,6 +487,11 @@ export interface EditingRequests {
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
+  "arm-canvas-keys": { params: ArmCanvasKeysParams; result: ArmCanvasKeysResult };
+  "resolve-canvas-key-action": {
+    params: ResolveCanvasKeyActionParams;
+    result: ResolveCanvasKeyActionResult;
+  };
   "stage-measure": { params: StageMeasureParams; result: StageMeasureResult };
   /** Holds, draws and gives back Studio's stage acts inside the frame (`editing/stageAct.ts`). */
   "stage-act": { params: StageActParams; result: StageActResult };
@@ -794,9 +811,24 @@ const PARAM_PARSERS: {
     hasKeys(params, "channel") && params.channel instanceof MessagePort
       ? { channel: params.channel }
       : null,
+  "arm-canvas-keys": parseArmCanvasKeys,
+  "resolve-canvas-key-action": parseResolveCanvasKeyAction,
   "stage-measure": parseStageMeasureParams,
   "stage-act": parseStageActParams,
 };
+
+/** Hands a push to its listeners when `parse` reads it as their event; false when it is not one. */
+function pushRoute<E>(
+  listeners: Set<(event: E) => void>,
+  parse: (data: Record<string, unknown>) => E | null | false | undefined,
+): (data: Record<string, unknown>) => boolean {
+  return (data) => {
+    const event = parse(data);
+    if (!event) return false;
+    listeners.forEach((listener) => listener(event));
+    return true;
+  };
+}
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
 export function parseEditingRequest(data: unknown): ParsedEditingRequest {
@@ -839,6 +871,7 @@ export interface EditingPortClient {
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
   onTextEditAway(listener: (event: TextEditAwayEvent) => void): () => void;
   onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
+  onCanvasKeyAction(listener: (event: CanvasKeyActionEvent) => void): () => void;
   onStageActReady(listener: (event: StageActReadyEvent) => void): () => void;
   onStageInput(listener: (event: StageInputEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
@@ -904,6 +937,7 @@ export function createEditingPortClient(options: {
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
   const awayListeners = new Set<(event: TextEditAwayEvent) => void>();
   const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
+  const canvasKeyActionListeners = new Set<(event: CanvasKeyActionEvent) => void>();
   const stageReadyListeners = new Set<(event: StageActReadyEvent) => void>();
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let watchedGeometry = false;
@@ -926,23 +960,18 @@ export function createEditingPortClient(options: {
     if ("error" in outcome) entry.reject(outcome.error);
     else entry.resolve(outcome.result);
   };
-  const deliver = <E>(event: E | null | false, listeners: Set<(event: E) => void>) => {
-    if (event) listeners.forEach((listener) => listener(event));
-    return Boolean(event);
-  };
-  const onPush = (data: Record<string, unknown>) => {
-    const v = EDITING_PROTOCOL_VERSION;
-    const readers = [
-      () => deliver(data.v === v && data.event === "key" && keyEvent(data.key), keyListeners),
-      () => deliver(geometryEvent(data, v), geometryListeners),
-      () => deliver(textEditEndedEvent(data, v), textEditListeners),
-      () => deliver(textEditAwayEvent(data, v), awayListeners),
-      () => deliver(textEditSelectionEvent(data, v), selectionListeners),
-      () => deliver(stageActReadyEvent(data, v), stageReadyListeners),
-      () => deliver(stageInputEvent(data, v), stageInputListeners),
-    ];
-    readers.some((read) => read());
-  };
+  const v = EDITING_PROTOCOL_VERSION;
+  const pushRoutes = [
+    pushRoute(keyListeners, (d) => d.v === v && d.event === "key" && keyEvent(d.key)),
+    pushRoute(geometryListeners, (d) => geometryEvent(d, v)),
+    pushRoute(textEditListeners, (d) => textEditEndedEvent(d, v)),
+    pushRoute(awayListeners, (d) => textEditAwayEvent(d, v)),
+    pushRoute(selectionListeners, (d) => textEditSelectionEvent(d, v)),
+    pushRoute(canvasKeyActionListeners, (d) => canvasKeyActionEvent(d, v)),
+    pushRoute(stageReadyListeners, (d) => stageActReadyEvent(d, v)),
+    pushRoute(stageInputListeners, (d) => stageInputEvent(d, v)),
+  ];
+  const onPush = (data: Record<string, unknown>) => void pushRoutes.some((route) => route(data));
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
     if (!isPlainRecord(data)) return;
@@ -1021,6 +1050,10 @@ export function createEditingPortClient(options: {
       selectionListeners.add(listener);
       return () => selectionListeners.delete(listener);
     },
+    onCanvasKeyAction(listener) {
+      canvasKeyActionListeners.add(listener);
+      return () => canvasKeyActionListeners.delete(listener);
+    },
     onStageActReady(listener) {
       stageReadyListeners.add(listener);
       return () => stageReadyListeners.delete(listener);
@@ -1037,6 +1070,7 @@ export function createEditingPortClient(options: {
       textEditListeners.clear();
       awayListeners.clear();
       selectionListeners.clear();
+      canvasKeyActionListeners.clear();
       stageReadyListeners.clear();
       stageInputListeners.clear();
       host.removeEventListener("message", onWindowMessage);
@@ -1054,6 +1088,15 @@ export function createEditingPortClient(options: {
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
+export {
+  MAX_CANVAS_KEY_COMBOS,
+  type ArmCanvasKeysParams,
+  type ArmCanvasKeysResult,
+  type CanvasKeyActionEvent,
+  type CanvasKeyNudgeCombo,
+  type ResolveCanvasKeyActionParams,
+  type ResolveCanvasKeyActionResult,
+} from "./editing/canvasKeys";
 export {
   caretRangeAt,
   takePlainTextOnly,
