@@ -139,7 +139,7 @@ overwrite uncommitted edits. See [contributor setup](CONTRIBUTING.md#getting-sta
 
 </details>
 
-The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with Claude Code, Codex, Cursor, Gemini CLI, IBM Bob, and other coding agents that support skills.
+The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with Claude Code, Codex, Cursor, Gemini CLI, IBM Bob, Pi, and other coding agents that support skills.
 
 ### Share a video for review
 
