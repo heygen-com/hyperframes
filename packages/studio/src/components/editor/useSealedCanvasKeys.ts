@@ -185,55 +185,30 @@ function focusSealedIframe(iframe: HTMLIFrameElement): void {
   }
 }
 
-type CanvasActionRoute = { current: ((event: CanvasKeyActionEvent) => void) | null };
-const actionRoutes = new WeakMap<object, CanvasActionRoute>();
+type CanvasActionHandler = (event: CanvasKeyActionEvent) => void;
+const actionRoutes = new WeakMap<object, Map<number, CanvasActionHandler>>();
 
-/** One action listener per frame load: a Delete no session takes is rolled back, never left detached. */
-function canvasActionRoute(iframe: HTMLIFrameElement): CanvasActionRoute {
+/** One action listener per frame load, routing by arm revision; a Delete for no known arm rolls back. */
+function canvasActionRoute(iframe: HTMLIFrameElement): Map<number, CanvasActionHandler> {
   const client = previewEditingClient(iframe);
   const known = actionRoutes.get(client);
   if (known) return known;
-  const route: CanvasActionRoute = { current: null };
+  const sessions = new Map<number, CanvasActionHandler>();
   client.onCanvasKeyAction((event) => {
-    if (route.current) route.current(event);
+    const handler = sessions.get(event.revision);
+    if (handler) handler(event);
     else if (event.action === "delete") resolveAction(iframe, event.actionId, "rollback");
   });
-  actionRoutes.set(client, route);
-  return route;
+  actionRoutes.set(client, sessions);
+  return sessions;
 }
 
-function attachSealedCanvasPort(input: {
-  iframe: HTMLIFrameElement;
-  overlayRef: React.RefObject<HTMLDivElement | null>;
-  sameLoad: () => boolean;
-  armedRef: React.MutableRefObject<{ revision: number; selection: DomEditSelection } | null>;
-  onDeleteRef: React.RefObject<CanvasDeleteHandler | undefined>;
-  applyNudgeRef: React.RefObject<(step: RuntimeNudgeStep) => void>;
-}): () => void {
-  const { iframe, overlayRef, sameLoad, armedRef, onDeleteRef, applyNudgeRef } = input;
-  const client = previewEditingClient(iframe);
-  const route = canvasActionRoute(iframe);
-  const onAction = (event: CanvasKeyActionEvent) => {
-    if (!sameLoad()) return;
-    const active = armedRef.current;
-    if (!hasSealedCanvasKeyboardHold(iframe) || !active || active.revision !== event.revision) {
-      if (event.action === "delete") resolveAction(iframe, event.actionId, "rollback");
-      return;
-    }
-    if (event.action === "nudge") {
-      applyNudgeRef.current({
-        handles: event.handles,
-        totalDx: event.totalDx,
-        totalDy: event.totalDy,
-        drafts: event.drafts,
-        baseGsap: event.baseGsap,
-      });
-      return;
-    }
-    runDeleteAction(iframe, onDeleteRef.current, active.selection, event);
-  };
-  route.current = onAction;
-  const stopKeys = client.onKey((key) => {
+function forwardSealedKeys(
+  iframe: HTMLIFrameElement,
+  overlayRef: React.RefObject<HTMLDivElement | null>,
+  sameLoad: () => boolean,
+): () => void {
+  return previewEditingClient(iframe).onKey((key) => {
     if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
     (overlayRef.current ?? window).dispatchEvent(
       new KeyboardEvent(key.type, {
@@ -249,16 +224,11 @@ function attachSealedCanvasPort(input: {
       }),
     );
   });
-  return () => {
-    if (route.current === onAction) route.current = null;
-    stopKeys();
-  };
 }
 
 function startSealedCanvasSession(input: {
   iframe: HTMLIFrameElement;
   overlayRef: React.RefObject<HTMLDivElement | null>;
-  armedRef: React.MutableRefObject<{ revision: number; selection: DomEditSelection } | null>;
   armedReadyRef: React.MutableRefObject<boolean>;
   pointerDownRef: React.RefObject<boolean>;
   onDeleteRef: React.RefObject<CanvasDeleteHandler | undefined>;
@@ -270,22 +240,13 @@ function startSealedCanvasSession(input: {
   allowDelete: boolean;
   resetMayClaim: boolean;
 }): () => void {
-  const {
-    iframe,
-    overlayRef,
-    armedRef,
-    armedReadyRef,
-    pointerDownRef,
-    onDeleteRef,
-    applyNudgeRef,
-  } = input;
+  const { iframe, armedReadyRef, pointerDownRef, onDeleteRef, applyNudgeRef, selection } = input;
   const revision = ++lastCanvasKeyRevision;
-  armedRef.current = { revision, selection: input.selection };
   armedReadyRef.current = false;
   const params = buildArmParams({
     revision,
     focus: !pointerDownRef.current,
-    selection: input.selection,
+    selection,
     groupSelections: input.groupSelections,
     studioKeys: input.studioKeys,
     allowNudge: input.allowNudge,
@@ -294,29 +255,40 @@ function startSealedCanvasSession(input: {
   });
   const sameLoad = samePreviewLoad(iframe);
   const releaseHold = holdSealedCanvasKeyboard(iframe);
-  const stopPort = attachSealedCanvasPort({
-    iframe,
-    overlayRef,
-    sameLoad,
-    armedRef,
-    onDeleteRef,
-    applyNudgeRef,
+  const sessions = canvasActionRoute(iframe);
+  let live = true;
+  // A Delete pressed under this arm saves even when it lands after the session ends, as it would unsealed.
+  sessions.set(revision, (event) => {
+    if (!sameLoad()) return;
+    if (event.action === "delete")
+      return runDeleteAction(iframe, onDeleteRef.current, selection, event);
+    if (!live || !hasSealedCanvasKeyboardHold(iframe)) return;
+    applyNudgeRef.current({
+      handles: event.handles,
+      totalDx: event.totalDx,
+      totalDy: event.totalDy,
+      drafts: event.drafts,
+      baseGsap: event.baseGsap,
+    });
   });
-  let cancelled = false;
+  const stopKeys = forwardSealedKeys(iframe, input.overlayRef, sameLoad);
   void previewRequest(iframe, "arm-canvas-keys", params).then((res) => {
-    if (cancelled || !sameLoad() || !res?.armed) return;
+    if (!live || !sameLoad() || !res?.armed) return;
     armedReadyRef.current = true;
     if (!pointerDownRef.current && hasSealedCanvasKeyboardHold(iframe)) focusSealedIframe(iframe);
   });
   return () => {
-    cancelled = true;
+    live = false;
     armedReadyRef.current = false;
-    stopPort();
+    stopKeys();
     releaseHold();
-    if (armedRef.current?.revision === revision) armedRef.current = null;
-    if (sameLoad() && iframe.isConnected && previewFrameOpaque(iframe)) {
-      void previewRequest(iframe, "arm-canvas-keys", disarmParams(++lastCanvasKeyRevision));
-    }
+    // The frame posts this arm's actions before it answers the disarm, so its answer ends them.
+    const disarmed =
+      sameLoad() && iframe.isConnected && previewFrameOpaque(iframe)
+        ? previewRequest(iframe, "arm-canvas-keys", disarmParams(++lastCanvasKeyRevision))
+        : null;
+    const end = () => sessions.delete(revision);
+    void Promise.resolve(disarmed).then(end, end);
   };
 }
 
@@ -424,7 +396,6 @@ export function useSealedCanvasKeys({
   );
   const [nudgeSaving, setNudgeSaving] = useState(false);
   const [nudgeEpoch, setNudgeEpoch] = useState(0);
-  const armedRef = useRef<{ revision: number; selection: DomEditSelection } | null>(null);
   const studioKeys = useStudioKeys();
   const { allowNudge, allowDelete, resetMayClaim } = useSealedCanvasPermissions(
     allowCanvasMovement,
@@ -450,7 +421,6 @@ export function useSealedCanvasKeys({
     return startSealedCanvasSession({
       iframe,
       overlayRef,
-      armedRef,
       armedReadyRef,
       pointerDownRef,
       onDeleteRef,

@@ -86,7 +86,9 @@ async function setupSealedCanvas(options?: {
   const { iframe, frame } = sealedPreviewFrame();
   // The fake frame shares this window and document: install its shield at load as entry.ts does,
   // and start with its surface focused, so neither side sees the other's keys or focus moves.
-  onTestFinished(installPreviewKeyShield(window, {} as Window, true));
+  vi.stubGlobal("origin", "null");
+  onTestFinished(installPreviewKeyShield(window, {} as Window));
+  vi.unstubAllGlobals();
   document.body.tabIndex = -1;
   document.body.focus();
   sized(iframe, [20, 10, 1920, 1080]);
@@ -405,8 +407,17 @@ it("leaves Backspace with Studio while Reset Keyframes may claim it for the sele
   await vi.waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
 });
 
-it("restores an in-frame Delete when the canvas loses focus before Studio takes it", async () => {
-  const onDelete = vi.fn();
+it("saves an in-frame Delete when the canvas loses focus before Studio takes it", async () => {
+  let resolveDelete!: (ok: boolean) => void;
+  const onDelete = vi.fn(
+    (_sel, opts?: { onSettled?: (ok: boolean) => void }) =>
+      new Promise<void>((resolve) => {
+        resolveDelete = (ok) => {
+          opts?.onSettled?.(ok);
+          resolve();
+        };
+      }),
+  );
   const { overlay } = await setupSealedCanvas({ onDeleteSelection: onDelete });
   clickCanvas(overlay);
   await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
@@ -419,6 +430,28 @@ it("restores an in-frame Delete when the canvas loses focus before Studio takes 
       .getElementById("tl-clip")!
       .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
   });
+  // It was pressed while armed, so it saves as it would unsealed; a failed save still restores it.
+  await vi.waitFor(() => expect(onDelete).toHaveBeenCalledTimes(1));
+  expect(document.getElementById("target")).toBeNull();
+  await act(async () => resolveDelete(false));
+  await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
+});
+
+it("rolls back a Delete whose arm Studio does not know", async () => {
+  const onDelete = vi.fn();
+  const { overlay, iframe, handle } = await setupSealedCanvas({ onDeleteSelection: onDelete });
+  clickCanvas(overlay);
+  await waitForArm((p) => (p.deleteHandles as string[]).length > 0);
+  // An arm sent outside any canvas session, as a stale Studio instance would.
+  await previewRequest(iframe, "arm-canvas-keys", {
+    revision: 9_999,
+    deleteHandles: [handle],
+    deleteCombos: ["Delete"],
+    nudge: null,
+    forwardCombos: [],
+  });
+  window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+  expect(document.getElementById("target")).toBeNull();
   await vi.waitFor(() => expect(document.getElementById("target")).not.toBeNull());
   expect(onDelete).not.toHaveBeenCalled();
 });
