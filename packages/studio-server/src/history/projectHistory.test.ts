@@ -2971,16 +2971,17 @@ describe("restore refuses to empty a project", () => {
   it("refuses start while its media copy is still adopting", async () => {
     let release = () => {};
     mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    // The hold only gates .bin copies: as clip.mp4 nothing was held, so this raced a 2 MB copy against the open.
     const clip = Buffer.alloc(2 * 1024 ** 2, 7);
-    const { history, projectDir, read } = await project({ "index.html": "A", "clip.mp4": clip });
+    const { history, projectDir, read } = await project({ "index.html": "A", "clip.bin": clip });
     try {
       await expect(history.restore(START, you)).rejects.toThrow(HistoryRefusedError);
       expect(read("index.html")).toBe("A");
-      expect(readFileSync(join(projectDir, "clip.mp4")).equals(clip)).toBe(true);
+      expect(readFileSync(join(projectDir, "clip.bin")).equals(clip)).toBe(true);
     } finally {
       release();
     }
-    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]));
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.bin"]));
     await expect(history.restore(START, you)).resolves.toBeNull();
   });
 

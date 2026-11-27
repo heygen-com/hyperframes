@@ -2225,7 +2225,7 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
       close: () => api.close().finally(release),
     };
   } catch (error) {
-    release();
+    await release();
     throw error;
   }
 }

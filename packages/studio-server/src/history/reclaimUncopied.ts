@@ -61,7 +61,7 @@ export async function reclaimUncopiedBlobs(
   const reclaimed: ReclaimedHistory[] = [];
   for (const id of historyIds(historyRoot)) {
     const home = join(historyRoot, id);
-    let release: (() => void) | undefined;
+    let release: (() => Promise<void>) | undefined;
     try {
       release = await takeHistoryOwnership(home, 0);
       const bytes = await reclaimOne(home, dryRun);
@@ -69,7 +69,7 @@ export async function reclaimUncopiedBlobs(
     } catch (error) {
       if (!(error instanceof HistoryBusyError)) onError?.(error);
     } finally {
-      release?.();
+      await release?.();
     }
   }
   return reclaimed;
