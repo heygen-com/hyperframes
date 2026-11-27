@@ -1,7 +1,6 @@
 import { parseHTML } from "./linkedom.js";
 
-/** The size the renderer compiles a composition at: its root's `data-width` and `data-height`, each side
- * 1080×1920 when unset or when there is no root. Callers that pick an output size read this, never their own rule. */
+/** The size the renderer compiles a composition at: each side 1080×1920 when its root leaves it unset. */
 export function compositionRootSize(root: Element | null): { width: number; height: number } {
   if (!root) return { width: 1080, height: 1920 };
   return {
@@ -10,6 +9,5 @@ export function compositionRootSize(root: Element | null): { width: number; heig
   };
 }
 
-/** {@link compositionRootSize} of the first `[data-composition-id]` in `html`, as the renderer queries it. */
 export const renderedCompositionSize = (html: string) =>
   compositionRootSize(parseHTML(html).document.querySelector("[data-composition-id]"));
