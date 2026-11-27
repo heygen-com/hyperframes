@@ -73,7 +73,12 @@ function formatInlineCode(line: string): string {
   return line.replace(/`([^`]+)`/g, (_match, code: string) => c.accent(code));
 }
 
-function renderMarkdown(content: string): void {
+function formatBold(line: string): string {
+  // Replace **bold** with just the text (strip markers for terminal output)
+  return line.replace(/\*\*(.+?)\*\*/g, (_match, bold: string) => bold);
+}
+
+export function renderMarkdown(content: string): void {
   const lines = content.split("\n");
 
   for (const line of lines) {
@@ -96,13 +101,13 @@ function renderMarkdown(content: string): void {
 
     // List items
     if (line.startsWith("- ")) {
-      const rest = formatInlineCode(line.slice(2));
+      const rest = formatBold(formatInlineCode(line.slice(2)));
       console.log(`${c.dim("  \u2022")} ${rest}`);
       continue;
     }
 
     // Everything else
-    console.log(formatInlineCode(line));
+    console.log(formatBold(formatInlineCode(line)));
   }
 }
 
