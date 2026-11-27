@@ -60,8 +60,16 @@ function frameColoursOnly(event: TextEditSelectionEvent): TextEditSelectionEvent
   };
 }
 
-const colourOnly = (value: string | null | undefined) =>
-  value && CSS.supports("color", value) ? value : null;
+/** `value` when this window's own style parser takes it as a value of `name`, else null. Values a preview frame
+ * reports are data, so read them through this before they style anything here. */
+export function frameStyleValue(name: string, value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const probe = document.createElement("i").style;
+  probe.setProperty(name, value);
+  return probe.getPropertyValue(name) ? value : null;
+}
+
+const colourOnly = (value: string | null | undefined) => frameStyleValue("color", value);
 
 function selectionColoursOnly(selection: TextEditSelection): TextEditSelection {
   const { color, ...styles } = selection.styles;
