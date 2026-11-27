@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { closeSync, createReadStream, fstatSync, openSync, readFileSync, statSync } from "node:fs";
+import { closeSync, createReadStream, fstatSync, openSync, readFileSync } from "node:fs";
+import { stat as statAsync } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { formatPreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
-import { isProjectCacheFile, readProjectCacheFile } from "./safePath.js";
+import { isProjectCacheFileAsync, readProjectCacheFileAsync } from "./safePath.js";
 
 const SMALL_FILE_BYTES = 16 * 1024 * 1024;
 const COPY_NAME = /^[0-9a-f]{64}\.(?:mp4|webm)$/;
@@ -17,13 +18,13 @@ function boxPart(box: PreviewProxyBox | undefined): string {
 }
 
 /** Where a source sits and when it last changed: a hit needs no reading of the file. */
-export function fastCopyKey(
+export async function fastCopyKey(
   sourcePath: string,
   version: string,
   variant: string,
   box: PreviewProxyBox | undefined,
-): string {
-  const stat = statSync(sourcePath);
+): Promise<string> {
+  const stat = await statAsync(sourcePath);
   return digest(
     sourcePath,
     String(stat.mtimeMs),
@@ -77,10 +78,13 @@ export function contentIndexPath(cacheDir: string, contentKey: string): string {
 }
 
 /** The copy an index file names, when it is a plain file in the same folder; a link at either is a miss. */
-export function readCopyIndex(projectDir: string, indexPath: string): string | null {
-  const name = readProjectCacheFile(projectDir, indexPath, 256)?.toString("utf8").trim() ?? "";
+export async function readCopyIndex(projectDir: string, indexPath: string): Promise<string | null> {
+  const bytes = await readProjectCacheFileAsync(projectDir, indexPath, 256);
+  const name = bytes?.toString("utf8").trim() ?? "";
   const target = join(dirname(indexPath), name);
-  return COPY_NAME.test(name) && isProjectCacheFile(projectDir, target) ? target : null;
+  return COPY_NAME.test(name) && (await isProjectCacheFileAsync(projectDir, target))
+    ? target
+    : null;
 }
 
 export function writeCopyIndex(indexPath: string, copyPath: string): void {

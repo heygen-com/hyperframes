@@ -251,7 +251,7 @@ export function registerThumbnailRoutes(
         cachePath,
         c.req.raw.signal,
         async (signal) => {
-          const previewCopiesAtStart = proxyActivityMark(project.dir);
+          const previewCopiesAtStart = await proxyActivityMark(project.dir);
           const generated = await adapter.generateThumbnail!({
             project,
             compPath,
@@ -267,7 +267,7 @@ export function registerThumbnailRoutes(
             signal,
           });
           if (!generated) return null;
-          const previewCopiesAtEnd = proxyActivityMark(project.dir);
+          const previewCopiesAtEnd = await proxyActivityMark(project.dir);
           const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
           const inputsUnchanged = async (signature: string) =>
             (await compositionInputSignature(project.dir, compPath, signature)) === inputSignature;

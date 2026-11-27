@@ -23,7 +23,7 @@ import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
 
 vi.mock("../helpers/proxyTranscoder.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../helpers/proxyTranscoder.js")>()),
-  proxyActivityMark: vi.fn(() => "0"),
+  proxyActivityMark: vi.fn(async () => "0"),
 }));
 
 const tempProjectDirs: string[] = [];
@@ -525,7 +525,7 @@ describe("registerThumbnailRoutes", () => {
     await writeComposition(adapter, 1920, 1080);
     const project = await adapter.resolveProject("demo");
     if (!project) throw new Error("missing project");
-    vi.mocked(proxyActivityMark).mockReturnValueOnce(null).mockReturnValueOnce(null);
+    vi.mocked(proxyActivityMark).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     const app = new Hono();
     registerThumbnailRoutes(app, adapter);
     const url = "http://localhost/projects/demo/thumbnail/index.html?t=3";
@@ -542,7 +542,7 @@ describe("registerThumbnailRoutes", () => {
     await writeComposition(adapter, 1920, 1080);
     const project = await adapter.resolveProject("demo");
     if (!project) throw new Error("missing project");
-    vi.mocked(proxyActivityMark).mockReturnValueOnce("0").mockReturnValueOnce("1");
+    vi.mocked(proxyActivityMark).mockResolvedValueOnce("0").mockResolvedValueOnce("1");
     const app = new Hono();
     registerThumbnailRoutes(app, adapter);
 
