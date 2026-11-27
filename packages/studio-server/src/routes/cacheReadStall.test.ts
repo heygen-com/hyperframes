@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { Hono } from "hono";
 import { afterEach, expect, it, vi } from "vitest";
 import { buildWaveformCacheKey } from "../helpers/waveform.js";
@@ -13,7 +13,7 @@ import { stubAdapter } from "./stubAdapter.test-helpers";
 // how many pings landed while it waited: none means the server's thread was held.
 const stall = vi.hoisted(() => ({ ms: 0, under: "", pings: 0, spans: [] as number[] }));
 const stalls = (path: unknown) =>
-  stall.ms > 0 && typeof path === "string" && path.startsWith(`${stall.under}/`);
+  stall.ms > 0 && typeof path === "string" && path.startsWith(`${stall.under}${sep}`);
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
