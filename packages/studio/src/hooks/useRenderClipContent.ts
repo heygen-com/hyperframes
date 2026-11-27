@@ -76,6 +76,7 @@ function renderAudioClip(
     pid,
     window.location.origin,
   );
+  if (!audioUrl) return null;
   const srcRelative = resolvePreviewRelative(audioUrl, pid, window.location.origin);
   // Encode each path segment (spaces, parens, U+202F, unicode) so the URL matches
   // what the assets panel loads — a raw segment 404s. resolvePreviewRelative
@@ -220,12 +221,11 @@ export function useRenderClipContent({
 
       const htmlPreviewEligible = el.duration > 0 && effectiveTimelineDuration > 0;
 
-      if ((el.tag === "video" || el.tag === "img") && el.src) {
-        const mediaSrc = resolveMediaPreviewUrl(
-          authoredSrcPath(el.src),
-          pid,
-          window.location.origin,
-        );
+      const mediaSrc =
+        (el.tag === "video" || el.tag === "img") && el.src
+          ? resolveMediaPreviewUrl(authoredSrcPath(el.src), pid, window.location.origin)
+          : "";
+      if (mediaSrc) {
         // Still images can't be decoded by VideoThumbnail's <video> extractor
         // (the error event fires and the shimmer never resolves) — render the
         // image itself as the strip.
