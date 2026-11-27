@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { uploadedFileName } from "./uploadedFileName.js";
+import { savesUnderItsOwnName, uploadedFileName } from "./uploadedFileName.js";
 
 describe("uploadedFileName", () => {
   it("keeps the last component of a name the browser sent with a folder", () => {
@@ -17,6 +17,50 @@ describe("uploadedFileName", () => {
   it("refuses a name that is empty, holds a NUL, or is a . or .. segment", () => {
     for (const sent of ["", "clips/", "a\0b.mp4", ".", "..", "clips/..", "clips\\.."]) {
       expect(uploadedFileName(sent)).toBeNull();
+    }
+  });
+});
+
+describe("savesUnderItsOwnName", () => {
+  it("refuses a name ending in a dot or a space, which Windows would save under another name", () => {
+    for (const name of ["clip.", "clip...", "clip. ", "clip ", "clip.mp3 ", "..."]) {
+      expect(savesUnderItsOwnName(name), JSON.stringify(name)).toBe(false);
+    }
+  });
+
+  it("refuses a Windows device name, in any case and with any extension", () => {
+    for (const name of [
+      "CON",
+      "con.mp3",
+      "NUL.tar.gz",
+      "Aux.wav",
+      "prn .txt",
+      "com1.mp4",
+      "LPT9.png",
+    ]) {
+      expect(savesUnderItsOwnName(name), name).toBe(false);
+    }
+  });
+
+  it("keeps names that only start like a device name or hold dots inside", () => {
+    for (const name of [
+      "console.mp3",
+      "nullable.png",
+      "com10.mp4",
+      "lpt0.wav",
+      "Cartoon_Falling....mp3",
+      ".gitignore",
+      "a. b.mp3",
+    ]) {
+      expect(savesUnderItsOwnName(name), name).toBe(true);
+    }
+  });
+
+  it("refuses a colon on Windows, where it names a drive or a file stream", () => {
+    for (const name of ["C:foo.mp3", "a.mp3:x"]) {
+      expect(savesUnderItsOwnName(name, "win32")).toBe(false);
+      expect(savesUnderItsOwnName(name, "linux")).toBe(true);
+      expect(savesUnderItsOwnName(name, "darwin")).toBe(true);
     }
   });
 });

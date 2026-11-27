@@ -115,7 +115,7 @@ import {
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-import { uploadedFileName } from "../helpers/uploadedFileName.js";
+import { savesUnderItsOwnName, uploadedFileName } from "../helpers/uploadedFileName.js";
 import { canNameFiles, referenceRewriter, referenceSyntax } from "../helpers/fileReferences.js";
 import {
   hasCompositionOutsideTemplates,
@@ -2433,6 +2433,10 @@ async function processUploadedFiles(
 
     const name = uploadedFileName(value.name);
     if (!name) continue;
+    if (!savesUnderItsOwnName(name)) {
+      skipped.push(name);
+      continue;
+    }
 
     // Reject individual files that exceed the size limit
     if (value.size > MAX_UPLOAD_BYTES) {

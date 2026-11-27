@@ -1,8 +1,17 @@
-/** The name an uploaded file is saved under: the last component of the name the browser sent
- * (it may carry a folder), or null when there is nothing safe to save it as. */
-export function uploadedFileName(sent: string): string | null {
-  const name = sent.split("/").pop()?.split("\\").pop() ?? "";
-  // Only a whole "." or ".." climbs out of the folder; a run of dots inside a name does not.
-  if (!name || name.includes("\0") || name === "." || name === "..") return null;
-  return name;
+const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9]) *(\..*)?$/i;
+const ENDS_IN_DOT_OR_SPACE = /[. ]$/;
+
+export function uploadedFileName(sentName: string): string | null {
+  const lastComponent = sentName.split("/").pop()?.split("\\").pop() ?? "";
+  const climbsOut = lastComponent === "." || lastComponent === "..";
+  if (!lastComponent || lastComponent.includes("\0") || climbsOut) return null;
+  return lastComponent;
+}
+
+export function savesUnderItsOwnName(
+  name: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (ENDS_IN_DOT_OR_SPACE.test(name) || WINDOWS_DEVICE_NAME.test(name)) return false;
+  return platform !== "win32" || !name.includes(":");
 }
