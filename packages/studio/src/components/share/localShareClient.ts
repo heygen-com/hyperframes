@@ -91,7 +91,7 @@ async function json(
   path: string,
   token: string | null,
   signal: AbortSignal,
-  action?: LocalShareAction,
+  action?: LocalShareAction | { choice: string },
 ): Promise<unknown> {
   const response = await studioApiFetch(`/api/share/${path}`, {
     method: action ? "POST" : "GET",
@@ -126,18 +126,31 @@ export async function projectFilesStatus(
   token: string,
   space: string,
   signal: AbortSignal,
-): Promise<{ state: "off" | "synced" | "needs_sync"; paths: string[]; digest: string }> {
+): Promise<{
+  state: "off" | "synced" | "needs_sync" | "at_limit";
+  paths: string[];
+  digest: string;
+  canReconnect: boolean;
+}> {
   const value = await json(`project-files?space=${encodeURIComponent(space)}`, token, signal);
   if (
     !record(value) ||
-    (value.state !== "off" && value.state !== "synced" && value.state !== "needs_sync") ||
+    (value.state !== "off" &&
+      value.state !== "synced" &&
+      value.state !== "needs_sync" &&
+      value.state !== "at_limit") ||
     typeof value.digest !== "string" ||
     !/^[0-9a-f]{64}$/.test(value.digest) ||
     !Array.isArray(value.paths) ||
     !value.paths.every(text)
   )
     throw new LocalShareError("unavailable", "Could not read the hidden asset summary.");
-  return { state: value.state, paths: value.paths, digest: value.digest };
+  return {
+    state: value.state,
+    paths: value.paths,
+    digest: value.digest,
+    canReconnect: value.canReconnect === true,
+  };
 }
 export async function shareSnapshot(
   token: string,
@@ -192,4 +205,40 @@ function optionalFailure(value: unknown): boolean {
 
 function nullableAudience(value: unknown): boolean {
   return value === null || isAudience(value);
+}
+
+interface ReconnectChoice {
+  token: string;
+  id: string;
+  title: string;
+  workspace: { id: string; name: string };
+}
+export async function reconnectChoices(
+  token: string,
+  space: string,
+  signal: AbortSignal,
+): Promise<ReconnectChoice[]> {
+  const choices = await json(`reconnect?space=${encodeURIComponent(space)}`, token, signal);
+  if (
+    !Array.isArray(choices) ||
+    !choices.every(
+      (item): item is ReconnectChoice =>
+        record(item) &&
+        text(item.token) &&
+        text(item.title) &&
+        text(item.id) &&
+        record(item.workspace) &&
+        item.workspace.id === space &&
+        text(item.workspace.name),
+    )
+  )
+    throw new Error("Could not read cloud projects. Try again.");
+  return choices;
+}
+export async function confirmReconnect(token: string, choice: string, signal: AbortSignal) {
+  const result = await json("reconnect", token, signal, { choice });
+  if (record(result) && text(result.confirmLocalFiles)) return result.confirmLocalFiles;
+  if (!record(result) || result.reconnected !== true)
+    throw new Error("Could not confirm the new connection.");
+  return null;
 }
