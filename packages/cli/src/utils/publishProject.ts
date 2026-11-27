@@ -581,30 +581,38 @@ function linkOutsideApproved(
   return onOutsideFile(outsideFileReference(absProjectDir, file, file, absPath)) !== false;
 }
 
-/** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
+/** Ships one in-project path a page names, or leaves it out with its reason. False when it is not on disk. */
+function includeCandidate(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  rawPath: string,
+  absPath: string,
+): boolean {
+  const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
+  if (staysOutOrUnreadable(ctx, entryPath, rawPath, absPath, rel)) return true;
+  if (!existsSync(absPath)) return isPrivateCompositionFile(ctx.absProjectDir, absPath);
+  if (!statSync(absPath).isFile()) return true;
+  const reason = referencedFileLeftOut(ctx, entryPath, rel, absPath);
+  if (reason) leaveOut(ctx, entryPath, rawPath, absPath, reason);
+  else stageReferenced(ctx, entryPath, rawPath, absPath, rel);
+  return true;
+}
+
+/** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root under one
+ * spelling of its name. False when that spelling is on disk in neither, so the next spelling can be tried. */
 function includeReferencedProjectFile(
   ctx: ExternalAssetContext,
   resolvedPath: string,
+  name: string,
   rawPath: string,
   requireOnDisk: boolean,
   entryPath: string,
-): void {
-  const fromRoot = decodeUrlPathVariants(rawPath).map((name) => resolve(ctx.absProjectDir, name));
-  for (const candidate of [resolvedPath, ...fromRoot]) {
-    const absPath = candidate.replace(/[?#].*$/, "");
-    if (!isPathInside(absPath, ctx.absProjectDir)) continue;
-    const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
-    if (staysOutOrUnreadable(ctx, entryPath, rawPath, absPath, rel)) return;
-    if (!existsSync(absPath)) {
-      if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return;
-      continue;
-    }
-    if (!statSync(absPath).isFile()) return;
-    const reason = referencedFileLeftOut(ctx, entryPath, rel, absPath);
-    if (reason) return leaveOut(ctx, entryPath, rawPath, absPath, reason);
-    return stageReferenced(ctx, entryPath, rawPath, absPath, rel);
-  }
-  if (!requireOnDisk) return;
+): boolean {
+  const candidates = [resolvedPath, resolve(ctx.absProjectDir, name)].filter((absPath) =>
+    isPathInside(absPath, ctx.absProjectDir),
+  );
+  if (candidates.some((absPath) => includeCandidate(ctx, entryPath, rawPath, absPath))) return true;
+  if (!requireOnDisk) return false;
   throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
 }
 
@@ -705,17 +713,34 @@ function outsideFileLeftOutReason(
   return isUploadedOutsideFileType(absPath) ? null : "file_type";
 }
 
+type TargetOptions = {
+  name: string;
+  entryPath: string;
+  requireOnDisk: boolean;
+  filesystemPath: boolean;
+};
+
+/** An in-project path's target, or undefined when this spelling is not on disk and the next one should be tried. */
+function projectTargetOf(
+  ctx: ExternalAssetContext,
+  absPath: string,
+  rawPath: string,
+  { name, entryPath, requireOnDisk, filesystemPath }: TargetOptions,
+): string | null | undefined {
+  if (!includeReferencedProjectFile(ctx, absPath, name, rawPath, requireOnDisk, entryPath))
+    return undefined;
+  return filesystemPath ? relativeToProject(ctx, absPath) : null;
+}
+
 function archiveTargetOf(
   ctx: ExternalAssetContext,
   absPath: string,
   rawPath: string,
-  options: { entryPath: string; requireOnDisk: boolean; filesystemPath: boolean },
+  options: TargetOptions,
 ): string | null | undefined {
   if (leftOnAnotherNetworkRoot(ctx, options.entryPath, rawPath, absPath)) return null;
-  if (isPathInside(absPath, ctx.absProjectDir)) {
-    includeReferencedProjectFile(ctx, absPath, rawPath, options.requireOnDisk, options.entryPath);
-    return options.filesystemPath ? relativeToProject(ctx, absPath) : null;
-  }
+  if (isPathInside(absPath, ctx.absProjectDir))
+    return projectTargetOf(ctx, absPath, rawPath, options);
   if (ctx.received(options.entryPath)) {
     leaveOut(ctx, options.entryPath, rawPath, absPath, "received");
     return undefined;
@@ -758,21 +783,20 @@ function tryResolveExternal(
 ): string | null {
   const filesystemPath = isAbsolute(rawPath) && !rawPath.startsWith("//");
   if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
-  const [path, suffix] = filesystemPath ? splitPathSuffix(rawPath) : [rawPath, ""];
-  // A project file ends the search with the first spelling tried, so the one on disk goes first. Only the project
-  // folder is looked at: an outside path may be another computer's share.
-  const onDisk = (variant: string) => {
-    const absPath = resolve(referrerAbsDir, variant);
-    return Number(isPathInside(absPath, ctx.absProjectDir) && existsSync(absPath));
-  };
-  const variants = decodeUrlPathVariants(path).sort((a, b) => onDisk(b) - onDisk(a));
-  for (const variant of variants) {
-    const target = archiveTargetOf(ctx, resolve(referrerAbsDir, variant), rawPath, {
+  // Every spelling of the name without its query or fragment, then of the whole value: a file may be named "a#b.svg".
+  const [path, suffix] = splitPathSuffix(rawPath);
+  const spellings: [string, string][] = decodeUrlPathVariants(path).map((name) => [name, suffix]);
+  if (suffix)
+    spellings.push(...decodeUrlPathVariants(rawPath).map((name): [string, string] => [name, ""]));
+  for (const [i, [name, after]] of spellings.entries()) {
+    const target = archiveTargetOf(ctx, resolve(referrerAbsDir, name), rawPath, {
+      name,
       entryPath,
-      requireOnDisk,
+      // a name missing in one spelling is refused only once every spelling has been looked for
+      requireOnDisk: requireOnDisk && i === spellings.length - 1,
       filesystemPath,
     });
-    if (target !== undefined) return target && target + suffix;
+    if (target !== undefined) return target && target + after;
   }
   return null;
 }
