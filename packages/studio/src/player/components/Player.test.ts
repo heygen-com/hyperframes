@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Player, readPreviewErrorMessage, shouldShowCompositionLoadingOverlay } from "./Player";
 import { hasUnloadedAssets } from "./previewAssetWait";
 import { previewEditingClient } from "../lib/previewChannel";
+import { primeFrameToken } from "../lib/frameToken";
 import { usePlayerStore } from "../store/playerStore";
 import { onPreviewDocumentLoaded } from "../sceneSwap";
 
@@ -228,7 +229,23 @@ describe("a host's sandbox origin", () => {
     act(async () => {
       for (let i = 0; i < 10; i += 1) await Promise.resolve();
     });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    primeFrameToken(null);
+    vi.restoreAllMocks();
+  });
+
+  // fails without the fix: a stale primed token left the player on a path the server refuses.
+  it("loads a sealed preview again under the current token when the primed one is stale", async () => {
+    stubFrameToken({ token });
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    const { player } = await mountPlayer({
+      directUrl: undefined,
+      projectId: "demo",
+      sandboxOrigin: "opaque",
+    });
+    await settle();
+    expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
+  });
 
   it.each([
     ["/api/projects/demo/preview", `/api/projects/demo/preview/~${token}`],

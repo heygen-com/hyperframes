@@ -96,11 +96,32 @@ function enableInteractiveIframe(player: HyperframesPlayerElement): void {
 const studioDraws = (wait: boolean, loadingUi: PlayerProps["loadingUi"]) =>
   wait && loadingUi !== "host";
 
-async function playerSrc(previewSource: string, opaque: boolean): Promise<string> {
+async function playerSrc(
+  previewSource: string,
+  opaque: boolean,
+  onStale: (fresh: string) => void,
+): Promise<string> {
   const url = new URL(previewSource, window.location.origin);
   applyPreviewVariablesToUrl(url);
   const src = url.pathname + url.search;
-  return opaque ? previewUnderFrameToken(src) : src;
+  return opaque ? previewUnderFrameToken(src, onStale) : src;
+}
+
+/** A primed frame token found stale: the preview loads again under the current one, now or once the player exists. */
+function staleTokenSwap(canceled: () => boolean) {
+  let shown: HyperframesPlayerElement | null = null;
+  let fresher: string | null = null;
+  return {
+    onStale(fresh: string) {
+      if (canceled()) return;
+      fresher = fresh;
+      shown?.setAttribute("src", fresh);
+    },
+    src: (primed: string) => fresher ?? primed,
+    show(player: HyperframesPlayerElement) {
+      shown = player;
+    },
+  };
 }
 
 const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
@@ -187,8 +208,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
       const opaque = host.sandboxOrigin === "opaque";
 
-      void Promise.all([loadPlayerModule(), playerSrc(previewSource, opaque)]).then(([, src]) => {
+      const swap = staleTokenSwap(() => canceled);
+      const source = playerSrc(previewSource, opaque, swap.onStale);
+
+      void Promise.all([loadPlayerModule(), source]).then(([, primed]) => {
         if (canceled) return;
+        const src = swap.src(primed);
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
@@ -307,6 +332,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         loadIdRef.current += 1;
         player.setAttribute("src", src);
         container.appendChild(player);
+        swap.show(player);
         watchPreviewFrame(iframe);
 
         enableInteractiveIframe(player);
