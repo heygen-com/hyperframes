@@ -113,6 +113,11 @@ export function encodePreviewPath(relativePath: string): string {
   return relativePath.split("/").map(encodeURIComponent).join("/");
 }
 
+/** True when a project-relative `path` has a `..` segment, which the browser resolves above the project. */
+export function climbsOut(path: string): boolean {
+  return path.split("/").includes("..");
+}
+
 /**
  * A timeline element's media src as a file on this project's preview route (query dropped: the host adds
  * options), or an external http(s), `data:` or `blob:` URL; "" (load nothing) for any other API route or a climb.
@@ -133,7 +138,7 @@ export function resolveMediaPreviewUrl(
     hash = url.hash;
   }
   const path = relativePath?.replace(/^\/+/, "");
-  if (path === undefined || path.split("/").includes("..")) return "";
+  if (path === undefined || climbsOut(path)) return "";
   return buildProjectApiPath(projectId, `/preview/${encodePreviewPath(path)}${hash}`);
 }
 

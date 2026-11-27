@@ -19,6 +19,7 @@ import { clipPeaksUrl, clipSourceWindow } from "../player/components/clipPeakMap
 import { clipHasSound } from "../player/components/clipMenuNormalize";
 import {
   authoredSrcPath,
+  climbsOut,
   encodePreviewPath,
   resolveMediaPreviewUrl,
 } from "../player/components/thumbnailUtils";
@@ -41,7 +42,7 @@ export function normalizeCompositionSrc(
   } catch {
     // already relative
   }
-  return compSrc;
+  return climbsOut(compSrc) ? "" : compSrc;
 }
 
 /**

@@ -530,6 +530,22 @@ describe("useRenderClipContent", () => {
     },
   );
 
+  it("asks for no picture of a composition clip whose src climbs out of the project", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
+    for (const compositionSrc of [
+      "../../other/preview/x.html",
+      "/../../../lint",
+      "a/../../b.html",
+    ]) {
+      const content = renderClipContent(
+        { id: "scene", tag: "div", start: 0, duration: 4, track: 0, compositionSrc },
+        null,
+      );
+      const urls = partsOf(content).filter((part): part is string => typeof part === "string");
+      expect(urls.filter((url) => url.split("/").includes(".."))).toEqual([]);
+    }
+  });
+
   it.each(["compositions/scene-0.html", "compositions/scene [v2].html", "compositions/100%.html"])(
     "asks for the same thumbnail as the card of %s, so one render serves both",
     (compositionSrc) => {
