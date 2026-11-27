@@ -96,8 +96,10 @@ import {
 } from "./editing/stageMeasure";
 import {
   parseTextEdit,
+  textEditAwayEvent,
   textEditEndedEvent,
   textEditSelectionEvent,
+  type TextEditAwayEvent,
   type TextEditEndedEvent,
   type TextEditSelectionEvent,
   type TextEditParams,
@@ -801,6 +803,7 @@ export interface EditingPortClient {
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
+  onTextEditAway(listener: (event: TextEditAwayEvent) => void): () => void;
   onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
@@ -863,6 +866,7 @@ export function createEditingPortClient(options: {
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
+  const awayListeners = new Set<(event: TextEditAwayEvent) => void>();
   const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
@@ -891,6 +895,8 @@ export function createEditingPortClient(options: {
     if (geometry) return geometryListeners.forEach((listener) => listener(geometry));
     const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
     if (ended) return textEditListeners.forEach((listener) => listener(ended));
+    const away = textEditAwayEvent(data, EDITING_PROTOCOL_VERSION);
+    if (away) return awayListeners.forEach((listener) => listener(away));
     const selected = textEditSelectionEvent(data, EDITING_PROTOCOL_VERSION);
     if (selected) selectionListeners.forEach((listener) => listener(selected));
   };
@@ -964,6 +970,10 @@ export function createEditingPortClient(options: {
       textEditListeners.add(listener);
       return () => textEditListeners.delete(listener);
     },
+    onTextEditAway(listener) {
+      awayListeners.add(listener);
+      return () => awayListeners.delete(listener);
+    },
     onTextEditSelection(listener) {
       selectionListeners.add(listener);
       return () => selectionListeners.delete(listener);
@@ -974,6 +984,7 @@ export function createEditingPortClient(options: {
       keyListeners.clear();
       geometryListeners.clear();
       textEditListeners.clear();
+      awayListeners.clear();
       selectionListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
@@ -994,6 +1005,7 @@ export {
   caretRangeAt,
   takePlainTextOnly,
   textEditResult,
+  type TextEditAwayEvent,
   type TextEditEndedEvent,
   type TextEditCaret,
   type TextEditResult,

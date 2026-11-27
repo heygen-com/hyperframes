@@ -50,6 +50,15 @@ export type TextEditCaret = {
   color: string;
   viewportWidth: number;
 };
+/** A press in the film outside the text, or a right-click anywhere in it, during a session: the host can't hear a
+ * sealed frame's document, so this is how its picker and menu learn where it landed (frame px). */
+export type TextEditAwayEvent = {
+  handle: EditingElementHandle;
+  button: 0 | 2;
+  point: Point;
+  viewportWidth: number;
+  keys: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean };
+};
 export type TextEditSelectionEvent = {
   handle: EditingElementHandle;
   selection: TextEditSelection | null;
@@ -147,6 +156,21 @@ export function textEditSelectionEvent(
   const { handle, selection, caret } = data;
   if (!(selection === null || isSelection(selection))) return null;
   return caret === null || isCaret(caret) ? { handle, selection, caret } : null;
+}
+
+const isKeys = (value: unknown): value is TextEditAwayEvent["keys"] =>
+  isRecord(value) &&
+  keysAre(value, "ctrlKey,metaKey,shiftKey") &&
+  Object.values(value).every((flag) => typeof flag === "boolean");
+
+export function textEditAwayEvent(data: unknown, version: number): TextEditAwayEvent | null {
+  if (!isRecord(data) || !keysAre(data, "button,event,handle,keys,point,v,viewportWidth"))
+    return null;
+  if (data.v !== version || data.event !== "text-edit-away" || !isHandle(data.handle)) return null;
+  const { handle, button, point, viewportWidth, keys } = data;
+  if ((button !== 0 && button !== 2) || !isPoint(point) || !isKeys(keys)) return null;
+  if (!isFiniteNumber(viewportWidth) || viewportWidth <= 0) return null;
+  return { handle, button, point, viewportWidth, keys };
 }
 
 const isValue = (value: unknown) =>
@@ -360,6 +384,33 @@ function followCaret(element: Editable, open: Session): () => void {
   };
 }
 
+function passAway(element: Editable, post: (away: Omit<TextEditAwayEvent, "handle">) => void) {
+  const doc = element.ownerDocument;
+  const view = doc.defaultView;
+  const away = (event: MouseEvent, button: 0 | 2) => ({
+    button,
+    point: { x: event.clientX, y: event.clientY },
+    viewportWidth: view?.innerWidth || 1,
+    keys: { shiftKey: event.shiftKey, metaKey: event.metaKey, ctrlKey: event.ctrlKey },
+  });
+  const onPress = (event: PointerEvent) => {
+    if (event.button !== 0 || element.contains(event.target as Node)) return;
+    const message = away(event, 0);
+    // After the blur this press causes, so the text-edit-ended that saves the text is first on the port.
+    view?.setTimeout(() => post(message));
+  };
+  const onMenu = (event: MouseEvent) => {
+    event.preventDefault();
+    post(away(event, 2));
+  };
+  doc.addEventListener("pointerdown", onPress, true);
+  doc.addEventListener("contextmenu", onMenu, true);
+  return () => {
+    doc.removeEventListener("pointerdown", onPress, true);
+    doc.removeEventListener("contextmenu", onMenu, true);
+  };
+}
+
 function caretOf(open: Session): TextEditCaret | null {
   const box = open.caret.composing ? null : caretBoxIn(open.element, open.caret.side);
   const viewportWidth = open.element.ownerDocument.defaultView?.innerWidth || 1;
@@ -400,9 +451,13 @@ function start(
   };
   const stopListening = listen(editable, endInFrame, open.report);
   const stopFollowing = followCaret(editable, open);
+  const stopPassing = passAway(editable, (away) =>
+    port.postMessage({ v: version, event: "text-edit-away", handle, ...away }),
+  );
   open.stop = () => {
     stopListening();
     stopFollowing();
+    stopPassing();
   };
   session = open;
   openTextEdits.add(editable);
