@@ -131,7 +131,7 @@ import {
   type PreviewApiAdapter,
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-import { previewRefusalPage } from "../helpers/previewErrorPage.js";
+import { previewRefusalPage, previewRuntimeTag } from "../helpers/previewErrorPage.js";
 import { isCompositionTooLargeError } from "@hyperframes/core/compiler/composition-size-limit";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 import { corsProjectVideos } from "../helpers/captureVideos.js";
@@ -196,8 +196,7 @@ function parseStudioMotionManifestContent(content: string): {
 
 /** Preview hooks must install before authored head scripts register media consumers. */
 export function withPreviewRuntime(html: string, runtimeUrl: string): string {
-  const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
-  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
+  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), previewRuntimeTag(runtimeUrl), true);
 }
 
 function injectScriptTagIntoHead(html: string, scriptTag: string): string {
@@ -789,7 +788,8 @@ export function registerPreviewRoutes(
       }
       return bundled;
     } catch (error) {
-      if (isCompositionTooLargeError(error)) return previewRefusalPage(error.message);
+      if (isCompositionTooLargeError(error))
+        return previewRefusalPage(error.message, adapter.runtimeUrl);
       console.warn("[Studio] preview build failed, building from the saved file:", error);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
@@ -924,7 +924,8 @@ export function registerPreviewRoutes(
         compPath,
       );
       if (!built) return c.text("not found", 404);
-      if ("refused" in built) return c.html(previewRefusalPage(built.refused), 200);
+      if ("refused" in built)
+        return c.html(previewRefusalPage(built.refused, adapter.runtimeUrl), 200);
       await recordPreviewReadsOff(project.dir, built.references);
       const transformed = await withinDeadline(
         transformPreviewHtml(built.html, adapter, project, compPath),
