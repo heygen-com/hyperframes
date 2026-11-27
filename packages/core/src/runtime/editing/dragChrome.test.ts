@@ -152,6 +152,10 @@ describe("drag chrome on the wire", () => {
     expect(
       request({ ...chromeAt(1), nodes: [{ tag: "div", look: { background: "url(x)" } }] }),
     ).toBe(false);
+    for (const escaped of ["u\\72l(https://x)", "\\75rl(https://x)"])
+      expect(
+        request({ ...chromeAt(1), nodes: [{ tag: "div", look: { background: escaped } }] }),
+      ).toBe(false);
     expect(request({ ...chromeAt(1), scale: { x: 0, y: 1 } })).toBe(false);
   });
 });

@@ -39,8 +39,8 @@ const ATTRS: readonly string[] = [
   "height",
 ];
 const PROP_NAME = /^-?[a-z][a-z0-9-]{0,63}$/;
-// Paint only: nothing in the copy may make the frame fetch.
-const FETCHES = /url\(|image\(|image-set\(|src\(/i;
+// Paint only: nothing in the copy may make the frame fetch, nor a CSS escape that spells a fetch.
+const FETCHES = /\\|url\(|image\(|image-set\(|src\(/i;
 
 const isText = (value: unknown, max: number): value is string =>
   typeof value === "string" && value.length <= max;
