@@ -487,6 +487,16 @@ describe("auth/oauth", () => {
       expect(credentials.oauth?.refresh_token).toBeUndefined();
     });
 
+    it("asks the sign-in page to pick the hinted workspace first", async () => {
+      vi.mocked(openBrowser).mockClear();
+      const body = { access_token: "new_at", expires_in: 3600 };
+      await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body), workspaceHint: "me0123" });
+      await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body) });
+      const [hinted, plain] = vi.mocked(openBrowser).mock.calls.map(([url]) => new URL(url));
+      expect(hinted?.searchParams.get("workspace_hint")).toBe("me0123");
+      expect(plain?.searchParams.has("workspace_hint")).toBe(false);
+    });
+
     it("preserves a co-located api_key across fresh login", async () => {
       await writeStore({ api_key: "hg_keep_me" });
       const credentials = await loginWithTokens({

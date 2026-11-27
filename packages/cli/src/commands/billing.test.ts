@@ -10,6 +10,10 @@ const terminal = vi.hoisted(() => ({
   checkoutError: null as unknown,
   args: [] as unknown[][],
   enter: false,
+  headless: false,
+  errorOnce: false,
+  switches: 0,
+  lands: true,
 }));
 const events = vi.hoisted(() => ({ failed: [] as unknown[], timeout: [] as unknown[] }));
 const never = vi.hoisted(() => ({ paid: true }));
@@ -28,7 +32,10 @@ vi.mock("../telemetry/events.js", () => ({
   trackBillingWaitTimeout: (p: unknown) => void events.timeout.push(p),
 }));
 
-vi.mock("../utils/attendedTerminal.js", () => ({ isUnattended: () => !terminal.attended }));
+vi.mock("../utils/attendedTerminal.js", () => ({
+  isUnattended: () => !terminal.attended,
+  isRemoteOrHeadless: () => terminal.headless,
+}));
 vi.mock("node:readline/promises", () => ({
   createInterface: () => ({
     question: (_q: string, opts: { signal: AbortSignal }) =>
@@ -59,8 +66,11 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
     ...real,
     readOffer: async (stop?: AbortSignal) =>
       held.realOffer ? real.readOffer(stop) : (held.offer ?? {}),
+    signInToOwnSpace: async () => (terminal.switches++, terminal.lands),
     createCheckout: async (...args: unknown[]) => {
-      if (terminal.checkoutError) throw terminal.checkoutError;
+      const error = terminal.checkoutError;
+      if (terminal.errorOnce) terminal.checkoutError = null;
+      if (error) throw error;
       terminal.checkouts++;
       terminal.args.push(args);
       return held.checkout ?? "https://checkout.stripe.com/c/pay/cs_test_1";
@@ -95,6 +105,7 @@ afterEach(() => {
   terminal.args.length = 0;
   terminal.checkoutError = null;
   terminal.enter = false;
+  Object.assign(terminal, { headless: false, errorOnce: false, switches: 0, lands: true });
   events.failed.length = 0;
   events.timeout.length = 0;
   never.paid = true;
@@ -387,6 +398,57 @@ describe("billing when the page may already have been paid", () => {
     await done;
     vi.useRealTimers();
     expect(terminal.args.map((a) => a[2])).toEqual([1000]);
+  });
+});
+
+describe("billing from a team space", () => {
+  const teamRefusal = async () => {
+    const { CheckoutError } = await import("../heygen/plan.js");
+    return new CheckoutError("checkout_team_role", "Only this team's admin can buy its plan.");
+  };
+  const subscribe = async () => {
+    terminal.attended = true;
+    terminal.enter = true;
+    never.paid = false;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] }).catch(
+      () => undefined,
+    );
+    await vi.advanceTimersByTimeAsync(6000);
+    await done;
+    vi.useRealTimers();
+    return log.mock.calls.flat().join("\n");
+  };
+
+  // fails without the fix: a team member's checkout ended at the refusal, with nothing to buy from.
+  it("signs in to the person's own space and opens the checkout there", async () => {
+    terminal.checkoutError = await teamRefusal();
+    terminal.errorOnce = true;
+    const printed = await subscribe();
+    expect(terminal.switches).toBe(1);
+    expect(opened).toContain("https://checkout.stripe.com/c/pay/cs_test_1");
+    expect(printed).toContain("your own workspace");
+    expect(events.failed).toEqual([]);
+  });
+
+  it("opens no checkout when the sign-in did not land in the person's own space", async () => {
+    terminal.checkoutError = await teamRefusal();
+    terminal.errorOnce = true;
+    terminal.lands = false;
+    await subscribe();
+    expect(terminal.checkouts).toBe(0);
+    expect(opened).not.toContain("https://checkout.stripe.com/c/pay/cs_test_1");
+    expect(events.failed).toEqual([{ reason: "checkout_team_role" }]);
+  });
+
+  it("opens no sign-in where no browser can open one", async () => {
+    terminal.checkoutError = await teamRefusal();
+    terminal.headless = true;
+    await subscribe();
+    expect(terminal.switches).toBe(0);
+    expect(events.failed).toEqual([{ reason: "checkout_team_role" }]);
   });
 });
 

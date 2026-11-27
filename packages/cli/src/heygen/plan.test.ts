@@ -6,6 +6,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
   resolveCloudBaseUrl: () => "https://api.example.test",
+  refreshIfNeeded: async (credential: unknown) => credential,
+}));
+const signIn = vi.hoisted(() => ({ source: "file_json", hints: [] as unknown[] }));
+vi.mock("../auth/resolver.js", () => ({
+  resolveCredential: async () => ({ type: "oauth", access_token: "t", source: signIn.source }),
+  envCredentialVar: (source: string) => (source.startsWith("env") ? "HEYGEN_API_KEY" : undefined),
+}));
+vi.mock("../auth/client.js", () => ({
+  AuthClient: class {
+    getCurrentUser = async () => ({ username: "me0123" });
+  },
+}));
+vi.mock("../auth/oauth.js", () => ({
+  startAuthorizationCodeFlow: async (opts: { workspaceHint?: string }) =>
+    void signIn.hints.push(opts.workspaceHint),
 }));
 const returnRefused = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/events.js", () => ({ trackBillingCheckoutReturnRefused: returnRefused }));
@@ -18,6 +33,7 @@ const {
   pageUrl,
   readOffer,
   readPlan,
+  signInToOwnSpace,
   stripeCheckoutUrl,
 } = await import("./plan.js");
 
@@ -31,6 +47,7 @@ const answer = (data: unknown) =>
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  Object.assign(signIn, { source: "file_json", hints: [] });
 });
 
 describe("readPlan", () => {
@@ -208,6 +225,42 @@ describe("createCheckout", () => {
       /would not open a checkout/,
     );
     expect(sent[0]).toEqual({ quantity: 3, currency: "usd", unit_amount: 100 });
+  });
+});
+
+describe("a team member's checkout", () => {
+  // fails without the fix: the role refusal read as any other, so billing could not move to the person's own space.
+  it("tells HeyGen's refusal of a team member below admin apart from any other", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({
+            code: 400573,
+            message: "Your current role (Member) does not have permission",
+          }),
+          { status: 403 },
+        ),
+    );
+    await expect(createCheckout("plans", {})).rejects.toMatchObject({
+      reason: "checkout_team_role",
+      message: expect.stringMatching(/hyperframes auth login/),
+    });
+  });
+
+  it("signs in again with the person's own space picked, and says whether it landed there", async () => {
+    signedInAs("me0123");
+    expect(await signInToOwnSpace(60_000)).toBe(true);
+    expect(signIn.hints).toEqual(["me0123"]);
+    signedInAs("team-space");
+    expect(await signInToOwnSpace(60_000)).toBe(false);
+  });
+
+  it("never opens a sign-in for a key or token from the environment, which a new sign-in cannot replace", async () => {
+    signIn.source = "env";
+    signedInAs("me0123");
+    expect(await signInToOwnSpace(60_000)).toBe(false);
+    expect(signIn.hints).toEqual([]);
   });
 });
 

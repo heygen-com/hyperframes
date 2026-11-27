@@ -1,6 +1,9 @@
 // The HyperFrames plan and credits the signed-in account holds, and the web pages that change them.
 import { randomUUID } from "node:crypto";
-import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
+import { AuthClient } from "../auth/client.js";
+import { startAuthorizationCodeFlow } from "../auth/oauth.js";
+import { envCredentialVar, resolveCredential } from "../auth/resolver.js";
+import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { trackBillingCheckoutReturnRefused } from "../telemetry/events.js";
 import { normalizeSkillSlug } from "../telemetry/skill.js";
 import { readProjectConfig } from "../utils/projectConfig.js";
@@ -92,6 +95,15 @@ async function signedInSpace(): Promise<string | undefined> {
   } catch {
     return undefined;
   }
+}
+
+export async function signInToOwnSpace(timeoutMs: number): Promise<boolean> {
+  const credential = await refreshIfNeeded(await resolveCredential());
+  if (credential.type !== "oauth" || envCredentialVar(credential.source)) return false;
+  const { username } = await new AuthClient().getCurrentUser(credential);
+  if (!username) return false;
+  await startAuthorizationCodeFlow({ workspaceHint: username, timeoutMs });
+  return (await signedInSpace()) === username;
 }
 
 export function checkoutSkill(named?: unknown, projectDir = process.cwd()): string | undefined {
@@ -203,7 +215,15 @@ export function stripeCheckoutUrl(value: unknown): string | undefined {
     : undefined;
 }
 
-export type CheckoutFailure = "checkout_unavailable" | "checkout_network" | "checkout_rejected";
+export type CheckoutFailure =
+  | "checkout_unavailable"
+  | "checkout_network"
+  | "checkout_rejected"
+  | "checkout_team_role";
+
+const ROLE_BELOW_ADMIN = 400573;
+const TEAM_ROLE =
+  "Only this team's admin can buy its plan. Run `hyperframes auth login`, pick your own workspace, and try again.";
 
 /** A checkout that could not be opened, tagged with a closed reason for telemetry. */
 export class CheckoutError extends Error {
@@ -288,9 +308,13 @@ async function postCheckout(
   const data = isRecord(reply) && isRecord(reply.data) ? reply.data : reply;
   const url = res.ok && isRecord(data) ? stripeCheckoutUrl(data.url) : undefined;
   if (url) return url;
-  const why =
-    isRecord(reply) && typeof reply.message === "string"
-      ? reply.message.slice(0, 200)
-      : `HTTP ${res.status}`;
-  throw new CheckoutError("checkout_rejected", `HeyGen would not open a checkout: ${why}`);
+  throw checkoutRefusal(res.status, reply);
+}
+
+function checkoutRefusal(status: number, reply: unknown): CheckoutError {
+  const body = isRecord(reply) ? reply : {};
+  if (status === 403 && body.code === ROLE_BELOW_ADMIN)
+    return new CheckoutError("checkout_team_role", TEAM_ROLE);
+  const why = typeof body.message === "string" ? body.message.slice(0, 200) : `HTTP ${status}`;
+  return new CheckoutError("checkout_rejected", `HeyGen would not open a checkout: ${why}`);
 }

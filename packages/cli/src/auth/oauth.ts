@@ -85,6 +85,7 @@ export interface AuthorizeFlowOptions {
   fetchImpl?: typeof fetch;
   /** Override timeout in ms (default 60 minutes). */
   timeoutMs?: number;
+  workspaceHint?: string;
 }
 
 export interface AuthorizeFlowResult {
@@ -154,6 +155,7 @@ export async function startAuthorizationCodeFlow(
       scope,
       state,
       challenge: pkce.challenge,
+      workspaceHint: opts.workspaceHint,
     });
 
     // Print the host+path only (no state / code_challenge) so live
@@ -483,6 +485,7 @@ function buildAuthorizeUrl(args: {
   scope: string;
   state: string;
   challenge: string;
+  workspaceHint?: string;
 }): string {
   const params = new URLSearchParams({
     response_type: "code",
@@ -492,6 +495,7 @@ function buildAuthorizeUrl(args: {
     state: args.state,
     code_challenge: args.challenge,
     code_challenge_method: "S256",
+    ...(args.workspaceHint && { workspace_hint: args.workspaceHint }),
   });
   const urlWithEndpointQuery = new URL(authorizeEndpoint());
   for (const [key, value] of params) urlWithEndpointQuery.searchParams.set(key, value);

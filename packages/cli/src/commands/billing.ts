@@ -10,6 +10,7 @@ import {
   pageUrl,
   readOffer,
   readPlan,
+  signInToOwnSpace,
   CheckoutError,
   type Offer,
   type Plan,
@@ -17,7 +18,7 @@ import {
 import { c } from "../ui/colors.js";
 import { trackBillingCheckoutFailed, trackBillingWaitTimeout } from "../telemetry/events.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { isUnattended } from "../utils/attendedTerminal.js";
+import { isRemoteOrHeadless, isUnattended } from "../utils/attendedTerminal.js";
 import { parsePositiveIntegerArg } from "../utils/integerArg.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
@@ -62,9 +63,9 @@ async function openCheckout(
   offer: Offer,
   missing: number | undefined,
   signal: AbortSignal,
-  source: CheckoutSource & { atEnter: AtEnter; needed?: number },
+  source: CheckoutSource & { atEnter: AtEnter; needed?: number; deadline: number },
 ): Promise<void> {
-  const { atEnter, needed, ...from } = source;
+  const { atEnter, needed, deadline, ...from } = source;
   if (isUnattended()) {
     const link = await createCheckout(kind, offer, missing, { ...from, stop: signal });
     if (!signal.aborted) console.log(`Checkout link: ${c.accent(terminalText(link))}`);
@@ -85,8 +86,23 @@ async function openCheckout(
   }
   const line = priceLine(kind, offer, fresh.missing, needed);
   if (line && line !== priceLine(kind, offer, missing, needed)) console.log(terminalText(line));
-  const link = await createCheckout(kind, offer, fresh.missing, { ...from, stop: signal });
+  const checkout = () => createCheckout(kind, offer, fresh.missing, { ...from, stop: signal });
+  const link = await checkout().catch((error: unknown) => inOwnSpace(error, checkout, deadline));
   if (!signal.aborted) await openBrowser(link);
+}
+
+async function inOwnSpace(
+  error: unknown,
+  checkout: () => Promise<string>,
+  deadline: number,
+): Promise<string> {
+  const teamRole = error instanceof CheckoutError && error.reason === "checkout_team_role";
+  if (!teamRole || isRemoteOrHeadless() || deadline <= Date.now()) throw error;
+  console.log(
+    "Only this team's admin can buy its plan. Sign in to your own workspace to buy it there.",
+  );
+  if (!(await signInToOwnSpace(deadline - Date.now()))) throw error;
+  return checkout();
 }
 
 async function offerCheckout(
@@ -94,7 +110,7 @@ async function offerCheckout(
   before: Plan,
   signal: AbortSignal,
   needed: number | undefined,
-  source: CheckoutSource,
+  source: CheckoutSource & { deadline: number },
   done: (p: Plan | null) => boolean,
 ): Promise<CheckoutError | null> {
   if (kind === "credits" && before.plan === "none") return null;
@@ -226,7 +242,7 @@ export default defineCommand({
           before,
           stop.signal,
           needed,
-          { skill, baseline: before.credits },
+          { skill, baseline: before.credits, deadline },
           done,
         )
       : refuseUnreadCheckout();
