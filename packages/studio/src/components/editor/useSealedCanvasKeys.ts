@@ -1,5 +1,5 @@
 // Coordinates sealed preview keyboard focus, armed Delete/nudge handles, and Studio shortcut forwarding.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ArmCanvasKeysParams,
   CanvasKeyActionEvent,
@@ -55,6 +55,7 @@ export interface UseSealedCanvasKeysParams {
   allowCanvasMovement: boolean;
   readOnly: boolean;
   inlineTextEditing: boolean;
+  holdsPress: () => boolean;
   onDeleteSelection?: CanvasDeleteHandler;
   applyRuntimeNudge: (step: RuntimeNudgeStep) => void;
   onNudgeSavingChangeRef: React.MutableRefObject<((saving: boolean) => void) | undefined>;
@@ -241,7 +242,7 @@ function startSealedCanvasSession(input: {
   iframe: HTMLIFrameElement;
   overlayRef: React.RefObject<HTMLDivElement | null>;
   armedReadyRef: React.MutableRefObject<boolean>;
-  pointerDownRef: React.RefObject<boolean>;
+  studioHoldsPress: () => boolean;
   onDeleteRef: React.RefObject<CanvasDeleteHandler | undefined>;
   applyNudgeRef: React.RefObject<(step: RuntimeNudgeStep) => void>;
   selection: DomEditSelection;
@@ -251,12 +252,12 @@ function startSealedCanvasSession(input: {
   allowDelete: boolean;
   resetMayClaim: boolean;
 }): () => void {
-  const { iframe, armedReadyRef, pointerDownRef, onDeleteRef, applyNudgeRef, selection } = input;
+  const { iframe, armedReadyRef, studioHoldsPress, onDeleteRef, applyNudgeRef, selection } = input;
   const revision = ++lastCanvasKeyRevision;
   armedReadyRef.current = false;
   const { params, armedDeletes } = buildArmParams({
     revision,
-    focus: !pointerDownRef.current,
+    focus: !studioHoldsPress(),
     selection,
     groupSelections: input.groupSelections,
     studioKeys: input.studioKeys,
@@ -286,7 +287,7 @@ function startSealedCanvasSession(input: {
   void previewRequest(iframe, "arm-canvas-keys", params).then((res) => {
     if (!live || !sameLoad() || !res?.armed) return;
     armedReadyRef.current = true;
-    if (!pointerDownRef.current && hasSealedCanvasKeyboardHold(iframe)) focusSealedIframe(iframe);
+    if (!studioHoldsPress() && hasSealedCanvasKeyboardHold(iframe)) focusSealedIframe(iframe);
   });
   return () => {
     live = false;
@@ -327,9 +328,13 @@ function useCanvasFocusOwnership(
   overlayRef: React.RefObject<HTMLDivElement | null>,
   armedReadyRef: React.RefObject<boolean>,
   blocked: boolean,
-): { canvasFocused: boolean; pointerDownRef: React.RefObject<boolean> } {
+  holdsPress: () => boolean,
+): { canvasFocused: boolean; studioHoldsPress: () => boolean } {
   const [canvasFocused, setCanvasFocused] = useState(false);
   const pointerDownRef = useRef(false);
+  const holdsPressRef = useRef(holdsPress);
+  holdsPressRef.current = holdsPress;
+  const studioHoldsPress = useCallback(() => pointerDownRef.current || holdsPressRef.current(), []);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -342,7 +347,7 @@ function useCanvasFocusOwnership(
       const iframe = iframeRef.current;
       if (
         iframe &&
-        !pointerDownRef.current &&
+        !studioHoldsPress() &&
         armedReadyRef.current &&
         previewFrameOpaque(iframe) &&
         hasSealedCanvasKeyboardHold(iframe)
@@ -368,13 +373,13 @@ function useCanvasFocusOwnership(
       window.clearTimeout(focusOnceDropLands);
       document.removeEventListener("focusin", onFocusIn, true);
     };
-  }, [armedReadyRef, iframeRef, overlayRef]);
+  }, [armedReadyRef, iframeRef, overlayRef, studioHoldsPress]);
 
   useEffect(() => {
     if (blocked) setCanvasFocused(false);
   }, [blocked]);
 
-  return { canvasFocused, pointerDownRef };
+  return { canvasFocused, studioHoldsPress };
 }
 
 function useSealedCanvasPermissions(
@@ -401,16 +406,18 @@ export function useSealedCanvasKeys({
   allowCanvasMovement,
   readOnly,
   inlineTextEditing,
+  holdsPress,
   onDeleteSelection,
   applyRuntimeNudge,
   onNudgeSavingChangeRef,
 }: UseSealedCanvasKeysParams): void {
   const armedReadyRef = useRef(false);
-  const { canvasFocused, pointerDownRef } = useCanvasFocusOwnership(
+  const { canvasFocused, studioHoldsPress } = useCanvasFocusOwnership(
     iframeRef,
     overlayRef,
     armedReadyRef,
     readOnly || inlineTextEditing,
+    holdsPress,
   );
   const [nudgeSaving, setNudgeSaving] = useState(false);
   const [nudgeEpoch, setNudgeEpoch] = useState(0);
@@ -440,7 +447,7 @@ export function useSealedCanvasKeys({
       iframe,
       overlayRef,
       armedReadyRef,
-      pointerDownRef,
+      studioHoldsPress,
       onDeleteRef,
       applyNudgeRef,
       selection,
@@ -458,8 +465,8 @@ export function useSealedCanvasKeys({
     iframeRef,
     nudgeEpoch,
     overlayRef,
-    pointerDownRef,
     resetMayClaim,
+    studioHoldsPress,
     selection,
     studioKeys,
   ]);
