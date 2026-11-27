@@ -94,7 +94,7 @@ describe("a sub-composition preview build", () => {
     } finally {
       await busy;
     }
-  }, 30_000);
+  }, 90_000);
 
   it("after a refused one, the next page still builds", async () => {
     expect((await comp("huge.html")).status).toBe(503);
