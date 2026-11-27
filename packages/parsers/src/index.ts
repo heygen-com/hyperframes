@@ -12,6 +12,7 @@ export * from "./topLevelElements.js";
 export * from "./timingMismatches.js";
 export * from "./mediaDuration.js";
 export * from "./compositionDuration.js";
+export * from "./compositionSize.js";
 
 // Pure, browser-safe composition primitives shared by the linter (so it can
 // consume them without depending on @hyperframes/core). The Node-only asset
