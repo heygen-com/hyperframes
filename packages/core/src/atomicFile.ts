@@ -256,7 +256,7 @@ const WIN32_LONG_PREFIX = "\\\\?\\";
 const WIN32_ABSOLUTE = /^([A-Za-z]:\\|\\\\)/;
 const WIN32_DOS_DEVICE = /^\\\\[.?]\\/;
 
-function toWin32LongPath(path: string): string {
+export function toWin32LongPath(path: string): string {
   const full = resolve(path);
   if (!WIN32_ABSOLUTE.test(full) || WIN32_DOS_DEVICE.test(full)) return path;
   return full.startsWith("\\\\")
