@@ -25,7 +25,6 @@ type Drawn = {
 /** One gesture's draft: `draft` is the frame's number for it, `saving` the selector its save will patch. */
 type Entry = Drawn & { gesture: object; draft?: number; saving?: string };
 
-/** What each draft request carries of Studio's chrome; `shown` runs once the frame painted a copy. */
 export interface DraftChromeCarrier {
   read: () => EditingDragChrome | undefined;
   shown: () => void;
@@ -268,12 +267,10 @@ export function previewDraftsSent(iframe: HTMLIFrameElement): Promise<void> {
   return new Promise((done) => queue.sent.push(done));
 }
 
-/** Every draft request to `iframe` carries `carrier`'s chrome until `endPreviewDraftChrome`. */
 export function carryPreviewDraftChrome(iframe: HTMLIFrameElement, carrier: DraftChromeCarrier) {
   queueFor(iframe).chrome = carrier;
 }
 
-/** Takes the frame's copy of the chrome away, unless a later gesture carries its own by now. */
 export function endPreviewDraftChrome(iframe: HTMLIFrameElement, carrier: DraftChromeCarrier) {
   const queue = queueFor(iframe);
   if (queue.chrome !== carrier) return;

@@ -27,7 +27,6 @@ const RESIZE_HANDLE_DEFS: Array<{
 
 type GestureHandlers = ReturnType<typeof createDomEditOverlayGestureHandlers>;
 
-// A sealed drag clips this to what lies outside the frame, which paints the rest (frameDragChrome).
 const CHROME_PLANE = { [CHROME_PLANE_ATTR]: "", className: "pointer-events-none absolute inset-0" };
 
 interface DomEditGroupChromeProps {
