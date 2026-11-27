@@ -72,13 +72,12 @@ describe("holdPreviewStage", () => {
       () => null,
       (p) => (port = p),
     );
-    previewEditingClient(iframe);
-    await vi.waitFor(() => expect(port).toBeDefined());
+    await previewEditingClient(iframe).ready;
     port.onmessage = (event: MessageEvent<{ id: number; params: { op: string } }>) => {
       const { id, params } = event.data;
       ops.push(params.op);
       if (params.op === "hold") return;
-      port.postMessage({ v: 1, id, ok: true, result: { op: "restore", restored: 1 } });
+      port.postMessage({ v: 2, id, ok: true, result: { op: "restore", restored: 1 } });
     };
     expect(await holdPreviewStage(iframe, [act("a")], { ...opts, timeoutMs: 10 })).toBeNull();
     await vi.waitFor(() => expect(ops).toEqual(["hold", "restore"]));
@@ -159,8 +158,7 @@ describe("previewStageDrawer", () => {
     );
     const rects = vi.fn();
     const drawer = previewStageDrawer(iframe, rects);
-    previewEditingClient(iframe);
-    await vi.waitFor(() => expect(port).toBeDefined());
+    await previewEditingClient(iframe).ready;
     const replies: Array<() => void> = [];
     port.onmessage = (
       event: MessageEvent<{ id: number; params: { draws: { key: string }[] } }>,
@@ -168,7 +166,7 @@ describe("previewStageDrawer", () => {
       const { id, params } = event.data;
       asked.push(params);
       const result = { op: "frame", rects: params.draws.map(({ key }) => ({ key, rect })) };
-      replies.push(() => port.postMessage({ v: 1, id, ok: true, result }));
+      replies.push(() => port.postMessage({ v: 2, id, ok: true, result }));
     };
 
     drawer.draw("a", { scale: 1 });
@@ -242,10 +240,10 @@ describe("frame events", () => {
     onPreviewStageActReady(iframe, new Set(["a"]), ready);
     onPreviewStageInput(iframe, input);
     await restorePreviewStage(iframe, null);
-    port.postMessage({ v: 1, event: "stage-act-ready", held: [held("z")] });
-    port.postMessage({ v: 1, event: "stage-act-ready", held: [held("a"), held("z")] });
+    port.postMessage({ v: 2, event: "stage-act-ready", held: [held("z")] });
+    port.postMessage({ v: 2, event: "stage-act-ready", held: [held("a"), held("z")] });
     port.postMessage({
-      v: 1,
+      v: 2,
       event: "stage-input",
       type: "keydown",
       key: "Escape",
@@ -255,7 +253,7 @@ describe("frame events", () => {
     await vi.waitFor(() => expect(input).toHaveBeenCalledTimes(1));
     expect(ready.mock.calls).toEqual([[[held("a")]]]);
     expect(input).toHaveBeenCalledWith({
-      v: 1,
+      v: 2,
       event: "stage-input",
       type: "keydown",
       key: "Escape",

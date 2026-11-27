@@ -265,8 +265,6 @@ it("refuses a layers reply that names an unknown kind", async () => {
       throw new DOMException("blocked", "SecurityError");
     },
   });
-  const { port1, port2 } = new MessageChannel();
-  closers.push(() => port1.close());
   const layer = {
     handle: "0123456789abcdef:1",
     depth: 0,
@@ -274,20 +272,15 @@ it("refuses a layers reply that names an unknown kind", async () => {
     zIndex: 0,
     kind: "plugin",
   };
-  port1.onmessage = ({ data }) =>
-    port1.postMessage({
-      v: 1,
-      id: data.id,
-      ok: true,
-      result: { layers: [layer], truncated: false, missingGroup: false },
-    });
-  frame.postMessage = () =>
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        source: frame as unknown as Window,
-        data: { source: "hf-preview", type: "editing-port", v: 1 },
-        ports: [port2],
-      }),
-    );
+  frame.postMessage = (_message: unknown, _origin: string, [port]: MessagePort[]) => {
+    closers.push(() => port!.close());
+    port!.onmessage = ({ data }) =>
+      port!.postMessage({
+        v: 2,
+        id: data.id,
+        ok: true,
+        result: { layers: [layer], truncated: false, missingGroup: false },
+      });
+  };
   expect(await previewLayers(iframe)).toBeNull();
 });

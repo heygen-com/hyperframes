@@ -855,7 +855,8 @@ it("wakes the selection box as the frame's text grows, and stops watching when t
   grown(100);
   grown(100);
   grown(140);
-  expect(wake).toHaveBeenCalledTimes(2);
+  await nextTask();
+  await vi.waitFor(() => expect(wake).toHaveBeenCalledTimes(2));
   act(() => controls().cancel());
   await vi.waitFor(() => expect(watched().at(-1)).toEqual([]));
 });

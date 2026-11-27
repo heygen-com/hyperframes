@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installMarkedEditingAgent } from "./editingAgent.test-helpers";
+import { connectFrom, installMarkedEditingAgent } from "./editingAgent.test-helpers";
 import { trackedHandleCount } from "./editingHandles";
 import {
   EDITING_ELEMENT_HANDLE,
@@ -11,8 +11,6 @@ import {
   type EditingElementHit,
 } from "./editingPort";
 
-const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
-
 type Reply<T> = { ok: boolean; result?: { elements: T[] }; error?: { code: string } };
 
 describe("element handles over the editing port", () => {
@@ -23,7 +21,7 @@ describe("element handles over the editing port", () => {
   const ask = <T>(kind: string, params: unknown): Promise<Reply<T>> =>
     new Promise((resolve) => {
       port.onmessage = (event) => resolve(event.data);
-      port.postMessage({ v: 1, id: ++lastId, kind, params });
+      port.postMessage({ v: 2, id: ++lastId, kind, params });
     });
   const describeHandles = async (handles: string[]) =>
     (await ask<EditingElementDescription | null>("describe", { handles })).result!.elements;
@@ -44,11 +42,8 @@ describe("element handles over the editing port", () => {
     const iframe = document.createElement("iframe");
     document.body.appendChild(iframe);
     const parent = iframe.contentWindow!;
-    const handoff = vi.fn();
-    parent.postMessage = handoff as unknown as Window["postMessage"];
     agent = installMarkedEditingAgent(parent);
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data: CONNECT }));
-    port = (handoff.mock.calls[0]![2] as MessagePort[])[0]!;
+    port = connectFrom(parent);
   });
   afterEach(() => {
     agent.dispose();

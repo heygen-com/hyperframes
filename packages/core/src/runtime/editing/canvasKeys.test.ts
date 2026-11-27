@@ -3,7 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_PREVIEW_CAPTURE_MODE, STUDIO_PREVIEW_MARK_META } from "../../studioPreviewMark";
 import { installEditingAgent } from "../editingAgent";
-import { EDITING_CONNECT, EDITING_PORT, EDITING_PROTOCOL_VERSION } from "../editingPort";
+import { connectFrom } from "../editingAgent.test-helpers";
+import { EDITING_PROTOCOL_VERSION } from "../editingPort";
 import { installPreviewKeyShield, listenFrameKeydown, resetCanvasKeys } from "./canvasKeys";
 
 function markStudio(content?: string): HTMLMetaElement {
@@ -25,26 +26,8 @@ function untrustedKey(type: "keydown" | "keyup", init: KeyboardEventInit): Keybo
 }
 
 function connectAgent(parent: Window): { port: MessagePort; dispose: () => void } {
-  let received: MessagePort | null = null;
-  const parentWin = parent as Window & { postMessage: typeof window.postMessage };
-  parentWin.postMessage = ((data: unknown, _origin: string, transfer?: Transferable[]) => {
-    if (
-      typeof data === "object" &&
-      data !== null &&
-      (data as { type?: unknown }).type === EDITING_PORT
-    ) {
-      received = (transfer?.[0] as MessagePort | undefined) ?? null;
-    }
-  }) as typeof window.postMessage;
   const agent = installEditingAgent(parent);
-  window.dispatchEvent(
-    new MessageEvent("message", {
-      source: parent,
-      data: { source: "hf-parent", type: EDITING_CONNECT, v: EDITING_PROTOCOL_VERSION },
-    }),
-  );
-  if (!received) throw new Error("editing agent did not hand over a port");
-  return { port: received, dispose: agent.dispose };
+  return { port: connectFrom(parent), dispose: agent.dispose };
 }
 
 function ask(port: MessagePort, kind: string, params: unknown): Promise<Record<string, unknown>> {
