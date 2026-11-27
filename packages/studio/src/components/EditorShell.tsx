@@ -293,7 +293,7 @@ function EditorShellBody({
     usePlayerStore.getState().requestSeek(time);
   }, []);
 
-  // Escape pops a composition level; a sealed frame's no-press Escape reaches only this pop.
+  // Escape pops a composition level; a sealed frame's no-press Escape reaches only its own shell's pop.
   const popComposition = useCallback(
     () => updateCompositionStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev)),
     [updateCompositionStack],
@@ -304,7 +304,13 @@ function EditorShellBody({
     },
     [popComposition],
   );
-  useEffect(() => onSealedCanvasCancel(popComposition), [popComposition]);
+  useEffect(
+    () =>
+      onSealedCanvasCancel((frame) => {
+        if (containerRef.current?.contains(frame)) popComposition();
+      }),
+    [containerRef, popComposition],
+  );
 
   return (
     <div

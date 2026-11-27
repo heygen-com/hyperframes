@@ -559,6 +559,7 @@ it("acts on a frame's Delete or forwarded key only while the person has just cli
   window.dispatchEvent(trustedKey("keydown", { key: "Escape", code: "Delete" }));
   window.dispatchEvent(trustedKey("keyup", { key: "Escape", code: "Delete" }));
   await vi.waitFor(() => expect(cancels).toHaveBeenCalledTimes(1));
+  expect(cancels).toHaveBeenCalledWith(iframe);
   for (const modifier of ["shiftKey", "altKey", "ctrlKey"] as const)
     window.dispatchEvent(
       trustedKey("keydown", { key: "Escape", code: "Escape", [modifier]: true }),

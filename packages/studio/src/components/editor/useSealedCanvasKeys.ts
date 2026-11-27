@@ -206,15 +206,15 @@ type CanvasActionHandler = (event: CanvasKeyActionEvent) => void;
 const actionRoutes = new WeakMap<object, Map<number, CanvasActionHandler>>();
 
 const personActedJustNow = () => navigator.userActivation?.isActive === true;
-const canvasCancelListeners = new Set<() => void>();
+const canvasCancelListeners = new Set<(frame: HTMLIFrameElement) => void>();
 
-export function onSealedCanvasCancel(listener: () => void): () => void {
+export function onSealedCanvasCancel(listener: (frame: HTMLIFrameElement) => void): () => void {
   canvasCancelListeners.add(listener);
   return () => void canvasCancelListeners.delete(listener);
 }
 
-export function cancelFromSealedCanvas(): void {
-  for (const cancel of canvasCancelListeners) cancel();
+export function cancelFromSealedCanvas(frame: HTMLIFrameElement): void {
+  for (const cancel of canvasCancelListeners) cancel(frame);
 }
 
 function isBareCancelEscape(key: EditingKeyEvent): boolean {
@@ -246,7 +246,7 @@ function forwardSealedKeys(
   return previewEditingClient(iframe).onKey((key) => {
     if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
     if (!personActedJustNow()) {
-      if (isBareCancelEscape(key)) cancelFromSealedCanvas();
+      if (isBareCancelEscape(key)) cancelFromSealedCanvas(iframe);
       return;
     }
     (overlayRef.current ?? window).dispatchEvent(

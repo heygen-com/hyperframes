@@ -12,30 +12,32 @@ vi.mock("../hooks/useTimelineSelectionPreviewSync", () => ({
   useTimelineSelectionPreviewSync: vi.fn(),
 }));
 vi.mock("./nle/PreviewOverlays", () => ({ PreviewOverlays: () => null }));
-const nle: { current: ReturnType<typeof useNLEContext> | null } = { current: null };
+const shells: ReturnType<typeof useNLEContext>[] = [];
 vi.mock("./nle/PreviewPane", () => ({
   PreviewPane: () => {
-    nle.current = useNLEContext();
-    return null;
+    const nle = useNLEContext();
+    if (!shells.includes(nle)) shells.push(nle);
+    return <iframe title="preview" />;
   },
 }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-let root: ReturnType<typeof createRoot> | null = null;
+const roots: ReturnType<typeof createRoot>[] = [];
 
 afterEach(() => {
-  if (root) act(() => root!.unmount());
-  root = null;
+  for (const root of roots.splice(0)) act(() => root.unmount());
+  shells.length = 0;
   document.body.innerHTML = "";
 });
 
-function mountShell() {
+function mountShell(): HTMLElement {
   const host = document.createElement("div");
   document.body.append(host);
-  root = createRoot(host);
+  const root = createRoot(host);
+  roots.push(root);
   act(() =>
-    root!.render(
+    root.render(
       <EditorShell
         panels={null}
         timelineToolbar={null}
@@ -64,21 +66,29 @@ function mountShell() {
       />,
     ),
   );
+  return host;
 }
 
 const level = (id: string) => ({ id, label: id, previewUrl: `/preview/${id}` });
-const stackIds = () => nle.current!.compositionStack.map((entry) => entry.id);
+const latest = (host: HTMLElement) =>
+  shells.filter((shell) => host.contains(shell.containerRef.current)).at(-1)!;
+const stackIds = (host: HTMLElement) => latest(host).compositionStack.map((entry) => entry.id);
 
-it("a sealed frame's no-press Escape leaves a nested composition, as Escape does unsealed", () => {
-  mountShell();
+it("a sealed frame's no-press Escape leaves its own shell's nested composition, as Escape does unsealed", () => {
+  const first = mountShell();
+  const second = mountShell();
   const levels = [level("master"), level("scene.html"), level("intro.html")];
-  act(() => nle.current!.updateCompositionStack(levels));
+  act(() => latest(first).updateCompositionStack(levels));
+  act(() => latest(second).updateCompositionStack(levels));
   const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true });
-  act(() => void nle.current!.containerRef.current!.dispatchEvent(escape));
-  expect(stackIds()).toEqual(["master", "scene.html"]);
+  act(() => void latest(first).containerRef.current!.dispatchEvent(escape));
+  expect(stackIds(first)).toEqual(["master", "scene.html"]);
+  expect(stackIds(second)).toHaveLength(3);
 
-  act(() => cancelFromSealedCanvas());
-  expect(stackIds()).toEqual(["master"]);
-  act(() => cancelFromSealedCanvas());
-  expect(stackIds()).toEqual(["master"]);
+  const frame = first.querySelector("iframe")!;
+  act(() => cancelFromSealedCanvas(frame));
+  expect(stackIds(first)).toEqual(["master"]);
+  expect(stackIds(second)).toHaveLength(3);
+  act(() => cancelFromSealedCanvas(frame));
+  expect(stackIds(first)).toEqual(["master"]);
 });
