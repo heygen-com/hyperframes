@@ -60,8 +60,6 @@ function frameColoursOnly(event: TextEditSelectionEvent): TextEditSelectionEvent
   };
 }
 
-/** `value` when this window's own style parser takes it as a value of `name`, else null. Values a preview frame
- * reports are data, so read them through this before they style anything here. */
 export function frameStyleValue(name: string, value: unknown): string | null {
   if (typeof value !== "string" || !value) return null;
   const probe = document.createElement("i").style;
