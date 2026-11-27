@@ -1117,7 +1117,7 @@ async function transcodeToCache(
   await acquireSlot(job);
   try {
     // Another caller may have finished (or a pre-warm beat us) while queued.
-    if (await isProjectCacheFileAsync(projectDir, cachePath)) return cachePath;
+    if (isProjectCacheFile(projectDir, cachePath)) return cachePath;
 
     const cacheDir = dirname(cachePath);
     mkdirWithinProject(projectDir, cacheDir);
@@ -1209,13 +1209,40 @@ export async function retryProxyCopy(
 
 let proxyActivity = 0;
 
-/** Null while this project has a copy in progress; otherwise (its folder gone included) a mark that moves when any copy finishes or is refused. */
+/** Null while this project has a copy in progress; otherwise a mark that moves when any copy finishes or is refused. */
 export async function proxyActivityMark(projectDir: string): Promise<string | null> {
   const real = await realpathOff(projectDir).catch(() => null);
   if (real === null) return String(proxyActivity);
   const cacheDir = join(real, CACHE_DIR_NAME) + sep;
   for (const cachePath of inFlight.keys()) if (cachePath.startsWith(cacheDir)) return null;
   return String(proxyActivity);
+}
+
+async function lookUpCopy(
+  projectDir: string,
+  absoluteSourcePath: string,
+  variant: ProxyVariant,
+  box: PreviewProxyBox | undefined,
+  limitSeconds: number | undefined,
+) {
+  const source = await canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const cachePath = await getCanonicalProxyCachePath(source, variant, box, limitSeconds);
+  return { source, cachePath, cached: await isProjectCacheFileAsync(source.projectDir, cachePath) };
+}
+
+const askOrder = new Map<string, Promise<unknown>>();
+
+function reachQueueInAskOrder<T>(projectDir: string, looked: Promise<T>): Promise<T> {
+  const turn = (askOrder.get(projectDir) ?? Promise.resolve()).then(() => looked);
+  const passed = turn.then(
+    () => undefined,
+    () => undefined,
+  );
+  askOrder.set(projectDir, passed);
+  void passed.then(() => {
+    if (askOrder.get(projectDir) === passed) askOrder.delete(projectDir);
+  });
+  return turn;
 }
 
 /**
@@ -1238,10 +1265,12 @@ export async function resolveProxy(
   options: ResolveProxyOptions = {},
 ): Promise<string> {
   options.signal?.throwIfAborted();
-  const source = await canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const cachePath = await getCanonicalProxyCachePath(source, variant, box, options.limitSeconds);
+  const { source, cachePath, cached } = await reachQueueInAskOrder(
+    projectDir,
+    lookUpCopy(projectDir, absoluteSourcePath, variant, box, options.limitSeconds),
+  );
   options.signal?.throwIfAborted();
-  if (await isProjectCacheFileAsync(source.projectDir, cachePath)) {
+  if (cached) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath));
     return cachePath;
