@@ -15,6 +15,7 @@ import {
   EDITING_REQUEST_KINDS,
   EDITING_REQUEST_TIMEOUT_MS,
   isPlainRecord,
+  type FramePresentedParams,
   parseEditingRequest,
   type EditingKeyMessage,
   type EditingParams,
@@ -222,7 +223,11 @@ function whenTwoFramesPaint(cleanups: Cleanups, painted: () => void) {
   cleanups.push(() => window.cancelAnimationFrame(frame));
 }
 
-function waitForFramePresented(): Promise<{ presented: boolean }> {
+function waitForFramePresented({
+  waitMs = FRAME_PRESENTED_LIMIT_MS,
+}: FramePresentedParams): Promise<{
+  presented: boolean;
+}> {
   return new Promise((resolve) => {
     const cleanups: Cleanups = [];
     let done = false;
@@ -235,7 +240,7 @@ function waitForFramePresented(): Promise<{ presented: boolean }> {
     };
     const expire = () => finish(false);
     pendingPresentedWaits.add(expire);
-    const timer = wallSetTimeout(expire, FRAME_PRESENTED_LIMIT_MS);
+    const timer = wallSetTimeout(expire, waitMs);
     cleanups.push(() => wallClearTimeout(timer));
     const seeking = Array.from(document.querySelectorAll("video")).filter(
       (video) => video.seeking && video.isConnected,

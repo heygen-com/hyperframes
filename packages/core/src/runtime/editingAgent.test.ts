@@ -1147,6 +1147,32 @@ describe("installEditingAgent", () => {
       }
     });
 
+    // fails without the fix: the frame gave up at its fixed 4 s, so a 6 s seek counted as never shown.
+    it("waits as long as it is asked to, so a 6 s seek still presents", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+      try {
+        const port = connectedPort();
+        const { video, finish } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const pending = ask(port, {
+          v: 1,
+          id: 55,
+          kind: "frame-presented",
+          params: { waitMs: 10_000 },
+        });
+        while (addSpy.mock.calls.length === 0) await new Promise((r) => setImmediate(r));
+        vi.advanceTimersByTime(6_000);
+        finish("seeked");
+        expect(await pending).toEqual({ v: 1, id: 55, ok: true, result: { presented: true } });
+      } finally {
+        rafSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
     // fails without the fix: disposal let the two-frame stage's callbacks run on.
     it("cancels a pending animation frame when the agent is disposed", async () => {
       const rafs: FrameRequestCallback[] = [];
