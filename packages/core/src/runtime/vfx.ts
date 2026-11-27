@@ -569,7 +569,7 @@ function watchContextLoss(entry: VfxEntry): void {
 }
 
 /** Rebuilds every chain once none is still waiting on its context: a rebuild on a lost one drops the host for good. */
-export function rebuildLostVfx(root: HTMLElement): void {
+export function rebuildLostVfx(root: HTMLElement | null): void {
   if (!registry.some((entry) => entry.contextLost)) return;
   if (registry.every((entry) => !entry.gl.isContextLost())) initVfx(root, registryFps);
 }
@@ -705,10 +705,11 @@ function releaseRegistry(): void {
  * unregistered host paints nothing and reports nothing. Re-initialising
  * forgets (and releases) the previous pass's hosts.
  */
-export function initVfx(root: HTMLElement, fps: number): VfxRegistry {
+export function initVfx(root: HTMLElement | null, fps: number): VfxRegistry {
   releaseRegistry();
   registry = [];
   registryFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
+  if (!root) return registry;
   const hosts = root.querySelectorAll(`[${HF_VFX_ATTR}]`);
   for (const host of hosts) {
     if (!isHtmlElement(host)) continue;

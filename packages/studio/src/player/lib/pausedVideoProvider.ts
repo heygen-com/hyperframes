@@ -2,7 +2,6 @@
 import { encodeUrlPath } from "@hyperframes/parsers";
 import {
   PAUSED_FRAME_BYTES,
-  PAUSED_FRAME_SOURCES,
   parsePausedFrameAsk,
   type PausedFrameAsk,
 } from "@hyperframes/core/runtime/editing-port";
@@ -137,7 +136,7 @@ export function pausedFrameHost(
   };
 
   const decode = async (id: number, asks: PausedFrameAsk[]) => {
-    if (asks.length === 0 || asks.length > PAUSED_FRAME_SOURCES)
+    if (asks.length === 0)
       return reply({ type: "failed", id, message: "Preview decode over budget" });
     replaceOlder();
     const control = new AbortController();

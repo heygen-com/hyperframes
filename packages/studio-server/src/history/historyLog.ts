@@ -1,4 +1,5 @@
-import { closeSync, constants, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
+import { closeSync, constants, mkdirSync, openSync, writeSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
@@ -70,10 +71,13 @@ function parseRecord(line: string): LogRecord | null {
 }
 
 /** `onUnreadable` hears of a damaged line; a torn last line (a crash mid-append) is expected and dropped quietly. */
-export function readLog(file: string, onUnreadable: (line: number) => void): HistoryLog | null {
+export async function readLog(
+  file: string,
+  onUnreadable: (line: number) => void,
+): Promise<HistoryLog | null> {
   let text: string;
   try {
-    text = readFileSync(file, "utf-8");
+    text = await readFile(file, "utf-8");
   } catch {
     return null;
   }
