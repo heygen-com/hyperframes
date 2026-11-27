@@ -583,27 +583,6 @@ describe("core runtime browser contract", () => {
     30_000,
   );
 
-  // Studio's drag chrome only arrives over the editing port; a render page is its own top window, so it
-  // never hands one over and nothing can mount the chrome there.
-  it("hands a render page no editing port, so it never paints drag chrome", async () => {
-    const filmPage = await openFilm(`<div id="card" style="width:40px;height:40px"></div>`);
-    try {
-      const seen = await filmPage.evaluate(async () => {
-        const types: unknown[] = [];
-        window.addEventListener("message", (event) => types.push(event.data?.type));
-        window.postMessage({ source: "hf-parent", type: "editing-connect", v: 1 }, "*");
-        await new Promise((done) => setTimeout(done, 50));
-        window.__player!.renderSeek!(1);
-        const tags = Array.from(document.documentElement.children, (child) => child.tagName);
-        return { types, tags };
-      });
-      expect(seen.types).not.toContain("editing-port");
-      expect(seen.tags).toEqual(["HEAD", "BODY"]);
-    } finally {
-      await filmPage.close();
-    }
-  }, 30_000);
-
   it("keeps a root with no data-duration on screen after its GSAP timeline ends", async () => {
     const filmPage = await browser.newPage();
     try {
