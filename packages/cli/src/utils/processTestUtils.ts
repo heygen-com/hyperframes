@@ -1,4 +1,4 @@
-import { execFileSync, type ChildProcess } from "node:child_process";
+import { execFileSync, type ChildProcess, type ExecFileSyncOptions } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { processReadArgs } from "./windowsProcesses.js";
 
@@ -18,6 +18,15 @@ export function testProcessIsAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** A fresh executable's first start can outlast a timed call on a busy Windows runner: start it once first. */
+export function warmTestExecutable(
+  file: string,
+  args: readonly string[],
+  options: ExecFileSyncOptions = {},
+): void {
+  execFileSync(file, args, { windowsHide: true, timeout: 120_000, ...options });
 }
 
 export async function waitForTestCondition(check: () => boolean, timeoutMs: number): Promise<void> {
