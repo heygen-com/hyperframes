@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { existsSync, renameSync, rmSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { utimes } from "node:fs/promises";
 import os, { availableParallelism, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
@@ -28,7 +29,13 @@ import {
 } from "./proxyCacheKey.js";
 import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
 import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
-import { isProjectCacheFile, mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
+import {
+  isProjectCacheFile,
+  isProjectCacheFileAsync,
+  mkdirWithinProject,
+  realpathOff,
+  realProjectRootAsync,
+} from "./safePath.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -195,10 +202,10 @@ type CanonicalProxySource = {
   sourcePath: string;
 };
 
-function canonicalizeProxySource(
+async function canonicalizeProxySource(
   projectDir: string,
   absoluteSourcePath: string,
-): CanonicalProxySource {
+): Promise<CanonicalProxySource> {
   const requestedProjectDir = resolve(projectDir);
   const requestedSourcePath = resolve(absoluteSourcePath);
   const requestedRelativePath = relative(requestedProjectDir, requestedSourcePath);
@@ -209,17 +216,21 @@ function canonicalizeProxySource(
   ) {
     throw new ProxySourceOutsideProjectError();
   }
-  return { projectDir: realProjectRoot(projectDir), sourcePath: realpath(absoluteSourcePath) };
+  const [real, sourcePath] = await Promise.all([
+    realProjectRootAsync(projectDir),
+    realpathOff(absoluteSourcePath),
+  ]);
+  return { projectDir: real, sourcePath };
 }
 
 /** The copy for this source: the one at its fast name, the one its fast index names, or where a new one goes. */
-function getCanonicalProxyCachePath(
+async function getCanonicalProxyCachePath(
   source: CanonicalProxySource,
   variant: ProxyVariant,
   box?: PreviewProxyBox,
   limitSeconds?: number,
-): string {
-  const key = fastCopyKey(
+): Promise<string> {
+  const key = await fastCopyKey(
     source.sourcePath,
     PROXY_PARAMS_VERSION,
     keyVariant(variant, limitSeconds),
@@ -230,9 +241,9 @@ function getCanonicalProxyCachePath(
     CACHE_DIR_NAME,
     `${key}${PROXY_VARIANT_CONFIG[variant].extension}`,
   );
-  return isProjectCacheFile(source.projectDir, made)
+  return (await isProjectCacheFileAsync(source.projectDir, made))
     ? made
-    : (readCopyIndex(source.projectDir, fastIndexPath(made)) ?? made);
+    : ((await readCopyIndex(source.projectDir, fastIndexPath(made))) ?? made);
 }
 
 /**
@@ -240,15 +251,15 @@ function getCanonicalProxyCachePath(
  * transcoding anything, so a host can check cache state. Pass the request's
  * preview box (`hf-proxy-box`) to name a boxed copy.
  */
-export function getProxyCachePath(
+export async function getProxyCachePath(
   projectDir: string,
   absoluteSourcePath: string,
   variant: ProxyVariant = "h264",
   box?: PreviewProxyBox,
   limitSeconds?: number,
-): string {
+): Promise<string> {
   return getCanonicalProxyCachePath(
-    canonicalizeProxySource(projectDir, absoluteSourcePath),
+    await canonicalizeProxySource(projectDir, absoluteSourcePath),
     variant,
     box,
     limitSeconds,
@@ -413,13 +424,12 @@ function maintainProxyCache(cacheDir: string, staleTempMs?: number, justServed?:
   }
 }
 
-function markCacheEntryUsed(cachePath: string): void {
-  try {
-    const now = new Date();
-    utimesSync(cachePath, now, now);
-  } catch {
-    // A concurrent cleanup may have removed the entry; the next request's miss path recreates it.
-  }
+function servedFromCache(cachePath: string): string {
+  const now = new Date();
+  // expected: a concurrent cleanup may have removed the entry; the next request's miss path recreates it
+  void utimes(cachePath, now, now).catch(() => undefined);
+  maintainProxyCache(dirname(cachePath), undefined, cachePath);
+  return cachePath;
 }
 
 // --- negative cache ---------------------------------------------------------
@@ -1123,7 +1133,7 @@ async function transcodeToCache(
         job.abandoned.signal,
       ),
     );
-    const sameContent = readCopyIndex(projectDir, contentIndex);
+    const sameContent = await readCopyIndex(projectDir, contentIndex);
     if (sameContent) {
       writeCopyIndex(fastIndexPath(cachePath), sameContent);
       return sameContent;
@@ -1175,37 +1185,68 @@ async function transcodeToCache(
   }
 }
 
-export function proxyCopyProgress(
+export async function proxyCopyProgress(
   projectDir: string,
   absoluteSourcePath: string,
   variant: ProxyVariant,
   box?: PreviewProxyBox,
-): number | undefined {
-  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const progress = inFlight.get(getCanonicalProxyCachePath(source, variant, box))?.job.lastProgress;
+): Promise<number | undefined> {
+  const source = await canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const progress = inFlight.get(await getCanonicalProxyCachePath(source, variant, box))?.job
+    .lastProgress;
   return progress?.totalSeconds
     ? Math.min(1, progress.doneSeconds / progress.totalSeconds)
     : undefined;
 }
 
-export function retryProxyCopy(
+export async function retryProxyCopy(
   projectDir: string,
   absoluteSourcePath: string,
   variant: ProxyVariant,
   box?: PreviewProxyBox,
-): void {
-  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  failedTranscodes.delete(getCanonicalProxyCachePath(source, variant, box));
+): Promise<void> {
+  const source = await canonicalizeProxySource(projectDir, absoluteSourcePath);
+  failedTranscodes.delete(await getCanonicalProxyCachePath(source, variant, box));
 }
 
 let proxyActivity = 0;
 
 /** Null while this project has a copy in progress; otherwise a mark that moves when any copy finishes or is refused. */
-export function proxyActivityMark(projectDir: string): string | null {
-  if (!existsSync(projectDir)) return String(proxyActivity);
-  const cacheDir = join(realpath(projectDir), CACHE_DIR_NAME) + sep;
+export async function proxyActivityMark(projectDir: string): Promise<string | null> {
+  const real = await realpathOff(projectDir).catch(() => null);
+  if (real === null) return String(proxyActivity);
+  const cacheDir = join(real, CACHE_DIR_NAME) + sep;
   for (const cachePath of inFlight.keys()) if (cachePath.startsWith(cacheDir)) return null;
   return String(proxyActivity);
+}
+
+async function lookUpCopy(
+  projectDir: string,
+  absoluteSourcePath: string,
+  variant: ProxyVariant,
+  box: PreviewProxyBox | undefined,
+  limitSeconds: number | undefined,
+) {
+  const source = await canonicalizeProxySource(projectDir, absoluteSourcePath);
+  const cachePath = await getCanonicalProxyCachePath(source, variant, box, limitSeconds);
+  return { source, cachePath, cached: await isProjectCacheFileAsync(source.projectDir, cachePath) };
+}
+
+const askOrder = new Map<string, Promise<unknown>>();
+
+function reachQueueInAskOrder<T>(projectDir: string, looked: Promise<T>): Promise<T> {
+  // A lookup can fail while an earlier one holds the turn; its caller still gets the error from `turn`.
+  void looked.catch(() => undefined);
+  const turn = (askOrder.get(projectDir) ?? Promise.resolve()).then(() => looked);
+  const passed = turn.then(
+    () => undefined,
+    () => undefined,
+  );
+  askOrder.set(projectDir, passed);
+  void passed.then(() => {
+    if (askOrder.get(projectDir) === passed) askOrder.delete(projectDir);
+  });
+  return turn;
 }
 
 /**
@@ -1228,12 +1269,13 @@ export async function resolveProxy(
   options: ResolveProxyOptions = {},
 ): Promise<string> {
   options.signal?.throwIfAborted();
-  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const cachePath = getCanonicalProxyCachePath(source, variant, box, options.limitSeconds);
-  if (isProjectCacheFile(source.projectDir, cachePath)) {
-    markCacheEntryUsed(cachePath);
-    maintainProxyCache(dirname(cachePath));
-    return cachePath;
+  const { source, cachePath, cached } = await reachQueueInAskOrder(
+    projectDir,
+    lookUpCopy(projectDir, absoluteSourcePath, variant, box, options.limitSeconds),
+  );
+  options.signal?.throwIfAborted();
+  if (cached) {
+    return servedFromCache(cachePath);
   }
 
   const rememberedFailure = failedTranscodes.get(cachePath);
@@ -1287,7 +1329,7 @@ export async function resolveProxy(
     const stop = (): void => void entry.job.progress.delete(listener);
     joined.then(stop, stop);
   }
-  return joined;
+  return options.waitMs === undefined ? joined : waitForProxy(joined, options.waitMs);
 }
 
 /** Batch resolve for check and publish: at most MAX_CONCURRENT_TRANSCODES of its own requests in
@@ -1308,7 +1350,7 @@ export async function resolveProxies(
   const first = sources[0];
   if (first) {
     maintainProxyCache(
-      dirname(getProxyCachePath(projectDir, first.sourcePath, first.variant)),
+      dirname(await getProxyCachePath(projectDir, first.sourcePath, first.variant)),
       Math.min(
         Number(process.env.HYPERFRAMES_PROXY_CACHE_STALE_TEMP_MS) || UNTOUCHED_TEMP_IS_DEAD_MS,
         UNTOUCHED_TEMP_IS_DEAD_MS,
@@ -1347,7 +1389,7 @@ const stillsInFlight = new Map<string, StillJob>();
 
 /** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. A
  * caller's `signal` detaches that caller; once no caller is left, the still's ffmpeg is ended. */
-export function resolveStill(
+export async function resolveStill(
   projectDir: string,
   absoluteSourcePath: string,
   atSeconds: number,
@@ -1355,21 +1397,20 @@ export function resolveStill(
   startUncachedStill: (make: () => Promise<string>) => Promise<string> = (make) => make(),
   signal?: AbortSignal,
 ): Promise<string> {
-  if (signal?.aborted) return Promise.reject(signal.reason);
-  const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
+  signal?.throwIfAborted();
+  const source = await canonicalizeProxySource(projectDir, absoluteSourcePath);
   const at = Math.max(0, Math.floor(atSeconds * 10 + 1e-6) / 10);
-  const key = fastCopyKey(
+  const key = await fastCopyKey(
     source.sourcePath,
     PROXY_PARAMS_VERSION,
     `still-${STILL_ENCODING}@${at}`,
     box,
   );
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
-  if (isProjectCacheFile(source.projectDir, cachePath)) {
-    markCacheEntryUsed(cachePath);
-    maintainProxyCache(dirname(cachePath), undefined, cachePath);
-    return Promise.resolve(cachePath);
+  if (await isProjectCacheFileAsync(source.projectDir, cachePath)) {
+    return servedFromCache(cachePath);
   }
+  signal?.throwIfAborted();
   let job = stillsInFlight.get(cachePath);
   if (!job) {
     const abandoned = new AbortController();
@@ -1449,6 +1490,8 @@ async function makeStill(
 
 export interface ResolveProxyOptions {
   limitSeconds?: number;
+  /** How long this caller waits for a copy still being made (never for the lookup); then `ProxyWaitTimeoutError`. */
+  waitMs?: number;
   priority?: boolean;
   background?: boolean;
   signal?: AbortSignal;
