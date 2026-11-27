@@ -50,8 +50,6 @@ export type TextEditCaret = {
   color: string;
   viewportWidth: number;
 };
-/** A press in the film outside the text, or a right-click anywhere in it, during a session: the host can't hear a
- * sealed frame's document, so this is how its picker and menu learn where it landed (frame px). */
 export type TextEditAwayEvent = {
   handle: EditingElementHandle;
   button: 0 | 2;
@@ -393,11 +391,11 @@ function passAway(element: Editable, post: (away: Omit<TextEditAwayEvent, "handl
     viewportWidth: view?.innerWidth || 1,
     keys: { shiftKey: event.shiftKey, metaKey: event.metaKey, ctrlKey: event.ctrlKey },
   });
+  const afterTheBlurThatSaves = (send: () => void) => view?.setTimeout(send);
   const onPress = (event: PointerEvent) => {
     if (event.button !== 0 || element.contains(event.target as Node)) return;
     const message = away(event, 0);
-    // After the blur this press causes, so the text-edit-ended that saves the text is first on the port.
-    view?.setTimeout(() => post(message));
+    afterTheBlurThatSaves(() => post(message));
   };
   const onMenu = (event: MouseEvent) => {
     event.preventDefault();
