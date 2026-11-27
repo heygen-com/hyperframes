@@ -72,12 +72,8 @@ import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
 import { portPausedVideoProvider } from "./editing/pausedFrames";
-import {
-  armCanvasKeys,
-  createRuntimeChannel,
-  resetCanvasKeys,
-  resolveCanvasKeyAction,
-} from "./editing/canvasKeys";
+import { armCanvasKeys, resetCanvasKeys, resolveCanvasKeyAction } from "./editing/canvasKeys";
+import { closePort, createRuntimeChannel, onPortMessage, postOnPort } from "./runtimePort";
 import { measureStageDocument } from "./editing/stageMeasure";
 import { endStageAct, stageAct } from "./editing/stageAct";
 
@@ -136,7 +132,7 @@ function forwardKey(port: MessagePort, e: KeyboardEvent): void {
       repeat,
     },
   };
-  port.postMessage(message);
+  postOnPort(port, message);
 }
 
 function onWatchedKeyDown(e: KeyboardEvent): void {
@@ -341,14 +337,14 @@ const HANDLERS: Handlers = {
 function serve(port: MessagePort): void {
   const reply = (message: EditingReply) => {
     try {
-      port.postMessage(message);
+      postOnPort(port, message);
     } catch (err) {
       // A result that cannot be cloned still owes the parent an answer.
       if (message.ok) reply(failure(message.id, err));
       else swallow("editingAgent.reply", err);
     }
   };
-  port.onmessage = (event: MessageEvent<unknown>) => {
+  onPortMessage(port, (event: MessageEvent<unknown>) => {
     const request = parseEditingRequest(event.data);
     if (!request.ok) {
       reply({
@@ -366,7 +362,7 @@ function serve(port: MessagePort): void {
         (result) => reply({ v: EDITING_PROTOCOL_VERSION, id: request.id, ok: true, result }),
         (err: unknown) => reply(failure(request.id, err)),
       );
-  };
+  });
 }
 
 function failure(id: number, err: unknown): EditingReply {
@@ -379,7 +375,11 @@ function failure(id: number, err: unknown): EditingReply {
   };
 }
 
-export function installEditingAgent(parent: Window = window.parent): { dispose: () => void } {
+const parentAtLoad = typeof window !== "undefined" ? window.parent : undefined;
+
+export function installEditingAgent(parent: Window = parentAtLoad ?? window.parent): {
+  dispose: () => void;
+} {
   const ports = new Set<MessagePort>();
   const onMessage = (event: MessageEvent<unknown>) => {
     // A top-level page is its own parent, so a self-post would pass the source check.
@@ -401,7 +401,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       );
     } catch (err) {
       swallow("editingAgent.handoff", err);
-      port.close();
+      closePort(port);
       ports.delete(port);
       return;
     }
@@ -411,7 +411,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
   return {
     dispose() {
       window.removeEventListener("message", onMessage);
-      for (const port of ports) port.close();
+      for (const port of ports) closePort(port);
       ports.clear();
       consoleWatch?.stop();
       consoleWatch = null;

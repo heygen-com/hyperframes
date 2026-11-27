@@ -1,5 +1,6 @@
 // `watch-geometry`: the frame pushes the named elements' `geometry` fields once per animation frame,
 // stamped on the clock both windows share, until an empty list, the page hiding, or the parent's release.
+import { postOnPort } from "../runtimePort";
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DRAFT_PX,
@@ -86,7 +87,7 @@ let wireVersion = 0;
 function pushTo(port: MessagePort, handles: EditingElementHandle[], at: number): void {
   const { elements } = elementGeometry(handles, undefined);
   try {
-    port.postMessage({ v: wireVersion, event: "geometry", at, elements });
+    postOnPort(port, { v: wireVersion, event: "geometry", at, elements });
   } catch {
     watches.delete(port);
   }
