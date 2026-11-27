@@ -5,6 +5,7 @@ import type {
   CanvasKeyActionEvent,
   CanvasKeyNudgeCombo,
   EditingElementHandle,
+  EditingKeyEvent,
 } from "@hyperframes/core/runtime/editing-port";
 import { resetKeyframesMayClaim } from "../../hooks/appHotkeysDispatch";
 import { membersForDelete } from "../../hooks/domEditDeleteMembers";
@@ -205,17 +206,17 @@ type CanvasActionHandler = (event: CanvasKeyActionEvent) => void;
 const actionRoutes = new WeakMap<object, Map<number, CanvasActionHandler>>();
 
 const personActedJustNow = () => navigator.userActivation?.isActive === true;
-function studioOwnEscapeWhileItCancels(
-  type: "keydown" | "keyup",
-  key: string,
-): KeyboardEvent | null {
-  if (key !== "Escape" || getStudioKeys().cancel !== "Escape") return null;
-  return new KeyboardEvent(type, {
-    key: "Escape",
-    code: "Escape",
-    bubbles: true,
-    cancelable: true,
-  });
+const canvasCancelListeners = new Set<() => void>();
+
+export function onSealedCanvasCancel(listener: () => void): () => void {
+  canvasCancelListeners.add(listener);
+  return () => void canvasCancelListeners.delete(listener);
+}
+
+function isBareCancelEscape(key: EditingKeyEvent): boolean {
+  if (key.type !== "keydown" || key.key !== "Escape" || getStudioKeys().cancel !== "Escape")
+    return false;
+  return !key.altKey && !key.ctrlKey && !key.metaKey && !key.shiftKey;
 }
 
 /** One action listener per frame load, routing by arm revision; a Delete for no known arm rolls back. */
@@ -240,13 +241,11 @@ function forwardSealedKeys(
 ): () => void {
   return previewEditingClient(iframe).onKey((key) => {
     if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
-    const target = overlayRef.current ?? window;
     if (!personActedJustNow()) {
-      const cancel = studioOwnEscapeWhileItCancels(key.type, key.key);
-      if (cancel) target.dispatchEvent(cancel);
+      if (isBareCancelEscape(key)) for (const cancel of canvasCancelListeners) cancel();
       return;
     }
-    target.dispatchEvent(
+    (overlayRef.current ?? window).dispatchEvent(
       new KeyboardEvent(key.type, {
         key: key.key,
         code: key.code,
