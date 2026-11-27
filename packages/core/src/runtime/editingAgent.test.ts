@@ -238,6 +238,7 @@ describe("installEditingAgent", () => {
           "serve-paused-frames",
           "frame-presented",
           "stage-measure",
+          "stage-act",
         ],
       },
     });

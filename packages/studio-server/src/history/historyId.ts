@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, utimesSync } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { mkdirSync, readFileSync, utimesSync } from "node:fs";
+import { mkdir, readFile, stat, utimes } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { replaceFileAtomically, replaceFileAtomicallyAsync } from "@hyperframes/core/atomic-file";
 import { mkdirOwnedWithinProjectAsync } from "../helpers/safePath.js";
@@ -44,18 +44,21 @@ export type FolderIdentity = { ino: number; birthtimeMs: number };
 export const sameFolder = (a: FolderIdentity, b: FolderIdentity) =>
   a.ino === b.ino && a.birthtimeMs === b.birthtimeMs;
 
-export function isRecordedFolder(historyDir: string, folder: FolderIdentity): boolean {
-  const was = readRecord(historyDir);
+export async function isRecordedFolder(
+  historyDir: string,
+  folder: FolderIdentity,
+): Promise<boolean> {
+  const was = await readRecordOffThread(historyDir);
   if (typeof was?.ino === "number")
     return sameFolder({ ino: was.ino, birthtimeMs: was.born ?? NaN }, folder);
   const unreadableSo0878KeptTheId = typeof was?.dir !== "string";
   if (unreadableSo0878KeptTheId) return true;
-  return !isCopyOf0878Folder(was!.dir as string, basename(historyDir), folder);
+  return !(await isCopyOf0878Folder(was!.dir as string, basename(historyDir), folder));
 }
 
-export function readRecord(
-  historyDir: string,
-): { dir?: unknown; ino?: unknown; born?: number; dev?: unknown } | null {
+type ProjectRecord = { dir?: unknown; ino?: unknown; born?: number; dev?: unknown };
+
+export function readRecord(historyDir: string): ProjectRecord | null {
   try {
     return JSON.parse(readFileSync(join(historyDir, "project.json"), "utf-8"));
   } catch {
@@ -63,14 +66,26 @@ export function readRecord(
   }
 }
 
-function isCopyOf0878Folder(recordedDir: string, id: string, folder: FolderIdentity): boolean {
+export async function readRecordOffThread(historyDir: string): Promise<ProjectRecord | null> {
+  try {
+    return JSON.parse(await readFile(join(historyDir, "project.json"), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+async function isCopyOf0878Folder(
+  recordedDir: string,
+  id: string,
+  folder: FolderIdentity,
+): Promise<boolean> {
   let there;
   try {
-    there = statSync(recordedDir, { throwIfNoEntry: false });
+    there = await statOffThread(recordedDir);
   } catch {
     return false;
   }
-  return !!there && !sameFolder(there, folder) && readId(recordedDir) === id;
+  return !!there && !sameFolder(there, folder) && (await readIdOffThread(recordedDir)) === id;
 }
 
 /**
@@ -87,13 +102,14 @@ export async function projectHistoryId(projectDir: string, historyRoot: string):
     );
   if (
     !id ||
-    (existsSync(join(historyRoot, id)) && !isRecordedFolder(join(historyRoot, id), folder))
+    ((await statOffThread(join(historyRoot, id))) &&
+      !(await isRecordedFolder(join(historyRoot, id), folder)))
   ) {
     id = randomUUID();
     await mkdirOwnedWithinProjectAsync(dir, join(dir, ".hyperframes"));
     await replaceFileAtomicallyAsync(join(dir, ID_PATH), `${id}\n`);
   }
-  recordProject(join(historyRoot, id), dir, folder);
+  await recordProjectOffThread(join(historyRoot, id), dir, folder);
   return id;
 }
 
@@ -104,6 +120,21 @@ export class HistoryIdError extends Error {
   }
 }
 
+type Folder = FolderIdentity & { dev: number };
+
+const recordOf = (dir: string, folder: Folder) => ({
+  dir,
+  ino: folder.ino,
+  born: folder.birthtimeMs,
+  dev: folder.dev,
+});
+
+const sameRecord = (was: ProjectRecord | null, record: ReturnType<typeof recordOf>) =>
+  was?.dir === record.dir &&
+  was.ino === record.ino &&
+  was.born === record.born &&
+  was.dev === record.dev;
+
 function markUsed(historyDir: string): void {
   const now = new Date();
   try {
@@ -113,22 +144,24 @@ function markUsed(historyDir: string): void {
   }
 }
 
-export function recordProject(
-  historyDir: string,
-  dir: string,
-  folder: FolderIdentity & { dev: number },
-): void {
-  const record = { dir, ino: folder.ino, born: folder.birthtimeMs, dev: folder.dev };
-  const was = readRecord(historyDir);
-  if (
-    was?.dir === record.dir &&
-    was.ino === record.ino &&
-    was.born === record.born &&
-    was.dev === record.dev
-  ) {
-    markUsed(historyDir);
-    return;
-  }
+export function recordProject(historyDir: string, dir: string, folder: Folder): void {
+  const record = recordOf(dir, folder);
+  if (sameRecord(readRecord(historyDir), record)) return markUsed(historyDir);
   mkdirSync(historyDir, { recursive: true });
   replaceFileAtomically(join(historyDir, "project.json"), JSON.stringify(record), 0o644);
+}
+
+async function recordProjectOffThread(
+  historyDir: string,
+  dir: string,
+  folder: Folder,
+): Promise<void> {
+  const record = recordOf(dir, folder);
+  if (sameRecord(await readRecordOffThread(historyDir), record)) {
+    const now = new Date();
+    await utimes(join(historyDir, "project.json"), now, now).catch(() => undefined);
+    return;
+  }
+  await mkdir(historyDir, { recursive: true });
+  await replaceFileAtomicallyAsync(join(historyDir, "project.json"), JSON.stringify(record), 0o644);
 }

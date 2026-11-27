@@ -122,7 +122,9 @@ function afterQueuedModules(): Promise<unknown> {
   const ran = new Promise((resolve) =>
     document.addEventListener("hf-after-fonts-modules", resolve, { once: true }),
   );
-  document.body.appendChild(sentinel);
+  const host = document.body ?? document.documentElement;
+  if (!host) return Promise.resolve();
+  host.appendChild(sentinel);
   return ran.then(() => sentinel.remove());
 }
 

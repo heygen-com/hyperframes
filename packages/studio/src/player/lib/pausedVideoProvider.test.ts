@@ -58,11 +58,13 @@ it("ignores an ask carrying any option but the proxy's", async () => {
   expect(decoder.decode).not.toHaveBeenCalled();
 });
 
-it("refuses more sources than one decode may name, and replaces a decode a newer one overtakes", async () => {
-  const { replies, decode } = host();
+it("ignores more sources than one decode may name, and replaces a decode a newer one overtakes", async () => {
+  const { replies, decode, port2 } = host();
   decode([at(A), at(A), at(A), at(A), at(A)]);
-  await vi.waitFor(() => expect(replies).toHaveLength(1));
-  expect(replies[0]).toMatchObject({ type: "failed", message: "Preview decode over budget" });
+  decode(new Array(2 ** 32 - 1));
+  port2.postMessage({ type: "suspend", id: ++lastId });
+  await vi.waitFor(() => expect(replies).toEqual([{ type: "suspended", id: lastId }]));
+  expect(decoder.decode).not.toHaveBeenCalled();
 
   decoder.decode.mockReturnValue(new Promise(() => {}));
   decode([at(A)]);

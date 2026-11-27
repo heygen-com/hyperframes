@@ -379,6 +379,50 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  // fails without the fix: uncaughtException swallowed any EPIPE silently instead of only stdout/stderr.
+  it("reports a non-stdio EPIPE uncaughtException instead of silently exiting 1", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trackCliError = vi.fn();
+    // Capture what was written before the first process.exit (a no-op spy otherwise falls through).
+    let stderrAtExit: string | undefined;
+    let cliErrorsAtExit: number | undefined;
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      if (stderrAtExit === undefined) {
+        stderrAtExit = saidOnStderr(said);
+        cliErrorsAtExit = trackCliError.mock.calls.length;
+      }
+      return undefined as never;
+    }) as never);
+    const priorListeners = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    try {
+      mockRenderCommand(() => {
+        process.emit(
+          "uncaughtException",
+          Object.assign(new Error("write EPIPE"), { code: "EPIPE" }),
+        );
+      });
+      mockTelemetry({ trackCommandResult: vi.fn(), trackCliError });
+      process.argv = ["node", "cli.ts", "render"];
+      await import("./cli.js");
+      expect(stderrAtExit).toContain("Error: write EPIPE");
+      expect(cliErrorsAtExit).toBe(1);
+      expect(trackCliError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "uncaught_exception",
+          error_message: "write EPIPE",
+        }),
+      );
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      process.removeAllListeners("uncaughtException");
+      for (const listener of priorListeners) process.on("uncaughtException", listener);
+      said.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
   it("says what an unhandled rejection was before the command delivered", async () => {
     const said = vi.spyOn(console, "error").mockImplementation(() => {});
     const priorListeners = process.listeners("unhandledRejection");

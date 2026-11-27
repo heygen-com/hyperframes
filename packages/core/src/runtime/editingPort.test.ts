@@ -121,12 +121,39 @@ describe("createEditingPortClient", () => {
           "serve-paused-frames",
           "frame-presented",
           "stage-measure",
+          "stage-act",
         ],
       });
       document.body.innerHTML = `<div id="hero" data-hf-id="hf-hero">Hi</div>`;
       const measured = await client.request("stage-measure", { maxItems: 10 });
       expect(measured.truncated).toBe(false);
       expect(measured.items.map((item) => [item.key, item.text])).toEqual([["hf-hero", "Hi"]]);
+
+      document.body.insertAdjacentHTML("beforeend", `<p style="display: none">Later</p>`);
+      const [hero, later] = [...document.body.children] as HTMLElement[];
+      const inputs: (string | null)[] = [];
+      const readied: string[] = [];
+      client.onStageInput((event) => inputs.push(event.key));
+      client.onStageActReady((event) => readied.push(...event.held.map((one) => one.key)));
+      const fade = { borrow: ["opacity" as const], draw: { styles: { opacity: "0" } } };
+      const held = await client.request("stage-act", {
+        op: "hold",
+        acts: [
+          { key: "0", hfId: null, ...fade },
+          { key: "1", hfId: null, ...fade },
+        ],
+        deferred: true,
+        caretColor: "#3ce6ac",
+      });
+      expect(held).toEqual({ op: "hold", held: [] });
+      for (const element of [hero!, later!])
+        vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 50, 10));
+      later!.style.display = "block";
+      await vi.waitFor(() => expect(readied).toEqual(["0", "1"]));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+      await vi.waitFor(() => expect(inputs).toEqual(["a"]));
+      await client.request("stage-act", { op: "restore", keys: null });
+      expect([hero!.style.opacity, later!.style.opacity]).toEqual(["", ""]);
     } finally {
       agent.dispose();
     }

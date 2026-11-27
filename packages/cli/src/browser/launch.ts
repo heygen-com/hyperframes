@@ -1,5 +1,6 @@
 import { ChildProcess } from "node:child_process";
 import {
+  absorbBrowserPipeErrors,
   inAgentSandbox,
   isOneProcessOverPipe,
   launchWithChromeSandboxFallback,
@@ -176,15 +177,20 @@ async function launchOwnedBrowser(
   const abort = new AbortController();
   const signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal;
   const launch = untilLaunchOrAbort(
-    puppeteer.launch({
-      ...options,
-      args: withHyperframesBrowserMarker(options.args),
-      env: buildChromeLaunchEnv(options.env),
-      pipe: true,
-      signal,
-      handleSIGINT: false,
-      handleSIGTERM: false,
-    }),
+    puppeteer
+      .launch({
+        ...options,
+        args: withHyperframesBrowserMarker(options.args),
+        env: buildChromeLaunchEnv(options.env),
+        pipe: true,
+        signal,
+        handleSIGINT: false,
+        handleSIGTERM: false,
+      })
+      .then((launched) => {
+        absorbBrowserPipeErrors(launched);
+        return launched;
+      }),
     signal,
   );
   const limit = options.timeout ?? LAUNCH_TIMEOUT_MS;
