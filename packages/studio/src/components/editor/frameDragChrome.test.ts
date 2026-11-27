@@ -144,8 +144,9 @@ describe("a sealed drag's chrome", () => {
     await vi.waitFor(() => expect(plane().style.clipPath).toContain("evenodd"));
     await previewRequest(iframe, "draft", { drafts: [], chrome: null });
     expect(frameHost()).toBeNull();
-    studioBox().style.left = "50px";
     applyManualOffsetDragDraft(member, 40, 0);
+    await vi.waitFor(() => expect(plane().style.clipPath).toBe(""));
+    studioBox().style.left = "50px";
     applyManualOffsetDragDraft(member, 50, 0);
     await vi.waitFor(() => expect(frameBox().style.left).toBe("50px"));
     await vi.waitFor(() => expect(plane().style.clipPath).toContain("evenodd"));
