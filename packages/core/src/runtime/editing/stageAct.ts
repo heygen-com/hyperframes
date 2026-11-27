@@ -1,6 +1,7 @@
 // Studio's stage acts inside a sealed frame: hold an element's before look, apply the parent's draws, give it back.
 // The parent owns every motion and easing; the frame only borrows named properties, writes validated values and
 // reports boxes, so a sealed act paints what an open one does without the parent touching the frame's document.
+import { postOnPort } from "../runtimePort";
 import { MAX_DRAFT_PX, MAX_ELEMENT_TEXT, type EditingRect } from "../editingElement";
 import { listenFrameKeydown } from "./canvasKeys";
 import {
@@ -519,7 +520,7 @@ function start(
   const onInput = (event: Event) => {
     const key = event instanceof KeyboardEvent ? event.key.slice(0, MAX_INPUT_KEY) : null;
     const { metaKey = false, ctrlKey = false } = event as KeyboardEvent;
-    port.postMessage({ v: version, event: "stage-input", type: event.type, key, metaKey, ctrlKey });
+    postOnPort(port, { v: version, event: "stage-input", type: event.type, key, metaKey, ctrlKey });
   };
   const stopInputs = view ? listenStageInputs(view, onInput) : () => {};
   // Observer callbacks run before the frame paints: an element its seek reveals is held before it shows.
@@ -527,7 +528,7 @@ function start(
     open.waiting.size > 0 && view
       ? new view.MutationObserver(() => {
           const now = holdWaiting(open, doc);
-          if (now.length > 0) port.postMessage({ v: version, event: "stage-act-ready", held: now });
+          if (now.length > 0) postOnPort(port, { v: version, event: "stage-act-ready", held: now });
           if (open.waiting.size === 0) watch?.disconnect();
         })
       : null;
