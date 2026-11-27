@@ -435,20 +435,21 @@ function isFilmEditableTarget(target: EventTarget | null): boolean {
   return (target as HTMLElement).isContentEditable === true;
 }
 
-function handleShieldKey(event: KeyboardEvent): void {
+function handleShieldKey(state: ArmedState, event: KeyboardEvent): void {
   if (event.type === "keydown") {
     if (isFilmEditableTarget(event.target)) preventEvent(event);
-    if (armed) handleTrustedKeyDown(armed, event);
+    handleTrustedKeyDown(state, event);
     return;
   }
-  if (armed && armed.down.delete(event.code || event.key)) forwardTrustedKey(armed, event);
+  if (state.down.delete(event.code || event.key)) forwardTrustedKey(state, event);
 }
 
 function onShieldEvent(event: Event): void {
-  if (!isTrustedEvent(event) || isActiveTextEditTarget(event.target)) return;
+  const state = armed;
+  if (!state || !isTrustedEvent(event) || isActiveTextEditTarget(event.target)) return;
   stopEvent(event);
   if (event.type !== "keydown" && event.type !== "keyup") return preventEvent(event);
-  handleShieldKey(event as KeyboardEvent);
+  handleShieldKey(state, event as KeyboardEvent);
 }
 
 function isExportRenderEnvironment(): boolean {
@@ -464,12 +465,11 @@ function isExportRenderEnvironment(): boolean {
 export function installPreviewKeyShield(
   targetWindow: Window = window,
   parentWindow: Window = targetWindow.parent,
-  allowSameOrigin = false,
 ): () => void {
   if (shieldDispose) return shieldDispose;
   if (
     parentWindow === targetWindow ||
-    (!allowSameOrigin && targetWindow.origin !== "null") ||
+    targetWindow.origin !== "null" ||
     !markedForStudio(targetWindow.document) ||
     capturePageIn(targetWindow.document) ||
     isExportRenderEnvironment()
@@ -507,15 +507,13 @@ export function armCanvasKeys(
   port: MessagePort,
   params: ArmCanvasKeysParams,
   version: number,
-  parentWindow: Window = window.parent,
 ): ArmCanvasKeysResult {
   const hasActions =
     params.deleteHandles.length > 0 || params.nudge !== null || params.forwardCombos.length > 0;
-  if (!hasActions) {
+  if (!hasActions || !shieldDispose) {
     if (armed?.port === port) armed = null;
     return { armed: false, revision: params.revision };
   }
-  installPreviewKeyShield(window, parentWindow, true);
   ensureBodyFocusable();
   const down = armed?.port === port ? armed.down : new Set<string>();
   armed = {

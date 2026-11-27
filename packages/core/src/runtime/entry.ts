@@ -22,6 +22,7 @@ import { parkFarScenesAtBoot } from "./sceneWindow";
 import { installPausedVideoCallbacks } from "./pausedVideoCallbacks";
 import { corsForSealedMedia } from "./sealedMediaCors";
 import { postStaticCompositionWhenParsed } from "./staticCompositionPost";
+import { installPreviewKeyShield } from "./editing/canvasKeys";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -49,6 +50,7 @@ type HyperframeWindow = Window & {
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
 corsForSealedMedia();
+installPreviewKeyShield();
 installPausedVideoCallbacks();
 installFlatGsapTransforms();
 trackAcceleratedCanvases();

@@ -26,6 +26,13 @@ function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () 
   return true;
 }
 
+export function resetKeyframesMayClaim(state: {
+  selectedElementId: string | null;
+  keyframeCache: ReadonlyMap<string, unknown>;
+}): boolean {
+  return Boolean(state.selectedElementId && state.keyframeCache.has(state.selectedElementId));
+}
+
 export interface HotkeyCallbacks extends LinkShortcutCallbacks {
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
@@ -254,8 +261,7 @@ export function dispatchPlainKey(event: KeyboardEvent, _key: string, cb: HotkeyC
     // the press reaching the clip delete below.
     if (usePlayerStore.getState().automationSelection) return;
     if (matchesKey(event, "resetKeyframes")) {
-      const { selectedElementId, keyframeCache } = usePlayerStore.getState();
-      if (selectedElementId && keyframeCache.has(selectedElementId) && cb.onResetKeyframes()) {
+      if (resetKeyframesMayClaim(usePlayerStore.getState()) && cb.onResetKeyframes()) {
         event.preventDefault();
         return;
       }

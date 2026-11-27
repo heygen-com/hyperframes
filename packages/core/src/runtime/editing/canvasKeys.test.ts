@@ -64,6 +64,11 @@ function ask(port: MessagePort, kind: string, params: unknown): Promise<Record<s
 describe("canvasKeys in-frame keyboard shield and actions", () => {
   let disposeAgent: (() => void) | null = null;
   let fakeParent: Window;
+  // As entry.ts does at load, in an opaque-origin frame.
+  const loadShield = () => {
+    vi.stubGlobal("origin", "null");
+    installPreviewKeyShield(window, fakeParent);
+  };
 
   beforeEach(() => {
     document.head.innerHTML = "";
@@ -155,6 +160,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
 
   it("accumulates rapid key-repeat Arrow nudges across translate and GSAP targets before Studio replies", async () => {
     markStudio();
+    loadShield();
     document.body.innerHTML = `<div data-composition-id="main"><div id="plain"></div><div id="animated"></div></div>`;
     const animated = document.getElementById("animated")!;
     const gsapState = { x: 40, y: 10 };
@@ -239,6 +245,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
 
   it("handles a second Delete while an actionId is in-flight and restores only rolled-back elements", async () => {
     markStudio();
+    loadShield();
     document.body.innerHTML = `<div data-composition-id="main"><div id="a">A</div><div id="b">B</div><div id="c">C</div></div>`;
     const { port, dispose } = connectAgent(fakeParent);
     disposeAgent = dispose;
@@ -310,6 +317,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
 
   it("carves out active Studio textEdit sessions and forwards other Studio shortcuts", async () => {
     markStudio();
+    loadShield();
     document.body.innerHTML = `<div data-composition-id="main"><h1 id="title">Hello</h1></div>`;
     const { port, dispose } = connectAgent(fakeParent);
     disposeAgent = dispose;
@@ -356,6 +364,75 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     expect(document.getElementById("title")).not.toBeNull();
     titleEl.dispatchEvent(trustedKey("keydown", { key: "Enter", code: "Enter" }));
     await vi.waitFor(() => expect(ended).toHaveLength(1));
+  });
+
+  it("does not arm a frame whose load-time shield is missing, so no key is handled out of order", async () => {
+    markStudio();
+    document.body.innerHTML = `<div data-composition-id="main"><div id="target">box</div></div>`;
+    const { port, dispose } = connectAgent(fakeParent);
+    disposeAgent = dispose;
+    const handle = (
+      (await ask(port, "query", { selector: "#target" })).result as {
+        matches: Array<{ handle: string }>;
+      }
+    ).matches[0]!.handle;
+    const reply = await ask(port, "arm-canvas-keys", {
+      revision: 1,
+      deleteHandles: [handle],
+      deleteCombos: ["Delete"],
+      nudge: null,
+      forwardCombos: ["Space"],
+    });
+    expect(reply.result).toEqual({ armed: false, revision: 1 });
+    window.dispatchEvent(trustedKey("keydown", { key: "Delete", code: "Delete" }));
+    expect(document.getElementById("target")).not.toBeNull();
+  });
+
+  it("passes keys through while unarmed and forwards a watched combo once while armed", async () => {
+    markStudio();
+    loadShield();
+    document.body.innerHTML = `<div data-composition-id="main"></div>`;
+    const filmSaw: string[] = [];
+    const onFilmKey = (e: Event) => filmSaw.push((e as KeyboardEvent).code);
+    window.addEventListener("keydown", onFilmKey);
+    const { port, dispose } = connectAgent(fakeParent);
+    disposeAgent = () => {
+      window.removeEventListener("keydown", onFilmKey);
+      dispose();
+    };
+    const forwarded: string[] = [];
+    port.addEventListener("message", (e: MessageEvent<Record<string, unknown>>) => {
+      const key = e.data?.event === "key" ? (e.data.key as { type: string; code: string }) : null;
+      if (key?.type === "keydown") forwarded.push(key.code);
+    });
+    await ask(port, "watch-keys", { combos: ["Space"] });
+
+    window.dispatchEvent(trustedKey("keydown", { key: " ", code: "Space" }));
+    await vi.waitFor(() => expect(forwarded).toEqual(["Space"]));
+    expect(filmSaw).toEqual(["Space"]);
+
+    await ask(port, "arm-canvas-keys", {
+      revision: 1,
+      deleteHandles: [],
+      deleteCombos: [],
+      nudge: null,
+      forwardCombos: ["Space"],
+    });
+    window.dispatchEvent(trustedKey("keydown", { key: " ", code: "Space" }));
+    await ask(port, "arm-canvas-keys", {
+      revision: 2,
+      deleteHandles: [],
+      deleteCombos: [],
+      nudge: null,
+      forwardCombos: [],
+    });
+    expect(forwarded).toEqual(["Space", "Space"]);
+    expect(filmSaw).toEqual(["Space"]);
+
+    // Disarmed: the page sees keys again.
+    window.dispatchEvent(trustedKey("keydown", { key: " ", code: "Space" }));
+    await vi.waitFor(() => expect(forwarded).toEqual(["Space", "Space", "Space"]));
+    expect(filmSaw).toEqual(["Space", "Space"]);
   });
 
   it("never installs the key shield in same-origin, render, capture, or non-studio pages", () => {

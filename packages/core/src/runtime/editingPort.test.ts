@@ -229,6 +229,31 @@ describe("createEditingPortClient", () => {
     expect(first).toHaveBeenCalledOnce();
   });
 
+  it("hands a text edit's away press to its listeners and drops an off-shape one", async () => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const client = createEditingPortClient({ iframe, host });
+    clients.push(client);
+    const { port1, port2 } = channel();
+    deliver({ source: frame, data: PORT_MESSAGE, ports: [port1] });
+    await client.ready;
+    const away = {
+      handle: "0123456789abcdef:1",
+      button: 0,
+      point: { x: 1, y: 2 },
+      viewportWidth: 640,
+      keys: { shiftKey: false, metaKey: false, ctrlKey: false },
+    };
+    const listener = vi.fn();
+    const ended = vi.fn();
+    client.onTextEditAway(listener);
+    client.onTextEditEnded(ended);
+    port2.postMessage({ v: 1, event: "text-edit-away", ...away, button: 1 });
+    port2.postMessage({ v: 1, event: "text-edit-away", ...away });
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledExactlyOnceWith(away));
+    expect(ended).not.toHaveBeenCalled();
+  });
+
   it("serves a new client for the same frame after the first is disposed", async () => {
     const { iframe, frame } = previewFrame();
     const { host, deliver } = fakeHost();

@@ -41,6 +41,7 @@ const FRAME_READS: ReadonlySet<EditingRequestKind> = new Set<EditingRequestKind>
   "gesture-base",
   "console-errors",
   "watch-keys",
+  "arm-canvas-keys",
   "caption-words",
   "color-grading-status",
   "watch-geometry",

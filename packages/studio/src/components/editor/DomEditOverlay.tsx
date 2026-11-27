@@ -25,6 +25,7 @@ import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
 import { ChildRectOutlines, OffCanvasIndicators } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { useDomEditNudge } from "./useDomEditNudge";
+import { useSealedCanvasKeys, type CanvasDeleteHandler } from "./useSealedCanvasKeys";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
 import type { GestureRecordingState } from "./GestureRecordControl";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
@@ -111,12 +112,8 @@ export interface DomEditOverlayProps {
     selections: DomEditSelection[],
     mode: MarqueeSelectionMode,
   ) => DomSelectionResult | void;
-  /**
-   * Delete the selected canvas element.
-   * Wire to handleDomEditElementDelete from useDomEditActionsContext —
-   * same handler the Delete/Backspace hotkey uses.
-   */
-  onDeleteSelection?: (selection: DomEditSelection) => void;
+  /** Delete the selected canvas element (handleDomEditElementDelete). */
+  onDeleteSelection?: CanvasDeleteHandler;
   /**
    * Called with the resolved z-order patch list and the menu action that
    * produced it (feeds the undo coalesce key). The patch list is tie-aware and
@@ -324,26 +321,26 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     pressStillHeld(waitingPressRef.current);
   useHeldGestureCancel(cancelGestureRef, holdsPress, suppressNextBoxClickRef);
 
-  // Arrow-key nudge (1px, Shift = 10px) — commits through the same
-  // path-offset callbacks as a drag, one undo entry per key burst.
-  const { flushNudge } = useDomEditNudge({
+  // Arrow-key nudge (1px, Shift = 10px) and in-frame sealed canvas keys.
+  const onNudgeSavingChangeRef = useRef<((saving: boolean) => void) | undefined>(undefined);
+  const { flushNudge, applyRuntimeNudge } = useDomEditNudge({
+    ...gestureOptions,
     selection,
     groupSelections,
     allowCanvasMovement: allowCanvasMovement && !readOnly,
+    onNudgeSavingChangeRef,
+  });
+  useSealedCanvasKeys({
     iframeRef,
     overlayRef,
-    activeCompositionPathRef,
-    selectionRef,
-    overlayRectRef,
-    groupOverlayItemsRef,
-    gestureRef,
-    groupGestureRef,
-    blockedMoveRef,
-    waitingPressRef,
-    onBlockedMoveRef,
-    onManualDragStartRef,
-    onPathOffsetCommitRef,
-    onGroupPathOffsetCommitRef,
+    selection,
+    groupSelections,
+    allowCanvasMovement,
+    readOnly,
+    inlineTextEditing: inlineText.editing,
+    onDeleteSelection,
+    applyRuntimeNudge,
+    onNudgeSavingChangeRef,
   });
 
   const marquee = useMarqueeGestures({
