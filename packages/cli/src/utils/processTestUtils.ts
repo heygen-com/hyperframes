@@ -20,7 +20,6 @@ export function testProcessIsAlive(pid: number): boolean {
   }
 }
 
-/** A fresh executable's first start can outlast a timed call on a busy Windows runner: start it once first. */
 export function warmTestExecutable(
   file: string,
   args: readonly string[],
