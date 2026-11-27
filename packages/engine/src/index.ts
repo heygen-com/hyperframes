@@ -96,6 +96,7 @@ export {
 // ── Browser management ─────────────────────────────────────────────────────────
 export { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 export {
+  absorbBrowserPipeErrors,
   acquireBrowser,
   setHostHandlesSigint,
   releaseBrowser,
@@ -329,6 +330,7 @@ export {
 } from "./services/audioMixer.js";
 export { audioFailureDiagnostics } from "./services/audioFailureDiagnostic.js";
 export { cloneCaptureWarning, cloneCaptureWarnings } from "./services/captureWarning.js";
+export { boundedPageText, retainCapturePerf } from "./services/pageTextBounds.js";
 export type {
   AudioElement,
   AudioFailureReason,

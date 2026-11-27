@@ -218,7 +218,7 @@ describe("element handles over the editing port", () => {
     document.body.innerHTML = `
       <div class="tile"></div>
       <div data-composition-file="cards.html"><div class="tile"></div><div class="tile"></div></div>
-      <div data-composition-src="cards.html"><div class="tile" id="t"></div></div>
+      <div data-composition-src="cards.html" data-composition-file="cards.html"><div class="tile" id="t"></div></div>
       <div data-composition-file="cards.html"><div class="tile"></div></div>`;
     const last = await describeOne(document.querySelectorAll(".tile")[4]!);
     expect(last.source.file).toBe("cards.html");
@@ -291,6 +291,25 @@ describe("element handles over the editing port", () => {
     const described = await describeHandles(matches.map((match) => match.handle));
     expect(described.map((entry) => entry?.id)).toEqual(["a", "b"]);
     expect((await ask<never>("query", { selector: "p[" })).error).toMatchObject({ code: "failed" });
+  });
+
+  it("answers every match's display in step with the page, null where a query leaves it out, capped", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 1);
+    document.body.innerHTML = `<b class="t"></b><div data-composition-id="${long}"><p class="t"></p></div><i class="t"></i>`;
+    const every = (selector: string) =>
+      ask<never>("computed-styles", { selector, every: true, properties: ["display"] });
+    expect((await every(".t")).result).toEqual({
+      styles: null,
+      matches: [{ display: "inline" }, null, { display: "inline" }],
+      truncated: false,
+    });
+    document.body.innerHTML = "<i></i>".repeat(MAX_QUERY_MATCHES + 1);
+    const { matches, truncated } = (await every("i")).result as unknown as {
+      matches: unknown[];
+      truncated: boolean;
+    };
+    expect(matches).toHaveLength(MAX_QUERY_MATCHES);
+    expect(truncated).toBe(true);
   });
 
   it("caps a query's matches and says so", async () => {

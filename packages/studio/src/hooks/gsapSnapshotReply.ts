@@ -7,8 +7,11 @@ import {
   MAX_SNAPSHOT_TEXT,
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
+  TARGET_FIELDS,
+  TIMELINE_FIELDS,
   type EditingResult,
 } from "@hyperframes/core/runtime/editing-port";
+import { isMessageList as isList } from "@hyperframes/core/runtime/protocol";
 import { isFields, isHandle } from "../player/lib/previewElements";
 
 type Snapshot = EditingResult<"gsap-snapshot">;
@@ -21,8 +24,6 @@ const isTextOrNull = (value: unknown) => value === null || isText(value);
 const isNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 const isNumberOrNull = (value: unknown) => value === null || isNumber(value);
-const isList = (value: unknown, max: number): value is unknown[] =>
-  Array.isArray(value) && value.length <= max;
 
 /** The reply as a snapshot, or null when any part of it is off its shape or past a bound. */
 export function readGsapSnapshot(value: unknown): Snapshot | null {
@@ -36,12 +37,13 @@ export function readGsapSnapshot(value: unknown): Snapshot | null {
     isList(globalTweens, MAX_SNAPSHOT_TWEENS) &&
     globalTweens.every((tween) => isTween(tween, budget)) &&
     isList(targets, MAX_SNAPSHOT_TARGETS) &&
-    targets.every(isTarget);
+    targets.every((target) => isTarget(target, budget));
   return ok ? (value as unknown as Snapshot) : null;
 }
 
 function isTimeline(value: unknown, budget: Budget): boolean {
   return (
+    (budget.fields -= TIMELINE_FIELDS) >= 0 &&
     isFields(value) &&
     isText(value.id) &&
     isNumberOrNull(value.time) &&
@@ -55,6 +57,7 @@ function isTween(value: unknown, budget: Budget): boolean {
   if ((budget.tweens -= 1) < 0 || !isFields(value)) return false;
   return (
     isTargetHandles(value.targets) &&
+    (budget.fields -= value.targets.length) >= 0 &&
     isFields(value.vars) &&
     isVars(value.vars, budget, 0) &&
     isTiming(value) &&
@@ -63,7 +66,7 @@ function isTween(value: unknown, budget: Budget): boolean {
   );
 }
 
-const isTargetHandles = (value: unknown) =>
+const isTargetHandles = (value: unknown): value is string[] =>
   isList(value, MAX_SNAPSHOT_TARGETS) && value.every(isHandle);
 
 const isTiming = (tween: Record<string, unknown>) =>
@@ -87,17 +90,23 @@ function isVars(value: unknown, budget: Budget, depth: number): boolean {
   if ((budget.fields -= 1) < 0) return false;
   if (value === null || typeof value === "boolean" || isNumber(value) || isText(value)) return true;
   if (depth >= MAX_VARS_DEPTH) return false;
-  if (Array.isArray(value)) return value.every((item) => isVars(item, budget, depth + 1));
-  return (
-    isFields(value) &&
-    Object.entries(value).every(([key, item]) => isText(key) && isVars(item, budget, depth + 1))
-  );
+  return Array.isArray(value)
+    ? isVarsList(value, budget, depth + 1)
+    : isVarsRecord(value, budget, depth + 1);
 }
 
-function isTarget(value: unknown): boolean {
+const isVarsList = (value: unknown[], budget: Budget, depth: number) =>
+  isList(value, budget.fields) && value.every((item) => isVars(item, budget, depth));
+
+const isVarsRecord = (value: unknown, budget: Budget, depth: number) =>
+  isFields(value) &&
+  Object.entries(value).every(([key, item]) => isText(key) && isVars(item, budget, depth));
+
+function isTarget(value: unknown, budget: Budget): boolean {
   if (!isFields(value) || !isFields(value.values)) return false;
   const values = Object.entries(value.values);
   return (
+    (budget.fields -= TARGET_FIELDS + values.length) >= 0 &&
     isHandle(value.handle) &&
     isText(value.id) &&
     isText(value.className) &&

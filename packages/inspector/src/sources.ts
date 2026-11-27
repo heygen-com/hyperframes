@@ -3,7 +3,7 @@ import { extname, join, posix, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { parse, type Node } from "acorn";
 import { Parser } from "htmlparser2";
-import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 import type { BundleScriptProvenance } from "../../core/src/compiler/htmlBundler";
 import type { ElementRef, Snippet } from "./types";
@@ -281,7 +281,7 @@ export class Sources {
   }
   private addCss(file: string, text: string, offset: number) {
     try {
-      postcss.parse(text).walkRules((rule) => {
+      parseCss(text).walkRules((rule) => {
         const start = rule.source?.start?.offset;
         const end = rule.source?.end?.offset;
         if (start != null && end != null)

@@ -78,6 +78,10 @@ import { runSequentialLayeredFrameLoop } from "./captureHdrSequentialLoop.js";
 import { runHybridLayeredFrameLoop } from "./captureHdrHybridLoop.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import {
+  createSessionInitBudget,
+  openCaptureSessionWithinBudget,
+} from "./captureStreamingStage.js";
 import type { HdrLayeredCapturePlan } from "../capturePlan.js";
 import type { DeliveryEncoderOptions } from "../deliveryEncoder.js";
 import { windowStartFrame } from "../frameWindow.js";
@@ -212,12 +216,17 @@ export async function runCaptureHdrStage(
     compiledDir,
   });
 
-  const domSession = await createCaptureSession(
-    fileServer.url,
-    framesDir,
-    buildCaptureOptions(),
-    createRenderVideoFrameInjector(),
-    hdrCfg,
+  assertNotAborted();
+  const withinInitBudget = createSessionInitBudget({ frameIndex: 0, totalFrames, abortSignal });
+  const domSession = await openCaptureSessionWithinBudget(
+    withinInitBudget,
+    createCaptureSession(
+      fileServer.url,
+      framesDir,
+      buildCaptureOptions(),
+      createRenderVideoFrameInjector(),
+      { ...hdrCfg, signal: abortSignal },
+    ),
   );
 
   let hdrEncoder: StreamingEncoder | null = null;
@@ -227,7 +236,7 @@ export async function runCaptureHdrStage(
   let releaseHdrImageReservation: (() => void) | null = null;
   const hdrVideoFrameSources = new Map<string, HdrVideoFrameSource>();
   try {
-    await initializeSession(domSession);
+    await withinInitBudget(initializeSession(domSession), domSession);
     assertNotAborted();
     lastBrowserConsole = domSession.browserConsoleBuffer;
     await initTransparentBackground(domSession.page, { clearCompositionRoot: true });

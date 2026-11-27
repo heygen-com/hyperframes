@@ -206,10 +206,11 @@ export function createPreviewMessageHandler(
       postRuntimeControlMessage(iframe?.contentWindow, "set-preview-quality", { level });
       return;
     }
-    if (data.type === "timeline" && Array.isArray(data.clips)) {
-      if (iframe) notePreviewSceneSwap(iframe, data.sceneSwap);
-      const message = { ...data, clips: wellFormedClips(data.clips) };
-      handleTimelineMessage(deps, iframe, message as unknown as ClipManifestMessage, enriched);
-    }
+    if (data.type !== "timeline") return;
+    const clips = wellFormedClips(data.clips);
+    if (!clips) return;
+    if (iframe) notePreviewSceneSwap(iframe, data.sceneSwap);
+    const message = { ...data, clips } as unknown as ClipManifestMessage;
+    handleTimelineMessage(deps, iframe, message, enriched);
   };
 }

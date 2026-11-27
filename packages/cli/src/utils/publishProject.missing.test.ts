@@ -106,3 +106,41 @@ describe("a file a page names that the folder lacks", () => {
     },
   );
 });
+
+describe("a file named with a percent escape", () => {
+  // fails without the fix: a page beside the root looked the root up by the escaped name, not "My Video.mp4"
+  it("is staged from the project root when a composition escapes the space in its name", () => {
+    const staged = stage({
+      "compositions/intro.html": `<video src="assets/My%20Video.mp4"></video>`,
+      "assets/My Video.mp4": "mp4",
+    })();
+    expect(staged.has("assets/My Video.mp4")).toBe(true);
+  });
+
+  // fails without the fix: the decoded spelling threw "not in the project folder" before the name as written was tried
+  it("is staged when the file's own name holds the escape and the page names it as written", () => {
+    const staged = stage({
+      "compositions/intro.html": `<video src="clips/My%20Video.mp4"></video>`,
+      "compositions/clips/My%20Video.mp4": "mp4",
+    })();
+    expect(staged.has("compositions/clips/My%20Video.mp4")).toBe(true);
+  });
+
+  // fails without the fix: the query stayed on the name looked up, so neither spelling was found on disk
+  it("is staged when the reference also carries a query or a fragment", () => {
+    const staged = stage({
+      "compositions/intro.html": `<video src="clips/My%20Video.mp4#t=1"></video><img src="assets/My%20Logo.png?v=2">`,
+      "compositions/clips/My%20Video.mp4": "mp4",
+      "assets/My Logo.png": "png",
+    })();
+    expect(staged.has("compositions/clips/My%20Video.mp4")).toBe(true);
+    expect(staged.has("assets/My Logo.png")).toBe(true);
+  });
+
+  it("is still refused when neither spelling is on disk", () => {
+    const staged = stage({
+      "compositions/intro.html": `<video src="clips/My%20Video.mp4"></video>`,
+    });
+    expect(staged).toThrow(refusal("clips/My%20Video.mp4"));
+  });
+});

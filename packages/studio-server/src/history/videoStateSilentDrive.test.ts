@@ -44,7 +44,10 @@ it.skipIf(process.platform === "win32")(
       () => "wrote",
       (error: Error) => error.message,
     );
-    for (let turn = 0; turn < 5; turn++) await new Promise((next) => setImmediate(next));
+    // The give-up timer starts once the lock is held and the read is waiting; ticking before then skips it.
+    for (let turn = 0; turn < 100_000 && vi.getTimerCount() === 0; turn++)
+      await new Promise((next) => setImmediate(next));
+    expect(vi.getTimerCount()).toBe(1);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(5000);
     expect(await outcome).toMatch(/did not answer within 5000 ms\. The save may still land later/);

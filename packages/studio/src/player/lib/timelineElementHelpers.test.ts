@@ -48,6 +48,17 @@ describe("preview nodes built in another realm", () => {
     applyMediaMetadataFromElement(entry, el);
     expect(entry.sourceDuration).toBe(12);
   });
+
+  it("reads loop off a media element, and drops it when the attribute is gone", () => {
+    const looped = foreignNode(`<audio src="bed.mp3" loop></audio>`);
+    const entry = { id: "a", tag: "div", start: 0, duration: 60, track: 0 } as TimelineElement;
+    applyMediaMetadataFromElement(entry, looped);
+    expect(entry.loop).toBe(true);
+
+    looped.removeAttribute("loop");
+    applyMediaMetadataFromElement(entry, looped);
+    expect(entry.loop).toBeUndefined();
+  });
 });
 
 describe("readTimelineText", () => {

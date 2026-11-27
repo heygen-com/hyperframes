@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, expect, it, vi } from "vitest";
+import { MAX_SNAPSHOT_FIELDS, TARGET_FIELDS } from "@hyperframes/core/runtime/editing-port";
 
 const request = vi.hoisted(() => vi.fn());
 vi.mock("../player/lib/previewChannel", () => {
@@ -63,8 +64,10 @@ it("holds a well-formed reply", async () => {
 it.each([
   ["targets that are not a list", snapshot({ targets: null })],
   [
-    "more targets than the frame may send",
-    snapshot({ targets: Array.from({ length: 513 }, () => target) }),
+    "more targets than the field bound allows",
+    snapshot({
+      targets: Array.from({ length: MAX_SNAPSHOT_FIELDS / TARGET_FIELDS + 1 }, () => target),
+    }),
   ],
   ["a value that is not a number", snapshot({ targets: [{ ...target, values: { x: "7" } }] })],
   ["no list of global tweens", snapshot({ globalTweens: undefined })],

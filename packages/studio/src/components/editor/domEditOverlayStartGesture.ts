@@ -23,9 +23,7 @@ import {
 } from "./manualEdits";
 import {
   type OverlayRect,
-  elementCornerOverlayPoints,
   filterNestedDomEditGroupItems,
-  overlayCornersCentroid,
   selectionCacheKey,
 } from "./domEditOverlayGeometry";
 import {
@@ -35,8 +33,10 @@ import {
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements, type SnapContext } from "./snapTargetCollection";
-import type { PreviewGestureStart } from "./previewGestureStartRead";
+import { measureLiveGrow, type PreviewGestureStart } from "./previewGestureStartRead";
 import { endPreviewDraft } from "./previewDrafts";
+import { armSealedRawSteps } from "./gestureSteps";
+import { holdRefreshReadsWhile, previewFrameOpaque } from "../../player/lib/previewChannel";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
 import { logDrag, readDragPositions, resetDragMoveLog } from "../../utils/dragDebug";
@@ -135,6 +135,9 @@ export function startGroupDrag(
       members,
       snapContext,
     };
+    const group = opts.groupGestureRef.current;
+    holdRefreshReadsWhile(() => opts.groupGestureRef.current === group);
+    armSealedRawSteps(opts);
   } catch (error) {
     opts.groupGestureRef.current = null;
     restoreManualOffsetDragMembers(members);
@@ -175,6 +178,12 @@ export function startGesture(
   if (kind === "resize" && (!Number.isFinite(rect.width) || !Number.isFinite(rect.height)))
     return false;
 
+  // A frame Studio scripts measures its own box here, with the same probe the sealed frame runs.
+  const liveFrame = opts.iframeRef.current;
+  const liveGrow =
+    kind === "resize" && !start && overlayEl && liveFrame && !previewFrameOpaque(liveFrame)
+      ? measureLiveGrow(overlayEl, liveFrame, sel.element)
+      : null;
   const size = readStudioBoxSize(sel.element);
   // The draft writes CSS width/height, so the resize base must be the CSS
   // layout size. offsetWidth/Height are transform-free; the overlay-rect
@@ -276,13 +285,6 @@ export function startGesture(
 
     const iframe = opts.iframeRef.current;
 
-    // A corner resize pins the centroid of the four rotation-aware corners: an axis-aligned
-    // size delta only holds the centre still for a symmetric, unrotated growth.
-    let resizeFixedCenterStart: { x: number; y: number } | undefined;
-    if (kind === "resize" && pathOffsetMember && overlayEl && iframe) {
-      const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
-      if (corners) resizeFixedCenterStart = overlayCornersCentroid(corners);
-    }
     const snapContext =
       (kind === "drag" || kind === "resize") && overlayEl && iframe
         ? (options?.snap ??
@@ -330,9 +332,11 @@ export function startGesture(
         kind === "resize" && options?.resizeCorner
           ? { x: e.clientX - options.resizeCorner.x, y: e.clientY - options.resizeCorner.y }
           : undefined,
-      resizeFixedCenterStart,
-      resizeGrow: kind === "resize" ? start?.grow : undefined,
+      resizeGrow: kind === "resize" ? ((start ? start.grow : liveGrow) ?? undefined) : undefined,
     };
+    const gesture = opts.gestureRef.current;
+    holdRefreshReadsWhile(() => opts.gestureRef.current === gesture);
+    armSealedRawSteps(opts);
     if (kind === "resize") {
       resetResizeMoveLog();
       logResize("start", {
@@ -344,8 +348,9 @@ export function startGesture(
         editScale: { x: rect.editScaleX, y: rect.editScaleY },
         contentScale: { x: contentScaleX, y: contentScaleY },
         rotation: rotation.angle,
+        grow: opts.gestureRef.current?.resizeGrow ?? null,
+        pressFromCorner: opts.gestureRef.current?.resizePressFromCorner ?? null,
         hasOffsetMember: !!pathOffsetMember,
-        fixedCenterStart: resizeFixedCenterStart ?? null,
         initialBoxSize: opts.gestureRef.current?.initialBoxSize ?? null,
         initialInlineStyle: sel.element.getAttribute("style"),
       });

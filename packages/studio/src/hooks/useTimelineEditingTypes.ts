@@ -1,3 +1,4 @@
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { MutableRefObject, RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
@@ -12,6 +13,8 @@ interface RecordEditInput {
 
 // Resolves once the z-index patches are persisted, so a caller that also writes
 // the same file (e.g. a timing move) can order its write after this one.
+
+export type ApplyMarqueeSelection = (selections: DomEditSelection[], mode: "subtract") => unknown;
 export type TimelineZIndexReorderCommit = (
   entries: Array<{
     element: HTMLElement;
@@ -35,6 +38,8 @@ export interface UseTimelineEditingOptions {
   recordEdit: (input: RecordEditInput) => Promise<void>;
   reloadPreview: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
+  canvasSelectionsRef?: RefObject<readonly DomEditSelection[]>;
+  applyMarqueeSelectionRef?: RefObject<ApplyMarqueeSelection>;
   pendingTimelineEditPathRef: MutableRefObject<Set<string>>;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
   isRecordingRef?: RefObject<boolean>;

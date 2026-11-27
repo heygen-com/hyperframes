@@ -258,7 +258,10 @@ async function directOwner(
     turn,
     owner: {
       via: "direct",
-      list: async () => history.list(),
+      list: async () => {
+        await history.replacedNow();
+        return history.list();
+      },
       peek: async (point) => history.peek(point),
       blob: (hash) => history.readBlob(hash),
       undo: async (id, who, mode) => {
@@ -378,7 +381,7 @@ export async function withReader<T>(
       );
   }
   // Opening failed, so the task has not run; an open turn's marker is left as it is.
-  const view = readProjectHistory({
+  const view = await readProjectHistory({
     projectDir: resolveProject(dir).dir,
     historyRoot: historyDeps.historyRoot,
   });

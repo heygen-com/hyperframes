@@ -17,6 +17,7 @@ import {
   type Viewport,
   type ConsoleMessage,
 } from "puppeteer-core";
+import { createHash } from "crypto";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { availableParallelism } from "os";
 import { join } from "path";
@@ -74,6 +75,16 @@ import {
   type CaptureMode,
 } from "./browserManager.js";
 import { openPage } from "./openPage.js";
+import {
+  boundedPageText,
+  keptWithinBudget,
+  listedInMessage,
+  PAGE_LIST_MAX,
+  PAGE_TEXT_MAX_CHARS,
+  SERVED_SCRIPTS_MAX,
+  warningBudgetOf,
+  type WarningBudget,
+} from "./pageTextBounds.js";
 import {
   beginFrameCapture,
   forgetBeginFrameCapture,
@@ -242,10 +253,14 @@ export interface CaptureSession {
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
   throwSiteLookups?: Set<string>;
+  /** The text and kinds of `warnings`, against WARNINGS_TEXT_MAX_CHARS. */
+  warningBudget?: WarningBudget;
   /** True once this session honoured `options.strictVariables`: the check ran and passed. */
   strictVariablesChecked?: boolean;
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
   vfxFailure?: string;
+  /** Set once the page loads more distinct scripts than SERVED_SCRIPTS_MAX; it stops the render. */
+  tooManyServedScripts?: boolean;
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
   /**
@@ -595,19 +610,8 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<stri
 const BROWSER_CONSOLE_BUFFER_SIZE = 200;
 const CAPTURE_SESSION_CLOSE_TIMEOUT_MS = 5_000;
 
-const PAGE_TEXT_MAX_CHARS = 2_000;
-const PAGE_LIST_MAX = 50;
 const THROW_SITE_LOOKUP_MAX = 10;
-
-const CUT_NOTE_MAX_CHARS = 40;
-
-function boundedPageText(text: string): string {
-  if (text.length <= PAGE_TEXT_MAX_CHARS) return text;
-  let end = PAGE_TEXT_MAX_CHARS - CUT_NOTE_MAX_CHARS;
-  const high = text.charCodeAt(end - 1);
-  if (high >= 0xd800 && high <= 0xdbff) end -= 1;
-  return `${text.slice(0, end)}… (${text.length - end} more characters)`;
-}
+const QUERY_OR_FRAGMENT = /[?#].*$/s;
 
 function appendBrowserDiagnostic(session: CaptureSession, text: string): void {
   session.browserConsoleBuffer.push(boundedPageText(text));
@@ -1523,13 +1527,21 @@ async function installMediaPageHooks(page: Page, options: CaptureOptions): Promi
   }
 }
 
+function throwIfCaptureAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  throw signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Capture session creation aborted");
+}
+
 export async function createCaptureSession(
   serverUrl: string,
   outputDir: string,
   options: CaptureOptions,
   onBeforeCapture: BeforeCaptureHook | null = null,
-  config?: Partial<EngineConfig>,
+  config?: Partial<EngineConfig> & { signal?: AbortSignal },
 ): Promise<CaptureSession> {
+  throwIfCaptureAborted(config?.signal);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
 
   // Determine capture mode before building args — BeginFrame flags only apply on Linux.
@@ -1603,10 +1615,15 @@ export async function createCaptureSession(
   // still fails loudly if the server is actually down.
   const requiresWebGpu =
     options.requiresWebGpu ??
-    (await fetch(`${serverUrl}/index.html`, { signal: AbortSignal.timeout(5_000) })
+    (await fetch(`${serverUrl}/index.html`, {
+      signal: config?.signal
+        ? AbortSignal.any([AbortSignal.timeout(5_000), config.signal])
+        : AbortSignal.timeout(5_000),
+    })
       .then((res) => res.text())
       .then(compositionRequiresWebGpu)
       .catch(() => false));
+  throwIfCaptureAborted(config?.signal);
   const gpuConfig = { ...config, browserGpuMode: resolvedGpuMode };
   const chromeArgs = buildChromeArgs(
     { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
@@ -1638,7 +1655,7 @@ interface CaptureSessionConstructionInput {
   outputDir: string;
   options: CaptureOptions;
   onBeforeCapture: BeforeCaptureHook | null;
-  config?: Partial<EngineConfig>;
+  config?: Partial<EngineConfig> & { signal?: AbortSignal };
   useDrawElement: boolean;
   requiresWebGpu?: boolean;
   softwareWebGpu?: boolean;
@@ -1649,6 +1666,7 @@ async function constructCaptureSessionWithRollback(
 ): Promise<CaptureSession> {
   let page: Page | undefined;
   try {
+    throwIfCaptureAborted(input.config?.signal);
     return await constructCaptureSession({
       ...input,
       onPageCreated: (createdPage) => {
@@ -2094,20 +2112,31 @@ export async function pollHfReady(
 
 // Enumerated regardless of bail reason, so the warning names every composition still
 // waited on, not only a failed script URL.
+const TIMELINE_IDS_MAX = 1_000;
+const TIMELINE_ID_MAX_CHARS = 200;
+const LONG_TIMELINE_ID = "(a composition id over 200 characters)";
+
 async function listUnregisteredTimelineIds(page: Page): Promise<string[]> {
   const evaluated = await page.evaluate(`(function() {
     var hosts = document.querySelectorAll("[data-composition-id]");
     var timelines = window.__timelines || {};
     var m = [];
-    for (var i = 0; i < hosts.length; i++) {
+    for (var i = 0; i < hosts.length && m.length < ${TIMELINE_IDS_MAX}; i++) {
       if (hosts[i].hasAttribute("data-no-timeline")) continue;
       var id = hosts[i].getAttribute("data-composition-id");
-      if (id && !timelines[id]) m.push(id);
+      if (!id || timelines[id]) continue;
+      if (id.length > ${TIMELINE_ID_MAX_CHARS}) id = null;
+      m.push(id);
     }
     return m;
   })()`);
   // Builds a warning, so it must never throw: normalise a loosely typed result.
-  return Array.isArray(evaluated) ? evaluated.map((id) => String(id)) : [];
+  if (!Array.isArray(evaluated)) return [];
+  return evaluated
+    .slice(0, TIMELINE_IDS_MAX)
+    .map((id) =>
+      typeof id === "string" && id.length <= TIMELINE_ID_MAX_CHARS ? id : LONG_TIMELINE_ID,
+    );
 }
 
 function isScriptFailure(session: CaptureSession): boolean {
@@ -2138,18 +2167,27 @@ async function isolateUnregisteredCompositions(page: Page): Promise<IsolatedComp
       }
     }
     if (live === 0) return out;
+    var cut = function(text) {
+      return text && text.length > ${PAGE_TEXT_MAX_CHARS} ? text.slice(0, ${PAGE_TEXT_MAX_CHARS - 1}) + "…" : text;
+    };
     broken.forEach(function(host) {
       var tl = window.gsap.timeline({ paused: true });
       var duration = parseFloat(host.getAttribute("data-duration"));
       if (duration > 0) tl.set({}, {}, duration);
       var id = host.getAttribute("data-composition-id");
       timelines[id] = tl;
-      out.push({ compositionId: id, elementId: host.id || host.getAttribute("data-hf-id") || null });
+      // Only the record is capped here, so a huge page does not cross CDP; every broken host is still isolated.
+      if (out.length < ${PAGE_LIST_MAX})
+        out.push({ compositionId: cut(id), elementId: cut(host.id || host.getAttribute("data-hf-id") || null) });
     });
     if (out.length && typeof window.__hfForceTimelineRebind === "function") window.__hfForceTimelineRebind();
     return out;
   })()`);
-  return Array.isArray(isolated) ? (isolated as IsolatedComposition[]) : [];
+  if (!Array.isArray(isolated)) return [];
+  return (isolated as IsolatedComposition[]).slice(0, PAGE_LIST_MAX).map((c) => ({
+    compositionId: boundedPageText(c.compositionId),
+    elementId: c.elementId && boundedPageText(c.elementId),
+  }));
 }
 
 export async function waitForSubCompositionTimelines(
@@ -2180,7 +2218,9 @@ export async function waitForSubCompositionTimelines(
     session.pageErrors.length === 0 &&
     session.scriptLoadFailures.length === 0;
   if (cleanTimeout) {
-    memo.unregisteredIds = session.pendingTimelineIds ?? [];
+    memo.unregisteredIds = (session.pendingTimelineIds ?? []).filter(
+      (id) => id !== LONG_TIMELINE_ID,
+    );
   }
 }
 
@@ -2346,7 +2386,7 @@ export async function pollSubCompositionTimelines(
       console.warn(
         terminalText(
           `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
-            `script(s) failed (${failed.join(", ")}), so ` +
+            `script(s) failed (${listedInMessage(failed)}), so ` +
             `the timeline registration they carry can never arrive. ` +
             `Fix the script.`,
         ),
@@ -2571,15 +2611,10 @@ export async function collectMediaReadinessWarnings(
 }
 
 function recordCaptureWarnings(session: CaptureSession, warnings: readonly CaptureWarning[]): void {
-  for (const warning of warnings) {
-    const key = `${warning.code}:${JSON.stringify(warning.details ?? {})}`;
-    if (
-      session.warnings.some(
-        (existing) => `${existing.code}:${JSON.stringify(existing.details ?? {})}` === key,
-      )
-    ) {
-      continue;
-    }
+  for (const raw of warnings) {
+    const budget = (session.warningBudget ??= warningBudgetOf(session.warnings));
+    const warning = keptWithinBudget(budget, raw);
+    if (!warning) continue;
     session.warnings.push(warning);
     console.warn(
       `[FrameCapture:${warning.code}] ${terminalText(warning.message)}`,
@@ -2606,7 +2641,7 @@ export class ImageMissingFromFrameError extends Error {
     readonly failedToLoad: boolean,
   ) {
     super(
-      `Frame ${frameIndex} shows ${sources.join(", ")}, which ${failedToLoad ? "failed to load" : "did not load in time"}, ` +
+      `Frame ${frameIndex} shows ${listedInMessage(sources)}, which ${failedToLoad ? "failed to load" : "did not load in time"}, ` +
         `so the render stopped rather than make a video missing it. ` +
         (failedToLoad
           ? `Check that the image exists and can be opened.`
@@ -2728,7 +2763,8 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
   const sources = [...session.scriptLoadFailures, ...session.pageErrors];
   const loadCauses = session.scriptLoadCauses ?? [];
   const pending = session.pendingTimelineIds ?? [];
-  const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
+  const pendingSuffix =
+    pending.length > 0 ? ` (still unregistered: ${listedInMessage(pending)})` : "";
   // The render page's gsap reads null until GSAP's script runs, so a too-early gsap.timeline() surfaces as this.
   const gsapNotLoaded = sources.some((s) =>
     /gsap is not defined|Cannot read properties of (?:null|undefined) \(reading '(?:timeline|registerPlugin)'\)/.test(
@@ -2744,7 +2780,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
         code: "script_error_isolated",
         message:
           `A composition script failed, so its animation was skipped and the render went on: ` +
-          `${isolated.map((c) => c.elementId ?? c.compositionId).join(", ")} (${sources.join(", ")}).`,
+          `${listedInMessage(isolated.map((c) => c.elementId ?? c.compositionId))} (${listedInMessage(sources)}).`,
         details: {
           sources,
           pendingCompositionIds: [...pending],
@@ -2760,11 +2796,11 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: threwThenTimedOut
         ? `A composition script threw before its timeline registered` +
-          `${pendingSuffix} (${sources.join(", ")}).${gsapNotLoaded} Fix the error; a composition animated by ` +
+          `${pendingSuffix} (${listedInMessage(sources)}).${gsapNotLoaded} Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
           ? `A sub-composition timeline script failed to load${scriptLoadCauseSuffix(loadCauses)} ` +
-            `(${sources.join(", ")})`
+            `(${listedInMessage(sources)})`
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -2936,8 +2972,20 @@ export class VfxFailureError extends Error {
   }
 }
 
-function assertVfxIntact(session: CaptureSession): void {
+/** Thrown once the page loads more distinct scripts than a render tracks, so a throw could go unattributed. */
+class TooManyServedScriptsError extends Error {
+  constructor() {
+    super(
+      `The composition loaded more than ${SERVED_SCRIPTS_MAX.toLocaleString("en-US")} different scripts, ` +
+        "more than a render can track. Load fewer scripts.",
+    );
+    this.name = "TooManyServedScriptsError";
+  }
+}
+
+function assertCaptureIntact(session: CaptureSession): void {
   if (session.vfxFailure) throw new VfxFailureError(session.vfxFailure);
+  if (session.tooManyServedScripts) throw new TooManyServedScriptsError();
 }
 
 // A `vfx:` detail is a chain that cannot paint, so every frame is wrong; `vfx-frame:` is one frame, a page error.
@@ -3096,7 +3144,7 @@ function isPlayPauseAbort(message: string): boolean {
 /** `runtime-error:<first line>` when a script served with the composition threw; null if not attributable to one. */
 export function classifyPageError(
   details: Protocol.Runtime.ExceptionDetails,
-  projectScripts: ReadonlySet<string>,
+  projectScripts: Pick<ReadonlySet<string>, "has">,
 ): string | null {
   const exception = details.exception;
   const message = String(exception?.description ?? exception?.value ?? details.text);
@@ -3113,7 +3161,10 @@ export function classifyPageError(
 
 // The render compiler names the composition's inline code.
 // Inline handlers report the document, which a widget can move.
-function isOwnedScriptUrl(url: string | undefined, projectScripts: ReadonlySet<string>): boolean {
+function isOwnedScriptUrl(
+  url: string | undefined,
+  projectScripts: Pick<ReadonlySet<string>, "has">,
+): boolean {
   return url !== undefined && (projectScripts.has(url) || url.startsWith(COMPOSITION_SOURCE_URL));
 }
 
@@ -3124,7 +3175,7 @@ const LOOKUP_CALL =
 export async function describeThrowSite(
   client: CDPSession,
   details: Protocol.Runtime.ExceptionDetails,
-  projectScripts: ReadonlySet<string>,
+  projectScripts: Pick<ReadonlySet<string>, "has">,
 ): Promise<string> {
   const frame = (details.stackTrace?.callFrames ?? []).find((f) =>
     isOwnedScriptUrl(f.url, projectScripts),
@@ -3194,14 +3245,22 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
   page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
-  const projectScripts = new Set<string>();
+  const servedScriptUrlDigests = new Set<string>();
+  const digest = (url: string) =>
+    createHash("sha1").update(url.replace(QUERY_OR_FRAGMENT, "")).digest("base64");
+  const projectScripts = { has: (url: string) => servedScriptUrlDigests.has(digest(url)) };
   page.on("response", (response) => {
     const status = response.status();
     const request = response.request();
     const isScript = request.resourceType() === "script";
     const responseUrl = response.url();
     if (status < 400) {
-      if (isScript && responseUrl.startsWith(`${serverUrl}/`)) projectScripts.add(responseUrl);
+      if (isScript && responseUrl.startsWith(`${serverUrl}/`)) {
+        const served = digest(responseUrl);
+        if (servedScriptUrlDigests.size < SERVED_SCRIPTS_MAX || servedScriptUrlDigests.has(served))
+          servedScriptUrlDigests.add(served);
+        else session.tooManyServedScripts = true;
+      }
       return;
     }
 
@@ -3308,7 +3367,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
-    assertVfxIntact(session);
+    assertCaptureIntact(session);
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
@@ -3455,7 +3514,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
-    assertVfxIntact(session);
+    assertCaptureIntact(session);
     recordSubTimelineWarning(session, pageReadyTimeout);
 
     await applyVideoMetadataHints(page, session.options.videoMetadataHints);
@@ -3660,7 +3719,7 @@ async function prepareFrameForCapture(
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");
   }
-  assertVfxIntact(session);
+  assertCaptureIntact(session);
 
   const quantizedTime = quantizeSeekTime(
     time,
@@ -5892,7 +5951,7 @@ export async function captureFramesBatchPipelined(
   if (!session.isInitialized) {
     throw new Error("[FrameCapture] Session not initialized");
   }
-  assertVfxIntact(session);
+  assertCaptureIntact(session);
   for (const frameIndex of frameIndices) assertNotRiskFrame(session, frameIndex);
   // The fused batch seeks inside the page, with no stop between frames to wait for a late image.
   if (session.lateImages?.size) {

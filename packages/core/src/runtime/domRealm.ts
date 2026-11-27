@@ -46,6 +46,10 @@ interface NodeLike {
   readonly localName?: unknown;
 }
 
+export function isDomNode(value: unknown): value is Node {
+  return value != null && typeof (value as NodeLike).nodeType === "number";
+}
+
 /** Any element node, from any realm (HTML, SVG, MathML). Mirrors `instanceof Element`. */
 export function isElementNode(value: unknown): value is Element {
   return value != null && (value as NodeLike).nodeType === 1;

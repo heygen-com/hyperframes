@@ -8,32 +8,61 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { link, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir, uptime } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HistoryBusyError, processStart, takeHistoryOwnership } from "./ownerLock";
 
+// A disk that stops answering on an open of a start record, for `stall.ms`, through either kind of call; each span
+// is when that open began and ended.
+const stall = vi.hoisted(() => ({ ms: 0, spans: [] as Array<[number, number]> }));
+const stalls = (path: unknown) => stall.ms > 0 && String(path).endsWith("owner.pid.start");
+
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
+  const openSync = (path: Parameters<typeof actual.openSync>[0], ...rest: unknown[]) => {
+    if (stalls(path)) {
+      const began = performance.now();
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, stall.ms);
+      stall.spans.push([began, performance.now()]);
+    }
+    return (actual.openSync as (...args: unknown[]) => number)(path, ...rest);
+  };
+  return { ...actual, openSync };
+});
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  const open = async (path: Parameters<typeof actual.open>[0], ...rest: unknown[]) => {
+    if (stalls(path)) {
+      const began = performance.now();
+      await new Promise((settle) => setTimeout(settle, stall.ms));
+      stall.spans.push([began, performance.now()]);
+    }
+    return (actual.open as (...args: unknown[]) => ReturnType<typeof actual.open>)(path, ...rest);
+  };
   return {
     ...actual,
-    linkSync: vi.fn(actual.linkSync),
-    renameSync: vi.fn(actual.renameSync),
-    writeFileSync: vi.fn(actual.writeFileSync),
+    open,
+    link: vi.fn(actual.link),
+    rename: vi.fn(actual.rename),
+    rm: vi.fn(actual.rm),
+    writeFile: vi.fn(actual.writeFile),
   };
 });
 
 const {
-  linkSync: realLinkSync,
-  renameSync: realRenameSync,
-  writeFileSync: realWriteFileSync,
-} = await vi.importActual<typeof import("node:fs")>("node:fs");
+  link: realLink,
+  rename: realRename,
+  rm: realRm,
+  writeFile: realWriteFile,
+} = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
 
 const platform = process.platform;
 const homes: string[] = [];
@@ -41,9 +70,12 @@ const homes: string[] = [];
 const canRefuseRead = process.platform !== "win32" && process.getuid?.() !== 0;
 
 afterEach(() => {
-  vi.mocked(linkSync).mockImplementation(realLinkSync);
-  vi.mocked(renameSync).mockImplementation(realRenameSync);
-  vi.mocked(writeFileSync).mockImplementation(realWriteFileSync);
+  vi.mocked(link).mockImplementation(realLink);
+  vi.mocked(rename).mockImplementation(realRename);
+  vi.mocked(rm).mockImplementation(realRm);
+  vi.mocked(writeFile).mockImplementation(realWriteFile);
+  stall.ms = 0;
+  stall.spans = [];
   Object.defineProperty(process, "platform", { value: platform });
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
@@ -65,7 +97,7 @@ describe.skipIf(!canRefuseRead)("takeHistoryOwnership", () => {
     const home = deletingOwner(200);
     const release = await takeHistoryOwnership(home, 5_000);
     expect(existsSync(join(home, "owner.pid"))).toBe(true);
-    release();
+    await release();
   });
 
   it("still fails at once on an unreadable lock outside Windows", async () => {
@@ -93,7 +125,7 @@ function newHome(): string {
 
 describe("takeHistoryOwnership where every write is refused (the desktop app's sandboxed agents)", () => {
   const refuseWrites = () =>
-    vi.mocked(writeFileSync).mockImplementation((path) => {
+    vi.mocked(writeFile).mockImplementation(async (path) => {
       throw Object.assign(new Error(`EPERM: operation not permitted, open '${String(path)}'`), {
         code: "EPERM",
         syscall: "open",
@@ -122,7 +154,7 @@ describe("takeHistoryOwnership where every write is refused (the desktop app's s
 });
 
 function withoutHardLinks(code = "ENOTSUP"): void {
-  vi.mocked(linkSync).mockImplementation(() => {
+  vi.mocked(link).mockImplementation(async () => {
     throw Object.assign(new Error("hard links are not supported"), { code });
   });
 }
@@ -135,8 +167,9 @@ describe("takeHistoryOwnership on a drive without hard links", () => {
       withoutHardLinks(code);
       const home = newHome();
       const release = await takeHistoryOwnership(home, 1_000);
+      expect(link).toHaveBeenCalled();
       expect(readFileSync(join(home, "owner.pid"), "utf-8")).toBe(String(process.pid));
-      release();
+      await release();
       expect(existsSync(join(home, "owner.pid"))).toBe(false);
     },
   );
@@ -155,7 +188,7 @@ describe("takeHistoryOwnership on a drive without hard links", () => {
     writeFileSync(join(home, "owner.pid"), "2147483646");
     const release = await takeHistoryOwnership(home, 1_000);
     expect(readFileSync(join(home, "owner.pid"), "utf-8")).toBe(String(process.pid));
-    release();
+    await release();
   });
 
   it("waits out a lock that is created but not yet written instead of evicting it", async () => {
@@ -182,11 +215,14 @@ describe("takeHistoryOwnership on a drive without hard links", () => {
     utimesSync(lock, old, old);
     const release = await takeHistoryOwnership(home, 1_000);
     expect(readFileSync(lock, "utf-8")).toBe(String(process.pid));
-    release();
+    await release();
   });
 });
 
-const startable = process.platform !== "win32" && processStart(process.ppid) !== null;
+const parentStart = await processStart(process.ppid);
+const ownStart = await processStart(process.pid);
+const initStart = await processStart(1);
+const startable = process.platform !== "win32" && parentStart !== null;
 
 describe.skipIf(!startable)("takeHistoryOwnership when a pid has been reused", () => {
   const stamp = (home: string, pid: number, start: string) =>
@@ -198,28 +234,28 @@ describe.skipIf(!startable)("takeHistoryOwnership when a pid has been reused", (
     stamp(home, process.ppid, "Thu Jan  1 00:00:00 1970");
     const release = await takeHistoryOwnership(home, 100);
     expect(readFileSync(join(home, "owner.pid"), "utf-8")).toBe(String(process.pid));
-    release();
+    await release();
     expect(existsSync(join(home, "owner.pid.start"))).toBe(false);
   });
 
   it("holds while the live owner is the process that took the lock", async () => {
     const home = newHome();
     writeFileSync(join(home, "owner.pid"), String(process.ppid));
-    stamp(home, process.ppid, processStart(process.ppid)!);
+    stamp(home, process.ppid, parentStart!);
     await expect(takeHistoryOwnership(home, 100)).rejects.toThrow(HistoryBusyError);
   });
 
-  it.skipIf(processStart(1) === null)(
+  it.skipIf(initStart === null)(
     "holds a live owner this user may not signal when its start time matches",
     async () => {
       const home = newHome();
       writeFileSync(join(home, "owner.pid"), "1");
-      stamp(home, 1, processStart(1)!);
+      stamp(home, 1, initStart!);
       await expect(takeHistoryOwnership(home, 100)).rejects.toThrow(HistoryBusyError);
     },
   );
 
-  it.skipIf(processStart(1) === null)(
+  it.skipIf(initStart === null)(
     "takes over a lock whose pid is a process this user may not signal, once its start time differs",
     async () => {
       const home = newHome();
@@ -227,9 +263,28 @@ describe.skipIf(!startable)("takeHistoryOwnership when a pid has been reused", (
       stamp(home, 1, "Thu Jan  1 00:00:00 1970");
       const release = await takeHistoryOwnership(home, 100);
       expect(readFileSync(join(home, "owner.pid"), "utf-8")).toBe(String(process.pid));
-      release();
+      await release();
     },
   );
+
+  // fails without the fix: the lock read the start record with openSync, so an open the disk never answered held the
+  // caller's thread until it answered; now the thread keeps running while the open waits.
+  it("keeps the thread running while an open of the owner's start record waits on the disk", async () => {
+    const home = newHome();
+    writeFileSync(join(home, "owner.pid"), String(process.ppid));
+    stamp(home, process.ppid, parentStart!);
+    const pings: number[] = [];
+    const ping = setInterval(() => pings.push(performance.now()), 5);
+    stall.ms = 300;
+    try {
+      await expect(takeHistoryOwnership(home, 0)).rejects.toThrow(HistoryBusyError);
+    } finally {
+      clearInterval(ping);
+      stall.ms = 0;
+    }
+    const [began, ended] = stall.spans[0]!;
+    expect(pings.filter((at) => at > began && at < ended).length).toBeGreaterThan(0);
+  });
 
   it("takes over a lock without a recorded start that was written before the machine booted", async () => {
     const home = newHome();
@@ -239,7 +294,7 @@ describe.skipIf(!startable)("takeHistoryOwnership when a pid has been reused", (
     utimesSync(lock, beforeBoot, beforeBoot);
     const release = await takeHistoryOwnership(home, 100);
     expect(readFileSync(lock, "utf-8")).toBe(String(process.pid));
-    release();
+    await release();
   });
 });
 
@@ -249,7 +304,7 @@ describe("takeHistoryOwnership publishing its url on Windows", () => {
 
   it("rides out a rename the indexer holds once", async () => {
     Object.defineProperty(process, "platform", { value: "win32" });
-    vi.mocked(renameSync).mockImplementationOnce(() => {
+    vi.mocked(rename).mockImplementationOnce(async () => {
       throw busy();
     });
     const home = newHome();
@@ -258,13 +313,13 @@ describe("takeHistoryOwnership publishing its url on Windows", () => {
       pid: process.pid,
       url: "http://127.0.0.1:1234",
     });
-    release();
+    await release();
     expect(existsSync(join(home, "owner.pid"))).toBe(false);
   });
 
   it("releases owner.pid when the url can never be published", async () => {
     Object.defineProperty(process, "platform", { value: "win32" });
-    vi.mocked(renameSync).mockImplementation(() => {
+    vi.mocked(rename).mockImplementation(async () => {
       throw busy();
     });
     const home = newHome();
@@ -272,9 +327,9 @@ describe("takeHistoryOwnership publishing its url on Windows", () => {
       /EBUSY/,
     );
     expect(readdirSync(home)).toEqual([]);
-    vi.mocked(renameSync).mockImplementation(realRenameSync);
+    vi.mocked(rename).mockImplementation(realRename);
     const release = await takeHistoryOwnership(home, 100);
-    release();
+    await release();
   });
 });
 
@@ -283,24 +338,24 @@ describe.skipIf(process.platform === "win32")(
   "takeHistoryOwnership when the start record cannot be written",
   () => {
     it("gives the lock back instead of keeping a file nobody would release", async () => {
-      vi.mocked(writeFileSync).mockImplementation((...args) => {
+      vi.mocked(writeFile).mockImplementation(async (...args) => {
         if (/\.start(\.hf[0-9a-f]{6}\.tmp)?$/.test(String(args[0]))) {
           throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
         }
-        return realWriteFileSync(...args);
+        return realWriteFile(...args);
       });
       const home = newHome();
       await expect(takeHistoryOwnership(home, 1_000)).rejects.toThrow(/ENOSPC/);
       expect(readdirSync(home)).toEqual([]);
-      vi.mocked(writeFileSync).mockImplementation(realWriteFileSync);
+      vi.mocked(writeFile).mockImplementation(realWriteFile);
       const release = await takeHistoryOwnership(home, 100);
-      release();
+      await release();
     });
   },
 );
 
 // Windows records no start time, and making links there needs extra rights.
-describe.skipIf(process.platform === "win32" || processStart(process.pid) === null)(
+describe.skipIf(process.platform === "win32" || ownStart === null)(
   "takeHistoryOwnership with a linked entry at a start record's name",
   () => {
     const records = ["owner.pid.start", "owner.pid.evict.start"];
@@ -318,7 +373,7 @@ describe.skipIf(process.platform === "win32" || processStart(process.pid) === nu
     async function takeAndRelease(home: string): Promise<void> {
       const release = await takeHistoryOwnership(home, 1_000);
       expect(lstatSync(join(home, "owner.pid.start")).isFile()).toBe(true);
-      release();
+      await release();
       expect(readdirSync(home)).toEqual([]);
     }
 
@@ -363,7 +418,7 @@ describe.skipIf(process.platform === "win32" || processStart(process.pid) === nu
   },
 );
 
-describe.skipIf(!canRefuseRead || processStart(process.pid) === null)(
+describe.skipIf(!canRefuseRead || ownStart === null)(
   "takeHistoryOwnership with a read-only entry at the start record's name",
   () => {
     it.each(["symlink", "file"])("takes the lock past a read-only %s", async (kind) => {
@@ -379,7 +434,7 @@ describe.skipIf(!canRefuseRead || processStart(process.pid) === null)(
       }
       const release = await takeHistoryOwnership(home, 1_000);
       expect(lstatSync(entry).isFile()).toBe(true);
-      release();
+      await release();
       expect(readFileSync(sentinel, "utf-8")).toBe("unchanged");
     });
   },
@@ -396,8 +451,47 @@ describe.skipIf(process.platform === "win32")(
       const release = await takeHistoryOwnership(home, 1_000);
       expect(lstatSync(join(home, "owner.pid")).isFile()).toBe(true);
       expect(readFileSync(join(home, "owner.pid"), "utf-8")).toBe(String(process.pid));
-      release();
+      await release();
       expect(readFileSync(sentinel, "utf-8")).toBe(String(process.ppid));
     });
   },
 );
+
+describe.skipIf(!startable)("takeHistoryOwnership handing a lock on within one process", () => {
+  // fails without the fix: the release removed owner.pid before its start record, so a claim taken in the gap
+  // wrote its own record and the late removal deleted it.
+  it("keeps the next owner's start record when a release's removal of the old one is slow", async () => {
+    const home = newHome();
+    const record = join(home, "owner.pid.start");
+    const first = await takeHistoryOwnership(home, 1_000);
+    let slowed = false;
+    vi.mocked(rm).mockImplementation(async (path, options) => {
+      if (!slowed && String(path) === record) {
+        slowed = true;
+        await new Promise((settle) => setTimeout(settle, 150));
+      }
+      return realRm(path, options);
+    });
+    const releasing = first();
+    const next = await takeHistoryOwnership(home, 2_000);
+    await releasing;
+    expect(slowed).toBe(true);
+    expect(readFileSync(record, "utf-8").split("\n")[0]).toBe(String(process.pid));
+    await next();
+  });
+
+  // fails without the fix: the failed release was kept, so every later call answered with the same failure and
+  // owner.pid stayed behind naming this live process.
+  it("lets a release that failed be tried again", async () => {
+    const home = newHome();
+    const lock = join(home, "owner.pid");
+    const release = await takeHistoryOwnership(home, 1_000);
+    vi.mocked(rm).mockImplementationOnce(async () => {
+      throw Object.assign(new Error("EBUSY: resource busy or locked, unlink"), { code: "EBUSY" });
+    });
+    await expect(release()).rejects.toThrow(/EBUSY/);
+    expect(existsSync(lock)).toBe(true);
+    await release();
+    expect(existsSync(lock)).toBe(false);
+  });
+});

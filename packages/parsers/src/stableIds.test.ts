@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseHtml } from "./htmlParser.js";
-import { serialize } from "./test-utils.js";
+import { serialize } from "../tests/roundtrip.js";
 
 describe("T2 — stable element ids (spec for R1)", () => {
   // --- Spec (red until R1) ---

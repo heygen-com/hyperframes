@@ -100,10 +100,16 @@ it("does not delete files when retiring references fails to persist, then retrie
   f.fill();
   const file = join(f.project, ".hyperframes", "video-state.json");
   writeFileSync(file, JSON.stringify(f.state));
-  const persist = vi.spyOn(atomicFile, "replaceFileAtomically");
-  persist.mockImplementationOnce(() => {
-    throw new Error("disk full");
-  });
+  const replace = atomicFile.replaceFileAtomicallyAsync;
+  let failed = false;
+  // fails without the fix: the spy failed the history lock's own start record, never this state file's write.
+  const persist = vi
+    .spyOn(atomicFile, "replaceFileAtomicallyAsync")
+    .mockImplementation(async (path, ...rest) => {
+      if (path !== file || failed) return replace(path, ...rest);
+      failed = true;
+      throw new Error("disk full");
+    });
   try {
     await expect(finishSnapshotRun(f.project, f.root)).rejects.toThrow("disk full");
     expect(existsSync(old.path)).toBe(true);

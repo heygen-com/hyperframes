@@ -115,6 +115,7 @@ import {
 } from "../helpers/compositionInsertion.js";
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { savesUnderItsOwnName, uploadedFileName } from "../helpers/uploadedFileName.js";
 import { canNameFiles, renameRewriter } from "../helpers/fileReferences.js";
 import {
   hasCompositionOutsideTemplates,
@@ -205,7 +206,7 @@ async function resolveProjectPath(
   c: RouteContext,
   adapter: StudioApiAdapter,
   route: string,
-  opts?: { mustExist?: boolean; pin?: boolean; write?: WriteTarget },
+  opts?: { mustExist?: boolean; pin?: boolean; write?: WriteTarget; markup?: boolean },
 ) {
   const id = c.req.param("id");
   const project = await adapter.resolveProject(id);
@@ -242,6 +243,9 @@ async function resolveProjectPath(
   if (opts?.write && !writableAs(project.dir, absPath, opts.write)) {
     return { error: c.json({ error: "forbidden", why: "protected_path" }, 403) } as const;
   }
+  if (opts?.markup && !isMarkupFile(absPath)) {
+    return { error: c.json({ error: "forbidden", why: "not_html" }, 403) } as const;
+  }
 
   if (opts?.mustExist && !existsSync(absPath)) {
     return { error: c.json({ error: "not found" }, 404) } as const;
@@ -258,6 +262,13 @@ type WriteTarget = "file" | "file-or-folder";
 const writableAs = (projectDir: string, absPath: string, target: WriteTarget) =>
   isWritableProjectFile(projectDir, absPath, target === "file" ? "file" : undefined);
 
+const isMarkupFile = (path: string) => /\.html?$/i.test(path);
+
+const pinMarkupFile = (projectDir: string, path: string) => {
+  const absPath = pinWritableWithinProject(projectDir, path);
+  return absPath && isMarkupFile(absPath) ? absPath : null;
+};
+
 function resolveProjectFile(
   c: RouteContext,
   adapter: StudioApiAdapter,
@@ -270,6 +281,7 @@ function resolveFileMutationContext(c: RouteContext, adapter: StudioApiAdapter, 
   return resolveProjectPath(c, adapter, `file-mutations/${operation}`, {
     pin: true,
     write: "file",
+    markup: true,
   });
 }
 
@@ -468,7 +480,7 @@ function foldAndCommitElementPatchBatches(
   }> = [];
 
   for (const batch of batches) {
-    const absPath = pinWritableWithinProject(projectDir, batch.sourceFile);
+    const absPath = pinMarkupFile(projectDir, batch.sourceFile);
     if (!absPath) return { error: "forbidden", sourceFile: batch.sourceFile };
     if (resolvedPaths.has(absPath)) return { error: "duplicate", sourceFile: batch.sourceFile };
     resolvedPaths.add(absPath);
@@ -2420,9 +2432,12 @@ async function processUploadedFiles(
   for (const [, value] of entries) {
     if (typeof value === "string") continue;
 
-    // Strip path separators — browsers may include directory components
-    const name = value.name.split("/").pop()?.split("\\").pop() ?? "";
-    if (!name || name.includes("\0") || name.includes("..")) continue;
+    const name = uploadedFileName(value.name);
+    if (!name) continue;
+    if (!savesUnderItsOwnName(name)) {
+      skipped.push(name);
+      continue;
+    }
 
     // Reject individual files that exceed the size limit
     if (value.size > MAX_UPLOAD_BYTES) {
@@ -2958,7 +2973,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const seen = new Set<string>();
       const prepared: FoldedAtomicCutFile[] = [];
       for (const file of files) {
-        const absPath = pinWritableWithinProject(project.dir, file.path);
+        const absPath = pinMarkupFile(project.dir, file.path);
         if (!absPath) return c.json({ error: `forbidden path: ${file.path}` }, 403);
         if (seen.has(absPath)) return c.json({ error: `duplicate path: ${file.path}` }, 400);
         seen.add(absPath);
@@ -3609,6 +3624,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       mustExist: true,
       pin: true,
       write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 
@@ -3624,6 +3640,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       mustExist: true,
       pin: true,
       write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 
@@ -3648,6 +3665,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       mustExist: true,
       pin: true,
       write: "file",
+      markup: true,
     });
     if ("error" in res) return res.error;
 

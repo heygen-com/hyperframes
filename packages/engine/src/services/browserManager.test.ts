@@ -1867,6 +1867,31 @@ describe("browser pool", () => {
     await second.release();
   });
 
+  // fails without the fix: launchBrowser left proc.stdio unguarded after PipeTransport.close.
+  it("absorbs late EPIPE on a launched browser's CDP pipe after Puppeteer drops its listener", async () => {
+    const pipe = new EventEmitter();
+    const puppeteerListener = () => {};
+    pipe.on("error", puppeteerListener);
+    const browser = {
+      ...makeMockBrowser(),
+      process: () => ({ kill: vi.fn(), killed: false, stdio: [null, null, null, pipe] }),
+      close: vi.fn(async () => {
+        pipe.off("error", puppeteerListener);
+      }),
+    } as unknown as Browser;
+    launchFn.mockResolvedValueOnce(browser);
+
+    const lease = await acquireBrowser(["--no-sandbox"], {
+      enableBrowserPool: false,
+      forceScreenshot: true,
+    });
+    await lease.release();
+
+    expect(() =>
+      pipe.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" })),
+    ).not.toThrow();
+  });
+
   it("concurrent acquires via Promise.all trigger exactly one launch", async () => {
     const [a, b, c] = await Promise.all([
       acquireBrowser(["--no-sandbox"], poolCfg),
@@ -2071,5 +2096,77 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     const fallbackArgs = launch.mock.lastCall?.[0]?.args;
     expect(fallbackArgs).toContain("--disable-partial-raster");
     expect(fallbackArgs).not.toContain("--enable-begin-frame-control");
+  });
+});
+
+describe("acquireBrowser abort signal", () => {
+  const base = {
+    version: vi.fn().mockResolvedValue("Chrome/test"),
+    close: vi.fn().mockResolvedValue(undefined),
+    once: vi.fn(),
+  };
+
+  afterEach(async () => {
+    await drainBrowserPool();
+    _setPuppeteerForTests(undefined);
+  });
+
+  it("forwards signal to puppeteer.launch and rethrows abort without launch failure remediation", async () => {
+    _resetBrowserPoolForTests();
+    let launchSignal: AbortSignal | undefined;
+    const launch = vi.fn().mockImplementation((options: { signal?: AbortSignal }) => {
+      launchSignal = options.signal;
+      return new Promise<never>((_resolve, reject) => {
+        options.signal?.addEventListener(
+          "abort",
+          () => reject(new Error("spawn aborted by signal")),
+          { once: true },
+        );
+      });
+    });
+    const defaultArgs = vi.fn().mockResolvedValue([]);
+    _setPuppeteerForTests({ launch, defaultArgs } as unknown as PuppeteerNode);
+
+    const controller = new AbortController();
+    const pending = acquireBrowser(["--headless"], {
+      forceScreenshot: true,
+      enableBrowserPool: false,
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort(new Error("audio failed during launch"));
+
+    await expect(pending).rejects.toThrow("audio failed during launch");
+    expect(launchSignal?.aborted).toBe(true);
+    expect(defaultArgs).not.toHaveBeenCalled();
+  });
+
+  it("aborts and closes the browser when signal fires while browser.version() is in flight", async () => {
+    _resetBrowserPoolForTests();
+    let resolveVersion!: (v: string) => void;
+    const close = vi.fn().mockResolvedValue(undefined);
+    const launch = vi.fn().mockResolvedValue({
+      ...base,
+      close,
+      version: () =>
+        new Promise<string>((resolve) => {
+          resolveVersion = resolve;
+        }),
+    });
+    _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
+
+    const controller = new AbortController();
+    const pending = acquireBrowser(["--headless"], {
+      forceScreenshot: true,
+      enableBrowserPool: false,
+      signal: controller.signal,
+    });
+    for (let i = 0; i < 10 && !resolveVersion; i++) await Promise.resolve();
+    controller.abort(new Error("aborted during version"));
+    resolveVersion("Chrome/test");
+
+    await expect(pending).rejects.toThrow("aborted during version");
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(close).toHaveBeenCalled();
   });
 });

@@ -143,8 +143,29 @@ export function previewDraftRidingGsapSet(
   return next.op;
 }
 
+function drawsNothingNew(element: Element, part: Partial<Drawn>): boolean {
+  const target = standIns.get(element);
+  const prior = target && queues.get(target.iframe)?.drawn.get(target.handle);
+  if (!prior || prior.saving) return false;
+  const same = (key: keyof Drawn) =>
+    !(key in part) || JSON.stringify(part[key] ?? null) === JSON.stringify(prior[key] ?? null);
+  return same("translate") && same("size") && same("rotate") && same("props");
+}
+
+export function noteFrameDrawnDraft(element: Element, part: Partial<Drawn>, draft?: number): void {
+  const target = standIns.get(element);
+  if (!target) return;
+  const queue = queueFor(target.iframe);
+  const prior = queue.drawn.get(target.handle);
+  const entry: Entry = { translate: null, size: null, gesture: {}, ...prior, ...part };
+  if (prior?.saving) delete entry.saving;
+  if (typeof draft === "number") entry.draft = draft;
+  queue.drawn.set(target.handle, entry);
+}
+
 /** Draws `part` of the stand-in's draft on its frame element; any other element is left alone. */
 export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
+  if (drawsNothingNew(element, part)) return;
   const next = nextDraw(element, part);
   if (!next) return;
   const { target, queue, op } = next;

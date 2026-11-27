@@ -44,6 +44,10 @@ let root: Root;
 let host: HTMLDivElement;
 let snapshot: LocalShareSnapshot;
 let calls: unknown[];
+let divergentFiles: boolean;
+let hiddenAssets: string[];
+let hiddenDigest: string;
+let sourceState: "off" | "synced" | "needs_sync" | "at_limit";
 let confirmedReviews: unknown[];
 let confirm: ReturnType<typeof vi.fn<(message?: string) => boolean>>;
 let job: LocalShareJob;
@@ -51,6 +55,10 @@ const token = "a".repeat(43);
 beforeEach(() => {
   interaction.mockReset();
   calls = [];
+  divergentFiles = false;
+  hiddenAssets = [];
+  sourceState = "needs_sync";
+  hiddenDigest = "d".repeat(64);
   confirmedReviews = [];
   confirm = vi.fn(() => true);
   snapshot = {
@@ -87,6 +95,23 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("X-Hyperframes-Share-CSRF")).toBe(token);
+      if (url.includes("/project-files?space="))
+        return Response.json({
+          state: sourceState,
+          paths: hiddenAssets,
+          digest: hiddenDigest,
+          canReconnect: true,
+        });
+      if (url.includes("/reconnect?"))
+        return Response.json([
+          {
+            token: "offer",
+            id: "cloud",
+            title: "Launch",
+            workspace: { id: "team1", name: "Design team" },
+          },
+        ]);
+      if (url.endsWith("/reconnect")) return reconnectReply(init);
       if (url.endsWith("/snapshot")) return Response.json(snapshot);
       if (url.endsWith("/actions")) {
         const { confirmedReview, ...body } = JSON.parse(String(init?.body));
@@ -99,6 +124,14 @@ beforeEach(() => {
   );
   vi.stubGlobal("confirm", confirm);
 });
+function reconnectReply(init?: RequestInit) {
+  const input = JSON.parse(String(init?.body));
+  calls.push(input);
+  if (divergentFiles && input.choice === "offer")
+    return Response.json({ confirmLocalFiles: "reviewed-files" });
+  sourceState = "synced";
+  return Response.json({ reconnected: true });
+}
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
@@ -126,9 +159,7 @@ it("requires explicit audience, uses the bound workspace and permits server-auth
   await choose("public");
   expect(button("Create share link")?.disabled).toBe(false);
   await act(async () => button("Create share link")?.click());
-  expect(calls).toEqual([
-    { action: "share", audience: "public", space: "team1", includeSource: false },
-  ]);
+  expect(calls).toEqual([{ action: "share", audience: "public", space: "team1" }]);
 });
 it("drains pending editor saves before creating or uploading", async () => {
   let resolveSave = () => {};
@@ -172,14 +203,14 @@ it("shows stale copy separately and never uploads merely by opening", async () =
   expect(button("Copy current shared link")).toBeDefined();
   expect(calls).toEqual([]);
   await act(async () => button("Update shared version")?.click());
-  expect(calls).toEqual([{ action: "update", includeSource: false }]);
+  expect(calls).toEqual([{ action: "update" }]);
 });
 it("keeps link-off updates separate from explicit re-enabling", async () => {
   snapshot.share = { ...snapshot.share, state: "link_off", audience: "private", spaceId: "team1" };
   await mount();
   expect(button("Turn link on")).toBeDefined();
   await act(async () => button("Update shared version")?.click());
-  expect(calls).toEqual([{ action: "update", includeSource: false }]);
+  expect(calls).toEqual([{ action: "update" }]);
 });
 it("recovers a running job on reopening, and stops browser polling on close", async () => {
   vi.useFakeTimers();
@@ -213,32 +244,6 @@ it("recovers a failed job on reopening instead of silently dropping the error", 
   expect(calls).toEqual([]);
 });
 
-it("offers video-only recovery explicitly after a failed source upload", async () => {
-  snapshot.share = {
-    ...snapshot.share,
-    state: "processing",
-    audience: "private",
-    spaceId: "team1",
-  };
-  snapshot.job = {
-    ...job,
-    state: "failed",
-    error: { code: "source_unavailable", message: "Project files could not be attached." },
-  };
-  await mount();
-  expect(calls).toEqual([]);
-  await act(async () => button("Retry with video only")?.click());
-  expect(calls).toEqual([{ action: "update", videoOnly: true, includeSource: false }]);
-});
-it("labels files as included only after a ready upload result", async () => {
-  snapshot.job = {
-    ...job,
-    state: "done",
-    result: { ...snapshot.share, state: "ready", source: "ready" },
-  };
-  await mount();
-  expect(host.textContent).toContain("Last Studio upload: project files included.");
-});
 it.each(["unauthenticated", "login_expired"])(
   "offers explicit browser login for %s and recovers signed-out polling",
   async (code) => {
@@ -450,9 +455,7 @@ it("uses the OAuth-selected workspace among several without a dropdown", async (
   expect(host.querySelector('[aria-label="Sharing workspace"]')).toBeNull();
   await choose("public");
   await act(async () => button("Create share link")?.click());
-  expect(calls).toEqual([
-    { action: "share", audience: "public", space: "team1", includeSource: false },
-  ]);
+  expect(calls).toEqual([{ action: "share", audience: "public", space: "team1" }]);
 });
 it("refuses to substitute another workspace when the OAuth selection is missing", async () => {
   snapshot.spaces[0]!.bound = false;
@@ -494,7 +497,7 @@ it("resumes a failed first creation without presenting an uploaded version", asy
   expect(button("Update shared version")).toBeUndefined();
   expect(host.textContent).not.toContain("still being prepared");
   await act(async () => button("Create share link")?.click());
-  expect(calls).toEqual([{ action: "update", includeSource: false }]);
+  expect(calls).toEqual([{ action: "update" }]);
 });
 
 it.each(["free", "subscribed", null] as const)(
@@ -559,7 +562,7 @@ it.each([false, true])(
     expect(action?.disabled).toBe(false);
     if (previous) expect(button("Copy current shared link")).toBeDefined();
     await act(async () => action?.click());
-    expect(calls).toEqual([{ action: "update", includeSource: false }]);
+    expect(calls).toEqual([{ action: "update" }]);
   },
 );
 
@@ -640,19 +643,6 @@ it("confirms a newly published version", async () => {
   expect(host.textContent).toContain("Shared version updated.");
 });
 
-it("discloses source scope and uploads files only after checking the option", async () => {
-  await mount();
-  expect(host.textContent).toContain("including unused and Git-ignored files");
-  const choice = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
-  expect(choice?.checked).toBe(false);
-  await act(async () => choice?.click());
-  await choose("public");
-  await act(async () => button("Create share link")?.click());
-  expect(calls).toEqual([
-    { action: "share", audience: "public", space: "team1", includeSource: true },
-  ]);
-});
-
 it.each([0, 5])("counts upgrade intent with quota context (used=%s)", async (used) => {
   snapshot.spaces[0]!.plan = "free";
   snapshot.spaces[0]!.used = used;
@@ -670,17 +660,15 @@ it.each([0, 5])("counts upgrade intent with quota context (used=%s)", async (use
   });
   expect(calls).toEqual([]);
 });
-it("counts explicit audience, source and manage interactions without sending project data", async () => {
+it("counts explicit audience and manage interactions without sending project data", async () => {
   await mount();
   await choose("invite");
-  await act(async () => host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
   const manage = host.querySelector<HTMLAnchorElement>('a[href="https://hyperframes.dev/shares"]')!;
   manage.addEventListener("click", (event) => event.preventDefault());
   await act(async () => manage.click());
   expect(interaction.mock.calls).toEqual([
     [token, { event: "share_opened", link: "none" }],
     [token, { event: "share_audience_selected", audience: "invite" }],
-    [token, { event: "share_source_toggled", enabled: true }],
     [token, { event: "share_navigation_clicked", destination: "manage" }],
   ]);
 });
@@ -768,17 +756,6 @@ it("drops the earlier choice when the project now points to a different review",
   expect(host.textContent).toContain("different shared review");
   expect(button("Save access")).toBeUndefined();
 });
-it("says when editable project files are included before uploading them", async () => {
-  await mount();
-  await choose("public");
-  await act(async () => {
-    const box = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
-    box?.click();
-  });
-  await act(async () => button("Create share link")?.click());
-  expect(confirm.mock.calls[0]?.[0]).toContain("Includes editable project files");
-  expect(confirm.mock.calls[0]?.[0]).toContain("Workspace: Design team");
-});
 it("signs in without asking for a confirmation", async () => {
   vi.mocked(fetch).mockImplementation(async (url, init) => {
     if (String(url).endsWith("/snapshot"))
@@ -793,4 +770,69 @@ it("signs in without asking for a confirmation", async () => {
   await act(async () => button("Sign in")?.click());
   expect(confirm).not.toHaveBeenCalled();
   expect(calls).toEqual([{ action: "login" }]);
+});
+
+it("syncs disclosed project files separately from sharing the video", async () => {
+  hiddenAssets = ["brand/.fonts/In\u200bter.woff2"];
+  await mount();
+  expect(host.querySelector('input[type="checkbox"]')).toBeNull();
+  expect(host.textContent).toContain("brand/.fonts/In\\u200bter.woff2");
+  await act(async () => button("Sync project files")!.click());
+  expect(calls).toEqual([
+    { action: "sync", space: "team1", expectedReferencedHiddenDigest: hiddenDigest },
+  ]);
+  expect(confirm.mock.calls[0]?.[0]).toContain("does not create a share link");
+});
+it.each(["off", "synced"] as const)("keeps Share available with file status %s", async (state) => {
+  sourceState = state;
+  await mount();
+  expect(button("Sync project files")).toBeUndefined();
+  await choose("public");
+  await act(async () => button("Create share link")!.click());
+  expect(calls).toEqual([{ action: "share", audience: "public", space: "team1" }]);
+});
+it("keeps video sharing available when the sync summary cannot be verified", async () => {
+  hiddenDigest = "invalid";
+  await mount();
+  expect(host.textContent).toContain("Could not check synced project files");
+  expect(button("Sync project files")).toBeUndefined();
+  await choose("public");
+  expect(button("Create share link")?.disabled).toBe(false);
+});
+
+it.each([false, true])(
+  "confirms the destination and asks separately for divergent files (%s)",
+  async (divergent) => {
+    divergentFiles = divergent;
+    await mount();
+    await act(async () => button("Reconnect a moved or upgraded project")!.click());
+    expect(button("Confirm reconnect")!.disabled).toBe(true);
+    const select = host
+      .querySelector<HTMLSelectElement>('option[value="offer"]')!
+      .closest("select")!;
+    await act(async () => {
+      select.value = "offer";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(host.textContent).toContain(
+      "Future syncs will publish versions of Launch in Design team (team1)",
+    );
+    expect(calls).toEqual([]);
+    await act(async () => button("Confirm reconnect")!.click());
+    expect(calls).toEqual([{ choice: "offer" }]);
+    if (divergent) {
+      expect(host.textContent).toContain("may undo cloud edits");
+      expect(button("Cancel")?.disabled).toBe(false);
+      await act(async () => button("Reconnect using local files")!.click());
+      expect(calls).toEqual([{ choice: "offer" }, { choice: "reviewed-files" }]);
+    }
+    expect(host.textContent).toContain("Project files synced.");
+  },
+);
+
+it("offers reconnect when the workspace has no free composition slot", async () => {
+  sourceState = "at_limit";
+  await mount();
+  expect(button("Sync project files")?.disabled).toBe(true);
+  expect(button("Reconnect a moved or upgraded project")?.disabled).toBe(false);
 });

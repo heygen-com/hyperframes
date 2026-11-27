@@ -278,6 +278,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
   if (Number.isFinite(sourceDuration) && sourceDuration > 0) {
     entry.sourceDuration = sourceDuration;
   }
+  setOptional(entry, "loop", mediaEl.hasAttribute("loop") ? true : undefined);
 
   const playbackRate = mediaEl.defaultPlaybackRate;
   if (entry.playbackRate == null && Number.isFinite(playbackRate) && playbackRate > 0) {

@@ -28,11 +28,17 @@ export function shareConfirmMessage(
     );
   const who = (audience?: LocalShareAudience) =>
     audience ? `Who can open it: ${audienceLabel(audience)}` : "";
-  const files =
-    action.includeSource && !action.videoOnly
-      ? "Includes editable project files, unused and Git-ignored files too."
-      : "";
+  const files = action.videoOnly
+    ? ""
+    : "Includes already-synced project files if they match this video.";
   switch (action.action) {
+    case "sync":
+      return ask(
+        "Sync project files to this workspace?",
+        details(
+          "Uploads portable project files, including unused and Git-ignored files. This does not create a share link.",
+        ),
+      );
     case "share":
       return ask(
         linked

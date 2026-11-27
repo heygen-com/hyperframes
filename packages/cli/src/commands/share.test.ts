@@ -1,14 +1,23 @@
 import { SourceIgnoreError, ReviewFailed } from "@hyperframes/share";
+import { referencedHiddenDigest } from "@hyperframes/share/projectSnapshot.mjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { consumeCommandResult } from "../utils/commandResult.js";
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   status: vi.fn(),
+  select: vi.fn(),
+  list: vi.fn(),
+  reconnect: vi.fn(),
   confirm: vi.fn(),
+  hiddenAssets: vi.fn(),
   received: null as null | "unchecked" | { path: string; listed: string[]; hashes: string[] },
   unattended: true,
   progress: undefined as undefined | ((value: { step: string; slow?: boolean } | null) => void),
+}));
+vi.mock("@hyperframes/share/projectSnapshot.mjs", async (original) => ({
+  ...(await original<typeof import("@hyperframes/share/projectSnapshot.mjs")>()),
+  listReferencedHiddenSourceAssets: mocks.hiddenAssets,
 }));
 vi.mock("../utils/project.js", () => ({ resolveProjectOrThrow: () => ({ dir: "/project" }) }));
 vi.mock("../utils/privateProjectFile.js", () => ({
@@ -20,14 +29,18 @@ vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
 }));
 vi.mock("../ui/prompts.js", () => ({
   confirm: mocks.confirm,
-  select: vi.fn(),
+  select: mocks.select,
   isCancel: (value: unknown) => typeof value === "symbol",
 }));
 vi.mock("../share/service.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../share/service.js")>()),
   createShareService: (_dir: string, progress: typeof mocks.progress) => {
     mocks.progress = progress;
-    return { run: mocks.run, status: mocks.status };
+    return {
+      run: mocks.run,
+      status: mocks.status,
+      reconnect: { list: mocks.list, confirm: mocks.reconnect },
+    };
   },
 }));
 import command from "./share.js";
@@ -36,6 +49,7 @@ beforeEach(() => {
   mocks.run.mockReset();
   mocks.status.mockReset();
   mocks.confirm.mockReset();
+  mocks.hiddenAssets.mockReset().mockResolvedValue([]);
   mocks.received = null;
   mocks.unattended = true;
   mocks.run.mockResolvedValue({
@@ -409,4 +423,91 @@ it("prints the earlier version's link with control characters as visible escapes
   expect(log).toHaveBeenLastCalledWith(
     "Previous shared version: https://hyperframes.dev/review/b\\x1b[2J",
   );
+});
+
+it.each([false, true])(
+  "reports referenced hidden assets on stderr without another prompt (json=%s)",
+  async (json) => {
+    const paths = ["brand/.fonts/Inter.woff2", "assets/.images/lo\u200bgo.png"];
+    mocks.hiddenAssets.mockResolvedValue(paths);
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, {
+      rawArgs: ["--public", "--include-source", ...(json ? ["--json"] : [])],
+    });
+    expect(err).toHaveBeenCalledWith(
+      [
+        "Editable source includes these referenced hidden assets",
+        '"brand/.fonts/Inter.woff2"',
+        '"assets/.images/lo\\u200bgo.png"',
+      ].join("\n"),
+    );
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.run).toHaveBeenCalledOnce();
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedReferencedHiddenDigest: referencedHiddenDigest(paths),
+      }),
+    );
+    expect(out.mock.calls.flat().join(" ")).not.toContain("Inter.woff2");
+  },
+);
+
+it("does not enumerate or report hidden source paths for video-only shares", async () => {
+  await runCommand(command, { rawArgs: ["--public", "--video-only", "--json"] });
+  expect(mocks.hiddenAssets).not.toHaveBeenCalled();
+});
+
+it("checks an empty hidden asset summary and skips sharing when discovery fails", async () => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  const rawArgs = ["--public", "--include-source", "--json"];
+  await runCommand(command, { rawArgs });
+  expect(mocks.run).toHaveBeenCalledWith(
+    expect.objectContaining({
+      expectedReferencedHiddenDigest: referencedHiddenDigest([]),
+    }),
+  );
+  mocks.run.mockClear();
+  mocks.hiddenAssets.mockRejectedValue(new Error("Could not verify the referenced assets."));
+  await runCommand(command, { rawArgs });
+  expect(mocks.run).not.toHaveBeenCalled();
+  expect(consumeCommandResult().exitCode).toBe(1);
+});
+
+it("requires interactive confirmation of the project and workspace before reconnecting", async () => {
+  const choice = {
+    token: "offer",
+    id: "project-1",
+    title: "Launch",
+    workspace: { id: "team-1", name: "Design" },
+  };
+  mocks.list.mockResolvedValue([choice]);
+  mocks.select.mockResolvedValue("offer");
+  mocks.unattended = false;
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  await runCommand(command, { rawArgs: ["--reconnect", "--yes"] });
+  expect(mocks.list).not.toHaveBeenCalled();
+  mocks.confirm.mockResolvedValue(false);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.confirm.mock.calls.at(-1)?.[0].message).toMatch(/Launch.*project-1.*Design.*team-1/);
+  expect(mocks.reconnect).not.toHaveBeenCalled();
+  mocks.confirm.mockResolvedValue(true);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect).toHaveBeenCalledWith("offer");
+  mocks.reconnect.mockClear().mockResolvedValueOnce({ confirmLocalFiles: "reviewed-difference" });
+  mocks.confirm.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect.mock.calls).toEqual([["offer"]]);
+  expect(mocks.confirm.mock.calls.at(-1)?.[0]).toMatchObject({
+    initialValue: false,
+    message: expect.stringContaining("may undo cloud edits"),
+  });
+  mocks.reconnect
+    .mockClear()
+    .mockResolvedValueOnce({ confirmLocalFiles: "reviewed-difference" })
+    .mockResolvedValueOnce(null);
+  await runCommand(command, { rawArgs: ["--reconnect", "--space", "team-1"] });
+  expect(mocks.reconnect.mock.calls).toEqual([["offer"], ["reviewed-difference"]]);
+  expect(mocks.run).not.toHaveBeenCalled();
 });

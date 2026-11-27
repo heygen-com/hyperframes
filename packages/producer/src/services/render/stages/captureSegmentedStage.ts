@@ -21,6 +21,7 @@ import {
   concatVideoFiles,
   createCaptureSession,
   getCapturePerfSummary,
+  retainCapturePerf,
   initializeSession,
   prepareCaptureSessionForReuse,
   resolveDeVerifyMinDb,
@@ -207,17 +208,23 @@ async function captureSegmentFrames(
   for (let i = segment.startFrame; i < segment.endFrame; i++) {
     ctx.assertNotAborted();
     const time = (i * ctx.job.config.fps.den) / ctx.job.config.fps.num;
-    const { buffer } = await raceAgainstStall(
-      ctx.captureFrame(ctx.session, i, time),
-      ctx.stallTimeoutMs - (Date.now() - lastProgressAt),
-      {
-        session: ctx.session,
-        frameIndex: i,
-        totalFrames: ctx.totalFrames,
-        stallTimeoutMs: ctx.stallTimeoutMs,
-      },
-      ctx.abortSignal,
-    );
+    let buffer: Buffer;
+    try {
+      ({ buffer } = await raceAgainstStall(
+        ctx.captureFrame(ctx.session, i, time),
+        ctx.stallTimeoutMs - (Date.now() - lastProgressAt),
+        {
+          session: ctx.session,
+          frameIndex: i,
+          totalFrames: ctx.totalFrames,
+          stallTimeoutMs: ctx.stallTimeoutMs,
+        },
+        ctx.abortSignal,
+      ));
+    } catch (error) {
+      if (ctx.abortSignal?.aborted) ctx.assertNotAborted();
+      throw error;
+    }
     await verifyDrawElementSample(ctx.session, i, buffer, {
       log: ctx.log,
       verifyMinDb: ctx.verifyMinDb,
@@ -519,7 +526,7 @@ async function recycleWorkerSession(
   why: "cadence" | "retry",
 ): Promise<void> {
   // Counters are only valid while the session is live, so harvest before close.
-  run.input.dedupPerfs.push(getCapturePerfSummary(worker.ctx.session));
+  retainCapturePerf(run.input.dedupPerfs, getCapturePerfSummary(worker.ctx.session));
   const memory = worker.ctx.session.chromeMemory?.stats();
   await run.deps.closeSession(worker.ctx.session);
   const { frames } = worker.ctx;
@@ -702,7 +709,8 @@ export async function runCaptureSegmentedStage(
     // every worker has to stop before the finally runs. The first error is
     // rethrown below.
     const outcomes = await Promise.allSettled(workers.map((w) => runWorkerLoop(w)));
-    for (const worker of workers) dedupPerfs.push(getCapturePerfSummary(worker.ctx.session));
+    for (const worker of workers)
+      retainCapturePerf(dedupPerfs, getCapturePerfSummary(worker.ctx.session));
     const failure = outcomes.find((o) => o.status === "rejected");
     if (failure && failure.status === "rejected") throw failure.reason;
   } catch (error) {

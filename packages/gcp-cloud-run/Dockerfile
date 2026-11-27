@@ -143,8 +143,8 @@ COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
 COPY packages/gcp-cloud-run/package.json packages/gcp-cloud-run/package.json
 COPY packages/lint/package.json packages/lint/package.json
 COPY packages/parsers/package.json packages/parsers/package.json
-# The share workspace typechecks this subpath during bun install.
-COPY packages/parsers/src/privatePath.ts packages/parsers/src/privatePath.ts
+# The share prepare script typechecks its parser imports during bun install.
+COPY packages/parsers/src/ packages/parsers/src/
 COPY packages/sdk/package.json packages/sdk/package.json
 COPY packages/sdk-playground/package.json packages/sdk-playground/package.json
 COPY packages/inspector/package.json packages/inspector/package.json
@@ -192,6 +192,7 @@ COPY packages/producer/ packages/producer/
 COPY packages/gcp-cloud-run/ packages/gcp-cloud-run/
 COPY packages/lint/ packages/lint/
 COPY packages/parsers/ packages/parsers/
+COPY packages/share/ packages/share/
 COPY packages/sdk/ packages/sdk/
 COPY packages/sdk-playground/ packages/sdk-playground/
 COPY packages/studio-server/ packages/studio-server/
@@ -201,6 +202,7 @@ COPY packages/studio-server/ packages/studio-server/
 # resolution otherwise fails on parsers/core compiler entrypoints. Core's build
 # also generates the embedded font data, so glyph layout matches production.
 RUN bun run --cwd packages/parsers build \
+    && bun run --cwd packages/share build \
     && bun run --cwd packages/lint build \
     && bun run --cwd packages/studio-server build \
     && bun run --cwd packages/core build \

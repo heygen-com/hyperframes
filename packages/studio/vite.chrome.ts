@@ -74,11 +74,32 @@ function findPuppeteerCacheChrome(
   return undefined;
 }
 
+function versionBesideExecutable(
+  executable: string,
+  listEntries: (path: string) => string[],
+): string | undefined {
+  try {
+    const versions = new Set(
+      listEntries(pathWin32.dirname(executable)).flatMap(
+        (name) => /^(\d+(?:\.\d+){3})(?:\.manifest)?$/.exec(name)?.[1] ?? [],
+      ),
+    );
+    return versions.size === 1 ? `Chrome/${[...versions][0]}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function browserVersion(
   executable: string,
   run: typeof execFileSync = execFileSync,
   platform: NodeJS.Platform = process.platform,
+  listEntries: (path: string) => string[] = readdirSync,
 ): string | undefined {
+  if (platform === "win32") {
+    const beside = versionBesideExecutable(executable, listEntries);
+    if (beside) return beside;
+  }
   const options = { encoding: "utf8" as const, timeout: 5_000, windowsHide: true };
   const env = { ...process.env, HYPERFRAMES_CHROME_VERSION_PATH: executable };
   const script =

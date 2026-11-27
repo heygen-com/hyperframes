@@ -139,6 +139,51 @@ const pathsOf = (count: number) => [
 ];
 
 describe("a project's first history copy", () => {
+  // fails without the fix: each file adopted after the open appended the whole file map again, so a project of n
+  // large files wrote n copies of it (one 3,100-file project: 708 lines, 217 MB, for one 0.3 MB baseline).
+  it("leaves one baseline in the log once the files adopted after the open have landed", async () => {
+    const projectDir = mediaProject(12);
+    const historyRoot = tempDir("hf-first-copy-root-");
+    const history = await openProjectHistory({ projectDir, historyRoot });
+    closes.push(() => history.close());
+    await adopted(historyRoot);
+    const log = readFileSync(join(homeIn(historyRoot), "log.jsonl"), "utf-8")
+      .split("\n")
+      .filter(Boolean);
+    const baselines = log
+      .map((line) => JSON.parse(line))
+      .filter((record) => record.type === "baseline");
+    expect(baselines).toHaveLength(1);
+    expect(Object.keys(baselines[0].files).sort()).toEqual(
+      ["index.html", ...Array.from({ length: 12 }, (_, i) => `m${i}.bin`)].sort(),
+    );
+  });
+
+  // fails without the fix: the superseded baselines stayed in the log for good.
+  it("gets back a log's superseded baselines at the next open, keeping its changes", async () => {
+    const projectDir = projectOf(3, "grown");
+    const historyRoot = tempDir("hf-first-copy-root-");
+    const first = await openProjectHistory({ projectDir, historyRoot });
+    writeFileSync(join(projectDir, "index.html"), "<html>edited</html>");
+    first.noteChange("index.html");
+    await first.checkpoint();
+    const entries = first.list().length;
+    await first.close();
+    const logFile = join(homeIn(historyRoot), "log.jsonl");
+    const lines = readFileSync(logFile, "utf-8").split("\n").filter(Boolean);
+    const baseline = lines.find((line) => JSON.parse(line).type === "baseline")!;
+    appendFileSync(logFile, `${baseline}\n${baseline}\n`);
+
+    const again = await openProjectHistory({ projectDir, historyRoot });
+    closes.push(() => again.close());
+    const kept = readFileSync(logFile, "utf-8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    expect(kept.filter((record) => record.type === "baseline")).toHaveLength(1);
+    expect(again.list()).toHaveLength(entries);
+  });
+
   it("loses nothing when the process dies midway: the next open finishes it", async () => {
     const projectDir = projectOf(120, "dies");
     const historyRoot = tempDir("hf-first-copy-root-");

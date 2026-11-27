@@ -17,7 +17,7 @@ import { findInjectedRenderFrame } from "./renderFrameSibling.js";
 import { ownsPausedVideoTime } from "./pausedVideoFrames";
 import { isRenderFrameVideo } from "./preloadMedia.js";
 import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
-import { cutToHostSlots, type HostSlot } from "../mediaTiming.js";
+import { cutToHostSlots, type HostSlot, wrapLoopedSourceTime } from "../mediaTiming.js";
 import {
   forgetSteering,
   markMediaRestarted,
@@ -360,9 +360,7 @@ export function mediaSourceTimeAt(clip: RuntimeMediaClip, timeSeconds: number): 
   const elapsed = Math.max(0, Math.min(timeSeconds, clip.end) - (clip.origin ?? clip.start));
   const target = clip.mediaStart + sourceTimeAt(clip.rate ?? clip.playbackRate, elapsed);
   if (clip.sourceDuration == null) return target;
-  const loopLength = clip.sourceDuration - clip.mediaStart;
-  if (clip.loop && loopLength > 0 && target >= clip.sourceDuration)
-    return clip.mediaStart + ((target - clip.mediaStart) % loopLength);
+  if (clip.loop) return wrapLoopedSourceTime(target, clip.mediaStart, clip.sourceDuration);
   // A non-loop video past its source holds the last frame.
   if (!clip.loop && clip.el.tagName === "VIDEO") return Math.min(target, clip.sourceDuration);
   return target;

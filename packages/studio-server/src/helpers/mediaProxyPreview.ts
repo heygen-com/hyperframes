@@ -37,7 +37,7 @@ export type PreviewApiAdapter = StudioApiAdapter & {
 };
 
 export interface PreviewDocumentStore {
-  read(key: string): string | null;
+  read(key: string): Promise<string | null> | string | null;
   write(key: string, html: string): void;
 }
 

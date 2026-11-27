@@ -67,6 +67,7 @@ export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";
 export const STUDIO_PREVIEW_ERROR_MESSAGE = "preview-error";
 export const STUDIO_PREVIEW_ERROR_KINDS = "__hfPreviewErrorKinds";
+export const STUDIO_PREVIEW_RETRY_AFTER = "__hfPreviewRetryAfter";
 export function previewConsoleErrorText(args: readonly unknown[]): string | null {
   const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
   return text.includes("favicon") ? null : text;
@@ -135,12 +136,8 @@ export interface PreviewTarget {
 }
 
 export function previewElementSourceFile(el: Element): string | undefined {
-  const ownerRoot = el.parentElement?.closest("[data-composition-id]");
-  return (
-    ownerRoot?.getAttribute("data-composition-file") ??
-    ownerRoot?.getAttribute("data-composition-src") ??
-    undefined
-  );
+  const host = el.parentElement?.closest("[data-composition-file]");
+  return host?.getAttribute("data-composition-file") || undefined;
 }
 
 export function previewElementFinder(

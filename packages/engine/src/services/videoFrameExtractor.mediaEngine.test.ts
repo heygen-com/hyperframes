@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -124,6 +124,60 @@ describe.skipIf(process.platform === "win32")("extraction decode on the Mac's me
     expect(errors[0]?.ffmpegReason).toBe(
       "[https @ 0x1] Opening '<url>' for reading | <path>: Invalid data found when processing input | Error opening output <path>",
     );
+  });
+
+  it("gives the lines ffmpeg said why in, not its closing summary", async () => {
+    probe.hasVideoToolbox = false;
+    // A folder where frame 3 goes: ffmpeg writes 2 frames, says it could not open the file, then sums up.
+    const out = join(dir, "blocked");
+    mkdirSync(join(out, "frame_00003.jpg"), { recursive: true });
+    const failure = await extractVideoFramesRange(
+      clips.h264,
+      "blocked",
+      0,
+      1,
+      { fps: 10, outputDir: dir, format: "jpg" },
+      undefined,
+      {},
+      out,
+    ).catch((error: unknown) => error as { ffmpegReason?: string });
+    const lines = failure.ffmpegReason?.split(" | ") ?? [];
+    expect(lines[0]).toMatch(/^\[image2 @ \w+\] Could not open file : <path>/);
+    expect(lines.at(-1)).toMatch(/\] Error muxing a packet$/);
+  });
+
+  it("keeps ffmpeg's last lines when it said nothing but its summary", async () => {
+    probe.hasVideoToolbox = false;
+    const stderr = [
+      "ffmpeg version 6.1.1 Copyright (c) 2000-2023 the FFmpeg developers",
+      "  built with gcc 13.3.0",
+      "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':",
+      "Stream mapping:",
+      "  Stream #0:0 -> #0:0 (h264 (native) -> mjpeg (native))",
+      "Press [q] to stop, [?] for help",
+      "[out#0/image2 @ 0x2] video:12kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: unknown",
+      "frame=    1 fps=0.3 q=2.0 Lsize=N/A time=00:00:00.03 bitrate=N/A speed=0.0111x    ",
+      "Conversion failed!",
+    ].join("\n");
+    const real = vi.mocked(runFfmpeg).getMockImplementation()!;
+    vi.mocked(runFfmpeg).mockImplementation(async (args, options) =>
+      args.includes("-vf")
+        ? { success: false, exitCode: 1, stderr, durationMs: 1, terminationReason: "exit" }
+        : real(args, options),
+    );
+    const failure = await extractVideoFramesRange(
+      clips.h264,
+      "summary",
+      0,
+      1,
+      { fps: 10, outputDir: dir },
+      undefined,
+      {},
+      join(dir, "summary"),
+    )
+      .catch((error: unknown) => error as { ffmpegReason?: string })
+      .finally(() => vi.mocked(runFfmpeg).mockImplementation(real));
+    expect(failure.ffmpegReason).toMatch(/video:12kB .* \| frame= .* \| Conversion failed!$/);
   });
 
   it("calls an extraction that filled the disk disk_full, not a source that cannot be decoded", async () => {

@@ -325,7 +325,7 @@ const MAX_PLAYLIST_DEPTH = 8;
 const MAX_WALK_BYTES = 2 * MAX_PLAYLIST_BYTES;
 const MAX_WALK_ENTRIES = 50_000;
 const HTTP_URL = /^https?:\/\//i;
-const COLON_IN_FIRST_SEGMENT = /^[^/\\?#]*:/;
+const OPENED_AS_WRITTEN = /^[^/?#]*:|:\/\//;
 const FOLDER_CUT_AT_QUERY_OR_FRAGMENT = /[?#]/;
 // ffmpeg reads a name with no path before its query or fragment as the list's own path plus that suffix.
 const NO_PATH = /^(?:[?#]|$)/;
@@ -454,7 +454,7 @@ function entryLeavesFolder(entry: string, base: string, folder: string): boolean
   if (HTTP_URL.test(entry)) return false;
   if (FOLDER_CUT_AT_QUERY_OR_FRAGMENT.test(base)) return true;
   return [entry, percentDecoded(entry)].some((path) => {
-    if (NO_PATH.test(path) || COLON_IN_FIRST_SEGMENT.test(path)) return true;
+    if (NO_PATH.test(path) || OPENED_AS_WRITTEN.test(path)) return true;
     if (isAbsolute(path) || path.startsWith("\\")) return true;
     const inside = relative(folder, resolve(base, path));
     return (

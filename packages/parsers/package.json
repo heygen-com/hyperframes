@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.9.93",
+  "version": "0.9.104",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -63,6 +63,12 @@
       "node": "./dist/linkedom.js",
       "import": "./src/linkedom.ts",
       "types": "./src/linkedom.ts"
+    },
+    "./postcss": {
+      "bun": "./src/postcss.ts",
+      "node": "./dist/postcss.js",
+      "import": "./src/postcss.ts",
+      "types": "./src/postcss.ts"
     },
     "./gsap-parser-recast": {
       "bun": "./src/gsapParser.ts",
@@ -233,6 +239,10 @@
         "import": "./dist/linkedom.js",
         "types": "./dist/linkedom.d.ts"
       },
+      "./postcss": {
+        "import": "./dist/postcss.js",
+        "types": "./dist/postcss.d.ts"
+      },
       "./gsap-parser-recast": {
         "import": "./dist/gsapParser.js",
         "types": "./dist/gsapParser.d.ts"
@@ -339,6 +349,7 @@
     "entities": "^7.0.1",
     "linkedom": "^0.18.12",
     "magic-string": "^0.30.21",
+    "postcss": "^8.5.8",
     "recast": "^0.23.11"
   },
   "devDependencies": {

@@ -6,22 +6,18 @@ import {
   previewDocumentCopy,
   previewFrameOpaque,
   previewRequest,
+  samePreviewLoad,
+  shownPreviewFrame,
 } from "../player/lib/previewChannel";
 import { editPreviewElement, queryPreviewElements } from "../player/lib/previewElements";
 import {
+  currentLoadHandle,
   findPreviewElementForSelection,
   findPreviewElementForTimelineElement,
 } from "../components/editor/previewSelection";
 import { patchDocumentRootDuration } from "./timelineEditingGsap";
 import { findTimelineElementInIframe } from "./timelineEditingHelpers";
-
-const sealedWrites = new WeakMap<HTMLIFrameElement, Promise<unknown>>();
-
-/** A sealed frame's timing writes and reads run one after another, in the order the edit made them. */
-function inOrder(iframe: HTMLIFrameElement, step: () => Promise<unknown>): void {
-  const next = (sealedWrites.get(iframe) ?? Promise.resolve()).then(step).catch(() => undefined);
-  sealedWrites.set(iframe, next);
-}
+import { inOrder, noteTimingPatch, writesWaiting } from "./sealedTimingQueue";
 
 export function patchIframeDomTiming(
   iframe: HTMLIFrameElement | null,
@@ -30,14 +26,21 @@ export function patchIframeDomTiming(
   activeCompositionPath: string | null = null,
 ): void {
   if (iframe && previewFrameOpaque(iframe)) {
-    inOrder(iframe, () => patchSealedTiming(iframe, element, attrs, activeCompositionPath));
+    inOrder(iframe, async () =>
+      noteTimingPatch(
+        iframe,
+        await patchSealedTiming(iframe, element, attrs, activeCompositionPath),
+      ),
+    );
     return;
   }
   try {
     const el = findTimelineElementInIframe(iframe, element, activeCompositionPath);
+    if (iframe) noteTimingPatch(iframe, el !== null);
     if (!el) return;
     applyAuthoredTiming(el, attrs);
   } catch {
+    if (iframe) noteTimingPatch(iframe, false);
     // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
   }
 }
@@ -70,32 +73,94 @@ async function patchSealedTiming(
   element: TimelineElement,
   attrs: Array<[string, string]>,
   activeCompositionPath: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const found = await findSealedTimelineElement(iframe, element, activeCompositionPath);
-  if (!found) return;
+  if (!found) return false;
   const attributes: Array<[string, string | null]> = [...attrs, [RUNTIME_STAMPED_ATTR, null]];
-  await editPreviewElement(iframe, found.handle, { attributes }).drawn;
+  return editPreviewElement(iframe, found.handle, { attributes }).drawn;
+}
+
+const frameRemovedHandles = new WeakMap<HTMLIFrameElement, Set<string>>();
+
+export function noteFrameRemovedHandles(
+  iframe: HTMLIFrameElement | null,
+  handles: readonly string[],
+): void {
+  if (!iframe || !handles.length) return;
+  const shown = shownPreviewFrame(iframe);
+  const held = frameRemovedHandles.get(shown) ?? new Set<string>();
+  for (const handle of handles) held.add(handle);
+  frameRemovedHandles.set(shown, held);
+}
+
+function consumeFrameRemovedHandles(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+): boolean {
+  const held = frameRemovedHandles.get(iframe);
+  if (!held || !handles.length || !handles.every((handle) => held.has(handle))) return false;
+  for (const handle of handles) held.delete(handle);
+  return true;
 }
 
 export function removeIframeTimelineElements(
-  iframe: HTMLIFrameElement | null,
+  given: HTMLIFrameElement | null,
   elements: TimelineElement[],
   activeCompositionPath: string | null = null,
+  selectedElements: ReadonlyMap<TimelineElement, Element> = new Map(),
 ): void {
-  if (iframe && previewFrameOpaque(iframe)) {
+  const iframe = given && shownPreviewFrame(given);
+  if (given && iframe && previewFrameOpaque(iframe)) {
+    const handles = elements.map((element) => {
+      const selected = selectedElements.get(element);
+      return selected && currentLoadHandle(iframe, selected);
+    });
+    const known = handles.length > 0 && handles.every((handle) => handle !== undefined);
+    if (known && consumeFrameRemovedHandles(iframe, handles)) {
+      inOrder(iframe, async () => syncContentDuration(iframe, await previewDocumentCopy(iframe)));
+      return;
+    }
+    if (writesWaiting(iframe) || !known) {
+      inOrder(iframe, () => removeSealedElements(iframe, elements, activeCompositionPath));
+      return;
+    }
+    const sameLoad = samePreviewLoad(iframe);
+    const removed = previewRequest(iframe, "remove-elements", { handles });
     inOrder(iframe, async () => {
-      const found = await Promise.all(
-        elements.map((element) =>
-          findSealedTimelineElement(iframe, element, activeCompositionPath),
-        ),
-      );
-      const handles = found.flatMap((element) => (element ? [element.handle] : []));
-      if (handles.length) await previewRequest(iframe, "remove-elements", { handles });
+      const answer = await removed;
+      const allRemoved = answer?.removed === handles.length;
+      if (!allRemoved || !sameLoad() || shownPreviewFrame(given) !== iframe)
+        return removeSealedElements(given, elements, activeCompositionPath, true);
+      await syncContentDuration(iframe, await previewDocumentCopy(iframe));
     });
     return;
   }
-  for (const element of elements)
-    findTimelineElementInIframe(iframe, element, activeCompositionPath)?.remove();
+  let removed = false;
+  for (const element of elements) {
+    const el = findTimelineElementInIframe(iframe, element, activeCompositionPath);
+    el?.remove();
+    removed ||= el !== null;
+  }
+  if (removed) void syncContentDuration(iframe, iframe?.contentDocument ?? null);
+}
+
+async function removeSealedElements(
+  given: HTMLIFrameElement,
+  elements: TimelineElement[],
+  activeCompositionPath: string | null,
+  retried = false,
+): Promise<void> {
+  const iframe = shownPreviewFrame(given);
+  const sameLoad = samePreviewLoad(iframe);
+  const found = await Promise.all(
+    elements.map((element) => findSealedTimelineElement(iframe, element, activeCompositionPath)),
+  );
+  if (!retried && (!sameLoad() || shownPreviewFrame(given) !== iframe))
+    return removeSealedElements(given, elements, activeCompositionPath, true);
+  const handles = found.flatMap((element) => (element ? [element.handle] : []));
+  if (!handles.length) return;
+  await previewRequest(iframe, "remove-elements", { handles });
+  await syncContentDuration(iframe, await previewDocumentCopy(iframe));
 }
 
 function patchIframeRootDuration(iframe: HTMLIFrameElement | null, contentEnd: number): void {

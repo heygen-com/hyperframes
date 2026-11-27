@@ -28,8 +28,9 @@ import {
   checkSubCompositionUsability,
   templateContent,
 } from "@hyperframes/parsers/sub-composition-validity";
-import { parseHTML } from "@hyperframes/parsers/linkedom";
+import { htmlReadUnlikeBrowserFinding, parseLintHtml } from "./readableHtml.js";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import {
   cleanAssetUrl,
   collectSubCompositionSrcs,
@@ -65,9 +66,9 @@ import type {
 import type { ParsableDocumentLike } from "@hyperframes/parsers/sub-composition-validity";
 import { isAudibleVideo, isAudibleVideoTag, mediaSrcOf, mediaSrcTagRe } from "./utils";
 
-/** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
+/** Adapts `parseLintHtml` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtml(html: string): ParsableDocumentLike {
-  return parseHTML(html).document as unknown as ParsableDocumentLike;
+  return parseLintHtml(html).document as unknown as ParsableDocumentLike;
 }
 
 /** The file a source was read from, as per-file findings carry it. */
@@ -212,7 +213,7 @@ function collectExternalStyles(
   reader: LinkedFileReader,
 ): NonNullable<HyperframeLinterOptions["externalStyles"]> {
   const styles: NonNullable<HyperframeLinterOptions["externalStyles"]> = [];
-  const { document } = parseHTML(html);
+  const { document } = parseLintHtml(html);
   for (const { href, content, rootRelativePath } of collectLocalStylesheets(
     projectDir,
     document,
@@ -254,7 +255,7 @@ function collectExternalScripts(
 ): Pick<HyperframeLinterOptions, "externalScripts" | "scriptsOutsideProjectUnread"> {
   const scripts: NonNullable<HyperframeLinterOptions["externalScripts"]> = [];
   const scriptsOutsideProjectUnread: string[] = [];
-  const { document } = parseHTML(html);
+  const { document } = parseLintHtml(html);
   for (const element of querySelectorAllIncludingTemplates(document, "script[src]")) {
     const src = element.getAttribute("src") ?? "";
     if (!isLocalStylesheetHref(src) || /\.min\.m?js(?:[?#]|$)/i.test(src)) continue;
@@ -294,7 +295,7 @@ function collectExternalScripts(
 
 function collectCssSources(projectDir: string, html: string, compSrcPath?: string): CssSource[] {
   const sources: CssSource[] = [];
-  const { document } = parseHTML(html);
+  const { document } = parseLintHtml(html);
 
   for (const style of querySelectorAllIncludingTemplates(document, "style")) {
     sources.push({ content: style.textContent ?? "" });
@@ -347,7 +348,7 @@ function mountedSources(
   const sources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
   const seen = new Set<string>();
   for (const source of sources) {
-    const { document } = parseHTML(source.html);
+    const { document } = parseLintHtml(source.html);
     for (const host of querySelectorAllIncludingTemplates(document, "[data-composition-src]")) {
       const src = host.getAttribute("data-composition-src")?.trim();
       if (!src || longerThanAnyPath(src)) continue;
@@ -369,7 +370,7 @@ function mountedSources(
 function declaredProjectFontFamilies(projectDir: string, sources: HtmlSource[]): string[] {
   const families = new Set<string>();
   for (const { html, compSrcPath } of sources) {
-    const { document } = parseHTML(html);
+    const { document } = parseLintHtml(html);
     const styles = [
       ...querySelectorAllIncludingTemplates(document, "style").map((style) => ({
         content: style.textContent ?? "",
@@ -518,7 +519,7 @@ function lintBlankRootWithStandaloneComposition(
   rootHtml: string,
   htmlSources: HtmlSource[],
 ): HyperframeLintFinding[] {
-  const { document: rootDocument } = parseHTML(rootHtml);
+  const { document: rootDocument } = parseLintHtml(rootHtml);
   const root = rootDocument.querySelector("body [data-composition-id]");
   // A no-media scaffold has no rendered descendants and can silently mask an authored file below.
   // A scaffold that retained its A-roll <video>/<audio> is visibly non-blank, so this rule leaves it
@@ -530,7 +531,7 @@ function lintBlankRootWithStandaloneComposition(
   const standaloneCandidates: string[] = [];
   for (const source of htmlSources) {
     if (!source.compSrcPath) continue;
-    const { document } = parseHTML(source.html);
+    const { document } = parseLintHtml(source.html);
     const composition = document.querySelector("body [data-composition-id]");
     if (!composition) continue;
     const authoredTimedContent = Array.from(
@@ -751,7 +752,7 @@ function lintTextureMaskAssetNotFound(
     for (const cssSource of collectCssSources(projectDir, html, compSrcPath)) {
       let matches: CssUrlMatch[] = [];
       try {
-        postcss.parse(cssSource.content).walkDecls(/^(?:-webkit-)?mask-image$/i, (declaration) => {
+        parseCss(cssSource.content).walkDecls(/^(?:-webkit-)?mask-image$/i, (declaration) => {
           matches.push(...bareOrQuotedCssUrlMatches(declaration.value));
         });
       } catch (error) {
@@ -814,12 +815,12 @@ function lintLinkedStylesheetAssets(
   for (const { html, compSrcPath } of htmlSources) {
     for (const { content, rootRelativePath } of collectLocalStylesheets(
       projectDir,
-      parseHTML(html).document,
+      parseLintHtml(html).document,
       compSrcPath,
     )) {
       let root: postcss.Root;
       try {
-        root = postcss.parse(content);
+        root = parseCss(content);
       } catch (error) {
         if (!(error instanceof postcss.CssSyntaxError)) throw error;
         continue;
@@ -910,7 +911,7 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
   const spans: AudioSpan[] = [];
   type Placement = { file: TimingFile; origin: number; slots: HostSlot[]; mounting: string[] };
   const mount = (html: string, at: Omit<Placement, "file">) => {
-    const { document } = parseHTML(html);
+    const { document } = parseLintHtml(html);
     const root = querySelectorAllIncludingTemplates(document, "[data-composition-id]")[0];
     if (root) visit(root, { ...at, file: timingFile(document) });
   };
@@ -940,7 +941,7 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
       visit(el, inner);
     }
   };
-  const { document } = parseHTML(rootHtml);
+  const { document } = parseLintHtml(rootHtml);
   visit(document, { file: timingFile(document), origin: 0, slots: [], mounting: [] });
   return spans;
 }
@@ -1089,7 +1090,10 @@ function lintMissingOrEmptySubComposition(
       }
 
       const fileHtml = read.text;
-      const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtml);
+      const refusal = htmlReadUnlikeBrowserFinding(fileHtml);
+      const validity = refusal
+        ? { ok: false, detail: `the parser refuses it. ${refusal.message.replace(/\.$/, "")}` }
+        : checkSubCompositionUsability(fileHtml, parseSubCompHtml);
       if (!validity.ok) {
         if (!checked.has(srcPath)) {
           checked.set(srcPath, {

@@ -3,6 +3,7 @@
  * module gives it and the plain data `describeElement` reads from it. Handles live for one page load:
  * the maps are module state, and an entry goes once its element is garbage-collected.
  */
+import { isDragChromeHost } from "./editing/dragChrome";
 import {
   buildStableSelector,
   MAX_DESCRIBE_HANDLES,
@@ -212,6 +213,19 @@ export function ancestorHandles(
   });
 }
 
+export function readEveryMatch<T>(
+  selector: string,
+  read: (element: Element) => T,
+): { matches: Array<T | null>; truncated: boolean } {
+  const matches: Array<T | null> = [];
+  for (const element of document.querySelectorAll(selector)) {
+    if (isDragChromeHost(element)) continue;
+    if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
+    matches.push(boundedSource(element) ? read(element) : null);
+  }
+  return { matches, truncated: false };
+}
+
 export function queryElements(selector: string): {
   matches: EditingElementMatch[];
   truncated: boolean;
@@ -219,6 +233,7 @@ export function queryElements(selector: string): {
   const matches: EditingElementMatch[] = [];
   let truncated = false;
   for (const element of document.querySelectorAll(selector)) {
+    if (isDragChromeHost(element)) continue;
     if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
     const source = boundedSource(element);
     if (source) matches.push({ handle: handleFor(element), source });

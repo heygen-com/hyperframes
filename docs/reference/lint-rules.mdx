@@ -224,6 +224,12 @@ stylesheet links in `<head>`, so those styles never apply in preview, snapshot o
 
 **Fix:** Use hardcoded string selectors instead of interpolated ones.
 
+### `three_d_layer_far_larger_than_stage`
+
+**Warning.** An element with a 3D transform (`rotateX`, `rotateY`, `translateZ`, `perspective()` and similar) is more than 4 times the stage area. A 3D-transformed layer is drawn nearly whole, not only the part on stage, so it holds GPU memory for pixels nobody sees, and in an editor's preview it can blank the editor's own panels.
+
+**Fix:** Size the element to what the camera can see, or use a repeating background on a stage-sized element.
+
 ### `timed_element_missing_clip_class`
 
 **Warning.** An element has timing attributes but no `class="clip"`. The runtime still times it, but the browser editor and the clip-ownership rules use `.clip` to recognise it, so it is harder to edit and to lint.
@@ -278,6 +284,12 @@ The preview slows to a crawl.
 
 **Fix:** Let the runtime hide hidden clips; it already hides their contents.
 For a state of your own, toggle a class or data attribute from your script and select on that.
+
+### `html_read_unlike_browser`
+
+**Error.** The file holds markup that a browser reads differently from HyperFrames' HTML reader. One example is tags or comments in a `title`, `style`, `script`, `textarea` or `xmp` inside an `<svg>` or `<math>` element. Preview, render and edit all refuse the file. Lint reports this one error for the file and lints the rest of the project. The message names what was found.
+
+**Fix:** Keep only plain text in the element the message names, with no tags or comments.
 
 ### `invalid_inline_script_syntax`
 

@@ -33,6 +33,7 @@ import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
 import { parsePatchTweensRequest, type PatchTweensParams } from "./editing/patchTween";
 import { parseDraftEnd, type EditingDraftEnd, type EditingDraftReply } from "./editingDraftEnd";
+import { parseDragChrome, type EditingDragChrome } from "./editing/dragChrome";
 import {
   parseRestoreAttributesRerun,
   parseSoftReload,
@@ -90,14 +91,40 @@ import {
   type EditElementResult,
 } from "./editing/editElement";
 import {
+  parseStageMeasureParams,
+  type StageMeasureParams,
+  type StageMeasureResult,
+} from "./editing/stageMeasure";
+import {
+  parseStageActParams,
+  stageActReadyEvent,
+  stageInputEvent,
+  type StageActParams,
+  type StageActReadyEvent,
+  type StageActResult,
+  type StageInputEvent,
+} from "./editing/stageAct";
+import {
   parseTextEdit,
+  textEditAwayEvent,
   textEditEndedEvent,
   textEditSelectionEvent,
+  type TextEditAwayEvent,
   type TextEditEndedEvent,
   type TextEditSelectionEvent,
   type TextEditParams,
   type TextEditResult,
 } from "./editing/textEdit";
+import {
+  canvasKeyActionEvent,
+  parseArmCanvasKeys,
+  parseResolveCanvasKeyAction,
+  type ArmCanvasKeysParams,
+  type ArmCanvasKeysResult,
+  type CanvasKeyActionEvent,
+  type ResolveCanvasKeyActionParams,
+  type ResolveCanvasKeyActionResult,
+} from "./editing/canvasKeys";
 
 export {
   buildStableSelector,
@@ -141,6 +168,46 @@ export {
 } from "./editingGeometry";
 export type { EditingGestureBase, EditingGestureStart } from "./editingGestureStart";
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
+export { MAX_EDIT_ENTRIES } from "./editing/editElement";
+export {
+  MAX_DRAG_CHROME_BYTES,
+  MAX_DRAG_CHROME_NODES,
+  parseDragChrome,
+  type EditingDragChrome,
+  type EditingDragChromeNode,
+} from "./editing/dragChrome";
+export { MAX_FONT_FACES } from "./editing/textStyleReads";
+export {
+  MAX_STAGE_CLIP_KEYS,
+  MAX_STAGE_ITEMS,
+  type StageMeasuredItem,
+  type StageMeasureParams,
+  type StageMeasureResult,
+  type StageTextStart,
+} from "./editing/stageMeasure";
+export {
+  isStageColour,
+  MAX_STAGE_ACTS,
+  readStageActHeld,
+  readStageRect,
+  STAGE_ACT_BORROWS,
+  STAGE_ACT_STYLES,
+  type StageActBorrow,
+  type StageActDraw,
+  type StageActElementHold,
+  type StageActGhostHold,
+  type StageActHeld,
+  type StageActHold,
+  type StageActParams,
+  type StageActReadyEvent,
+  type StageActRect,
+  type StageActResult,
+  type StageActStyle,
+  type StageActTarget,
+  type StageInputEvent,
+} from "./editing/stageAct";
+export { MAX_STAGE_GHOST_MARKUP, type StageActGhost } from "./editing/stageGhost";
+export { rotateBy, scaleBy, translateBy } from "./editing/transformValues";
 export {
   MAX_SNAPSHOT_CHANNELS,
   MAX_SNAPSHOT_FIELDS,
@@ -148,6 +215,8 @@ export {
   MAX_SNAPSHOT_TEXT,
   MAX_SNAPSHOT_TWEENS,
   MAX_VARS_DEPTH,
+  TARGET_FIELDS,
+  TIMELINE_FIELDS,
 } from "./editing/gsapSnapshotLimits";
 export {
   compositionPoint,
@@ -223,9 +292,15 @@ export const EDITING_REQUEST_KINDS = [
   "mark-scenes-stale",
   "swap-scenes",
   "live-retime",
+  "rebind-timing",
   "assets-unloaded",
   "text-edit",
   "serve-paused-frames",
+  "frame-presented",
+  "arm-canvas-keys",
+  "resolve-canvas-key-action",
+  "stage-measure",
+  "stage-act",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -290,6 +365,8 @@ export type EditingDraft =
   | EditingDraftEnd;
 
 type NoParams = Record<string, never>;
+export type FramePresentedParams = { waitMs?: number };
+const MAX_FRAME_PRESENTED_WAIT_MS = 15_000;
 export interface EditingRequests {
   hello: {
     params: NoParams;
@@ -302,8 +379,16 @@ export interface EditingRequests {
   "set-loop-start": { params: { seconds: number | null }; result: { applied: boolean } };
   /** The element `selector` first matches, or `handle` names. `styles` is null for none; empty values are left out. */
   "computed-styles": {
-    params: ({ selector: string } | { handle: EditingElementHandle }) & { properties: string[] };
-    result: { styles: Record<string, string> | null };
+    params: (
+      | { selector: string }
+      | { handle: EditingElementHandle }
+      | { selector: string; every: true }
+    ) & { properties: string[] };
+    result: {
+      styles: Record<string, string> | null;
+      matches?: Array<Record<string, string> | null>;
+      truncated?: boolean;
+    };
   };
   "authored-styles": {
     params: { handle: EditingElementHandle; properties: string[] };
@@ -352,9 +437,9 @@ export interface EditingRequests {
     params: { group?: EditingElementHandle; offset?: number };
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
-  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
+  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES, and the chrome painted with them (null clears it). */
   draft: {
-    params: { drafts: EditingDraft[] };
+    params: { drafts: EditingDraft[]; chrome?: EditingDragChrome };
     result: EditingDraftReply & { gsapSetTakesDrafts?: true };
   };
   "gesture-start": {
@@ -410,10 +495,20 @@ export interface EditingRequests {
   "mark-scenes-stale": { params: MarkScenesStaleParams; result: { marked: true } };
   "swap-scenes": { params: SwapScenesParams; result: SwapScenesResult };
   "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
+  "rebind-timing": { params: { time: number }; result: { rebound: boolean } };
   "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
   "text-edit": { params: TextEditParams; result: TextEditResult };
   /** Studio's paused-frame decoding port (`editing/pausedFrames.ts`); false when no runtime can use it. */
   "serve-paused-frames": { params: { channel: MessagePort }; result: { served: boolean } };
+  "frame-presented": { params: FramePresentedParams; result: { presented: boolean } };
+  "arm-canvas-keys": { params: ArmCanvasKeysParams; result: ArmCanvasKeysResult };
+  "resolve-canvas-key-action": {
+    params: ResolveCanvasKeyActionParams;
+    result: ResolveCanvasKeyActionResult;
+  };
+  "stage-measure": { params: StageMeasureParams; result: StageMeasureResult };
+  /** Holds, draws and gives back Studio's stage acts inside the frame (`editing/stageAct.ts`). */
+  "stage-act": { params: StageActParams; result: StageActResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -455,6 +550,23 @@ const hasKeys = (params: unknown, keys: string): params is Record<string, unknow
 const noParams = (params: unknown): NoParams | null =>
   params === undefined || (isPlainRecord(params) && Object.keys(params).length === 0) ? {} : null;
 
+function parseFramePresented(params: unknown): FramePresentedParams | null {
+  if (noParams(params)) return {};
+  if (!hasKeys(params, "waitMs")) return null;
+  const { waitMs } = params;
+  const bounded =
+    typeof waitMs === "number" &&
+    Number.isFinite(waitMs) &&
+    waitMs > 0 &&
+    waitMs <= MAX_FRAME_PRESENTED_WAIT_MS;
+  return bounded ? { waitMs } : null;
+}
+
+const clientWaitPastFrameDeadline = (kind: EditingRequestKind, params: unknown): number =>
+  kind === "frame-presented" && isPlainRecord(params) && typeof params.waitMs === "number"
+    ? params.waitMs + 1_000
+    : 0;
+
 const isSelector = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= MAX_SELECTOR_LENGTH;
 const isHandle = (value: unknown): value is EditingElementHandle =>
@@ -462,10 +574,16 @@ const isHandle = (value: unknown): value is EditingElementHandle =>
 
 function styleTarget(params: Record<string, unknown>) {
   const keys = Object.keys(params).sort().join();
-  const { selector, handle } = params;
+  const { selector, handle, every, properties } = params;
   if (keys === "properties,selector" && isSelector(selector)) return { selector };
+  if (keys === "every,properties,selector" && every === true && isSelector(selector))
+    return everyMatchProperties(properties) ? { selector, every } : null;
   return keys === "handle,properties" && isHandle(handle) ? { handle } : null;
 }
+
+const EVERY_MATCH_STYLES: readonly string[] = ["display"];
+const everyMatchProperties = (properties: unknown) =>
+  Array.isArray(properties) && properties.every((name) => EVERY_MATCH_STYLES.includes(name));
 
 function styleProperties(properties: unknown): string[] | null {
   if (!Array.isArray(properties) || properties.length > MAX_STYLE_PROPERTIES) return null;
@@ -595,14 +713,22 @@ function gsapSetWithDrafts(params: unknown): GsapSetParams | null {
   if (!isPlainRecord(params) || !("drafts" in params)) return parseGsapSet(params);
   const { drafts, ...set } = params;
   const parsed = parseGsapSet(set);
-  const drawn = draftList({ drafts });
+  const drawn = draftsOnly({ drafts });
   return parsed && drawn ? { ...parsed, drafts: drawn.drafts } : null;
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {
+  if (!isPlainRecord(params) || !("chrome" in params)) return draftsOnly(params);
+  const { chrome, ...rest } = params;
+  const drawn = draftsOnly(rest, true);
+  const parsed = parseDragChrome(chrome);
+  return drawn && parsed !== undefined ? { ...drawn, chrome: parsed } : null;
+}
+
+function draftsOnly(params: unknown, chromeOnly = false): { drafts: EditingDraft[] } | null {
   if (!hasKeys(params, "drafts") || !Array.isArray(params.drafts)) return null;
   const { drafts } = params;
-  if (!drafts.length || drafts.length > MAX_DESCRIBE_HANDLES) return null;
+  if ((!drafts.length && !chromeOnly) || drafts.length > MAX_DESCRIBE_HANDLES) return null;
   const parsed = drafts.map(draftEntry);
   return parsed.includes(null) ? null : { drafts: parsed as EditingDraft[] };
 }
@@ -713,13 +839,36 @@ const PARAM_PARSERS: {
   "mark-scenes-stale": parseMarkScenesStale,
   "swap-scenes": parseSwapScenes,
   "live-retime": parseLiveRetime,
+  "rebind-timing": (params) => {
+    if (!isPlainRecord(params) || Object.keys(params).join() !== "time") return null;
+    const { time } = params;
+    return typeof time === "number" && Number.isFinite(time) && time >= 0 ? { time } : null;
+  },
   "assets-unloaded": noParams,
   "text-edit": parseTextEdit,
   "serve-paused-frames": (params) =>
     hasKeys(params, "channel") && params.channel instanceof MessagePort
       ? { channel: params.channel }
       : null,
+  "frame-presented": parseFramePresented,
+  "arm-canvas-keys": parseArmCanvasKeys,
+  "resolve-canvas-key-action": parseResolveCanvasKeyAction,
+  "stage-measure": parseStageMeasureParams,
+  "stage-act": parseStageActParams,
 };
+
+/** Hands a push to its listeners when `parse` reads it as their event; false when it is not one. */
+function pushRoute<E>(
+  listeners: Set<(event: E) => void>,
+  parse: (data: Record<string, unknown>) => E | null | false | undefined,
+): (data: Record<string, unknown>) => boolean {
+  return (data) => {
+    const event = parse(data);
+    if (!event) return false;
+    listeners.forEach((listener) => listener(event));
+    return true;
+  };
+}
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
 export function parseEditingRequest(data: unknown): ParsedEditingRequest {
@@ -760,7 +909,11 @@ export interface EditingPortClient {
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
+  onTextEditAway(listener: (event: TextEditAwayEvent) => void): () => void;
   onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
+  onCanvasKeyAction(listener: (event: CanvasKeyActionEvent) => void): () => void;
+  onStageActReady(listener: (event: StageActReadyEvent) => void): () => void;
+  onStageInput(listener: (event: StageInputEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -822,7 +975,11 @@ export function createEditingPortClient(options: {
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
+  const awayListeners = new Set<(event: TextEditAwayEvent) => void>();
   const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
+  const canvasKeyActionListeners = new Set<(event: CanvasKeyActionEvent) => void>();
+  const stageReadyListeners = new Set<(event: StageActReadyEvent) => void>();
+  const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
@@ -843,16 +1000,18 @@ export function createEditingPortClient(options: {
     if ("error" in outcome) entry.reject(outcome.error);
     else entry.resolve(outcome.result);
   };
-  const onPush = (data: Record<string, unknown>) => {
-    const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
-    if (key) return keyListeners.forEach((listener) => listener(key));
-    const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
-    if (geometry) return geometryListeners.forEach((listener) => listener(geometry));
-    const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
-    if (ended) return textEditListeners.forEach((listener) => listener(ended));
-    const selected = textEditSelectionEvent(data, EDITING_PROTOCOL_VERSION);
-    if (selected) selectionListeners.forEach((listener) => listener(selected));
-  };
+  const v = EDITING_PROTOCOL_VERSION;
+  const pushRoutes = [
+    pushRoute(keyListeners, (d) => d.v === v && d.event === "key" && keyEvent(d.key)),
+    pushRoute(geometryListeners, (d) => geometryEvent(d, v)),
+    pushRoute(textEditListeners, (d) => textEditEndedEvent(d, v)),
+    pushRoute(awayListeners, (d) => textEditAwayEvent(d, v)),
+    pushRoute(selectionListeners, (d) => textEditSelectionEvent(d, v)),
+    pushRoute(canvasKeyActionListeners, (d) => canvasKeyActionEvent(d, v)),
+    pushRoute(stageReadyListeners, (d) => stageActReadyEvent(d, v)),
+    pushRoute(stageInputListeners, (d) => stageInputEvent(d, v)),
+  ];
+  const onPush = (data: Record<string, unknown>) => void pushRoutes.some((route) => route(data));
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
     if (!isPlainRecord(data)) return;
@@ -888,7 +1047,8 @@ export function createEditingPortClient(options: {
       if (disposed) return Promise.reject(new EditingPortError("disposed", "client disposed"));
       const id = ++lastId;
       if (kind === "watch-geometry") watchedGeometry = true;
-      const limit = requestOptions?.timeoutMs ?? timeoutMs;
+      const limit =
+        requestOptions?.timeoutMs ?? Math.max(timeoutMs, clientWaitPastFrameDeadline(kind, params));
       const result = new Promise<unknown>((resolve, reject) => {
         const timer = wallSetTimeout(
           () => settle(id, { error: new EditingPortError("timeout", `${kind} timed out`) }),
@@ -923,9 +1083,25 @@ export function createEditingPortClient(options: {
       textEditListeners.add(listener);
       return () => textEditListeners.delete(listener);
     },
+    onTextEditAway(listener) {
+      awayListeners.add(listener);
+      return () => awayListeners.delete(listener);
+    },
     onTextEditSelection(listener) {
       selectionListeners.add(listener);
       return () => selectionListeners.delete(listener);
+    },
+    onCanvasKeyAction(listener) {
+      canvasKeyActionListeners.add(listener);
+      return () => canvasKeyActionListeners.delete(listener);
+    },
+    onStageActReady(listener) {
+      stageReadyListeners.add(listener);
+      return () => stageReadyListeners.delete(listener);
+    },
+    onStageInput(listener) {
+      stageInputListeners.add(listener);
+      return () => stageInputListeners.delete(listener);
     },
     dispose() {
       if (disposed) return;
@@ -933,7 +1109,11 @@ export function createEditingPortClient(options: {
       keyListeners.clear();
       geometryListeners.clear();
       textEditListeners.clear();
+      awayListeners.clear();
       selectionListeners.clear();
+      canvasKeyActionListeners.clear();
+      stageReadyListeners.clear();
+      stageInputListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
@@ -950,14 +1130,33 @@ export function createEditingPortClient(options: {
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
 export {
+  MAX_CANVAS_KEY_COMBOS,
+  type ArmCanvasKeysParams,
+  type ArmCanvasKeysResult,
+  type CanvasKeyActionEvent,
+  type CanvasKeyNudgeCombo,
+  type ResolveCanvasKeyActionParams,
+  type ResolveCanvasKeyActionResult,
+} from "./editing/canvasKeys";
+export {
   caretRangeAt,
   takePlainTextOnly,
   textEditResult,
+  type TextEditAwayEvent,
   type TextEditEndedEvent,
+  type TextEditCaret,
   type TextEditResult,
   type TextEditSelection,
   type TextEditSelectionEvent,
 } from "./editing/textEdit";
+export {
+  caretBoxIn,
+  caretColorOf,
+  caretSideAfterKey,
+  placeCaretAtEnd,
+  type CaretBox,
+  type CaretSide,
+} from "./editing/textCaret";
 export {
   parsePausedFrameAsk,
   PAUSED_FRAME_BYTES,

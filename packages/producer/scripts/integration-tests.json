@@ -5,6 +5,7 @@
   "src/regression-harness-audio.test.ts",
   "src/services/bundleScriptPolicy.test.ts",
   "src/services/coreRuntimeBrowser.test.ts",
+  "src/services/renderPageEditingPort.test.ts",
   "src/services/hiddenClipCascade.test.ts",
   "src/services/heifImagePrep.test.ts",
   "src/services/htmlCompiler.heif.test.ts",
@@ -72,5 +73,6 @@
   "src/services/render/planReferenceBackground.polling.test.ts",
   "src/services/render/deferredVideoFrames.integration.test.ts",
   "src/services/render/stages/extractVideosStage.integration.test.ts",
+  "src/services/render/stages/runtimeAudio.integration.test.ts",
   "src/services/render/videoShownBoxes.integration.test.ts"
 ]

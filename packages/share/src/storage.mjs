@@ -37,13 +37,13 @@ export const rename = (from, to) => retryBusy(() => renameFile(from, to));
 /** @param {string} path @param {import("node:fs").RmOptions} [options] */
 export const rm = (path, options) => retryBusy(() => remove(path, options));
 
-/** Create metadata folders only inside an existing project. @param {string} root @param {string} rel */
-export async function mkdirInside(root, rel) {
+/** Create metadata folders inside an existing root. @param {string} root @param {string} rel @param {number} [mode] */
+export async function mkdirInside(root, rel, mode) {
   let dir = root;
   for (const part of rel.split(sep).filter(Boolean)) {
     if (part === ".." || part === ".") throw new Error("Invalid metadata directory.");
     dir = join(dir, part);
-    await mkdir(dir).catch((error) => {
+    await mkdir(dir, { mode }).catch((error) => {
       if (errorCode(error) !== "EEXIST") throw error;
     });
     if (!(await lstat(dir)).isDirectory())

@@ -14,6 +14,15 @@ describe("parseHTML", () => {
     "<math><title><!-- </title><img src=x onerror=f()> --></title></math>",
     "<svg><style><![CDATA[ a{} ]]><!-- </style><img src=x onerror=f()> --></style></svg>",
     `<template><div>${HIDDEN}</div></template>`,
+    "<noscript><!-- </noscript><img src=x onerror=f()> --></noscript>",
+    '<noscript><b title="</noscript><img src=x onerror=f()>"></b></noscript>',
+    "<NOSCRIPT><!-- </NOSCRIPT ><img src=x onerror=f()> --></NOSCRIPT>",
+    "<template><noscript><!-- </noscript/><img src=x onerror=f()> --></noscript></template>",
+    "<iframe><!-- </iframe><img src=x onerror=f()> --></iframe>",
+    "<noembed><!-- </noembed><img src=x onerror=f()> --></noembed>",
+    "<noframes><!-- </noframes><img src=x onerror=f()> --></noframes>",
+    "<p><!-- --!><img src=x onerror=f()> --></p>",
+    "<template><p><!-- --!><img src=x onerror=f()> --></p></template>",
   ])("refuses %s, which a browser reads differently", (body) => {
     expect(() => parseHTML(page(body))).toThrow(READ_UNLIKE_BROWSER);
     expect(() => new DOMParser().parseFromString(page(body), "text/html")).toThrow(
@@ -29,6 +38,10 @@ describe("parseHTML", () => {
     "<template></template>",
     "<svg><foreignObject><title>a <b> c</title></foreignObject></svg>",
     '<svg><style><![CDATA[ a::after { content: "<b>" } ]]></style></svg>',
+    "<noscript><p>Turn on JavaScript</p><!-- a note --></noscript>",
+    '<iframe title="frame"></iframe><noscript>&lt;/noscript&gt;</noscript>',
+    "<noscript><!-- </noscripts> --></noscript>",
+    '<script>const end = "--!>";</script><p><!-- a -- b --></p>',
   ])("reads %s as linkedom does", (body) => {
     const { document } = parseHTML(page(body));
     expect(document.querySelectorAll("img")).toHaveLength(0);

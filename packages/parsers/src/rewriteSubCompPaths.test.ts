@@ -124,6 +124,14 @@ describe("rewriteAssetPath", () => {
       expect(rewriteAssetPath("compositions/scene.html", "../icon.svg", exists)).toBe("icon.svg");
     });
 
+    // fails without the fix: only the decoded sibling was probed, so the URL kept pointing at the root
+    it("finds a sibling whose own name holds the escape, as written", () => {
+      const literal = (p: string) => p === "compositions/clips/My%20Video.mp4";
+      expect(rewriteAssetPath("compositions/intro.html", "clips/My%20Video.mp4#t=1", literal)).toBe(
+        "compositions/clips/My%2520Video.mp4#t=1",
+      );
+    });
+
     it("is a no-op without the probe (unchanged default)", () => {
       expect(rewriteAssetPath("design/styleframes/frame-01.html", "_shared.css")).toBe(
         "_shared.css",

@@ -9,17 +9,10 @@ import { elementForHandle } from "./editingHandles";
 import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
 import type { EditingDraft, EditingDraftProps, EditingDraftRotate } from "./editingPort";
 import { revealClip } from "./clipReveal";
+import { clearDragChrome, drawDragChrome, type EditingDragChrome } from "./editing/dragChrome";
+import { computedTranslateAxes, movedTranslate, SIZE_PROPERTIES, writeDrawnSize } from "./drawnBox";
 import type { RuntimeTimelineLike } from "./types";
 
-export const SIZE_PROPERTIES = [
-  "box-sizing",
-  "width",
-  "height",
-  "min-width",
-  "min-height",
-  "max-width",
-  "max-height",
-] as const;
 const DRAWN = ["translate", "rotate", "transform", ...SIZE_PROPERTIES] as const;
 
 interface Before {
@@ -56,49 +49,6 @@ const before = new WeakMap<Element, Before>();
 const liveDrafts = new Map<Styled, EditingDraft>();
 let lastDraft = 0;
 
-/** "calc(50% + 2px) 4px" as its top-level parts. */
-function axes(value: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let part = "";
-  for (const char of value.trim()) {
-    depth += char === "(" ? 1 : char === ")" ? -1 : 0;
-    if (/\s/.test(char) && depth === 0) {
-      if (part) parts.push(part);
-      part = "";
-    } else part += char;
-  }
-  if (part) parts.push(part);
-  return parts;
-}
-
-/** The side a translate's % takes a share of: the box `transform-box` names. */
-function percentSide(computed: CSSStyleDeclaration, size: "width" | "height"): number {
-  const [a, b] = size === "width" ? ["left", "right"] : ["top", "bottom"];
-  const n = (name: string) => Number.parseFloat(computed.getPropertyValue(name)) || 0;
-  const pad =
-    n(`padding-${a}`) + n(`padding-${b}`) + n(`border-${a}-width`) + n(`border-${b}-width`);
-  const content = n(size) - (computed.getPropertyValue("box-sizing") === "border-box" ? pad : 0);
-  const box = computed.getPropertyValue("transform-box");
-  return box === "content-box" || box === "fill-box" ? content : content + pad;
-}
-
-/** Each % as the px it is now, so a resize drawn with it does not move the element again. */
-function percentAsPx(axis: string, side: number): string {
-  return axis.replace(
-    /(-?\d*\.?\d+(?:e[-+]?\d+)?)%/gi,
-    (_, n: string) => `${(Number(n) * side) / 100}px`,
-  );
-}
-
-export function computedTranslateAxes(element: Styled): string[] {
-  const computed = getComputedStyle(element);
-  const translate = computed.getPropertyValue("translate");
-  if (!translate || translate === "none") return [];
-  const sides = [percentSide(computed, "width"), percentSide(computed, "height")];
-  return axes(translate).map((axis, i) => (i < 2 ? percentAsPx(axis, sides[i]!) : axis));
-}
-
 function beforeOf(element: Styled): Before {
   let saved = before.get(element);
   if (!saved) {
@@ -124,13 +74,6 @@ function restore(element: Styled, names: readonly string[]): void {
     if (value) element.style.setProperty(name, value, priority);
     else element.style.removeProperty(name);
   }
-}
-
-export function movedTranslate(
-  [x = "0px", y = "0px", z]: string[],
-  offset: { x: number; y: number },
-) {
-  return `calc(${x} + ${offset.x}px) calc(${y} + ${offset.y}px)${z ? ` ${z}` : ""}`;
 }
 
 type DraftTranslate = NonNullable<Extract<EditingDraft, { translate: unknown }>["translate"]>;
@@ -177,17 +120,6 @@ function redrawTimelines(): void {
     seekGsapTimeline(timeline, 0, true);
     seekGsapTimeline(timeline, time, true);
   }
-}
-
-export function writeDrawnSize(
-  style: CSSStyleDeclaration,
-  size: { width: number; height: number },
-): void {
-  style.setProperty("box-sizing", "border-box");
-  style.setProperty("width", `${size.width}px`);
-  style.setProperty("height", `${size.height}px`);
-  for (const name of ["min-width", "min-height"]) style.setProperty(name, "0px");
-  for (const name of ["max-width", "max-height"]) style.setProperty(name, "none");
 }
 
 function drawSize(element: Styled, size: { width: number; height: number }): void {
@@ -314,8 +246,11 @@ function redrawKeepingLiveDrafts(): void {
   putLiveDraftsBack();
 }
 
-/** Applies each draft in order; one for an element this load no longer has is skipped. */
-export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
+/** Applies each draft in order, then `chrome`; one for an element this load no longer has is skipped. */
+export function drawDrafts(
+  drafts: readonly EditingDraft[],
+  chrome?: EditingDragChrome,
+): EditingDraftReply {
   let drawn = 0;
   let restored = false;
   const numbers: Record<string, number> = {};
@@ -328,5 +263,7 @@ export function drawDrafts(drafts: readonly EditingDraft[]): EditingDraftReply {
     if (saved) numbers[draft.handle] = saved.draft;
   }
   if (restored) redrawKeepingLiveDrafts();
+  if (chrome !== undefined) drawDragChrome(chrome);
+  else if (!liveDrafts.size) clearDragChrome();
   return { drawn, drafts: numbers };
 }

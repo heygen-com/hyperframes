@@ -1,22 +1,15 @@
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  type Dirent,
-  type Stats,
-} from "node:fs";
+import { constants, lstatSync, readdirSync, statSync, type Dirent, type Stats } from "node:fs";
+import { lstat, open, readdir, stat, type FileHandle } from "node:fs/promises";
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
+  mkdirWithinProjectAsync,
   nodeMayRun,
   projectPathSegments,
+  ProjectRootMissingError,
   realFilePath,
+  realpathOff,
   resolveWithinProject as resolveInProject,
   toolTrustedFileKind,
   type EntryKind,
@@ -33,6 +26,7 @@ export {
   mkdirWithinProject,
   realFilePath,
   realpath,
+  realpathOff,
   realProjectRoot,
   type EntryKind,
 } from "@hyperframes/core/safe-path";
@@ -181,23 +175,64 @@ function pinResolved(base: string, checked: string | null): string | null {
 
 /** True when no entry from `root` down to `dir` is a link. A file in the way is left for mkdir or readdir to report. */
 export function isLinkFreeWithinProject(root: string, dir: string): boolean {
-  const inside = relative(resolve(root), resolve(dir));
-  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return false;
-  let path = resolve(root);
-  for (const part of inside.split(sep).filter(Boolean)) {
-    path = join(path, part);
-    const stat = lstatSync(path, { throwIfNoEntry: false });
-    if (stat?.isSymbolicLink()) return false;
-    if (!stat?.isDirectory()) return true;
+  const paths = pathsDownTo(root, dir);
+  if (paths === null) return false;
+  for (const path of paths) {
+    const free = linkFreeSoFar(lstatSync(path, { throwIfNoEntry: false }));
+    if (free !== undefined) return free;
   }
   return true;
 }
+
+async function isLinkFreeWithinProjectAsync(root: string, dir: string): Promise<boolean> {
+  const paths = pathsDownTo(root, dir);
+  if (paths === null) return false;
+  for (const path of paths) {
+    const free = linkFreeSoFar(await lstat(path).catch(missingAsUndefined));
+    if (free !== undefined) return free;
+  }
+  return true;
+}
+
+function pathsDownTo(root: string, dir: string): string[] | null {
+  const inside = relative(resolve(root), resolve(dir));
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return null;
+  let path = resolve(root);
+  return inside
+    .split(sep)
+    .filter(Boolean)
+    .map((part) => (path = join(path, part)));
+}
+
+const linkFreeSoFar = (stat: Stats | undefined): boolean | undefined =>
+  stat?.isSymbolicLink() ? false : stat?.isDirectory() ? undefined : true;
+
+const missingAsUndefined = (error: unknown): undefined => {
+  if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+  throw error;
+};
 
 /** A file Studio keeps under the project, such as a cache entry: a plain file, reached with no link from `root` down. */
 export function isProjectCacheFile(root: string, file: string): boolean {
   if (!isLinkFreeWithinProject(root, dirname(file))) return false;
   const stat = lstatSync(file, { throwIfNoEntry: false });
   return stat !== undefined && isPlainFileWithOneName(stat);
+}
+
+export async function isProjectCacheFileAsync(root: string, file: string): Promise<boolean> {
+  if (!(await isLinkFreeWithinProjectAsync(root, dirname(file)))) return false;
+  const found = await lstat(file).catch(missingAsUndefined);
+  return found !== undefined && isPlainFileWithOneName(found);
+}
+
+export async function realProjectRootAsync(root: string): Promise<string> {
+  try {
+    return await realpathOff(root);
+  } catch (error) {
+    if ((await stat(root).catch(missingAsUndefined)) === undefined)
+      throw new ProjectRootMissingError(root);
+    throw error;
+  }
 }
 
 const isPlainFileWithOneName = (stat: Stats) => stat.isFile() && stat.nlink === 1;
@@ -208,37 +243,52 @@ const NO_FOLLOW_READ =
 const sameFile = (a: Stats | undefined, b: Stats) =>
   a !== undefined && !a.isSymbolicLink() && a.dev === b.dev && a.ino === b.ino;
 
-/** `isProjectCacheFile`'s bytes, opened without following a link, or null; a hard link or one over `maxBytes` is a miss too. */
-export function readProjectCacheFile(root: string, file: string, maxBytes: number): Buffer | null {
-  if (!isLinkFreeWithinProject(root, dirname(file))) return null;
-  let fd: number;
+/** `isProjectCacheFile`'s bytes, opened without following a link, or null (a hard link or one over `maxBytes` too),
+ * all off the server's thread: a disk that stops answering holds only the request. */
+export async function readProjectCacheFileAsync(
+  root: string,
+  file: string,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  if (!(await isLinkFreeWithinProjectAsync(root, dirname(file)))) return null;
+  let handle: FileHandle;
   try {
-    fd = openSync(file, NO_FOLLOW_READ);
+    handle = await open(file, NO_FOLLOW_READ);
   } catch {
     return null;
   }
   try {
-    const stat = fstatSync(fd);
+    const stat = await handle.stat();
     if (!isPlainFileWithOneName(stat) || stat.size > maxBytes) return null;
-    // Without O_NOFOLLOW (Windows) the open followed a link, so the name must still be this plain file.
     if (
       constants.O_NOFOLLOW === undefined &&
-      !sameFile(lstatSync(file, { throwIfNoEntry: false }), stat)
+      !sameFile(await lstat(file).catch(missingAsUndefined), stat)
     )
       return null;
-    return readFileSync(fd);
+    return await handle.readFile();
   } catch {
     return null;
   } finally {
-    closeSync(fd);
+    await handle.close();
   }
 }
 
 /** `mkdirWithinProject` for the tool's own caches and records: a link on the way would put their files outside the project. */
 export function mkdirOwnedWithinProject(root: string, dir: string): void {
-  if (!isLinkFreeWithinProject(root, dir)) throw new Error(`A link stands in for a folder: ${dir}`);
+  refuseLinkOnTheWay(root, dir);
   mkdirWithinProject(root, dir);
 }
+
+export async function mkdirOwnedWithinProjectAsync(root: string, dir: string): Promise<void> {
+  if (!(await isLinkFreeWithinProjectAsync(root, dir))) throw linkStandsIn(dir);
+  await mkdirWithinProjectAsync(root, dir);
+}
+
+function refuseLinkOnTheWay(root: string, dir: string): void {
+  if (!isLinkFreeWithinProject(root, dir)) throw linkStandsIn(dir);
+}
+
+const linkStandsIn = (dir: string) => new Error(`A link stands in for a folder: ${dir}`);
 
 const IGNORE_DIRS = new Set([
   ".thumbnails",
@@ -274,20 +324,44 @@ export function walkDir(dir: string, prefix = ""): string[] {
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (!prefix || !code || !UNREADABLE_DIR_CODES.has(code)) throw err;
-    return [];
+    return skippedUnreadable(err, prefix);
   }
   const files: string[] = [];
   for (const entry of entries) {
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (IGNORE_DIRS.has(entry.name) || RENDER_TEMP_DIR.test(entry.name) || shouldIgnoreDir(rel))
-      continue;
-    if (entry.isDirectory()) {
-      files.push(...walkDir(join(dir, entry.name), rel));
-    } else {
-      files.push(rel);
-    }
+    const walked = walkedEntry(entry, prefix);
+    if (walked)
+      files.push(...(walked.folder ? walkDir(join(dir, entry.name), walked.rel) : [walked.rel]));
   }
   return files;
+}
+
+export async function walkDirAsync(dir: string, prefix = ""): Promise<string[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    return skippedUnreadable(err, prefix);
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const walked = walkedEntry(entry, prefix);
+    if (walked)
+      files.push(
+        ...(walked.folder ? await walkDirAsync(join(dir, entry.name), walked.rel) : [walked.rel]),
+      );
+  }
+  return files;
+}
+
+function walkedEntry(entry: Dirent, prefix: string): { rel: string; folder: boolean } | null {
+  const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+  if (IGNORE_DIRS.has(entry.name) || RENDER_TEMP_DIR.test(entry.name) || shouldIgnoreDir(rel))
+    return null;
+  return { rel, folder: entry.isDirectory() };
+}
+
+function skippedUnreadable(err: unknown, prefix: string): string[] {
+  const code = (err as NodeJS.ErrnoException).code;
+  if (!prefix || !code || !UNREADABLE_DIR_CODES.has(code)) throw err;
+  return [];
 }

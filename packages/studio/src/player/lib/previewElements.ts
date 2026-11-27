@@ -7,10 +7,12 @@ import {
   MAX_DESCRIBE_HANDLES,
   MAX_DRAFT_DEG,
   MAX_DRAFT_PX,
+  MAX_EDIT_ENTRIES,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
+  MAX_POINT_STACK,
   MAX_QUERY_MATCHES,
   MAX_SNAP_TARGETS,
   MAX_SOURCE_GROUPS,
@@ -30,8 +32,9 @@ import {
   type TextEditResult,
   textEditResult,
 } from "@hyperframes/core/runtime/editing-port";
+import { isMessageList as isList } from "@hyperframes/core/runtime/protocol";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
-import { previewRequest } from "./previewChannel";
+import { previewRequest, type ReadPriority } from "./previewChannel";
 
 declare const checked: unique symbol;
 /** A description that passed `readPreviewElement`. Only that function makes one. */
@@ -48,8 +51,7 @@ const isValue = (value: unknown) => isText(value) && (value as string).length <=
 const isLongText = (value: unknown) =>
   isText(value) && (value as string).length <= MAX_ELEMENT_TEXT;
 const isValueOrNull = (value: unknown) => value === null || isValue(value);
-const isEntries = (value: unknown): value is unknown[] =>
-  Array.isArray(value) && value.length <= MAX_ELEMENT_ENTRIES;
+const isEntries = (value: unknown): value is unknown[] => isList(value, MAX_ELEMENT_ENTRIES);
 const isCount = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
 
 const isSource = (value: unknown): value is EditingElementSource =>
@@ -67,8 +69,7 @@ function hasPlainFields(value: Fields): boolean {
   const { matchesBefore, attributes, children } = value;
   const groupsOk =
     matchesBefore === null ||
-    (Array.isArray(matchesBefore) &&
-      matchesBefore.length <= MAX_SOURCE_GROUPS &&
+    (isList(matchesBefore, MAX_SOURCE_GROUPS) &&
       matchesBefore.every((g) => isFields(g) && isSource(g.source) && isCount(g.count)));
   const attributesOk =
     isEntries(attributes) &&
@@ -114,7 +115,7 @@ export async function previewElementsAtPoint(
 ): Promise<PreviewElementHit[] | null> {
   const reply = await previewRequest(iframe, "elements-at-point", { x, y });
   const elements: unknown = reply?.elements;
-  if (!Array.isArray(elements)) return null;
+  if (!isList(elements, MAX_POINT_STACK)) return null;
   return elements.map(readHit).filter((element) => element !== null);
 }
 
@@ -126,7 +127,7 @@ export async function previewPointerTargets(
   const params = { x: rootFractionX, y: rootFractionY };
   const reply = await previewRequest(iframe, "pointer-targets", params);
   const stack: unknown = reply?.stack;
-  if (!reply || !Array.isArray(stack)) return null;
+  if (!reply || !isList(stack, MAX_POINT_STACK)) return null;
   return { target: readHit(reply.target), stack: stack.map(readHit).filter((hit) => hit !== null) };
 }
 
@@ -137,11 +138,18 @@ export async function previewPointerTargets(
 export async function describePreviewElements(
   iframe: HTMLIFrameElement,
   handles: readonly string[],
+  priority: ReadPriority = "now",
 ): Promise<Array<PreviewElement | null> | null> {
   if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
-  const reply = await previewRequest(iframe, "describe", { handles: [...handles] });
+  const reply = await previewRequest(
+    iframe,
+    "describe",
+    { handles: [...handles] },
+    undefined,
+    priority,
+  );
   const elements: unknown = reply?.elements;
-  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   return elements.map((entry, index) => {
     const element = readPreviewElement(entry);
     return element?.handle === handles[index] ? element : null;
@@ -156,9 +164,9 @@ export async function previewAncestors(
   if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
   const reply = await previewRequest(iframe, "ancestors", { handles: [...handles] });
   const chains: unknown = reply?.ancestors;
-  if (!Array.isArray(chains) || chains.length !== handles.length) return null;
+  if (!isList(chains, handles.length) || chains.length !== handles.length) return null;
   return chains.map((chain) =>
-    Array.isArray(chain) && chain.every(isHandle) ? (chain as string[]) : null,
+    isList(chain, MAX_DESCRIBE_HANDLES) && chain.every(isHandle) ? (chain as string[]) : null,
   );
 }
 
@@ -169,7 +177,7 @@ export async function queryPreviewElements(
 ): Promise<{ matches: EditingElementMatch[]; truncated: boolean } | null> {
   const reply = await previewRequest(iframe, "query", { selector });
   const matches: unknown = reply?.matches;
-  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  if (!isList(matches, MAX_QUERY_MATCHES) || typeof reply?.truncated !== "boolean") return null;
   const ok = matches.every((m) => isFields(m) && isHandle(m.handle) && isSource(m.source));
   return ok ? { matches: matches as EditingElementMatch[], truncated: reply.truncated } : null;
 }
@@ -232,8 +240,7 @@ const readGeometry = (value: unknown): EditingElementGeometry | null => {
   if (!isBox(value) || !isFields(value) || typeof value.visible !== "boolean") return null;
   const { members } = value;
   const membersOk =
-    members === null ||
-    (Array.isArray(members) && members.length <= MAX_ELEMENT_ENTRIES && members.every(isRect));
+    members === null || (isList(members, MAX_ELEMENT_ENTRIES) && members.every(isRect));
   return membersOk ? (value as unknown as EditingElementGeometry) : null;
 };
 
@@ -249,15 +256,15 @@ export async function previewGeometry(
   iframe: HTMLIFrameElement,
   handles: readonly string[],
   children?: string,
+  priority: ReadPriority = "now",
 ): Promise<PreviewGeometry | null> {
   if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
   const params = { handles: [...handles], ...(children ? { children } : {}) };
-  const reply = await previewRequest(iframe, "geometry", params);
+  const reply = await previewRequest(iframe, "geometry", params, undefined, priority);
   const elements: unknown = reply?.elements;
-  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   const boxes: unknown = reply?.children;
-  const childrenOk =
-    Array.isArray(boxes) && boxes.length <= MAX_GEOMETRY_CHILDREN && boxes.every(isBox);
+  const childrenOk = isList(boxes, MAX_GEOMETRY_CHILDREN) && boxes.every(isBox);
   return {
     elements: elements.map(readGeometry),
     children: children && childrenOk ? (boxes as EditingElementBox[]) : null,
@@ -330,8 +337,8 @@ export async function previewGestureStart(
   const reply = await previewRequest(iframe, "gesture-start", { handles: [...handles] });
   const elements: unknown = reply?.elements;
   const snap: unknown = reply?.snap;
-  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
-  if (!Array.isArray(snap) || snap.length > MAX_SNAP_TARGETS || !snap.every(isBox)) return null;
+  if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
+  if (!isList(snap, MAX_SNAP_TARGETS) || !snap.every(isBox)) return null;
   return { elements: elements.map(readGestureStart), snap };
 }
 
@@ -343,7 +350,7 @@ export async function previewGestureBase(
   const elements: unknown = (
     await previewRequest(iframe, "gesture-base", { handles: [...handles] })
   )?.elements;
-  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  if (!isList(elements, handles.length) || elements.length !== handles.length) return null;
   return elements.map((base) =>
     isFiniteFields(base, ["x", "y", "opacity", "scale"]) ? (base as EditingGestureBase) : null,
   );
@@ -369,12 +376,13 @@ export async function previewLayers(
   iframe: HTMLIFrameElement,
   group?: string,
   offset = 0,
+  priority: ReadPriority = "now",
 ): Promise<PreviewLayers | null> {
   const params = { ...(group ? { group } : {}), ...(offset ? { offset } : {}) };
-  const reply = await previewRequest(iframe, "layers", params);
+  const reply = await previewRequest(iframe, "layers", params, undefined, priority);
   const layers: unknown = reply?.layers;
   const { truncated, missingGroup } = reply ?? {};
-  if (!Array.isArray(layers) || typeof truncated !== "boolean") return null;
+  if (!isList(layers, MAX_QUERY_MATCHES) || typeof truncated !== "boolean") return null;
   if (typeof missingGroup !== "boolean") return null;
   return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
 }
@@ -386,7 +394,7 @@ export async function previewStackingSiblings(iframe: HTMLIFrameElement, handle:
   const reply = await previewRequest(iframe, "stacking-family", { handle });
   const family: unknown = reply?.family;
   const locked: unknown = reply?.locked;
-  if (!Array.isArray(family) || family.length > MAX_QUERY_MATCHES) return null;
+  if (!isList(family, MAX_QUERY_MATCHES)) return null;
   if (typeof locked !== "boolean" || !family.every(isSibling)) return null;
   const handles = new Set(family.map((sibling) => sibling.handle));
   return handles.size === family.length && handles.has(handle) ? { family, locked } : null;
@@ -395,7 +403,7 @@ export async function previewStackingSiblings(iframe: HTMLIFrameElement, handle:
 type EditEntry = [name: string, value: string | null];
 type StyleEntry = [name: string, value: string | null, priority?: "important"];
 const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] =>
-  Array.isArray(value) &&
+  isList(value, MAX_EDIT_ENTRIES) &&
   value.every(
     (entry) =>
       Array.isArray(entry) &&

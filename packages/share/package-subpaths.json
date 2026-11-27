@@ -55,6 +55,12 @@
       "types": "./dist/projectSnapshot.d.mts",
       "environments": ["bun", "node"]
     },
+    "./referencedFont.mjs": {
+      "source": "./src/referencedFont.mjs",
+      "runtime": "./src/referencedFont.mjs",
+      "types": "./dist/sources/referencedFont.d.mts",
+      "environments": ["bun", "node"]
+    },
     "./reviewAudience.mjs": {
       "source": "./src/reviewAudience.mjs",
       "runtime": "./src/reviewAudience.mjs",

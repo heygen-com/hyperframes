@@ -4,7 +4,10 @@ import { isControlsClick, setupControls, setupPoster } from "./controls-setup.js
 import { adoptShadowStyles, createCompositionIframe, scaleIframeToFit } from "./iframe-dom.js";
 import { DirectTimelineClock } from "./direct-timeline-clock.js";
 import { ParentMediaManager } from "./parent-media.js";
+import type { ParentAudio } from "./parent-audio.js";
+import { isWebKit } from "@hyperframes/core/runtime/media-clock";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
+import { PLAY_START_GRACE_MS } from "./playback-state.js";
 import { handleRuntimeMessage } from "./runtime-message-handler.js";
 import {
   isOutsidePlayRange,
@@ -58,6 +61,7 @@ function parseUrl(src: string): URL | null {
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
+const SRC_CARRIES_RUNTIME_ATTR = "src-carries-runtime";
 const SEALED_RUNTIME_LOAD_FAILED = "The HyperFrames runtime this player ships with failed to load";
 
 type FrameTarget = { src: string; read?: boolean } | { srcdoc: string | null };
@@ -200,6 +204,10 @@ class HyperframesPlayer extends HTMLElement {
   private _directTimelineClock: DirectTimelineClock;
   private _parentTickRaf: number | null = null;
   private _media: ParentMediaManager;
+  private _parentAudio: ParentAudio | null = null;
+  private _parentAudioLoad: Promise<void> | null = null;
+  private _parentAudioGen = 0;
+  private _tapContext: AudioContext | null = null;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
   private _runtimeBridgeReady = false;
@@ -211,6 +219,9 @@ class HyperframesPlayer extends HTMLElement {
   private _videoSource: VideoSource | null = null;
   private _runtimeOwnsPlayRange = false;
   private _enteringRange = false;
+  private _playSeq = 0;
+  private _awaitingPlaySeq = 0;
+  private _awaitingPlayUntilMs = 0;
   private _rangeClampReported = "";
 
   constructor() {
@@ -315,9 +326,16 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineAdapter = null;
     this.shaderLoader.destroy();
     this._media.destroy();
+    this._parentAudio?.destroy();
+    this._parentAudio = null;
+    this._parentAudioLoad = null;
+    this._parentAudioGen++;
+    void this._tapContext?.close();
+    this._tapContext = null;
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
+    this._clearAwaitingPlay();
     this._pendingPlay = false;
     this._abandonComposition("Player disconnected before runtime data was applied");
   }
@@ -381,6 +399,7 @@ class HyperframesPlayer extends HTMLElement {
       case "playback-rate": {
         const rate = clampPlaybackRate(parseFloat(val || "1"));
         this._media.updatePlaybackRate(rate);
+        this._parentAudio?.setRate(rate);
         this._sendControl("set-playback-rate", { playbackRate: rate });
         this._directTimelineAdapter?.timeScale?.(rate);
         this.controlsApi?.updateSpeed(rate);
@@ -398,6 +417,7 @@ class HyperframesPlayer extends HTMLElement {
         this._volume = v;
         this._syncVideoAudio();
         this._media.updateVolume(v);
+        this._parentAudio?.setVolume(v);
         this._sendControl("set-volume", { volume: v });
         this.controlsApi?.updateVolume(v);
         this._emit(new Event("volumechange"));
@@ -427,11 +447,9 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _applySandboxOriginPolicy(reloadActiveDocument = false): void {
-    if (this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
-      this.iframe.sandbox.remove("allow-same-origin");
-    } else {
-      this.iframe.sandbox.add("allow-same-origin");
-    }
+    const sealed = this.hasAttribute(SANDBOX_ORIGIN_ATTR);
+    this.iframe.sandbox.toggle("allow-same-origin", !sealed);
+    this.iframe.allow = sealed ? "autoplay" : "autoplay; fullscreen";
     if (reloadActiveDocument) this._reloadForSandboxOriginPolicy();
   }
 
@@ -495,7 +513,10 @@ class HyperframesPlayer extends HTMLElement {
     let queuedForReady = false;
     this._sendDisplayScale();
     if (!directTimelineStarted) {
-      this._sendControl("play");
+      const playSeq = ++this._playSeq;
+      this._awaitingPlaySeq = playSeq;
+      this._awaitingPlayUntilMs = performance.now() + PLAY_START_GRACE_MS;
+      this._sendControl("play", { playSeq });
       // Only start the parent tick clock once the composition is ready and
       // confirmed on the runtime bridge path (not the direct-timeline path).
       if (this._ready && !this._directTimelineAdapter) {
@@ -507,6 +528,9 @@ class HyperframesPlayer extends HTMLElement {
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     else this._media.primeAll();
+    const sealedAudio = this._sealedAudio();
+    if (sealedAudio) sealedAudio.play();
+    else if (this._parentAudioLoad) this._openTapContext();
     this.controlsApi?.updatePlaying(true);
     if (!queuedForReady && announce) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
@@ -530,7 +554,9 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     if (this._media.audioOwner === "parent") this._media.pauseAll();
+    this._parentAudio?.pause();
     this._paused = true;
+    this._clearAwaitingPlay();
     this.controlsApi?.updatePlaying(false);
     this._emit(new Event("pause"));
   }
@@ -539,6 +565,8 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("stop-media");
     this._stopIframeMedia();
     this._media.stopAdoptedMedia();
+    this._parentAudio?.pause();
+    this._clearAwaitingPlay();
   }
 
   seek(timeInSeconds: number, options?: { keepPlaying?: boolean }) {
@@ -547,6 +575,7 @@ class HyperframesPlayer extends HTMLElement {
     // asset-buffering window is cancelled here too — same reason as pause()
     // above. keepPlaying plays on from the new time, as <video>'s currentTime does.
     this._pendingPlay = false;
+    this._parentAudio?.pause();
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
         timeSeconds: timeInSeconds,
@@ -576,6 +605,7 @@ class HyperframesPlayer extends HTMLElement {
       }
     }
     this._paused = true;
+    this._clearAwaitingPlay();
     this.controlsApi?.updatePlaying(false);
     this.controlsApi?.updateTime(this._currentTime, this._duration);
     if (playOn) this._play(false);
@@ -731,6 +761,57 @@ class HyperframesPlayer extends HTMLElement {
     return this.closest("hyperframes-slideshow") !== null;
   }
 
+  /**
+   * A sealed film's audio, played here from decoded buffers where WebKit would start its elements late.
+   * Its code loads on first need, so other players don't carry it; until then the film plays its own.
+   */
+  private _sealedAudio(): ParentAudio | null {
+    if (!this.hasAttribute(SANDBOX_ORIGIN_ATTR) || !isWebKit() || this._isSlideshowPlayer())
+      return null;
+    this._parentAudioLoad ??= this._loadParentAudio();
+    return this._parentAudio;
+  }
+
+  /** A tap that lands before the audio code: Safari only lets a context sound when it is made in the tap. */
+  private _openTapContext(): void {
+    try {
+      this._tapContext ??= new AudioContext();
+    } catch {
+      return;
+    }
+    void this._tapContext.resume().catch(() => {});
+  }
+
+  private async _loadParentAudio(): Promise<void> {
+    const gen = this._parentAudioGen;
+    const loaded = await import("./parent-audio.js").catch((error: unknown) => {
+      if (gen === this._parentAudioGen) this._parentAudioLoad = null;
+      console.warn(
+        "[hyperframes-player] sealed audio code failed to load; the film plays its own",
+        error,
+      );
+      return null;
+    });
+    if (!loaded || gen !== this._parentAudioGen) return;
+    const { ParentAudio } = loaded;
+    this._parentAudio = new ParentAudio({
+      copies: () => this._media.listedAudio(),
+      sendControl: (action, extra) => this._sendControl(action, extra),
+      getCurrentTime: () => this._currentTime,
+      getPlaybackRate: () => this.playbackRate,
+      getVolume: () => this._volume,
+      getMuted: () => this.muted,
+      isPaused: () => this._paused,
+      takeTapContext: () => {
+        const context = this._tapContext;
+        this._tapContext = null;
+        return context;
+      },
+    });
+    this._parentAudio.postClaims();
+    if (!this._paused) this._parentAudio.play();
+  }
+
   /** Apply a change to the `muted` attribute: re-assert under an audio lock,
    *  else mute/unmute the media, sync the controls, and fire `volumechange`. */
   private _handleMutedChange(val: string | null): void {
@@ -742,6 +823,7 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     this._media.updateMuted(val !== null);
+    this._parentAudio?.setMuted(val !== null);
     this._syncVideoAudio();
     this._setIframeMediaMuted(val !== null);
     this._sendControl("set-muted", { muted: val !== null });
@@ -1074,6 +1156,7 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("set-web-audio-media-disabled", {
       disabled: this._isSlideshowPlayer(),
     });
+    this._sealedAudio()?.postClaims();
     this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
     this._sendDisplayScale();
   }
@@ -1115,7 +1198,13 @@ class HyperframesPlayer extends HTMLElement {
   private _pauseForVideoSwitch(): void {
     if (!this._videoSource && !this._wantsVideo()) return;
     this._paused = true;
+    this._clearAwaitingPlay();
     this.controlsApi?.updatePlaying(false);
+  }
+
+  private _clearAwaitingPlay(): void {
+    this._awaitingPlaySeq = 0;
+    this._awaitingPlayUntilMs = 0;
   }
 
   private _loadSrc(src: string): void {
@@ -1132,12 +1221,15 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     const url = parseUrl(src);
-    if (url && this.hasAttribute(SANDBOX_ORIGIN_ATTR) && url.origin === location.origin) {
+    const sealedSameSite =
+      url !== null && this.hasAttribute(SANDBOX_ORIGIN_ATTR) && url.origin === location.origin;
+    const vouched = sealedSameSite && this.hasAttribute(SRC_CARRIES_RUNTIME_ATTR);
+    if (sealedSameSite && !vouched) {
       this._showSealedSrc(src, url.href);
       return;
     }
     this.probe.markNavigation();
-    this._writeSrcOverSrcdoc(src);
+    this._writeSrcOverSrcdoc(src, vouched);
   }
 
   /** Loads src in place of a sealed srcdoc this player may be showing. */
@@ -1415,9 +1507,21 @@ class HyperframesPlayer extends HTMLElement {
         paused: this._paused,
         lastUpdateMs: this._lastUpdateMs,
         enteringRange: this._enteringRange,
+        awaitingPlaySeq: this._awaitingPlaySeq,
+        awaitingPlayUntilMs: this._awaitingPlayUntilMs,
       }),
-      setPlaybackState: ({ currentTime, duration, paused, lastUpdateMs, enteringRange }) => {
+      setPlaybackState: ({
+        currentTime,
+        duration,
+        paused,
+        lastUpdateMs,
+        enteringRange,
+        awaitingPlaySeq,
+        awaitingPlayUntilMs,
+      }) => {
         this._enteringRange = enteringRange === true;
+        this._awaitingPlaySeq = awaitingPlaySeq ?? 0;
+        this._awaitingPlayUntilMs = awaitingPlayUntilMs ?? 0;
         this._currentTime = currentTime;
         this._setDuration(duration);
         this._paused = paused;
@@ -1460,6 +1564,11 @@ class HyperframesPlayer extends HTMLElement {
         this._runtimeAnnounces = announces;
       },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
+      onParentCopies: () => {
+        this._sealedAudio()?.postClaims();
+        if (!this._paused) this._sealedAudio()?.play();
+      },
+      onRuntimeStopped: () => this._parentAudio?.pause(),
       setScenes: (scenes) => {
         this._scenes = scenes;
         this._emit(new CustomEvent("scenes", { detail: { scenes } }));
@@ -1468,7 +1577,10 @@ class HyperframesPlayer extends HTMLElement {
       updateControlsPlaying: (p) => this.controlsApi?.updatePlaying(p),
       dispatchEvent: (ev) => this._emit(ev),
       seek: (t) => this.seek(t),
-      play: () => this.play(),
+      play: () => {
+        this.play();
+        return this._awaitingPlaySeq;
+      },
       getLoop: () => this.loop,
       getPlayRange: () => this._playRange(),
       media: this._media,
@@ -1664,12 +1776,14 @@ class HyperframesPlayer extends HTMLElement {
   private _releaseDocument(): void {
     this._runtimeOwnsPlayRange = false;
     this._enteringRange = false;
+    this._clearAwaitingPlay();
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     this._setBuffering(false);
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
+    this._parentAudio?.reset();
   }
 
   /** Abandons any in-flight asset wait — every `_ready = false` site calls

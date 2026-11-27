@@ -560,7 +560,7 @@ describe("openProjectHistory", () => {
     });
     expect(entry.files.map((file) => file.path)).toEqual(["index.html"]);
     expect(Object.keys(history.peek(entry.id)!)).toEqual(["index.html"]);
-    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    const reader = await readProjectHistory({ projectDir, historyRoot, ignores });
     expect(Object.keys(reader.peek(entry.id)!)).toEqual(["index.html"]);
   });
 
@@ -581,7 +581,7 @@ describe("openProjectHistory", () => {
     await history.close();
     const ignores = (path: string) => path === "temp.html";
     const again = await open(projectDir, historyRoot, { ignores });
-    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    const reader = await readProjectHistory({ projectDir, historyRoot, ignores });
     for (const [entry] of [again.list(), reader.list()])
       expect(entry!.targets).toEqual([{ file: "index.html", selector: "#i" }]);
   });
@@ -601,7 +601,7 @@ describe("openProjectHistory", () => {
     });
     write("index.html", "B");
     await again.claim(you, "Page", ["index.html"]);
-    const reader = readProjectHistory({ projectDir, historyRoot });
+    const reader = await readProjectHistory({ projectDir, historyRoot });
     for (const point of [START, ...reader.list().map((entry) => entry.id)])
       for (const hash of Object.values(reader.peek(point) ?? {}))
         await expect(reader.readBlob(hash)).resolves.toBeInstanceOf(Buffer);
@@ -675,7 +675,7 @@ describe("openProjectHistory", () => {
     await history.close();
     const ignores = (path: string) => path === "assets/song.mp3";
     const again = await open(projectDir, historyRoot, { ignores });
-    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    const reader = await readProjectHistory({ projectDir, historyRoot, ignores });
     expect(JSON.stringify(again.list())).not.toContain("song.mp3");
     expect(JSON.stringify(reader.list())).not.toContain("song.mp3");
     expect(again.next("forward", you)).toBeUndefined();
@@ -1159,7 +1159,7 @@ describe("openProjectHistory", () => {
     mkdirSync(projectDir);
     writeFileSync(join(projectDir, "index.html"), "new project");
 
-    expect(history.replacedAtPath()).toBe(true);
+    expect(await history.replacedNow()).toBe(true);
     await expect(history.restore(START, you)).rejects.toThrow(HistoryClosedError);
     expect(() => history.list()).toThrow(HistoryClosedError);
     // What the turn wrote before the swap is still its entry; nothing of the new project is.
@@ -1181,7 +1181,7 @@ describe("openProjectHistory", () => {
 
     await expect(history.restore(START, you)).rejects.toThrow("The project folder is gone");
     expect(existsSync(projectDir)).toBe(false);
-    expect(history.replacedAtPath()).toBe(false);
+    expect(await history.replacedNow()).toBe(false);
   });
 
   it.each([
@@ -1361,9 +1361,17 @@ describe("openProjectHistory", () => {
     rmSync(join(projectDir, ".hyperframes"), { recursive: true });
     write("index.html", "new project");
 
-    expect(history.replacedAtPath()).toBe(true);
+    expect(await history.replacedNow()).toBe(true);
     await expect(history.restore(START, you)).rejects.toThrow(HistoryClosedError);
     expect(read("index.html")).toBe("new project");
+  });
+
+  it("says at once that a folder whose history id is gone was replaced, so a caller reopens before it writes", async () => {
+    const { history, write, projectDir } = await project({ "index.html": "v1" });
+    await change(history, you, "Second", () => write("index.html", "v2"));
+    rmSync(join(projectDir, ".hyperframes"), { recursive: true });
+
+    expect(history.replacedAtPath()).toBe(true);
   });
 
   it.each([["the copy"], ["the moved original"]])(
@@ -1437,7 +1445,7 @@ describe("openProjectHistory", () => {
       );
     const before = files();
 
-    const view = readProjectHistory({ projectDir, historyRoot });
+    const view = await readProjectHistory({ projectDir, historyRoot });
     expect(view.list()).toEqual(history.list());
     expect(view.list().map((entry) => entry.label)).toEqual(["Second"]);
     expect(view.peek(START)).toEqual(history.peek(START));
@@ -1450,14 +1458,14 @@ describe("openProjectHistory", () => {
     await change(history, you, "Second", () => write("index.html", "v2"));
     const copy = tempDir("hf-history-copy-");
     cpSync(projectDir, copy, { recursive: true });
-    expect(readProjectHistory({ projectDir: copy, historyRoot }).list()).toEqual([]);
+    expect((await readProjectHistory({ projectDir: copy, historyRoot })).list()).toEqual([]);
 
     const [entry] = history.list();
     const hidden = { path: ".hidden/x", before: null, after: entry!.files[0]!.after };
     const older = { ...entry!, id: "older", files: [...entry!.files, hidden] };
     const logFile = join(historyRoot, history.projectId, "log.jsonl");
     appendFileSync(logFile, `${JSON.stringify({ type: "entry", entry: older })}\n`);
-    const paths = readProjectHistory({ projectDir, historyRoot })
+    const paths = (await readProjectHistory({ projectDir, historyRoot }))
       .list()
       .map((item) => item.files.map((file) => file.path));
     expect(paths).toEqual([["index.html"], ["index.html"]]);
@@ -2963,16 +2971,17 @@ describe("restore refuses to empty a project", () => {
   it("refuses start while its media copy is still adopting", async () => {
     let release = () => {};
     mediaCopy.held = new Promise<void>((resolve) => (release = resolve));
+    // The hold only gates .bin copies: as clip.mp4 nothing was held, so this raced a 2 MB copy against the open.
     const clip = Buffer.alloc(2 * 1024 ** 2, 7);
-    const { history, projectDir, read } = await project({ "index.html": "A", "clip.mp4": clip });
+    const { history, projectDir, read } = await project({ "index.html": "A", "clip.bin": clip });
     try {
       await expect(history.restore(START, you)).rejects.toThrow(HistoryRefusedError);
       expect(read("index.html")).toBe("A");
-      expect(readFileSync(join(projectDir, "clip.mp4")).equals(clip)).toBe(true);
+      expect(readFileSync(join(projectDir, "clip.bin")).equals(clip)).toBe(true);
     } finally {
       release();
     }
-    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.mp4"]));
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["clip.bin"]));
     await expect(history.restore(START, you)).resolves.toBeNull();
   });
 

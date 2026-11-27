@@ -7,6 +7,7 @@ import {
   queryPreviewElements,
   type PreviewElement,
 } from "../../player/lib/previewElements";
+import type { ReadPriority } from "../../player/lib/previewChannel";
 import type { Rect } from "../../utils/marqueeGeometry";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import type { RenderEntry } from "./canvasContextMenuZOrder";
@@ -22,12 +23,17 @@ import {
   standInHandle,
 } from "./previewSelection";
 
-async function describeAll(iframe: HTMLIFrameElement, handles: readonly string[]) {
+async function describeAll(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+  priority: ReadPriority = "now",
+) {
   const described: Array<PreviewElement | null> = [];
   for (let at = 0; at < handles.length; at += MAX_DESCRIBE_HANDLES) {
     const part = await describePreviewElements(
       iframe,
       handles.slice(at, at + MAX_DESCRIBE_HANDLES),
+      priority,
     );
     if (!part) return null;
     described.push(...part);
@@ -68,15 +74,17 @@ export async function collectPreviewLayerItems(
   iframe: HTMLIFrameElement,
   options: Pick<DomEditContextOptions, "activeCompositionPath" | "activeGroupElement">,
   maxItems = Number.POSITIVE_INFINITY,
+  priority: ReadPriority = "now",
 ): Promise<{ items: DomEditLayerItem[]; missingGroup: boolean } | null> {
   const group = options.activeGroupElement && standInHandle(options.activeGroupElement);
-  const reply = await previewLayers(iframe, group ?? undefined);
+  const reply = await previewLayers(iframe, group ?? undefined, 0, priority);
   const layers = reply?.layers.slice(0, maxItems) ?? [];
   const described =
     reply &&
     (await describeAll(
       iframe,
       layers.map((layer) => layer.handle),
+      priority,
     ));
   if (!reply || !described) return null;
   const items = layers.flatMap((layer, index) => {
@@ -86,14 +94,23 @@ export async function collectPreviewLayerItems(
   return { items, missingGroup: reply.missingGroup };
 }
 
+export const collectPreviewLayerRows = (
+  iframe: HTMLIFrameElement,
+  options: Pick<DomEditContextOptions, "activeCompositionPath" | "activeGroupElement">,
+  maxItems: number,
+) => collectPreviewLayerItems(iframe, options, maxItems, "behind-drafts");
+
 // A bound on the pages one read follows, so a frame that never stops paging cannot hold it open.
 const MAX_LAYER_PAGES = 64;
 
 /** Every layer the frame lists, page by page past its per-reply cap; null when it cannot answer. */
-async function allPreviewLayers(iframe: HTMLIFrameElement): Promise<EditingLayer[] | null> {
+async function allPreviewLayers(
+  iframe: HTMLIFrameElement,
+  priority: ReadPriority = "now",
+): Promise<EditingLayer[] | null> {
   const layers: EditingLayer[] = [];
   for (let page = 0; page < MAX_LAYER_PAGES; page += 1) {
-    const reply = await previewLayers(iframe, undefined, layers.length);
+    const reply = await previewLayers(iframe, undefined, layers.length, priority);
     if (!reply) return null;
     layers.push(...reply.layers);
     if (!reply.truncated || !reply.layers.length) break;
@@ -104,13 +121,15 @@ async function allPreviewLayers(iframe: HTMLIFrameElement): Promise<EditingLayer
 export async function collectAllPreviewLayerItems(
   iframe: HTMLIFrameElement,
   activeCompositionPath: string | null,
+  priority: ReadPriority = "now",
 ): Promise<DomEditLayerItem[] | null> {
-  const layers = await allPreviewLayers(iframe);
+  const layers = await allPreviewLayers(iframe, priority);
   const described =
     layers &&
     (await describeAll(
       iframe,
       layers.map((layer) => layer.handle),
+      priority,
     ));
   if (!layers || !described) return null;
   return layers.flatMap((layer, index) => {

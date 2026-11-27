@@ -81,6 +81,7 @@ const deFrame = (index: number) =>
 let hangRiskSessionOpen = false;
 // The capture session's own open answers only when the test settles it.
 let primaryOpen: Promise<unknown> | null = null;
+let lastCreateSessionSignal: AbortSignal | undefined;
 let hangInitializeSession = false;
 let failPrepareCaptureSessionForReuse = false;
 let initializeSessionErrorMessage = "initialize failed";
@@ -242,8 +243,9 @@ mock.module("@hyperframes/engine", () => ({
     _dir: string,
     _options: unknown,
     _injector: unknown,
-    config?: { useDrawElement?: boolean },
+    config?: { useDrawElement?: boolean; signal?: AbortSignal },
   ) => {
+    lastCreateSessionSignal = config?.signal;
     const screenshot = config?.useDrawElement === false;
     return heldOpen(screenshot) ?? fakeSession(screenshot);
   },
@@ -1400,6 +1402,71 @@ describe("runCaptureStreamingStage", () => {
     expect((caught as Error).message).not.toContain("stalled");
     expect((caught as Error).message).toContain("aborted");
   });
+
+  it("aborts opening a sequential capture session immediately without waiting out the stall budget", async () => {
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    let openLate: (session: unknown) => void = () => {};
+    primaryOpen = new Promise((resolve) => (openLate = resolve));
+    lastCreateSessionSignal = undefined;
+    closeCaptureSession.mockClear();
+    const controller = new AbortController();
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const run = runCaptureStreamingStage({
+      ...createInput(cfg),
+      totalFrames: 10,
+      abortSignal: controller.signal,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    try {
+      await Promise.resolve();
+      controller.abort(new Error("audio failed"));
+      const caught = await Promise.race([
+        run,
+        new Promise((resolve) => setTimeout(() => resolve("timed_out"), 1_000)),
+      ]);
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain("aborted");
+      expect(lastCreateSessionSignal?.aborted).toBe(true);
+
+      const late = { browserConsoleBuffer: [] };
+      openLate(late);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      expect(closeCaptureSession).toHaveBeenCalledWith(late);
+    } finally {
+      primaryOpen = null;
+    }
+  });
+
+  it("aborts initializing a sequential capture session immediately and closes it", async () => {
+    const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+    hangInitializeSession = true;
+    closeCaptureSession.mockClear();
+    const controller = new AbortController();
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const run = runCaptureStreamingStage({
+      ...createInput(cfg),
+      totalFrames: 10,
+      abortSignal: controller.signal,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    try {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+      controller.abort(new Error("audio failed"));
+      const caught = await Promise.race([
+        run,
+        new Promise((resolve) => setTimeout(() => resolve("timed_out"), 1_000)),
+      ]);
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain("aborted");
+      expect(closeCaptureSession).toHaveBeenCalled();
+    } finally {
+      hangInitializeSession = false;
+    }
+  });
 });
 
 describe("runCaptureStage", () => {
@@ -1448,6 +1515,52 @@ describe("runCaptureStage", () => {
     expect((caught as Error).message).toContain("prepare reuse failed: ENOSPC");
     expect(closeCaptureSession).toHaveBeenCalledTimes(1);
     expect(closeCaptureSession).toHaveBeenCalledWith(probeSession);
+  });
+
+  it("aborts opening a sequential disk capture session immediately when abortSignal fires", async () => {
+    const { runCaptureStage } = await import("./captureStage.js");
+    let openLate: (session: unknown) => void = () => {};
+    primaryOpen = new Promise((resolve) => (openLate = resolve));
+    lastCreateSessionSignal = undefined;
+    closeCaptureSession.mockClear();
+    const controller = new AbortController();
+    const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+    const run = runCaptureStage({
+      ...createInput(cfg),
+      plan: createCapturePlan({
+        workerCount: 1,
+        forceScreenshot: false,
+        useStreamingEncode: false,
+        useLayeredComposite: false,
+        usePageSideCompositing: false,
+        hasHdrContent: false,
+        needsAlpha: false,
+      }),
+      probeSession: null,
+      captureAttempts: [],
+      abortSignal: controller.signal,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    try {
+      await Promise.resolve();
+      controller.abort(new Error("audio failed"));
+      const caught = await Promise.race([
+        run,
+        new Promise((resolve) => setTimeout(() => resolve("timed_out"), 1_000)),
+      ]);
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain("aborted");
+      expect(lastCreateSessionSignal?.aborted).toBe(true);
+
+      const late = { browserConsoleBuffer: [] };
+      openLate(late);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      expect(closeCaptureSession).toHaveBeenCalledWith(late);
+    } finally {
+      primaryOpen = null;
+    }
   });
 
   it("wraps sequential capture failures with the browser console buffer", async () => {

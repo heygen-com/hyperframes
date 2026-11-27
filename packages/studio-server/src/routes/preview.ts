@@ -1,3 +1,4 @@
+import { referencedFontResponse } from "@hyperframes/share/referencedFont.mjs";
 import type { Hono } from "hono";
 import { parseHTML } from "@hyperframes/parsers/linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
@@ -8,6 +9,7 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
   AFTER_FONTS_SCRIPT_TYPE,
+  dropAuthoredCompositionFiles,
   INLINED_FILE_ATTR,
   RUNTIME_BOOTSTRAP_ATTR,
   insertBeforeCloseTag,
@@ -105,7 +107,6 @@ import {
   resolveProxy,
   resolveStill,
   retryProxyCopy,
-  waitForProxy,
   ProxyCapacityError,
   ProxyTranscodeError,
   ProxyWaitTimeoutError,
@@ -129,7 +130,7 @@ import {
   type PreviewApiAdapter,
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-import { previewRefusalPage } from "../helpers/previewErrorPage.js";
+import { previewRefusalPage, previewRuntimeTag } from "../helpers/previewErrorPage.js";
 import { isCompositionTooLargeError } from "@hyperframes/core/compiler/composition-size-limit";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 import { corsProjectVideos } from "../helpers/captureVideos.js";
@@ -137,6 +138,13 @@ import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const runStillJob = createJobSlots(4, 16);
+
+function unbuiltMainHtml(html: string): string {
+  if (!/data-composition-file/i.test(html)) return ensureHfIds(html);
+  const { document } = parseHTML(html);
+  dropAuthoredCompositionFiles(document as unknown as Document);
+  return ensureHfIds(document.toString());
+}
 
 function escapeGsapUrl(url: string): string {
   return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -187,8 +195,7 @@ function parseStudioMotionManifestContent(content: string): {
 
 /** Preview hooks must install before authored head scripts register media consumers. */
 export function withPreviewRuntime(html: string, runtimeUrl: string): string {
-  const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
-  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
+  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), previewRuntimeTag(runtimeUrl), true);
 }
 
 function injectScriptTagIntoHead(html: string, scriptTag: string): string {
@@ -715,7 +722,7 @@ export function registerPreviewRoutes(
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
-        bundled = ensureHfIds(diskMain.html);
+        bundled = unbuiltMainHtml(diskMain.html);
         mainCompositionPath = diskMain.compositionPath;
       }
       // <base> and root paths under it, before the runtime adds the server's own root path
@@ -780,14 +787,15 @@ export function registerPreviewRoutes(
       }
       return bundled;
     } catch (error) {
-      if (isCompositionTooLargeError(error)) return previewRefusalPage(error.message);
+      if (isCompositionTooLargeError(error))
+        return previewRefusalPage(error.message, adapter.runtimeUrl);
       console.warn("[Studio] preview build failed, building from the saved file:", error);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);
       if (fallback) {
         const fallbackHtml = withPreviewRuntime(
-          withPreviewBase(ensureHfIds(fallback.html), project.id),
+          withPreviewBase(unbuiltMainHtml(fallback.html), project.id),
           adapter.runtimeUrl,
         );
         const fallbackPage = await transformPreviewHtml(
@@ -851,7 +859,7 @@ export function registerPreviewRoutes(
       });
     }
     const builtKey = `${project.id}\n${etag}`;
-    const cached = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
+    const cached = builtPreviews.get(builtKey) ?? (await adapter.previewDocuments?.read(builtKey));
     if (cached) {
       rememberPreview(builtKey, cached);
       return c.html(marked(cached), 200, previewCacheHeaders(etag));
@@ -915,7 +923,8 @@ export function registerPreviewRoutes(
         compPath,
       );
       if (!built) return c.text("not found", 404);
-      if ("refused" in built) return c.html(previewRefusalPage(built.refused), 200);
+      if ("refused" in built)
+        return c.html(previewRefusalPage(built.refused, adapter.runtimeUrl), 200);
       await recordPreviewReadsOff(project.dir, built.references);
       const transformed = await withinDeadline(
         transformPreviewHtml(built.html, adapter, project, compPath),
@@ -948,7 +957,8 @@ export function registerPreviewRoutes(
         previewCacheHeaders(etag),
       );
     } catch (error) {
-      if (error instanceof SubCompositionDeadlineError) return c.text(error.message, 503);
+      if (error instanceof SubCompositionDeadlineError)
+        return c.text(error.message, 503, error.queued ? { "Retry-After": "5" } : undefined);
       throw error;
     }
   });
@@ -966,8 +976,18 @@ export function registerPreviewRoutes(
     // use resolveWithinProject because saves write their data-hf-id values.
     const candidate = resolve(project.dir, subPath);
     const file = isWithinProjectRoot(project.dir, candidate) ? candidate : null;
-    if (!file || (await isPrivateProjectFileOff(project.dir, file))) {
-      return c.text("not found", 404);
+    if (!file) return c.text("not found", 404);
+    if (await isPrivateProjectFileOff(project.dir, file)) {
+      if (new URL(c.req.url).searchParams.has(PREVIEW_PROXY_PARAM)) return c.text("not found", 404);
+      const font = await referencedFontResponse(project.dir, subPath, c.req.raw.method);
+      if (!font) return c.text("not found", 404);
+      try {
+        await recordPreviewReadsOff(project.dir, [file]);
+        return font;
+      } catch {
+        await font.body?.cancel();
+        return c.text("not found", 404);
+      }
     }
     const recorded = await recordPreviewReadsOff(project.dir, [file]).then(
       () => true,
@@ -1069,17 +1089,17 @@ export function registerPreviewRoutes(
         // A cached copy settles before any timer; a transcode never holds one of
         // the browser's few connections to this host. 202 until the copy lands.
         if (c.req.query(PREVIEW_PROXY_RETRY_PARAM) !== undefined) {
-          retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
+          await retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
         }
         const asked = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER);
         const urgency = asked === "0" ? { background: true } : { priority: asked === "1" };
-        servedPath = await waitForProxy(
-          resolveProxy(project.dir, file, proxyVariant, proxyBox, urgency),
-          0,
-        );
+        servedPath = await resolveProxy(project.dir, file, proxyVariant, proxyBox, {
+          ...urgency,
+          waitMs: 0,
+        });
       } catch (err) {
         if (err instanceof ProxyWaitTimeoutError) {
-          const progress = proxyCopyProgress(project.dir, file, proxyVariant, proxyBox);
+          const progress = await proxyCopyProgress(project.dir, file, proxyVariant, proxyBox);
           return c.text("media proxy is being made", 202, {
             "Retry-After": progress === undefined ? String(PROXY_PENDING_RETRY_AFTER_SECONDS) : "1",
             "Cache-Control": "no-store",

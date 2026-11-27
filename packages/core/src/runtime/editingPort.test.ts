@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMarkedEditingAgent } from "./editingAgent.test-helpers";
-import { createEditingPortClient, EditingPortError, type EditingPortClient } from "./editingPort";
+import {
+  createEditingPortClient,
+  EditingPortError,
+  parseEditingRequest,
+  type EditingPortClient,
+} from "./editingPort";
 
 type Listener = (event: Partial<MessageEvent>) => void;
 
@@ -115,11 +120,47 @@ describe("createEditingPortClient", () => {
           "mark-scenes-stale",
           "swap-scenes",
           "live-retime",
+          "rebind-timing",
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
+          "frame-presented",
+          "arm-canvas-keys",
+          "resolve-canvas-key-action",
+          "stage-measure",
+          "stage-act",
         ],
       });
+      document.body.innerHTML = `<div id="hero" data-hf-id="hf-hero">Hi</div>`;
+      const measured = await client.request("stage-measure", { maxItems: 10 });
+      expect(measured.truncated).toBe(false);
+      expect(measured.items.map((item) => [item.key, item.text])).toEqual([["#hf-hero", "Hi"]]);
+
+      document.body.insertAdjacentHTML("beforeend", `<p style="display: none">Later</p>`);
+      const [hero, later] = [...document.body.children] as HTMLElement[];
+      const inputs: (string | null)[] = [];
+      const readied: string[] = [];
+      client.onStageInput((event) => inputs.push(event.key));
+      client.onStageActReady((event) => readied.push(...event.held.map((one) => one.key)));
+      const fade = { borrow: ["opacity" as const], draw: { styles: { opacity: "0" } } };
+      const held = await client.request("stage-act", {
+        op: "hold",
+        acts: [
+          { key: "0", hfId: null, ...fade },
+          { key: "1", hfId: null, ...fade },
+        ],
+        deferred: true,
+        caretColor: "#3ce6ac",
+      });
+      expect(held).toEqual({ op: "hold", held: [] });
+      for (const element of [hero!, later!])
+        vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 50, 10));
+      later!.style.display = "block";
+      await vi.waitFor(() => expect(readied).toEqual(["0", "1"]));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+      await vi.waitFor(() => expect(inputs).toEqual(["a"]));
+      await client.request("stage-act", { op: "restore", keys: null });
+      expect([hero!.style.opacity, later!.style.opacity]).toEqual(["", ""]);
     } finally {
       agent.dispose();
     }
@@ -191,6 +232,31 @@ describe("createEditingPortClient", () => {
     port2.postMessage({ v: 1, event: "key", key: { ...key, type: "keyup" } });
     await vi.waitFor(() => expect(second).toHaveBeenCalledTimes(2));
     expect(first).toHaveBeenCalledOnce();
+  });
+
+  it("hands a text edit's away press to its listeners and drops an off-shape one", async () => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const client = createEditingPortClient({ iframe, host });
+    clients.push(client);
+    const { port1, port2 } = channel();
+    deliver({ source: frame, data: PORT_MESSAGE, ports: [port1] });
+    await client.ready;
+    const away = {
+      handle: "0123456789abcdef:1",
+      button: 0,
+      point: { x: 1, y: 2 },
+      viewportWidth: 640,
+      keys: { shiftKey: false, metaKey: false, ctrlKey: false },
+    };
+    const listener = vi.fn();
+    const ended = vi.fn();
+    client.onTextEditAway(listener);
+    client.onTextEditEnded(ended);
+    port2.postMessage({ v: 1, event: "text-edit-away", ...away, button: 1 });
+    port2.postMessage({ v: 1, event: "text-edit-away", ...away });
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledExactlyOnceWith(away));
+    expect(ended).not.toHaveBeenCalled();
   });
 
   it("serves a new client for the same frame after the first is disposed", async () => {
@@ -307,6 +373,46 @@ describe("createEditingPortClient", () => {
     const late = client.request("runtime-snapshot", {}, { timeoutMs: 5 });
     await expect(late).rejects.toBeInstanceOf(EditingPortError);
     await expect(late).rejects.toMatchObject({ code: "timeout" });
+  });
+
+  it("takes a frame-presented wait only as a bounded number of ms", () => {
+    const parse = (params: unknown) =>
+      parseEditingRequest({ v: 1, id: 1, kind: "frame-presented", params });
+    expect(parse({})).toMatchObject({ ok: true, params: {} });
+    expect(parse({ waitMs: 10_000 })).toMatchObject({ ok: true, params: { waitMs: 10_000 } });
+    for (const bad of [
+      { waitMs: 0 },
+      { waitMs: 15_001 },
+      { waitMs: NaN },
+      { waitMs: "1" },
+      { waitMs: 1, x: 1 },
+    ])
+      expect(parse(bad)).toMatchObject({ ok: false, code: "invalid-params" });
+  });
+
+  // fails without the fix: the client gave up at its fixed timeout while the frame was still asked to wait.
+  it("waits for a frame-presented answer a second past the frame's wait, never less than its default", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { iframe } = previewFrame();
+      const { host } = fakeHost();
+      const client = createEditingPortClient({ iframe, host, timeoutMs: 10 });
+      clients.push(client);
+      const outcome = vi.fn();
+      void client.request("frame-presented", { waitMs: 3_000 }).catch(outcome);
+      await vi.advanceTimersByTimeAsync(3_900);
+      expect(outcome).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(outcome).toHaveBeenCalledWith(expect.objectContaining({ code: "timeout" }));
+      const short = vi.fn();
+      const patient = createEditingPortClient({ iframe, host, timeoutMs: 5_000 });
+      clients.push(patient);
+      void patient.request("frame-presented", { waitMs: 100 }).catch(short);
+      await vi.advanceTimersByTimeAsync(4_900);
+      expect(short).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("hands each geometry push to its listeners, drops off-shape ones, and stops the watch on dispose", async () => {

@@ -1,6 +1,7 @@
 // The preview build passes that parse the page, run on the build worker (subCompositionWorker.ts).
 import { isCompositionTooLargeError } from "@hyperframes/core/compiler/composition-size-limit";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { addScenePartsManifest } from "@hyperframes/core/compiler";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
@@ -12,9 +13,11 @@ import { previewReferences } from "./previewReads.js";
 import { injectPreviewVariables } from "./previewVariables.js";
 import { withRootImportMap } from "./rootImportMap.js";
 import { buildSubCompositionHtml } from "./subComposition.js";
+import { isCompositionSource } from "./hfIdPersist.js";
 import type {
   BaseJob,
   BuildJob,
+  CompositionsJob,
   FinishJob,
   PartsJob,
   SubCompositionJob,
@@ -76,8 +79,30 @@ function base({ html, projectId, runtimeUrl }: BaseJob) {
 
 const parts = ({ html, ignore }: PartsJob) => addScenePartsManifest(html, ignore);
 
+function isCompositionFile(path: string): boolean {
+  try {
+    return isCompositionSource(readFileSync(path, "utf-8"));
+  } catch {
+    return false;
+  }
+}
+
+function compositions(
+  { projectDir, files, keptBackForPageInProgressMs }: CompositionsJob,
+  timeLeftMs: number,
+) {
+  const stop = performance.now() + timeLeftMs - keptBackForPageInProgressMs;
+  const found: string[] = [];
+  let unchecked = 0;
+  for (const file of files) {
+    if (performance.now() > stop) unchecked++;
+    else if (isCompositionFile(join(projectDir, file))) found.push(file);
+  }
+  return { compositions: found, unchecked };
+}
+
 /** One build job's result, on whichever thread calls it (the build worker, or a test). */
-export function runPreviewJob(job: SubCompositionJob) {
+export function runPreviewJob(job: SubCompositionJob, timeLeftMs = Infinity) {
   switch (job.kind) {
     case "build":
       return build(job);
@@ -87,6 +112,8 @@ export function runPreviewJob(job: SubCompositionJob) {
       return finish(job);
     case "parts":
       return parts(job);
+    case "compositions":
+      return compositions(job, timeLeftMs);
     default:
       return job satisfies never;
   }

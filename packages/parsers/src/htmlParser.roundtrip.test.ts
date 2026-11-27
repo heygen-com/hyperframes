@@ -9,7 +9,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHtml } from "./htmlParser.js";
-import { maxEndTime, serialize } from "./test-utils.js";
+import { maxEndTime, serialize } from "../tests/roundtrip.js";
 import { generateHyperframesHtml } from "@hyperframes/core/generators";
 
 describe("T1 — parse→serialize round-trip (DOM/timing)", () => {

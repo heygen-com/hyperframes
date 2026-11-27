@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { readCopyIndex, writeCopyIndex } from "./proxyCacheKey";
-import { isProjectCacheFile, readProjectCacheFile } from "./safePath";
+import { isProjectCacheFile, readProjectCacheFileAsync } from "./safePath";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -27,72 +27,74 @@ function tempDir(): string {
 
 const COPY = `${"a".repeat(64)}.mp4`;
 
-describe("readProjectCacheFile", () => {
-  it("reads a plain file in a plain folder", () => {
+describe("readProjectCacheFileAsync", () => {
+  it("reads a plain file in a plain folder", async () => {
     const project = tempDir();
     mkdirSync(join(project, ".cache"));
     writeFileSync(join(project, ".cache", "entry"), "data");
-    expect(readProjectCacheFile(project, join(project, ".cache", "entry"), 64)?.toString()).toBe(
-      "data",
-    );
+    expect(
+      (await readProjectCacheFileAsync(project, join(project, ".cache", "entry"), 64))?.toString(),
+    ).toBe("data");
     expect(isProjectCacheFile(project, join(project, ".cache", "entry"))).toBe(true);
   });
 
-  it("is a miss for a file over the size limit", () => {
+  it("is a miss for a file over the size limit", async () => {
     const project = tempDir();
     writeFileSync(join(project, "entry"), "data");
-    expect(readProjectCacheFile(project, join(project, "entry"), 3)).toBeNull();
+    expect(await readProjectCacheFileAsync(project, join(project, "entry"), 3)).toBeNull();
   });
 
-  it("is a miss for a folder at the entry", () => {
+  it("is a miss for a folder at the entry", async () => {
     const project = tempDir();
     mkdirSync(join(project, "entry"));
-    expect(readProjectCacheFile(project, join(project, "entry"), 64)).toBeNull();
+    expect(await readProjectCacheFileAsync(project, join(project, "entry"), 64)).toBeNull();
     expect(isProjectCacheFile(project, join(project, "entry"))).toBe(false);
   });
 
   describe.skipIf(process.platform === "win32")("links", () => {
-    it("is a miss for a link at the entry", () => {
+    it("is a miss for a link at the entry", async () => {
       const project = tempDir();
       const secret = join(tempDir(), "id_rsa");
       writeFileSync(secret, "PRIVATE KEY");
       symlinkSync(secret, join(project, "entry"));
-      expect(readProjectCacheFile(project, join(project, "entry"), 64)).toBeNull();
+      expect(await readProjectCacheFileAsync(project, join(project, "entry"), 64)).toBeNull();
       expect(isProjectCacheFile(project, join(project, "entry"))).toBe(false);
     });
 
-    it("is a miss for a hard link to a file outside the project", () => {
+    it("is a miss for a hard link to a file outside the project", async () => {
       const project = tempDir();
       const secret = join(tempDir(), "id_rsa");
       writeFileSync(secret, "PRIVATE KEY");
       linkSync(secret, join(project, "entry"));
-      expect(readProjectCacheFile(project, join(project, "entry"), 64)).toBeNull();
+      expect(await readProjectCacheFileAsync(project, join(project, "entry"), 64)).toBeNull();
       expect(isProjectCacheFile(project, join(project, "entry"))).toBe(false);
     });
 
-    it("is a miss for a plain file under a linked folder", () => {
+    it("is a miss for a plain file under a linked folder", async () => {
       const project = tempDir();
       const elsewhere = tempDir();
       writeFileSync(join(elsewhere, "entry"), "outside");
       symlinkSync(elsewhere, join(project, ".cache"));
-      expect(readProjectCacheFile(project, join(project, ".cache", "entry"), 64)).toBeNull();
+      expect(
+        await readProjectCacheFileAsync(project, join(project, ".cache", "entry"), 64),
+      ).toBeNull();
       expect(isProjectCacheFile(project, join(project, ".cache", "entry"))).toBe(false);
     });
   });
 });
 
 describe("readCopyIndex", () => {
-  it("names a plain copy in the same folder", () => {
+  it("names a plain copy in the same folder", async () => {
     const project = tempDir();
     const cache = join(project, ".transcode-cache");
     mkdirSync(cache);
     writeFileSync(join(cache, COPY), "video");
     writeCopyIndex(join(cache, ".fast-x"), join(cache, COPY));
-    expect(readCopyIndex(project, join(cache, ".fast-x"))).toBe(join(cache, COPY));
+    expect(await readCopyIndex(project, join(cache, ".fast-x"))).toBe(join(cache, COPY));
   });
 
   describe.skipIf(process.platform === "win32")("links", () => {
-    it("is a miss when the copy it names is a link", () => {
+    it("is a miss when the copy it names is a link", async () => {
       const project = tempDir();
       const cache = join(project, ".transcode-cache");
       mkdirSync(cache);
@@ -100,10 +102,10 @@ describe("readCopyIndex", () => {
       writeFileSync(secret, "PRIVATE KEY");
       symlinkSync(secret, join(cache, COPY));
       writeCopyIndex(join(cache, ".fast-x"), join(cache, COPY));
-      expect(readCopyIndex(project, join(cache, ".fast-x"))).toBeNull();
+      expect(await readCopyIndex(project, join(cache, ".fast-x"))).toBeNull();
     });
 
-    it("writes an index in place of a link at its name, leaving the link's target as it was", () => {
+    it("writes an index in place of a link at its name, leaving the link's target as it was", async () => {
       const project = tempDir();
       const cache = join(project, ".transcode-cache");
       mkdirSync(cache);
@@ -115,7 +117,7 @@ describe("readCopyIndex", () => {
       expect(lstatSync(join(cache, ".fast-x")).isSymbolicLink()).toBe(false);
     });
 
-    it("is a miss when the index itself is a link", () => {
+    it("is a miss when the index itself is a link", async () => {
       const project = tempDir();
       const cache = join(project, ".transcode-cache");
       mkdirSync(cache);
@@ -123,7 +125,7 @@ describe("readCopyIndex", () => {
       const outsideIndex = join(tempDir(), "index");
       writeFileSync(outsideIndex, COPY);
       symlinkSync(outsideIndex, join(cache, ".fast-x"));
-      expect(readCopyIndex(project, join(cache, ".fast-x"))).toBeNull();
+      expect(await readCopyIndex(project, join(cache, ".fast-x"))).toBeNull();
     });
   });
 });

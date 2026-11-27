@@ -232,9 +232,15 @@ describe("installEditingAgent", () => {
           "mark-scenes-stale",
           "swap-scenes",
           "live-retime",
+          "rebind-timing",
           "assets-unloaded",
           "text-edit",
           "serve-paused-frames",
+          "frame-presented",
+          "arm-canvas-keys",
+          "resolve-canvas-key-action",
+          "stage-measure",
+          "stage-act",
         ],
       },
     });
@@ -697,6 +703,35 @@ describe("installEditingAgent", () => {
     });
   });
 
+  it("rebinds the timing through the port, refuses an off-shape time, and waits out a swap", async () => {
+    const frame = window as unknown as Record<string, unknown>;
+    const rebinds: string[] = [];
+    const port = connectedPort();
+    const rebind = (id: number, params: object) =>
+      ask(port, { v: 1, id, kind: "rebind-timing", params });
+    try {
+      frame.__hfForceTimelineRebind = () => rebinds.push("rebound");
+      for (const [id, params] of [
+        [1, { time: -1 }],
+        [2, { time: Number.NaN }],
+        [3, { time: 1, script: "x" }],
+        [4, {}],
+      ] as const)
+        expect(await rebind(id, params)).toMatchObject({ ok: false });
+      frame.__hfSwapsWaiting = 1;
+      expect(await rebind(5, { time: 0 })).toMatchObject({ ok: true, result: { rebound: false } });
+      expect(rebinds).toEqual([]);
+      delete frame.__hfSwapsWaiting;
+      expect(await rebind(6, { time: 0 })).toMatchObject({ ok: true, result: { rebound: true } });
+      expect(rebinds).toEqual(["rebound"]);
+      delete frame.__hfForceTimelineRebind;
+      expect(await rebind(7, { time: 0 })).toMatchObject({ ok: true, result: { rebound: false } });
+    } finally {
+      delete frame.__hfForceTimelineRebind;
+      delete frame.__hfSwapsWaiting;
+    }
+  });
+
   // fails without the fix: the frame refused a turn drawn inside a translating transform, so it never turned.
   it("draws a turn inside a translating transform through the port", async () => {
     const port = connectedPort();
@@ -793,6 +828,45 @@ describe("installEditingAgent", () => {
       ok: false,
       error: { code: "failed" },
     });
+  });
+
+  it("answers the display of every element a selector matches, in document order", async () => {
+    document.body.innerHTML = `<div id="headline"><span style="display: block">Launch</span><span>day</span></div>`;
+    const port = connectedPort();
+    const every = (id: number, selector: string, properties: string[]) =>
+      ask(port, {
+        v: 1,
+        id,
+        kind: "computed-styles",
+        params: { selector, every: true, properties },
+      });
+
+    expect((await every(1, "#headline, #headline *", ["display"])).result).toEqual({
+      styles: null,
+      matches: [{ display: "block" }, { display: "block" }, { display: "inline" }],
+      truncated: false,
+    });
+    expect((await every(2, "#missing", ["display"])).result).toEqual({
+      styles: null,
+      matches: [],
+      truncated: false,
+    });
+    for (const [id, properties] of [
+      [3, ["color"]],
+      [4, ["display", "opacity"]],
+    ] as const)
+      expect(await every(id, "#headline", [...properties])).toMatchObject({
+        ok: false,
+        error: { code: "invalid-params" },
+      });
+    expect(
+      await ask(port, {
+        v: 1,
+        id: 5,
+        kind: "computed-styles",
+        params: { handle: "0123456789abcdef:1", every: true, properties: ["display"] },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "invalid-params" } });
   });
 
   it("reads custom properties whose names use any case or an underscore", async () => {
@@ -974,6 +1048,169 @@ describe("installEditingAgent", () => {
       await watch(port, ["k"], 3);
       agent.dispose();
       expect(press("keydown", { key: "k", code: "KeyK" })).toBe(false);
+    });
+  });
+
+  // fails without the fix: frame-presented is an unknown request kind until editingPort + editingAgent implement it.
+  describe("frame-presented", () => {
+    function seekingVideo() {
+      const video = document.createElement("video");
+      let seeking = true;
+      Object.defineProperty(video, "seeking", { get: () => seeking, configurable: true });
+      document.body.append(video);
+      return {
+        video,
+        finish: (eventName: "seeked" | "error" | "abort" | "emptied") => {
+          seeking = false;
+          video.dispatchEvent(new Event(eventName));
+        },
+      };
+    }
+
+    it("waits for seeking videos to fire seeked and two animation frames", async () => {
+      const rafs: FrameRequestCallback[] = [];
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (rafs.push(cb), rafs.length));
+      try {
+        const port = connectedPort();
+        const { finish } = seekingVideo();
+        let reply: Record<string, unknown> | null = null;
+        const pending = ask(port, { v: 1, id: 50, kind: "frame-presented" }).then((r) => {
+          reply = r;
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(reply).toBeNull();
+        expect(rafs).toHaveLength(0);
+
+        finish("seeked");
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        expect(reply).toBeNull();
+        rafs.shift()!(16);
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        expect(reply).toBeNull();
+        rafs.shift()!(32);
+        await pending;
+        expect(reply).toEqual({ v: 1, id: 50, ok: true, result: { presented: true } });
+      } finally {
+        rafSpy.mockRestore();
+      }
+    });
+
+    it.each(["error", "abort", "emptied"] as const)(
+      "settles and removes listeners when a seeking video emits %s",
+      async (eventName) => {
+        const rafSpy = vi
+          .spyOn(window, "requestAnimationFrame")
+          .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+        try {
+          const port = connectedPort();
+          const { video, finish } = seekingVideo();
+          const addSpy = vi.spyOn(video, "addEventListener");
+          const removeSpy = vi.spyOn(video, "removeEventListener");
+          const pending = ask(port, { v: 1, id: 51, kind: "frame-presented" });
+          await vi.waitFor(() =>
+            expect(addSpy).toHaveBeenCalledWith("seeked", expect.any(Function), { once: true }),
+          );
+          finish(eventName);
+          expect(await pending).toEqual({ v: 1, id: 51, ok: true, result: { presented: true } });
+          expect(removeSpy).toHaveBeenCalledWith("seeked", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("error", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("abort", expect.any(Function));
+          expect(removeSpy).toHaveBeenCalledWith("emptied", expect.any(Function));
+        } finally {
+          rafSpy.mockRestore();
+        }
+      },
+    );
+
+    // fails without the fix: a seek that never settled kept its listeners and observer alive past the caller's timeout.
+    it("answers presented false and lets go of the video when its seek never settles", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+      try {
+        const port = connectedPort();
+        const { video } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const removeSpy = vi.spyOn(video, "removeEventListener");
+        const pending = ask(port, { v: 1, id: 53, kind: "frame-presented" });
+        while (addSpy.mock.calls.length === 0) await new Promise((r) => setImmediate(r));
+        vi.advanceTimersByTime(4_000);
+        expect(await pending).toEqual({ v: 1, id: 53, ok: true, result: { presented: false } });
+        for (const name of ["seeked", "error", "abort", "emptied"])
+          expect(removeSpy).toHaveBeenCalledWith(name, expect.any(Function));
+        expect(disconnect).toHaveBeenCalled();
+      } finally {
+        disconnect.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    // fails without the fix: the frame gave up at its fixed 4 s, so a 6 s seek counted as never shown.
+    it("waits as long as it is asked to, so a 6 s seek still presents", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+      try {
+        const port = connectedPort();
+        const { video, finish } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const pending = ask(port, {
+          v: 1,
+          id: 55,
+          kind: "frame-presented",
+          params: { waitMs: 10_000 },
+        });
+        while (addSpy.mock.calls.length === 0) await new Promise((r) => setImmediate(r));
+        vi.advanceTimersByTime(6_000);
+        finish("seeked");
+        expect(await pending).toEqual({ v: 1, id: 55, ok: true, result: { presented: true } });
+      } finally {
+        rafSpy.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    // fails without the fix: disposal let the two-frame stage's callbacks run on.
+    it("cancels a pending animation frame when the agent is disposed", async () => {
+      const rafs: FrameRequestCallback[] = [];
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (rafs.push(cb), rafs.length));
+      const cancelSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+      try {
+        const port = connectedPort();
+        void ask(port, { v: 1, id: 54, kind: "frame-presented" });
+        await vi.waitFor(() => expect(rafs).toHaveLength(1));
+        agent.dispose();
+        expect(cancelSpy).toHaveBeenCalledWith(1);
+      } finally {
+        rafSpy.mockRestore();
+        cancelSpy.mockRestore();
+      }
+    });
+
+    it("settles and removes listeners when a seeking video is disconnected from the document", async () => {
+      const rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb) => (queueMicrotask(() => cb(16)), 1));
+      try {
+        const port = connectedPort();
+        const { video } = seekingVideo();
+        const addSpy = vi.spyOn(video, "addEventListener");
+        const removeSpy = vi.spyOn(video, "removeEventListener");
+        const pending = ask(port, { v: 1, id: 52, kind: "frame-presented" });
+        await vi.waitFor(() =>
+          expect(addSpy).toHaveBeenCalledWith("seeked", expect.any(Function), { once: true }),
+        );
+        video.remove();
+        expect(await pending).toEqual({ v: 1, id: 52, ok: true, result: { presented: true } });
+        expect(removeSpy).toHaveBeenCalledWith("seeked", expect.any(Function));
+      } finally {
+        rafSpy.mockRestore();
+      }
     });
   });
 });

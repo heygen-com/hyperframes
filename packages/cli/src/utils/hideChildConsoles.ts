@@ -7,10 +7,13 @@ type ChildProcessModule = Record<string, unknown>;
 
 const ENTRY_POINTS = ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"];
 
-/** The call's arguments with `windowsHide: true` unless the caller chose; a taskkill's stderr is dropped too. */
+export const TASKKILL_TIMEOUT_MS = 5_000;
+const TASKKILL = /^taskkill(\s|$)/i;
+
+/** `windowsHide: true` unless the caller chose; taskkill runs shell-less, silenced and capped, as WMI can hang. */
 function hidden(command: string, rest: unknown[]): unknown[] {
-  const defaults = /^taskkill\s/i.test(command)
-    ? { windowsHide: true, stdio: "ignore" }
+  const defaults = TASKKILL.test(command)
+    ? { windowsHide: true, stdio: "ignore", timeout: TASKKILL_TIMEOUT_MS }
     : { windowsHide: true };
   const args = [...rest];
   const at = args.findIndex((arg) => arg && typeof arg === "object" && !Array.isArray(arg));
@@ -32,7 +35,13 @@ export function hideChildConsoles(
   for (const name of ENTRY_POINTS) {
     const original = target[name] as Spawner & { [promisify.custom]?: Spawner };
     const wrapped: Spawner & { [promisify.custom]?: Spawner } = (command, ...rest) =>
-      original(...(hidden(command, rest) as [string, ...unknown[]]));
+      name === "execSync" && TASKKILL.test(command)
+        ? (target.execFileSync as Spawner)(
+            "taskkill",
+            command.trim().split(/\s+/).slice(1),
+            ...rest,
+          )
+        : original(...(hidden(command, rest) as [string, ...unknown[]]));
     const custom = original[promisify.custom];
     if (custom)
       wrapped[promisify.custom] = (command, ...rest) =>

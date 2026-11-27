@@ -1,4 +1,5 @@
-import { closeSync, constants, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
+import { closeSync, constants, mkdirSync, openSync, writeSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
@@ -53,6 +54,7 @@ export interface HistoryLog {
   entries: HistoryEntry[];
   pins: Set<string>;
   keepsLedger?: boolean;
+  baselineLines?: number;
 }
 
 export type LogRecord =
@@ -69,10 +71,13 @@ function parseRecord(line: string): LogRecord | null {
 }
 
 /** `onUnreadable` hears of a damaged line; a torn last line (a crash mid-append) is expected and dropped quietly. */
-export function readLog(file: string, onUnreadable: (line: number) => void): HistoryLog | null {
+export async function readLog(
+  file: string,
+  onUnreadable: (line: number) => void,
+): Promise<HistoryLog | null> {
   let text: string;
   try {
-    text = readFileSync(file, "utf-8");
+    text = await readFile(file, "utf-8");
   } catch {
     return null;
   }
@@ -88,6 +93,7 @@ export function readLog(file: string, onUnreadable: (line: number) => void): His
 
 function applyRecord(log: HistoryLog, record: LogRecord): void {
   if (record.type === "baseline") {
+    log.baselineLines = (log.baselineLines ?? 0) + 1;
     log.baseline = new Map(Object.entries(record.files));
     log.keepsLedger = record.keepsLedger === true;
   } else if (record.type === "entry") log.entries.push(record.entry);
@@ -107,6 +113,7 @@ export function saveRecord(file: string, log: HistoryLog, record: LogRecord): vo
   }
   try {
     writeSync(fd, `${JSON.stringify(record)}\n`);
+    if (record.type === "baseline") log.baselineLines = (log.baselineLines ?? 0) + 1;
   } finally {
     closeSync(fd);
   }
@@ -128,6 +135,7 @@ export function writeLog(file: string, log: HistoryLog): void {
   ];
   mkdirSync(dirname(file), { recursive: true });
   replaceFileAtomically(file, records.map((r) => `${JSON.stringify(r)}\n`).join(""), 0o644);
+  log.baselineLines = 1;
 }
 
 function applyEntry(manifest: Manifest, entry: HistoryEntry, side: HistoryEntrySide): void {

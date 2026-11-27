@@ -5,6 +5,7 @@ export * from "./ui";
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
+export { primeFrameToken } from "./player/lib/frameToken";
 export {
   DEFAULT_SHORTCUT_SECTIONS,
   DEFAULT_STUDIO_KEYS,
@@ -46,7 +47,9 @@ export {
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
 export {
+  frameStyleValue,
   previewAuthoredStyles,
+  previewComputedStylesOfEvery,
   previewDocumentCopy,
   previewEditingClient,
   previewFontFaces,
@@ -64,6 +67,31 @@ export {
   type PreviewElementEdit,
   type PreviewElementHit,
 } from "./player/lib/previewElements";
+export {
+  MAX_STAGE_CLIP_KEYS,
+  MAX_STAGE_ITEMS,
+  measurePreviewStage,
+  type MeasurePreviewStageOptions,
+  type StageMeasuredItem,
+  type StageMeasureResult,
+  type StageTextStart,
+} from "./player/lib/previewStageMeasure";
+export {
+  capturePreviewGhosts,
+  holdPreviewStage,
+  onPreviewStageActReady,
+  onPreviewStageInput,
+  previewStageDrawer,
+  readyPreviewStage,
+  restorePreviewStage,
+  STAGE_ACT_TIMEOUT_MS,
+  type StageActDraw,
+  type StageActGhost,
+  type StageActHeld,
+  type StageActHold,
+  type StageActTarget,
+  type StageInputEvent,
+} from "./player/lib/previewStageAct";
 export {
   editSealedSelection,
   findPreviewElementForSelection,
@@ -210,6 +238,8 @@ export type {
 export { flushStudioPendingEdits } from "./utils/studioPendingEdits";
 export { revertNewestStudioPendingEdit } from "./utils/studioPendingEdits";
 export { cancelNewestStudioWaitingPress } from "./utils/studioPendingEdits";
+export { setStudioTextEditAway } from "./hooks/textEditAway";
+export type { StudioTextEditAway } from "./hooks/textEditAway";
 export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,
@@ -251,6 +281,7 @@ export { useDomEditSession } from "./hooks/useDomEditSession";
 export type { UseDomEditSessionParams } from "./hooks/useDomEditSession";
 export { useLivePreviewIframe } from "./hooks/useLivePreviewIframe";
 export { announcePreviewDocumentLoaded } from "./player/sceneSwap";
+export { shownPreviewFrame } from "./player/lib/previewChannel";
 export type { PreviewPromotion } from "./player/sceneSwap";
 export { usePreviewPersistence } from "./hooks/usePreviewPersistence";
 export type { UsePreviewPersistenceParams } from "./hooks/usePreviewPersistence";

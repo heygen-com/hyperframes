@@ -60,6 +60,8 @@ const geometry = (() => {
     "fitMatrix",
     "printPathData",
     "shapePathData",
+    "geometryCopy",
+    "svgToPathData",
   ];
   const body = `${source.slice(open, close)}\nreturn { ${names.join(", ")} };`;
   return new Function(body)() as Record<string, unknown>;
@@ -82,6 +84,8 @@ function at<T>(values: readonly T[], index: number): T {
 const {
   arcToCubics,
   fitMatrix,
+  geometryCopy,
+  svgToPathData,
   isSvgPathData,
   normalisePathData,
   parsePathData,
@@ -99,6 +103,8 @@ const {
   parsePathData: (d: string) => { code: string; args: number[] }[];
   printPathData: (segments: { code: string; args: number[] }[]) => string;
   shapePathData: (tag: string, attrs: Record<string, string>) => string | null;
+  geometryCopy: (source: Element, doc: Document) => Element | null;
+  svgToPathData: (svgText: string, target: string, doc: Document) => unknown;
   transformPathData: (
     segments: { code: string; args: number[] }[],
     matrix: { a: number; b: number; c: number; d: number; e: number; f: number },
@@ -558,6 +564,110 @@ const previewValues = (() => {
     declaredValues: (parsed: unknown, variables: Variable[]) => Record<string, unknown>;
   };
 })();
+
+/** Every element and its attribute names under `root`, in document order. */
+const outline = (root: Element): string[] =>
+  [root, ...root.querySelectorAll("*")].map(
+    (element) => `${element.localName}[${element.getAttributeNames().join(",")}]`,
+  );
+
+test("an import parks only the file's geometry in the page, so nothing in the file runs or loads there", () => {
+  const win = new Window({ settings: { disableJavaScriptEvaluation: true } });
+  const doc = win.document as unknown as Document;
+  const parked: string[][] = [];
+  const append = doc.body.appendChild.bind(doc.body);
+  doc.body.appendChild = <T extends Node>(node: T): T => {
+    parked.push(outline(node as unknown as Element));
+    return append(node);
+  };
+  const file = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" onload="window.ran=1">
+    <script>window.ran=1</script>
+    <style>@import url(https://example.com/a.css);</style>
+    <image href="https://example.com/a.png" onerror="window.ran=1"/>
+    <foreignObject><img xmlns="http://www.w3.org/1999/xhtml" src="x" onerror="window.ran=1"/></foreignObject>
+    <animate attributeName="x" onbegin="window.ran=1"/>
+    <set attributeName="onmouseover" to="window.ran=1"/>
+    <a href="https://example.com/next"><path d="M0 0 L5 5" onclick="window.ran=1" style="fill:url(https://example.com/f)"/></a>
+    <g transform="translate(1 1)" filter="url(https://example.com/f)"><rect x="1" y="1" width="2" height="2" onmouseover="window.ran=1"/></g>
+    <defs><path id="d" d="M0 0 L1 1"/></defs>
+    <use href="#d"/>
+  </svg>`;
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "DOMParser");
+  Object.defineProperty(globalThis, "DOMParser", { value: win.DOMParser, configurable: true });
+  try {
+    svgToPathData(file, "M0 0 L10 10", doc);
+  } catch {
+    // happy-dom does no layout, so the measuring throws; what was parked is the point here.
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "DOMParser", saved);
+    else delete (globalThis as { DOMParser?: unknown }).DOMParser;
+  }
+  assert.deepEqual(parked, [
+    [
+      "div[aria-hidden,style]",
+      "svg[viewBox]",
+      "g[]",
+      "path[d]",
+      "g[transform]",
+      "rect[x,y,width,height]",
+    ],
+  ]);
+  assert.equal(doc.body.children.length, 0, "the parked copy is removed again");
+});
+
+test("an svg root outside the SVG namespace gets the panel's own message, not a raw error", () => {
+  const win = new Window();
+  const doc = win.document as unknown as Document;
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "DOMParser");
+  Object.defineProperty(globalThis, "DOMParser", { value: win.DOMParser, configurable: true });
+  try {
+    assert.throws(
+      () => svgToPathData('<svg viewBox="0 0 1 1"><path d="M0 0 L1 1"/></svg>', "M0 0 L10 10", doc),
+      /That file is not an SVG, or its markup is malformed\./,
+    );
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "DOMParser", saved);
+    else delete (globalThis as { DOMParser?: unknown }).DOMParser;
+  }
+  assert.equal(doc.body.children.length, 0, "nothing was parked");
+});
+
+test("the parked copy keeps what places or hides a shape, in attributes or its own inline style", () => {
+  const win = new Window();
+  const file = new win.DOMParser().parseFromString(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10" viewBox="0 0 40 20" preserveAspectRatio="none">
+      <switch><g transform="scale(2)"><svg x="1" y="2" width="5" height="5" viewBox="0 0 1 1"><circle cx="0.5" cy="0.5" r="0.5"/></svg></g></switch>
+      <ellipse cx="1" cy="1" rx="1" ry="2" display="none"/>
+      <line x1="0" y1="0" x2="1" y2="1" style="stroke: red; display : none"/>
+      <polygon points="0,0 1,0 1,1" style="displayed: none"/>
+      <rect width="1" height="1" transform-origin="1 1" style="fill: red; transform: rotate(45deg); display: none !important"/>
+    </svg>`,
+    "image/svg+xml",
+  );
+  const copy = geometryCopy(
+    file.documentElement as unknown as Element,
+    win.document as unknown as Document,
+  );
+  assert.ok(copy);
+  assert.deepEqual(outline(copy), [
+    "svg[width,height,viewBox,preserveAspectRatio]",
+    "g[]",
+    "g[transform]",
+    "svg[x,y,width,height,viewBox]",
+    "circle[cx,cy,r]",
+    "ellipse[cx,cy,rx,ry,display]",
+    "line[x1,y1,x2,y2,style]",
+    "polygon[points]",
+    "rect[width,height,transform-origin,style]",
+  ]);
+  const styles = [...copy.querySelectorAll("line, rect")].map((shape) =>
+    shape.getAttribute("style"),
+  );
+  assert.deepEqual(styles, [
+    "display: none;",
+    "display: none !important; transform: rotate(45deg);",
+  ]);
+});
 
 test("preview values embed as JSON with no markup characters and read back unchanged", () => {
   const value = { t: "</script><img src=x onerror=alert(1)>", a: "R&D", s: "\u2028\u2029", n: 2 };

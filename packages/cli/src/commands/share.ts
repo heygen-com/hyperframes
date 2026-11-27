@@ -13,6 +13,11 @@ import {
   type ShareState,
   type ShareService,
 } from "../share/service.js";
+import {
+  listReferencedHiddenSourceAssets,
+  referencedHiddenDigest,
+} from "@hyperframes/share/projectSnapshot.mjs";
+import { quotedFilePath, terminalLines } from "@hyperframes/core/terminal-text";
 import { shareError } from "../share/errors.js";
 import { jsonFailure } from "../utils/jsonError.js";
 import { parsePositiveIntegerArg } from "../utils/integerArg.js";
@@ -50,6 +55,10 @@ export default defineCommand({
     update: {
       type: "boolean",
       description: "Render and add a new video version to the existing share",
+    },
+    reconnect: {
+      type: "boolean",
+      description: "Reconnect a moved or upgraded folder to an existing cloud composition",
     },
     "include-source": {
       type: "boolean",
@@ -90,8 +99,11 @@ export default defineCommand({
         if (message !== lastProgress) process.stderr.write(`${message}\n`);
         lastProgress = message;
       });
+      if (args.reconnect) return await reconnectFolder(service, args);
       await confirmNamedReview(input, args, service, project.dir);
       await chooseAudience(input, args, service);
+      if (input.includeSource)
+        input.expectedReferencedHiddenDigest = await showReferencedHiddenAssets(project.dir);
       const result = await service.run(input);
       await presentResult(result, input, Boolean(args.json));
     } catch (error) {
@@ -106,7 +118,20 @@ export default defineCommand({
   },
 });
 
+async function showReferencedHiddenAssets(dir: string) {
+  const paths = await listReferencedHiddenSourceAssets(dir);
+  if (paths.length) {
+    const lines = [
+      "Editable source includes these referenced hidden assets",
+      ...paths.map(quotedFilePath),
+    ];
+    console.error(terminalLines(lines.join("\n")));
+  }
+  return referencedHiddenDigest(paths);
+}
+
 interface ShareArgs {
+  reconnect?: boolean;
   public?: boolean;
   team?: boolean;
   "invite-only"?: boolean;
@@ -177,6 +202,51 @@ function requestedAudience(args: ShareArgs) {
 
 function canAsk(args: ShareArgs) {
   return !args.yes && !args.json && !isUnattended();
+}
+
+async function reconnectFolder(service: ShareService, args: ShareArgs) {
+  if (
+    !canAsk(args) ||
+    [
+      args.update,
+      args.status,
+      args.manage,
+      requestedAudience(args),
+      args.review !== undefined,
+      args["include-source"],
+      args["video-only"],
+    ].some(Boolean)
+  )
+    throw new CliUsageError(
+      "Run --reconnect interactively on its own. Use --space to choose a workspace.",
+    );
+  const choices = await service.reconnect.list(args.space);
+  if (!choices.length)
+    throw new CliUsageError("This workspace has no cloud projects to reconnect.");
+  const selected = await prompts.select({
+    message: `Choose the existing cloud project in ${quotedFilePath(choices[0]!.workspace.name)}`,
+    options: choices.map((choice) => ({
+      value: choice.token,
+      label: `${quotedFilePath(choice.title)} (${shareLine(choice.id)})`,
+    })),
+  });
+  const choice = choices.find((item) => item.token === selected);
+  if (!choice) throw new CliUsageError("Reconnect cancelled.");
+  const approved = await prompts.confirm({
+    initialValue: false,
+    message: `Reconnect this folder to ${quotedFilePath(choice.title)} (${shareLine(choice.id)}) in ${quotedFilePath(choice.workspace.name)} (${shareLine(choice.workspace.id)})? Future syncs will publish versions there.`,
+  });
+  if (approved !== true) throw new CliUsageError("Reconnect cancelled.");
+  const difference = await service.reconnect.confirm(choice.token);
+  if (difference) {
+    const useLocal = await prompts.confirm({
+      initialValue: false,
+      message: `This folder differs from the latest cloud version of ${quotedFilePath(choice.title)} in ${quotedFilePath(choice.workspace.name)}. Reconnect using the local files? The next sync will publish them as the new version and may undo cloud edits.`,
+    });
+    if (useLocal !== true) throw new CliUsageError("Reconnect cancelled.");
+    await service.reconnect.confirm(difference.confirmLocalFiles);
+  }
+  console.log("Folder reconnected. No files were uploaded.");
 }
 
 function shouldPrompt(input: ShareAction, args: ShareArgs) {
