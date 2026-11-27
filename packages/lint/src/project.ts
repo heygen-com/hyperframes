@@ -30,6 +30,7 @@ import {
 } from "@hyperframes/parsers/sub-composition-validity";
 import { htmlReadUnlikeBrowserFinding, parseLintHtml } from "./readableHtml.js";
 import postcss from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import {
   cleanAssetUrl,
   collectSubCompositionSrcs,
@@ -751,7 +752,7 @@ function lintTextureMaskAssetNotFound(
     for (const cssSource of collectCssSources(projectDir, html, compSrcPath)) {
       let matches: CssUrlMatch[] = [];
       try {
-        postcss.parse(cssSource.content).walkDecls(/^(?:-webkit-)?mask-image$/i, (declaration) => {
+        parseCss(cssSource.content).walkDecls(/^(?:-webkit-)?mask-image$/i, (declaration) => {
           matches.push(...bareOrQuotedCssUrlMatches(declaration.value));
         });
       } catch (error) {
@@ -819,7 +820,7 @@ function lintLinkedStylesheetAssets(
     )) {
       let root: postcss.Root;
       try {
-        root = postcss.parse(content);
+        root = parseCss(content);
       } catch (error) {
         if (!(error instanceof postcss.CssSyntaxError)) throw error;
         continue;

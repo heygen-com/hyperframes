@@ -17,6 +17,7 @@ import { extractSfntFace } from "./sfntNames.js";
 import { locateSystemFontVariants, SYSTEM_FONT_SIZE_LIMIT } from "./systemFontLocator.js";
 import { forgetPage, readPage, takePage } from "./pageTree.js";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
+import { parseCss } from "@hyperframes/parsers/postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
 import { fontToDataUri } from "./fontCompression.js";
 import { authoredGoogleFontStylesheets, withPageText } from "./authoredGoogleFonts.js";
@@ -148,7 +149,7 @@ function systemPrimaryReplacement(
 
 function parseCssRoot(css: string): postcss.Root | null {
   try {
-    return postcss.parse(css);
+    return parseCss(css);
   } catch {
     return null;
   }

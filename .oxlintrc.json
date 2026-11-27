@@ -96,6 +96,7 @@
       "excludeFiles": [
         "**/*.test.ts",
         "packages/parsers/src/linkedom.ts",
+        "packages/parsers/src/postcss.ts",
         "packages/cli/src/**/*.ts"
       ],
       "rules": {
@@ -106,8 +107,21 @@
               {
                 "name": "linkedom",
                 "message": "Import from @hyperframes/parsers/linkedom: it writes <title> and <textarea> text so it can't close its element."
+              },
+              {
+                "name": "postcss",
+                "importNames": ["parse"],
+                "message": "Parse CSS with parseCss from @hyperframes/parsers/postcss: it never opens the file a sourceMappingURL comment in the CSS names."
               }
             ]
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "postcss",
+            "property": "parse",
+            "message": "Parse CSS with parseCss from @hyperframes/parsers/postcss: it never opens the file a sourceMappingURL comment in the CSS names."
           }
         ]
       }
