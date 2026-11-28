@@ -240,13 +240,11 @@ function sendInTurn<K extends EditingRequestKind>(
   );
 }
 
-/** Reads that start something in the frame for their asker, so two askers never share one. */
 const FRAME_WATCHES: ReadonlySet<EditingRequestKind> = new Set<EditingRequestKind>([
   "watch-keys",
   "arm-canvas-keys",
   "watch-geometry",
 ]);
-/** Reads in flight per client, by kind, timeout and params: an identical read asked meanwhile takes their answer. */
 const readsInFlight = new WeakMap<EditingPortClient, Map<string, Promise<unknown>>>();
 
 function sendForAnswer<K extends EditingRequestKind>(
@@ -265,7 +263,6 @@ function sendForAnswer<K extends EditingRequestKind>(
       return noReply ? null : PREVIEW_REJECTED;
     });
   if (!isFrameRead(kind)) {
-    // A read asked after this request must see what it changed.
     readsInFlight.delete(client);
     return send();
   }
@@ -274,7 +271,6 @@ function sendForAnswer<K extends EditingRequestKind>(
   if (!reads) readsInFlight.set(client, (reads = new Map()));
   const key = `${kind} ${timeoutMs ?? ""} ${JSON.stringify(params)}`;
   const shared = reads.get(key) as Sent | undefined;
-  // Each asker gets its own copy, so one caller changing its answer cannot change another's.
   if (shared)
     return shared.then((answer) =>
       answer && typeof answer === "object" ? structuredClone(answer) : answer,

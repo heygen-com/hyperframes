@@ -150,10 +150,7 @@ export function useDomEditOverlayRects({
     return { members, hover, targets, key: JSON.stringify(targets) };
   };
 
-  /**
-   * The opaque frame's rects, one geometry read in flight at a time; a stale answer is dropped. A selection just set
-   * (`set`) asks even while an older selection's read is in flight, once per set of targets.
-   */
+  /** The opaque frame's rects, one geometry read in flight, which only a just-set selection (`set`) asks past. */
   const updateOverChannel = (
     iframe: HTMLIFrameElement,
     overlayEl: HTMLDivElement,
@@ -173,7 +170,6 @@ export function useDomEditOverlayRects({
     channelReadRef.current = readKey;
     void measurePreviewOverlay(iframe, overlayEl, targets, "behind-drafts")
       .then((rects) => {
-        // Current when the rendered selection now names the same targets: a read asked at the set lands after it.
         const current =
           overChannelTargets(selectionRef.current, groupSelectionsRef.current).key === readKey;
         if (!rects || !current || rafPausedRef.current || iframeRef.current !== iframe) return;
