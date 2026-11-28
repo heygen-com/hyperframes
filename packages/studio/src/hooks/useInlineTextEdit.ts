@@ -374,19 +374,26 @@ export function useInlineTextEdit({
       setSession(open);
       onPause?.();
 
-      element.setAttribute("contenteditable", EDITABLE);
-      // Focused and selected on the next frame, not now. The press that opened
-      // this is still in flight: the canvas overlay takes focus on its own
-      // pointer-down, and the click that follows puts a caret in the element
-      // and collapses any selection. Doing it after all of that is what lands.
-      const view = element.ownerDocument.defaultView;
-      const raf = view?.requestAnimationFrame(() => {
-        framesRef.current = null;
-        if (openRef.current?.element !== element) return;
-        element.focus({ preventScroll: true });
-        placeCaret(element, caretAt);
-      });
-      framesRef.current = raf ?? null;
+      const begin = () => {
+        if (openRef.current !== open) return;
+        open.original = element.innerHTML;
+        element.setAttribute("contenteditable", EDITABLE);
+        // Focused and selected on the next frame, not now. The press that opened
+        // this is still in flight: the canvas overlay takes focus on its own
+        // pointer-down, and the click that follows puts a caret in the element
+        // and collapses any selection. Doing it after all of that is what lands.
+        const view = element.ownerDocument.defaultView;
+        const raf = view?.requestAnimationFrame(() => {
+          framesRef.current = null;
+          if (openRef.current?.element !== element) return;
+          element.focus({ preventScroll: true });
+          placeCaret(element, caretAt);
+        });
+        framesRef.current = raf ?? null;
+      };
+      const settled = textSavesSettled(element);
+      if (settled) void settled.then(begin);
+      else begin();
       return true;
     },
     [onPause, readOnly, teardown],
