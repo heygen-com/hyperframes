@@ -19,6 +19,7 @@ Runs independent checks and reports each as ok/warn/fail:
 - **Chrome** — bundled or system, version, path
 - **Docker** / **Docker running** — required only for `render --docker`
 - **/dev/shm** — inside containers only
+- **whisper-cpp**, **TTS (Kokoro)**, **BGM (MusicGen)** — optional: a missing one shows `○`, carries `optional: true` in JSON and leaves `ok` true
 
 Run `doctor` first when:
 
