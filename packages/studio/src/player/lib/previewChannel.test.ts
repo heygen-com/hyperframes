@@ -117,34 +117,31 @@ describe("previewEditingClient", () => {
     expect(handed).toHaveBeenCalledOnce();
   });
 
-  it("opens no channel to a page the frame loaded itself, until Studio loads the frame again", async () => {
-    const { iframe, handed } = servedFrame(() => ({ waited: false }));
-    const studioLoads = async (attribute: "src" | "srcdoc") => {
-      iframe.setAttribute(attribute, "/api/projects/demo/preview");
-      await Promise.resolve();
-      iframe.dispatchEvent(new Event("load"));
-    };
-    watchStudioNavigations(iframe);
-    await studioLoads("src");
-    const posted = vi.spyOn(iframe.contentWindow!, "postMessage");
-    iframe.dispatchEvent(new Event("load"));
-    const left = previewEditingClient(iframe);
-    await expect(left.request("wait-for-seek", {})).rejects.toMatchObject({ code: "disposed" });
-    expect(posted).not.toHaveBeenCalled();
-
-    await studioLoads("srcdoc");
-    iframe.setAttribute("src", "/api/projects/demo/other");
+  it("opens a channel only for the load that follows Studio's first write to the frame", async () => {
+    const { iframe, frame, handed } = servedFrame(() => ({ waited: false }));
+    closers.push(watchStudioNavigations(iframe));
+    iframe.setAttribute("src", "/api/projects/demo/preview");
     await Promise.resolve();
+    fromFrame(frame, { type: PAGE_SHOWN, page: "studios" });
+    iframe.dispatchEvent(new Event("load"));
+    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).resolves.toEqual({
+      waited: false,
+    });
+    const posted = vi.spyOn(iframe.contentWindow!, "postMessage");
+
+    iframe.setAttribute("src", "/api/projects/demo/preview?again=1");
+    await Promise.resolve();
+    fromFrame(frame, { type: PAGE_LEFT, page: "studios" });
     iframe.dispatchEvent(new Event("load"));
     await expect(previewEditingClient(iframe).request("wait-for-seek", {})).rejects.toMatchObject({
       code: "disposed",
     });
-    expect(handed).not.toHaveBeenCalled();
 
-    await studioLoads("srcdoc");
-    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).resolves.toEqual({
-      waited: false,
+    iframe.dispatchEvent(new Event("load"));
+    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).rejects.toMatchObject({
+      code: "disposed",
     });
+    expect(posted).not.toHaveBeenCalled();
     expect(handed).toHaveBeenCalledOnce();
   });
 

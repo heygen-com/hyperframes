@@ -36,6 +36,7 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
 
 const beforeOtherLoadHandlers = { capture: true } as const;
 type StudioLoads = {
+  writes: number;
   wrote: boolean;
   shown: Set<unknown>;
   shownPageLeft: boolean;
@@ -46,19 +47,18 @@ const studioLoads = new WeakMap<HTMLIFrameElement, StudioLoads>();
 export function watchStudioNavigations(iframe: HTMLIFrameElement): () => void {
   if (studioLoads.has(iframe)) return () => {};
   const state: StudioLoads = {
+    writes: 0,
     wrote: false,
     shown: new Set(),
     shownPageLeft: false,
     open: Promise.resolve(true),
   };
   studioLoads.set(iframe, state);
-  const writes = new MutationObserver((changes) => {
-    const srcdocShown = iframe.hasAttribute("srcdoc");
-    if (changes.some((change) => change.attributeName === "srcdoc" || !srcdocShown)) {
-      state.wrote = true;
-      state.shown.clear();
-      state.shownPageLeft = false;
-    }
+  const writes = new MutationObserver(() => {
+    state.writes += 1;
+    state.wrote = true;
+    state.shown.clear();
+    state.shownPageLeft = false;
   });
   writes.observe(iframe, { attributeFilter: ["src", "srcdoc"] });
   const onPageLife = (event: MessageEvent<unknown>) => {
@@ -69,9 +69,11 @@ export function watchStudioNavigations(iframe: HTMLIFrameElement): () => void {
   };
   window.addEventListener("message", onPageLife);
   const onLoad = () => {
-    const wrote = state.wrote;
+    const firstWriteLoaded = state.wrote && state.writes === 1;
     state.wrote = false;
-    state.open = new Promise((resolve) => setTimeout(() => resolve(wrote && !state.shownPageLeft)));
+    state.open = new Promise((resolve) =>
+      setTimeout(() => resolve(firstWriteLoaded && !state.shownPageLeft)),
+    );
   };
   iframe.addEventListener("load", onLoad, beforeOtherLoadHandlers);
   return () => {
