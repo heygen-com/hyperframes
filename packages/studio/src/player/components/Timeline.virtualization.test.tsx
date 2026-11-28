@@ -1,9 +1,21 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { TIMELINE_SCROLL_SETTLE_MS } from "./useTimelineScrollViewport";
+import { Timeline } from "./Timeline";
+import { usePlayerStore } from "../store/playerStore";
+import { getTimelineCanvasHeight, TRACK_H } from "./timelineLayout";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
+import { timelineClipFocusId } from "./timelineNavigationIdentity";
+
+const rowVirtualization = vi.hoisted(() => ({ enabled: true }));
+vi.mock("./timelineRowVirtualizationFlag", () => ({
+  get STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED() {
+    return rowVirtualization.enabled;
+  },
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -31,7 +43,6 @@ let clientWidth = 900;
 let clientHeight = 240;
 
 beforeAll(() => {
-  vi.stubEnv("VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED", "1");
   globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
   Object.defineProperty(HTMLElement.prototype, "clientWidth", {
     configurable: true,
@@ -49,7 +60,6 @@ beforeEach(() => {
 });
 
 afterAll(() => {
-  vi.unstubAllEnvs();
   globalThis.ResizeObserver = originalResizeObserver;
   if (originalClientWidth)
     Object.defineProperty(HTMLElement.prototype, "clientWidth", originalClientWidth);
@@ -79,10 +89,24 @@ async function advanceFrame(): Promise<void> {
   });
 }
 
+const mounted = new Set<Root>();
+
+function unmountAll(): void {
+  for (const root of mounted) act(() => root.unmount());
+  mounted.clear();
+  usePlayerStore.getState().reset();
+}
+
+afterEach(() => {
+  unmountAll();
+  rowVirtualization.enabled = true;
+});
+
 async function mountTimeline(element: React.ReactElement) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  mounted.add(root);
   await act(async () => root.render(element));
   await act(async () => {});
   return { host, root };
@@ -121,31 +145,22 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
   it("keeps a zero-size first render bounded while the feature flag is enabled", async () => {
     clientWidth = 0;
     clientHeight = 0;
-    const [{ Timeline }, { usePlayerStore }] = await Promise.all([
-      import("./Timeline"),
-      import("../store/playerStore"),
-    ]);
     usePlayerStore.setState({
       duration: 60,
       timelineReady: true,
       elements: clipsByTrack(10_000),
     });
 
-    const { host, root } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 2 }));
+    const { host } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 2 }));
 
     const rows = host.querySelectorAll("[data-timeline-row]");
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThanOrEqual(16);
 
-    act(() => root.unmount());
-    usePlayerStore.getState().reset();
+    unmountAll();
   });
 
   it("keeps a clip's picture on screen while the timeline scrolls", async () => {
-    const [{ Timeline }, { usePlayerStore }] = await Promise.all([
-      import("./Timeline"),
-      import("../store/playerStore"),
-    ]);
     usePlayerStore.setState({
       duration: 60,
       timelineReady: true,
@@ -153,7 +168,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
       elements: [{ id: "clip-0", label: "Clip 0", tag: "div", start: 0, duration: 10, track: 0 }],
     });
 
-    const { host, root } = await mountTimeline(
+    const { host } = await mountTimeline(
       React.createElement(Timeline, {
         renderClipContent: () => React.createElement("span", { "data-rich-content": true }),
       }),
@@ -181,16 +196,11 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
       expect(host.querySelector('[data-el-id="clip-0"]')).toBe(clip);
       expect(host.querySelector("[data-rich-content]")).toBe(picture);
     } finally {
-      act(() => root.unmount());
-      usePlayerStore.getState().reset();
+      unmountAll();
     }
   });
 
   it("gives a clip that appears mid-scroll its picture once the scroll settles", async () => {
-    const [{ Timeline }, { usePlayerStore }] = await Promise.all([
-      import("./Timeline"),
-      import("../store/playerStore"),
-    ]);
     const clip = (id: string, start: number) => ({
       id,
       label: id,
@@ -201,7 +211,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     });
     usePlayerStore.setState({ duration: 60, timelineReady: true, elements: [clip("clip-0", 0)] });
 
-    const { host, root } = await mountTimeline(
+    const { host } = await mountTimeline(
       React.createElement(Timeline, {
         renderClipContent: (element: { id: string }) =>
           React.createElement("span", { "data-rich-content": element.id }),
@@ -225,25 +235,18 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
       });
       expect(host.querySelector('[data-rich-content="clip-1"]')).not.toBeNull();
     } finally {
-      act(() => root.unmount());
-      usePlayerStore.getState().reset();
+      unmountAll();
     }
   });
 
   it("mounts a bounded list range over the full geometry height", async () => {
-    const [{ Timeline }, { usePlayerStore }, { getTimelineCanvasHeight, TRACK_H }] =
-      await Promise.all([
-        import("./Timeline"),
-        import("../store/playerStore"),
-        import("./timelineLayout"),
-      ]);
     usePlayerStore.setState({
       duration: 60,
       timelineReady: true,
       elements: clipsByTrack(1_000),
     });
 
-    const { host, root } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 3 }));
+    const { host } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 3 }));
 
     await settleUntil(
       () =>
@@ -276,22 +279,17 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     expect(treegrid?.querySelector('[data-timeline-row-key="0"]')).not.toBeNull();
     expect(document.activeElement).toBe(focusedControl);
 
-    act(() => root.unmount());
-    usePlayerStore.getState().reset();
+    unmountAll();
   });
 
   it("keeps focus pinning active after the scroll viewport remounts", async () => {
-    const [{ Timeline }, { usePlayerStore }] = await Promise.all([
-      import("./Timeline"),
-      import("../store/playerStore"),
-    ]);
     usePlayerStore.setState({
       duration: 60,
       timelineReady: true,
       elements: clipsByTrack(1_000),
     });
 
-    const { host, root } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 9 }));
+    const { host } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 9 }));
     await settleUntil(() => host.querySelectorAll("[data-timeline-row]").length > 0);
     const firstScroller = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]");
 
@@ -313,16 +311,10 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     expect(host.querySelector('[data-timeline-row-key="0"]')).not.toBeNull();
     expect(document.activeElement).toBe(focusedControl);
 
-    act(() => root.unmount());
-    usePlayerStore.getState().reset();
+    unmountAll();
   });
 
   it("windows clips and ruler cells while retaining an off-window selected clip", async () => {
-    const [{ Timeline }, { usePlayerStore }, { TIMELINE_VIEWPORT_BUDGETS }] = await Promise.all([
-      import("./Timeline"),
-      import("../store/playerStore"),
-      import("../lib/timelineViewportBudgets"),
-    ]);
     usePlayerStore.setState({
       duration: 1_000,
       timelineReady: true,
@@ -343,11 +335,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
       })),
     });
 
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    await act(async () => root.render(React.createElement(Timeline, { sessionEpoch: 4 })));
-    await act(async () => {});
+    const { host } = await mountTimeline(React.createElement(Timeline, { sessionEpoch: 4 }));
 
     await settleUntil(() => host.querySelectorAll("[data-clip]").length > 1);
     const initialClips = [...host.querySelectorAll<HTMLElement>("[data-clip]")];
@@ -372,7 +360,6 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     expect(host.querySelector('[data-el-id="clip-490"]')).not.toBeNull();
     expect(host.querySelectorAll("[data-timeline-grid-cell]").length).toBeLessThan(100);
 
-    const { timelineClipFocusId } = await import("./timelineNavigationIdentity");
     await act(async () =>
       usePlayerStore.getState().requestTimelineFocus(timelineClipFocusId("clip-300")),
     );
@@ -390,8 +377,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
     expect(host.querySelector('[data-el-id="clip-300"]')).toBe(focusedClip);
     expect(document.activeElement).toBe(focusedClip);
 
-    act(() => root.unmount());
-    usePlayerStore.getState().reset();
+    unmountAll();
   });
 });
 
@@ -402,12 +388,7 @@ describe("Timeline row virtualization", { timeout: 30_000 }, () => {
  */
 describe("Timeline without row virtualization", { timeout: 30_000 }, () => {
   async function renderUnvirtualizedTimeline() {
-    vi.stubEnv("VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED", "0");
-    vi.resetModules();
-    const [{ Timeline }, { usePlayerStore }] = await Promise.all([
-      import("./Timeline"),
-      import("../store/playerStore"),
-    ]);
+    rowVirtualization.enabled = false;
     usePlayerStore.setState({
       duration: 60,
       timelineReady: true,
@@ -415,19 +396,14 @@ describe("Timeline without row virtualization", { timeout: 30_000 }, () => {
       elements: clipsByTrack(40, 10, true),
     });
 
-    const { host, root } = await mountTimeline(
+    const { host } = await mountTimeline(
       React.createElement(Timeline, {
         renderClipContent: () => React.createElement("span", { "data-rich-content": true }),
       }),
     );
     return {
       host,
-      dispose: () => {
-        act(() => root.unmount());
-        usePlayerStore.getState().reset();
-        vi.stubEnv("VITE_STUDIO_TIMELINE_ROW_VIRTUALIZATION_ENABLED", "1");
-        vi.resetModules();
-      },
+      dispose: unmountAll,
     };
   }
 
