@@ -56,7 +56,7 @@ import {
   seekInjectAndQueryStacking,
   transitionAtFrame,
 } from "./captureHdrFrameShared.js";
-import { reportFrameProgress } from "../shared.js";
+import { reportFrameProgress, streamingCaptureProgress } from "../shared.js";
 import { windowStartFrame } from "../frameWindow.js";
 
 export interface HybridLoopInput {
@@ -206,7 +206,7 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
       reportFrameProgress(
         job,
         `Layered composite frame ${framesWritten}/${job.totalFrames}`,
-        Math.round(25 + (framesWritten / totalFrames) * 55),
+        streamingCaptureProgress(framesWritten, totalFrames),
         onProgress,
         framesWritten,
         totalFrames,
