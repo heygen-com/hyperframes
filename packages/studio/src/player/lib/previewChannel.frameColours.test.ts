@@ -67,6 +67,25 @@ it("hands Studio a sealed frame's selection colours only when they are colours",
   expect(event?.selection?.painted).toBeNull();
 });
 
+it("refuses a frame colour that defers to Studio's page or spells a load", () => {
+  const hidden = [
+    "var(--none, url(https://probe.invalid/a))",
+    "env(--none, url(https://probe.invalid/b))",
+    "attr(data-none type(<color>), url(https://probe.invalid/c))",
+    "\\75 rl(https://probe.invalid/d)",
+    "u\\72l(https://probe.invalid/e)",
+    "rgb(1, 2, 3) /* url(https://probe.invalid/f) */",
+    "image-set(url(https://probe.invalid/g) 1x)",
+  ];
+  for (const value of hidden) {
+    expect(frameStyleValue("color", value)).toBeNull();
+    expect(frameStyleValue("background-color", value)).toBeNull();
+  }
+  const caret = { left: 1, top: 2, height: 20, color: hidden[0]!, viewportWidth: 1600 };
+  expect(received({ handle: HANDLE, selection: null, caret })[0]?.caret).toBeNull();
+  expect(frameStyleValue("color", "rgb(1, 2, 3)")).toBe("rgb(1, 2, 3)");
+});
+
 it("keeps a frame's style value only when it is a value of the property it answers for", () => {
   expect(frameStyleValue("border-top-width", "3px")).toBe("3px");
   expect(frameStyleValue("border-top-width", "url(/api/x)")).toBeNull();
