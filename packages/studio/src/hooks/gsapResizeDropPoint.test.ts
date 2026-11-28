@@ -23,6 +23,7 @@ import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { drawPreviewDraft, previewDraftsSent } from "../components/editor/previewDrafts";
 import { applyStudioBoxSize, readStudioBoxSize } from "../components/editor/manualEdits";
 import { measurePreviewGestureStart } from "../components/editor/previewGestureStartRead";
+import { sealedResizeStartBox } from "../components/editor/resizeStartBox";
 import {
   findPreviewElementForSelection,
   resolvePreviewSelection,
@@ -483,6 +484,7 @@ async function sealedScaleDrop(beforeCommit: (frameElement: HTMLElement) => void
     skipSourceProbe: true,
   }))!;
   await measurePreviewGestureStart(iframe, document.createElement("div"), [selection.handle!]);
+  const startBox = await sealedResizeStartBox(selection.element);
   drawPreviewDraft(selection.element, {
     size: { width: drop.w, height: drop.h },
     translate: { x: drop.x - base.x, y: drop.y - base.y },
@@ -511,6 +513,7 @@ async function sealedScaleDrop(beforeCommit: (frameElement: HTMLElement) => void
       at: { time: 0, keyframePct: null },
       frozen: true,
     },
+    startBox,
   );
 
   return { outcome, commitMutation, box, el, dropPoint, standIn: selection.element };

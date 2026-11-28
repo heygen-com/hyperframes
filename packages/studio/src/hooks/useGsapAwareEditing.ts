@@ -16,6 +16,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
+import { sealedResizeStartBox } from "../components/editor/resizeStartBox";
 import { computeDraggedGsapPosition, freezeDragStamp } from "./draggedGsapPosition";
 import { whileScriptWrites } from "../player/previewReloading";
 import { readGsapPositionFromIframe } from "./gsapPositionDetection";
@@ -41,6 +42,7 @@ import { type ElementOffsetStagerDeps } from "./elementOffsetStager";
 import {
   prepareCropResize,
   saveCropResize,
+  gsapResizeLaidOut,
   writeSizeWithCrop,
 } from "../components/editor/cropResize";
 
@@ -221,6 +223,7 @@ export function useGsapAwareEditing({
       }
       return whileScriptWrites(async () => {
         const stamp = freezeDragStamp(selection.element);
+        const startBox = sealedResizeStartBox(selection.element);
         let targetAnimations: GsapAnimation[];
         try {
           const ownedAnimations = getGsapAnimationsForSelection(selection);
@@ -250,8 +253,9 @@ export function useGsapAwareEditing({
           animGroups: targetAnimations.map((a) => `${a.propertyGroup}:${a.method}`),
         });
         let anchorMove: ReturnType<typeof stageElementPositionOffset> | null = null;
-        const stageCrop = prepareCropResize(selection.element);
+        const stageCrop = prepareCropResize(selection.element, startBox);
         let cropUndoKey: string | null = null;
+        let cropSizedTo: { width: number; height: number } | null = null;
         const saveResizeAnchor = async (
           ownsDragOffset: boolean,
           commitMutation: CommitMutation,
@@ -313,6 +317,7 @@ export function useGsapAwareEditing({
                   offset,
                   writes.drawKeepingUndone,
                   stamp,
+                  startBox,
                 );
                 assertGsapEditPersisted(outcome);
                 if (route)
@@ -323,7 +328,10 @@ export function useGsapAwareEditing({
                     handleDomBoxSizeCommit(selection, next, undefined, undefined, coalesceKey),
                   );
                   writes.recordDomResult(result);
-                } else cropUndoKey = coalesceKey;
+                } else {
+                  cropUndoKey = coalesceKey;
+                  cropSizedTo = gsapResizeLaidOut(outcome, next);
+                }
                 // What the resize did, not what its tweens suggest: a scale hold still commits a size.
                 const ownsDragOffset =
                   outcome.status === "persisted" && outcome.ownsDragOffset === true;
@@ -350,7 +358,13 @@ export function useGsapAwareEditing({
             // Only now is the size live for every caller, drag or not.
             if (cropUndoKey) {
               const cropResult = await writes.drawKeepingUndone(() =>
-                saveCropResize(stageCrop, selection, commitPositionPatchToHtml, cropUndoKey!),
+                saveCropResize(
+                  stageCrop,
+                  selection,
+                  commitPositionPatchToHtml,
+                  cropUndoKey!,
+                  cropSizedTo,
+                ),
               );
               writes.recordDomResult(cropResult);
             }

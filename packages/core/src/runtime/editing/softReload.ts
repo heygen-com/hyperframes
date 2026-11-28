@@ -321,9 +321,15 @@ export function restoreAuthoredStyle(
   authored: CSSStyleDeclaration | null,
   tweened: Set<string>,
 ): void {
-  style.transform = authored?.transform ?? "";
+  for (const prop of ["transform", "translate", "rotate", "scale"]) {
+    style.setProperty(
+      prop,
+      authored?.getPropertyValue(prop) ?? "",
+      authored?.getPropertyPriority(prop) ?? "",
+    );
+  }
   if (!authored) return;
-  for (const prop of ["translate", "rotate", "scale", ...tweened]) {
+  for (const prop of tweened) {
     if (prop === "opacity") continue;
     style.setProperty(prop, authored.getPropertyValue(prop), authored.getPropertyPriority(prop));
   }
