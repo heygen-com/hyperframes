@@ -105,7 +105,7 @@ function missOutcome(err: unknown): PreviewRequestMiss["outcome"] {
 
 function reportMiss(kind: EditingRequestKind, outcome: PreviewRequestMiss["outcome"], at: number) {
   const miss = { kind, outcome, elapsedMs: performance.now() - at };
-  for (const listener of missListeners) {
+  for (const listener of [...missListeners]) {
     try {
       listener(miss);
     } catch (error) {
