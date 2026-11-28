@@ -1,0 +1,140 @@
+---
+title: "Visual regression testing"
+description: "Commit golden baseline frames and let hyperframes check --golden fail the build when a composition's pixels regress."
+---
+
+Agents (and humans) regress layouts silently: a refactor nudges a headline, a
+token change recolors a button, a timing tweak leaves a beat blank — and every
+individual command still exits 0. The golden baseline gate turns "the video
+still looks right" into a hard, committable contract: reference frames live in
+the repo, and `hyperframes check --golden` fails whenever the rendered pixels
+drift from them.
+
+This guide covers the workflow. For the exact directory convention, manifest
+fields, and JSON shapes, see the [golden baseline reference](/reference/cli-golden).
+
+## The loop
+
+```bash
+# 1. From a state you have visually reviewed, freeze the baselines.
+hyperframes check --update-golden
+
+# 2. Commit them — they are small PNGs, one per sample time.
+git add golden/ && git commit -m "test: golden baselines for intro"
+
+# 3. From now on, gate every change.
+hyperframes check --golden
+```
+
+The gate re-captures the composition at the committed sample times (same
+font-localized, settled-page capture path as `hyperframes snapshot`),
+pixel-diffs each frame against its baseline, and:
+
+- **Pass** — every frame matches within tolerance; exit code 0.
+- **Fail** — the failing times are listed with how much differs, a
+  `golden-diff/` folder appears with per-frame red-highlight diff PNGs and a
+  `baseline | current | diff` contact sheet, and the exit code is 1.
+
+```text
+Golden
+  ✗ t=2s 0.949% pixels differ (max channel delta 130)
+  1 of 3 frame(s) regressed vs golden/golden-baseline/
+  Diff sheet: golden-diff/golden-baseline/contact-sheet.jpg
+  Intended change? Refresh baselines with hyperframes check --update-golden
+```
+
+An intentional change is a one-command ritual: re-run with `--update-golden`,
+review, and commit the refreshed PNGs. The diff shows up in the PR as an image
+diff, so reviewers see exactly what changed on screen.
+
+## For agent loops
+
+Add `--json` and read the summary instead of parsing logs:
+
+```bash
+hyperframes check --golden --json
+```
+
+```json
+{ "ok": false, "golden": { "failed": [{ "id": "intro", "time": 2, "maxDelta": 130 }], "diffSheet": "golden-diff/intro/contact-sheet.jpg" } }
+```
+
+The `diffSheet` is a single image an agent can open to see every regression at
+once — baseline, current, and highlighted diff side by side — before deciding
+whether to fix the code or refresh the baseline.
+
+## CI wiring
+
+The gate is one exit code, so any CI is a few lines:
+
+```yaml
+# .github/workflows/visual-regression.yml
+name: visual-regression
+on: [pull_request]
+jobs:
+  golden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: npx hyperframes check --golden --no-browser-gpu
+        working-directory: my-composition
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: golden-diff
+          path: my-composition/golden-diff/
+```
+
+Uploading `golden-diff/` on failure gives reviewers the contact sheet without
+re-running anything locally.
+
+## Keeping captures deterministic
+
+Pixel equality is only meaningful when the two captures come from the same
+rendering stack:
+
+- **Capture baselines where you gate.** Create and refresh baselines on the
+  same OS/runner class that CI uses. A macOS-made baseline gated on Linux will
+  differ in font rasterization.
+- **Pin the GPU path.** Pass `--no-browser-gpu` in CI (and when refreshing
+  baselines) to force SwiftShader's deterministic software rendering.
+- **Follow the composition determinism rules** — no `Date.now()`, no unseeded
+  randomness, no render-time network fetches. Remote fonts are localized
+  automatically during capture, matching the render path.
+
+If your environment still produces benign single-pixel jitter, tune rather than
+abandon the gate: `ignoreAntialiasing` (on by default) absorbs 1px edge shifts,
+`threshold` widens the per-channel tolerance, and `maxDiffRatio` grants a small
+pixel budget. All three live in `golden/<compositionId>/golden.json` — see the
+[reference](/reference/cli-golden#the-goldenjson-manifest).
+
+## Choosing sample times
+
+`--update-golden` defaults to five evenly spaced frames with a readable
+end-of-timeline tail. For most compositions, better times are the ones a
+reviewer would screenshot: the settled end of each beat, not mid-transition.
+Pin them explicitly:
+
+```bash
+hyperframes snapshot --update-golden --at 0.5,2,3.5
+```
+
+Mid-transition times work — the capture is seek-exact — but they make every
+retiming of the animation an (intentional) baseline refresh.
+
+## Try it
+
+A runnable example with committed baselines lives at
+[`examples/golden-baseline`](https://github.com/heygen-com/hyperframes/tree/main/examples/golden-baseline):
+break the accent color, watch the gate fail with a diff sheet, refresh, commit.
+
+## Related topics
+
+- [Golden baseline reference](/reference/cli-golden) — the exact directory
+  convention, every flag and manifest field, and the JSON summary shape.
+- [Deterministic rendering](/concepts/determinism) — the composition rules that
+  make pixel equality meaningful in the first place.
+- [Render from the command line](/guides/rendering) — the wider CLI loop the
+  gate slots into.
