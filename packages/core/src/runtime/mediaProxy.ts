@@ -409,6 +409,9 @@ export function isRenderMode(el: HTMLMediaElement): boolean {
 }
 
 const stills = new WeakSet<HTMLMediaElement>();
+// A sealed frame's still: the hold it was fetched for, and the object URL it is shown from.
+const stillHolds = new WeakMap<HTMLMediaElement, object>();
+const stillObjectUrls = new WeakMap<HTMLMediaElement, string>();
 
 /** While a file the browser cannot play is being copied, its own frame at the playhead stands in as the poster. */
 function showStill(
@@ -423,11 +426,29 @@ function showStill(
   const url = new URL(appendProxyParam(originalSrc, variant, box, light), document.baseURI);
   url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(1));
   stills.add(el);
-  el.setAttribute("poster", url.href);
+  if (window.origin !== "null") return el.setAttribute("poster", url.href);
+  // A sealed frame's poster load can wait behind its other loads; its fetch goes out at once.
+  const hold = {};
+  stillHolds.set(el, hold);
+  void fetch(url.href)
+    .then((res) => (res.ok ? res.blob() : null))
+    .then((blob) => {
+      if (!blob || stillHolds.get(el) !== hold) return;
+      const objectUrl = URL.createObjectURL(blob);
+      stillObjectUrls.set(el, objectUrl);
+      el.setAttribute("poster", objectUrl);
+    })
+    .catch((err) => swallow("runtime.mediaProxy.still", err));
 }
 
 function dropStill(el: HTMLMediaElement): void {
-  if (stills.delete(el)) el.removeAttribute("poster");
+  if (!stills.delete(el)) return;
+  stillHolds.delete(el);
+  el.removeAttribute("poster");
+  const objectUrl = stillObjectUrls.get(el);
+  if (objectUrl === undefined) return;
+  stillObjectUrls.delete(el);
+  URL.revokeObjectURL(objectUrl);
 }
 
 function appendProxyParam(
