@@ -75,6 +75,13 @@ function holdReplies() {
   w.__neverAnswer = false;
   w.__refusals = 0;
   const own = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage")!;
+  // The hello a client connects with is its channel coming up, not a request a test holds or counts.
+  const connects = new WeakMap<MessagePort, unknown>();
+  const connectsWith = (port: MessagePort, request: { id?: unknown; kind?: string } | null) => {
+    if (request?.kind !== "hello" || connects.has(port)) return false;
+    connects.set(port, request.id);
+    return true;
+  };
   // A request of a swallowed kind never reaches the frame; the test answers it as the frame would.
   const post = MessagePort.prototype.postMessage;
   MessagePort.prototype.postMessage = function (
@@ -83,6 +90,7 @@ function holdReplies() {
     ...rest: never[]
   ) {
     const request = data as { v?: unknown; id?: unknown; kind?: string } | null;
+    if (connectsWith(this, request)) return post.call(this, data, ...rest);
     if (typeof request?.id === "number") w.__posted++;
     if (typeof request?.id !== "number" || !w.__swallow.has(request.kind ?? ""))
       return post.call(this, data, ...rest);
@@ -120,7 +128,7 @@ function holdReplies() {
       };
       own.set!.call(this, (event: MessageEvent) => {
         const reply = typeof event.data?.id === "number";
-        if (!reply) return handler?.call(this, event);
+        if (!reply || connects.get(this) === event.data.id) return handler?.call(this, event);
         if (!w.__hold) return deliver(event.data);
         w.__held.push((result) =>
           deliver(result === undefined ? event.data : { ...event.data, result }),

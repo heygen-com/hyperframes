@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi, type TestContext } from "vitest";
 import { Hono } from "hono";
 import {
@@ -73,13 +74,34 @@ function linkOrSkip(context: TestContext, target: string, link: string, type: "f
 
 const fileUrl = (path: string) =>
   `http://localhost/projects/demo/files/${encodeURIComponent(path)}`;
-function upload(app: Hono, dir = "", filename = "upload.txt") {
+function upload(app: Hono, dir = "", filename = "upload.txt", bytes: BlobPart = "upload bytes") {
   const form = new FormData();
-  form.append("files", new File(["upload bytes"], filename));
+  form.append("files", new File([bytes], filename));
   return app.request(`http://localhost/projects/demo/upload?dir=${encodeURIComponent(dir)}`, {
     method: "POST",
     body: form,
   });
+}
+
+function silentWav(samples = 800): Uint8Array {
+  const dataBytes = samples * 2;
+  const view = new DataView(new ArrayBuffer(44 + dataBytes));
+  const ascii = (at: number, text: string) =>
+    [...text].forEach((char, i) => view.setUint8(at + i, char.charCodeAt(0)));
+  ascii(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  ascii(8, "WAVE");
+  ascii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 8000, true);
+  view.setUint32(28, 16000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  ascii(36, "data");
+  view.setUint32(40, dataBytes, true);
+  return new Uint8Array(view.buffer);
 }
 
 async function expectProjectGone(response: Response, project: string) {
@@ -242,12 +264,37 @@ describe("file route containment", () => {
   it("blocks upload directory traversal and skips unsafe filenames", async () => {
     const { app, project, outside } = fixture();
     expect((await upload(app, relative(project, outside))).status).toBe(403);
-    const unsafe = await upload(app, "", "..unsafe.txt");
-    expect(unsafe.status).toBe(201);
-    expect((await unsafe.json()).files).toEqual([]);
+    for (const name of ["..", "clips/..", "clips\\.."]) {
+      const unsafe = await upload(app, "", name);
+      expect(unsafe.status).toBe(201);
+      expect((await unsafe.json()).files, name).toEqual([]);
+    }
     expect(existsSync(join(outside, "upload.txt"))).toBe(false);
+    expect(readdirSync(join(project, "..")).sort()).toEqual(["outside", "project"]);
+    const hidden = await upload(app, "", "..unsafe.txt");
+    expect(await hidden.json()).toMatchObject({ files: [], skipped: ["..unsafe.txt"] });
     expect(existsSync(join(project, "..unsafe.txt"))).toBe(false);
   });
+
+  it("keeps an upload with a run of dots in its name", async () => {
+    const { app, project } = fixture();
+    const sound = silentWav();
+    const response = await upload(app, "", "clip....mp3", sound);
+    expect(response.status).toBe(201);
+    expect((await response.json()).files).toEqual(["clip....mp3"]);
+    expect(new Uint8Array(readFileSync(join(project, "clip....mp3")))).toEqual(sound);
+  });
+
+  it.each(["clip...", "clip.mp3 ", "con.mp3", "CONOUT$.txt", "com¹.mp3", "LPT³.wav"])(
+    "reports an upload Windows would save under another name as skipped: %j",
+    async (name) => {
+      const { app, project } = fixture();
+      const response = await upload(app, "", name);
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ files: [], skipped: [name] });
+      expect(readdirSync(project)).toEqual(["inside.txt"]);
+    },
+  );
 
   it.each([false, true])(
     "does not follow a dangling upload symlink (renamed: %s)",

@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
+import { CONNECT } from "./editingAgent.test-helpers";
 import { STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
-const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
 const mark = document.createElement("meta");
 mark.name = STUDIO_PREVIEW_MARK_META;
 document.head.append(mark);
@@ -22,8 +22,22 @@ function frameWindow(): Window {
   return iframe.contentWindow!;
 }
 
-const connect = (source: Window) =>
-  window.dispatchEvent(new MessageEvent("message", { source, data: CONNECT }));
+/** Studio makes its channel in its own realm, so the page's patches never see it being made. */
+function studioChannel(): { studio: MessagePort; sendFrom: (source: Window) => void } {
+  const { port1, port2 } = new MessageChannel();
+  cleanups.push(() => port1.close());
+  const sendFrom = (source: Window) =>
+    window.dispatchEvent(new MessageEvent("message", { source, data: CONNECT, ports: [port2] }));
+  return { studio: port1, sendFrom };
+}
+
+function answers(studio: MessagePort): Promise<boolean> {
+  return new Promise((resolve) => {
+    onmessage.set!.call(studio, () => resolve(true));
+    nativePost.call(studio, { v: 2, id: 1, kind: "hello" });
+    setTimeout(() => resolve(false), 50);
+  });
+}
 
 /** What a composition script can do once the runtime has evaluated: patch MessagePort to collect ports. */
 function patchPortsLikeAComposition(): Set<MessagePort> {
@@ -52,17 +66,14 @@ function patchPortsLikeAComposition(): Set<MessagePort> {
   return seen;
 }
 
-it("keeps its port from a composition that patched MessagePort before Studio connected", async () => {
+it("keeps Studio's port from a composition that patched MessagePort before Studio connected", async () => {
   const parent = frameWindow();
-  const handoff = vi.fn();
-  parent.postMessage = handoff as unknown as Window["postMessage"];
   const agent = installEditingAgent(parent);
   cleanups.push(() => agent.dispose());
+  const { studio, sendFrom } = studioChannel();
   const seen = patchPortsLikeAComposition();
 
-  connect(parent);
-  const studio = (handoff.mock.calls[0][2] as MessagePort[])[0]!;
-  cleanups.push(() => studio.close());
+  sendFrom(parent);
   // Studio talks from its own realm in a browser, so its side keeps the original methods here.
   const pushed: unknown[] = [];
   const reply = new Promise<Record<string, unknown>>((resolve) => {
@@ -71,13 +82,13 @@ it("keeps its port from a composition that patched MessagePort before Studio con
       else pushed.push(event.data);
     });
   });
-  nativePost.call(studio, { v: 1, id: 1, kind: "hello" });
+  nativePost.call(studio, { v: 2, id: 1, kind: "hello" });
   expect(await reply).toMatchObject({ id: 1, ok: true });
 
   // A Delete posted through any port the composition collected would reach Studio as the frame's.
   for (const port of seen) {
     nativePost.call(port, {
-      v: 1,
+      v: 2,
       event: "canvas-key-action",
       action: "delete",
       actionId: 1,
@@ -90,42 +101,27 @@ it("keeps its port from a composition that patched MessagePort before Studio con
   expect(pushed).toEqual([]);
 });
 
-it("hands its port to the parent it loaded with, not one a composition put on window.parent", () => {
-  const stranger = frameWindow();
-  const handoff = vi.fn();
-  stranger.postMessage = handoff as unknown as Window["postMessage"];
-  Object.defineProperty(window, "parent", { configurable: true, value: stranger });
-  cleanups.push(() => Reflect.deleteProperty(window, "parent"));
-  const agent = installEditingAgent();
-  cleanups.push(() => agent.dispose());
-
-  connect(stranger);
-  expect(handoff).not.toHaveBeenCalled();
-});
-
-it("keeps its port from a composition that patched the channel's port getters, Set.add or Map.set", async () => {
+it("keeps Studio's port from a composition that patched the event's ports and stop, Set.add or Map.set", async () => {
   const parent = frameWindow();
-  const handoff = vi.fn();
-  parent.postMessage = handoff as unknown as Window["postMessage"];
   const agent = installEditingAgent(parent);
   cleanups.push(() => agent.dispose());
+  const { studio, sendFrom } = studioChannel();
   const seen = new Set<unknown>();
   const keep = (value: unknown) => {
     if (value && typeof value === "object" && "postMessage" in value) seen.add(value);
   };
-  const channelProto = MessageChannel.prototype;
-  const port1 = Object.getOwnPropertyDescriptor(channelProto, "port1");
-  if (port1?.get) {
-    Object.defineProperty(channelProto, "port1", {
-      configurable: true,
-      get() {
-        const port = port1.get!.call(this);
-        keep(port);
-        return port;
-      },
-    });
-    cleanups.push(() => Object.defineProperty(channelProto, "port1", port1));
-  }
+  const eventProto = MessageEvent.prototype;
+  const ports = Object.getOwnPropertyDescriptor(eventProto, "ports")!;
+  Object.defineProperty(eventProto, "ports", {
+    configurable: true,
+    get() {
+      const taken = ports.get!.call(this) as MessagePort[];
+      taken.forEach(keep);
+      return taken;
+    },
+  });
+  const stop = Event.prototype.stopImmediatePropagation;
+  Event.prototype.stopImmediatePropagation = () => {};
   const add = Set.prototype.add;
   const set = Map.prototype.set;
   Set.prototype.add = function (value) {
@@ -137,37 +133,84 @@ it("keeps its port from a composition that patched the channel's port getters, S
     return set.call(this, key, value);
   };
   cleanups.push(() => {
+    Object.defineProperty(eventProto, "ports", ports);
+    Event.prototype.stopImmediatePropagation = stop;
     Set.prototype.add = add;
     Map.prototype.set = set;
   });
+  const page = vi.fn();
+  window.addEventListener("message", page);
+  cleanups.push(() => window.removeEventListener("message", page));
 
-  connect(parent);
-  const studio = (handoff.mock.calls[0][2] as MessagePort[])[0]!;
-  cleanups.push(() => studio.close());
-  seen.delete(studio);
+  sendFrom(parent);
   const replies: Array<Record<string, unknown>> = [];
   onmessage.set!.call(studio, (event: MessageEvent<Record<string, unknown>>) => {
     replies.push(event.data);
   });
-  nativePost.call(studio, { v: 1, id: 1, kind: "watch-keys", params: { combos: ["Space"] } });
-  nativePost.call(studio, { v: 1, id: 2, kind: "watch-geometry", params: { handles: [] } });
+  nativePost.call(studio, { v: 2, id: 1, kind: "watch-keys", params: { combos: ["Space"] } });
+  nativePost.call(studio, { v: 2, id: 2, kind: "watch-geometry", params: { handles: [] } });
   await vi.waitFor(() => expect(replies.map((reply) => reply.id)).toEqual([1, 2]));
-  seen.delete(studio);
   expect([...seen]).toEqual([]);
+  expect(page).not.toHaveBeenCalled();
 });
 
-it("never connects when the port's own methods could not be read at load", async () => {
+/** The runtime as it loads in a frame whose parent is `parent`. */
+async function loadedIn(parent: Window) {
+  Object.defineProperty(window, "parent", { configurable: true, value: parent });
+  cleanups.push(() => Reflect.deleteProperty(window, "parent"));
+  vi.resetModules();
+  const runtimePort = await import("./runtimePort");
+  runtimePort.allowPortStandInsForTests();
+  return import("./editingAgent");
+}
+
+it("serves the parent it loaded with, not one a composition put on window.parent", async () => {
+  const parent = frameWindow();
+  const loaded = await loadedIn(parent);
+  const stranger = frameWindow();
+  Object.defineProperty(window, "parent", { configurable: true, value: stranger });
+  const agent = loaded.installEditingAgent();
+  cleanups.push(() => agent.dispose());
+
+  const fromStranger = studioChannel();
+  fromStranger.sendFrom(stranger);
+  expect(await answers(fromStranger.studio)).toBe(false);
+  const fromParent = studioChannel();
+  fromParent.sendFrom(parent);
+  expect(await answers(fromParent.studio)).toBe(true);
+});
+
+it("holds a port that arrives before the agent starts, out of reach of page listeners, and serves it at start", async () => {
+  const parent = frameWindow();
+  const loaded = await loadedIn(parent);
+  loaded.listenForEditingConnect();
+  const page = vi.fn();
+  window.addEventListener("message", page, true);
+  cleanups.push(() => window.removeEventListener("message", page, true));
+
+  const { studio, sendFrom } = studioChannel();
+  sendFrom(parent);
+  expect(page).not.toHaveBeenCalled();
+  const agent = loaded.installEditingAgent();
+  cleanups.push(() => agent.dispose());
+  expect(await answers(studio)).toBe(true);
+});
+
+it("never serves, and still ends the parent's connect, when the port's own methods could not be read at load", async () => {
   delete (proto as { onmessage?: unknown }).onmessage;
   vi.resetModules();
   const loaded = await import("./editingAgent").finally(() =>
     Object.defineProperty(proto, "onmessage", onmessage),
   );
   const parent = frameWindow();
-  const handoff = vi.fn();
-  parent.postMessage = handoff as unknown as Window["postMessage"];
   const agent = loaded.installEditingAgent(parent);
   cleanups.push(() => agent.dispose());
+  const page = vi.fn();
+  window.addEventListener("message", page);
+  cleanups.push(() => window.removeEventListener("message", page));
 
-  connect(parent);
-  expect(handoff).not.toHaveBeenCalled();
+  const { studio, sendFrom } = studioChannel();
+  sendFrom(parent);
+  expect(page).not.toHaveBeenCalled();
+  expect(await answers(studio)).toBe(false);
 });

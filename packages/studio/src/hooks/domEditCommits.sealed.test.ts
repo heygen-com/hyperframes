@@ -38,15 +38,10 @@ function opaqueFrame(): HTMLIFrameElement {
       throw new DOMException("blocked", "SecurityError");
     },
   });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
+  const parent = {} as unknown as Window;
   const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
+  frame.postMessage = (data: unknown, _origin: string, ports: MessagePort[]) =>
+    window.dispatchEvent(new MessageEvent("message", { source: parent, data, ports }));
   closers.push(() => agent.dispose());
   return iframe;
 }

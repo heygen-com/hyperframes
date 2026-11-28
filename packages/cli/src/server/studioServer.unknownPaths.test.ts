@@ -44,9 +44,7 @@ beforeEach(() => {
   server = createStudioServer({ projectDir: fixture.projectDir });
 });
 
-afterEach(() => {
-  cleanupStudioServerRoot(server, root, () => (hooks.studioDir = ""));
-});
+afterEach(() => cleanupStudioServerRoot(server, root, () => (hooks.studioDir = "")));
 
 function navigate(target: string, host = "127.0.0.1:3002"): Promise<Response> {
   return Promise.resolve(

@@ -15,6 +15,7 @@ import {
 import { gestureDocumentOf } from "../../components/editor/previewSelection";
 import { logReload } from "../../utils/reloadDebug";
 import { pageRetryAfterMs, refusedPageMessage } from "./refusedPreviewPage";
+import { noteFrameAdded, pageGotTo, shadowPlayerReachable, waitsOnServer } from "./shadowPagePhase";
 import {
   useTimelineSyncCallbacks,
   planShadowAlone,
@@ -68,36 +69,6 @@ function restoreSeekPainted(iframe: HTMLIFrameElement | null): Promise<void> | u
   if (previewFrameOpaque(iframe)) return previewSeekPainted(iframe, SHADOW_READY_TIMEOUT_MS);
   const win = iframe.contentWindow as IframeWindow | null;
   return win?.__hfWaitForSeekCompletion?.().catch(() => {});
-}
-
-function shadowPlayerReachable(iframe: HTMLIFrameElement | null): boolean {
-  try {
-    return Boolean((iframe?.contentWindow as IframeWindow | null | undefined)?.__player);
-  } catch {
-    return false;
-  }
-}
-
-function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
-  const doc = iframe?.isConnected ? iframe.contentDocument : undefined;
-  if (doc === undefined) return "no-frame";
-  if (!doc) return "unreadable";
-  if (doc.URL === "about:blank") return "blank";
-  const win = iframe!.contentWindow as unknown as Record<string, unknown>;
-  if (doc.readyState === "loading") return "page-loading";
-  if (win.__hfStartupError) return "startup-error";
-  if (!win.__hyperframes) return "runtime-not-run";
-  if (!win.__hyperframeRuntimeBootstrapped) return "scripts-waiting";
-  return "no-player";
-}
-
-const frameAddedAt = new WeakMap<HTMLIFrameElement, number>();
-function pageGotTo(iframe: HTMLIFrameElement | null): string {
-  const phase = shadowPlayerReachable(iframe) ? null : shadowPagePhase(iframe);
-  if (phase !== "blank" && phase !== "unreadable")
-    return phase ? ` Its page had got to: ${phase}.` : "";
-  const given = /^(about:blank)?$/.test(iframe!.getAttribute("src") ?? "") ? "was never" : "was";
-  return ` Its page had got to: ${phase}. Its frame ${given} given a page address and was added ${Date.now() - frameAddedAt.get(iframe!)!} ms ago.`;
 }
 
 function firstErrorFrom(iframe: HTMLIFrameElement | null): string {
@@ -442,6 +413,11 @@ export function useShadowPreviewReload({
           logReload("shadow-detached", { gen });
           return;
         }
+        if (waitsOnServer(frame, SHADOW_READY_TIMEOUT_MS)) {
+          logReload("shadow-awaiting-server", { gen });
+          armReadyTimerRef.current(gen);
+          return;
+        }
         budgetsSpentRef.current += 1;
         if (budgetsSpentRef.current < SHADOW_READY_BUDGETS) {
           logReload("shadow-slow", { budgetsSpent: budgetsSpentRef.current });
@@ -458,7 +434,7 @@ export function useShadowPreviewReload({
 
   const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
     shadowIframeRef.current = node;
-    if (node) frameAddedAt.set(node, Date.now());
+    if (node) noteFrameAdded(node);
     if (node) hyperframesPlayerOf(node)?.toggleAttribute("inert", true);
     const gen = budgetGenRef.current;
     if (!node || !shadowFrameLeftPageRef.current || gen == null || gen !== shadowGenRef.current)

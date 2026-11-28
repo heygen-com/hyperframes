@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "../editingAgent";
+import { connectFrom } from "../editingAgent.test-helpers";
 import { STUDIO_PREVIEW_MARK_META } from "../../studioPreviewMark";
 import {
   locateStageKey,
@@ -153,33 +154,24 @@ describe("measureStageDocument", () => {
     ]);
   });
 
-  it("is not exposed when the document has no Studio preview mark (render pages)", () => {
+  it("is not exposed when the document has no Studio preview mark (render pages)", async () => {
     const iframe = document.createElement("iframe");
     document.body.appendChild(iframe);
     const parent = iframe.contentWindow!;
-    const handoff = vi.fn();
-    parent.postMessage = handoff as unknown as Window["postMessage"];
     const agent = installEditingAgent(parent);
+    const answers = (port: MessagePort) =>
+      new Promise<boolean>((resolve) => {
+        port.onmessage = () => resolve(true);
+        port.postMessage({ v: 2, id: 1, kind: "hello", params: {} });
+        setTimeout(() => resolve(false), 50);
+      }).finally(() => port.close());
     try {
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          source: parent,
-          data: { source: "hf-parent", type: "editing-connect", v: 1 },
-        }),
-      );
-      expect(handoff).not.toHaveBeenCalled();
+      expect(await answers(connectFrom(parent))).toBe(false);
 
       const mark = document.createElement("meta");
       mark.name = STUDIO_PREVIEW_MARK_META;
       document.head.append(mark);
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          source: parent,
-          data: { source: "hf-parent", type: "editing-connect", v: 1 },
-        }),
-      );
-      expect(handoff).toHaveBeenCalledOnce();
-      for (const call of handoff.mock.calls) (call[2] as MessagePort[])[0]?.close();
+      expect(await answers(connectFrom(parent))).toBe(true);
     } finally {
       agent.dispose();
     }

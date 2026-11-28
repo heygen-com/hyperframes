@@ -218,8 +218,10 @@ describe("previewEditingClient", () => {
       queueMicrotask(() => {
         port.onmessage = (event: MessageEvent<{ id: number; kind: string }>) => {
           if (event.data.kind === "runtime-snapshot") return;
+          if (event.data.kind === "hello")
+            return port.postMessage({ v: 2, id: event.data.id, ok: true });
           const error = { code: "invalid-params", message: "timing value too long" };
-          port.postMessage({ v: 1, id: event.data.id, ok: false, error });
+          port.postMessage({ v: 2, id: event.data.id, ok: false, error });
         };
       });
     closers.push(serveEditingRequests(frame, () => null, answerWithError));

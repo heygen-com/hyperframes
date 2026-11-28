@@ -44,9 +44,7 @@ beforeEach(async () => {
   server = await createStudioServer({ projectDir: fixture.projectDir });
 });
 
-afterEach(() => {
-  cleanupStudioServerRoot(server, root, () => (hooks.studioDir = ""));
-});
+afterEach(() => cleanupStudioServerRoot(server, root, () => (hooks.studioDir = "")));
 
 describe("static file path containment", () => {
   // A percent-encoded backslash decodes to a real separator on Windows, so

@@ -710,15 +710,20 @@ export function registerPreviewRoutes(
   ): Promise<string | null> {
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
 
+    const rootDeadline = performance.now() + ROOT_PREVIEW_DEADLINE_MS;
     try {
       const reads: string[] = [];
-      let bundled = await adapter
-        .bundle(project.dir, {
-          stampHfIds: true,
-          onRead: (filePath) => reads.push(filePath),
-          privateFiles: "studio",
-        })
-        .finally(() => recordPreviewReadsOff(project.dir, reads));
+      let bundled = await withinDeadline(
+        adapter
+          .bundle(project.dir, {
+            stampHfIds: true,
+            onRead: (filePath) => reads.push(filePath),
+            privateFiles: "studio",
+          })
+          .finally(() => recordPreviewReadsOff(project.dir, reads)),
+        rootDeadline,
+        "index.html",
+      );
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
@@ -726,7 +731,6 @@ export function registerPreviewRoutes(
         mainCompositionPath = diskMain.compositionPath;
       }
       // <base> and root paths under it, before the runtime adds the server's own root path
-      const rootDeadline = performance.now() + ROOT_PREVIEW_DEADLINE_MS;
       const based = await runOffThread(
         { kind: "base", html: bundled, projectId: project.id, runtimeUrl: adapter.runtimeUrl },
         rootDeadline,
