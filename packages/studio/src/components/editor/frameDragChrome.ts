@@ -47,7 +47,11 @@ const LOOK = [
   "stroke",
   "stroke-width",
 ];
-const UNSET = new Set(["", "auto", "none", "normal", "static", "visible", "rgba(0, 0, 0, 0)"]);
+const UNSET = new Set(["", "auto", "none", "normal", "static", "visible"]);
+const isColour = (name: string) => name.endsWith("color") || name === "fill" || name === "stroke";
+// A computed colour ends in its alpha; alpha 0 paints nothing.
+const paintsNothing = (name: string, value: string) =>
+  UNSET.has(value) || (isColour(name) && value.endsWith(", 0)"));
 const SVG_ATTRS = [
   "d",
   "viewBox",
@@ -71,7 +75,7 @@ function lookOf(element: Element): Record<string, string> {
   const look: Record<string, string> = {};
   for (const name of LOOK) {
     const value = computed.getPropertyValue(name);
-    if (!UNSET.has(value) || name === "display") look[name] = value;
+    if (!paintsNothing(name, value) || name === "display") look[name] = value;
   }
   return look;
 }
