@@ -52,6 +52,12 @@ with `bun test <file>`, any other with `bunx vitest run <file>`. Root `scripts/*
 which is an explicit list in `package.json`. CI's test-reachability check fails
 any test file that no runner reaches.
 
+CI runs the tests of the packages named in `ci.yml` with `Date` ten years ahead
+(`scripts/test-clock-ahead.mjs`), so a test that depends on today's date fails
+in its own pull request instead of on a later day. A test that fails only there
+pins its clock to its fixture (`vi.setSystemTime`). To reproduce:
+`NODE_OPTIONS="--import $PWD/scripts/test-clock-ahead.mjs" bun run --cwd packages/<pkg> test`.
+
 ### Linting & Formatting
 
 Uses **oxlint** and **oxfmt** (not eslint, not prettier, not biome).
