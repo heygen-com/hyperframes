@@ -14,12 +14,15 @@ import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helper
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
+import { useInlineTextEdit } from "./useInlineTextEdit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const PATH = "index.html";
 const OPTIONS = { activeCompositionPath: PATH, isMasterView: false, skipSourceProbe: true };
 const SPANS = "<span>One</span> <span>Two</span>";
+const shownMarkup = (element: HTMLElement) =>
+  element.innerHTML.replace(/ (data-hf-[a-z-]+|style)="[^"]*"/g, "");
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   cleanups.splice(0).forEach((cleanup) => cleanup());
@@ -48,11 +51,14 @@ async function setUp(mode: "live" | "sealed") {
         (found) => resolveFoundSelection(iframe, found!, OPTIONS),
       )))!;
   let file = `<h1 id="title">${SPANS}</h1><p id="other">x</p>`;
+  const writes: Array<Promise<void>> = [];
   const persist = vi.fn<PersistDomEditOperations>(async (sel, operations, options) => {
+    await writes.shift();
     if (options?.shouldSave?.() === false) return;
     file = patchElementInHtml(file, { id: sel.id }, operations).html;
   });
   let commits!: ReturnType<typeof useDomEditTextCommits>;
+  let controls!: ReturnType<typeof useInlineTextEdit>;
   const root = createRoot(document.createElement("div"));
   function Harness() {
     commits = useDomEditTextCommits({
@@ -70,6 +76,7 @@ async function setUp(mode: "live" | "sealed") {
       resolveImportedFontAsset: () => null,
       readOnlyPreview: false,
     });
+    controls = useInlineTextEdit({ onCommit: commits.handleDomRichTextCommit });
     return null;
   }
   act(() => root.render(createElement(Harness)));
@@ -79,7 +86,12 @@ async function setUp(mode: "live" | "sealed") {
       .parseFromString(file, "text/html")
       .getElementById("title")!
       .innerHTML.replace(/ (data-hf-[a-z-]+|style)="[^"]*"/g, "");
-  return { selection, commits: () => commits, text };
+  const holdNextWrite = () => {
+    let release!: () => void;
+    writes.push(new Promise<void>((resolve) => (release = resolve)));
+    return release;
+  };
+  return { selection, commits: () => commits, controls: () => controls, text, holdNextWrite };
 }
 
 describe.each(["live", "sealed"] as const)("a Design panel remove on a %s preview", (mode) => {
@@ -102,4 +114,52 @@ describe.each(["live", "sealed"] as const)("a Design panel remove on a %s previe
     await act(() => flushStudioPendingEdits());
     expect(text()).toBe("<span>One</span><span>New text</span>");
   });
+});
+
+it("saves an unsealed removal without the draft of an edit opened while it waited, once cancelled", async () => {
+  const { selection, commits, controls, text, holdNextWrite } = await setUp("live");
+  const title = selection.element;
+  act(() => void controls().start(title));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Uno";
+  const release = holdNextWrite();
+  const removing = commits().handleDomRemoveTextField(selection.textFields[1]!.key);
+  await act(() => Promise.resolve());
+  let typed = false;
+  const typeWhenCaretShows = new MutationObserver(() => {
+    if (title.getAttribute("contenteditable") !== "true") return;
+    typeWhenCaretShows.disconnect();
+    title.querySelector("span")!.textContent = "Dos";
+    typed = true;
+  });
+  typeWhenCaretShows.observe(title, { attributeFilter: ["contenteditable"] });
+  act(() => void controls().start(title));
+  await act(() => Promise.resolve());
+  release();
+  await act(() => removing);
+  await vi.waitFor(() => expect(typed).toBe(true));
+  act(() => controls().cancel());
+  await act(() => flushStudioPendingEdits());
+  expect([text(), shownMarkup(title)]).toEqual(["<span>Uno</span>", "<span>Uno</span>"]);
+});
+
+it("closes an unsealed edit still waiting for a removal without putting the removed row back", async () => {
+  const { selection, commits, controls, text, holdNextWrite } = await setUp("live");
+  const title = selection.element;
+  act(() => void controls().start(title));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Uno";
+  const releaseEdit = holdNextWrite();
+  const releaseRemoval = holdNextWrite();
+  const removing = commits().handleDomRemoveTextField(selection.textFields[1]!.key);
+  await act(() => Promise.resolve());
+  act(() => void controls().start(title));
+  releaseEdit();
+  await vi.waitFor(() => expect(shownMarkup(title)).toBe("<span>Uno</span>"));
+  expect(title.hasAttribute("contenteditable")).toBe(false);
+  act(() => controls().cancel());
+  releaseRemoval();
+  await act(() => removing);
+  await act(() => flushStudioPendingEdits());
+  expect([text(), shownMarkup(title)]).toEqual(["<span>Uno</span>", "<span>Uno</span>"]);
 });
