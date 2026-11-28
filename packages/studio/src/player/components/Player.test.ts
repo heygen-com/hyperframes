@@ -209,8 +209,10 @@ describe("preview errors", () => {
 
     act(() => retry.click());
 
-    const retried = host.querySelector("hyperframes-player")!;
+    const retried = [...host.querySelectorAll<TestHyperframesPlayer>("hyperframes-player")].at(-1)!;
     expect(retried).not.toBe(player);
+    expect(player.isConnected).toBe(true);
+    act(() => void retried.iframeElement.dispatchEvent(new Event("load")));
     expect(player.isConnected).toBe(false);
     const retryUrl = new URL(retried.getAttribute("src") ?? "", window.location.origin);
     expect(retryUrl.searchParams.get("_hfStudioRetry")).toBe("1");
@@ -232,7 +234,8 @@ describe("a host's sandbox origin", () => {
     act(async () => {
       for (let i = 0; i < 10; i += 1) await Promise.resolve();
     });
-  const shown = () => document.querySelector("hyperframes-player")!;
+  const shown = () =>
+    [...document.querySelectorAll<TestHyperframesPlayer>("hyperframes-player")].at(-1)!;
   afterEach(() => {
     primeFrameToken(null);
     vi.restoreAllMocks();
@@ -282,6 +285,7 @@ describe("a host's sandbox origin", () => {
     answer({ ok: true, json: async () => ({ token }) } as Response);
     await settle();
     expect(shown()).not.toBe(player);
+    act(() => void shown().iframeElement.dispatchEvent(new Event("load")));
     expect(player.isConnected).toBe(false);
     expect(shown().getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
   });
@@ -341,7 +345,7 @@ describe("a host's sandbox origin", () => {
     if (!retry) throw new Error("retry action did not render");
     act(() => retry.click());
   };
-  const player = () => document.querySelector("hyperframes-player") as HTMLElement;
+  const player = () => [...document.querySelectorAll("hyperframes-player")].at(-1) as HTMLElement;
 
   // fails without the fix: the first load's late token check replaced the retry's URL with an older token.
   it("keeps Retry preview's load when the first load's token check answers late", async () => {

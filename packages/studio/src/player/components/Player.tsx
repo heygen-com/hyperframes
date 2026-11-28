@@ -5,7 +5,8 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
 import { usePlayerStore } from "../store/playerStore";
-import { announcePreviewDocumentLoaded } from "../sceneSwap";
+import { announcePreviewDocumentLoaded, announcePreviewPromoted } from "../sceneSwap";
+import { handFrameToRef, hideWhileLoading, staleTokenSwap } from "./playerSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
 import { watchPreviewFrame } from "../lib/bridgePlayback";
 import { previewUnderFrameToken, underCurrentFrameToken } from "../lib/frameToken";
@@ -107,33 +108,6 @@ async function playerSrc(
   return opaque ? previewUnderFrameToken(src, onStale) : src;
 }
 
-/** A primed frame token found stale, or never confirmed: the preview loads again under the current one. */
-function staleTokenSwap(canceled: () => boolean) {
-  let loadInFreshPlayer: ((src: string) => void) | null = null;
-  let fresher: string | null = null;
-  let retries = 0;
-  return {
-    onStale(fresh: string) {
-      if (canceled() || retries > 0) return;
-      fresher = fresh;
-      loadInFreshPlayer?.(fresh);
-    },
-    src: (primed: string) => fresher ?? primed,
-    show(load: (src: string) => void) {
-      loadInFreshPlayer = load;
-    },
-    retry(primed: string, load: (src: string) => void, askAgain?: () => Promise<string>) {
-      const attempt = ++retries;
-      if (!askAgain) return load(fresher ?? primed);
-      void askAgain().then((current) => {
-        if (canceled() || attempt !== retries) return;
-        fresher = current;
-        load(current);
-      });
-    },
-  };
-}
-
 const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
   (iframe.contentWindow as IframeWindow | null)?.__playerReady === true;
 
@@ -215,6 +189,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
       let canceled = false;
       let cleanup: (() => void) | undefined;
+      let replacement: (() => void) | null = null;
 
       const opaque = host.sandboxOrigin === "opaque";
 
@@ -223,11 +198,26 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
       void Promise.all([loadPlayerModule(), source]).then(([, primed]) => {
         if (canceled) return;
+        let shownIframe: HTMLIFrameElement | null = null;
+        // A new player loads beside the shown one and takes its place once loaded, as a shadow reload does.
         const remount = (src: string, retrying = false) => {
-          cleanup?.();
-          if (!canceled) mount(src, retrying);
+          if (canceled) return;
+          replacement?.();
+          const retired = { iframe: shownIframe, unmount: cleanup };
+          const unmount = mount(src, retrying, (live) => {
+            retired.unmount?.();
+            cleanup = unmount;
+            replacement = null;
+            shownIframe = live;
+            if (retired.iframe) announcePreviewPromoted({ retired: retired.iframe, live });
+          });
+          replacement = unmount;
         };
-        const mount = (src: string, retrying: boolean) => {
+        const mount = (
+          src: string,
+          retrying: boolean,
+          takeOver?: (live: HTMLIFrameElement) => void,
+        ): (() => void) => {
           // Create the web component imperatively to avoid JSX custom-element typing.
           const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
           const retryPreview = () => {
@@ -267,7 +257,16 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             setPreviewError(message);
             setCompositionLoading(false);
           };
+          let takeOverOnLoad =
+            takeOver &&
+            (() => {
+              hideWhileLoading(player, false);
+              handFrameToRef(ref, iframe);
+              takeOver(iframe);
+            });
           const handleLoad = () => {
+            takeOverOnLoad?.();
+            takeOverOnLoad = undefined;
             const doc = iframe.contentDocument;
             if (doc && doc === loadedDocument) return;
             loadedDocument = doc;
@@ -328,10 +327,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // Sealed before the ref (useTimelinePlayer's bridge) sees the frame, never unsealed: a host may seal it too.
           if (opaque) player.toggleAttribute("sandbox-origin", true);
           if (opaque && carriesRuntime) player.toggleAttribute("src-carries-runtime", true);
-          if (typeof ref === "function") {
-            ref(iframe);
-          } else if (ref) {
-            (ref as React.MutableRefObject<HTMLIFrameElement | null>).current = iframe;
+          if (!takeOver) {
+            shownIframe = iframe;
+            handFrameToRef(ref, iframe);
           }
 
           player.setAttribute("shader-capture-scale", "1");
@@ -347,12 +345,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           loadStartedAtRef.current = performance.now();
           loadIdRef.current += 1;
           player.setAttribute("src", src);
+          hideWhileLoading(player, !!takeOver);
           container.appendChild(player);
           watchPreviewFrame(iframe);
 
           enableInteractiveIframe(player);
 
-          cleanup = () => {
+          const unmount = () => {
             iframe.removeEventListener("load", handleLoad);
             player.removeEventListener("click", preventToggle, { capture: true });
             player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
@@ -387,13 +386,15 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               }
             }
           };
+          return unmount;
         };
-        mount(swap.src(primed), false);
+        cleanup = mount(swap.src(primed), false);
         swap.show((fresh) => remount(fresh));
       });
 
       return () => {
         canceled = true;
+        replacement?.();
         cleanup?.();
       };
     });
