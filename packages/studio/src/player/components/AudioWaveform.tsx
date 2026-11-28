@@ -90,12 +90,14 @@ export function drawWaveformCanvas(
     height: Math.max(3, amplitude * height),
     gain: fades ? fadeGain(clipFraction(index) * fades.duration, fades.duration, fades) : 1,
   }));
-  const channelToken = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
-  const waveformBarRgb = getComputedStyle(canvas).getPropertyValue(channelToken);
-  const waveformBaselineRgb = getComputedStyle(canvas).getPropertyValue(
-    "--timeline-waveform-baseline-rgb",
-  );
+  const [waveformBarRgb, waveformBaselineRgb] = waveformColours(canvas, muted);
   paintWaveformBars(context, bars, height, waveformBarRgb, waveformBaselineRgb, amplitudes);
+}
+
+function waveformColours(canvas: HTMLCanvasElement, muted: boolean): [string, string] {
+  const style = getComputedStyle(canvas);
+  const bar = muted ? "--timeline-waveform-muted-rgb" : "--timeline-waveform-bar-rgb";
+  return [style.getPropertyValue(bar), style.getPropertyValue("--timeline-waveform-baseline-rgb")];
 }
 
 function extractPeaks(channelData: Float32Array, barCount: number): number[] {
@@ -249,14 +251,21 @@ export const AudioWaveform = memo(function AudioWaveform({
   }, [draw, near, strip.width, strip.height]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    const observer = new MutationObserver(draw);
-    observer.observe(root, {
+    const canvas = canvasRef.current;
+    if (!near || !canvas) return;
+    let colours = waveformColours(canvas, muted).join();
+    const observer = new MutationObserver(() => {
+      const now = waveformColours(canvas, muted).join();
+      if (now === colours) return;
+      colours = now;
+      draw();
+    });
+    observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class", "data-chrome", "data-theme", "style"],
     });
     return () => observer.disconnect();
-  }, [draw]);
+  }, [draw, muted, near]);
 
   useEffect(() => {
     const clip = root?.closest(".timeline-clip");

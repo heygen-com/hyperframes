@@ -123,6 +123,42 @@ function recordingCanvas() {
 }
 
 describe("AudioWaveform", () => {
+  // fails without the fix: every waveform redrew its whole clip on any write to <html>'s style, so a toast moving
+  // during an agent run repainted every audio clip of a 21-minute film and Windows killed the page as hung.
+  it("paints no off-screen waveform when the page's <html> style changes", async () => {
+    nearScreen.auto = false;
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    for (let i = 0; i < 40; i++) renderReadyWaveform();
+    document.documentElement.style.setProperty("--notice-right", "12px");
+    await act(async () => {});
+    expect(getContext).not.toHaveBeenCalled();
+  });
+
+  it("repaints a waveform near the screen on an <html> change only when its colours changed", async () => {
+    let bar = "0, 0, 0";
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          getPropertyValue: (name: string) =>
+            name === "--timeline-waveform-bar-rgb" ? bar : "9, 9, 9",
+        }) as CSSStyleDeclaration,
+    );
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    setStrip({ width: 1000, height: 40, inViewStart: 0, inViewEnd: 1000 });
+    renderReadyWaveform();
+    const drawn = getContext.mock.calls.length;
+    expect(drawn).toBeGreaterThan(0);
+    document.documentElement.style.setProperty("--notice-right", "12px");
+    await act(async () => {});
+    expect(getContext.mock.calls.length, "a toast moved: same colours").toBe(drawn);
+    bar = "1, 2, 3";
+    document.documentElement.setAttribute("data-theme", "light");
+    await act(async () => {});
+    expect(getContext.mock.calls.length, "the theme changed the bars").toBe(drawn + 1);
+    document.documentElement.removeAttribute("style");
+    document.documentElement.removeAttribute("data-theme");
+  });
+
   it("paints a baseline and peak bar for every mapped waveform bin", () => {
     const { canvas, fills } = recordingCanvas();
     drawWaveformCanvas(canvas, [0.25, 1], false, 0, 1);
