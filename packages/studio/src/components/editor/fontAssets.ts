@@ -1,3 +1,5 @@
+import { cssString } from "../../utils/cssLoads";
+
 export interface ImportedFontAsset {
   family: string;
   path: string;
@@ -9,10 +11,6 @@ export interface ImportedFontAsset {
 const FONT_EXT_RE = /\.(eot|otf|ttc|ttf|woff2?)$/i;
 const FONT_STYLE_SUFFIX_RE =
   /\s+(thin|extralight|extra light|light|regular|roman|medium|semibold|semi bold|bold|extrabold|extra bold|black|italic|oblique|variable)$/i;
-
-function cssString(value: string): string {
-  return JSON.stringify(value).replace(/</g, "\\3c ");
-}
 
 export function fontFamilyFromAssetPath(path: string): string {
   const fileName = decodeURIComponent(path.split(/[\\/]/).pop() ?? path).replace(FONT_EXT_RE, "");

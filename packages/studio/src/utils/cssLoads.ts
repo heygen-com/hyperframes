@@ -23,3 +23,7 @@ export function parensCloseInOrder(value: string): boolean {
   }
   return depth === 0;
 }
+
+export function cssString(value: string): string {
+  return JSON.stringify(value).replace(/</g, "\\3c ");
+}

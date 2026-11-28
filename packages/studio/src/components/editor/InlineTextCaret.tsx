@@ -124,7 +124,7 @@ export function InlineTextCaret({
         top: placement.top,
         width: CARET_PX,
         height: placement.height,
-        background: placement.color,
+        backgroundColor: placement.color,
       }}
     />,
     iframe.ownerDocument.body,

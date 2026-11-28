@@ -12,6 +12,7 @@ import { resolvePickerColor } from "./colorValue";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 import { previewEditingClient } from "../../player/lib/previewChannel";
 import { previewTextEdit } from "../../player/lib/previewElements";
+import { cssValueCanLoad, parensCloseInOrder } from "../../utils/cssLoads";
 
 /**
  * The controls for styling the characters selected inside an open text edit.
@@ -189,11 +190,11 @@ export function InlineTextToolbar({
  * character has to be as visible as one used by thirty or it may as well not be
  * drawn.
  */
-export function swatchBackground(
-  distinctColours: readonly string[],
-  agreed: string | undefined,
-): string {
-  if (distinctColours.length === 0) return agreed || DEFAULT_COLOR;
+export function swatchBackground(reported: readonly string[], agreed: string | undefined): string {
+  const drawableAsBackground = (colour: string | undefined) =>
+    !!colour && parensCloseInOrder(colour) && !cssValueCanLoad(colour);
+  const distinctColours = reported.filter(drawableAsBackground);
+  if (distinctColours.length === 0) return drawableAsBackground(agreed) ? agreed! : DEFAULT_COLOR;
   if (distinctColours.length === 1) return distinctColours[0]!;
   const stops = distinctColours.map(
     (colour, index) => `${colour} ${((index / (distinctColours.length - 1)) * 100).toFixed(2)}%`,
