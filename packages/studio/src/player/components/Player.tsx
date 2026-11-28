@@ -245,7 +245,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         };
         retryPreviewRef.current = retryPreview;
         const iframe = player.iframeElement;
-        watchStudioNavigations(iframe);
+        const stopWatchingLoads = watchStudioNavigations(iframe);
         const preventToggle = (e: Event) => e.stopImmediatePropagation();
         const handleShaderTransitionState = (event: Event) => {
           const loading = getShaderTransitionLoading(event);
@@ -363,6 +363,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           retirePreviewEditingClient(iframe);
+          stopWatchingLoads();
           // `remove()` rather than `container.removeChild(player)`: by the time
           // this cleanup runs the element may already be detached — React can
           // re-render the container, a crossfade refresh can swap it, or a

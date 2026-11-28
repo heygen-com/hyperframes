@@ -2,6 +2,8 @@
 import {
   createEditingPortClient,
   EditingPortError,
+  PAGE_LEFT,
+  PAGE_SHOWN,
   MAX_FONT_FACES,
   MAX_QUERY_MATCHES,
   type EditingParams,
@@ -33,41 +35,59 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
 }
 
 const beforeOtherLoadHandlers = { capture: true } as const;
-const studioLoads = new WeakMap<HTMLIFrameElement, { navigated: boolean; left: boolean }>();
+type StudioLoads = {
+  wrote: boolean;
+  shown: Set<unknown>;
+  shownPageLeft: boolean;
+  open: Promise<boolean>;
+};
+const studioLoads = new WeakMap<HTMLIFrameElement, StudioLoads>();
 
-export function watchStudioNavigations(iframe: HTMLIFrameElement): void {
-  if (studioLoads.has(iframe)) return;
-  const state = { navigated: false, left: false };
+export function watchStudioNavigations(iframe: HTMLIFrameElement): () => void {
+  if (studioLoads.has(iframe)) return () => {};
+  const state: StudioLoads = {
+    wrote: false,
+    shown: new Set(),
+    shownPageLeft: false,
+    open: Promise.resolve(true),
+  };
   studioLoads.set(iframe, state);
-  new MutationObserver((changes) => {
+  const writes = new MutationObserver((changes) => {
     const srcdocShown = iframe.hasAttribute("srcdoc");
     if (changes.some((change) => change.attributeName === "srcdoc" || !srcdocShown)) {
-      state.navigated = true;
+      state.wrote = true;
+      state.shown.clear();
+      state.shownPageLeft = false;
     }
-  }).observe(iframe, { attributeFilter: ["src", "srcdoc"] });
-  iframe.addEventListener(
-    "load",
-    () => {
-      state.left = !state.navigated;
-      state.navigated = false;
-    },
-    beforeOtherLoadHandlers,
-  );
-}
-
-function closedClient(): EditingPortClient {
-  const client = createEditingPortClient({ iframe: document.createElement("iframe") });
-  client.dispose();
-  return client;
+  });
+  writes.observe(iframe, { attributeFilter: ["src", "srcdoc"] });
+  const onPageLife = (event: MessageEvent<unknown>) => {
+    const data = event.data as { source?: unknown; type?: unknown; page?: unknown } | null;
+    if (event.source !== iframe.contentWindow || data?.source !== "hf-preview") return;
+    if (data.type === PAGE_SHOWN) state.shown.add(data.page);
+    else if (data.type === PAGE_LEFT && state.shown.has(data.page)) state.shownPageLeft = true;
+  };
+  window.addEventListener("message", onPageLife);
+  const onLoad = () => {
+    const wrote = state.wrote;
+    state.wrote = false;
+    state.open = new Promise((resolve) => setTimeout(() => resolve(wrote && !state.shownPageLeft)));
+  };
+  iframe.addEventListener("load", onLoad, beforeOtherLoadHandlers);
+  return () => {
+    writes.disconnect();
+    window.removeEventListener("message", onPageLife);
+    iframe.removeEventListener("load", onLoad, beforeOtherLoadHandlers);
+    studioLoads.delete(iframe);
+  };
 }
 
 /** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
   if (open) return open.client;
-  const client = studioLoads.get(iframe)?.left
-    ? closedClient()
-    : createEditingPortClient({ iframe });
+  const gate = studioLoads.get(iframe)?.open;
+  const client = createEditingPortClient(gate ? { iframe, gate } : { iframe });
   const onTextEditSelection = client.onTextEditSelection;
   client.onTextEditSelection = (listener) =>
     onTextEditSelection((event) => listener(frameColoursOnly(event)));
