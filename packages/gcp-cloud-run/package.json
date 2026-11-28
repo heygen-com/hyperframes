@@ -70,11 +70,11 @@
   "dependencies": {
     "@google-cloud/storage": "^7.14.0",
     "@google-cloud/workflows": "^4.2.0",
-    "@hono/node-server": "^2.1.6",
+    "@hono/node-server": "^2.1.11",
     "@hyperframes/producer": "workspace:^",
-    "hono": "^4.13.16",
+    "hono": "^4.13.23",
     "puppeteer-core": "^25.8.0",
-    "tar": "^7.5.22"
+    "tar": "^7.5.24"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

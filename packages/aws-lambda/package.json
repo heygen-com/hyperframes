@@ -84,7 +84,7 @@
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "puppeteer-core": "^25.8.0",
-    "tar": "^7.5.22"
+    "tar": "^7.5.24"
   },
   "devDependencies": {
     "@hyperframes/engine": "workspace:*",
