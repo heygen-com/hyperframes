@@ -16,7 +16,8 @@ export const DESCRIPTION_MAX = 320;
 export const CORE_SKILLS = {
   // +128 B for the routing rows to the video rebuilds and to a reference's style, which only trigger when the entry hands them on.
   // +64 B for the lane pointer to format.md.
-  hyperframes: 7776,
+  // +192 B for the work loop's `doctor` step: a missing FFmpeg surfaces before design, not at render.
+  hyperframes: 7968,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
   // +256 B for the unattended pointer: a script or CI job with no TTY pins the release.
   // +64 B for the rating line naming the person's no to usage notes.
