@@ -17,7 +17,15 @@ vi.mock("./nle/PreviewPane", () => ({
   PreviewPane: () => {
     const nle = useNLEContext();
     if (!shells.includes(nle)) shells.push(nle);
-    return <iframe title="preview" />;
+    return (
+      <div
+        data-player=""
+        ref={(player) => {
+          if (player && !player.shadowRoot)
+            player.attachShadow({ mode: "open" }).append(document.createElement("iframe"));
+        }}
+      />
+    );
   },
 }));
 
@@ -85,7 +93,8 @@ it("a sealed frame's no-press Escape leaves its own shell's nested composition, 
   expect(stackIds(first)).toEqual(["master", "scene.html"]);
   expect(stackIds(second)).toHaveLength(3);
 
-  const frame = first.querySelector("iframe")!;
+  const frame = first.querySelector("[data-player]")!.shadowRoot!.querySelector("iframe")!;
+  expect(first.contains(frame)).toBe(false);
   act(() => cancelFromSealedCanvas(frame));
   expect(stackIds(first)).toEqual(["master"]);
   expect(stackIds(second)).toHaveLength(3);
