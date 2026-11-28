@@ -33,7 +33,7 @@ Few and exact: every effect has a cause on screen, and too many read as a templa
 | pop               | a badge, chip or number landing                |
 | riser into impact | the payoff or the mark, once in the film       |
 
-- Place a clip so its peak lands one frame after its picture (light arrives before sound; a sound early feels wrong sooner than one late): `npx hyperframes audio <file> --json` reports where it hits, and most files peak after their start.
+- Place an effect so its first strong transient lands one frame after its picture (light arrives before sound; a sound early feels wrong sooner than one late). `npx hyperframes audio <file> --json` lists transients in `onsets.events`: line up the first with a `strength` of 0.5 or more, and cut any quieter lead-in before it with `data-media-start`. Not `moments.peak`: in a long sound the peak comes late (0.64 s into one explosion, 1.5 s into a sub drop), so lining it up plays the hit early. A riser into impact is the exception: it builds into its moment, so its peak is the hit.
 - Each hit sits 3-6 dB over the bed; a bed with most of its energy under 150 Hz plays as nothing on a phone speaker.
 - Put every effect on one lane (`format.md` Lanes).
 - Rotate two or three takes of a repeated sound; the same whoosh on every cut is the most common tell.
