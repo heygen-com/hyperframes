@@ -30,6 +30,7 @@ Requires: Docker installed and running.
 - `--gpu` — Use GPU encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)
 - `--browser-gpu` / `--no-browser-gpu` — Force host GPU or software (SwiftShader) for Chrome/WebGL capture. Default for local renders is `auto` — probe WebGL availability on first launch and fall back to software if no GPU is reachable. Docker mode always uses software.
 - `-o, --output` — Custom output path
+- `--json` — Print exactly one JSON object on stdout: a success result (`outputPath`, `durationMs`, `renderTimeMs`, and `bytes` for a file output), a failure envelope whose `error.code` names the cause, or a cancel envelope (`code: "cancelled"` plus the signal) on SIGINT, SIGTERM or SIGHUP during a local render. With `--batch`, print one final batch result document instead.
 
 ## Tips
 

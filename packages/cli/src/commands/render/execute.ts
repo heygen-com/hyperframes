@@ -27,6 +27,7 @@ import type { RenderOptions, SingleRenderResult } from "../render.js";
 import type { RenderCancellationScope } from "../../utils/renderCancellation.js";
 import { runRenderSetupWorker } from "../../utils/cancellableProcess.js";
 import { outsideAssetsAllowed } from "../../utils/receivedRender.js";
+import { renderSuccessBody, writeRenderJson } from "../../utils/renderJsonResult.js";
 
 type RenderExecutor = (
   projectDir: string,
@@ -149,6 +150,9 @@ async function executeHeldRender(
   const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
   const result = await execute(plan.project.dir, plan.outputPath, options, cancellation);
   renderMachineResult(result, plan.effectiveQuiet);
+  if (plan.batchJson && !plan.batchPath) {
+    writeRenderJson(renderSuccessBody(plan.outputPath, result));
+  }
 }
 
 function reportSingleRenderNotes(plan: RenderPlan, variables: RenderOptions["variables"]): void {

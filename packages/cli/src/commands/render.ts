@@ -2,7 +2,7 @@ import type { ReferenceBackgroundResult } from "@hyperframes/producer";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { recordRenderSuccess, registerRenderOutput } from "@hyperframes/studio-server/history";
 import { resolveGsapVendorDir } from "../server/gsapVendor.js";
-import { failCommand, requestCliExit, scheduleCliExit } from "../utils/commandResult.js";
+import { failCommand, scheduleCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
@@ -155,7 +155,7 @@ import {
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
-import { recordFailure } from "../utils/jsonError.js";
+import { reportRenderCancellation } from "../utils/renderJsonResult.js";
 import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   sandboxDeniedRemediation,
@@ -412,7 +412,11 @@ export default defineCommand({
     json: {
       type: "boolean",
       description:
-        "With --batch, emit exactly one final JSON result document. Without --batch, print no progress, and on failure print the JSON error envelope.",
+        "Print exactly one JSON object on stdout and nothing else. Without --batch: a success object " +
+        "with ok, outputPath, renderTimeMs, durationMs when known, and bytes for a file output; a " +
+        'failure {ok:false,error} envelope; or a cancel {ok:false,error:{code:"cancelled",signal,message}} ' +
+        "object on SIGINT, SIGTERM or SIGHUP during a local render. With --batch: one final batch " +
+        "result document.",
       default: false,
     },
     resolution: {
@@ -530,11 +534,7 @@ export default defineCommand({
       );
     } catch (error) {
       if (cancellation?.signal.aborted) {
-        const reason = cancellation.signal.reason;
-        const message = reason instanceof Error ? reason.message : String(reason);
-        process.stderr.write(`Render cancelled: ${message}\n`);
-        recordFailure(`Render cancelled: ${message}`);
-        requestCliExit(1);
+        reportRenderCancellation(cancellation.signal.reason, args.json === true);
       }
       throw error;
     } finally {

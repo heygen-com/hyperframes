@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReferenceBackground } from "@hyperframes/producer";
-import { createRenderPlan } from "./plan.js";
+import { createRenderPlan, type RenderCommandArgs } from "./plan.js";
 import {
   batchRowRenderOptions,
   executeRenderPlan,
@@ -271,6 +271,118 @@ describe("the machine result line after a single render", () => {
     };
     expect(await resultLines(measured, { quiet: true })).toEqual([]);
     expect(await resultLines({ renderTimeMs: 5 }, { docker: true })).toEqual([]);
+  });
+});
+
+describe("the --json result object after a single render", () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "hf-render-json-"));
+    writeFileSync(join(projectDir, "index.html"), '<main data-composition-id="main"></main>');
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(manager, "sweepKilledInstalls").mockResolvedValue();
+    vi.spyOn(system, "getFreeDiskMb").mockReturnValue(100_000);
+    vi.spyOn(manager, "ensureBrowser").mockResolvedValue({
+      executablePath: "/usr/bin/chrome",
+      source: "system",
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  async function stdoutLines(
+    args: Partial<RenderCommandArgs>,
+    outcome: SingleRenderResult | Error,
+  ): Promise<string[]> {
+    let output = "";
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      output += String(chunk);
+      return true;
+    });
+    vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      output += `${args.map(String).join(" ")}\n`;
+    });
+    const render = vi.fn(async () => {
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
+    });
+    const plan = createRenderPlan({ dir: projectDir, ...args });
+    try {
+      await executeRenderPlan(plan, {
+        renderLocal: render,
+        renderDocker: render,
+        checkResolution: async () => undefined,
+      });
+    } catch {
+      // A failing render prints no success object; its error is the CLI envelope's job.
+    }
+    return output.split("\n").filter(Boolean);
+  }
+
+  it("prints one success object with the path and the stats", async () => {
+    const outputPath = join(projectDir, "out.mp4");
+    writeFileSync(outputPath, Buffer.alloc(1234));
+    const lines = await stdoutLines(
+      { json: true, output: outputPath },
+      { renderTimeMs: 31_178, durationMs: 53_200 },
+    );
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] ?? "")).toEqual({
+      ok: true,
+      outputPath,
+      durationMs: 53_200,
+      renderTimeMs: 31_178,
+      bytes: 1234,
+    });
+  });
+
+  it("omits bytes for a directory output and durationMs when the render has none", async () => {
+    const outputPath = join(projectDir, "frames");
+    mkdirSync(outputPath);
+    writeFileSync(join(outputPath, "frame-0001.png"), "png");
+    const lines = await stdoutLines(
+      { json: true, output: outputPath, format: "png-sequence" },
+      { renderTimeMs: 7 },
+    );
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] ?? "")).toEqual({ ok: true, outputPath, renderTimeMs: 7 });
+  });
+
+  it("prints no object without --json", async () => {
+    const outputPath = join(projectDir, "out.mp4");
+    writeFileSync(outputPath, "x");
+    expect(await stdoutLines({ quiet: true, output: outputPath }, { renderTimeMs: 1 })).toEqual([]);
+  });
+
+  it("prints no success object when the render fails", async () => {
+    const outputPath = join(projectDir, "out.mp4");
+    expect(
+      await stdoutLines({ json: true, output: outputPath }, new Error("capture failed")),
+    ).toEqual([]);
+  });
+
+  it("prints only the batch document with --batch --json", async () => {
+    const rowsPath = join(projectDir, "rows.json");
+    writeFileSync(rowsPath, "[{}, {}]");
+    const lines = await stdoutLines(
+      {
+        json: true,
+        batch: rowsPath,
+        output: join(projectDir, "renders", "{index}.mp4"),
+      },
+      { renderTimeMs: 3 },
+    );
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] ?? "")).toMatchObject({
+      type: "batch-complete",
+      total: 2,
+      completed: 2,
+      failed: 0,
+    });
   });
 });
 
