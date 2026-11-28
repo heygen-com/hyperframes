@@ -24,4 +24,19 @@ Draws are serialized per source. Rapid preview seeks coalesce while a draw is in
 
 Call `unregister()` when replacing a source. Removal of its host or runtime teardown also unregisters it. The callback's `AbortSignal` is aborted, queued work is cancelled, capture waiters are released, and `dispose` runs once. Stop any underlying work in response to the signal or in `dispose`; cancellation cannot forcibly interrupt synchronous JavaScript.
 
+## Media elements
+
+A frame source can supply a timed `<video>` or `<audio>`, for example one decoded with WebCodecs from bytes the page reads itself. The runtime then leaves the element alone: it never loads, preloads, seeks or plays it, and the first-frame asset check does not wait for it. The element needs no `src`.
+
+Two optional members let such a source take part in the Buffering hold, which pauses the film while a clip on screen has no data to play:
+
+- `canPlayAt(sourceTime)`: return `false` while the source cannot play on from that source time. The film holds with Buffering until it returns `true`. Without it, the source never holds the film.
+- `received()`: a number that grows while the source still receives data, such as the bytes read so far. As for a media element, the hold gives up 8 seconds after it last grew and the film plays on.
+
+`window.__hf.sourceTimeAt(element, time)` returns the source time the source is asked for at composition time `time`, trims and playback rate included, so the source can read ahead to the clip's last frame.
+
+For a clip with no `data-duration`, the runtime needs the source's length. Return it from `length()` once known, and dispatch a `durationchange` event on the element when it becomes known. A `loop` element's source time wraps at that length, as it does for a media element the runtime plays itself.
+
+A `<video>` a frame source supplies has no picture of its own. Return the picture on screen from `picture()` as `{ canvas, time }`: scripts that draw the video or upload it as a WebGL texture get `canvas`, and the video's `requestVideoFrameCallback` callbacks fire with `time` as `mediaTime`. Add `frame`, the decoded `VideoFrame` the canvas shows, and a colour grade on the video uploads it directly instead of copying the canvas.
+
 Registration does not expose arbitrary scene code as editable keyframes. Manual element edits need stable identities and persistent parameters or overrides. Imported iframe sources also need screenshot capture and an explicit message bridge; this API does not grant access to sandboxed DOM.

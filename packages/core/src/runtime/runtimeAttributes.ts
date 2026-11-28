@@ -1,3 +1,5 @@
+import { hasFrameSource } from "./frameSources";
+
 const addedByRuntime = new WeakMap<object, Set<string>>();
 
 export function recordRuntimeAttribute(el: object, name: string): void {
@@ -18,6 +20,7 @@ export function setRuntimePreload(
   media: Pick<HTMLMediaElement, "preload"> & Partial<Pick<Element, "hasAttribute">>,
   value: HTMLMediaElement["preload"],
 ): void {
+  if (hasFrameSource(media)) return;
   if (media.hasAttribute?.("preload") === false) recordRuntimeAttribute(media, "preload");
   media.preload = value;
 }

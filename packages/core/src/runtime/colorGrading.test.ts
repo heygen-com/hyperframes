@@ -16,6 +16,7 @@ import {
   installAuthoredOpacityCapture,
   type RuntimeColorGradingApi,
 } from "./colorGrading";
+import { registerFrameSource } from "./frameSources";
 
 let lastUniform1f: ReturnType<typeof vi.fn> | null = null;
 let lastUniform3f: ReturnType<typeof vi.fn> | null = null;
@@ -349,6 +350,24 @@ describe("createColorGradingRuntime", () => {
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
     expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
+  });
+
+  it("grades the decoded frame a video's frame source hands over", () => {
+    const video = makeDrawableVideo();
+    const canvas = Object.assign(document.createElement("canvas"), { width: 640, height: 360 });
+    // jsdom has no VideoFrame; the grader only passes it to texImage2D.
+    const frame = {} as unknown as VideoFrame;
+    const dispose = registerFrameSource({
+      element: video,
+      render: () => {},
+      picture: () => ({ canvas, time: 0, frame }),
+    });
+    try {
+      startRuntimeWithVideo(video);
+      expect(texImage2DCalls.at(-1)?.at(-1)).toBe(frame);
+    } finally {
+      dispose();
+    }
   });
 
   it("keeps graded layers on the committed picture until a preview seek lands", () => {

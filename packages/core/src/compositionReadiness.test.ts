@@ -7,6 +7,7 @@ import {
   settleCompositionReadiness,
   settleFirstFrameCompositionReadiness,
 } from "./compositionReadiness.js";
+import { registerFrameSource } from "./runtime/frameSources.js";
 import { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 import { STUDIO_PREVIEW_MARK_META } from "./studioPreviewMark.js";
 import { isRuntimeElementVisibleAt } from "./runtime/timeline.js";
@@ -85,6 +86,14 @@ describe("scanPendingCompositionAssets", () => {
     const scan = scanPendingCompositionAssets(doc, { scope: "first-frame" });
 
     expect(scan.pendingMedia.map((media) => media.id)).toEqual(["untimed"]);
+  });
+
+  it("leaves out media a frame source supplies", () => {
+    const doc = docWith('<video id="cam" data-start="0" data-duration="5"></video>');
+    const dispose = registerFrameSource({ element: doc.getElementById("cam")!, render: () => {} });
+
+    expect(scanPendingCompositionAssets(doc, { scope: "first-frame" }).pendingMedia).toEqual([]);
+    dispose();
   });
 
   it("keeps nested timing decisions aligned with the runtime visibility owner", () => {

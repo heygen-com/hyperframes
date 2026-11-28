@@ -2,6 +2,9 @@ import { sourceTimeAt } from "../speedRamp";
 import { readElementRateSpec, readMediaStart } from "./playbackRate";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import { isClipOnScreenAt } from "./clipWindow";
+import { isElementNode, isMediaElement, isVideoElement } from "./domRealm";
+import { flushPausedVideoCallbacks, stagePausedVideoCallbacks } from "./pausedVideoCallbacks";
+import { sourceLengthOf, supplySourceLength } from "./sourceLength";
 import type { RuntimeDeterministicAdapter } from "./types";
 
 export interface FrameSource {
@@ -9,11 +12,16 @@ export interface FrameSource {
   ready?: PromiseLike<unknown>;
   sourceRange?: { start: number; duration: number; fps: number };
   render: (sourceTime: number, signal: AbortSignal) => void | PromiseLike<unknown>;
+  canPlayAt?: (sourceTime: number) => boolean;
+  received?: () => number;
+  length?: () => number | undefined;
+  picture?: () => { canvas: HTMLCanvasElement; time: number; frame?: VideoFrame } | null;
   dispose?: () => void;
 }
 
 interface RegisteredSource {
   element: Element;
+  source: FrameSource;
   ready: Promise<unknown>;
   seek: (time: number) => Promise<void>;
   dispose: () => void;
@@ -22,6 +30,34 @@ interface RegisteredSource {
 const sources = new Map<Element, RegisteredSource>();
 
 export const hasFrameSources = (): boolean => sources.size > 0;
+
+export const hasFrameSource = (element: unknown): boolean =>
+  isElementNode(element) && sources.has(element);
+
+export const frameSourceReceived = (element: Element): number | undefined =>
+  sources.get(element)?.source.received?.();
+
+export const frameSourcePicture = (element: Element) =>
+  sources.get(element)?.source.picture?.() ?? null;
+
+export function frameSourceTimeAt(element: Element, time: number, start: number): number {
+  const mediaStart = readMediaStart(element);
+  const target = mediaStart + sourceTimeAt(readElementRateSpec(element), Math.max(0, time - start));
+  const length = isMediaElement(element) && element.loop ? sourceLengthOf(element) : Number.NaN;
+  return length > mediaStart && target >= length
+    ? mediaStart + ((target - mediaStart) % (length - mediaStart))
+    : target;
+}
+
+export function frameSourceWaitsAt(
+  element: Element,
+  time: number,
+  start: number,
+): boolean | undefined {
+  const registered = sources.get(element);
+  if (!registered) return undefined;
+  return registered.source.canPlayAt?.(frameSourceTimeAt(element, time, start)) === false;
+}
 
 /** Bind a frame source to a timed host. Unregister before replacing its source. */
 export function registerFrameSource(source: FrameSource): () => void {
@@ -46,6 +82,15 @@ export function registerFrameSource(source: FrameSource): () => void {
   void ready.catch(() => {});
   let pending: number | null = null;
   let work: Promise<void> | null = null;
+  let shownTime: number | null = null;
+  const showPicture = () => {
+    const picture = source.picture?.();
+    if (!picture || picture.time === shownTime || !isVideoElement(source.element)) return;
+    shownTime = picture.time;
+    const { width, height } = picture.canvas;
+    stagePausedVideoCallbacks(source.element, { mediaTime: picture.time, width, height });
+    flushPausedVideoCallbacks(source.element);
+  };
   const drain = async () => {
     let failure: { reason: unknown } | undefined;
     try {
@@ -55,6 +100,7 @@ export function registerFrameSource(source: FrameSource): () => void {
         pending = null;
         try {
           await Promise.race([source.render(time, controller.signal), cancelled]);
+          showPicture();
         } catch (reason) {
           failure ??= { reason };
         }
@@ -67,6 +113,7 @@ export function registerFrameSource(source: FrameSource): () => void {
   };
   const registered: RegisteredSource = {
     element: source.element,
+    source,
     ready,
     seek(time) {
       pending = range
@@ -80,10 +127,12 @@ export function registerFrameSource(source: FrameSource): () => void {
       controller.abort();
       pending = null;
       sources.delete(source.element);
+      supplySourceLength(source.element, undefined);
       source.dispose?.();
     },
   };
   sources.set(source.element, registered);
+  supplySourceLength(source.element, source.length);
   return registered.dispose;
 }
 
@@ -138,10 +187,10 @@ export function createFrameSourceAdapter(timing: {
           timing.compositionDuration(),
         );
         if (!onScreen) continue;
-        const localTime = Math.max(0, time - start);
-        const sourceTime =
-          readMediaStart(element) + sourceTimeAt(readElementRateSpec(element), localTime);
-        registerSeekCompletion(source.seek(sourceTime), "frame-source");
+        registerSeekCompletion(
+          source.seek(frameSourceTimeAt(element, time, start)),
+          "frame-source",
+        );
       }
     },
     getReadyPromise: () => {

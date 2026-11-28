@@ -51,6 +51,7 @@ import { swallow } from "./diagnostics";
 import { createRecordFilter } from "./mutationRecords";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import { getPausedVideoFrame } from "./pausedVideoFrames";
+import { frameSourcePicture } from "./frameSources";
 import {
   isCanvasElement,
   isElementNode,
@@ -3425,7 +3426,8 @@ type DrawableFrame = {
 function drawableFrame(entry: ColorGradingEntry): DrawableFrame | null {
   if (document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)) return null;
   const source = getDrawableSource(entry.element);
-  const pixels = source && readablePixels(source, entry);
+  const pixels =
+    source && (frameSourcePicture(entry.element)?.frame ?? readablePixels(source, entry));
   if (!source || !pixels) {
     if (!entry.hasDrawn) entry.canvas.style.display = "none";
     return null;
