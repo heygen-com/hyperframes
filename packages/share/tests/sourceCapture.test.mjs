@@ -485,6 +485,33 @@ test("hosts can reuse gitignore rules for inventory and referenced assets", asyn
   assert.ok(observed.has("index.html"));
 });
 
+test("gitignore capture refuses unsupported rules before walking files", async (t) => {
+  const { readSourceIgnore, SourceIgnoreError } = await import("../src/sourceIgnore.mjs");
+  const root = await project({});
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, ".hyperframesignore");
+  for (const text of [
+    "report-*-*.pdf",
+    "**/images/**/draft",
+    "x".repeat(257),
+    "draft\n".repeat(257),
+  ]) {
+    await writeFile(file, text);
+    await assert.rejects(readSourceIgnore(root, { syntax: "gitignore" }), SourceIgnoreError);
+  }
+  await writeFile(
+    file,
+    "# notes\n".repeat(300) + "assets/**/draft-*.png\n!assets/**/draft-final.png",
+  );
+  const ignored = await readSourceIgnore(root, { syntax: "gitignore" });
+  assert.equal(ignored("assets/2025/draft-old.png"), true);
+  assert.equal(ignored("assets/2025/draft-final.png"), false);
+  await writeFile(file, "**/\n");
+  const folders = await readSourceIgnore(root, { syntax: "gitignore" });
+  assert.equal(folders("assets", true), true);
+  assert.equal(folders("index.html"), false);
+});
+
 test("gitignore rules use the verified ignore file and must leave the root entrypoint included", async (t) => {
   const { readSourceIgnore } = await import("@hyperframes/share/projectSnapshot.mjs");
   const root = await project({ ".hyperframesignore": "*.html\n!/index.html\n" });

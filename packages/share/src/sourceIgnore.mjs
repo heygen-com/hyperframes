@@ -19,7 +19,7 @@ export async function readSourceIgnore(root, { syntax } = {}) {
   if (!text) return scratch;
   if (syntax === "gitignore") {
     const { default: ignore } = await import("ignore");
-    const rules = ignore({ allowRelativePaths: true }).add(text);
+    const rules = ignore({ allowRelativePaths: true }).add(boundedGitignoreRules(text));
     if (rules.ignores("index.html"))
       throw new SourceIgnoreError(
         ".hyperframesignore must include index.html at the project root.",
@@ -32,6 +32,37 @@ export async function readSourceIgnore(root, { syntax } = {}) {
     .filter((line) => line && !line.startsWith("#"));
   const entries = paths.map(ignorePattern);
   return (path) => scratch(path) || entries.some((entry) => entry.test(path));
+}
+
+// Each ordinary wildcard is confined to one component. Only one globstar can span
+// components, so two variable-width matches cannot compete for the same characters.
+/** @param {string} line */
+function boundedGitignoreRule(line) {
+  if (line.length > 256)
+    throw new SourceIgnoreError(".hyperframesignore rules may contain up to 256 characters.");
+  const pattern = line.replace(/^!/, "");
+  const parts = pattern.split("/");
+  const hasMultipleStars = (/** @type {string} */ value) =>
+    value.indexOf("*") !== value.lastIndexOf("*");
+  if (parts.some((part) => part !== "**" && hasMultipleStars(part)))
+    throw new SourceIgnoreError(".hyperframesignore allows one wildcard * per path component.");
+  // Count raw stars conservatively before the parser interprets escapes and character classes.
+  if (
+    parts.filter((part) => part === "**").length > 1 ||
+    (hasMultipleStars(pattern) && /[\\[]/.test(pattern))
+  )
+    throw new SourceIgnoreError(
+      ".hyperframesignore rule combines unsupported wildcards or escapes.",
+    );
+  // A standalone globstar has no adjacent path component to span.
+  return /^!?\/?\*\*\/?$/.test(line) ? line.replace("**", "*") : line;
+}
+
+/** @param {string} text */
+function boundedGitignoreRules(text) {
+  const lines = text.split(/\r?\n/).filter((line) => !line.startsWith("#") && line.trim());
+  if (lines.length > 256) throw new SourceIgnoreError(".hyperframesignore allows up to 256 rules.");
+  return lines.map(boundedGitignoreRule);
 }
 
 const invalidIgnoreFile = () =>

@@ -72,6 +72,12 @@ excluding `index.html` are rejected. Do not exclude assets your composition uses
 These rules can only exclude files, never re-include credentials or other files
 blocked by the portable project policy.
 
+Hosts that opt into gitignore syntax through `readSourceIgnore` also support anchored folders,
+`**`, and ordered `!` rules. Capture accepts up to 256 non-comment rules of 256 UTF-16 code
+units each. Use at most one `*` per path component and one whole `**` component per rule.
+Rules containing multiple asterisks cannot also contain bracket expressions or backslash escapes.
+If a rule exceeds these limits, capture stops before selecting any files.
+
 Cloud render reads the same file as gitignore syntax, so it may hold rules this
 reader rejects, such as `/exports/` or `**/*.mov`. Source capture, and anything
 else that picks project files to upload, then stops with an error. Change
