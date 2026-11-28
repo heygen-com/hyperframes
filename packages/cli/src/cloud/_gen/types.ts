@@ -32,6 +32,8 @@ export interface AssetUrl {
 
 export type AudioVoiceType = "public" | "private";
 
+export type AvatarAPIServiceTier = "default" | "fast";
+
 export type AvatarFit = "contain" | "cover";
 
 export interface AvatarIIIEngineConfig {
@@ -244,6 +246,7 @@ export interface CreateVideoFromAvatar {
   type: "avatar";
   avatar_id: string;
   brand_glossary_id?: string | null;
+  service_tier?: AvatarAPIServiceTier;
   motion_prompt?: string | null;
   expressiveness?: Expressiveness | null;
   engine?:
@@ -291,6 +294,7 @@ export interface CreateVideoFromImage {
   type: "image";
   image: AssetUrl | AssetId | AssetBase64;
   brand_glossary_id?: string | null;
+  service_tier?: AvatarAPIServiceTier;
   motion_prompt?: string | null;
   expressiveness?: Expressiveness | null;
   engine?: AvatarIVEngineConfig | AvatarVIEngineConfig | null;
@@ -298,6 +302,7 @@ export interface CreateVideoFromImage {
 
 export interface CreateVideoFromStudio {
   type: "studio";
+  service_tier?: AvatarAPIServiceTier;
   title?: string | null;
   folder_id?: string | null;
   aspect_ratio?: VideoAspectRatio | null;
@@ -753,6 +758,7 @@ export interface ThirdPartyImageCharge {
 
 export type ThirdPartyImageFailureCode =
   | "content_policy_violation"
+  | "invalid_input"
   | "partial_generation"
   | "vendor_unavailable"
   | "ai_vendor_access_restricted"
