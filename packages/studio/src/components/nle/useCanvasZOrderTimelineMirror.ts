@@ -11,6 +11,7 @@ import type { TimelineElement } from "../../player/store/playerStore";
 import { timelineTrackOrder } from "../../player/components/timelineTrackDisplay";
 import { commitZMirrorLaneMove } from "../../player/components/timelineClipDragCommit";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
+import { readHfId } from "../editor/domEditing";
 import { buildStableSelector, getSelectorIndex } from "../editor/domEditingDom";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 
@@ -71,6 +72,7 @@ export function useCanvasZOrderTimelineMirror(): (input: MirrorZOrderInput) => P
         const crossedKey = input.crossed
           ? deriveTimelineStoreKey({
               domId: input.crossed.id || undefined,
+              hfId: readHfId(input.crossed),
               selector: crossedSelector,
               selectorIndex: getSelectorIndex(
                 input.crossed.ownerDocument,

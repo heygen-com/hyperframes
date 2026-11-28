@@ -5,6 +5,7 @@ import {
   collectDomEditLayerItems,
   getDomEditLayerKey,
   liveLayerElement,
+  readHfId,
   resolveDomEditSelection,
   type DomEditLayerItem,
 } from "./domEditing";
@@ -386,7 +387,13 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
           selector,
           selectorIndex,
           sourceFile,
-          key: deriveTimelineStoreKey({ domId: id, selector, selectorIndex, sourceFile }),
+          key: deriveTimelineStoreKey({
+            domId: id,
+            hfId: readHfId(patch.element),
+            selector,
+            selectorIndex,
+            sourceFile,
+          }),
         });
       }
       if (entries.length === 0) return;
@@ -399,6 +406,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
         (l) =>
           deriveTimelineStoreKey({
             domId: l.id,
+            hfId: readHfId(l.element),
             selector: l.selector,
             selectorIndex: l.selectorIndex,
             sourceFile: l.sourceFile,
@@ -406,6 +414,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       );
       const movedKey = deriveTimelineStoreKey({
         domId: moved.id,
+        hfId: readHfId(moved.element),
         selector: moved.selector,
         selectorIndex: moved.selectorIndex,
         sourceFile: moved.sourceFile,
