@@ -90,7 +90,8 @@ describe.skipIf(!HAS_FFMPEG)("appendVideoAudioFromProbe", () => {
     }
   });
 
-  const remoteSrc = "https://media.probe.example/talk.mp4";
+  // A reserved name (.example, .test) is refused by the restricted network before any download starts.
+  const remoteSrc = "https://media.example.com/talk.mp4";
   const remoteComposition = (attrs = 'data-has-audio="true"') => {
     const composition =
       collectRenderMedia(`<div data-composition-id="root" data-start="0" data-duration="2">
