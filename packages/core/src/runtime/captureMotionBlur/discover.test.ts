@@ -41,6 +41,56 @@ describe("discoverMovers", () => {
     expect(movers).toEqual([fast]);
   });
 
+  describe("a mover inside another mover", () => {
+    // A card rises 100 px over the first half second, then holds, while a swipe inside it
+    // travels 392 px over 0.3 s starting two seconds in. The swipe's box rides the card,
+    // as a real layout would: its rect is the card's x plus its own.
+    function nestedScene() {
+      const scene = document.createElement("div");
+      const card = element(scene, "card", 100);
+      const swipe = element(card, "swipe");
+      const cardX = (t: number): number => 100 * Math.min(1, t / 0.5);
+      const swipeX = (t: number): number => 392 * Math.min(1, Math.max(0, (t - 2) / 0.3));
+      swipe.getBoundingClientRect = () => {
+        const left = cardX(currentT) + swipeX(currentT);
+        return { left, top: 0, right: left + 10, bottom: 10, width: 10, height: 10 } as DOMRect;
+      };
+      let currentT = 0;
+      const seek = (t: number): void => {
+        currentT = t;
+        card.style.transform = `translateX(${cardX(t)}px)`;
+        swipe.style.transform = `translateX(${swipeX(t)}px)`;
+      };
+      seek(0);
+      const movers = (): HTMLElement[] =>
+        discoverMovers({ scene, durationSeconds: 4, fps: 30, seek }).movers;
+      return { card, swipe, movers };
+    }
+
+    it("keeps only the outer mover, so the swipe inside it never blurs", () => {
+      const { card, movers } = nestedScene();
+      expect(movers()).toEqual([card]);
+    });
+
+    it("hands the blur to the mover inside when the outer one opts out with self", () => {
+      const { card, swipe, movers } = nestedScene();
+      card.setAttribute("data-motion-blur", "self");
+      expect(movers()).toEqual([swipe]);
+    });
+
+    it("keeps the outer mover when the inner one opts out with self", () => {
+      const { card, swipe, movers } = nestedScene();
+      swipe.setAttribute("data-motion-blur", "self");
+      expect(movers()).toEqual([card]);
+    });
+
+    it("opts out the whole subtree when the outer one opts out with off", () => {
+      const { card, movers } = nestedScene();
+      card.setAttribute("data-motion-blur", "off");
+      expect(movers()).toEqual([]);
+    });
+  });
+
   it("hands the fast elements to onFast at every step, with the pose of that step applied", () => {
     const { scene, fast, seek } = setup();
     const seen: Array<[number, boolean, string]> = [];
