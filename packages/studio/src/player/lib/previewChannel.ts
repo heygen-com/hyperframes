@@ -84,6 +84,36 @@ export function watchStudioNavigations(iframe: HTMLIFrameElement): () => void {
   };
 }
 
+export type PreviewRequestMiss = {
+  kind: EditingRequestKind;
+  outcome: "timeout" | "rejected" | "frame-gone";
+  elapsedMs: number;
+};
+const missListeners = new Set<(miss: PreviewRequestMiss) => void>();
+
+export function onPreviewRequestMiss(listener: (miss: PreviewRequestMiss) => void): () => void {
+  missListeners.add(listener);
+  return () => void missListeners.delete(listener);
+}
+
+function missOutcome(err: unknown): PreviewRequestMiss["outcome"] {
+  if (!(err instanceof EditingPortError)) return "rejected";
+  if (err.code === "timeout") return "timeout";
+  if (err.code === "disposed") return "frame-gone";
+  return "rejected";
+}
+
+function reportMiss(kind: EditingRequestKind, outcome: PreviewRequestMiss["outcome"], at: number) {
+  const miss = { kind, outcome, elapsedMs: performance.now() - at };
+  for (const listener of [...missListeners]) {
+    try {
+      listener(miss);
+    } catch (error) {
+      console.error("[Studio] preview request miss listener threw", error);
+    }
+  }
+}
+
 /** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
@@ -93,6 +123,13 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
   const onTextEditSelection = client.onTextEditSelection;
   client.onTextEditSelection = (listener) =>
     onTextEditSelection((event) => listener(frameColoursOnly(event)));
+  const request = client.request;
+  client.request = (kind, params, options) => {
+    const startedAt = missListeners.size ? performance.now() : null;
+    const sent = request(kind, params, options);
+    if (startedAt !== null) void sent.catch((err) => reportMiss(kind, missOutcome(err), startedAt));
+    return sent;
+  };
   const retire = () => {
     iframe.removeEventListener("load", retire, beforeOtherLoadHandlers);
     client.dispose();
@@ -221,16 +258,26 @@ export async function previewAnswer<K extends EditingRequestKind>(
   priority: ReadPriority = "now",
 ): Promise<EditingResult<K> | typeof PREVIEW_REJECTED | typeof PREVIEW_STALE | null> {
   frameRequestSent(kind);
+  const startedAt = missListeners.size ? performance.now() : null;
   const client = previewEditingClient(iframe);
   const connected = agentConnectedInCallOrder(client);
   const earlier = turnsWaiting.get(client);
   if (typeof connected === "boolean" && !earlier)
-    return connected ? sendInTurn(client, kind, params, timeoutMs, admit, priority) : null;
+    return connected
+      ? sendInTurn(client, kind, params, timeoutMs, admit, priority)
+      : noRuntime(kind, startedAt);
   const turn = (earlier ?? Promise.resolve()).then(() => connected);
   turnsWaiting.set(client, turn);
   const ready = await turn;
   if (turnsWaiting.get(client) === turn) turnsWaiting.delete(client);
-  return ready ? sendInTurn(client, kind, params, timeoutMs, admit, priority) : null;
+  return ready
+    ? sendInTurn(client, kind, params, timeoutMs, admit, priority)
+    : noRuntime(kind, startedAt);
+}
+
+function noRuntime(kind: EditingRequestKind, startedAt: number | null): null {
+  if (startedAt !== null) reportMiss(kind, "frame-gone", startedAt);
+  return null;
 }
 
 export type ReadPriority = "now" | "behind-drafts";

@@ -23,6 +23,8 @@ import {
   previewEditingClient,
   previewFrameOpaque,
   previewRequest,
+  onPreviewRequestMiss,
+  type PreviewRequestMiss,
   previewSeekPainted,
   setFrameLoopStart,
   watchStudioNavigations,
@@ -76,6 +78,89 @@ function servedFrame(answer: (kind: string, params: unknown) => unknown, opaque 
   closers.push(serveEditingRequests(frame, handed));
   return { iframe, frame, handed };
 }
+
+function refusingFrame() {
+  const frame: Record<string, unknown> = {};
+  const iframe = detachedFakeIframe(frame);
+  const refuse = (port: MessagePort) =>
+    queueMicrotask(() => {
+      port.onmessage = (event: MessageEvent<{ id: number; kind: string }>) => {
+        if (event.data.kind === "runtime-snapshot") return;
+        if (event.data.kind === "hello")
+          return port.postMessage({ v: 2, id: event.data.id, ok: true });
+        const error = { code: "invalid-params", message: "bad params" };
+        port.postMessage({ v: 2, id: event.data.id, ok: false, error });
+      };
+    });
+  closers.push(serveEditingRequests(frame, () => null, refuse));
+  return iframe;
+}
+
+function watchMisses() {
+  const misses: PreviewRequestMiss[] = [];
+  closers.push(onPreviewRequestMiss((miss) => misses.push(miss)));
+  return misses;
+}
+
+const kindsAndOutcomes = (misses: PreviewRequestMiss[]) =>
+  misses.map(({ kind, outcome }) => ({ kind, outcome }));
+
+describe("onPreviewRequestMiss", () => {
+  it("reports one timeout with its kind for a request the frame never answers", async () => {
+    const misses = watchMisses();
+    expect(await previewAnswer(refusingFrame(), "runtime-snapshot", {}, 50)).toBeNull();
+    expect(kindsAndOutcomes(misses)).toEqual([{ kind: "runtime-snapshot", outcome: "timeout" }]);
+    expect(misses[0]?.elapsedMs).toBeGreaterThanOrEqual(45);
+  });
+
+  it("reports a refused request as rejected and an answered one not at all", async () => {
+    const misses = watchMisses();
+    expect(await previewAnswer(refusingFrame(), "wait-for-seek", {})).toBe(PREVIEW_REJECTED);
+    const { iframe } = servedFrame(() => ({ waited: true }));
+    expect(await previewRequest(iframe, "wait-for-seek", {})).toEqual({ waited: true });
+    expect(kindsAndOutcomes(misses)).toEqual([{ kind: "wait-for-seek", outcome: "rejected" }]);
+  });
+
+  it("reports a request cut off by the frame's next load, and a frame with no runtime, as frame-gone", async () => {
+    const misses = watchMisses();
+    const iframe = refusingFrame();
+    const cutOff = previewEditingClient(iframe).request("runtime-snapshot", {});
+    iframe.dispatchEvent(new Event("load"));
+    await expect(cutOff).rejects.toMatchObject({ code: "disposed" });
+    expect(await previewRequest(opaqueFrame().iframe, "wait-for-seek", {})).toBeNull();
+    expect(kindsAndOutcomes(misses)).toEqual([
+      { kind: "runtime-snapshot", outcome: "frame-gone" },
+      { kind: "wait-for-seek", outcome: "frame-gone" },
+    ]);
+  });
+
+  it("keeps the request and later listeners whole when a listener throws", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    closers.push(() => quiet.mockRestore());
+    closers.push(
+      onPreviewRequestMiss(() => {
+        throw new Error("listener broke");
+      }),
+    );
+    const misses = watchMisses();
+    expect(await previewAnswer(refusingFrame(), "wait-for-seek", {})).toBe(PREVIEW_REJECTED);
+    expect(misses).toHaveLength(1);
+  });
+
+  it("tells a listener that re-registers while it is told about a miss only once", async () => {
+    let calls = 0;
+    let unsubscribe = () => {};
+    const listener = () => {
+      calls += 1;
+      unsubscribe();
+      if (calls < 5) unsubscribe = onPreviewRequestMiss(listener);
+    };
+    unsubscribe = onPreviewRequestMiss(listener);
+    closers.push(() => unsubscribe());
+    expect(await previewAnswer(refusingFrame(), "wait-for-seek", {})).toBe(PREVIEW_REJECTED);
+    expect(calls).toBe(1);
+  });
+});
 
 describe("previewFrameOpaque", () => {
   it("is true only for a frame whose window refuses a read", () => {
