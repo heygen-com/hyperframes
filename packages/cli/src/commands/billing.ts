@@ -10,6 +10,7 @@ import {
   pageUrl,
   readOffer,
   readPlan,
+  signInToOwnSpace,
   CheckoutError,
   type Offer,
   type Plan,
@@ -17,7 +18,7 @@ import {
 import { c } from "../ui/colors.js";
 import { trackBillingCheckoutFailed, trackBillingWaitTimeout } from "../telemetry/events.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { isUnattended } from "../utils/attendedTerminal.js";
+import { isRemoteOrHeadless, isUnattended } from "../utils/attendedTerminal.js";
 import { parsePositiveIntegerArg } from "../utils/integerArg.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
@@ -55,6 +56,8 @@ function refuseUnreadCheckout(): null {
 
 type CheckoutSource = { skill?: string; baseline?: number };
 
+type Measured = { baseline: number } | null;
+
 type AtEnter = () => Promise<{ covered: true } | { covered: false; missing?: number }>;
 
 async function openCheckout(
@@ -89,15 +92,26 @@ async function openCheckout(
   if (!signal.aborted) await openBrowser(link);
 }
 
+type PlanInOwnSpaceOrNull = () => Promise<Plan | null>;
+
+const signInHere = (error: unknown, deadline: number) =>
+  error instanceof CheckoutError &&
+  error.reason === "checkout_team_role" &&
+  !isUnattended() &&
+  !isRemoteOrHeadless() &&
+  deadline > Date.now();
+
 async function offerCheckout(
   kind: "plans" | "credits",
   before: Plan,
   signal: AbortSignal,
   needed: number | undefined,
-  source: CheckoutSource,
+  source: CheckoutSource & { deadline: number },
   done: (p: Plan | null) => boolean,
+  ownSpace?: PlanInOwnSpaceOrNull,
 ): Promise<CheckoutError | null> {
   if (kind === "credits" && before.plan === "none") return null;
+  const { deadline, ...from } = source;
   const offer = await readOffer(signal);
   if (signal.aborted) return null;
   const shortBy = (p: Plan) => (needed ? needed - p.credits : undefined);
@@ -110,11 +124,38 @@ async function offerCheckout(
     return { covered: false, missing: now ? shortBy(now) : missing };
   };
   try {
-    await openCheckout(kind, offer, missing, signal, { ...source, atEnter, needed });
+    await openCheckout(kind, offer, missing, signal, { ...from, atEnter, needed });
     return null;
   } catch (error) {
-    return signal.aborted ? null : reportCheckoutFailure(error);
+    if (signal.aborted) return null;
+    if (!ownSpace || !signInHere(error, deadline)) return reportCheckoutFailure(error);
+    return buyInOwnSpace(error, ownSpace, signal, done, (there) =>
+      offerCheckout(kind, there, signal, needed, { ...source, baseline: there.credits }, done),
+    );
   }
+}
+
+async function buyInOwnSpace(
+  refusal: unknown,
+  ownSpace: PlanInOwnSpaceOrNull,
+  signal: AbortSignal,
+  done: (p: Plan | null) => boolean,
+  offerThere: (there: Plan) => Promise<CheckoutError | null>,
+): Promise<CheckoutError | null> {
+  console.log(
+    "Only this team's admin can buy its plan. Sign in to your own workspace to buy it there.",
+  );
+  const there = await ownSpace().catch(() => null);
+  if (signal.aborted) return null;
+  if (!there) return reportCheckoutFailure(refusal);
+  if (done(there)) {
+    console.log(
+      `Your own workspace already covers this (${terminalText(describe(there))}), so no checkout opens.`,
+    );
+    return null;
+  }
+  console.log(`Signed in to your own workspace: ${terminalText(describe(there))}.`);
+  return offerThere(there);
 }
 
 async function readPlanBefore(stop: AbortSignal): Promise<Plan | null> {
@@ -189,10 +230,31 @@ export default defineCommand({
     const atDeadline = setTimeout(() => stop.abort(), deadline - Date.now());
     atDeadline.unref?.();
     const before = await readPlanBefore(stop.signal);
-    const done = (p: Plan | null) =>
-      action === "subscribe"
-        ? !!p && p.plan !== "none"
-        : !!p && p.plan !== "none" && p.credits >= (needed ?? (before?.credits ?? 0) + 1);
+    let measured: Measured = { baseline: before?.credits ?? 0 };
+    const done = (p: Plan | null, m = measured) =>
+      !!m &&
+      !!p &&
+      p.plan !== "none" &&
+      (action === "subscribe" || p.credits >= (needed ?? m.baseline + 1));
+    let landedElsewhere = false;
+    const ownSpace: PlanInOwnSpaceOrNull = async () => {
+      let switched = false;
+      const landed = await signInToOwnSpace(deadline - Date.now(), stop.signal, () => {
+        switched = true;
+        measured = null;
+      });
+      if (!switched) return null;
+      if (!landed) {
+        landedElsewhere = true;
+        console.error(
+          c.error("That sign-in went to another workspace, not your own; nothing was bought."),
+        );
+        return null;
+      }
+      const there = await readPlan(stop.signal);
+      if (there) measured = { baseline: there.credits };
+      return there;
+    };
     if (done(before) && (action === "subscribe" || needed)) {
       console.log(c.success(`✓ Already covered: ${terminalText(describe(before))}.`));
       return;
@@ -212,8 +274,9 @@ export default defineCommand({
     const waiting = (async () => {
       while (!stop.signal.aborted && !giveUp.signal.aborted) {
         await new Promise((r) => setTimeout(r, 2000));
-        const now = await readPlan(stop.signal);
-        if (done(now)) return now;
+        const m: Measured = measured;
+        const now = m && (await readPlan(stop.signal));
+        if (m === measured && done(now, m)) return now;
       }
       return null;
     })().finally(() => {
@@ -226,11 +289,12 @@ export default defineCommand({
           before,
           stop.signal,
           needed,
-          { skill, baseline: before.credits },
+          { skill, baseline: before.credits, deadline },
           done,
+          ownSpace,
         )
       : refuseUnreadCheckout();
-    if (checkoutFailure?.reason === "checkout_unavailable") {
+    if (checkoutFailure?.reason === "checkout_unavailable" || landedElsewhere) {
       giveUp.abort();
       failCommand();
     }

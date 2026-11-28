@@ -6,6 +6,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
   resolveCloudBaseUrl: () => "https://api.example.test",
+  refreshIfNeeded: async (credential: unknown) => credential,
+}));
+const signIn = vi.hoisted(() => ({
+  source: "file_json",
+  hints: [] as unknown[],
+  stored: [] as unknown[],
+  whileWaiting: undefined as (() => void) | undefined,
+}));
+vi.mock("../auth/resolver.js", () => ({
+  resolveCredential: async () => ({ type: "oauth", access_token: "t", source: signIn.source }),
+  envCredentialVar: (source: string) => (source.startsWith("env") ? "HEYGEN_API_KEY" : undefined),
+}));
+vi.mock("../auth/client.js", () => ({
+  AuthClient: class {
+    getCurrentUser = async () => ({ username: "me0123" });
+  },
+}));
+vi.mock("../auth/oauth.js", () => ({
+  startAuthorizationCodeFlow: async (opts: { workspaceHint?: string; persist?: boolean }) => {
+    signIn.hints.push(opts.workspaceHint);
+    signIn.whileWaiting?.();
+    if (opts.persist !== false) signIn.stored.push("by the flow");
+    return { tokens: { access_token: "own" } };
+  },
+  persistFreshOAuth: async (tokens: unknown) => void signIn.stored.push(tokens),
 }));
 const returnRefused = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/events.js", () => ({ trackBillingCheckoutReturnRefused: returnRefused }));
@@ -18,6 +43,7 @@ const {
   pageUrl,
   readOffer,
   readPlan,
+  signInToOwnSpace,
   stripeCheckoutUrl,
 } = await import("./plan.js");
 
@@ -31,6 +57,7 @@ const answer = (data: unknown) =>
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  Object.assign(signIn, { source: "file_json", hints: [], stored: [], whileWaiting: undefined });
 });
 
 describe("readPlan", () => {
@@ -208,6 +235,58 @@ describe("createCheckout", () => {
       /would not open a checkout/,
     );
     expect(sent[0]).toEqual({ quantity: 3, currency: "usd", unit_amount: 100 });
+  });
+});
+
+describe("a team member's checkout", () => {
+  // fails without the fix: the role refusal read as any other, so billing could not move to the person's own space.
+  it("tells HeyGen's refusal of a team member below admin apart from any other", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({
+            code: 400573,
+            message: "Your current role (Member) does not have permission",
+          }),
+          { status: 403 },
+        ),
+    );
+    await expect(createCheckout("plans", {})).rejects.toMatchObject({
+      reason: "checkout_team_role",
+      message: expect.stringMatching(/hyperframes auth login/),
+    });
+  });
+
+  const stop = new AbortController().signal;
+
+  it("signs in again with the person's own space picked, and says whether it landed there", async () => {
+    signedInAs("me0123");
+    const switching = vi.fn();
+    expect(await signInToOwnSpace(60_000, stop, switching)).toBe(true);
+    expect(signIn.hints).toEqual(["me0123"]);
+    expect(signIn.stored).toEqual([{ access_token: "own" }]);
+    expect(switching).toHaveBeenCalledOnce();
+    signedInAs("team-space");
+    expect(await signInToOwnSpace(60_000, stop, switching)).toBe(false);
+  });
+
+  // fails without the fix: billing stopped while the browser was open, and the sign-in still stored its login.
+  it("stores no login once billing stops it during the sign-in", async () => {
+    signedInAs("me0123");
+    const stopping = new AbortController();
+    signIn.whileWaiting = () => stopping.abort();
+    const switching = vi.fn();
+    await expect(signInToOwnSpace(60_000, stopping.signal, switching)).rejects.toThrow();
+    expect(signIn.stored).toEqual([]);
+    expect(switching).not.toHaveBeenCalled();
+  });
+
+  it("never opens a sign-in for a key or token from the environment, which a new sign-in cannot replace", async () => {
+    signIn.source = "env";
+    signedInAs("me0123");
+    expect(await signInToOwnSpace(60_000, stop, vi.fn())).toBe(false);
+    expect(signIn.hints).toEqual([]);
   });
 });
 

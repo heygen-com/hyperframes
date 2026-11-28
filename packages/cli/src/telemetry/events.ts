@@ -5,6 +5,7 @@ import { redactTelemetryString } from "@hyperframes/core/telemetry-redaction";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
 import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";
+import type { CheckoutFailure } from "../heygen/plan.js";
 import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
@@ -1057,9 +1058,7 @@ export function trackSkillCommandRan(props: {
 }
 
 // `billing` could not open a checkout. `reason` is the closed CheckoutFailure class, never the message.
-export function trackBillingCheckoutFailed(props: {
-  reason: "checkout_unavailable" | "checkout_network" | "checkout_rejected";
-}): void {
+export function trackBillingCheckoutFailed(props: { reason: CheckoutFailure }): void {
   trackEvent("cli_billing_checkout_failed", { reason: props.reason });
 }
 

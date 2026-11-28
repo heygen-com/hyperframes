@@ -455,6 +455,20 @@ describe("auth/oauth", () => {
       expect(loopback.close).toHaveBeenCalled();
     });
 
+    // fails without the fix: a stopped sign-in kept waiting for the browser and stored the login it got.
+    it("stops waiting for the browser when its signal fires, and stores nothing", async () => {
+      await writeStore({ oauth: { access_token: "kept_at" } });
+      const loopback = loopbackStub("60 minutes");
+      vi.mocked(startLoopback).mockResolvedValueOnce(loopback);
+      const stop = new AbortController();
+      vi.mocked(openBrowser).mockImplementationOnce(async () => (stop.abort(), { opened: true }));
+
+      await expect(startAuthorizationCodeFlow({ signal: stop.signal })).rejects.toThrow();
+
+      expect(loopback.close).toHaveBeenCalled();
+      expect((await readStore()).credentials.oauth?.access_token).toBe("kept_at");
+    });
+
     it("states the listener's own limit while waiting", async () => {
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       vi.mocked(startLoopback).mockResolvedValueOnce({
@@ -485,6 +499,16 @@ describe("auth/oauth", () => {
       expect(credentials.oauth?.access_token).toBe("new_at");
       // Fresh login is a clean session — the old refresh_token is gone.
       expect(credentials.oauth?.refresh_token).toBeUndefined();
+    });
+
+    it("asks the sign-in page to pick the hinted workspace first", async () => {
+      vi.mocked(openBrowser).mockClear();
+      const body = { access_token: "new_at", expires_in: 3600 };
+      await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body), workspaceHint: "me0123" });
+      await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body) });
+      const [hinted, plain] = vi.mocked(openBrowser).mock.calls.map(([url]) => new URL(url));
+      expect(hinted?.searchParams.get("workspace_hint")).toBe("me0123");
+      expect(plain?.searchParams.has("workspace_hint")).toBe(false);
     });
 
     it("preserves a co-located api_key across fresh login", async () => {
