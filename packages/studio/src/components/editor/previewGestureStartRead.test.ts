@@ -18,7 +18,6 @@ import {
 import { sealedResizeStartBox } from "./resizeStartBox";
 import {
   askShownGestureStarts,
-  gestureStartLayout,
   measureLiveGrow,
   measurePreviewGestureStart,
   UNANSWERED,
@@ -350,8 +349,8 @@ describe("a resize in a preview Studio cannot script", () => {
       configurable: true,
     });
     const handle = (await queryPreviewElements(iframe, "#last"))!.matches[0]!.handle;
-    await measurePreviewGestureStart(iframe, overlayEl(), [handle]);
-    expect(gestureStartLayout(handle)).toBeNull();
+    const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
+    expect(await sealedResizeStartBox(standIn)).toBeNull();
   });
 
   it("scales from the box the frame measures, not a 200 px fallback, with no press", async () => {

@@ -81,6 +81,7 @@ export interface DomEditTextField {
 export interface DomEditSelection extends PatchTarget {
   element: HTMLElement;
   handle?: EditingElementHandle;
+  layout?: { width: number; height: number };
   textMarkup?: boolean;
   hasAudio?: boolean;
   src?: string | null;

@@ -84,7 +84,7 @@ function cropHandles(standIn: HTMLElement, onStyleCommit = vi.fn()) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const show = (shown: Shown, element = standIn) =>
+  const show = (shown: Shown, element = standIn, layout?: { width: number; height: number }) =>
     act(() =>
       root.render(
         createElement(DomEditCropHandles, {
@@ -92,6 +92,7 @@ function cropHandles(standIn: HTMLElement, onStyleCommit = vi.fn()) {
             element,
             id: element.id || "card",
             selector: `#${element.id || "card"}`,
+            layout,
           } as unknown as DomEditSelection,
           overlayRect: { ...shown, editScaleX: 1, editScaleY: 1 },
           onStyleCommit,
@@ -105,12 +106,20 @@ function cropHandles(standIn: HTMLElement, onStyleCommit = vi.fn()) {
   return { root, show, turn, outline };
 }
 
-/** Drags the right crop edge by `dx, dy` screen px and lets go, all before the frame answers. */
+/** A stand-in's crop handles draw once the frame has measured it. */
+const shownEdge = () =>
+  vi.waitFor(() => {
+    const edge = document.querySelector<HTMLElement>('[aria-label="Crop right"]');
+    if (!edge) throw new Error("no crop handles yet");
+    return edge;
+  });
+
+/** Drags the right crop edge by `dx, dy` screen px and lets go, all before the frame answers the press. */
 async function cropRightOn(standIn: HTMLElement, shown: Shown, dx: number, dy: number) {
   const onStyleCommit = vi.fn();
   const { root, show } = cropHandles(standIn, onStyleCommit);
   show(shown);
-  const edge = document.querySelector<HTMLElement>('[aria-label="Crop right"]')!;
+  const edge = await shownEdge();
   const send = (type: string, x: number, y: number, buttons: number) =>
     edge.dispatchEvent(
       new PointerEvent(type, { bubbles: true, pointerId: 7, buttons, clientX: x, clientY: y }),
@@ -153,7 +162,7 @@ it("draws a sealed turned card's crop frame turned before any press", async () =
 
   show({ left: 12, top: 44, width: 200, height: 100, angle: 30 });
 
-  expect(turn()).toBe("rotate(30deg)");
+  await vi.waitFor(() => expect(turn()).toBe("rotate(30deg)"));
   act(() => root.unmount());
 });
 
@@ -255,7 +264,7 @@ it("redraws a sealed crop frame at the turn the card has after a scrub, once a p
   const standIn = await sealedCard("rotate(30deg)", [0, 0, 223, 187]);
   const { root, show, turn } = cropHandles(standIn);
   show({ left: 12, top: 44, width: 200, height: 100, angle: 30 });
-  const edge = document.querySelector<HTMLElement>('[aria-label="Crop right"]')!;
+  const edge = await shownEdge();
   const send = (type: string, buttons: number) =>
     edge.dispatchEvent(
       new PointerEvent(type, { bubbles: true, pointerId: 7, buttons, clientX: 200, clientY: 100 }),
@@ -318,8 +327,60 @@ it("sends no size read when a resize ends after the sealed card's crop handles c
 });
 
 it("keeps reading a sealed cropped card's size while a resize is live, so its insets draw at its own scale", async () => {
-  const { live, outline, root } = await sizeReadsDuringResize("inset(0px 20px 0px 0px)");
+  const { live, outline, root, end } = await sizeReadsDuringResize("inset(0px 20px 0px 0px)");
   expect(live).toBeGreaterThan(1);
   await vi.waitFor(() => expect(outline()).toBe("560px"));
+  end();
+  act(() => root.unmount());
+});
+
+// fails without the fix: before the frame measured the card, its crop handles drew at the last press's size, or at
+// the canvas zoom alone.
+it("draws a sealed card's crop handles only once the frame has measured it", async () => {
+  const tap = answerTap();
+  const [card] = await sealedCards(
+    [
+      {
+        id: "card",
+        transform: "matrix(2, 0, 0, 2, 0, 0)",
+        painted: [0, 0, 400, 200],
+        clip: "inset(0px 20px 0px 0px)",
+      },
+    ],
+    { wrapHandedOverPort: tap.wrapHandedOverPort },
+  );
+  const { root, show, outline } = cropHandles(card!);
+  const release = tap.hold(({ kind }) => kind === "gesture-start");
+  show({ left: 0, top: 0, width: 400, height: 200 });
+  await vi.waitFor(() => expect(tap.held).toHaveLength(1));
+
+  expect(document.querySelector("[data-dom-edit-crop-frame]")).toBeNull();
+
+  release();
+  await vi.waitFor(() => expect(outline()).toBe("360px"));
+  act(() => root.unmount());
+});
+
+// fails without the fix: the handles waited a round trip for the frame's measure, drawing a frame or more after an
+// open crop's.
+it("draws a sealed card's crop handles at once from the layout its selection carries", async () => {
+  const tap = answerTap();
+  const [card] = await sealedCards(
+    [
+      {
+        id: "card",
+        transform: "matrix(2, 0, 0, 2, 0, 0)",
+        painted: [0, 0, 400, 200],
+        clip: "inset(0px 20px 0px 0px)",
+      },
+    ],
+    { wrapHandedOverPort: tap.wrapHandedOverPort },
+  );
+  const { root, show, outline } = cropHandles(card!);
+  tap.hold(({ kind }) => kind === "gesture-start");
+
+  show({ left: 0, top: 0, width: 400, height: 200 }, card!, { width: 200, height: 100 });
+
+  expect(outline()).toBe("360px");
   act(() => root.unmount());
 });

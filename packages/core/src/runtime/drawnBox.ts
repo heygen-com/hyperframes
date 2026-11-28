@@ -14,6 +14,11 @@ export const SIZE_PROPERTIES = [
   "max-height",
 ] as const;
 
+export function layoutOf(element: Element): { width: number; height: number } {
+  const { offsetWidth = 0, offsetHeight = 0 } = element as Partial<HTMLElement>;
+  return { width: offsetWidth, height: offsetHeight };
+}
+
 export const DRAFT_DRAWN = ["translate", "rotate", "transform", ...SIZE_PROPERTIES] as const;
 
 export const PROBE_PX = 100;

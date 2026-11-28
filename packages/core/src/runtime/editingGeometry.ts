@@ -11,6 +11,7 @@ import {
   type EditingElementHandle,
   type EditingRect,
 } from "./editingElement";
+import { layoutOf } from "./drawnBox";
 import { elementForHandle } from "./editingHandles";
 import { composeElementTransform } from "./elementTransform";
 
@@ -193,11 +194,6 @@ function clipPathOf(element: HTMLElement): string | null {
     element.style?.getPropertyValue("clip-path").trim() ||
     window.getComputedStyle(element).getPropertyValue("clip-path").trim();
   return value.length <= MAX_ELEMENT_VALUE ? value : null;
-}
-
-function layoutOf(element: Element): EditingElementBox["layout"] {
-  const { offsetWidth = 0, offsetHeight = 0 } = element as Partial<HTMLElement>;
-  return { width: offsetWidth, height: offsetHeight };
 }
 
 const finiteCorners = (corners: EditingCorners | null) =>

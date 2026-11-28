@@ -54,6 +54,7 @@ export interface EditingElementDescription extends EditingElementHit {
   children: Array<{ handle: EditingElementHandle } | { text: string }>;
   truncated: boolean;
   textMarkup?: boolean;
+  layout?: { width: number; height: number };
 }
 
 export interface EditingElementMatch {

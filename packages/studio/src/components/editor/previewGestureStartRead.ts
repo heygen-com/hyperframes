@@ -16,9 +16,6 @@ import { invertManualOffsetDragMatrix, type ManualOffsetDragMatrix } from "./man
 import { flatVisibleRect, groupAwareRect } from "./previewOverlayRects";
 import { findPreviewElementForSelection, standInFor } from "./previewSelection";
 import { snapContextFromRects, type SnapContext } from "./snapTargetCollection";
-import { rememberGestureStartLayouts } from "./gestureStartLayouts";
-
-export { gestureStartLayout } from "./gestureStartLayouts";
 
 export interface PreviewGestureStart {
   /** The transform-free border box a resize grows from; 0 for an element with none. */
@@ -61,23 +58,14 @@ export async function measurePreviewGestureStart(
   overlayEl: HTMLDivElement,
   handles: string[],
 ): Promise<PreviewGestureStarts | null> {
-  return gestureStartsOnOverlay(
-    await previewGestureStart(iframe, handles),
-    iframe,
-    overlayEl,
-    handles,
-  );
+  return gestureStartsOnOverlay(await previewGestureStart(iframe, handles), iframe, overlayEl);
 }
 
 function gestureStartsOnOverlay(
   reply: PreviewGestureStartReply | null,
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
-  handles: string[],
 ): PreviewGestureStarts | null {
-  rememberGestureStartLayouts(
-    handles.map((handle, i) => ({ handle, layout: reply?.elements[i]?.layout })),
-  );
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;
   const { iframeRect, overlayRect, rootScaleX: sx, rootScaleY: sy } = scale;
@@ -174,12 +162,12 @@ export async function readShownGestureStarts(
 }
 
 export function shownFromRead(
-  { found, handles, reply }: ShownStartsRead,
+  { found, reply }: ShownStartsRead,
   iframe: HTMLIFrameElement,
   overlay: HTMLDivElement,
   selections: DomEditSelection[],
 ): OverChannel | null | typeof UNANSWERED {
-  const read = gestureStartsOnOverlay(reply, iframe, overlay, handles);
+  const read = gestureStartsOnOverlay(reply, iframe, overlay);
   if (!read) return UNANSWERED;
   const shown = selections.flatMap((selection, i) => {
     const start = read.elements[i];
