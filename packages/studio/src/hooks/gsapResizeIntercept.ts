@@ -15,7 +15,7 @@ import {
 import { setElementGsapPosition, setElementGsapSize } from "../utils/elementGsap";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readGsapProperty } from "./gsapRuntimeReaders";
-import { gestureStartLayout } from "../components/editor/previewGestureStartRead";
+import type { LayoutBox } from "../components/editor/manualEditsDom";
 import {
   commitStaticGsapPosition,
   commitStaticGsapSize,
@@ -79,12 +79,12 @@ const BOX_SIDES = [
 ] as const;
 
 /** The box's width and height before the draft. A sealed frame's draft marks the frame's element,
- *  not the stand-in, so there it is the box the press measured. */
+ *  not the stand-in, so there it is the box this resize started from. */
 function preGestureBoxSize(
   selection: DomEditSelection,
+  started: LayoutBox | null | undefined,
   el: HTMLElement | null = selection.element,
 ): Record<string, number> {
-  const started = selection.handle ? gestureStartLayout(selection.handle) : null;
   const box: Record<string, number> = {};
   for (const [side, attr] of BOX_SIDES) {
     const value = originalBoxSize(el, attr, side) ?? (started?.[side] || null);
@@ -101,7 +101,7 @@ export async function commitSizeAtPlayhead(
   size: Record<string, number>,
   iframe: HTMLIFrameElement | null,
   dragOffset: { x: number; y: number } | undefined,
-  callbacks: GsapDragCommitCallbacks,
+  callbacks: GsapDragCommitCallbacks & { startBox?: LayoutBox | null },
 ): Promise<GsapEditOutcome> {
   const selector = selectorFromSelection(selection);
   const moves = !!dragOffset && (dragOffset.x !== 0 || dragOffset.y !== 0) && !!selector;
@@ -123,7 +123,7 @@ export async function commitSizeAtPlayhead(
     {
       label: "Resize",
       backfill: {
-        ...preGestureBoxSize(selection),
+        ...preGestureBoxSize(selection, callbacks.startBox),
         ...(anchor && { x: anchor.baseGsapX, y: anchor.baseGsapY }),
       },
       ...(anchor && { beforeReload: () => restoreDragOffset(selection.element, callbacks.stamp) }),
@@ -194,9 +194,11 @@ export async function tryGsapResizeIntercept(
   dragOffset?: { x: number; y: number },
   draw: <T>(run: () => T) => T = (run) => run(),
   stamp?: DragStamp,
+  startBoxRead: Promise<LayoutBox | null> | LayoutBox | null = null,
 ): Promise<GsapEditOutcome> {
   const moment = editMoment(stamp);
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
+  const startBox = await startBoxRead;
   const outcome = preflightGsapResizeIntercept(selection, animations, iframe, fetchedAnimations);
   if (outcome.status === "blocked") return outcome;
   const { allKnownAnimations, resizeGroup, resizeProperties, workingAnimations } = resizeRoute(
@@ -280,6 +282,7 @@ export async function tryGsapResizeIntercept(
             commitMutation,
             fetchAnimations: fetchFallbackAnimations,
             stamp,
+            startBox,
           },
         );
         return handOverDraftSize(selection, written, sized, draw);
@@ -329,7 +332,7 @@ export async function tryGsapResizeIntercept(
     // sent almost every element to the fallback below: a 630px chip scaled by
     // 630/200, landing over three times the size it was dropped at, and worse
     // on the next drag because the wrong scale then counted as its live one.
-    const box = preGestureBoxSize(selection, el);
+    const box = preGestureBoxSize(selection, startBox, el);
     const cssW = box.width ?? 200;
     const cssH = box.height ?? cssW;
     // `size` is the draft's CSS box; on screen it is multiplied by the element's
@@ -393,7 +396,7 @@ export async function tryGsapResizeIntercept(
       width: roundToLayoutPx(size.width),
       height: roundToLayoutPx(size.height),
     };
-    resizeBackfill = preGestureBoxSize(selection);
+    resizeBackfill = preGestureBoxSize(selection, startBox);
   }
   // Finalize a scale-route commit: tear down the gesture's inline width/height
   // draft (leaving it applied compounds with the committed scale — the element
@@ -506,7 +509,7 @@ export async function tryGsapResizeIntercept(
     };
   }
 
-  const callbacks = { commitMutation, fetchAnimations: fetchFallbackAnimations, stamp };
+  const callbacks = { commitMutation, fetchAnimations: fetchFallbackAnimations, stamp, startBox };
   if (resizeGroup === "size") {
     const written = await commitSizeAtPlayhead(
       selection,

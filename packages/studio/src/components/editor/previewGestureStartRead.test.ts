@@ -15,6 +15,7 @@ import {
   createManualOffsetDragMember,
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
+import { sealedResizeStartBox } from "./resizeStartBox";
 import {
   askShownGestureStarts,
   gestureStartLayout,
@@ -310,6 +311,7 @@ describe("starting a gesture from what an opaque frame read", () => {
     // The element has no box here; its rect over the edit scale would give 100 x 50.
     const g = opts.gestureRef.current!;
     expect([g.actualWidth, g.actualHeight]).toEqual([200, 100]);
+    expect(g.startLayout).toEqual(START.layout);
     expect(g.snapContext).toBe(SNAP);
     restoreManualOffsetDragMembers(g.pathOffsetMember ? [g.pathOffsetMember] : []);
   });
@@ -352,11 +354,10 @@ describe("a resize in a preview Studio cannot script", () => {
     expect(gestureStartLayout(handle)).toBeNull();
   });
 
-  it("scales from the box its gesture started from, not a 200 px fallback", async () => {
+  it("scales from the box the frame measures, not a 200 px fallback, with no press", async () => {
     const iframe = opaqueFrame();
     const handle = (await queryPreviewElements(iframe, "#last"))!.matches[0]!.handle;
     const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
-    await measurePreviewGestureStart(iframe, overlayEl(), [handle]);
     const scaleKeys = {
       id: "#last-scale",
       targetSelector: "#last",
@@ -381,10 +382,15 @@ describe("a resize in a preview Studio cannot script", () => {
       [scaleKeys],
       iframe,
       commitMutation,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      await sealedResizeStartBox(standIn),
     );
 
     const scales = JSON.stringify(commitMutation.mock.calls.map((call) => call[1]));
-    // It measured 120 x 60 at the press, so 240 x 120 is a scale of 2; the 200 px fallback gave 1.2.
+    // The frame measures 120 x 60, so 240 x 120 is a scale of 2; the 200 px fallback gave 1.2.
     expect(scales).toMatch(/"scale":2\b/);
   });
 });
