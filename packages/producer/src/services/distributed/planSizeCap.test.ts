@@ -26,6 +26,7 @@ import {
   plan,
 } from "./plan.js";
 import { getPlanV2ExecutionPlanHash, planV2, readPlanV2Manifest } from "./planV2.js";
+import { spanPlanConfig } from "./renderSpan.js";
 import { measurePlanSizeBreakdown } from "./planSize.js";
 import { DISTRIBUTED_DURATION_OUT_OF_RANGE } from "../render/planValidation.js";
 
@@ -230,6 +231,37 @@ describe("plan() under size cap", () => {
         planDir,
       );
       expect(result.planHash).toMatch(/^[0-9a-f]{64}$/);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "lets a span render plan past the cap that stops a distributed plan",
+    async () => {
+      const projectDir = mkdtempSync(join(runRoot, "project-span-"));
+      writeFileSync(join(projectDir, "index.html"), FIXTURE_HTML, "utf-8");
+      const config = {
+        fps: 30 as const,
+        width: 320,
+        height: 240,
+        format: "mp4" as const,
+        planDirSizeLimitBytes: 1024,
+      };
+
+      let distributedError: unknown;
+      try {
+        await plan(projectDir, config, mkdtempSync(join(runRoot, "plandir-distributed-")));
+      } catch (error) {
+        distributedError = error;
+      }
+      expect(distributedError).toBeInstanceOf(PlanTooLargeError);
+
+      const planned = await plan(
+        projectDir,
+        spanPlanConfig(config),
+        mkdtempSync(join(runRoot, "plandir-span-")),
+      );
+      expect(planned.totalFrames).toBe(30);
     },
     TIMEOUT_MS,
   );

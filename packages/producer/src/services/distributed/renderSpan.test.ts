@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { RenderSpanUnsupportedError, spanFrameRange } from "./renderSpan.js";
+import type { DistributedRenderConfig } from "./plan.js";
+import { RenderSpanUnsupportedError, spanFrameRange, spanPlanConfig } from "./renderSpan.js";
 
 describe("spanFrameRange", () => {
   it("is the frames the seconds cover, to the end when --end is absent", () => {
@@ -14,5 +15,27 @@ describe("spanFrameRange", () => {
   it("refuses a range with no frame, naming how long the film is", () => {
     expect(() => spanFrameRange(3, 4, 30, 90)).toThrow(RenderSpanUnsupportedError);
     expect(() => spanFrameRange(3, 4, 30, 90)).toThrow("90 frames at 30 fps (3s)");
+  });
+});
+
+describe("spanPlanConfig", () => {
+  it("lifts the Lambda plan cap and the font guards, keeping the rest of the config", () => {
+    const config: DistributedRenderConfig = {
+      fps: 30,
+      width: 320,
+      height: 240,
+      format: "mp4",
+      planDirSizeLimitBytes: 1024,
+      rejectOnSystemFonts: true,
+    };
+    expect(spanPlanConfig(config)).toMatchObject({
+      fps: 30,
+      width: 320,
+      height: 240,
+      format: "mp4",
+      rejectOnSystemFonts: false,
+      failClosedFontFetch: false,
+      planDirSizeLimitBytes: Number.MAX_SAFE_INTEGER,
+    });
   });
 });
