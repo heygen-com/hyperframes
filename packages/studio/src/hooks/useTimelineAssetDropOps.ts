@@ -68,6 +68,7 @@ interface UseTimelineAssetDropOpsOptions {
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
+  recordEditEntry?: (input: RecordEditInput) => Promise<string | null>;
   reloadPreview: () => void;
   uploadProjectFiles: (files: Iterable<File>, dir?: string) => Promise<string[]>;
   isRecordingRef?: RefObject<boolean>;
@@ -83,6 +84,7 @@ export function useTimelineAssetDropOps({
   showToast,
   writeProjectFile,
   recordEdit,
+  recordEditEntry,
   reloadPreview,
   uploadProjectFiles,
   isRecordingRef,
@@ -98,7 +100,7 @@ export function useTimelineAssetDropOps({
       placement: TimelineDropPlacement,
       durationOverride?: number,
       gesture: DropGesture = { placed: [], onNewTrack: false },
-    ): Promise<TimelineElement | undefined> => {
+    ): Promise<(TimelineElement & { entryId: string | null }) | undefined> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return undefined;
@@ -178,13 +180,18 @@ export function useTimelineAssetDropOps({
           );
         };
 
+        let entryId = null as string | null;
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Add timeline asset",
           files: { [targetPath]: insertAsset },
           readFile: (path) => readFileContent(pid, path),
           writeFile: writeProjectFile,
-          recordEdit,
+          recordEdit: recordEditEntry
+            ? async (edit) => {
+                entryId = await recordEditEntry(edit);
+              }
+            : recordEdit,
         });
 
         selectAndRevealTimelineElement(deriveTimelineStoreKeyForDomId(newId, targetPath));
@@ -198,6 +205,7 @@ export function useTimelineAssetDropOps({
           duration: normalizedDuration,
           track: lane,
           authoredTrack: track,
+          entryId,
         };
       } catch (error) {
         const message =
@@ -210,6 +218,7 @@ export function useTimelineAssetDropOps({
       projectIdRef,
       activeCompPath,
       recordEdit,
+      recordEditEntry,
       showToast,
       timelineElements,
       writeProjectFile,
@@ -220,11 +229,16 @@ export function useTimelineAssetDropOps({
     ],
   );
 
+  const placeTimelineAsset = useCallback(
+    async (assetPath: string, placement: TimelineDropPlacement, durationOverride?: number) =>
+      (await dropAssetAt(assetPath, placement, durationOverride))?.entryId ?? null,
+    [dropAssetAt],
+  );
   const handleTimelineAssetDrop = useCallback(
     async (assetPath: string, placement: TimelineDropPlacement, durationOverride?: number) => {
-      await dropAssetAt(assetPath, placement, durationOverride);
+      await placeTimelineAsset(assetPath, placement, durationOverride);
     },
-    [dropAssetAt],
+    [placeTimelineAsset],
   );
 
   // fallow-ignore-next-line complexity
@@ -327,5 +341,10 @@ export function useTimelineAssetDropOps({
     ],
   );
 
-  return { handleTimelineAssetDrop, handleTimelineFileDrop, handleTimelineCompositionDrop };
+  return {
+    placeTimelineAsset,
+    handleTimelineAssetDrop,
+    handleTimelineFileDrop,
+    handleTimelineCompositionDrop,
+  };
 }

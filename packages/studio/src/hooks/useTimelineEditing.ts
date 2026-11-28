@@ -39,6 +39,7 @@ export function useTimelineEditing({
   writeProjectFile,
   observeProjectFileVersion,
   recordEdit,
+  recordEditEntry,
   reloadPreview,
   previewIframeRef,
   canvasSelectionsRef,
@@ -184,21 +185,26 @@ export function useTimelineEditing({
     handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
   });
 
-  const { handleTimelineAssetDrop, handleTimelineFileDrop, handleTimelineCompositionDrop } =
-    useTimelineAssetDropOps({
-      projectIdRef,
-      activeCompPath,
-      timelineElements,
-      showToast,
-      writeProjectFile,
-      recordEdit,
-      reloadPreview,
-      uploadProjectFiles,
-      isRecordingRef,
-      forceReloadSdkSession,
-      observeProjectFileVersion,
-      checkEditable,
-    });
+  const {
+    placeTimelineAsset,
+    handleTimelineAssetDrop,
+    handleTimelineFileDrop,
+    handleTimelineCompositionDrop,
+  } = useTimelineAssetDropOps({
+    projectIdRef,
+    activeCompPath,
+    timelineElements,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    recordEditEntry,
+    reloadPreview,
+    uploadProjectFiles,
+    isRecordingRef,
+    forceReloadSdkSession,
+    observeProjectFileVersion,
+    checkEditable,
+  });
 
   const linkEditing = useTimelineLinkEditing({
     projectIdRef,
@@ -319,6 +325,7 @@ export function useTimelineEditing({
       ),
     ),
     handleTimelineAssetDrop: track(handleTimelineAssetDrop),
+    placeTimelineAsset: track(placeTimelineAsset),
     handleTimelineFileDrop: track(handleTimelineFileDrop),
     handleTimelineCompositionDrop: track(handleTimelineCompositionDrop),
     handleBlockedTimelineEdit,

@@ -36,6 +36,7 @@ export interface UseTimelineEditingOptions {
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   observeProjectFileVersion?: (path: string, version: string | null) => void;
   recordEdit: (input: RecordEditInput) => Promise<void>;
+  recordEditEntry?: (input: RecordEditInput) => Promise<string | null>;
   reloadPreview: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
   canvasSelectionsRef?: RefObject<readonly DomEditSelection[]>;

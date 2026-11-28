@@ -93,6 +93,33 @@ it("an edit Studio saved is undone and redone by the project's history, with the
   expect(file()).toBe("B");
 });
 
+it("answers the history entry an edit was filed as, the one its undo then undoes", async () => {
+  const { hook, save, readFile } = await studio();
+  save("B");
+  const entryId = await act(() =>
+    hook().recordEditEntry({
+      label: "Moved Title",
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+  expect(entryId).toEqual(expect.any(String));
+  await vi.waitFor(() => expect(hook().undoLabel).toBe("Moved Title"));
+
+  expect(await act(() => hook().undo({ readFile }))).toMatchObject({ ok: true, undoes: entryId });
+});
+
+it("answers no entry for an edit a project without a history could not record", async () => {
+  const { hook, save } = await studio({ withHistory: false });
+  save("B");
+  const entryId = await act(() =>
+    hook().recordEditEntry({
+      label: "Moved Title",
+      files: { "index.html": { before: "A", after: "B" } },
+    }),
+  );
+  expect(entryId).toBeNull();
+});
+
 it("gives an edit that begins the history's claim count, so undo can tell its claims from older ones", async () => {
   const { hook, save } = await studio();
   save("B");
