@@ -1,16 +1,15 @@
-import { memo, useCallback, useEffect, type ReactNode } from "react";
-import { matchesKey } from "../player/components/studioShortcuts";
+import { memo, useCallback, type ReactNode } from "react";
 import { PreviewPane } from "./nle/PreviewPane";
 import { PreviewStage } from "./storyboard/PreviewStage";
 import { TimelinePane } from "./nle/TimelinePane";
 import { PreviewOverlays } from "./nle/PreviewOverlays";
 import { PreviewReadOnlyProvider } from "./editor/previewReadOnlyContext";
-import { onSealedCanvasCancel } from "./editor/useSealedCanvasKeys";
 import {
   useTimelineEditCallbacks,
   type TimelineEditCallbackDeps,
 } from "./nle/useTimelineEditCallbacks";
 import { NLEProvider, useNLEContext } from "./nle/NLEContext";
+import { useCompositionEscape } from "./nle/useCompositionEscape";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
@@ -293,24 +292,7 @@ function EditorShellBody({
     usePlayerStore.getState().requestSeek(time);
   }, []);
 
-  // Escape pops a composition level; a sealed frame's no-press Escape reaches only its own shell's pop.
-  const popComposition = useCallback(
-    () => updateCompositionStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev)),
-    [updateCompositionStack],
-  );
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (matchesKey(e, "cancel")) popComposition();
-    },
-    [popComposition],
-  );
-  useEffect(
-    () =>
-      onSealedCanvasCancel((frame) => {
-        if (containerRef.current?.contains(frame)) popComposition();
-      }),
-    [containerRef, popComposition],
-  );
+  const handleKeyDown = useCompositionEscape(updateCompositionStack, containerRef);
 
   return (
     <div
