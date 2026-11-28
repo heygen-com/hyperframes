@@ -481,6 +481,34 @@ describe("billing from a team space", () => {
     expect(events.failed).toEqual([{ reason: "checkout_team_role" }]);
   });
 
+  // fails without the fix: the wait saw the other workspace's paid plan and reported success.
+  it.each([
+    [["subscribe"], { plan: "none", credits: 0 }],
+    [["add-credits", "--needed", "400"], { plan: "pro", credits: 100 }],
+  ])(
+    "fails, never Done, when %j signs in to another workspace already paid",
+    async (rawArgs, team) => {
+      terminal.attended = true;
+      terminal.enter = true;
+      terminal.checkoutError = await teamRefusal();
+      terminal.errorOnce = true;
+      terminal.lands = false;
+      held.team = team;
+      held.own = { plan: "pro", credits: 500 };
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      vi.useFakeTimers();
+      const done = runCommand(billing, { rawArgs: [...rawArgs, "--timeout", "4"] });
+      const settled = expect(done).rejects.toThrow();
+      await vi.advanceTimersByTimeAsync(6000);
+      await settled;
+      vi.useRealTimers();
+      expect(terminal.checkouts).toBe(0);
+      expect(log.mock.calls.flat().join("\n")).not.toContain("Done");
+      expect(events.timeout).toEqual([]);
+    },
+  );
+
   const addCredits = async (...extra: string[]) => {
     terminal.attended = true;
     terminal.enter = true;

@@ -236,6 +236,7 @@ export default defineCommand({
       !!p &&
       p.plan !== "none" &&
       (action === "subscribe" || p.credits >= (needed ?? m.baseline + 1));
+    let landedElsewhere = false;
     const ownSpace: PlanInOwnSpaceOrNull = async () => {
       let switched = false;
       const landed = await signInToOwnSpace(deadline - Date.now(), stop.signal, () => {
@@ -243,9 +244,16 @@ export default defineCommand({
         measured = null;
       });
       if (!switched) return null;
+      if (!landed) {
+        landedElsewhere = true;
+        console.error(
+          c.error("That sign-in went to another workspace, not your own; nothing was bought."),
+        );
+        return null;
+      }
       const there = await readPlan(stop.signal);
       if (there) measured = { baseline: there.credits };
-      return landed ? there : null;
+      return there;
     };
     if (done(before) && (action === "subscribe" || needed)) {
       console.log(c.success(`✓ Already covered: ${terminalText(describe(before))}.`));
@@ -286,7 +294,7 @@ export default defineCommand({
           ownSpace,
         )
       : refuseUnreadCheckout();
-    if (checkoutFailure?.reason === "checkout_unavailable") {
+    if (checkoutFailure?.reason === "checkout_unavailable" || landedElsewhere) {
       giveUp.abort();
       failCommand();
     }
