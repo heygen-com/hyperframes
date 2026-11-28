@@ -109,10 +109,13 @@ Hosts with their own file inventory can instead read `readSourceIgnore(projectPa
 once per capture. Pass the resulting `ignored` function to the inventory walk as
 `ignored(relativePath, entry.isDirectory())` and reuse it for
 `listReferencedHiddenSourceAssets(projectPath, observed, { ignored })`. Private-path rules apply
-even when an ignore rule re-includes a path. The gitignore reader accepts up to 256 non-comment
-rules of 256 UTF-16 code units each. A rule can use one `*` per path component and one whole
-`**` component. Rules with multiple asterisks must use plain components without backslash escapes
-or bracket expressions. Unsupported rules raise `SourceIgnoreError` before capture begins.
+even when an ignore rule re-includes a path. The gitignore reader accepts 256 active rules of 256 UTF-16 code units each. A rule can have
+up to four wildcard components with one star apiece, including one recursive globstar.
+Two stars within a filename pattern, such as `*draft*` or `*.min.*`, are supported when the
+other components are literal. A recursive contents rule such as `**/cache/**` is supported
+with literal components between the globstars. Avoid bracket expressions and backslash escapes
+in rules containing multiple stars. With active rules, capture stops if a path exceeds 64
+components or 1024 UTF-16 code units. Simplify the rules or shorten the path to resume.
 
 Editable source includes referenced WOFF, WOFF2, TTF and OTF files with dot-prefixed names, such as
 `.brand/.Atlas.woff2`. The same private-path and ignore rules apply to these fonts. Preview and render servers can call
