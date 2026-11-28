@@ -9,7 +9,7 @@ import { announcePreviewDocumentLoaded } from "../sceneSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
 import { watchPreviewFrame } from "../lib/bridgePlayback";
 import { previewUnderFrameToken, underCurrentFrameToken } from "../lib/frameToken";
-import { retirePreviewEditingClient } from "../lib/previewChannel";
+import { retirePreviewEditingClient, watchStudioNavigations } from "../lib/previewChannel";
 import { type AssetWaitState, waitForPreviewAssets } from "./previewAssetWait";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
@@ -245,6 +245,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         };
         retryPreviewRef.current = retryPreview;
         const iframe = player.iframeElement;
+        watchStudioNavigations(iframe);
         const preventToggle = (e: Event) => e.stopImmediatePropagation();
         const handleShaderTransitionState = (event: Event) => {
           const loading = getShaderTransitionLoading(event);

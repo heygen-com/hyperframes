@@ -20,6 +20,7 @@ import {
   previewRequest,
   previewSeekPainted,
   setFrameLoopStart,
+  watchStudioNavigations,
 } from "./previewChannel";
 import { bridgePlaybackAdapter, watchPreviewFrame } from "./bridgePlayback";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
@@ -108,6 +109,37 @@ describe("previewEditingClient", () => {
     iframe.dispatchEvent(new Event("load"));
     expect(previewEditingClient(iframe)).not.toBe(first);
     await expect(asked).resolves.toEqual({ waited: false });
+    expect(handed).toHaveBeenCalledOnce();
+  });
+
+  it("opens no channel to a page the frame loaded itself, until Studio loads the frame again", async () => {
+    const { iframe, handed } = servedFrame(() => ({ waited: false }));
+    const studioLoads = async (attribute: "src" | "srcdoc") => {
+      iframe.setAttribute(attribute, "/api/projects/demo/preview");
+      await Promise.resolve();
+      iframe.dispatchEvent(new Event("load"));
+    };
+    watchStudioNavigations(iframe);
+    await studioLoads("src");
+    const posted = vi.spyOn(iframe.contentWindow!, "postMessage");
+    iframe.dispatchEvent(new Event("load"));
+    const left = previewEditingClient(iframe);
+    await expect(left.request("wait-for-seek", {})).rejects.toMatchObject({ code: "disposed" });
+    expect(posted).not.toHaveBeenCalled();
+
+    await studioLoads("srcdoc");
+    iframe.setAttribute("src", "/api/projects/demo/other");
+    await Promise.resolve();
+    iframe.dispatchEvent(new Event("load"));
+    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).rejects.toMatchObject({
+      code: "disposed",
+    });
+    expect(handed).not.toHaveBeenCalled();
+
+    await studioLoads("srcdoc");
+    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).resolves.toEqual({
+      waited: false,
+    });
     expect(handed).toHaveBeenCalledOnce();
   });
 

@@ -33,12 +33,41 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
 }
 
 const beforeOtherLoadHandlers = { capture: true } as const;
+const studioLoads = new WeakMap<HTMLIFrameElement, { navigated: boolean; left: boolean }>();
+
+export function watchStudioNavigations(iframe: HTMLIFrameElement): void {
+  if (studioLoads.has(iframe)) return;
+  const state = { navigated: false, left: false };
+  studioLoads.set(iframe, state);
+  new MutationObserver((changes) => {
+    const srcdocShown = iframe.hasAttribute("srcdoc");
+    if (changes.some((change) => change.attributeName === "srcdoc" || !srcdocShown)) {
+      state.navigated = true;
+    }
+  }).observe(iframe, { attributeFilter: ["src", "srcdoc"] });
+  iframe.addEventListener(
+    "load",
+    () => {
+      state.left = !state.navigated;
+      state.navigated = false;
+    },
+    beforeOtherLoadHandlers,
+  );
+}
+
+function closedClient(): EditingPortClient {
+  const client = createEditingPortClient({ iframe: document.createElement("iframe") });
+  client.dispose();
+  return client;
+}
 
 /** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
   if (open) return open.client;
-  const client = createEditingPortClient({ iframe });
+  const client = studioLoads.get(iframe)?.left
+    ? closedClient()
+    : createEditingPortClient({ iframe });
   const onTextEditSelection = client.onTextEditSelection;
   client.onTextEditSelection = (listener) =>
     onTextEditSelection((event) => listener(frameColoursOnly(event)));
