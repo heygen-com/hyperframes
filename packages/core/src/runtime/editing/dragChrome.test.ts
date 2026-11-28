@@ -81,6 +81,21 @@ describe("drag chrome", () => {
     expect(drawn.style.getPropertyValue("pointer-events")).toBe("none");
   });
 
+  // fails without the fix: a place list the frame could not apply was dropped silently, so Studio kept its
+  // outline clipped while the frame showed none (a frame reloaded mid-drag).
+  it("tells Studio when it could not place the chrome, so Studio can send the copy again", () => {
+    const { handle } = card();
+    const step = (chrome: Parameters<typeof drawDrafts>[1]) =>
+      drawDrafts([{ handle, translate: { x: 5, y: 0 }, size: null }], chrome).chromeDrawn;
+    expect(step(chromeAt(140))).toBe(false);
+    expect(step(chromeAt(140, [box]))).toBe(true);
+    expect(step({ ...chromeAt(148), place: place(148).slice(1) })).toBe(false);
+    expect(step(chromeAt(150))).toBe(true);
+    expect(
+      drawDrafts([{ handle, translate: { x: 6, y: 0 }, size: null }]).chromeDrawn,
+    ).toBeUndefined();
+  });
+
   it("goes with a null chrome, and with the last draft's end when Studio sends none", () => {
     const { handle } = card();
     drawDrafts([{ handle, translate: { x: 5, y: 0 }, size: null }], chromeAt(140, [box]));

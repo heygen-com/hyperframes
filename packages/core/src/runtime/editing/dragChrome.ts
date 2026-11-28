@@ -139,11 +139,14 @@ function writeStyle(element: HTMLElement | SVGElement, props: Record<string, str
   for (const [name, value] of Object.entries(props)) element.style.setProperty(name, value);
 }
 
-/** Mounts, places or clears the chrome; called in the same turn as the drafts it rides. */
-export function drawDragChrome(chrome: EditingDragChrome): void {
-  if (chrome === null) return clearDragChrome();
+/** Mounts, places or clears the chrome in the drafts' turn; false when this place fits no mounted copy. */
+export function drawDragChrome(chrome: EditingDragChrome): boolean {
+  if (chrome === null) {
+    clearDragChrome();
+    return true;
+  }
   if (chrome.nodes) mount(chrome.nodes);
-  if (!plane || chrome.place.length !== placed.length) return;
+  if (!plane || chrome.place.length !== placed.length) return false;
   const { origin, scale } = chrome;
   plane.style.transform = `scale(${1 / scale.x}, ${1 / scale.y}) translate(${-origin.x}px, ${-origin.y}px)`;
   placed.forEach((element, i) => {
@@ -152,6 +155,7 @@ export function drawDragChrome(chrome: EditingDragChrome): void {
     writeStyle(element, chrome.place[i]!);
     element.style.setProperty("pointer-events", "none", "important");
   });
+  return true;
 }
 
 export function clearDragChrome(): void {

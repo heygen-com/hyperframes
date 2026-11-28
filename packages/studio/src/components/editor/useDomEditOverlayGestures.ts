@@ -38,8 +38,8 @@ import {
 } from "./domEditOverlayGeometry";
 import {
   BLOCKED_MOVE_THRESHOLD_PX,
-  drawGroupOutline,
-  drawSelectionOutline,
+  drawDraftGroupOutline,
+  drawDraftOverlayRect,
   type GestureState,
   type GroupGestureState,
   type UseDomEditOverlayGesturesOptions,
@@ -55,6 +55,7 @@ import { createGroupDragMover } from "./groupDragMove";
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
 import { releaseEndedGestureHolds } from "../../player/lib/previewChannel";
+import { endChromeInFrameIfReleased } from "./frameDragChrome";
 import { snappedDragDelta } from "./snappedDragDelta";
 import { resizeSizeAt, rotationAt } from "./gestureSteps";
 
@@ -63,12 +64,14 @@ function logGestureCommitFailure(message: string, error: unknown): void {
   console.error(message, error);
 }
 
+const releaseHolds = () => {
+  releaseEndedGestureHolds();
+  endChromeInFrameIfReleased();
+};
+
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
-  const setDraftOverlayRect = (next: OverlayRect, syncCropFrame = false) => {
-    if (opts.waitingPressRef.current) return;
-    opts.setOverlayRect(next);
-    drawSelectionOutline(opts.boxRef.current, opts.handlesRef.current, next, { syncCropFrame });
-  };
+  const setDraftOverlayRect = (next: OverlayRect, syncCropFrame = false) =>
+    drawDraftOverlayRect(opts, next, syncCropFrame);
   const restoreGestureOverlayRect = (g: GestureState) => {
     setDraftOverlayRect(
       {
@@ -84,11 +87,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       g.kind === "drag",
     );
   };
-  const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => {
-    if (opts.waitingPressRef.current) return;
-    opts.setGroupOverlayItems(next);
-    drawGroupOutline(opts.overlayRef.current, next);
-  };
+  const setDraftGroupOverlayItems = (next: GroupOverlayItem[]) => drawDraftGroupOutline(opts, next);
 
   const restoreGroupPathOffsets = (g: GroupGestureState) => {
     restoreManualOffsetDragMembers(g.members);
@@ -232,7 +231,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     if (groupG) {
       opts.groupGestureRef.current = null;
-      releaseEndedGestureHolds();
+      releaseHolds();
       const rawDx = e.clientX - groupG.startX;
       const rawDy = e.clientY - groupG.startY;
       // Consume the release click so it cannot deselect the moved group.
@@ -296,7 +295,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     opts.gestureRef.current = null;
-    releaseEndedGestureHolds();
+    releaseHolds();
     if (!g || !sel) return;
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
 
@@ -479,7 +478,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.blockedMoveRef.current = null;
     opts.groupGestureRef.current = null;
     opts.gestureRef.current = null;
-    releaseEndedGestureHolds();
+    releaseHolds();
     opts.rafPausedRef.current = opts.waitingPressRef.current !== null;
   };
 

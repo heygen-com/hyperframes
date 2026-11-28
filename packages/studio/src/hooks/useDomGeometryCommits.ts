@@ -13,6 +13,7 @@ import {
   clearStudioPathOffset,
   clearStudioBoxSize,
   clearStudioRotation,
+  readStudioBoxSize,
 } from "../components/editor/manualEdits";
 import { stageElementOffset } from "./elementOffsetStager";
 import { savePlainRotation } from "./plainRotation";
@@ -83,9 +84,9 @@ export function useDomGeometryCommits({
       const startBox = pending && (await pending);
       const beforeSize = captureStudioBoxSize(element);
       const beforeOffset = captureStudioPathOffset(element);
-      const stageCrop = prepareCropResize(element);
+      const stageCrop = prepareCropResize(element, startBox);
       applyStudioBoxSize(element, next, startBox);
-      const crop = stageCrop();
+      const crop = stageCrop(readStudioBoxSize(element));
       // One commit, one undo entry: the size, the crop that follows it, and the translate
       // (as a move writes it) that keeps the centre planted.
       const patches = buildBoxSizePatches(element);

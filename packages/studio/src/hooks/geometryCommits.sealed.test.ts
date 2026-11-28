@@ -19,6 +19,7 @@ import {
 } from "../components/editor/manualEditsTypes";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { resizeSelectionFromAgent } from "../webmcp/StudioAgentTools";
+import { writeSizeWithCrop } from "../components/editor/cropResize";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
@@ -230,4 +231,35 @@ it("hands the frame back once the agent's resize is saved", async () => {
   await settle();
 
   expect([card.style.width, card.style.height]).toEqual(["160px", "90px"]);
+});
+
+// fails without the fix: the crop step read the stand-in's own box (0 x 0) after the resize, so the crop kept its old inset.
+it("rescales the crop with a sealed resize, the same as an open element", async () => {
+  const { card, selection, commits } = await sealedCard(saved());
+  card.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  selection.element.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  const open = laidOut(document.createElement("div"));
+  open.style.cssText = card.style.cssText;
+  document.body.append(open);
+
+  for (const sel of [selection, { ...selection, element: open }])
+    await commits.handleDomBoxSizeCommit(sel, { width: 200, height: 100 });
+
+  expect(open.style.getPropertyValue("clip-path")).toBe("inset(20px 40px 20px 40px)");
+  expect(selection.element.style.getPropertyValue("clip-path")).toBe(
+    open.style.getPropertyValue("clip-path"),
+  );
+});
+
+it("rescales the crop with a size typed on an animated element, from the box the frame lays out", async () => {
+  const { card, selection } = await sealedCard(saved());
+  card.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  selection.element.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  const commit = vi.fn(async () => undefined);
+
+  await writeSizeWithCrop(selection, { width: 200 }, vi.fn(), commit, async () => {});
+
+  expect(commit.mock.calls[0]?.[1]).toEqual([
+    { type: "inline-style", property: "clip-path", value: "inset(10px 40px 10px 40px)" },
+  ]);
 });

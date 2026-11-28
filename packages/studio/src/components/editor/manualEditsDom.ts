@@ -332,7 +332,7 @@ function restoreStaleStudioScaleResize(element: HTMLElement): void {
 
 export type LayoutBox = { width: number; height: number };
 
-function layoutBox(element: HTMLElement, frameBox?: LayoutBox | null): LayoutBox {
+export function layoutBox(element: HTMLElement, frameBox?: LayoutBox | null): LayoutBox {
   if (frameBox && previewStandInHandle(element)) return frameBox;
   return { width: element.offsetWidth, height: element.offsetHeight };
 }

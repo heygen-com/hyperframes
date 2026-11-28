@@ -42,6 +42,7 @@ import { type ElementOffsetStagerDeps } from "./elementOffsetStager";
 import {
   prepareCropResize,
   saveCropResize,
+  gsapResizeLaidOut,
   writeSizeWithCrop,
 } from "../components/editor/cropResize";
 
@@ -252,8 +253,9 @@ export function useGsapAwareEditing({
           animGroups: targetAnimations.map((a) => `${a.propertyGroup}:${a.method}`),
         });
         let anchorMove: ReturnType<typeof stageElementPositionOffset> | null = null;
-        const stageCrop = prepareCropResize(selection.element);
+        const stageCrop = prepareCropResize(selection.element, startBox);
         let cropUndoKey: string | null = null;
+        let cropSizedTo: { width: number; height: number } | null = null;
         const saveResizeAnchor = async (
           ownsDragOffset: boolean,
           commitMutation: CommitMutation,
@@ -326,7 +328,10 @@ export function useGsapAwareEditing({
                     handleDomBoxSizeCommit(selection, next, undefined, undefined, coalesceKey),
                   );
                   writes.recordDomResult(result);
-                } else cropUndoKey = coalesceKey;
+                } else {
+                  cropUndoKey = coalesceKey;
+                  cropSizedTo = gsapResizeLaidOut(outcome, next);
+                }
                 // What the resize did, not what its tweens suggest: a scale hold still commits a size.
                 const ownsDragOffset =
                   outcome.status === "persisted" && outcome.ownsDragOffset === true;
@@ -353,7 +358,13 @@ export function useGsapAwareEditing({
             // Only now is the size live for every caller, drag or not.
             if (cropUndoKey) {
               const cropResult = await writes.drawKeepingUndone(() =>
-                saveCropResize(stageCrop, selection, commitPositionPatchToHtml, cropUndoKey!),
+                saveCropResize(
+                  stageCrop,
+                  selection,
+                  commitPositionPatchToHtml,
+                  cropUndoKey!,
+                  cropSizedTo,
+                ),
               );
               writes.recordDomResult(cropResult);
             }
