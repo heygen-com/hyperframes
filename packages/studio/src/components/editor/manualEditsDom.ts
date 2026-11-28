@@ -331,7 +331,6 @@ function restoreStaleStudioScaleResize(element: HTMLElement): void {
   element.removeAttribute(STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR);
 }
 
-/** The element's layout box: a sealed preview's stand-in has none here, so it is the frame's own at the press. */
 function layoutBox(element: HTMLElement): { width: number; height: number } {
   const handle = previewStandInHandle(element);
   const pressed = handle ? gestureStartLayout(handle) : null;
