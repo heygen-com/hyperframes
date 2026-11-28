@@ -1,8 +1,21 @@
 import { memo } from "react";
 import { RenderQueue } from "./RenderQueue";
 import type { RenderJob } from "./useRenderQueue";
+import type { AdvancedRenderSettings, RenderSettings } from "./renderSettings";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { usePreviewVariablesStore } from "../../hooks/previewVariablesStore";
+
+function panelAdvancedSettings(
+  format: RenderSettings["format"],
+  advanced: AdvancedRenderSettings | undefined,
+): AdvancedRenderSettings {
+  const settings = format === "gif" ? undefined : advanced;
+  return {
+    rateControl: settings?.rateControl ?? { mode: "auto" },
+    videoFrameFormat: settings?.videoFrameFormat ?? "auto",
+    hdrMode: settings?.hdrMode ?? "auto",
+  };
+}
 
 /**
  * The Renders tab, wired to the shell context.
@@ -29,7 +42,7 @@ export const RenderQueuePanel = memo(function RenderQueuePanel() {
       ffmpeg={renderQueue.ffmpeg}
       ffmpegChecking={renderQueue.ffmpegChecking}
       onRecheckFfmpeg={renderQueue.recheckFfmpeg}
-      onStartRender={async (format, quality, resolution, fps, gpu, gifLoop) => {
+      onStartRender={async (format, quality, resolution, fps, gpu, gifLoop, advanced) => {
         await waitForPendingDomEditSaves();
         // No `composition`: startRender targets the active one by default.
         await renderQueue.startRender({
@@ -38,7 +51,8 @@ export const RenderQueuePanel = memo(function RenderQueuePanel() {
           format,
           resolution,
           gpu,
-          gifLoop,
+          ...(format === "gif" && gifLoop !== undefined ? { gifLoop } : {}),
+          ...panelAdvancedSettings(format, advanced),
           // Render what the user is previewing: active variable overrides
           // from the Variables panel ride along (undefined = defaults).
           variables: usePreviewVariablesStore.getState().values ?? undefined,
