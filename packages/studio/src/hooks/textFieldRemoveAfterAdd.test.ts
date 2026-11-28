@@ -21,6 +21,8 @@ import { useInlineTextEdit } from "./useInlineTextEdit";
 const PATH = "index.html";
 const OPTIONS = { activeCompositionPath: PATH, isMasterView: false, skipSourceProbe: true };
 const SPANS = "<span>One</span> <span>Two</span>";
+const shownMarkup = (element: HTMLElement) =>
+  element.innerHTML.replace(/ (data-hf-[a-z-]+|style)="[^"]*"/g, "");
 const cleanups: Array<() => void> = [];
 afterEach(() => {
   cleanups.splice(0).forEach((cleanup) => cleanup());
@@ -138,8 +140,26 @@ it("saves an unsealed removal without the draft of an edit opened while it waite
   await vi.waitFor(() => expect(typed).toBe(true));
   act(() => controls().cancel());
   await act(() => flushStudioPendingEdits());
-  expect([text(), title.innerHTML.replace(/ (data-hf-[a-z-]+|style)="[^"]*"/g, "")]).toEqual([
-    "<span>Uno</span>",
-    "<span>Uno</span>",
-  ]);
+  expect([text(), shownMarkup(title)]).toEqual(["<span>Uno</span>", "<span>Uno</span>"]);
+});
+
+it("closes an unsealed edit still waiting for a removal without putting the removed row back", async () => {
+  const { selection, commits, controls, text, holdNextWrite } = await setUp("live");
+  const title = selection.element;
+  act(() => void controls().start(title));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Uno";
+  const releaseEdit = holdNextWrite();
+  const releaseRemoval = holdNextWrite();
+  const removing = commits().handleDomRemoveTextField(selection.textFields[1]!.key);
+  await act(() => Promise.resolve());
+  act(() => void controls().start(title));
+  releaseEdit();
+  await vi.waitFor(() => expect(shownMarkup(title)).toBe("<span>Uno</span>"));
+  expect(title.hasAttribute("contenteditable")).toBe(false);
+  act(() => controls().cancel());
+  releaseRemoval();
+  await act(() => removing);
+  await act(() => flushStudioPendingEdits());
+  expect([text(), shownMarkup(title)]).toEqual(["<span>Uno</span>", "<span>Uno</span>"]);
 });

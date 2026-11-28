@@ -140,6 +140,7 @@ const PREVIEW_DID_NOT_ANSWER = "the preview did not answer";
 // The newest session per element: an older one that settles late must not write over it.
 const latestEdit = new WeakMap<HTMLElement, InlineTextEditSession>();
 const openSealedEdit = new WeakMap<HTMLElement, InlineTextEditSession>();
+const notYetEditable = new WeakSet<InlineTextEditSession>();
 const settledWhileSaving = new WeakMap<HTMLElement, InlineTextEditSession>();
 
 // The frame shows this session's original once it ends unsaved; a save that landed meanwhile shows over it.
@@ -376,6 +377,7 @@ export function useInlineTextEdit({
 
       const begin = () => {
         if (openRef.current !== open) return;
+        notYetEditable.delete(open);
         open.original = element.innerHTML;
         element.setAttribute("contenteditable", EDITABLE);
         // Focused and selected on the next frame, not now. The press that opened
@@ -392,8 +394,10 @@ export function useInlineTextEdit({
         framesRef.current = raf ?? null;
       };
       const settled = textSavesSettled(element);
-      if (settled) void settled.then(begin);
-      else begin();
+      if (settled) {
+        notYetEditable.add(open);
+        void settled.then(begin);
+      } else begin();
       return true;
     },
     [onPause, readOnly, teardown],
@@ -433,6 +437,7 @@ export function useInlineTextEdit({
       teardown();
       return handedOff(open.element, endSealed(open, true));
     }
+    if (notYetEditable.has(open)) return void teardown();
     // Sanitised here, in the element, so the preview shows exactly what will be
     // saved rather than something the server will quietly cut down.
     sanitizeRichTextChildren(open.element);
@@ -460,7 +465,7 @@ export function useInlineTextEdit({
       teardown();
       return void endSealed(open, false);
     }
-    open.element.innerHTML = open.original;
+    if (!notYetEditable.has(open)) open.element.innerHTML = open.original;
     teardown();
   }, [teardown, endSealed]);
 
