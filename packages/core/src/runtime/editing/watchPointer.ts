@@ -13,13 +13,16 @@ import { pointerTargetsAt } from "../editingTargets";
 
 export const MAX_POINTER_WATCHERS = 8;
 
+export const MAX_POINT_SEQ = 2 ** 31 - 1;
+
 /** `point` is in fractions of the root's box, as `pointer-targets` takes it; null stops the watch. */
-export type WatchPointerParams = { point: { x: number; y: number } | null };
+export type WatchPointerParams = { point: { x: number; y: number } | null; seq?: number };
 /** `at` is `performance.timeOrigin + performance.now()` in the frame when it hit-tested. */
 export type EditingPointerEvent = {
   at: number;
   target: EditingElementHit | null;
   stack: EditingElementHit[];
+  seq?: number;
 };
 
 type Fields = Record<string, unknown>;
@@ -28,13 +31,17 @@ const isRecord = (value: unknown): value is Fields =>
 const keysAre = (value: unknown, keys: string): value is Fields =>
   isRecord(value) && Object.keys(value).sort().join() === keys;
 const finite = (value: unknown): value is number => Number.isFinite(value);
+const isSeq = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= MAX_POINT_SEQ;
+const seqOf = (fields: Fields) => (isSeq(fields.seq) ? { seq: fields.seq } : {});
 
 export function parseWatchPointer(params: unknown): WatchPointerParams | null {
-  if (!keysAre(params, "point")) return null;
+  if (!keysAre(params, "point") && !(keysAre(params, "point,seq") && isSeq(params.seq)))
+    return null;
   const { point } = params;
   if (point === null) return { point: null };
   return keysAre(point, "x,y") && finite(point.x) && finite(point.y)
-    ? { point: { x: point.x, y: point.y } }
+    ? { point: { x: point.x, y: point.y }, ...seqOf(params) }
     : null;
 }
 
@@ -49,14 +56,15 @@ const isHit = (value: unknown): value is EditingElementHit =>
 
 /** One pushed message off the port, or null for anything with a field it does not allow. */
 export function pointerEvent(data: unknown, version: number): EditingPointerEvent | null {
-  if (!keysAre(data, "at,event,stack,target,v") || data.v !== version) return null;
+  const tagged = keysAre(data, "at,event,seq,stack,target,v") && isSeq(data.seq);
+  if ((!tagged && !keysAre(data, "at,event,stack,target,v")) || data.v !== version) return null;
   const { at, target, stack } = data;
   if (data.event !== "pointer-targets" || !finite(at) || !Array.isArray(stack)) return null;
   if (stack.length > MAX_POINT_STACK || !stack.every(isHit)) return null;
-  return target === null || isHit(target) ? { at, target, stack } : null;
+  return target === null || isHit(target) ? { at, target, stack, ...seqOf(data) } : null;
 }
 
-type Watch = { x: number; y: number; last: string | null };
+type Watch = { x: number; y: number; last: string | null; seq?: number };
 const watches = portMap<Watch>();
 let wireVersion = 0;
 let nextFrame = 0;
@@ -67,7 +75,8 @@ function check(port: MessagePort, watch: Watch, at: number): void {
   if (answer === watch.last) return;
   watch.last = answer;
   try {
-    postOnPort(port, { v: wireVersion, event: "pointer-targets", at, target, stack });
+    const seq = watch.seq === undefined ? {} : { seq: watch.seq };
+    postOnPort(port, { v: wireVersion, event: "pointer-targets", at, target, stack, ...seq });
   } catch {
     watches.delete(port);
   }
@@ -105,12 +114,12 @@ const stopAll = () => stopWatchingPointer();
 
 export function watchPointer(
   port: MessagePort,
-  { point }: WatchPointerParams,
+  { point, seq }: WatchPointerParams,
   version: number,
 ): { watching: boolean } {
   if (!point) watches.delete(port);
   else if (watches.has(port) || watches.size() < MAX_POINTER_WATCHERS)
-    watches.set(port, { x: point.x, y: point.y, last: null });
+    watches.set(port, { x: point.x, y: point.y, last: null, seq });
   else throw new Error(`at most ${MAX_POINTER_WATCHERS} ports may watch the pointer`);
   wireVersion = version;
   window.addEventListener("pagehide", stopAll);

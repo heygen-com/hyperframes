@@ -13,6 +13,7 @@ vi.mock("../editingTargets", () => ({
 }));
 
 import {
+  MAX_POINT_SEQ,
   MAX_POINTER_WATCHERS,
   parseWatchPointer,
   pointerEvent,
@@ -35,6 +36,10 @@ describe("parseWatchPointer", () => {
       point: { x: 0.5, y: 0.25 },
     });
     expect(parseWatchPointer({ point: null })).toEqual({ point: null });
+    expect(parseWatchPointer({ point: { x: 0.5, y: 0.25 }, seq: 3 })).toEqual({
+      point: { x: 0.5, y: 0.25 },
+      seq: 3,
+    });
   });
 
   it("refuses a missing or malformed point and an extra field", () => {
@@ -45,6 +50,10 @@ describe("parseWatchPointer", () => {
       { point: { x: Number.NaN, y: 0 } },
       { point: { x: 0, y: 0, z: 0 } },
       { point: null, extra: 1 },
+      { point: { x: 0, y: 0 }, seq: -1 },
+      { point: { x: 0, y: 0 }, seq: 1.5 },
+      { point: { x: 0, y: 0 }, seq: "1" },
+      { point: { x: 0, y: 0 }, seq: MAX_POINT_SEQ + 1 },
     ])
       expect(parseWatchPointer(params)).toBeNull();
   });
@@ -62,6 +71,7 @@ describe("pointerEvent", () => {
   it("takes the frame's answer, and no target as null", () => {
     expect(pointerEvent(push({}), 1)).toEqual({ at: 1, ...answer(TITLE) });
     expect(pointerEvent(push(answer(null)), 1)).toEqual({ at: 1, ...answer(null) });
+    expect(pointerEvent(push({ seq: 4 }), 1)).toEqual({ at: 1, ...answer(TITLE), seq: 4 });
   });
 
   it("drops a push with a field it does not allow, at any level", () => {
@@ -75,6 +85,9 @@ describe("pointerEvent", () => {
       push({ target: { ...TITLE, handle: "1" } }),
       push({ target: { ...TITLE, rect: { ...TITLE.rect, x: "0" } } }),
       push({ stack: [{ ...TITLE, tag: 1 }] }),
+      push({ seq: -1 }),
+      push({ seq: "4" }),
+      push({ seq: MAX_POINT_SEQ + 1 }),
     ])
       expect(pointerEvent(bad, 1)).toBeNull();
   });
@@ -170,6 +183,20 @@ describe("watchPointer", () => {
     await vi.waitFor(() => expect(seen).toHaveLength(2));
     expect(watchPointer(frame, { point: null }, 1)).toEqual({ watching: false });
     expect(frames.size).toBe(0);
+    parent.close();
+  });
+
+  it("tags each push with its point's seq, and answers a moved point under its new seq", async () => {
+    const { frame, parent } = setUp();
+    const seen = pushes(parent);
+    under.answer = answer(TITLE);
+    watchPointer(frame, { point: { x: 0.1, y: 0.1 }, seq: 7 }, 1);
+    step();
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    watchPointer(frame, { point: { x: 0.2, y: 0.2 }, seq: 8 }, 1);
+    step();
+    await vi.waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen.map((push) => pointerEvent(push, 1)?.seq)).toEqual([7, 8]);
     parent.close();
   });
 

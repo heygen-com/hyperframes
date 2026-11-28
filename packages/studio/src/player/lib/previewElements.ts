@@ -132,24 +132,43 @@ export async function previewPointerTargets(
 }
 
 type PointerAnswer = { target: PreviewElementHit | null; stack: PreviewElementHit[] };
+let lastPointerSeq = 0;
 
+/** `pending`: the point moved and the frame has not answered for it yet, so ask with `previewPointerTargets`. */
 export function watchPreviewPointer(
   iframe: HTMLIFrameElement,
-  onAnswer: (answer: PointerAnswer | "frame-cannot-watch") => void,
+  onAnswer: (answer: PointerAnswer | "pending" | "frame-cannot-watch") => void,
 ): { at: (rootFractionX: number, rootFractionY: number) => void; stop: () => void } {
-  const off = previewEditingClient(iframe).onPointerTargets(({ target, stack }) =>
-    onAnswer({ target: readHit(target), stack: stack.map(readHit).filter((hit) => hit !== null) }),
-  );
+  let seq = -1;
+  let stopped = false;
+  const off = previewEditingClient(iframe).onPointerTargets((push) => {
+    if (stopped || push.seq !== seq) return;
+    onAnswer({
+      target: readHit(push.target),
+      stack: push.stack.map(readHit).filter((hit) => hit !== null),
+    });
+  });
+  const end = () => {
+    stopped = true;
+    off();
+  };
   return {
     at(x, y) {
-      void previewRequest(iframe, "watch-pointer", { point: { x, y } }).then((reply) => {
-        if (reply) return;
-        off();
-        onAnswer("frame-cannot-watch");
-      });
+      if (stopped) return;
+      const asked = ++lastPointerSeq;
+      seq = asked;
+      onAnswer("pending");
+      void previewRequest(iframe, "watch-pointer", { point: { x, y }, seq: asked }).then(
+        (reply) => {
+          if (reply || stopped || asked !== seq) return;
+          end();
+          onAnswer("frame-cannot-watch");
+        },
+      );
     },
     stop() {
-      off();
+      if (stopped) return;
+      end();
       void previewRequest(iframe, "watch-pointer", { point: null });
     },
   };
