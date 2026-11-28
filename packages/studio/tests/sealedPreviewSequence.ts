@@ -95,6 +95,7 @@ export async function openStudio(
       __load: () => void;
       __loading: boolean;
       __refusals: number;
+      __studioLoads: (frame: HTMLIFrameElement, page: string) => void;
     };
     w.__hold = true;
     w.__saved = first;
@@ -115,7 +116,7 @@ export async function openStudio(
         },
         { once: true },
       );
-      iframe.srcdoc = content;
+      w.__studioLoads(iframe, content);
     };
     w.__loading = false;
     w.__reload = () => {

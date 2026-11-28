@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_PREVIEW_CAPTURE_MODE, STUDIO_PREVIEW_MARK_META } from "../../studioPreviewMark";
 import { installEditingAgent } from "../editingAgent";
-import { connectFrom } from "../editingAgent.test-helpers";
+import { offeredPort } from "../editingAgent.test-helpers";
 import { EDITING_PROTOCOL_VERSION } from "../editingPort";
 import { installPreviewKeyShield, listenFrameKeydown, resetCanvasKeys } from "./canvasKeys";
 
@@ -25,9 +25,9 @@ function untrustedKey(type: "keydown" | "keyup", init: KeyboardEventInit): Keybo
   return new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init });
 }
 
-function connectAgent(parent: Window): { port: MessagePort; dispose: () => void } {
-  const agent = installEditingAgent(parent);
-  return { port: connectFrom(parent), dispose: agent.dispose };
+function connectAgent(): { port: MessagePort; dispose: () => void } {
+  const agent = installEditingAgent();
+  return { port: offeredPort(), dispose: agent.dispose };
 }
 
 function ask(port: MessagePort, kind: string, params: unknown): Promise<Record<string, unknown>> {
@@ -80,7 +80,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     window.addEventListener("keydown", onFilmKey, true);
     document.addEventListener("keydown", onFilmKey, true);
 
-    const { port, dispose } = connectAgent(fakeParent);
+    const { port, dispose } = connectAgent();
     disposeAgent = () => {
       window.removeEventListener("keydown", onFilmKey, true);
       document.removeEventListener("keydown", onFilmKey, true);
@@ -161,7 +161,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
       },
     };
 
-    const { port, dispose } = connectAgent(fakeParent);
+    const { port, dispose } = connectAgent();
     disposeAgent = dispose;
     const actions: Record<string, unknown>[] = [];
     port.addEventListener("message", (e: MessageEvent<Record<string, unknown>>) => {
@@ -230,7 +230,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     markStudio();
     loadShield();
     document.body.innerHTML = `<div data-composition-id="main"><div id="a">A</div><div id="b">B</div><div id="c">C</div></div>`;
-    const { port, dispose } = connectAgent(fakeParent);
+    const { port, dispose } = connectAgent();
     disposeAgent = dispose;
     const deletes: Array<{ actionId: number; handles: string[] }> = [];
     port.addEventListener("message", (e: MessageEvent<Record<string, unknown>>) => {
@@ -302,7 +302,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     markStudio();
     loadShield();
     document.body.innerHTML = `<div data-composition-id="main"><h1 id="title">Hello</h1></div>`;
-    const { port, dispose } = connectAgent(fakeParent);
+    const { port, dispose } = connectAgent();
     disposeAgent = dispose;
     const forwarded: Array<Record<string, unknown>> = [];
     const ended: Array<Record<string, unknown>> = [];
@@ -352,7 +352,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
   it("does not arm a frame whose load-time shield is missing, so no key is handled out of order", async () => {
     markStudio();
     document.body.innerHTML = `<div data-composition-id="main"><div id="target">box</div></div>`;
-    const { port, dispose } = connectAgent(fakeParent);
+    const { port, dispose } = connectAgent();
     disposeAgent = dispose;
     const handle = (
       (await ask(port, "query", { selector: "#target" })).result as {
@@ -378,7 +378,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     const filmSaw: string[] = [];
     const onFilmKey = (e: Event) => filmSaw.push((e as KeyboardEvent).code);
     window.addEventListener("keydown", onFilmKey);
-    const { port, dispose } = connectAgent(fakeParent);
+    const { port, dispose } = connectAgent();
     disposeAgent = () => {
       window.removeEventListener("keydown", onFilmKey);
       dispose();
@@ -422,7 +422,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     markStudio();
     loadShield();
     document.body.innerHTML = `<div data-composition-id="main"><div id="target" data-hf-id="hf-t">box</div></div>`;
-    const { port, dispose } = connectAgent(fakeParent);
+    const { port, dispose } = connectAgent();
     disposeAgent = dispose;
     const pushed: Array<Record<string, unknown>> = [];
     port.addEventListener("message", (e: MessageEvent<Record<string, unknown>>) => {
@@ -464,7 +464,7 @@ describe("canvasKeys in-frame keyboard shield and actions", () => {
     markStudio();
     loadShield();
     document.body.innerHTML = `<div data-composition-id="main"><div id="target">box</div></div>`;
-    const { port, dispose } = connectAgent(fakeParent);
+    const { port, dispose } = connectAgent();
     const stopThrowing = listenFrameKeydown(window, () => {
       throw new Error("reporting failed");
     });

@@ -12,6 +12,7 @@ const require = createRequire(import.meta.url);
 
 export type Studio = typeof import("../src/utils/gsapSoftReload") & {
   previewRequest: typeof import("../src/player/lib/previewChannel").previewRequest;
+  watchStudioNavigations: typeof import("../src/player/lib/previewChannel").watchStudioNavigations;
   patchRuntimeTweenInPlace: typeof import("../src/hooks/gsapRuntimePatch").patchRuntimeTweenInPlace;
   applyPreviewSync: typeof import("../src/hooks/useGsapScriptCommits").applyPreviewSync;
   applyUndoRestoreToPreview: typeof import("../src/utils/gsapUndoRestore").applyUndoRestoreToPreview;
@@ -38,6 +39,7 @@ export async function buildStudioBundle(extra: string[] = []): Promise<string> {
         `export { markStudioWriteToken, studioFileRevision } from "./utils/studioFileVersion";`,
         `export { previewLoadShows } from "./utils/sealedPreviewLedger";`,
         `export { watchPreviewFrame } from "./player/lib/bridgePlayback";`,
+        `export { watchStudioNavigations } from "./player/lib/previewChannel";`,
         ...extra,
       ].join(" "),
       resolveDir: fileURLToPath(new URL("../src", import.meta.url)),
@@ -179,13 +181,22 @@ export async function openPreview(
   await page.evaluate(studioBundle);
   await page.evaluate(
     (srcdoc, sealed) => {
+      const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+      // A load Studio starts is watched before its write, as each new player's frame is.
+      const watches = new Map<HTMLIFrameElement, () => void>();
+      const loads = (frame: HTMLIFrameElement, page: string) => {
+        watches.get(frame)?.();
+        watches.set(frame, studio.watchStudioNavigations(frame));
+        frame.srcdoc = page;
+      };
+      (window as unknown as { __studioLoads: typeof loads }).__studioLoads = loads;
       const iframe = document.createElement("iframe");
       if (sealed) iframe.setAttribute("sandbox", "allow-scripts");
       iframe.style.cssText = "width: 1920px; height: 1080px; border: 0";
-      iframe.srcdoc = srcdoc;
+      loads(iframe, srcdoc);
       document.body.append(iframe);
       // As Studio's player does, before the frame loads: the frame's posted size reaches the mirror.
-      (window as unknown as { hfStudio: Studio }).hfStudio.watchPreviewFrame(iframe);
+      studio.watchPreviewFrame(iframe);
     },
     html,
     mode === "sealed",

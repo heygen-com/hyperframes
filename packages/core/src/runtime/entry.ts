@@ -23,7 +23,7 @@ import { installPausedVideoCallbacks } from "./pausedVideoCallbacks";
 import { corsForSealedMedia } from "./sealedMediaCors";
 import { postStaticCompositionWhenParsed } from "./staticCompositionPost";
 import { installPreviewKeyShield } from "./editing/canvasKeys";
-import { announcePageLife, listenForEditingConnect } from "./editingAgent";
+import { offerEditingPort } from "./editingAgent";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -45,8 +45,7 @@ type HyperframeWindow = Window & {
 // Ensure timeline registry exists at script evaluation time.
 (window as HyperframeWindow).__timelines = (window as HyperframeWindow).__timelines || {};
 
-announcePageLife();
-listenForEditingConnect();
+offerEditingPort();
 
 // Stamp color-graded elements with their authored inline opacity BEFORE the
 // composition's animation scripts (and the grading hide) mutate it — must run

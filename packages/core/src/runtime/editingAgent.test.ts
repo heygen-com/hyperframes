@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installEditingAgent } from "./editingAgent";
-import { CONNECT, connectFrom } from "./editingAgent.test-helpers";
+import { installEditingAgent, offerEditingPort } from "./editingAgent";
+import { offeredPort, parentTaking } from "./editingAgent.test-helpers";
 import { handleFor } from "./editingHandles";
 import { PREVIEW_FOR_ANOTHER_SITE_META, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
@@ -8,12 +8,6 @@ const H = "0123456789abcdef:1";
 const studioMark = document.createElement("meta");
 studioMark.name = STUDIO_PREVIEW_MARK_META;
 document.head.append(studioMark);
-
-function frameWindow(): Window {
-  const iframe = document.createElement("iframe");
-  document.body.appendChild(iframe);
-  return iframe.contentWindow!;
-}
 
 function ask(port: MessagePort, data: unknown): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
@@ -31,14 +25,12 @@ function served(port: MessagePort): Promise<boolean> {
 }
 
 describe("installEditingAgent", () => {
-  let parent: Window;
   let agent: { dispose: () => void };
   let opened: MessagePort[];
 
   beforeEach(() => {
-    parent = frameWindow();
     opened = [];
-    agent = installEditingAgent(parent);
+    agent = installEditingAgent();
   });
   afterEach(() => {
     agent.dispose();
@@ -53,18 +45,19 @@ describe("installEditingAgent", () => {
     Reflect.deleteProperty(window, "__hfPreviewErrors");
   });
 
-  const connect = (source: Window | null, data: unknown = CONNECT): MessagePort => {
-    const port = connectFrom(source, data);
+  const connectedPort = (): MessagePort => {
+    const port = offeredPort();
     opened.push(port);
     return port;
   };
-  const connectedPort = (): MessagePort => connect(parent);
 
-  it("serves the port the parent sends with its connect, and posts nothing to the parent", async () => {
-    const posted = vi.fn();
-    parent.postMessage = posted as unknown as Window["postMessage"];
-    expect(await served(connectedPort())).toBe(true);
-    expect(posted).not.toHaveBeenCalled();
+  it("posts its parent one port per offer, keeps the other end and serves it", async () => {
+    const { parent, offers, ports } = parentTaking();
+    offerEditingPort(parent);
+    opened.push(...ports);
+    expect(offers).toEqual([{ source: "hf-preview", type: "editing-port", v: 2 }]);
+    expect(ports).toHaveLength(1);
+    expect(await served(ports[0]!)).toBe(true);
   });
 
   it("serves the port before the optional plugin preload", async () => {
@@ -99,63 +92,10 @@ describe("installEditingAgent", () => {
     await Promise.all(closed);
   });
 
-  it("serves no port from the page itself, another frame, or a connect of another shape", async () => {
-    const refused = [
-      connect(window),
-      connect(frameWindow()),
-      connect(null),
-      connect(parent, { ...CONNECT, v: 1 }),
-      connect(parent, { ...CONNECT, v: 3 }),
-      connect(parent, { ...CONNECT, source: "hf-preview" }),
-    ];
-    expect(await Promise.all(refused.map(served))).toEqual(refused.map(() => false));
-    expect(await served(connectedPort())).toBe(true);
-  });
-
-  it("closes the port of a parent connect it does not serve", async () => {
-    const port = connect(parent, { ...CONNECT, v: 1 });
-    await new Promise<void>((resolve) => port.addEventListener("close", () => resolve()));
-  });
-
-  it("serves no port when a connect carries none or more than one", async () => {
-    const a = new MessageChannel();
-    const b = new MessageChannel();
-    opened.push(a.port1, b.port1);
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data: CONNECT }));
-    window.dispatchEvent(
-      new MessageEvent("message", { source: parent, data: CONNECT, ports: [a.port2, b.port2] }),
-    );
-    expect(await Promise.all([served(a.port1), served(b.port1)])).toEqual([false, false]);
-  });
-
-  it("ends the parent's connect at its own listener, so a page listener never sees the port", () => {
-    const page = vi.fn();
-    window.addEventListener("message", page, true);
-    window.addEventListener("message", page);
-    try {
-      connectedPort();
-      connect(parent, { ...CONNECT, v: 1 });
-      expect(page).not.toHaveBeenCalled();
-    } finally {
-      window.removeEventListener("message", page, true);
-      window.removeEventListener("message", page);
-    }
-  });
-
-  it("keeps the parent's port when another frame asks after it", async () => {
-    const port = connectedPort();
-    connect(frameWindow());
-    connect(window);
-    expect(await ask(port, { v: 2, id: 1, kind: "hello" })).toMatchObject({ id: 1, ok: true });
-  });
-
-  it("never serves on a top-level page, where the page is its own parent", async () => {
-    const topLevel = installEditingAgent(window);
-    try {
-      expect(await served(connect(window))).toBe(false);
-    } finally {
-      topLevel.dispose();
-    }
+  it("offers no port on a top-level page, where the page is its own parent", () => {
+    const posted = vi.spyOn(window, "postMessage");
+    offerEditingPort(window);
+    expect(posted).not.toHaveBeenCalled();
   });
 
   it("never serves in a document its server answered to another site", async () => {
@@ -180,7 +120,7 @@ describe("installEditingAgent", () => {
     expect(await served(connectedPort())).toBe(true);
   });
 
-  it("stops listening for a connect once disposed", async () => {
+  it("serves no port offered once disposed", async () => {
     agent.dispose();
     expect(await served(connectedPort())).toBe(false);
   });

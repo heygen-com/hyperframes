@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "../editingAgent";
-import { connectFrom } from "../editingAgent.test-helpers";
+import { offeredPort } from "../editingAgent.test-helpers";
 import { STUDIO_PREVIEW_MARK_META } from "../../studioPreviewMark";
 import {
   locateStageKey,
@@ -155,10 +155,7 @@ describe("measureStageDocument", () => {
   });
 
   it("is not exposed when the document has no Studio preview mark (render pages)", async () => {
-    const iframe = document.createElement("iframe");
-    document.body.appendChild(iframe);
-    const parent = iframe.contentWindow!;
-    const agent = installEditingAgent(parent);
+    const agent = installEditingAgent();
     const answers = (port: MessagePort) =>
       new Promise<boolean>((resolve) => {
         port.onmessage = () => resolve(true);
@@ -166,12 +163,12 @@ describe("measureStageDocument", () => {
         setTimeout(() => resolve(false), 50);
       }).finally(() => port.close());
     try {
-      expect(await answers(connectFrom(parent))).toBe(false);
+      expect(await answers(offeredPort())).toBe(false);
 
       const mark = document.createElement("meta");
       mark.name = STUDIO_PREVIEW_MARK_META;
       document.head.append(mark);
-      expect(await answers(connectFrom(parent))).toBe(true);
+      expect(await answers(offeredPort())).toBe(true);
     } finally {
       agent.dispose();
     }

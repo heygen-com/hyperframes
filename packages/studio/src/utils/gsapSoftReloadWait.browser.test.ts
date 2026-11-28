@@ -561,7 +561,10 @@ describe("late answers held in transit, sealed", () => {
         new Promise<void>((loaded) => {
           const iframe = document.querySelector("iframe")!;
           iframe.addEventListener("load", () => setTimeout(loaded, 0), { once: true });
-          iframe.srcdoc = iframe.srcdoc + " ";
+          const loads = (
+            window as unknown as { __studioLoads: (frame: HTMLIFrameElement, page: string) => void }
+          ).__studioLoads;
+          loads(iframe, iframe.srcdoc + " ");
         }),
     );
     await deliver(p.page);

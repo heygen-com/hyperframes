@@ -456,7 +456,7 @@ describe("stageAct", () => {
       port,
     );
     expect([a!.style.opacity, b!.style.opacity]).toEqual(["", "0"]);
-    installEditingAgent(window).dispose();
+    installEditingAgent().dispose();
     expect(b!.style.opacity).toBe("");
   });
 });

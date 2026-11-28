@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { connectFrom, installMarkedEditingAgent } from "../editingAgent.test-helpers";
+import { offeredPort, installMarkedEditingAgent } from "../editingAgent.test-helpers";
 
 const target = { id: "clip", hfId: null, selector: "#clip", selectorIndex: 0 };
 
@@ -12,9 +12,8 @@ afterEach(() => {
 });
 
 function connect(): MessagePort {
-  const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
-  agent = installMarkedEditingAgent(parent);
-  return connectFrom(parent);
+  agent = installMarkedEditingAgent();
+  return offeredPort();
 }
 
 let nextId = 1;

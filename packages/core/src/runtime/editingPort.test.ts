@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installMarkedEditingAgent } from "./editingAgent.test-helpers";
+import { installMarkedEditingAgent, offeredPort } from "./editingAgent.test-helpers";
 import {
   createEditingPortClient,
   EditingPortError,
@@ -7,39 +7,6 @@ import {
   type EditingPortClient,
 } from "./editingPort";
 
-type Listener = (event: Partial<MessageEvent>) => void;
-
-/** A parent window whose message listener the test drives directly. */
-function fakeHost() {
-  let listener: Listener | null = null;
-  const host = {
-    addEventListener: (_type: string, fn: Listener) => (listener = fn),
-    removeEventListener: vi.fn(() => (listener = null)),
-  };
-  return { host: host as unknown as Window, deliver: (e: Partial<MessageEvent>) => listener?.(e) };
-}
-
-function hostReachingEveryListenerOfADispatch() {
-  const listeners = new Set<Listener>();
-  const host = {
-    addEventListener: (_type: string, fn: Listener) => listeners.add(fn),
-    removeEventListener: (_type: string, fn: Listener) => listeners.delete(fn),
-  };
-  const deliver = (e: Partial<MessageEvent>) => [...listeners].forEach((fn) => fn(e));
-  return { host: host as unknown as Window, deliver };
-}
-
-function previewFrame() {
-  const iframe = document.createElement("iframe");
-  document.body.appendChild(iframe);
-  const connects = vi.fn();
-  iframe.contentWindow!.postMessage = connects as unknown as Window["postMessage"];
-  return { iframe, frame: iframe.contentWindow!, connects };
-}
-
-const PORT_MESSAGE = { source: "hf-preview", type: "editing-port", v: 2 };
-const CONNECT = { source: "hf-parent", type: "editing-connect", v: 2 };
-const READY = { source: "hf-preview", type: "ready" };
 const clients: EditingPortClient[] = [];
 const ports: MessagePort[] = [];
 
@@ -49,25 +16,32 @@ function channel() {
   return pair;
 }
 
-type Connects = ReturnType<typeof previewFrame>["connects"];
-
-/** The frame's end of the client's latest connect, answering as a runtime of `version` would. */
-function runtimeEnd(connects: Connects, onRequest?: (data: Record<string, unknown>) => void) {
-  const port = (connects.mock.calls.at(-1)![2] as MessagePort[])[0]!;
-  ports.push(port);
-  port.onmessage = (event: MessageEvent<Record<string, unknown>>) => {
-    if (event.data.kind === "hello") port.postMessage({ v: 2, id: event.data.id, ok: true });
-    else onRequest?.(event.data);
-  };
-  return port;
+/** A client on a channel whose frame end, `page`, the test answers; with `later` the port waits for `hand`. */
+function clientOn(options: { timeoutMs?: number; later?: boolean } = {}) {
+  const { port1: studio, port2: page } = channel();
+  let hand: (port: MessagePort | null) => void = () => {};
+  const port = options.later
+    ? new Promise<MessagePort | null>((resolve) => (hand = resolve))
+    : Promise.resolve(studio);
+  const client = createEditingPortClient({ port, timeoutMs: options.timeoutMs });
+  clients.push(client);
+  return { client, page, hand: () => hand(studio), handNone: () => hand(null) };
 }
 
-/** Delivers each connect the client posts to the page's own window, as the browser would. */
-function frameReachingTheAgent(frame: Window, parent: Window) {
-  frame.postMessage = ((data: unknown, _origin: string, transfer: MessagePort[]) =>
-    window.dispatchEvent(
-      new MessageEvent("message", { source: parent, data, ports: transfer }),
-    )) as Window["postMessage"];
+/** A client of the agent in this page, on the port the agent offered as it loaded. */
+function clientOfAgent(timeoutMs?: number) {
+  const client = createEditingPortClient({ port: Promise.resolve(offeredPort()), timeoutMs });
+  clients.push(client);
+  return client;
+}
+
+/** The frame's end answering hello as the runtime does and handing every other request to `onRequest`. */
+function runtimeEnd(page: MessagePort, onRequest?: (data: Record<string, unknown>) => void) {
+  page.onmessage = (event: MessageEvent<Record<string, unknown>>) => {
+    if (event.data.kind === "hello") page.postMessage({ v: 2, id: event.data.id, ok: true });
+    else onRequest?.(event.data);
+  };
+  return page;
 }
 
 afterEach(() => {
@@ -78,13 +52,9 @@ afterEach(() => {
 
 describe("createEditingPortClient", () => {
   it("round-trips a request with the runtime agent", async () => {
-    const { iframe, frame } = previewFrame();
-    const { host } = fakeHost();
-    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
-    frameReachingTheAgent(frame, parent);
-    const agent = installMarkedEditingAgent(parent);
+    const agent = installMarkedEditingAgent();
     try {
-      const client = createEditingPortClient({ iframe, host });
+      const client = clientOfAgent();
       clients.push(client);
       await client.ready;
       expect(await client.request("hello", {})).toEqual({
@@ -181,14 +151,10 @@ describe("createEditingPortClient", () => {
   });
 
   it("gives two clients of one frame a port each, so both get their replies", async () => {
-    const { iframe, frame } = previewFrame();
-    const { host } = hostReachingEveryListenerOfADispatch();
-    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
-    frameReachingTheAgent(frame, parent);
-    const agent = installMarkedEditingAgent(parent);
+    const agent = installMarkedEditingAgent();
     try {
-      const first = createEditingPortClient({ iframe, host, timeoutMs: 1_000 });
-      const second = createEditingPortClient({ iframe, host, timeoutMs: 1_000 });
+      const first = clientOfAgent(1_000);
+      const second = clientOfAgent(1_000);
       clients.push(first, second);
       await Promise.all([first.ready, second.ready]);
       const [z, loop] = await Promise.all([
@@ -202,11 +168,8 @@ describe("createEditingPortClient", () => {
   });
 
   it("hands each key the frame forwards to its listeners and drops off-shape ones", async () => {
-    const { iframe, connects } = previewFrame();
-    const { host } = fakeHost();
-    const client = createEditingPortClient({ iframe, host });
-    clients.push(client);
-    const port2 = runtimeEnd(connects);
+    const { client, page } = clientOn();
+    const port2 = runtimeEnd(page);
     await client.ready;
     const key = {
       type: "keydown",
@@ -241,11 +204,8 @@ describe("createEditingPortClient", () => {
   });
 
   it("hands a text edit's away press to its listeners and drops an off-shape one", async () => {
-    const { iframe, connects } = previewFrame();
-    const { host } = fakeHost();
-    const client = createEditingPortClient({ iframe, host });
-    clients.push(client);
-    const port2 = runtimeEnd(connects);
+    const { client, page } = clientOn();
+    const port2 = runtimeEnd(page);
     await client.ready;
     const away = {
       handle: "0123456789abcdef:1",
@@ -265,16 +225,12 @@ describe("createEditingPortClient", () => {
   });
 
   it("serves a new client for the same frame after the first is disposed", async () => {
-    const { iframe, frame } = previewFrame();
-    const { host } = fakeHost();
-    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
-    frameReachingTheAgent(frame, parent);
-    const agent = installMarkedEditingAgent(parent);
+    const agent = installMarkedEditingAgent();
     try {
-      const first = createEditingPortClient({ iframe, host });
+      const first = clientOfAgent();
       await first.ready;
       first.dispose();
-      const second = createEditingPortClient({ iframe, host, timeoutMs: 1_000 });
+      const second = clientOfAgent(1_000);
       clients.push(second);
       await second.ready;
       expect(await second.request("wait-for-seek", {})).toEqual({ waited: false });
@@ -283,75 +239,36 @@ describe("createEditingPortClient", () => {
     }
   });
 
-  // The runtime posts `ready` when it comes up, so a client can offer two channels. Each step below is
-  // one queued delivery, run in the order given; the frame's runtime sees only what reaches it.
-  it.each([
-    ["ready before the first connect lands", ["ready", "connect", "connect"]],
-    ["ready after the first connect lands", ["connect", "ready", "connect"]],
-    ["the first connect is lost to a reload", ["lost", "ready", "connect"]],
-  ])("keeps a working port when %s", async (_name, steps) => {
-    const { iframe, frame, connects } = previewFrame();
-    const { host, deliver } = fakeHost();
-    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
-    const agent = installMarkedEditingAgent(parent);
-    try {
-      const client = createEditingPortClient({ iframe, host, timeoutMs: 300 });
-      clients.push(client);
-      let sent = 0;
-      for (const step of steps) {
-        if (step === "ready") deliver({ source: frame, data: READY });
-        const call = step === "ready" ? undefined : connects.mock.calls[sent++];
-        if (step !== "connect" || !call) continue;
-        const [data, , transfer] = call as [unknown, string, MessagePort[]];
-        window.dispatchEvent(
-          new MessageEvent("message", { source: parent, data, ports: transfer }),
-        );
-      }
-      await client.ready;
-      await expect(client.request("hello", {})).resolves.toMatchObject({ version: 2 });
-    } finally {
-      agent.dispose();
-    }
-  });
-
-  it("offers a channel at once and a fresh one on ready, and is ready only on its own channel's answer", async () => {
-    const { iframe, frame, connects } = previewFrame();
-    const { host, deliver } = fakeHost();
-    const client = createEditingPortClient({ iframe, host });
-    clients.push(client);
-    const first = (connects.mock.calls[0]![2] as MessagePort[])[0]!;
-    const closed = new Promise<void>((resolve) => first.addEventListener("close", () => resolve()));
-    first.start();
-    deliver({ source: previewFrame().frame, data: READY });
-    expect(connects).toHaveBeenCalledOnce();
-    deliver({ source: frame, data: READY });
-    expect(connects).toHaveBeenCalledTimes(2);
-    expect(connects).toHaveBeenLastCalledWith({ ...CONNECT }, "*", [expect.any(MessagePort)]);
-    await closed;
+  it("is ready only on its runtime's own answer on the port it was handed", async () => {
+    const { client, page, hand } = clientOn({ later: true });
     const settled = vi.fn();
     void client.ready.then(settled);
-    // A page that posts a port of its own, as the runtime once did, is not taken as the runtime.
-    deliver({ source: frame, data: PORT_MESSAGE, ports: [channel().port2] });
-    deliver({ source: frame, data: { ...PORT_MESSAGE, v: 1 }, ports: [channel().port2] });
-    const port = (connects.mock.calls[1]![2] as MessagePort[])[0]!;
-    ports.push(port);
-    port.postMessage({ v: 1, id: 2, ok: true });
-    port.postMessage({ v: 2, id: 2, ok: false });
+    const asked: unknown[] = [];
+    page.onmessage = (event: MessageEvent<unknown>) => asked.push(event.data);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(asked).toEqual([]);
+    hand();
+    await vi.waitFor(() => expect(asked).toEqual([{ v: 2, id: 1, kind: "hello", params: {} }]));
+    page.postMessage({ v: 1, id: 1, ok: true });
+    page.postMessage({ v: 2, id: 1, ok: false });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(settled).not.toHaveBeenCalled();
-    port.postMessage({ v: 2, id: 2, ok: true });
+    page.postMessage({ v: 2, id: 1, ok: true });
     await client.ready;
-    expect(host.removeEventListener).toHaveBeenCalled();
-    deliver({ source: frame, data: READY });
-    expect(connects).toHaveBeenCalledTimes(2);
+  });
+
+  it("ends when its load has no port", async () => {
+    const { client, handNone } = clientOn({ later: true });
+    const pending = client.request("hello", {});
+    handNone();
+    await expect(client.ready).rejects.toMatchObject({ code: "disposed" });
+    await expect(pending).rejects.toMatchObject({ code: "disposed" });
   });
 
   it("maps error and malformed replies to typed errors", async () => {
-    const { iframe, connects } = previewFrame();
-    const { host } = fakeHost();
-    const client = createEditingPortClient({ iframe, host });
+    const { client, page } = clientOn();
     clients.push(client);
-    const port = runtimeEnd(connects, ({ id, kind }) =>
+    const port = runtimeEnd(page, ({ id, kind }) =>
       port.postMessage(
         kind === "set-loop-start"
           ? { v: 2, id, ok: false, error: { code: "invalid-params", message: "bad" } }
@@ -366,12 +283,10 @@ describe("createEditingPortClient", () => {
   });
 
   it("times out a request that gets no reply, before or after the port arrives", async () => {
-    const { iframe, connects } = previewFrame();
-    const { host } = fakeHost();
-    const client = createEditingPortClient({ iframe, host, timeoutMs: 10 });
-    clients.push(client);
+    const { client, page, hand } = clientOn({ timeoutMs: 10, later: true });
     await expect(client.request("hello", {})).rejects.toMatchObject({ code: "timeout" });
-    runtimeEnd(connects);
+    runtimeEnd(page);
+    hand();
     await client.ready;
     const late = client.request("runtime-snapshot", {}, { timeoutMs: 5 });
     await expect(late).rejects.toBeInstanceOf(EditingPortError);
@@ -397,10 +312,7 @@ describe("createEditingPortClient", () => {
   it("waits for a frame-presented answer a second past the frame's wait, never less than its default", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      const { iframe } = previewFrame();
-      const { host } = fakeHost();
-      const client = createEditingPortClient({ iframe, host, timeoutMs: 10 });
-      clients.push(client);
+      const { client } = clientOn({ timeoutMs: 10, later: true });
       const outcome = vi.fn();
       void client.request("frame-presented", { waitMs: 3_000 }).catch(outcome);
       await vi.advanceTimersByTimeAsync(3_900);
@@ -408,8 +320,7 @@ describe("createEditingPortClient", () => {
       await vi.advanceTimersByTimeAsync(200);
       expect(outcome).toHaveBeenCalledWith(expect.objectContaining({ code: "timeout" }));
       const short = vi.fn();
-      const patient = createEditingPortClient({ iframe, host, timeoutMs: 5_000 });
-      clients.push(patient);
+      const { client: patient } = clientOn({ timeoutMs: 5_000, later: true });
       void patient.request("frame-presented", { waitMs: 100 }).catch(short);
       await vi.advanceTimersByTimeAsync(4_900);
       expect(short).not.toHaveBeenCalled();
@@ -419,11 +330,9 @@ describe("createEditingPortClient", () => {
   });
 
   it("hands each geometry push to its listeners, drops off-shape ones, and stops the watch on dispose", async () => {
-    const { iframe, connects } = previewFrame();
-    const { host } = fakeHost();
-    const client = createEditingPortClient({ iframe, host });
+    const { client, page } = clientOn();
     const asked: Array<Record<string, unknown>> = [];
-    const port2 = runtimeEnd(connects, (data) => asked.push(data));
+    const port2 = runtimeEnd(page, (data) => asked.push(data));
     await client.ready;
     const heard = vi.fn();
     client.onGeometry(heard);
@@ -438,10 +347,8 @@ describe("createEditingPortClient", () => {
   });
 
   it("dispose rejects pending and later requests and closes the port", async () => {
-    const { iframe, connects } = previewFrame();
-    const { host } = fakeHost();
-    const client = createEditingPortClient({ iframe, host });
-    const port = runtimeEnd(connects);
+    const { client, page } = clientOn();
+    const port = runtimeEnd(page);
     const closed = new Promise<void>((resolve) => port.addEventListener("close", () => resolve()));
     await client.ready;
     const pending = client.request("wait-for-seek", {});
@@ -452,14 +359,14 @@ describe("createEditingPortClient", () => {
     client.dispose();
   });
 
-  it("dispose before the runtime answers rejects ready and pending requests, and stops listening", async () => {
-    const { iframe } = previewFrame();
-    const { host } = fakeHost();
-    const client = createEditingPortClient({ iframe, host });
+  it("dispose before the port arrives rejects ready and pending requests, and closes the port handed after", async () => {
+    const { client, page, hand } = clientOn({ later: true });
     const pending = client.request("hello", {});
     client.dispose();
     await expect(pending).rejects.toMatchObject({ code: "disposed" });
     await expect(client.ready).rejects.toMatchObject({ code: "disposed" });
-    expect(host.removeEventListener).toHaveBeenCalled();
+    const closed = new Promise<void>((resolve) => page.addEventListener("close", () => resolve()));
+    hand();
+    await closed;
   });
 });

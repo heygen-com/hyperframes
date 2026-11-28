@@ -5,7 +5,10 @@ import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useElementPicker } from "./useElementPicker";
-import { serveEditingRequests } from "../player/hooks/timelinePlayerTestHarness";
+import {
+  detachedFakeIframe,
+  serveEditingRequests,
+} from "../player/hooks/timelinePlayerTestHarness";
 
 // As the host leaves it on disk: hf-ids pinned, no element ids.
 const UNSTAMPED = `<!doctype html><html><body>
@@ -516,9 +519,8 @@ describe("a pick in a frame Studio cannot read", () => {
         throw new DOMException("blocked", "SecurityError");
       },
     });
-    const iframe = document.createElement("iframe");
+    const iframe = detachedFakeIframe(frame);
     iframe.setAttribute("sandbox", "allow-scripts");
-    Object.defineProperty(iframe, "contentWindow", { value: frame });
     Object.defineProperty(iframe, "contentDocument", { value: null });
     const close = serveEditingRequests(frame, answer);
     let api: ReturnType<typeof useElementPicker> | null = null;
