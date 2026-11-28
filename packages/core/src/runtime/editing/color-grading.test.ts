@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installMarkedEditingAgent } from "../editingAgent.test-helpers";
+import { connectFrom, installMarkedEditingAgent } from "../editingAgent.test-helpers";
 
-const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
 const target = { id: "clip", hfId: null, selector: "#clip", selectorIndex: 0 };
 
 let agent: { dispose: () => void } | null = null;
@@ -14,18 +13,15 @@ afterEach(() => {
 
 function connect(): MessagePort {
   const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
-  const handoff = vi.fn();
-  parent.postMessage = handoff as unknown as Window["postMessage"];
   agent = installMarkedEditingAgent(parent);
-  window.dispatchEvent(new MessageEvent("message", { source: parent, data: CONNECT }));
-  return (handoff.mock.calls[0]![2] as MessagePort[])[0]!;
+  return connectFrom(parent);
 }
 
 let nextId = 1;
 function ask(port: MessagePort, kind: string, params: unknown): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     port.onmessage = (event) => resolve(event.data);
-    port.postMessage({ v: 1, id: nextId++, kind, params });
+    port.postMessage({ v: 2, id: nextId++, kind, params });
   });
 }
 

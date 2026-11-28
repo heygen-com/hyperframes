@@ -143,8 +143,7 @@ function frameSampler() {
     Array.from(document.querySelectorAll("iframe, hyperframes-player"))
       .flatMap((e) => (e.shadowRoot ? Array.from(e.shadowRoot.querySelectorAll("iframe")) : [e]))
       .filter((f) => /\/preview/.test(new URL(f.src || "about:blank").pathname));
-  // A sealed preview's page is out of reach, so each is read over an editing port of the bench's own. When Studio
-  // takes the same handoff both listen on that port; ids from 1e9 up never meet Studio's.
+  // A sealed preview's page is out of reach, so each is read over an editing channel of the bench's own.
   const ROOT = '[data-composition-id="main"]';
   const SIZE = ["width", "height", "box-sizing", "clip-path"].concat(
     ...["left", "right", "top", "bottom"].map((s) => [`padding-${s}`, `border-${s}-width`]),
@@ -156,6 +155,7 @@ function frameSampler() {
       links.set(f, {
         win: f.contentWindow,
         port: null,
+        offered: null,
         asked: -1e9,
         pending: new Map(),
         handles: {},
@@ -168,21 +168,29 @@ function frameSampler() {
       });
     return links.get(f);
   };
-  const takePort = (l, port) => {
-    l.port = port;
-    port.addEventListener("message", ({ data }) =>
-      data?.event === "geometry"
-        ? l.confirmed && l.pushes.push(data)
-        : l.pending.get(data?.id)?.(data),
-    );
-    port.start();
+  // The preview answers the hello once it serves the channel: from then on the port is the link's.
+  const servedNow = (l, port, data) => l.offered === port && data.v === 2 && data.ok === true;
+  const heardOnOwn = (l, data) => {
+    if (data.event !== "geometry") l.pending.get(data.id)?.(data);
+    else if (l.confirmed) l.pushes.push(data);
   };
-  const isHandoff = (e) => e.data.type === "editing-port" && e.data.v === 1 && e.ports.length === 1;
+  const heardOn = (l, port, data) => {
+    if (l.port === port) heardOnOwn(l, data);
+    else if (servedNow(l, port, data)) l.port = port;
+  };
+  const connect = (l) => {
+    l.offered?.close();
+    const { port1, port2 } = new MessageChannel();
+    l.offered = port1;
+    port1.addEventListener("message", ({ data }) => heardOn(l, port1, data));
+    port1.start();
+    l.win?.postMessage({ source: "hf-parent", type: "editing-connect", v: 2 }, "*", [port2]);
+    port1.postMessage({ v: 2, id: ++lastId, kind: "hello", params: {} });
+  };
   const heard = (l, e) => {
     // A new page in the frame: the old port and its handles went with the old one.
     if (e.data.type === "ready")
       Object.assign(l, { port: null, handles: {}, watched: null, pushes: [] });
-    else if (isHandoff(e) && !l.port) takePort(l, e.ports[0]);
   };
   window.addEventListener("message", (e) => {
     if (e.data?.source !== "hf-preview") return;
@@ -191,10 +199,10 @@ function frameSampler() {
   const ask = (l, kind, params) =>
     new Promise((resolve) => {
       if (!l.port) {
-        // A connect while Studio waits for its own handoff could take Studio's: asked at most twice a second.
+        // Offered at most twice a second, so a preview that is still loading is not flooded.
         if (performance.now() - l.asked > 500) {
           l.asked = performance.now();
-          l.win?.postMessage({ source: "hf-parent", type: "editing-connect", v: 1 }, "*");
+          connect(l);
         }
         return resolve(null);
       }
@@ -205,7 +213,7 @@ function frameSampler() {
         l.pending.delete(id);
         resolve(reply.ok ? reply.result : null);
       });
-      l.port.postMessage({ v: 1, id, kind, params });
+      l.port.postMessage({ v: 2, id, kind, params });
     });
   const handleOf = async (l, selector) =>
     (l.handles[selector] ??= (await ask(l, "query", { selector }))?.matches?.[0]?.handle ?? null);
