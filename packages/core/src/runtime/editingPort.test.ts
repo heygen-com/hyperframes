@@ -116,6 +116,7 @@ describe("createEditingPortClient", () => {
           "color-grading-previews",
           "color-grading-playback",
           "watch-geometry",
+          "watch-pointer",
           "audio-meter",
           "document-markup",
           "set-audio-group-attribute",

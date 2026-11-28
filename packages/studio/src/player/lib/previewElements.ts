@@ -34,7 +34,7 @@ import {
 } from "@hyperframes/core/runtime/editing-port";
 import { isMessageList as isList } from "@hyperframes/core/runtime/protocol";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
-import { previewRequest, type ReadPriority } from "./previewChannel";
+import { previewEditingClient, previewRequest, type ReadPriority } from "./previewChannel";
 
 declare const checked: unique symbol;
 /** A description that passed `readPreviewElement`. Only that function makes one. */
@@ -129,6 +129,30 @@ export async function previewPointerTargets(
   const stack: unknown = reply?.stack;
   if (!reply || !isList(stack, MAX_POINT_STACK)) return null;
   return { target: readHit(reply.target), stack: stack.map(readHit).filter((hit) => hit !== null) };
+}
+
+type PointerAnswer = { target: PreviewElementHit | null; stack: PreviewElementHit[] };
+
+export function watchPreviewPointer(
+  iframe: HTMLIFrameElement,
+  onAnswer: (answer: PointerAnswer | "frame-cannot-watch") => void,
+): { at: (rootFractionX: number, rootFractionY: number) => void; stop: () => void } {
+  const off = previewEditingClient(iframe).onPointerTargets(({ target, stack }) =>
+    onAnswer({ target: readHit(target), stack: stack.map(readHit).filter((hit) => hit !== null) }),
+  );
+  return {
+    at(x, y) {
+      void previewRequest(iframe, "watch-pointer", { point: { x, y } }).then((reply) => {
+        if (reply) return;
+        off();
+        onAnswer("frame-cannot-watch");
+      });
+    },
+    stop() {
+      off();
+      void previewRequest(iframe, "watch-pointer", { point: null });
+    },
+  };
 }
 
 /**

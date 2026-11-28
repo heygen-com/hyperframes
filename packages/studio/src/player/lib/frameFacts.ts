@@ -45,6 +45,7 @@ const FRAME_READS: ReadonlySet<EditingRequestKind> = new Set<EditingRequestKind>
   "caption-words",
   "color-grading-status",
   "watch-geometry",
+  "watch-pointer",
   "audio-meter",
   "document-markup",
   "gsap-snapshot",
