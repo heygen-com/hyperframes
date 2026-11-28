@@ -55,3 +55,5 @@ registry/**/*.html linguist-vendored
 examples/docs-reference-project/**/*.wav filter=lfs diff=lfs merge=lfs -text
 
 packages/cli/src/cloud/_gen/** linguist-generated=true
+shared-data/final-combined-video.mp4 filter=lfs diff=lfs merge=lfs -text
+shared-data/final-combined-video.zip filter=lfs diff=lfs merge=lfs -text
