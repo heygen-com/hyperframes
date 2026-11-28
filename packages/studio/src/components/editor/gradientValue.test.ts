@@ -55,6 +55,25 @@ describe("parseGradient", () => {
   });
 });
 
+describe("parseGradient on a value that is not one gradient of colours", () => {
+  const notOneGradient = [
+    "linear-gradient(90deg, #ff0000 0%, #0000ff 100%), url(https://probe.invalid/a)",
+    "linear-gradient(90deg, #ff0000 0%, #0000ff 100%)), url(https://probe.invalid/b",
+    "linear-gradient(90deg, #ff0000 0%, var(--none, url(https://probe.invalid/c)) 100%)",
+    "linear-gradient(90deg, #ff0000 0%, image-set(url(https://probe.invalid/d) 1x) 100%)",
+    "radial-gradient(circle closest-side at 50% 50%, #ff0000 0%, \\75 rl(https://probe.invalid/e) 100%)",
+  ];
+
+  it.each(notOneGradient)("is null, so Studio draws its own default: %s", (value) => {
+    expect(parseGradient(value)).toBeNull();
+  });
+
+  it("still reads one gradient whose stops are colours", () => {
+    const value = "linear-gradient(90deg, #ff0000 0%, rgba(0, 0, 255, 0.5) 100%)";
+    expect(serializeGradient(parseGradient(value)!)).toBe(value);
+  });
+});
+
 describe("serializeGradient", () => {
   it("serializes default gradient models", () => {
     expect(serializeGradient(buildDefaultGradientModel("rgba(60, 230, 172, 0.18)"))).toBe(
