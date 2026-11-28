@@ -557,6 +557,11 @@ jobs:
         shell: pwsh
         run: bunx vitest run scripts/catalog/catalog-payload-assets.file-race.test.ts scripts/catalog/catalog-payload-assets.cache-race.test.ts --maxWorkers=2
 
+      - name: Verify the deadline script's socket counts on Windows
+        if: matrix.once_checks
+        shell: pwsh
+        run: node --test scripts/ci/run-with-deadline.test.mjs
+
       - name: Upload test step log
         if: always() && matrix.packages
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
