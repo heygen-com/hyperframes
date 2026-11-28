@@ -660,10 +660,35 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
   loadProxy(el, proxiedSrc, originalSrc, variant, box, lightFacts !== undefined);
   // The shown size may have grown while this copy was being made.
   if (displayScale !== null) keepSized(el, displayScale);
-  return new Promise((landed) => {
-    el.addEventListener("loadeddata", landed, { once: true });
-    el.addEventListener("error", landed, { once: true });
-  }).then(() => dropStill(el));
+  return copyLoadEnds(el, proxiedSrc).then(() => dropStill(el));
+}
+
+const ENDS_A_LOAD = ["loadeddata", "error", "abort", "emptied"] as const;
+const leaving = new Map<HTMLMediaElement, () => void>();
+let leavingObserver: MutationObserver | null = null;
+
+/** Settles once the copy draws or fails, the clip loads something else, or it leaves the page. */
+function copyLoadEnds(el: HTMLMediaElement, href: string): Promise<void> {
+  return new Promise((ended) => {
+    const end = (event?: Event) => {
+      const restarted = event?.type === "abort" || event?.type === "emptied";
+      if (restarted && el.getAttribute("src") === href) return;
+      for (const type of ENDS_A_LOAD) el.removeEventListener(type, end);
+      if (leaving.get(el) === end) leaving.delete(el);
+      if (leaving.size === 0) {
+        leavingObserver?.disconnect();
+        leavingObserver = null;
+      }
+      ended();
+    };
+    for (const type of ENDS_A_LOAD) el.addEventListener(type, end);
+    leaving.set(el, end);
+    if (leavingObserver || typeof MutationObserver === "undefined") return;
+    leavingObserver = new MutationObserver(() => {
+      for (const [clip, left] of leaving) if (!clip.isConnected) left();
+    });
+    leavingObserver.observe(document, { childList: true, subtree: true });
+  });
 }
 
 /**

@@ -802,6 +802,51 @@ describe("waiting for the proxy copy", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(el.getAttribute("poster")).toBe("/cover.jpg");
     });
+
+    const servedCopy = async (origin: string) => {
+      vi.useFakeTimers();
+      vi.stubGlobal("origin", origin);
+      routeServedLater();
+      const el = createVideo("/active.mp4");
+      atPlayhead(el);
+      swapToProxy(el, HEVC_ENTRY, "proactive");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(el.hasAttribute("poster")).toBe(true);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(el.getAttribute("src")).toContain("hf-proxy=");
+      return el;
+    };
+
+    for (const origin of ["null", "http://localhost:3000"]) {
+      // fails without the fix: only the copy drawing or failing dropped the still, so a clip that left the page
+      // after its copy was served kept the still (a sealed frame's full image) as its poster.
+      it(`drops its still when the clip leaves the page after its copy is served (origin ${origin})`, async () => {
+        const el = await servedCopy(origin);
+        el.remove();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.hasAttribute("poster")).toBe(false);
+      });
+
+      it(`drops its still when the clip gets another file before its copy draws (origin ${origin})`, async () => {
+        const el = await servedCopy(origin);
+        el.dispatchEvent(new Event("emptied"));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.hasAttribute("poster")).toBe(true);
+
+        el.setAttribute("src", "/other.mp4");
+        el.dispatchEvent(new Event("emptied"));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.hasAttribute("poster")).toBe(false);
+      });
+    }
+
+    it("keeps a poster the page sets when the clip leaves the page before its copy draws", async () => {
+      const el = await servedCopy("null");
+      el.setAttribute("poster", "/cover.jpg");
+      el.remove();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(el.getAttribute("poster")).toBe("/cover.jpg");
+    });
   });
 
   describe("in a sealed frame", () => {
