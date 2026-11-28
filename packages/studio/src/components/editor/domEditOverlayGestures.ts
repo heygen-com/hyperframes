@@ -88,6 +88,7 @@ export interface GestureState {
   lastSnappedDx?: number;
   lastSnappedDy?: number;
   travelled?: boolean;
+  rawStep?: RawStep;
   /** Corner the resize gesture grabbed (resize gestures only). */
   resizeHandle?: ResizeHandle;
   /** Last anchoring translation applied during a corner resize (overlay px). */
@@ -106,7 +107,10 @@ export interface GroupGestureState {
   lastSnappedDx?: number;
   lastSnappedDy?: number;
   travelled?: boolean;
+  rawStep?: RawStep;
 }
+
+export type RawStep = { x: number; y: number; showReadout: () => void };
 
 /** Only the pressing pointer's moves with its button held drive a gesture, not Chromium's buttonless resends. */
 export function movesGesture(

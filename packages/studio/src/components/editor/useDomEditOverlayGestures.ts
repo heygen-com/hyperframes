@@ -144,6 +144,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       return;
     }
 
+    const raw = held?.rawStep;
+    if (raw && raw.x === e.clientX && raw.y === e.clientY) return raw.showReadout();
+
     if (groupG) {
       if (!isDomEditGestureTap(groupG, e)) groupG.travelled = true;
       moveGroupDrag(groupG, e);
