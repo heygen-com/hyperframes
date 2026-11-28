@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { readJsonFileText } from "./jsonFlag.js";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 /**
  * Declarative motion-verification spec (issue #1437). A sidecar JSON file
@@ -139,4 +139,32 @@ export function readMotionSpec(path: string): MotionSpecParse {
     return { ok: false, errors: [`could not read ${basename(path)}: ${(err as Error).message}`] };
   }
   return parseMotionSpec(raw);
+}
+
+/** Sidecars below the project root; findMotionSpec reads only the entry composition's. */
+export function findNestedMotionSpecs(projectDir: string): string[] {
+  if (!existsSync(projectDir)) return [];
+  const found: string[] = [];
+  const pending = [projectDir];
+  while (pending.length > 0) {
+    const dir = pending.pop()!;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (isSearchableDir(entry.name)) pending.push(join(dir, entry.name));
+      } else if (entry.isFile() && entry.name.endsWith(".motion.json")) {
+        found.push(join(dir, entry.name));
+      }
+    }
+  }
+  return found.filter((path) => dirname(path) !== projectDir).sort();
+}
+
+function isSearchableDir(name: string): boolean {
+  return name !== "node_modules" && name !== "dist" && !name.startsWith(".");
 }

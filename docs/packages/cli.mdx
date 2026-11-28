@@ -1640,8 +1640,11 @@ edge, on any aspect ratio. Mark text that may sit outside them with
 Layout sampling cannot catch a render-≠-preview bug: an entrance the seek lands
 past, a broken stagger order, an element that drifts off-frame mid-tween, a shot
 that freezes. Motion assertions can. Drop a `*.motion.json` sidecar next to the
-composition and `check` evaluates it automatically — no flag, no changes to your
-HTML. Without a sidecar, nothing changes.
+entry composition (`index.html`) and `check` evaluates it automatically — no flag,
+no changes to your HTML. A sidecar next to a sub-composition is not evaluated
+yet: `check` reports it as an ignored warning, so move those assertions into
+`index.motion.json` with root-timeline selectors and times. Without a sidecar,
+nothing changes.
 
 ```json
 {

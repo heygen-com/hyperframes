@@ -59,7 +59,12 @@ import {
   type Canvas,
   type MotionFrame,
 } from "./motionAudit.js";
-import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
+import {
+  findMotionSpec,
+  findNestedMotionSpecs,
+  readMotionSpec,
+  type MotionAssertion,
+} from "./motionSpec.js";
 import { auditCraft } from "./craftAudit.js";
 import { inspectHdrAutoPromotion, remoteMediaNotInspected } from "./hdrPromotion.js";
 import { collectProjectMedia, type ProjectMedia } from "./projectMedia.js";
@@ -1812,8 +1817,9 @@ export async function runCheckPipeline(
     }
 
     const motion = dependencies.resolveMotionSpec(project.dir);
-    const specFindings =
-      motion.kind === "invalid"
+    const ignoredMotionSpecs = findNestedMotionSpecs(project.dir);
+    const specFindings = [
+      ...(motion.kind === "invalid"
         ? [
             findingAtRoot(
               "motion_spec_invalid",
@@ -1822,7 +1828,17 @@ export async function runCheckPipeline(
               relative(project.dir, motion.path) || "index.motion.json",
             ),
           ]
-        : [];
+        : []),
+      ...ignoredMotionSpecs.map((path) => {
+        const file = (relative(project.dir, path) || path).replace(/\\/g, "/");
+        return findingAtRoot(
+          "motion_spec_ignored",
+          "warning",
+          `Motion spec ${file} is not evaluated: check reads only the sidecar next to the entry HTML. Move its assertions into index.motion.json, or apply them to the root timeline.`,
+          file,
+        );
+      }),
+    ];
 
     const deadline = new CheckDeadline(idleWindow(options.timeout), options.budget);
     const forgetStop = onStopSignal(deadline.stop);

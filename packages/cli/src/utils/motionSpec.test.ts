@@ -1,8 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { findMotionSpec, parseMotionSpec, readMotionSpec, type MotionSpec } from "./motionSpec.js";
+import {
+  findMotionSpec,
+  findNestedMotionSpecs,
+  parseMotionSpec,
+  readMotionSpec,
+  type MotionSpec,
+} from "./motionSpec.js";
 
 const RFC_SPEC = {
   duration: 6,
@@ -24,6 +30,21 @@ function tempDir(prefix: string): string {
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
+
+describe("findNestedMotionSpecs", () => {
+  it("reports sidecars next to sub-compositions but not the root sidecar", () => {
+    const dir = tempDir("hf-motion-nested-");
+    mkdirSync(join(dir, "compositions"));
+    writeFileSync(join(dir, "index.motion.json"), "{}");
+    writeFileSync(join(dir, "compositions", "scene-a.motion.json"), "{}");
+    writeFileSync(join(dir, "compositions", "scene-b.motion.json"), "{}");
+
+    expect(findNestedMotionSpecs(dir)).toEqual([
+      join(dir, "compositions", "scene-a.motion.json"),
+      join(dir, "compositions", "scene-b.motion.json"),
+    ]);
+  });
+});
 
 describe("parseMotionSpec", () => {
   it("parses the RFC four-assertion spec", () => {

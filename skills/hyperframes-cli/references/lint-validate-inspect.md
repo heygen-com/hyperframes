@@ -91,7 +91,7 @@ npx hyperframes check --frame-check     # media (img/svg/video/canvas) out-of-fr
 
 `check` verifies **motion intent** against the same seeked timeline the renderer uses — the closest automated proxy for "render the MP4 and watch it". It catches render-vs-preview bugs layout sampling can't: an entrance reveal the seek lands past, a broken stagger order, an element drifting off-frame mid-tween, a frozen shot.
 
-Drop a `*.motion.json` sidecar next to the composition (matching the html basename when several compositions share a dir). `check` discovers it automatically — no flag, no authoring-framework changes. With no sidecar, `check` behaves exactly as before.
+Drop a `*.motion.json` sidecar next to the entry composition (`index.html`). When several compositions share the project root, the basename picks the matching composition. `check` discovers it automatically — no flag, no authoring-framework changes. Sidecars next to sub-compositions are currently reported as ignored warnings rather than evaluated, because selectors and assertion times are root-timeline relative; keep those assertions in the entry composition's sidecar. With no sidecar, `check` behaves exactly as before.
 
 ```json
 {
