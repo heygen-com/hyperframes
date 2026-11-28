@@ -289,7 +289,9 @@ export async function measure(ctx) {
   const map = compositionMapper(rootQuad, COMPOSITION);
   const quad = targetQuad.map(map.toComp);
   const size = { width: box.width, height: box.height };
-  return { map, quad, size, visible: visibleQuad(quad, size, parseInset(box.clip)) };
+  const clip = parseInset(box.clip);
+  // A target cropped before the gesture is moved and resized by its whole box, as Studio draws it.
+  return { map, quad, size, clip, visible: ctx.drivesBox ? quad : visibleQuad(quad, size, clip) };
 }
 
 // Still means the same reads on STILL_FRAMES animation frames in a row with the page's network quiet.
@@ -1124,6 +1126,7 @@ export async function inStudio(
     files,
     handles: null,
     playhead: spec.playhead ?? PLAYHEAD,
+    drivesBox: Boolean(spec.crop),
     keys: spec.keys,
     net: await watchNetwork(page),
   };
@@ -1162,6 +1165,16 @@ export async function inStudio(
   } finally {
     await context.close().catch(() => undefined);
   }
+}
+
+/** The saved crop's distance, in px, from the authored one scaled with the box: a crop follows a resize. Studio
+ *  shows a selected element uncropped, so the crop before the gesture is the fixture's. */
+function cropDrift(authored, pre, now) {
+  const first = parseInset(authored);
+  const sx = now.size.width / pre.size.width;
+  const sy = now.size.height / pre.size.height;
+  const want = { top: sy, right: sx, bottom: sy, left: sx };
+  return Math.max(...Object.keys(want).map((k) => Math.abs(now.clip[k] - first[k] * want[k])));
 }
 
 /** One case, end to end, against a Studio already serving `dir`. */
@@ -1234,7 +1247,14 @@ async function measureCase(
       frames: drive.errors.length,
     },
     pressJump: drive.pressJump,
-    teleport: spec.gesture === "nudge" ? null : scoreTeleport(spec.gesture, frames[0] ?? []),
+    teleport:
+      spec.gesture === "nudge"
+        ? null
+        : scoreTeleport(
+            spec.gesture,
+            (frames[0] ?? []).map((f) => (spec.crop ? { ...f, clip: undefined } : f)),
+          ),
+    ...(spec.crop && { crop: cropDrift(spec.crop, pre, reloaded) }),
     drop: quadDistance(drive.lastQuad, committed.visible),
     // Also against the box the gesture left, so a write the file drops shows here and not only as drop.
     reload: Math.max(

@@ -90,3 +90,17 @@ describe("the slow runner check", () => {
     expect(slowRunner(at(95.5, 133.7, 107.5), usual)).toBeNull();
   });
 });
+
+describe("the crop check", () => {
+  const crop = (px) => score({ id: "case" }, { ...result({}), crop: px });
+
+  it("passes a cropped case whose saved crop followed the box, and leaves other cases alone", () => {
+    expect(crop(0.01).checks.crop).toBe(true);
+    expect(score({ id: "case" }, result({})).checks.crop).toBe(true);
+  });
+
+  it("fails a crop left at its old insets, and banks it as failing", () => {
+    expect(crop(8.67).pass).toBe(false);
+    expect(accurate(entry({ ...crop(8.67), id: "case" }))).toBe(false);
+  });
+});

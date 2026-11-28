@@ -20,7 +20,7 @@ import { killServers, runCase, startServer, stopServer } from "./case.mjs";
 import { runSequence } from "./sequences.mjs";
 import { METRICS, SLOW_RUNNER, score, slowRunner, writeReport } from "./report.mjs";
 import { holdProducerBrowser, renderBox } from "./render.mjs";
-import { aabb, boxDistance } from "./geometry.mjs";
+import { aabb, boxDistance, visibleQuad } from "./geometry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../../../../..");
@@ -93,7 +93,8 @@ const liveRoots = new Set();
 
 /** Render drift: the reloaded preview's visible box against the target's pixel box in a producer frame. */
 async function withRender(dir, decoder, { reloaded, ...measured }, evidence, time) {
-  const expected = aabb(reloaded.visible);
+  // The pixels show the crop even where the gesture drove the whole box.
+  const expected = aabb(visibleQuad(reloaded.quad, reloaded.size, reloaded.clip));
   const render = await renderBox(dir, decoder, time).catch((error) => ({ error }));
   // A producer failure fails render alone; the case's other metrics still count.
   if (render.error)

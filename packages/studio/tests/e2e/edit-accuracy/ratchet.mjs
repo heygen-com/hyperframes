@@ -5,7 +5,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LIMIT_PX, entry, writeReport } from "./report.mjs";
+import { CROP_LIMIT_PX, LIMIT_PX, entry, writeReport } from "./report.mjs";
 
 const GATED_PX = ["tracking", "pressJump", "drop", "reload", "render", "renderKey"];
 const LISTED = 30;
@@ -26,6 +26,7 @@ export const accurate = (e) =>
   e.keys !== false &&
   e.css !== false &&
   e.renderKey !== null &&
+  !(e.crop > CROP_LIMIT_PX) &&
   GATED_PX.every((m) => !(e[m] > LIMIT_PX));
 
 /** Cases whose verdict here differs from the base branch, either way: each is re-run twice before the gate. */

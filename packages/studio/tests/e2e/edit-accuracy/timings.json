@@ -479,6 +479,8 @@
   "resize-none-px-r0-nested-z100": 43.3,
   "resize-none-px-r0-nested-z50": 62.1,
   "resize-none-px-r0-root-z100": 48.8,
+  "resize-none-px-r0-root-z100-cropped": 48.8,
+  "resize-none-px-r0-root-z100-cropped-padded": 48.8,
   "resize-none-px-r0-root-z50": 53.9,
   "resize-none-px-r30-nested-z100": 46.9,
   "resize-none-px-r30-nested-z50": 66.1,

@@ -132,6 +132,24 @@ function keyframedCases() {
 const NESTED_KEYFRAMED = (c) =>
   c.gesture === "resize" && c.at === "on" && c.zoom === 100 && c.rotation === 0;
 
+// A resize of a target that starts cropped: its crop must follow the box, also on a content-box target whose padding
+// the box includes.
+const CROP = "inset(10px 20px 10px 20px)";
+function cropCases() {
+  const c = {
+    gesture: "resize",
+    gsap: "none",
+    placement: "px",
+    rotation: 0,
+    nesting: "root",
+    zoom: 100,
+  };
+  return [
+    { id: `${caseId(c)}-cropped`, ...c, other: false, crop: CROP },
+    { id: `${caseId(c)}-cropped-padded`, ...c, other: false, crop: CROP, padded: true },
+  ];
+}
+
 const product = (axes) =>
   Object.entries(axes).reduce(
     (rows, [key, values]) => rows.flatMap((row) => values.map((v) => ({ ...row, [key]: v }))),
@@ -152,7 +170,7 @@ export function buildGrid(kind = "full") {
       // xPercent only exists through GSAP on the target itself.
       .filter((c) => c.placement !== "xpercent" || !["none", "idle"].includes(c.gsap))
       .map((c) => ({ id: caseId(c), ...c, other: c.gsap === "idle" }))
-      .concat(dragCases(), keyframedCases())
+      .concat(dragCases(), keyframedCases(), cropCases())
       .filter((c) => kind !== "pr" || (c.zoom === 100 && c.rotation === 0))
   );
 }
@@ -174,6 +192,7 @@ const OTHER_PLACEMENT_CSS = {
 };
 
 const TEXT = "Edit accuracy bench";
+const cropStyle = (spec) => (spec.crop ? ` style="clip-path: ${spec.crop}"` : "");
 const targetText = (spec) => (spec.text ? TEXT : "");
 
 function targetCss(spec) {
@@ -183,7 +202,8 @@ function targetCss(spec) {
     : "";
   // White text reads as full coverage in the render's luminance box, so it leaves that metric alone.
   const text = spec.text ? " color: #ffffff; font: 28px/1.2 sans-serif;" : "";
-  return `#target { position: absolute; ${PLACEMENT_CSS[spec.placement]} width: ${TARGET.width}px; height: ${TARGET.height}px; background: ${TARGET.color};${rotate}${text} }${other}`;
+  const padded = spec.padded ? " box-sizing: content-box; padding: 12px;" : "";
+  return `#target { position: absolute; ${PLACEMENT_CSS[spec.placement]} width: ${TARGET.width}px; height: ${TARGET.height}px; background: ${TARGET.color};${rotate}${text}${padded} }${other}`;
 }
 
 // fallow-ignore-next-line complexity
@@ -219,7 +239,7 @@ function rootHtml(spec) {
   const nested = spec.nesting === "nested";
   const body = nested
     ? `<div id="scene-sub" data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="0" data-duration="4" data-track-index="1" style="position: absolute; left: ${NESTED_HOST.left}px; top: ${NESTED_HOST.top}px; width: ${NESTED_HOST.width}px; height: ${NESTED_HOST.height}px; overflow: hidden"></div>`
-    : `<div id="target" class="clip" data-start="0" data-duration="4" data-track-index="1">${targetText(spec)}</div>${spec.other ? `\n      <div id="other" class="clip" data-start="0" data-duration="4" data-track-index="2"></div>` : ""}`;
+    : `<div id="target"${cropStyle(spec)} class="clip" data-start="0" data-duration="4" data-track-index="1">${targetText(spec)}</div>${spec.other ? `\n      <div id="other" class="clip" data-start="0" data-duration="4" data-track-index="2"></div>` : ""}`;
   const script = spec.gsap === "none" ? "" : timelineScript("main", nested ? [] : gsapLines(spec));
   return `<!doctype html>
 <html lang="en">
@@ -245,7 +265,7 @@ function subHtml(spec) {
   const script = spec.gsap === "none" ? "" : timelineScript("sub", gsapLines(spec));
   return `<template id="sub-template">
   <div id="sub" data-composition-id="sub" data-width="${NESTED_HOST.width}" data-height="${NESTED_HOST.height}">
-    <div id="target">${targetText(spec)}</div>${spec.other ? `\n    <div id="other"></div>` : ""}
+    <div id="target"${cropStyle(spec)}>${targetText(spec)}</div>${spec.other ? `\n    <div id="other"></div>` : ""}
     <style>
       #sub { position: relative; width: ${NESTED_HOST.width}px; height: ${NESTED_HOST.height}px; background: ${BACKGROUND}; overflow: hidden; }
       ${targetCss(spec)}
