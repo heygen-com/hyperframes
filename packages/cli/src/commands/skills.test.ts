@@ -121,9 +121,13 @@ vi.mock("../utils/skillsManifest.js", async (importOriginal) => {
 // The install fans out to other agents via mirrorGlobalSkills, which touches
 // the real $HOME. Stub it so these arg-shape tests never create symlinks in the
 // dev machine's agent dirs — the mirror has its own isolated-HOME unit tests.
-vi.mock("../utils/skillsMirror.js", () => ({
-  mirrorGlobalSkills: vi.fn(() => ({ source: null, mirrored: [], skipped: [] })),
-}));
+vi.mock("../utils/skillsMirror.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/skillsMirror.js")>();
+  return {
+    ...actual,
+    mirrorGlobalSkills: vi.fn(() => ({ source: null, mirrored: [], skipped: [] })),
+  };
+});
 
 // The reconcile commands drop the background nudge's cached verdict on
 // success (the stale-24h-cache fix). Stub it so these tests never touch the

@@ -4,6 +4,7 @@
 // only spawn, the config file, the manifest fetch/disk and the registry are stubbed.
 
 import { homeCliCommand } from "../utils/homeCliCommand.js";
+import { EXTRA_GLOBAL_SKILL_DIRS } from "../utils/skillsMirror.js";
 import { homedir } from "node:os";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -84,9 +85,13 @@ vi.mock("../utils/skillsManifest.js", async (importOriginal) => ({
   hyperframesSkillNames: vi.fn(() => ["hyperframes"]),
   presentSkills: vi.fn((names: readonly string[]) => [...names]),
 }));
-vi.mock("../utils/skillsMirror.js", () => ({
-  mirrorGlobalSkills: vi.fn(() => ({ source: null, mirrored: [], skipped: [] })),
-}));
+vi.mock("../utils/skillsMirror.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/skillsMirror.js")>();
+  return {
+    ...actual,
+    mirrorGlobalSkills: vi.fn(() => ({ source: null, mirrored: [], skipped: [] })),
+  };
+});
 
 const ENTRIES = {
   npm: "/usr/local/lib/node_modules/hyperframes/dist/cli.js",
@@ -188,7 +193,11 @@ describe("hyperframes update --check", () => {
   it("reads the skills manifest at this CLI's release tag", async () => {
     const { checkSkills } = await import("../utils/skillsManifest.js");
     await runUpdate(ENTRIES.npm, { check: true, json: true });
-    expect(checkSkills).toHaveBeenCalledWith({ canonical: true, cliVersion: "0.9.5" });
+    expect(checkSkills).toHaveBeenCalledWith({
+      canonical: true,
+      cliVersion: "0.9.5",
+      extraGlobalDirs: EXTRA_GLOBAL_SKILL_DIRS,
+    });
   });
 
   it("says when npm was not reached instead of passing the cache off as fresh", async () => {
