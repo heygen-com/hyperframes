@@ -651,17 +651,34 @@ describe("identical reads asked while one is in flight", () => {
     expect(other).toEqual({ kind: "describe", params: { handles: ["a:1"] } });
   });
 
-  // Guards the sharing: a read asked after a crop-lift must not take the answer of one asked before it.
+  // Guards the sharing: a describe asked after a crop-lift must not take the answer of one asked before it.
   it("never share across a request that changes the frame: it keeps its place against both", async () => {
     const { iframe, arrived } = await connectedFrame();
     await Promise.all([
-      previewRequest(iframe, "geometry", { handles: ["a:1"] }),
+      previewRequest(iframe, "describe", { handles: ["a:1"] }),
       previewRequest(iframe, "crop-lift", { handle: "a:1", lift: false }),
+      previewRequest(iframe, "describe", { handles: ["a:1"] }),
+    ]);
+    expect(arrived()).toEqual([
+      'describe {"handles":["a:1"]}',
+      'crop-lift {"handle":"a:1","lift":false}',
+      'describe {"handles":["a:1"]}',
+    ]);
+  });
+
+  // Guards the sharing: a frame's snapshot or document can change with news it posts on its own between two asks.
+  it("sends every other read once per asker, even while an identical one is in flight", async () => {
+    const { iframe, arrived } = await connectedFrame();
+    await Promise.all([
+      previewRequest(iframe, "runtime-snapshot", {}),
+      previewRequest(iframe, "runtime-snapshot", {}),
+      previewRequest(iframe, "geometry", { handles: ["a:1"] }),
       previewRequest(iframe, "geometry", { handles: ["a:1"] }),
     ]);
     expect(arrived()).toEqual([
+      "runtime-snapshot {}",
+      "runtime-snapshot {}",
       'geometry {"handles":["a:1"]}',
-      'crop-lift {"handle":"a:1","lift":false}',
       'geometry {"handles":["a:1"]}',
     ]);
   });

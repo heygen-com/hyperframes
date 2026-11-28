@@ -240,11 +240,7 @@ function sendInTurn<K extends EditingRequestKind>(
   );
 }
 
-const FRAME_WATCHES: ReadonlySet<EditingRequestKind> = new Set<EditingRequestKind>([
-  "watch-keys",
-  "arm-canvas-keys",
-  "watch-geometry",
-]);
+const ONLY_SHARED_READ: EditingRequestKind = "describe";
 const readsInFlight = new WeakMap<EditingPortClient, Map<string, Promise<unknown>>>();
 
 function sendForAnswer<K extends EditingRequestKind>(
@@ -266,7 +262,7 @@ function sendForAnswer<K extends EditingRequestKind>(
     readsInFlight.delete(client);
     return send();
   }
-  if (FRAME_WATCHES.has(kind)) return send();
+  if (kind !== ONLY_SHARED_READ) return send();
   let reads = readsInFlight.get(client);
   if (!reads) readsInFlight.set(client, (reads = new Map()));
   const key = `${kind} ${timeoutMs ?? ""} ${JSON.stringify(params)}`;
