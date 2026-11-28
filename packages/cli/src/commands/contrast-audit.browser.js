@@ -317,8 +317,58 @@ window.__contrastAuditPrepare = function () {
     return !paintsAnyProbePoint(el, rect, true);
   }
 
+  function hideOwnPaint(el, isSvgText, stroke) {
+    // Hide this element's OWN text paint so the caller's next screenshot
+    // reveals the true pixels behind the glyphs. Layout-neutral: color/fill
+    // never affect box geometry. `!important` beats any non-!important rule
+    // that might otherwise win on specificity; we restore the exact prior
+    // inline value (or remove the property entirely) afterward.
+    //
+    // A `transition` on color/fill would otherwise animate this hide instead
+    // of applying it instantly — the caller's screenshot lands in the same
+    // task-queue gap as the transition's own frames, so it can catch a
+    // partially-transparent (still partly the original color) glyph instead
+    // of a fully hidden one, contaminating the background sample. Force
+    // `transition: none` alongside color/fill so the hide is atomic, and
+    // restore it alongside them.
+    var origTransition = el.style.getPropertyValue("transition");
+    var origTransitionPriority = el.style.getPropertyPriority("transition");
+    el.style.setProperty("transition", "none", "important");
+    var origColor = el.style.getPropertyValue("color");
+    var origColorPriority = el.style.getPropertyPriority("color");
+    el.style.setProperty("color", "transparent", "important");
+    var origFill = null,
+      origFillPriority = null;
+    if (isSvgText) {
+      origFill = el.style.getPropertyValue("fill");
+      origFillPriority = el.style.getPropertyPriority("fill");
+      el.style.setProperty("fill", "transparent", "important");
+    }
+    var origStrokeColor = null,
+      origStrokeColorPriority = null;
+    if (stroke) {
+      origStrokeColor = el.style.getPropertyValue("-webkit-text-stroke-color");
+      origStrokeColorPriority = el.style.getPropertyPriority("-webkit-text-stroke-color");
+      el.style.setProperty("-webkit-text-stroke-color", "transparent", "important");
+    }
+    return {
+      el: el,
+      origTransition: origTransition,
+      origTransitionPriority: origTransitionPriority,
+      origColor: origColor,
+      origColorPriority: origColorPriority,
+      origFill: origFill,
+      origFillPriority: origFillPriority,
+      origStrokeColor: origStrokeColor,
+      origStrokeColorPriority: origStrokeColorPriority,
+      hasStroke: !!stroke,
+      isSvgText: isSvgText,
+    };
+  }
+
   var out = [];
   var restores = [];
+  var pending = [];
   // Registered BEFORE the walk starts (not after it finishes) and pushed to
   // incrementally as each element is hidden: if getComputedStyle/
   // getBoundingClientRect/etc. throws partway through the walk (e.g. on a
@@ -421,53 +471,7 @@ window.__contrastAuditPrepare = function () {
       if (parsedOwnBg && parsedOwnBg[3] >= 0.99) ownBg = parsedOwnBg;
     }
 
-    // Hide this element's OWN text paint so the caller's next screenshot
-    // reveals the true pixels behind the glyphs. Layout-neutral: color/fill
-    // never affect box geometry. `!important` beats any non-!important rule
-    // that might otherwise win on specificity; we restore the exact prior
-    // inline value (or remove the property entirely) afterward.
-    //
-    // A `transition` on color/fill would otherwise animate this hide instead
-    // of applying it instantly — the caller's screenshot lands in the same
-    // task-queue gap as the transition's own frames, so it can catch a
-    // partially-transparent (still partly the original color) glyph instead
-    // of a fully hidden one, contaminating the background sample. Force
-    // `transition: none` alongside color/fill so the hide is atomic, and
-    // restore it alongside them.
-    var origTransition = el.style.getPropertyValue("transition");
-    var origTransitionPriority = el.style.getPropertyPriority("transition");
-    el.style.setProperty("transition", "none", "important");
-    var origColor = el.style.getPropertyValue("color");
-    var origColorPriority = el.style.getPropertyPriority("color");
-    el.style.setProperty("color", "transparent", "important");
-    var origFill = null,
-      origFillPriority = null;
-    if (isSvgText) {
-      origFill = el.style.getPropertyValue("fill");
-      origFillPriority = el.style.getPropertyPriority("fill");
-      el.style.setProperty("fill", "transparent", "important");
-    }
-    var origStrokeColor = null,
-      origStrokeColorPriority = null;
-    if (stroke) {
-      origStrokeColor = el.style.getPropertyValue("-webkit-text-stroke-color");
-      origStrokeColorPriority = el.style.getPropertyPriority("-webkit-text-stroke-color");
-      el.style.setProperty("-webkit-text-stroke-color", "transparent", "important");
-    }
-    restores.push({
-      el: el,
-      origTransition: origTransition,
-      origTransitionPriority: origTransitionPriority,
-      origColor: origColor,
-      origColorPriority: origColorPriority,
-      origFill: origFill,
-      origFillPriority: origFillPriority,
-      origStrokeColor: origStrokeColor,
-      origStrokeColorPriority: origStrokeColorPriority,
-      hasStroke: !!stroke,
-      isSvgText: isSvgText,
-    });
-
+    pending.push([el, isSvgText, stroke]);
     out.push({
       selector: selectorOf(el),
       text: (el.textContent || "").trim().slice(0, 50),
@@ -483,6 +487,10 @@ window.__contrastAuditPrepare = function () {
     });
   }
 
+  // Hidden only after the walk: a descendant read later would inherit an ancestor's hidden color or stroke.
+  for (var p = 0; p < pending.length; p++) {
+    restores.push(hideOwnPaint(pending[p][0], pending[p][1], pending[p][2]));
+  }
   return out;
 };
 
