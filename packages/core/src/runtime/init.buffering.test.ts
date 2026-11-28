@@ -134,6 +134,7 @@ it("a clip that starves again after playing is waited for again", () => {
   const { voiceReady, states, playFor } = playPodcast(0, "video", "", 30);
   playFor(9);
   voiceReady.value = 4;
+  voiceReady.bufferedTo = 11;
   playFor(2);
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
 
@@ -313,6 +314,26 @@ it("a seek during a hold is not undone when a clip the hold reloaded loads later
   music.dispatchEvent(new Event("loadedmetadata"));
 
   expect(music.currentTime).toBe(landed);
+});
+
+it("a clip that gets no new data stays given up, even when it can play a moment from what it has", () => {
+  const { voiceReady, states, step, playFor } = playPodcast(0, "audio", "", 10);
+  voiceReady.value = 4;
+  voiceReady.bufferedTo = 2;
+  playFor(1);
+  voiceReady.value = 1;
+  playFor(9);
+  const holds = () => states.filter((s, i) => s.buffering && !states[i - 1]?.buffering).length;
+  const holdsAfterGivingUp = holds();
+  const gaveUpAt = window.__player!.getTime();
+
+  voiceReady.value = 4;
+  step(1000 / 60);
+  voiceReady.value = 1;
+  playFor(3);
+
+  expect(holds()).toBe(holdsAfterGivingUp);
+  expect(window.__player!.getTime()).toBeGreaterThan(gaveUpAt + 2.9);
 });
 
 it("a hold for data does not reload a later clip", () => {
