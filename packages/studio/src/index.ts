@@ -21,6 +21,8 @@ export type { StudioKeyAction, StudioKeys } from "./player/components/studioShor
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
 export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
 export { onSealedCanvasCancel } from "./components/editor/useSealedCanvasKeys";
+export { onPreviewRequestMiss } from "./player/lib/previewChannel";
+export type { PreviewRequestMiss } from "./player/lib/previewChannel";
 export type { LinkShortcutCallbacks } from "./hooks/linkShortcuts";
 export type { ShortcutsButtonProps } from "./player/components/ShortcutsPanel";
 export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
