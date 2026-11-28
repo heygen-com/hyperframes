@@ -1,3 +1,8 @@
+import {
+  evaluateSpektrafilmRgb,
+  prepareSpektrafilmContext,
+} from "./spektrafilm-cube.mjs";
+
 const DEFAULT_SIZE = 33;
 const MAX_SIZE = 64;
 
@@ -33,7 +38,10 @@ function applyLiftGain(color, params) {
   const shadowMask = 1 - smoothstep(0.18, 0.62, y);
   const highlightMask = smoothstep(0.38, 0.82, y);
   const offset =
-    blacks * 0.08 + shadows * 0.12 * shadowMask + highlights * 0.12 * highlightMask + whites * 0.08;
+    blacks * 0.08 +
+    shadows * 0.12 * shadowMask +
+    highlights * 0.12 * highlightMask +
+    whites * 0.08;
   return color.map((channel) => clampUnit(channel + offset));
 }
 
@@ -74,7 +82,9 @@ function applySplitTone(color, params) {
   const shadowMask = 1 - smoothstep(balance - 0.25, balance + 0.2, y);
   const highlightMask = smoothstep(balance - 0.2, balance + 0.25, y);
   const shadows = Array.isArray(split.shadows) ? split.shadows : [0, 0, 0];
-  const highlights = Array.isArray(split.highlights) ? split.highlights : [0, 0, 0];
+  const highlights = Array.isArray(split.highlights)
+    ? split.highlights
+    : [0, 0, 0];
   return color.map((channel, i) =>
     clampUnit(
       channel +
@@ -117,8 +127,21 @@ export function buildCube(params = {}, size = DEFAULT_SIZE) {
   if (!Number.isInteger(size) || size < 2 || size > MAX_SIZE) {
     throw new Error(`LUT size must be an integer from 2 to ${MAX_SIZE}`);
   }
+  const spektraSpec =
+    params?.spektrafilm && typeof params.spektrafilm === "object"
+      ? params.spektrafilm
+      : params?.film || typeof params?.spektrafilm === "string"
+        ? params
+        : null;
+  const spektraCtx = spektraSpec
+    ? prepareSpektrafilmContext(spektraSpec)
+    : null;
+  const title = spektraCtx
+    ? `spektrafilm ${spektraCtx.film.info.name}${spektraCtx.paper ? ` + ${spektraCtx.paper.info.name}` : ""}`
+    : "media-use parametric grade";
+
   const lines = [
-    `TITLE "media-use parametric grade"`,
+    `TITLE "${title.replace(/"/g, "'")}"`,
     "DOMAIN_MIN 0 0 0",
     "DOMAIN_MAX 1 1 1",
     `LUT_3D_SIZE ${size}`,
@@ -127,8 +150,16 @@ export function buildCube(params = {}, size = DEFAULT_SIZE) {
   for (let b = 0; b < size; b++) {
     for (let g = 0; g < size; g++) {
       for (let r = 0; r < size; r++) {
-        const out = applyParams([r / denom, g / denom, b / denom], params);
-        lines.push(`${formatNumber(out[0])} ${formatNumber(out[1])} ${formatNumber(out[2])}`);
+        const base = spektraCtx
+          ? evaluateSpektrafilmRgb(
+              [r / denom, g / denom, b / denom],
+              spektraCtx,
+            )
+          : [r / denom, g / denom, b / denom];
+        const out = applyParams(base, params);
+        lines.push(
+          `${formatNumber(out[0])} ${formatNumber(out[1])} ${formatNumber(out[2])}`,
+        );
       }
     }
   }

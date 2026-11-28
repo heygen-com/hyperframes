@@ -1,0 +1,14 @@
+{
+  "intensity": 0.95,
+  "lut": {
+    "src": "assets/luts/vivid-slide.cube",
+    "intensity": 1
+  },
+  "details": {
+    "grain": 0.04,
+    "grainSize": 0.15,
+    "grainRoughness": 0.35,
+    "vignette": 0.12,
+    "vignetteFeather": 0.55
+  }
+}

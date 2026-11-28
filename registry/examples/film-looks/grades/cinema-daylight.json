@@ -1,0 +1,15 @@
+{
+  "intensity": 0.88,
+  "lut": {
+    "src": "assets/luts/cinema-daylight.cube",
+    "intensity": 1
+  },
+  "details": {
+    "grain": 0.14,
+    "grainSize": 0.2,
+    "grainRoughness": 0.55,
+    "vignette": 0.14,
+    "vignetteMidpoint": 0.48,
+    "vignetteFeather": 0.68
+  }
+}

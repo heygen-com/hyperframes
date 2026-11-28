@@ -1,10 +1,17 @@
 {
-  "notes": "Look entries resolve on-demand from a CDN .cube `url` (downloaded + frozen, like bgm/image); `params` is a deterministic buildCube fallback used offline (--local-only) or if the download/validation fails. No .cube bodies are committed. See README.md to author or host a new look.",
+  "notes": "Look entries resolve on-demand from a CDN .cube `url` (downloaded + frozen, like bgm/image); `params` is a deterministic buildCube fallback used offline (--local-only) or if the download/validation fails. Spectral film looks use `params.film` (spektrafilm profiles by Andrea Volpato, CC BY-SA 4.0) to synthesize physical film + print + scanner 3D LUTs locally with zero network dependency. No .cube bodies are committed. See README.md to author or host a new look.",
   "looks": [
     {
       "id": "teal-orange-blockbuster",
       "description": "Teal shadows and warm orange highlights for blockbuster-style cinematic footage.",
-      "tags": ["teal", "orange", "blockbuster", "cinematic", "split tone", "movie"],
+      "tags": [
+        "teal",
+        "orange",
+        "blockbuster",
+        "cinematic",
+        "split tone",
+        "movie"
+      ],
       "intensity": 0.85,
       "url": "https://static.heygen.ai/luts/teal-orange-blockbuster.cube",
       "params": {
@@ -22,7 +29,14 @@
     {
       "id": "bleach-bypass",
       "description": "High-contrast desaturated bleach bypass look with strong blacks.",
-      "tags": ["bleach", "bypass", "desaturated", "high contrast", "gritty", "film"],
+      "tags": [
+        "bleach",
+        "bypass",
+        "desaturated",
+        "high contrast",
+        "gritty",
+        "film"
+      ],
       "intensity": 0.8,
       "url": "https://static.heygen.ai/luts/bleach-bypass.cube",
       "params": {
@@ -51,6 +65,376 @@
         "temperature": 0.16,
         "saturation": -0.12,
         "vibrance": -0.08
+      }
+    },
+    {
+      "id": "kodak-portra-160",
+      "description": "Kodak Portra 160 color negative printed on Kodak Portra Endura paper with smooth skin tones and gentle contrast.",
+      "tags": [
+        "kodak",
+        "portra",
+        "160",
+        "portra 160",
+        "portrait",
+        "negative",
+        "endura",
+        "spektrafilm",
+        "analog"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_portra_160",
+        "paper": "kodak_portra_endura"
+      }
+    },
+    {
+      "id": "kodak-portra-400",
+      "description": "Kodak Portra 400 color negative printed on Kodak Portra Endura paper for natural warm skin tones and soft highlight roll-off.",
+      "tags": [
+        "kodak",
+        "portra",
+        "400",
+        "portra 400",
+        "portrait",
+        "negative",
+        "endura",
+        "spektrafilm",
+        "analog"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_portra_400",
+        "paper": "kodak_portra_endura"
+      }
+    },
+    {
+      "id": "kodak-portra-800",
+      "description": "Kodak Portra 800 high-speed color negative printed on Kodak Portra Endura paper with rich warmth and luminous shadows.",
+      "tags": [
+        "kodak",
+        "portra",
+        "800",
+        "portra 800",
+        "negative",
+        "endura",
+        "spektrafilm",
+        "analog"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_portra_800",
+        "paper": "kodak_portra_endura"
+      }
+    },
+    {
+      "id": "kodak-portra-800-push1",
+      "description": "Kodak Portra 800 pushed 1 stop and printed on Kodak Portra Endura paper for extra punch and warm contrast.",
+      "tags": [
+        "kodak",
+        "portra",
+        "800",
+        "push",
+        "push1",
+        "portra 800 push 1",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_portra_800_push1",
+        "paper": "kodak_portra_endura"
+      }
+    },
+    {
+      "id": "kodak-portra-800-push2",
+      "description": "Kodak Portra 800 pushed 2 stops and printed on Kodak Portra Endura paper for bold contrast and deep color separation.",
+      "tags": [
+        "kodak",
+        "portra",
+        "800",
+        "push",
+        "push2",
+        "portra 800 push 2",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_portra_800_push2",
+        "paper": "kodak_portra_endura"
+      }
+    },
+    {
+      "id": "kodak-ektar-100",
+      "description": "Kodak Ektar 100 ultra-vivid daylight color negative printed on Kodak Portra Endura paper.",
+      "tags": [
+        "kodak",
+        "ektar",
+        "100",
+        "ektar 100",
+        "vivid",
+        "landscape",
+        "negative",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_ektar_100",
+        "paper": "kodak_portra_endura"
+      }
+    },
+    {
+      "id": "kodak-gold-200",
+      "description": "Kodak Gold 200 consumer color negative printed on Kodak Portra Endura paper with nostalgic golden warmth.",
+      "tags": [
+        "kodak",
+        "gold",
+        "200",
+        "gold 200",
+        "warm",
+        "nostalgic",
+        "negative",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_gold_200",
+        "paper": "kodak_portra_endura"
+      }
+    },
+    {
+      "id": "kodak-ultramax-400",
+      "description": "Kodak Ultramax 400 versatile everyday color negative printed on Kodak Portra Endura paper.",
+      "tags": [
+        "kodak",
+        "ultramax",
+        "400",
+        "ultramax 400",
+        "negative",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_ultramax_400",
+        "paper": "kodak_portra_endura"
+      }
+    },
+    {
+      "id": "kodak-ektachrome-100",
+      "description": "Kodak Ektachrome E100 color reversal slide film with clean neutrals, vibrant blues, and crisp contrast.",
+      "tags": [
+        "kodak",
+        "ektachrome",
+        "100",
+        "e100",
+        "slide",
+        "reversal",
+        "positive",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_ektachrome_100"
+      }
+    },
+    {
+      "id": "kodak-kodachrome-64",
+      "description": "Iconic Kodak Kodachrome 64 archival color reversal slide film with rich reds, deep shadows, and classic documentary character.",
+      "tags": [
+        "kodak",
+        "kodachrome",
+        "64",
+        "kodachrome 64",
+        "slide",
+        "reversal",
+        "positive",
+        "archival",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_kodachrome_64"
+      }
+    },
+    {
+      "id": "kodak-vision3-50d",
+      "description": "Kodak Vision3 50D (5203) daylight motion picture negative printed on Kodak Vision 2383 cinema print stock.",
+      "tags": [
+        "kodak",
+        "vision3",
+        "50d",
+        "5203",
+        "2383",
+        "cinema",
+        "motion picture",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_vision3_50d",
+        "paper": "kodak_2383"
+      }
+    },
+    {
+      "id": "kodak-vision3-250d",
+      "description": "Kodak Vision3 250D (5207) daylight motion picture negative printed on Kodak Vision 2383 cinema print stock.",
+      "tags": [
+        "kodak",
+        "vision3",
+        "250d",
+        "5207",
+        "2383",
+        "cinema",
+        "motion picture",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_vision3_250d",
+        "paper": "kodak_2383"
+      }
+    },
+    {
+      "id": "kodak-vision3-200t",
+      "description": "Kodak Vision3 200T (5213) tungsten motion picture negative printed on Kodak Vision 2383 cinema print stock.",
+      "tags": [
+        "kodak",
+        "vision3",
+        "200t",
+        "5213",
+        "2383",
+        "tungsten",
+        "cinema",
+        "motion picture",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_vision3_200t",
+        "paper": "kodak_2383"
+      }
+    },
+    {
+      "id": "kodak-vision3-500t",
+      "description": "Kodak Vision3 500T (5219) tungsten motion picture negative printed on Kodak Vision 2383 cinema print stock.",
+      "tags": [
+        "kodak",
+        "vision3",
+        "500t",
+        "5219",
+        "2383",
+        "tungsten",
+        "cinema",
+        "motion picture",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_vision3_500t",
+        "paper": "kodak_2383"
+      }
+    },
+    {
+      "id": "kodak-verita-200d",
+      "description": "Kodak Verita 200D color negative printed on Kodak Vision 2383 print stock.",
+      "tags": ["kodak", "verita", "200d", "2383", "spektrafilm"],
+      "intensity": 1,
+      "params": {
+        "film": "kodak_verita_200d",
+        "paper": "kodak_2383"
+      }
+    },
+    {
+      "id": "fujifilm-c200",
+      "description": "Fujifilm C200 color negative printed on Fujifilm Crystal Archive Type II paper with signature Fuji greens and warm highlights.",
+      "tags": [
+        "fujifilm",
+        "fuji",
+        "c200",
+        "crystal archive",
+        "negative",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "fujifilm_c200",
+        "paper": "fujifilm_crystal_archive_typeii"
+      }
+    },
+    {
+      "id": "fujifilm-pro-400h",
+      "description": "Fujifilm Pro 400H fourth-color-layer portrait negative printed on Fujifilm Crystal Archive Type II paper with airy pastel tones and cyan-mint greens.",
+      "tags": [
+        "fujifilm",
+        "fuji",
+        "pro 400h",
+        "400h",
+        "pastel",
+        "portrait",
+        "crystal archive",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "fujifilm_pro_400h",
+        "paper": "fujifilm_crystal_archive_typeii"
+      }
+    },
+    {
+      "id": "fujifilm-xtra-400",
+      "description": "Fujifilm Superia X-Tra 400 color negative printed on Fujifilm Crystal Archive Type II paper.",
+      "tags": [
+        "fujifilm",
+        "fuji",
+        "superia",
+        "xtra",
+        "x-tra",
+        "400",
+        "xtra 400",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "fujifilm_xtra_400",
+        "paper": "fujifilm_crystal_archive_typeii"
+      }
+    },
+    {
+      "id": "fujifilm-provia-100f",
+      "description": "Fujifilm Provia 100F (RDP III) professional daylight color reversal slide film with faithful tonal reproduction.",
+      "tags": [
+        "fujifilm",
+        "fuji",
+        "provia",
+        "100f",
+        "provia 100f",
+        "slide",
+        "reversal",
+        "positive",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "fujifilm_provia_100f"
+      }
+    },
+    {
+      "id": "fujifilm-velvia-100",
+      "description": "Fujifilm Velvia 100 ultra-high-saturation daylight color reversal slide film for dramatic landscapes and deep shadows.",
+      "tags": [
+        "fujifilm",
+        "fuji",
+        "velvia",
+        "100",
+        "velvia 100",
+        "slide",
+        "reversal",
+        "positive",
+        "landscape",
+        "saturated",
+        "spektrafilm"
+      ],
+      "intensity": 1,
+      "params": {
+        "film": "fujifilm_velvia_100"
       }
     }
   ]

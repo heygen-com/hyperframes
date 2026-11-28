@@ -1,0 +1,14 @@
+{
+  "intensity": 0.9,
+  "lut": {
+    "src": "assets/luts/soft-color-neg.cube",
+    "intensity": 1
+  },
+  "details": {
+    "grain": 0.1,
+    "grainSize": 0.22,
+    "grainRoughness": 0.45,
+    "vignette": 0.08,
+    "vignetteFeather": 0.7
+  }
+}

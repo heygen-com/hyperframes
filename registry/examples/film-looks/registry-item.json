@@ -1,0 +1,62 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "film-looks",
+  "type": "hyperframes:example",
+  "title": "Film Looks",
+  "description": "Three original Rec.709 film-look approximations via .cube LUT + grain/vignette. Not affiliated with any film manufacturer.",
+  "license": "Apache-2.0",
+  "author": "HyperFrames contributors",
+  "tags": ["example", "color-grading", "lut", "film-look"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "files": [
+    {
+      "path": "index.html",
+      "target": "index.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/luts/soft-color-neg.cube",
+      "target": "assets/luts/soft-color-neg.cube",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/luts/vivid-slide.cube",
+      "target": "assets/luts/vivid-slide.cube",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/luts/cinema-daylight.cube",
+      "target": "assets/luts/cinema-daylight.cube",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "grades/soft-color-neg.json",
+      "target": "grades/soft-color-neg.json",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "grades/vivid-slide.json",
+      "target": "grades/vivid-slide.json",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "grades/cinema-daylight.json",
+      "target": "grades/cinema-daylight.json",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "NOTICE",
+      "target": "NOTICE",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "README.md",
+      "target": "README.md",
+      "type": "hyperframes:asset"
+    }
+  ]
+}
