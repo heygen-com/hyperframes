@@ -34,7 +34,7 @@ import {
 } from "@hyperframes/core/runtime/editing-port";
 import { isMessageList as isList } from "@hyperframes/core/runtime/protocol";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
-import { previewRequest, type ReadPriority } from "./previewChannel";
+import { previewEditingClient, previewRequest, type ReadPriority } from "./previewChannel";
 
 declare const checked: unique symbol;
 /** A description that passed `readPreviewElement`. Only that function makes one. */
@@ -129,6 +129,49 @@ export async function previewPointerTargets(
   const stack: unknown = reply?.stack;
   if (!reply || !isList(stack, MAX_POINT_STACK)) return null;
   return { target: readHit(reply.target), stack: stack.map(readHit).filter((hit) => hit !== null) };
+}
+
+type PointerAnswer = { target: PreviewElementHit | null; stack: PreviewElementHit[] };
+let lastPointerSeq = 0;
+
+/** `pending`: the point moved and the frame has not answered for it yet, so ask with `previewPointerTargets`. */
+export function watchPreviewPointer(
+  iframe: HTMLIFrameElement,
+  onAnswer: (answer: PointerAnswer | "pending" | "frame-cannot-watch") => void,
+): { at: (rootFractionX: number, rootFractionY: number) => void; stop: () => void } {
+  let seq = -1;
+  let stopped = false;
+  const off = previewEditingClient(iframe).onPointerTargets((push) => {
+    if (stopped || push.seq !== seq) return;
+    onAnswer({
+      target: readHit(push.target),
+      stack: push.stack.map(readHit).filter((hit) => hit !== null),
+    });
+  });
+  const end = () => {
+    stopped = true;
+    off();
+  };
+  return {
+    at(x, y) {
+      if (stopped) return;
+      const asked = ++lastPointerSeq;
+      seq = asked;
+      onAnswer("pending");
+      void previewRequest(iframe, "watch-pointer", { point: { x, y }, seq: asked }).then(
+        (reply) => {
+          if (reply || stopped || asked !== seq) return;
+          end();
+          onAnswer("frame-cannot-watch");
+        },
+      );
+    },
+    stop() {
+      if (stopped) return;
+      end();
+      void previewRequest(iframe, "watch-pointer", { point: null });
+    },
+  };
 }
 
 /**

@@ -38,6 +38,7 @@ import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { clearDragChrome } from "./editing/dragChrome";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
+import { stopWatchingPointer, watchPointer } from "./editing/watchPointer";
 import { maxZIndex } from "./editing/maxZIndex";
 import { gestureBase, gestureStart } from "./editingGestureStart";
 import { gsapSnapshot } from "./editing/gsapSnapshot";
@@ -313,6 +314,7 @@ const HANDLERS: Handlers = {
   "color-grading-previews": colorGradingPreviews,
   "color-grading-playback": colorGradingPlayback,
   "watch-geometry": (params, port) => watchGeometry(port, params, EDITING_PROTOCOL_VERSION),
+  "watch-pointer": (params, port) => watchPointer(port, params, EDITING_PROTOCOL_VERSION),
   "audio-meter": (params) => audioMeter(params, window.__hf?.audioMeter),
   "document-markup": documentMarkup,
   "set-audio-group-attribute": setAudioGroupAttribute,
@@ -455,6 +457,7 @@ export function installEditingAgent(parent?: Window): {
       keyWatches.clear();
       listenForKeys(false);
       stopWatchingGeometry();
+      stopWatchingPointer();
       endTextEdit();
       for (const expire of [...pendingPresentedWaits]) expire();
       resetCanvasKeys(true);

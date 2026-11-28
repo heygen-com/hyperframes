@@ -63,6 +63,7 @@ export {
   previewGeometry,
   previewLayers,
   previewPointerTargets,
+  watchPreviewPointer,
   queryPreviewElements,
   type PreviewElement,
   type PreviewElementEdit,

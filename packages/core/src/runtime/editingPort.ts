@@ -17,6 +17,12 @@ import {
   type WatchGeometryParams,
 } from "./editing/watchGeometry";
 import {
+  parseWatchPointer,
+  pointerEvent,
+  type EditingPointerEvent,
+  type WatchPointerParams,
+} from "./editing/watchPointer";
+import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
   MAX_DRAFT_PX,
@@ -272,6 +278,7 @@ export const EDITING_REQUEST_KINDS = [
   "color-grading-previews",
   "color-grading-playback",
   "watch-geometry",
+  "watch-pointer",
   "audio-meter",
   "document-markup",
   "set-audio-group-attribute",
@@ -463,6 +470,7 @@ export interface EditingRequests {
   "color-grading-previews": ColorGradingPreviewsRequest;
   "color-grading-playback": ColorGradingPlaybackRequest;
   "watch-geometry": { params: WatchGeometryParams; result: { watching: number } };
+  "watch-pointer": { params: WatchPointerParams; result: { watching: boolean } };
   "audio-meter": { params: { on: boolean }; result: { levels: AudioMeterLevels | null } };
   "document-markup": { params: NoParams; result: { html: string; baseURI: string } };
   "set-audio-group-attribute": {
@@ -812,6 +820,7 @@ const PARAM_PARSERS: {
   "color-grading-previews": parseColorGradingPreviewsParams,
   "color-grading-playback": parseColorGradingPlaybackParams,
   "watch-geometry": parseWatchGeometry,
+  "watch-pointer": parseWatchPointer,
   "audio-meter": parseAudioMeter,
   "document-markup": noParams,
   "set-audio-group-attribute": parseSetAudioGroupAttribute,
@@ -906,6 +915,7 @@ export interface EditingPortClient {
   /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
+  onPointerTargets(listener: (event: EditingPointerEvent) => void): () => void;
   onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
   onTextEditAway(listener: (event: TextEditAwayEvent) => void): () => void;
   onTextEditSelection(listener: (event: TextEditSelectionEvent) => void): () => void;
@@ -964,6 +974,7 @@ export function createEditingPortClient(options: {
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
+  const pointerListeners = new Set<(event: EditingPointerEvent) => void>();
   const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
   const awayListeners = new Set<(event: TextEditAwayEvent) => void>();
   const selectionListeners = new Set<(event: TextEditSelectionEvent) => void>();
@@ -971,6 +982,7 @@ export function createEditingPortClient(options: {
   const stageReadyListeners = new Set<(event: StageActReadyEvent) => void>();
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let watchedGeometry = false;
+  let watchedPointer = false;
   let port: MessagePort | null = null;
   let disposed = false;
   let lastId = 0;
@@ -994,6 +1006,7 @@ export function createEditingPortClient(options: {
   const pushRoutes = [
     pushRoute(keyListeners, (d) => d.v === v && d.event === "key" && keyEvent(d.key)),
     pushRoute(geometryListeners, (d) => geometryEvent(d, v)),
+    pushRoute(pointerListeners, (d) => pointerEvent(d, v)),
     pushRoute(textEditListeners, (d) => textEditEndedEvent(d, v)),
     pushRoute(awayListeners, (d) => textEditAwayEvent(d, v)),
     pushRoute(selectionListeners, (d) => textEditSelectionEvent(d, v)),
@@ -1047,6 +1060,7 @@ export function createEditingPortClient(options: {
       if (disposed) return Promise.reject(new EditingPortError("disposed", "client disposed"));
       const id = ++lastId;
       if (kind === "watch-geometry") watchedGeometry = true;
+      if (kind === "watch-pointer") watchedPointer = true;
       const limit =
         requestOptions?.timeoutMs ?? Math.max(timeoutMs, clientWaitPastFrameDeadline(kind, params));
       const result = new Promise<unknown>((resolve, reject) => {
@@ -1079,6 +1093,10 @@ export function createEditingPortClient(options: {
       geometryListeners.add(listener);
       return () => geometryListeners.delete(listener);
     },
+    onPointerTargets(listener) {
+      pointerListeners.add(listener);
+      return () => pointerListeners.delete(listener);
+    },
     onTextEditEnded(listener) {
       textEditListeners.add(listener);
       return () => textEditListeners.delete(listener);
@@ -1108,6 +1126,7 @@ export function createEditingPortClient(options: {
       disposed = true;
       keyListeners.clear();
       geometryListeners.clear();
+      pointerListeners.clear();
       textEditListeners.clear();
       awayListeners.clear();
       selectionListeners.clear();
@@ -1117,6 +1136,10 @@ export function createEditingPortClient(options: {
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
+        port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, ...stop });
+      }
+      if (watchedPointer) {
+        const stop = { kind: "watch-pointer", params: { point: null } };
         port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, ...stop });
       }
       offered?.close();
