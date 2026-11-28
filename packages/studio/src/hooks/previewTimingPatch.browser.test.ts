@@ -119,11 +119,20 @@ it.each(MODES)("a timing edit patches the clip and the duration in a %s preview"
 async function deleteClip(mode: string) {
   const preview = await openPreview(browser, studioBundle, previewHtml(), mode);
   try {
+    await preview.frame.evaluate(() => {
+      const b = document.getElementById("b")!;
+      new MutationObserver((_, observer) => {
+        if (b.isConnected) return;
+        observer.disconnect();
+        parent.postMessage({ source: "hf-test", type: "b-removed" }, "*");
+      }).observe(document.documentElement, { subtree: true, childList: true });
+    });
     await preview.page.evaluate(() => {
-      const posted: string[][] = [];
+      const posted: Array<string[] | "b-removed"> = [];
       const frame = document.querySelector("iframe")!;
       window.addEventListener("message", ({ source, data }) => {
         if (source !== frame.contentWindow) return;
+        if (data?.source === "hf-test" && data.type === "b-removed") posted.push("b-removed");
         if (data?.source === "hf-preview" && data.type === "timeline")
           posted.push(data.clips.map((clip: { id: string | null }) => clip.id));
       });
@@ -136,15 +145,22 @@ async function deleteClip(mode: string) {
         kind: "element",
       };
       studio.removeIframeTimelineElements(frame, [clip]);
-      (window as unknown as { posted: string[][] }).posted = posted;
+      (window as unknown as { posted: typeof posted }).posted = posted;
     });
     const inFrame = () =>
       preview.frame.evaluate(() => ["root", "a", "b"].filter((id) => document.getElementById(id)));
     await expect.poll(inFrame).toEqual(["root", "a"]);
-    const lastPosted = () =>
-      preview.page.evaluate(() => (window as unknown as { posted: string[][] }).posted.at(-1));
-    await expect.poll(lastPosted).toEqual(expect.arrayContaining(["a"]));
-    expect(await lastPosted()).not.toContain("b");
+    const postedAfterRemoval = () =>
+      preview.page.evaluate(() => {
+        const { posted } = window as unknown as { posted: Array<string[] | "b-removed"> };
+        const at = posted.indexOf("b-removed");
+        return at < 0 ? [] : posted.slice(at + 1);
+      });
+    await expect.poll(postedAfterRemoval).not.toEqual([]);
+    for (const list of await postedAfterRemoval()) {
+      expect(list).toContain("a");
+      expect(list).not.toContain("b");
+    }
   } finally {
     await preview.page.close();
   }
