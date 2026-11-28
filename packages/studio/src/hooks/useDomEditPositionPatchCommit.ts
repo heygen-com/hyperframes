@@ -1,4 +1,5 @@
 import { useCallback, type RefObject } from "react";
+import { DRAFT_DRAWN } from "@hyperframes/core/drawn-box";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { previewDraftLive } from "../components/editor/previewDrafts";
 import {
@@ -27,14 +28,20 @@ type PositionPatchOptions = {
   deferRender?: boolean;
 };
 
-/** A sealed frame shows the patch's own styles and attributes, unless a gesture's draft already does. */
+/** A sealed frame shows the patch's own styles and attributes, but for those a gesture's live draft draws. */
 function drawOnSealedFrame(
   iframe: HTMLIFrameElement | null,
   selection: DomEditSelection,
   patches: PatchOperation[],
 ) {
-  if (previewDraftLive(selection.element)) return null;
-  const own = patches.filter((p) => p.childSelector === undefined && p.childIndex === undefined);
+  const drafted: readonly string[] = previewDraftLive(selection.element) ? DRAFT_DRAWN : [];
+  const own = patches.filter(
+    (p) =>
+      p.childSelector === undefined &&
+      p.childIndex === undefined &&
+      !(p.type === "inline-style" && drafted.includes(p.property)),
+  );
+  if (drafted.length && own.length === 0) return null;
   const entries = (type: PatchOperation["type"]) =>
     own.filter((p) => p.type === type).map((p): [string, string | null] => [p.property, p.value]);
   const styles = entries("inline-style");

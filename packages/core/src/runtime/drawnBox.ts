@@ -14,6 +14,8 @@ export const SIZE_PROPERTIES = [
   "max-height",
 ] as const;
 
+export const DRAFT_DRAWN = ["translate", "rotate", "transform", ...SIZE_PROPERTIES] as const;
+
 export const PROBE_PX = 100;
 export const MIN_PROBE_RESPONSE = 0.01;
 type Point = { x: number; y: number };

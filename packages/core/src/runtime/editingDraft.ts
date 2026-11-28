@@ -10,10 +10,14 @@ import type { EditingDraftEnd, EditingDraftReply } from "./editingDraftEnd";
 import type { EditingDraft, EditingDraftProps, EditingDraftRotate } from "./editingPort";
 import { revealClip } from "./clipReveal";
 import { clearDragChrome, drawDragChrome, type EditingDragChrome } from "./editing/dragChrome";
-import { computedTranslateAxes, movedTranslate, SIZE_PROPERTIES, writeDrawnSize } from "./drawnBox";
+import {
+  computedTranslateAxes,
+  DRAFT_DRAWN,
+  movedTranslate,
+  SIZE_PROPERTIES,
+  writeDrawnSize,
+} from "./drawnBox";
 import type { RuntimeTimelineLike } from "./types";
-
-const DRAWN = ["translate", "rotate", "transform", ...SIZE_PROPERTIES] as const;
 
 interface Before {
   draft: number;
@@ -55,7 +59,7 @@ function beforeOf(element: Styled): Before {
     const { style } = element;
     saved = {
       draft: ++lastDraft,
-      inline: DRAWN.map((name) => [
+      inline: DRAFT_DRAWN.map((name) => [
         name,
         style.getPropertyValue(name),
         style.getPropertyPriority(name),
@@ -159,7 +163,7 @@ function drawProps(element: Styled, values: EditingDraftProps["values"]): void {
 }
 
 function clearProps(element: Styled, saved: Before): void {
-  restore(element, DRAWN);
+  restore(element, DRAFT_DRAWN);
   saved.putMarkBack?.();
   if (saved.propsSet?.length) frameGsap()?.set?.(element, { clearProps: saved.propsSet.join(",") });
   const timeline = rootTimeline();
@@ -186,7 +190,7 @@ function end(element: Styled, ending: EditingDraftEnd): boolean {
   liveDrafts.delete(element);
   if (ending.end === "clear") clearProps(element, saved);
   if (ending.end === "restore") {
-    restore(element, DRAWN);
+    restore(element, DRAFT_DRAWN);
     restoreGsapPosition(element);
     restoreGsapRotation(element);
   }

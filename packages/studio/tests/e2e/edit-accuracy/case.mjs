@@ -1167,7 +1167,7 @@ export async function inStudio(
   }
 }
 
-/** The saved crop's distance, in px, from the authored one scaled with the box: a crop follows a resize. Studio
+/** A crop's distance, in px, from the authored one scaled with the box: a crop follows a resize. Studio
  *  shows a selected element uncropped, so the crop before the gesture is the fixture's. */
 function cropDrift(authored, pre, now) {
   const first = parseInset(authored);
@@ -1254,7 +1254,10 @@ async function measureCase(
             spec.gesture,
             (frames[0] ?? []).map((f) => (spec.crop ? { ...f, clip: undefined } : f)),
           ),
-    ...(spec.crop && { crop: cropDrift(spec.crop, pre, reloaded) }),
+    // The crop shown right after the save too, not only once a reload redraws it.
+    ...(spec.crop && {
+      crop: Math.max(cropDrift(spec.crop, pre, committed), cropDrift(spec.crop, pre, reloaded)),
+    }),
     drop: quadDistance(drive.lastQuad, committed.visible),
     // Also against the box the gesture left, so a write the file drops shows here and not only as drop.
     reload: Math.max(
