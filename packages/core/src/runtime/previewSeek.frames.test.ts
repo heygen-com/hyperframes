@@ -225,6 +225,43 @@ it("preserves the held native picture when a new gesture cancels expired backgro
   expect(document.querySelector("canvas")).toBeNull();
 });
 
+// fails without the fix: each released canvas kept its full-size frame until a garbage collection.
+it("gives back every held picture's pixels once released, over many seeks", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  const { job, video, native, pending, prepare, host } = fixture();
+  let ready = 4;
+  Object.defineProperties(video, {
+    readyState: { get: () => ready },
+    networkState: { value: 2 },
+    videoWidth: { value: 1920 },
+    videoHeight: { value: 1080 },
+    currentTime: { get: () => 0 },
+  });
+  host.videosToHold = () => [video];
+  host.frames.active = () => true;
+  native.mockImplementation(() => {
+    ready = 1;
+  });
+  const held: HTMLCanvasElement[] = [];
+  for (let seek = 1; seek <= 12; seek++) {
+    ready = 4;
+    prepare.mockResolvedValueOnce(null);
+    const expired = job.seek(seek);
+    await vi.advanceTimersByTimeAsync(5000);
+    await expired;
+    held.push(document.querySelector("canvas")!);
+    const next = job.seek(seek + 0.5);
+    pending.at(-1)!.resolve(batch());
+    await next;
+  }
+  expect(new Set(held).size).toBe(12);
+  expect(held.filter((canvas) => canvas.isConnected)).toEqual([]);
+  expect(held.reduce((pixels, canvas) => pixels + canvas.width * canvas.height, 0)).toBe(0);
+});
+
 it("retires the hard Play timer after native readiness publishes", async () => {
   vi.useFakeTimers();
   const { job, video, commit } = fixture();

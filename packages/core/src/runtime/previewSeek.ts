@@ -32,6 +32,7 @@ function holdVideoFrame(video: HTMLVideoElement): (() => void) | undefined {
   return () => {
     video.removeAttribute(HELD_VIDEO_ATTR);
     canvas.remove();
+    canvas.width = canvas.height = 0;
   };
 }
 
