@@ -50,7 +50,7 @@ Run it as `npx hyperframes check`, never through `npm run`: a tool timeout's SIG
 - **Craft**: warnings only, even under `--strict` (a film may break one on purpose), measured on an 8 fps sweep of the whole film and skipped under `--range`. Each message names the fix and the reference to read.
   - `line_unread`: a reading-size line (≥ 30 px tall at 1080) on screen under its floor: 0.4 s for 1–2 words, otherwise ¾ of 0.5 s + 0.3 s a word (3 words 1.05 s, 6 words 1.73 s); the film's last line needs 2 s. Edges are re-measured to ~0.01 s. Captions-track text and `data-layout-ignore` are exempt.
   - `dead_stretch`: more than 3 s where the `keepsMoving` classifier sees nothing change. The final 3 s and any time a `data-hold` element is on screen are exempt; it stays quiet when `sweep_static` fires or a whole-composition `keepsMoving` assertion sets the limit.
-  - `text_below_floor`: text under 2.6% of the frame's short side (28 px on 1080) held 0.5 s or more, one finding per file listing every element.
+  - `text_below_floor`: text under 2.6% of the frame's short side (28 px on 1080) held 0.5 s or more, one finding per rendered size listing every element across files.
   - `first_frame_empty`: frame 0 paints nothing but the background (no text, image, video, canvas or svg), or an opaque element covers every other clip and the message names it; it is the thumbnail on social players.
   - `film_silent`: a film over 15 s with no unmuted `<audio>` or audible `<video>`.
 - **Audio**: the clips the render mixes, in the report's `audio` section. It runs even when lint stops the browser pass. Remote sources are not fetched.
