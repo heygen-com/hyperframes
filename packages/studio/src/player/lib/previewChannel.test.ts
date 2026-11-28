@@ -146,6 +146,20 @@ describe("onPreviewRequestMiss", () => {
     expect(await previewAnswer(refusingFrame(), "wait-for-seek", {})).toBe(PREVIEW_REJECTED);
     expect(misses).toHaveLength(1);
   });
+
+  it("tells a listener that re-registers while it is told about a miss only once", async () => {
+    let calls = 0;
+    let unsubscribe = () => {};
+    const listener = () => {
+      calls += 1;
+      unsubscribe();
+      if (calls < 5) unsubscribe = onPreviewRequestMiss(listener);
+    };
+    unsubscribe = onPreviewRequestMiss(listener);
+    closers.push(() => unsubscribe());
+    expect(await previewAnswer(refusingFrame(), "wait-for-seek", {})).toBe(PREVIEW_REJECTED);
+    expect(calls).toBe(1);
+  });
 });
 
 describe("previewFrameOpaque", () => {
