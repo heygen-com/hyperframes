@@ -1,10 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AFTER_FONTS_CLAIM,
   AFTER_FONTS_SCRIPT_TYPE,
   deferScriptsUntilFonts,
 } from "../compiler/scriptRuns";
-import { FONT_WAIT_TIMEOUT_MS, PREVIEW_SCRIPT_SLICE_MS } from "./afterFonts";
+import {
+  FONT_WAIT_TIMEOUT_MS,
+  LAYOUT_WAIT_TIMEOUT_MS,
+  PREVIEW_SCRIPT_SLICE_MS,
+} from "./afterFonts";
 
 type Face = { family: string; status: FontFaceLoadStatus; load?: () => Promise<unknown> };
 
@@ -319,6 +323,76 @@ describe("runtime entry: composition scripts after web fonts", () => {
 
     document.dispatchEvent(new Event("DOMContentLoaded"));
     expect(log()).toBe(expected);
+  });
+
+  describe("and the document's layout", () => {
+    let observers: Array<() => void>;
+    let watched: Element[];
+    let rects: number;
+    beforeEach(() => {
+      observers = [];
+      watched = [];
+      rects = 0;
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(fire: () => void) {
+            observers.push(fire);
+          }
+          observe(target: Element) {
+            watched.push(target);
+          }
+          disconnect() {}
+        },
+      );
+      vi.spyOn(document.documentElement, "getClientRects").mockImplementation(
+        () => ({ length: rects }) as DOMRectList,
+      );
+      serveFonts(Promise.resolve(), []);
+      mountDeferredScripts();
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("adds no wait when the document already has layout", async () => {
+      rects = 1;
+      await parseThenLoad();
+      await vi.waitFor(() => expect(window.__player).toBeDefined());
+      expect(log()).toBe("a in-place b ready ");
+      expect(watched).not.toContain(document.documentElement);
+    });
+
+    it("holds the scripts until the document has layout, then runs them", async () => {
+      await parseThenLoad();
+      await vi.waitFor(() => expect(watched).toEqual([document.documentElement]));
+      observers[0]!();
+      expect(log()).toBe("");
+
+      rects = 1;
+      observers[0]!();
+      await vi.waitFor(() => expect(window.__player).toBeDefined());
+      expect(log()).toBe("a in-place b ready ");
+    });
+
+    it("runs the scripts without layout at the bound, and reports it", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const posted = vi.spyOn(window.parent, "postMessage").mockImplementation(() => {});
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await parseThenLoad();
+      await vi.advanceTimersByTimeAsync(LAYOUT_WAIT_TIMEOUT_MS - 1);
+      expect(log()).toBe("");
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(log()).toMatch(/^a .*b /);
+      expect(posted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "diagnostic",
+          code: "runtime_layout_wait_timeout",
+          details: { timeoutMs: LAYOUT_WAIT_TIMEOUT_MS },
+        }),
+        "*",
+      );
+    });
   });
 
   it("runs deferred scripts once and in order through the page's fallback when the runtime predates the gate", () => {
