@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MAX_FONT_FACES, MAX_QUERY_MATCHES } from "@hyperframes/core/runtime/editing-port";
+import {
+  MAX_FONT_FACES,
+  MAX_QUERY_MATCHES,
+  PAGE_LEFT,
+  PAGE_SHOWN,
+} from "@hyperframes/core/runtime/editing-port";
 import { MAX_FRAME_CLIPS } from "./manifestClips";
 import {
   AGENT_PROBE_MS,
@@ -20,6 +25,7 @@ import {
   previewRequest,
   previewSeekPainted,
   setFrameLoopStart,
+  watchStudioNavigations,
 } from "./previewChannel";
 import { bridgePlaybackAdapter, watchPreviewFrame } from "./bridgePlayback";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
@@ -108,6 +114,68 @@ describe("previewEditingClient", () => {
     iframe.dispatchEvent(new Event("load"));
     expect(previewEditingClient(iframe)).not.toBe(first);
     await expect(asked).resolves.toEqual({ waited: false });
+    expect(handed).toHaveBeenCalledOnce();
+  });
+
+  it("opens a channel only for the load that follows Studio's first write to the frame", async () => {
+    const { iframe, frame, handed } = servedFrame(() => ({ waited: false }));
+    closers.push(watchStudioNavigations(iframe));
+    iframe.setAttribute("src", "/api/projects/demo/preview");
+    await Promise.resolve();
+    fromFrame(frame, { type: PAGE_SHOWN, page: "studios" });
+    iframe.dispatchEvent(new Event("load"));
+    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).resolves.toEqual({
+      waited: false,
+    });
+    const posted = vi.spyOn(iframe.contentWindow!, "postMessage");
+
+    iframe.setAttribute("src", "/api/projects/demo/preview?again=1");
+    await Promise.resolve();
+    fromFrame(frame, { type: PAGE_LEFT, page: "studios" });
+    iframe.dispatchEvent(new Event("load"));
+    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).rejects.toMatchObject({
+      code: "disposed",
+    });
+
+    iframe.dispatchEvent(new Event("load"));
+    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).rejects.toMatchObject({
+      code: "disposed",
+    });
+    expect(posted).not.toHaveBeenCalled();
+    expect(handed).toHaveBeenCalledOnce();
+  });
+
+  it("opens no channel to a page that replaced Studio's before its own load", async () => {
+    const { iframe, frame, handed } = servedFrame(() => ({ waited: false }));
+    const stop = watchStudioNavigations(iframe);
+    closers.push(stop);
+    const posted = vi.spyOn(iframe.contentWindow!, "postMessage");
+    fromFrame(frame, { type: PAGE_SHOWN, page: "before" });
+    iframe.setAttribute("src", "/api/projects/demo/preview");
+    await Promise.resolve();
+    fromFrame(frame, { type: PAGE_LEFT, page: "before" });
+    fromFrame(frame, { type: PAGE_SHOWN, page: "studios" });
+    fromFrame(frame, { type: PAGE_LEFT, page: "studios" });
+    fromFrame(frame, { type: PAGE_SHOWN, page: "posted by the page that came next" });
+    iframe.dispatchEvent(new Event("load"));
+    const client = previewEditingClient(iframe);
+    await expect(client.request("wait-for-seek", {})).rejects.toMatchObject({ code: "disposed" });
+    expect(posted).not.toHaveBeenCalled();
+    expect(handed).not.toHaveBeenCalled();
+  });
+
+  it("keeps the channel when the page Studio navigated away from says it left", async () => {
+    const { iframe, frame, handed } = servedFrame(() => ({ waited: false }));
+    closers.push(watchStudioNavigations(iframe));
+    fromFrame(frame, { type: PAGE_SHOWN, page: "before" });
+    iframe.setAttribute("src", "/api/projects/demo/preview");
+    await Promise.resolve();
+    fromFrame(frame, { type: PAGE_LEFT, page: "before" });
+    fromFrame(frame, { type: PAGE_SHOWN, page: "studios" });
+    iframe.dispatchEvent(new Event("load"));
+    await expect(previewEditingClient(iframe).request("wait-for-seek", {})).resolves.toEqual({
+      waited: false,
+    });
     expect(handed).toHaveBeenCalledOnce();
   });
 

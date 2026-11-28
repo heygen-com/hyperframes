@@ -209,11 +209,16 @@ describe("preview errors", () => {
 
     act(() => retry.click());
 
-    const retryUrl = new URL(player.getAttribute("src") ?? "", window.location.origin);
+    const retried = [...host.querySelectorAll<TestHyperframesPlayer>("hyperframes-player")].at(-1)!;
+    expect(retried).not.toBe(player);
+    expect(player.isConnected).toBe(true);
+    act(() => void retried.iframeElement.dispatchEvent(new Event("load")));
+    expect(player.isConnected).toBe(false);
+    const retryUrl = new URL(retried.getAttribute("src") ?? "", window.location.origin);
     expect(retryUrl.searchParams.get("_hfStudioRetry")).toBe("1");
     expect(host.querySelector('[data-testid="composition-preview-error"]')).toBeNull();
 
-    act(() => void player.dispatchEvent(new Event("painted")));
+    act(() => void retried.dispatchEvent(new Event("painted")));
     expect(onPainted.mock.calls.map(([details]) => details.loadId)).toEqual([1, 2]);
   });
 });
@@ -229,6 +234,8 @@ describe("a host's sandbox origin", () => {
     act(async () => {
       for (let i = 0; i < 10; i += 1) await Promise.resolve();
     });
+  const shown = () =>
+    [...document.querySelectorAll<TestHyperframesPlayer>("hyperframes-player")].at(-1)!;
   afterEach(() => {
     primeFrameToken(null);
     vi.restoreAllMocks();
@@ -244,11 +251,11 @@ describe("a host's sandbox origin", () => {
       sandboxOrigin: "opaque",
     });
     await settle();
-    expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
+    expect(shown().getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
 
     // A later retry keeps the current token, never the stale one.
     act(() => {
-      player.dispatchEvent(new CustomEvent("error", { detail: { message: "refused" } }));
+      shown().dispatchEvent(new CustomEvent("error", { detail: { message: "refused" } }));
     });
     const retry = Array.from(document.querySelectorAll("button")).find(
       (button) => button.textContent === "Retry preview",
@@ -256,9 +263,31 @@ describe("a host's sandbox origin", () => {
     if (!retry) throw new Error("retry action did not render");
     act(() => retry.click());
     await settle();
-    expect(player.getAttribute("src")).toBe(
+    expect(shown()).not.toBe(player);
+    expect(shown().getAttribute("src")).toBe(
       `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
     );
+  });
+
+  it("loads a primed token found stale after the preview showed in a new frame", async () => {
+    let answer!: (response: Response) => void;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>((resolve) => (answer = resolve)),
+    );
+    primeFrameToken({ projectId: "demo", token: "S".repeat(43) });
+    const { player } = await mountPlayer({
+      directUrl: undefined,
+      projectId: "demo",
+      sandboxOrigin: "opaque",
+    });
+    await settle();
+    expect(player.getAttribute("src")).toBe(`/api/projects/demo/preview/~${"S".repeat(43)}`);
+    answer({ ok: true, json: async () => ({ token }) } as Response);
+    await settle();
+    expect(shown()).not.toBe(player);
+    act(() => void shown().iframeElement.dispatchEvent(new Event("load")));
+    expect(player.isConnected).toBe(false);
+    expect(shown().getAttribute("src")).toBe(`/api/projects/demo/preview/~${token}`);
   });
 
   // fails without the fix: when the background check failed, Retry preview kept loading the unconfirmed primed token.
@@ -287,7 +316,8 @@ describe("a host's sandbox origin", () => {
     act(() => retry.click());
     await settle();
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(player.getAttribute("src")).toBe(
+    expect(shown()).not.toBe(player);
+    expect(shown().getAttribute("src")).toBe(
       `/api/projects/demo/preview/~${token}?_hfStudioRetry=1`,
     );
   });
@@ -315,7 +345,7 @@ describe("a host's sandbox origin", () => {
     if (!retry) throw new Error("retry action did not render");
     act(() => retry.click());
   };
-  const player = () => document.querySelector("hyperframes-player") as HTMLElement;
+  const player = () => [...document.querySelectorAll("hyperframes-player")].at(-1) as HTMLElement;
 
   // fails without the fix: the first load's late token check replaced the retry's URL with an older token.
   it("keeps Retry preview's load when the first load's token check answers late", async () => {

@@ -11,6 +11,8 @@ import { swallow } from "./diagnostics";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   EDITING_CONNECT,
+  PAGE_LEFT,
+  PAGE_SHOWN,
   EDITING_PROTOCOL_VERSION,
   EDITING_REQUEST_KINDS,
   EDITING_REQUEST_TIMEOUT_MS,
@@ -420,6 +422,34 @@ function listenForConnects(parent: Window, take: (port: MessagePort) => void): (
 const waiting = portMap<true>();
 let takeAtLoad: (port: MessagePort) => void = (port) => waiting.set(port, true);
 let stopAtLoad: (() => void) | null = null;
+
+export function announcePageLife(parent = parentAtLoad): () => void {
+  if (!parent || parent === window) return () => {};
+  const page = crypto.randomUUID?.() ?? String(performance.timeOrigin + Math.random());
+  const post = (type: string) => {
+    try {
+      parent.postMessage({ source: "hf-preview", type, page }, "*");
+    } catch {}
+  };
+  post(PAGE_SHOWN);
+  let gone = false;
+  const left = () => {
+    if (gone) return;
+    gone = true;
+    post(PAGE_LEFT);
+  };
+  const going = ["beforeunload", "pagehide"] as const;
+  for (const type of going) window.addEventListener(type, left, { capture: true });
+  const root = document.documentElement;
+  const replaced = new MutationObserver(() => {
+    if (document.documentElement !== root) left();
+  });
+  replaced.observe(document, { childList: true });
+  return () => {
+    for (const type of going) window.removeEventListener(type, left, { capture: true });
+    replaced.disconnect();
+  };
+}
 
 export function listenForEditingConnect(): void {
   if (!parentAtLoad || stopAtLoad) return;

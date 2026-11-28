@@ -244,6 +244,8 @@ export {
 export const EDITING_PROTOCOL_VERSION = 2 as const;
 /** Parent to frame, on the window: carries the runtime's port in its transfer list. */
 export const EDITING_CONNECT = "editing-connect";
+export const PAGE_SHOWN = "page-shown";
+export const PAGE_LEFT = "page-left";
 
 export const EDITING_REQUEST_KINDS = [
   "hello",
@@ -959,8 +961,9 @@ export function createEditingPortClient(options: {
   iframe: HTMLIFrameElement;
   timeoutMs?: number;
   host?: Window;
+  gate?: Promise<boolean>;
 }): EditingPortClient {
-  const { iframe, timeoutMs = EDITING_REQUEST_TIMEOUT_MS, host = window } = options;
+  const { iframe, timeoutMs = EDITING_REQUEST_TIMEOUT_MS, host = window, gate } = options;
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
@@ -1038,10 +1041,15 @@ export function createEditingPortClient(options: {
   const onWindowMessage = (event: MessageEvent<unknown>) => {
     if (runtimeCameUp(event, iframe.contentWindow)) connect();
   };
-  host.addEventListener("message", onWindowMessage);
-  connect();
+  const start = () => {
+    if (disposed) return;
+    host.addEventListener("message", onWindowMessage);
+    connect();
+  };
+  if (gate) void gate.then((open) => (open ? start() : client.dispose()));
+  else start();
 
-  return {
+  const client: EditingPortClient = {
     ready,
     request(kind, params, requestOptions) {
       if (disposed) return Promise.reject(new EditingPortError("disposed", "client disposed"));
@@ -1126,6 +1134,7 @@ export function createEditingPortClient(options: {
       }
     },
   };
+  return client;
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
