@@ -176,13 +176,41 @@ describe("previewEditingClient", () => {
     expect(frame.posted).not.toHaveBeenCalled();
   });
 
-  it("opens no channel for the write's load when the page posted no port before it", async () => {
+  // fails without the fix: a load processed before the runtime's queued offer left the load with no channel.
+  it("takes the runtime's port when its offer arrives just after the write's load", async () => {
     const frame = offeringFrame();
     await frame.write("/api/projects/demo/preview");
+    const asking = frame.waited();
+    frame.load();
+    frame.offer();
+    frame.offer();
+    await expect(asking).resolves.toEqual({ waited: false });
+    expect(frame.asked).toEqual([["hello", "wait-for-seek"], []]);
+  });
+
+  it("takes no port that arrives after a later load of the frame", async () => {
+    const frame = offeringFrame();
+    await frame.write("/api/projects/demo/preview");
+    frame.load();
     frame.load();
     frame.offer();
     await expect(frame.waited()).rejects.toMatchObject({ code: "disposed" });
     expect(frame.asked).toEqual([[]]);
+  });
+
+  it("takes no port that arrives after the wait the write's load gives it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const frame = offeringFrame();
+      await frame.write("/api/projects/demo/preview");
+      frame.load();
+      vi.advanceTimersByTime(AGENT_PROBE_MS);
+      frame.offer();
+      await expect(frame.waited()).rejects.toMatchObject({ code: "disposed" });
+      expect(frame.asked).toEqual([[]]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("sends an opaque frame's loop start over the port, only when it changes", async () => {

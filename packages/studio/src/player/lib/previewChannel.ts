@@ -39,6 +39,7 @@ type StudioLoads = {
   writes: number;
   wrote: boolean;
   offered: MessagePort | null;
+  awaiting: ReturnType<typeof setTimeout> | null;
   port: Promise<MessagePort | null>;
   settle: ((port: MessagePort | null) => void) | null;
   unclaimed: MessagePort | null;
@@ -57,12 +58,22 @@ export function watchStudioNavigations(iframe: HTMLIFrameElement): () => void {
     writes: 0,
     wrote: false,
     offered: null,
+    awaiting: null,
     port: null!,
     settle: null,
     unclaimed: null,
   };
   state.port = new Promise((resolve) => (state.settle = resolve));
   studioLoads.set(iframe, state);
+  const hand = (port: MessagePort | null) => {
+    if (state.awaiting) clearTimeout(state.awaiting);
+    state.awaiting = null;
+    state.unclaimed?.close();
+    state.unclaimed = state.settle ? null : port;
+    if (state.settle) state.settle(port);
+    else state.port = Promise.resolve(port);
+    state.settle = null;
+  };
   const writes = new MutationObserver(() => {
     state.writes += 1;
     state.wrote = true;
@@ -74,27 +85,30 @@ export function watchStudioNavigations(iframe: HTMLIFrameElement): () => void {
     if (event.source !== iframe.contentWindow) return;
     const port = portOffer(event);
     if (!port) return;
-    if (state.wrote && state.writes === 1 && !state.offered) state.offered = port;
+    if (state.awaiting) hand(port);
+    else if (state.wrote && state.writes === 1 && !state.offered) state.offered = port;
     else port.close();
   };
   window.addEventListener("message", onOffer);
   const onLoad = () => {
     const frameEmptyFirstDocument = state.writes === 0;
     if (frameEmptyFirstDocument) return;
-    const port = state.wrote && state.writes === 1 ? state.offered : null;
+    const writesLoad = state.wrote && state.writes === 1;
+    const port = writesLoad ? state.offered : null;
     state.wrote = false;
     state.offered = null;
-    state.unclaimed?.close();
-    state.unclaimed = state.settle ? null : port;
-    if (state.settle) state.settle(port);
-    else state.port = Promise.resolve(port);
-    state.settle = null;
+    if (writesLoad && !port) {
+      state.awaiting = setTimeout(() => hand(null), AGENT_PROBE_MS);
+      return;
+    }
+    hand(port);
   };
   iframe.addEventListener("load", onLoad, beforeOtherLoadHandlers);
   return () => {
     writes.disconnect();
     window.removeEventListener("message", onOffer);
     iframe.removeEventListener("load", onLoad, beforeOtherLoadHandlers);
+    if (state.awaiting) clearTimeout(state.awaiting);
     state.offered?.close();
     state.unclaimed?.close();
     state.settle?.(null);
