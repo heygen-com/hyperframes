@@ -9,6 +9,7 @@ import {
   PREVIEW_REJECTED,
   releaseEndedGestureHolds,
   previewAnswer,
+  previewComputedStyles,
   previewComputedStylesOfEvery,
   previewConsoleErrors,
   previewFontFaces,
@@ -294,6 +295,36 @@ describe("the clip lists in a runtime snapshot", () => {
     expect(await previewClipParents(iframe)).toEqual(new Map());
     expect(await previewClipManifest(iframe)).toBeNull();
     expect(performance.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe("style values in a frame's computed-styles reply", () => {
+  const reported: Record<string, string> = {
+    color: "var(--none, url(https://probe.invalid/a))",
+    "background-color": "rgb(1, 2, 3)",
+    "box-shadow": "0 0 4px var(--none, url(https://probe.invalid/b))",
+    filter: "url(https://probe.invalid/c#f)",
+    "clip-path": "url(https://probe.invalid/d)",
+    "border-top-style": "u\\72l(https://probe.invalid/e)",
+    "font-family": "Inter, sans-serif",
+    "background-image": 'url("https://cdn.example/a.png")',
+    "mix-blend-mode": `normal${" ".repeat(5_000)}`,
+  };
+
+  it("reach Studio only when they cannot load anything in Studio's page", async () => {
+    const { iframe } = servedFrame((kind) =>
+      kind === "computed-styles" ? { styles: reported } : null,
+    );
+    const read = await previewComputedStyles(
+      iframe,
+      { handle: "0123456789abcdef:1" },
+      Object.keys(reported),
+    );
+    expect(read).toEqual({
+      "background-color": "rgb(1, 2, 3)",
+      "font-family": "Inter, sans-serif",
+      "background-image": 'url("https://cdn.example/a.png")',
+    });
   });
 });
 
