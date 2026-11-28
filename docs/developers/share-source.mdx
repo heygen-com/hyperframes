@@ -72,6 +72,15 @@ excluding `index.html` are rejected. Do not exclude assets your composition uses
 These rules can only exclude files, never re-include credentials or other files
 blocked by the portable project policy.
 
+Hosts that opt into gitignore syntax through `readSourceIgnore` also support anchored folders,
+`**`, and ordered `!` rules. The gitignore reader accepts 256 active rules of 256 UTF-16 code units each. A rule can have
+up to four wildcard components with one star apiece, including one recursive globstar.
+Two stars within a filename pattern, such as `*draft*` or `*.min.*`, are supported when the
+other components are literal or the filename is prefixed with `**/`. A recursive contents rule such as `**/cache/**` is supported
+with literal components between the globstars. Avoid bracket expressions and backslash escapes
+in rules containing multiple stars. With active rules, capture stops if a path exceeds 64
+components or 1024 UTF-16 code units. Simplify the rules or shorten the path to resume.
+
 Cloud render reads the same file as gitignore syntax, so it may hold rules this
 reader rejects, such as `/exports/` or `**/*.mov`. Source capture, and anything
 else that picks project files to upload, then stops with an error. Change

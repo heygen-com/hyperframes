@@ -154,6 +154,7 @@ describe("a sealed drag's step reaches the frame before the paint of its pointer
       }),
       ...{
         boxRef: ref(null),
+        handlesRef: ref(null),
         overlayRef: ref(null),
         iframeRef: ref(document.createElement("iframe")),
       },
@@ -199,6 +200,7 @@ describe("a sealed drag's step reaches the frame before the paint of its pointer
       ...{ gestureRef: ref(null), groupGestureRef: ref(null), rafPausedRef: ref(false) },
       ...{ snapGuidesRef: ref(null), blockedMoveRef: ref(null), waitingPressRef: ref(null) },
       ...{ onManualDragStartRef: ref(vi.fn()), onBlockedMoveRef: ref(vi.fn()) },
+      setGroupOverlayItems: vi.fn(),
     };
     harnesses.push(opts as never);
     const press = { clientX: 10, clientY: 10, pointerId: 1, button: 0 };
@@ -284,6 +286,53 @@ describe("every sealed gesture draws its step from the raw pointer update", () =
     vi.mocked(applyStudioBoxSizeDraft).mockClear();
     rawUpdate(130, 104);
     expect(applyStudioBoxSizeDraft).toHaveBeenCalledTimes(1);
+  });
+});
+
+// fails without the fix: the raw update sent the step's draft with Studio's outline still at the last step, so
+// the frame's copy of the outline trailed the layer by one step.
+describe("a sealed gesture's raw update moves Studio's outline before its draft goes out", () => {
+  it("a single move puts the box at the step", () => {
+    const { opts, handlers } = sealedDrag();
+    const box = document.createElement("div");
+    (opts.boxRef as { current: unknown }).current = box;
+    handlers.onPointerMove(pointer(110, 100));
+    rawUpdate(130, 104);
+    expect([box.style.left, box.style.top, box.style.width]).toEqual(["40px", "24px", "50px"]);
+  });
+
+  // fails without the fix: React kept the last pointermove's rect, and its commit drew the box a step back.
+  it("a single move keeps React's outline at the step, so its commit draws no older rect", () => {
+    const { opts, handlers } = sealedDrag();
+    handlers.onPointerMove(pointer(110, 100));
+    rawUpdate(130, 104);
+    expect(opts.setOverlayRect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ left: 40, top: 24, width: 50, height: 40 }),
+    );
+  });
+
+  it("a group move puts every member box and the group box at the step", () => {
+    const { opts, handlers } = sealedDrag();
+    const overlay = document.createElement("div");
+    overlay.innerHTML = `<div data-dom-edit-group-member="a"></div><div data-dom-edit-group-box></div>`;
+    (opts.overlayRef as { current: unknown }).current = overlay;
+    opts.gestureRef.current = null;
+    const rect = { left: 10, top: 20, width: 50, height: 40, editScaleX: 1, editScaleY: 1 };
+    (opts.groupGestureRef as { current: unknown }).current = {
+      ...{ pointerId: 1, startX: 100, startY: 100 },
+      ...{ originItems: [{ key: "a", rect }], members: [] },
+    };
+    handlers.onPointerMove(pointer(110, 100));
+    rawUpdate(130, 104);
+    const at = (selector: string) => overlay.querySelector<HTMLElement>(selector)!.style.left;
+    expect([at("[data-dom-edit-group-member]"), at("[data-dom-edit-group-box]")]).toEqual([
+      "40px",
+      "40px",
+    ]);
+    expect(opts.setGroupOverlayItems).toHaveBeenLastCalledWith([
+      expect.objectContaining({ key: "a", rect: expect.objectContaining({ left: 40, top: 24 }) }),
+    ]);
+    (opts.groupGestureRef as { current: unknown }).current = null;
   });
 });
 

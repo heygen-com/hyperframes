@@ -331,6 +331,7 @@ async function sealedTitleHoldingEnds(markup = ORIGINAL, action: "end" | "start"
   let holding: MessageEvent[] | null = null;
   const ends = new Set<unknown>();
   let deliver: (event: MessageEvent) => void = () => {};
+  let starts = 0;
   const title = (await sealedTitle(
     [],
     (port) => {
@@ -338,6 +339,7 @@ async function sealedTitleHoldingEnds(markup = ORIGINAL, action: "end" | "start"
       port.postMessage = (data: unknown) => {
         const message = data as { id?: unknown; kind?: string; params?: { action?: string } };
         if (message.kind === "text-edit" && message.params?.action === action) ends.add(message.id);
+        if (message.kind === "text-edit" && message.params?.action === "start") starts += 1;
         send(data);
       };
       const accessor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(port), "onmessage")!;
@@ -363,7 +365,7 @@ async function sealedTitleHoldingEnds(markup = ORIGINAL, action: "end" | "start"
     };
     return Object.assign(release, { held: () => holding?.length ?? 0 });
   };
-  return { ...title, holdEndReplies };
+  return { ...title, holdEndReplies, starts: () => starts };
 }
 
 const enter = (el: HTMLElement) =>
@@ -1088,22 +1090,8 @@ it("redraws the last saved text when a newer draft is cancelled before that save
   act(unmounts.pop()!);
 });
 
-/** Acts as a person does once the caret shows: at once if it already does, else after `wait` lets the edit open. */
-async function whenCaretShows(
-  title: HTMLElement,
-  action: () => void,
-  wait: () => Promise<unknown>,
-) {
-  await nextTask();
-  const shown = title.isContentEditable;
-  if (shown) action();
-  await wait();
-  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
-  if (!shown) action();
-}
-
 it("lands a draft and the panel save that ended it before a new edit on the element saves", async () => {
-  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds(SPANS);
+  const { title, iframe, selection, holdEndReplies, starts } = await sealedTitleHoldingEnds(SPANS);
   const { persist, text } = sourceFile(undefined, SPANS);
   const { controls, commits } = wiredEditor(iframe, selection, persist);
   act(() => void controls().start(selection.element));
@@ -1114,17 +1102,21 @@ it("lands a draft and the panel save that ended it before a new edit on the elem
   let panel!: Promise<unknown>;
   act(() => void (panel = commits().handleDomTextCommitForSelection(selection, "Blue", second)));
   act(() => void controls().start(selection.element));
-  const typeAndSave = () => {
-    title.querySelector("span")!.textContent = "Tres";
-    act(() => controls().commit());
-  };
-  await whenCaretShows(title, typeAndSave, () => (release(), act(() => panel)));
+  await nextTask();
+  expect(starts()).toBe(1);
+  release();
+  await act(() => panel);
+  expect(text("title")).toBe("<span>One</span> <span>Blue</span>");
+  await vi.waitFor(() => expect(starts()).toBe(2));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Tres";
+  act(() => controls().commit());
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(text("title")).toBe("<span>Tres</span> <span>Blue</span>");
 });
 
 it("saves a queued panel change without the draft of an edit opened after it", async () => {
-  const { title, iframe, selection, holdEndReplies } = await sealedTitleHoldingEnds(SPANS);
+  const { title, iframe, selection, holdEndReplies, starts } = await sealedTitleHoldingEnds(SPANS);
   const { persist, text } = sourceFile(undefined, SPANS);
   const { controls, commits } = wiredEditor(iframe, selection, persist);
   act(() => void controls().start(selection.element));
@@ -1134,8 +1126,11 @@ it("saves a queued panel change without the draft of an edit opened after it", a
   let removing!: Promise<unknown>;
   act(() => void (removing = commits().handleDomRemoveTextField(selection.textFields[1]!.key)));
   act(() => void controls().start(selection.element));
-  const type = () => void (title.querySelector("span")!.textContent = "Dos");
-  await whenCaretShows(title, type, () => (release(), act(() => removing)));
+  release();
+  await act(() => removing);
+  await vi.waitFor(() => expect(starts()).toBe(2));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.querySelector("span")!.textContent = "Dos";
   act(() => controls().cancel());
   await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   expect(text("title")).toBe("<span>Uno</span>");
