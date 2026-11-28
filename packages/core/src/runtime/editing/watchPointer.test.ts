@@ -137,6 +137,27 @@ describe("watchPointer", () => {
     parent.close();
   });
 
+  // Guards the cost: a frame nobody hovers must run no per-frame hit test.
+  it("asks for no frame and hit-tests nothing unless a point is watched, and nothing after its stop", async () => {
+    const { frame, parent } = setUp();
+    const seen = pushes(parent);
+    stopWatchingPointer();
+    stopWatchingPointer(frame);
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled();
+
+    watchPointer(frame, { point: { x: 0.5, y: 0.5 } }, 1);
+    step();
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    watchPointer(frame, { point: null }, 1);
+    const asked = under.asked.length;
+    for (let i = 0; i < 5; i++) step();
+    document.dispatchEvent(new Event("visibilitychange"));
+    step();
+    expect(under.asked).toHaveLength(asked);
+    expect(frames.size).toBe(0);
+    parent.close();
+  });
+
   it("checks a moved point at once, and stops on a null point", async () => {
     const { frame, parent } = setUp();
     const seen = pushes(parent);
