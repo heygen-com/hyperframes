@@ -30,7 +30,8 @@ import { CropPresetBar } from "./CropPresetBar";
 import { movesGesture } from "./domEditOverlayGestures";
 import { previewStandIn } from "./previewDrafts";
 import { onFrameShowsTime } from "../../player/lib/bridgePlayback";
-import { gestureStartLayout, readCropFrameStart } from "./previewGestureStartRead";
+import { readCropFrameStart } from "./previewGestureStartRead";
+import { gestureStartLayout } from "./gestureStartLayouts";
 import {
   afterStudioManualEditGestures,
   isStudioManualEditGestureActive,

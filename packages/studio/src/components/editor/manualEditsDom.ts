@@ -36,6 +36,8 @@ import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 import { roundTo3, roundToLayoutSize } from "../../utils/rounding";
 import { isStudioManualEditGestureActive } from "./manualEditGesture";
+import { gestureStartLayout } from "./gestureStartLayouts";
+import { previewStandInHandle } from "./previewDrafts";
 
 /* ── CSS custom-property readers ──────────────────────────────────── */
 function readPxCustomProperty(element: HTMLElement, property: string): number {
@@ -329,6 +331,13 @@ function restoreStaleStudioScaleResize(element: HTMLElement): void {
   element.removeAttribute(STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR);
 }
 
+/** The element's layout box: a sealed preview's stand-in has none here, so it is the frame's own at the press. */
+function layoutBox(element: HTMLElement): { width: number; height: number } {
+  const handle = previewStandInHandle(element);
+  const pressed = handle ? gestureStartLayout(handle) : null;
+  return pressed ?? { width: element.offsetWidth, height: element.offsetHeight };
+}
+
 function writeStudioBoxSizeVars(
   element: HTMLElement,
   size: { width: number; height: number },
@@ -339,11 +348,12 @@ function writeStudioBoxSizeVars(
   // and height are overwritten, so this is the last honest layout box to save.
   // Offset sizes are layout values, so a running scale animation does not
   // distort them.
+  const box = layoutBox(element);
   if (!element.hasAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR)) {
-    element.setAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR, String(element.offsetWidth));
+    element.setAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR, String(box.width));
   }
   if (!element.hasAttribute(STUDIO_ORIGINAL_BOX_HEIGHT_ATTR)) {
-    element.setAttribute(STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, String(element.offsetHeight));
+    element.setAttribute(STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, String(box.height));
   }
   if (!element.hasAttribute(STUDIO_BOX_SIZE_ATTR)) {
     element.setAttribute(STUDIO_ORIGINAL_WIDTH_ATTR, element.style.getPropertyValue("width"));
@@ -447,7 +457,7 @@ export function applyStudioBoxSizeDraft(
   size: { width: number; height: number },
 ): { width: number; height: number } {
   if (!boxSizeDraftBases.has(element)) {
-    boxSizeDraftBases.set(element, { width: element.offsetWidth, height: element.offsetHeight });
+    boxSizeDraftBases.set(element, layoutBox(element));
   }
   promoteInlineForTransform(element);
   return applyStudioBoxSizeDimensions(element, size);
