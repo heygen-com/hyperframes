@@ -6,7 +6,7 @@
  * Videos are replaced with <img> elements during capture.
  */
 
-import { usableCpuCount } from "./systemMemory.js";
+import { cpuBudget, usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, statSync } from "fs";
 import { basename, isAbsolute, join, normalize, relative, resolve, win32 } from "path";
@@ -1093,6 +1093,25 @@ function undoTickRoundingOnTheSourceFrameGrid(
 // Caps extraction ffmpeg runs across all clips; uncapped, dozens of clips starved each other into timeouts.
 const EXTRACTION_SLOTS = Math.max(1, Math.floor(usableCpuCount() / 2));
 const inExtractionSlot = createConcurrencyLimit(EXTRACTION_SLOTS);
+let extractionRunsPlanned = 0;
+async function whileExtractionRunsArePlanned<T>(runs: number, task: () => Promise<T>): Promise<T> {
+  extractionRunsPlanned += runs;
+  try {
+    return await task();
+  } finally {
+    extractionRunsPlanned -= runs;
+  }
+}
+function withThreadShareOfPlannedRuns(args: string[]): string[] {
+  const runsSharingTheCpus = Math.min(EXTRACTION_SLOTS, Math.max(1, extractionRunsPlanned));
+  if (runsSharingTheCpus === 1) return args;
+  const threads = String(Math.floor(cpuBudget() / runsSharingTheCpus) + 1);
+  return [
+    ...["-filter_threads", threads, "-threads", threads],
+    ...args.slice(0, -1),
+    ...["-threads", threads, args.at(-1)!],
+  ];
+}
 const TAIL_PROBE_SLOTS = Math.max(1, Number(process.env.HF_TAIL_PROBE_SLOTS) || 16);
 const inTailProbeSlot = createConcurrencyLimit(TAIL_PROBE_SLOTS);
 
@@ -1159,7 +1178,7 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
       const result = await gate(
         async () =>
           runFfmpeg(
-            [
+            withThreadShareOfPlannedRuns([
               ...decodeArgs,
               "-noaccurate_seek",
               "-ss",
@@ -1174,7 +1193,7 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
               "-start_number",
               String(firstFrame + 1),
               ...filterAndEncodeArgs(seek),
-            ],
+            ]),
             {
               ...job.runOptions,
               signal,
@@ -1193,7 +1212,9 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
     }
   };
   const workers = Math.min(segmentCount, EXTRACTION_SLOTS);
-  await Promise.all(Array.from({ length: workers }, worker)).catch((error) => {
+  await whileExtractionRunsArePlanned(Math.max(0, workers - 1), () =>
+    Promise.all(Array.from({ length: workers }, worker)),
+  ).catch((error) => {
     failed.abort();
     throw error;
   });
@@ -1219,7 +1240,7 @@ export async function extractVideoFramesRange(
   ...args: Parameters<typeof extractVideoFramesRangeUnredacted>
 ): Promise<ExtractedFrames> {
   try {
-    return await extractVideoFramesRangeUnredacted(...args);
+    return await whileExtractionRunsArePlanned(1, () => extractVideoFramesRangeUnredacted(...args));
   } catch (error) {
     throw redactUrlQueriesInError(error);
   }
@@ -1559,17 +1580,25 @@ async function extractVideoFramesRangeUnredacted(
         })
       : inExtractionSlot(
           async () =>
-            runFfmpeg([...hwaccel, ...args, ...filterArgsFor(startTime), ...encodeArgs], {
-              ...runOptions,
-              onStderr: framesWrittenReader(options.onProgress),
-              timeout: stallTimeoutMs(
-                ffmpegProcessTimeout,
-                options.finalFrameOnly
-                  ? startTime
-                  : await leadInSecondsUnlessAborted(videoPath, startTime, signal),
-                metadata.fps,
-              ),
-            }),
+            runFfmpeg(
+              withThreadShareOfPlannedRuns([
+                ...hwaccel,
+                ...args,
+                ...filterArgsFor(startTime),
+                ...encodeArgs,
+              ]),
+              {
+                ...runOptions,
+                onStderr: framesWrittenReader(options.onProgress),
+                timeout: stallTimeoutMs(
+                  ffmpegProcessTimeout,
+                  options.finalFrameOnly
+                    ? startTime
+                    : await leadInSecondsUnlessAborted(videoPath, startTime, signal),
+                  metadata.fps,
+                ),
+              },
+            ),
           signal,
         );
   options.onProgress?.({
