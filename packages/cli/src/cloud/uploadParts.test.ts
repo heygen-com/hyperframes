@@ -92,13 +92,15 @@ function cloud(
         ? {}
         : { multipart: { multipart_upload_id: "mp1", part_size_bytes: PART, part_count: 5 } }),
     })),
-    getAssetUploadPartUrls: vi.fn(async (args: { body: { part_numbers: number[] } }) => ({
-      expires_in_seconds: 60,
-      parts: args.body.part_numbers.map((n) => ({
-        part_number: n,
-        upload_url: `${base}/part/${n}`,
-      })),
-    })),
+    getAssetUploadPartUrls: vi.fn(
+      async (args: { body: { multipart_upload_id: string; part_numbers: number[] } }) => ({
+        expires_in_seconds: 60,
+        parts: args.body.part_numbers.map((n) => ({
+          part_number: n,
+          upload_url: `${base}/part/${n}`,
+        })),
+      }),
+    ),
     listAssetUploadParts: vi.fn(async () => ({
       parts: (over.held ?? []).map((p) => ({ ...p, etag: `"e${p.part_number}"` })),
     })),
@@ -217,6 +219,68 @@ describe("a big file goes up in parts", () => {
     const afterFailure = cloud();
     await upload(afterFailure.client);
     expect(afterFailure.mocks.createAssetUpload).not.toHaveBeenCalled();
+  }, 60_000);
+
+  // Two renders of projects sharing one video, started together: the second picked up the first's saved upload while
+  // it was live, and the first to complete closed it for the other.
+  it("two parallel sends of one file each finish on their own upload", async () => {
+    const open = new Set<string>();
+    let made = 0;
+    const closed = () =>
+      new HyperframesApiError({ status: 400, code: "invalid_parameter", message: "upload closed" });
+    const live = (id: string) => {
+      if (!open.has(id)) throw closed();
+    };
+    const shared = cloud();
+    shared.mocks.createAssetUpload.mockImplementation(async () => {
+      const id = `mp${++made}`;
+      open.add(id);
+      return {
+        asset_id: `a${made}`,
+        upload_url: `${base}/single`,
+        upload_headers: {},
+        expires_in_seconds: 60,
+        max_bytes: 1,
+        status: "pending_upload" as const,
+        multipart: { multipart_upload_id: id, part_size_bytes: PART, part_count: 5 },
+      };
+    });
+    shared.mocks.listAssetUploadParts.mockImplementation(async (args?: unknown) => {
+      live((args as { multipart_upload_id: string }).multipart_upload_id);
+      return { parts: [] };
+    });
+    const mint = shared.mocks.getAssetUploadPartUrls.getMockImplementation()!;
+    shared.mocks.getAssetUploadPartUrls.mockImplementation(async (args) => {
+      live(args.body.multipart_upload_id);
+      return mint(args);
+    });
+    shared.complete.mockImplementation(async (args: unknown) => {
+      const id = (args as { body: { multipart_upload_id: string } }).body.multipart_upload_id;
+      live(id);
+      open.delete(id);
+      return {
+        asset_id: "a",
+        url: "u",
+        mime_type: "video/mp4",
+        size_bytes: 1,
+        status: "processing" as const,
+      };
+    });
+    const file = bigFile(FILE_BYTES);
+    const send = () =>
+      uploadAssetViaDirectUpload({
+        client: shared.client,
+        ...file,
+        filename: "big.mp4",
+        contentType: "video/mp4",
+      });
+
+    const first = send();
+    await vi.waitFor(() => expect(puts.length).toBeGreaterThan(0), { timeout: 10_000 });
+    const second = send();
+
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(shared.mocks.createAssetUpload).toHaveBeenCalledTimes(2);
   }, 60_000);
 
   it("reports bytes from the parts done plus the live ones", async () => {

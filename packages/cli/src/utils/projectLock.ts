@@ -66,7 +66,7 @@ function createNew(path: string, holder: Holder): boolean {
   }
 }
 
-function tryAcquire(path: string, holder: Holder): boolean {
+export function tryAcquire(path: string, holder: Holder): boolean {
   if (createNew(path, holder)) return true;
   const current = readHolder(path);
   if (current && !alive(current.pid)) return breakStaleHolder(path, current, holder);

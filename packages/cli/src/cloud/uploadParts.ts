@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { hyperframesConfigDir } from "../utils/configDir.js";
+import { release, tryAcquire } from "../utils/projectLock.js";
 import type { HyperframesCloudClient } from "./_gen/client.js";
 import type { CompletedPart, MultipartUploadPlan } from "./_gen/types.js";
 import {
@@ -34,6 +35,18 @@ function readSaved(file: string): SavedUpload | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function claimSaved(file: string): (() => void) | undefined {
+  const lock = `${file}.lock`;
+  const holder = { pid: process.pid, command: "cloud upload", startedAt: Date.now() };
+  try {
+    mkdirSync(dirname(lock), { recursive: true, mode: 0o700 });
+    if (!tryAcquire(lock, holder)) return undefined;
+  } catch {
+    return undefined;
+  }
+  return () => release(lock, holder);
 }
 
 export function forgetSaved(file: string): void {
