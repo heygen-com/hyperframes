@@ -49,13 +49,7 @@ function runCreateReleaseTag(cwd, version) {
 test("stable publishing has one reviewed immutable event path", () => {
   // fails without the fix: a merged release PR's event ran as refs/pull/N/merge, a ref the publish environment refuses.
   assert.deepEqual(config.on, { push: { branches: ["main"], tags: ["v*-*"] } });
-  for (const name of [
-    "lambda-arm64-ffmpeg",
-    "lambda-handler-zip",
-    "lambda-video-image",
-    "pack",
-    "publish",
-  ]) {
+  for (const name of ["lambda-arm64-ffmpeg", "lambda-video-image", "pack", "publish"]) {
     const job = config.jobs[name];
     assert.ok(job.needs.includes("release-source"), `${name} needs release-source`);
     assert.equal(normalizeExpression(job.if), "needs.release-source.outputs.sha != ''", name);
@@ -517,13 +511,17 @@ test("the publish checkout keeps no token and only the tag push gets one for git
 });
 
 test("the Lambda handler zip is built apart from the release credentials", () => {
-  const build = config.jobs["lambda-handler-zip"];
-  assert.deepEqual(build.permissions, { contents: "read" });
-  assert.equal(build.environment, undefined);
-  assert.doesNotMatch(JSON.stringify(build), /secrets\./);
-  const buildCheckout = build.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
-  assert.equal(buildCheckout.with["persist-credentials"], false);
-  assert.ok(pack.needs.includes("lambda-handler-zip"));
+  // fails without the fix: a separate job built the whole repo a second time only to make the zip.
+  assert.equal(config.jobs["lambda-handler-zip"], undefined);
+  const zip = stepOf(pack, "Build Lambda handler zip");
+  assert.match(zip.run, /build:zip/);
+  for (const job of [pack, config.jobs["lambda-video-image"]]) {
+    assert.deepEqual(job.permissions, { contents: "read" });
+    assert.equal(job.environment, undefined);
+    assert.doesNotMatch(JSON.stringify(job), /secrets\./);
+    const jobCheckout = job.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+    assert.equal(jobCheckout.with["persist-credentials"], false);
+  }
 });
 
 test("the Lambda handler zip is pinned before packing and attached before npm publish", () => {
@@ -533,6 +531,13 @@ test("the Lambda handler zip is pinned before packing and attached before npm pu
     return at;
   };
   assert.ok(indexIn(pack, "Pin Lambda handler zip") < indexIn(pack, "Pack packages"));
+  // The video image builds from the zip while the manifests are checked, with stand-in pins as in CI.
+  const verify = pack.steps.findIndex((step) => step.run === "bun run verify:packed-manifests");
+  const zipUpload = pack.steps.findIndex(
+    (step) => step.with?.name === "hyperframes-lambda-handler-zip",
+  );
+  assert.ok(indexIn(pack, "Build Lambda handler zip") < zipUpload && zipUpload < verify);
+  assert.ok(verify < indexIn(pack, "Pin Lambda handler zip"));
   assert.ok(
     indexIn(publish, "Create GitHub Release") < indexIn(publish, "Attach Lambda assets to release"),
   );
@@ -577,17 +582,27 @@ test("pack always builds its own bundle, and publish takes only that bundle", ()
         "pack downloads a release-bundle it did not build",
       );
   }
-  const upload = pack.steps.find((step) => step.id === "bundle");
-  assert.equal(upload.with.name, "release-bundle");
-  // A release-bundle that another job uploaded first makes this upload fail, so the release stops.
-  assert.equal(upload.with.overwrite, false);
-  assert.equal(upload.if, undefined);
+  const image = config.jobs["lambda-video-image"];
+  assert.equal(image.outputs.bundle_id, "${{ steps.bundle.outputs.artifact-id }}");
+  for (const [job, name] of [
+    [pack, "release-bundle"],
+    [image, "release-bundle-lambda"],
+  ]) {
+    const upload = job.steps.find((step) => step.id === "bundle");
+    assert.equal(upload.with.name, name);
+    // A bundle that another job uploaded first makes this upload fail, so the release stops.
+    assert.equal(upload.with.overwrite, false);
+    assert.equal(upload.if, undefined);
+  }
   const download = publish.steps.find(
     (step) =>
       step.uses?.startsWith("actions/download-artifact@") &&
       /release-bundle/.test(step.with?.path ?? ""),
   );
-  assert.equal(download.with["artifact-ids"], "${{ needs.pack.outputs.bundle_id }}");
+  assert.equal(
+    download.with["artifact-ids"],
+    "${{ needs.pack.outputs.bundle_id }},${{ needs.lambda-video-image.outputs.bundle_id }}",
+  );
   assert.equal(download.with.name, undefined);
 });
 
@@ -596,7 +611,12 @@ test("packing pins only the freshly built zip and never downloads release assets
   assert.match(step.run, /ACTUAL_SHA256.*sha256sum/);
   assert.match(step.run, /ACTUAL_SHA256.*!=.*EXPECTED_SHA256/);
   assert.doesNotMatch(workflow, /gh release download/);
-  assert.equal(step.env.EXPECTED_SHA256, "${{ needs.lambda-handler-zip.outputs.sha256 }}");
+  assert.equal(step.env.EXPECTED_SHA256, "${{ steps.zip.outputs.sha256 }}");
+  // fails without the fix: pack waited for both Lambda jobs and downloaded what they built.
+  assert.deepEqual(
+    pack.steps.filter((s) => s.uses?.startsWith("actions/download-artifact@")),
+    [],
+  );
 });
 
 const stepOf = (job, name) => {
@@ -651,7 +671,7 @@ test("release-commit code runs only in a job without secrets", () => {
       assert.equal(name, "GH_TOKEN");
     }
   }
-  assert.deepEqual(publish.needs, ["release-source", "pack"]);
+  assert.deepEqual(publish.needs, ["release-source", "pack", "lambda-video-image"]);
 });
 
 test("npm publishes with the job's OIDC token only: no stored npm token is named", () => {
@@ -1036,16 +1056,73 @@ test("the Lambda video image builds on ARM, and pack ships only the digest that 
   assert.deepEqual(image.permissions, { contents: "read" });
   const build = stepOf(image, "Build Lambda video image");
   assert.match(build.run, /--platform linux\/arm64 --target video/);
-  assert.equal(build.env.EXPECTED_ZIP_SHA256, "${{ needs.lambda-handler-zip.outputs.sha256 }}");
+  assert.equal(build.env.EXPECTED_ZIP_SHA256, "${{ needs.pack.outputs.zip_sha256 }}");
   assert.equal(image.outputs.sha256, "${{ steps.image.outputs.sha256 }}");
 
   assert.ok(
     !pack.steps.some((step) => /docker buildx build/.test(step.run ?? "")),
     "pack builds no image",
   );
-  const pin = stepOf(pack, "Pin Lambda video image");
-  assert.equal(pin.env.EXPECTED_SHA256, "${{ needs.lambda-video-image.outputs.sha256 }}");
+  const pin = stepOf(image, "Pin Lambda video image");
+  assert.equal(pin.env.EXPECTED_SHA256, "${{ steps.image.outputs.sha256 }}");
   assert.match(pin.run, /pin-handler-zip\.ts --video-image$/m);
+});
+
+test("the aws-lambda pack that ships is pack's, file for file, plus the image pin", () => {
+  const step = stepOf(config.jobs["lambda-video-image"], "Pack aws-lambda");
+  const tarball = (path, files) => {
+    const staging = mkdtempSync(join(tmpdir(), "hyperframes-lambda-pack-fixture-"));
+    try {
+      for (const [file, body] of Object.entries(files)) {
+        mkdirSync(join(staging, "package", file, ".."), { recursive: true });
+        writeFileSync(join(staging, "package", file), body);
+      }
+      execFileSync("tar", ["-czf", path, "-C", staging, "package"], { stdio: "pipe" });
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+  };
+  const packed = {
+    "package.json": "{}",
+    "dist/index.js": "export {}",
+    "prebuilt/handler-zip.json": "{}",
+  };
+  const run = (shipped) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-lambda-pack-"));
+    try {
+      const bin = join(temp, "bin");
+      mkdirSync(join(temp, "rt", "aws-lambda-pack"), { recursive: true });
+      mkdirSync(join(temp, "dist"));
+      mkdirSync(bin);
+      for (const name of ["oci.tar", "sha256"])
+        writeFileSync(join(temp, "dist", `hyperframes-lambda-video-arm64.${name}`), "");
+      tarball(join(temp, "rt", "aws-lambda-pack", "hyperframes-aws-lambda-1.2.3.tgz"), packed);
+      tarball(join(temp, "shipped.tgz"), shipped);
+      // The fake pnpm writes the prepared tarball where --pack-destination points.
+      writeFileSync(
+        join(bin, "pnpm"),
+        `#!/bin/sh\nwhile [ "$1" != --pack-destination ]; do shift; done\ncp "${join(temp, "shipped.tgz")}" "$2/hyperframes-aws-lambda-1.2.3.tgz"\n`,
+      );
+      chmodSync(join(bin, "pnpm"), 0o755);
+      return runStep(step, {
+        cwd: temp,
+        path: `${bin}:${process.env.PATH}`,
+        env: { RUNNER_TEMP: join(temp, "rt") },
+      });
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+  const pin = { "prebuilt/video-image.json": "{}" };
+  const ok = run({ ...packed, ...pin });
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  const extra = run({ ...packed, ...pin, "dist/extra.js": "" });
+  assert.equal(extra.status, 1);
+  assert.match(extra.stdout, /other files than pack's/);
+  assert.equal(run(packed).status, 1, "a pack without the image pin");
+  const changed = run({ ...packed, ...pin, "dist/index.js": "export const changed = 1" });
+  assert.equal(changed.status, 1);
+  assert.match(changed.stdout, /dist\/index\.js in the aws-lambda pack differs from pack's/);
 });
 
 test("the release installs no tool restored from the shared cache", () => {
@@ -1202,17 +1279,13 @@ test("both tarball checks pass before the release tag or anything else is writte
 test("a tag publishes only a commit already on main, next or alpha, before any job builds it", () => {
   const source = config.jobs["release-source"];
   assert.ok(source, "missing the release-source job");
-  for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip"]) {
+  // fails without the fix: pack waited on both Lambda jobs, about 7 minutes, before it built anything.
+  for (const name of ["lambda-arm64-ffmpeg", "pack"]) {
     assert.deepEqual(config.jobs[name].needs, ["release-source"], name);
   }
   assert.deepEqual([...config.jobs["lambda-video-image"].needs].sort(), [
     "lambda-arm64-ffmpeg",
-    "lambda-handler-zip",
-    "release-source",
-  ]);
-  assert.deepEqual([...pack.needs].sort(), [
-    "lambda-handler-zip",
-    "lambda-video-image",
+    "pack",
     "release-source",
   ]);
   const step = stepOf(source, "Check the tagged commit is on main, next or alpha");
