@@ -260,7 +260,7 @@ function holdShownFrame(el: HTMLMediaElement): void {
   if (!isVideoElement(el) || heldPosters.has(el)) return;
   const still = stillOf(el);
   if (!still) return;
-  heldPosters.set(el, { poster: el.getAttribute("poster"), since: performance.now() });
+  heldPosters.set(el, { poster: pagePoster(el), since: performance.now() });
   el.setAttribute("poster", still);
   const letGo = () => {
     for (const type of RELEASE_EVENTS) el.removeEventListener(type, release);
@@ -409,9 +409,9 @@ export function isRenderMode(el: HTMLMediaElement): boolean {
 }
 
 const stills = new WeakSet<HTMLMediaElement>();
-// A sealed frame's still: the hold it was fetched for, and the object URL it is shown from.
+// The poster each still put up (its URL, or a sealed frame's object URL), and the hold a sealed fetch belongs to.
+const stillPosters = new WeakMap<HTMLMediaElement, string>();
 const stillHolds = new WeakMap<HTMLMediaElement, object>();
-const stillObjectUrls = new WeakMap<HTMLMediaElement, string>();
 
 /** While a file the browser cannot play is being copied, its own frame at the playhead stands in as the poster. */
 function showStill(
@@ -426,29 +426,38 @@ function showStill(
   const url = new URL(appendProxyParam(originalSrc, variant, box, light), document.baseURI);
   url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(1));
   stills.add(el);
-  if (window.origin !== "null") return el.setAttribute("poster", url.href);
+  if (window.origin !== "null") return putUpStill(el, url.href);
   // A sealed frame's poster load can wait behind its other loads; its fetch goes out at once.
   const hold = {};
   stillHolds.set(el, hold);
   void fetch(url.href)
     .then((res) => (res.ok ? res.blob() : null))
     .then((blob) => {
-      if (!blob || stillHolds.get(el) !== hold) return;
-      const objectUrl = URL.createObjectURL(blob);
-      stillObjectUrls.set(el, objectUrl);
-      el.setAttribute("poster", objectUrl);
+      if (blob && stillHolds.get(el) === hold && !el.hasAttribute("poster"))
+        putUpStill(el, URL.createObjectURL(blob));
     })
     .catch((err) => swallow("runtime.mediaProxy.still", err));
+}
+
+function putUpStill(el: HTMLMediaElement, poster: string): void {
+  stillPosters.set(el, poster);
+  el.setAttribute("poster", poster);
+}
+
+/** The poster as the page set it: none while the runtime's own still is up. */
+function pagePoster(el: HTMLMediaElement): string | null {
+  const poster = el.getAttribute("poster");
+  return poster !== null && poster === stillPosters.get(el) ? null : poster;
 }
 
 function dropStill(el: HTMLMediaElement): void {
   if (!stills.delete(el)) return;
   stillHolds.delete(el);
-  el.removeAttribute("poster");
-  const objectUrl = stillObjectUrls.get(el);
-  if (objectUrl === undefined) return;
-  stillObjectUrls.delete(el);
-  URL.revokeObjectURL(objectUrl);
+  const poster = stillPosters.get(el);
+  stillPosters.delete(el);
+  if (poster === undefined) return;
+  if (el.getAttribute("poster") === poster) el.removeAttribute("poster");
+  if (poster.startsWith("blob:")) URL.revokeObjectURL(poster);
 }
 
 function appendProxyParam(

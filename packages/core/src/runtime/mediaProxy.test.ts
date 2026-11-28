@@ -721,6 +721,89 @@ describe("waiting for the proxy copy", () => {
     expect(active.hasAttribute("poster")).toBe(false);
   });
 
+  describe("the still a copy waits behind", () => {
+    const atPlayhead = (el: HTMLVideoElement) =>
+      syncRuntimeMedia({
+        clips: [
+          {
+            el,
+            start: 0,
+            mediaStart: 4,
+            duration: 10,
+            end: 10,
+            volume: null,
+            playbackRate: 1,
+            loop: false,
+            sourceDuration: null,
+          },
+        ],
+        timeSeconds: 1,
+        playing: false,
+        playbackRate: 1,
+      });
+    /** The still answers at once; the copy is made after the first ask and served from then on. */
+    const routeServedLater = () => {
+      let served = false;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          if (new URL(String(input), document.baseURI).searchParams.has("hf-proxy-still"))
+            return new Response("jpeg");
+          if (served) return new Response("x", { status: 206 });
+          served = true;
+          return new Response(null, { status: 202, headers: { "Retry-After": "2" } });
+        }),
+      );
+    };
+
+    for (const origin of ["null", "http://localhost:3000"]) {
+      // fails without the fix: the copy swap kept the runtime's still as the page's own poster and put it back after
+      // the still was dropped, so the clip kept a stale still (open) or a revoked object URL (sealed) as its poster.
+      it(`never puts its still back once dropped, when the copy draws only after seeking (origin ${origin})`, async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("origin", origin);
+        vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:still");
+        const revoked = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+        routeServedLater();
+        const el = createVideo("/active.mp4");
+        showingFrame(el);
+        atPlayhead(el);
+
+        swapToProxy(el, HEVC_ENTRY, "proactive");
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.getAttribute("poster")).toMatch(
+          origin === "null" ? /^blob:still$/ : /hf-proxy-still=5\.0/,
+        );
+        await vi.advanceTimersByTimeAsync(10_000);
+        Object.defineProperty(el, "seeking", { configurable: true, value: true });
+        el.dispatchEvent(new Event("loadeddata"));
+        await vi.advanceTimersByTimeAsync(0);
+        Object.defineProperty(el, "seeking", { configurable: true, value: false });
+        el.dispatchEvent(new Event("seeked"));
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(el.hasAttribute("poster")).toBe(false);
+        if (origin === "null") expect(revoked).toHaveBeenCalledWith("blob:still");
+      });
+    }
+
+    // fails without the fix: the copy landing removed whatever poster the clip had, the page's own included.
+    it("keeps a poster the page sets while the copy is made", async () => {
+      vi.useFakeTimers();
+      routeServedLater();
+      const el = createVideo("/active.mp4");
+      atPlayhead(el);
+
+      swapToProxy(el, HEVC_ENTRY, "proactive");
+      await vi.advanceTimersByTimeAsync(0);
+      el.setAttribute("poster", "/cover.jpg");
+      await vi.advanceTimersByTimeAsync(10_000);
+      el.dispatchEvent(new Event("loadeddata"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(el.getAttribute("poster")).toBe("/cover.jpg");
+    });
+  });
+
   describe("in a sealed frame", () => {
     const atPlayhead = (el: HTMLVideoElement) =>
       syncRuntimeMedia({
@@ -778,6 +861,32 @@ describe("waiting for the proxy copy", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(el.hasAttribute("poster")).toBe(false);
       expect(revoked).toHaveBeenCalledWith("blob:still");
+    });
+
+    // fails without the fix: the answer replaced a poster the page set while the still was being fetched, and the
+    // copy landing then removed the page's poster.
+    it("keeps a poster the page sets while the still is fetched", async () => {
+      vi.useFakeTimers();
+      vi.stubGlobal("origin", "null");
+      const created = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:late");
+      let answerStill: (res: Response) => void = () => {};
+      const route = routeWithStill(new Promise((answer) => (answerStill = answer)));
+      const el = createVideo("/active.mp4");
+      atPlayhead(el);
+
+      swapToProxy(el, HEVC_ENTRY, "proactive");
+      await vi.advanceTimersByTimeAsync(0);
+      el.setAttribute("poster", "/cover.jpg");
+      answerStill(new Response("jpeg"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(created).not.toHaveBeenCalled();
+      expect(el.getAttribute("poster")).toBe("/cover.jpg");
+
+      route.mockImplementation(async () => new Response("x", { status: 206 }));
+      await vi.advanceTimersByTimeAsync(10_000);
+      el.dispatchEvent(new Event("loadeddata"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(el.getAttribute("poster")).toBe("/cover.jpg");
     });
 
     it("never shows a still that answers after its copy has landed", async () => {
