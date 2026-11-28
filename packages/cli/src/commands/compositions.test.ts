@@ -33,6 +33,15 @@ describe("parseCompositions", () => {
     },
   );
 
+  it.each(["wide", "0", "-1", "Infinity"])(
+    "falls back to the default size when data-width is %s",
+    (value) => {
+      const html = `<div data-composition-id="host" data-width="${value}" data-height="${value}"></div>`;
+
+      expect(parseCompositions(html, ".")[0]).toMatchObject({ width: 1920, height: 1080 });
+    },
+  );
+
   it("resolves relative sub-composition starts when computing host duration", () => {
     const baseDir = mkdtempSync(join(tmpdir(), "hyperframes-compositions-"));
 
@@ -90,6 +99,18 @@ describe("parseSubComposition", () => {
       </div></template>`;
 
       expect(parseSubComposition(html, "fallback", 1920, 1080).duration).toBe(3);
+    },
+  );
+
+  it.each(["wide", "0", "-1", "Infinity"])(
+    "falls back to the parent size when sub-composition data-width is %s",
+    (value) => {
+      const html = `<template><div data-composition-id="scene" data-width="${value}" data-height="${value}"></div></template>`;
+
+      expect(parseSubComposition(html, "fallback", 1280, 720)).toMatchObject({
+        width: 1280,
+        height: 720,
+      });
     },
   );
 
