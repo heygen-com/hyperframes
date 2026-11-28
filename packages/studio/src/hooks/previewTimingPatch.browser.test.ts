@@ -141,10 +141,14 @@ async function deleteClip(mode: string) {
     const inFrame = () =>
       preview.frame.evaluate(() => ["root", "a", "b"].filter((id) => document.getElementById(id)));
     await expect.poll(inFrame).toEqual(["root", "a"]);
-    const lastPosted = () =>
-      preview.page.evaluate(() => (window as unknown as { posted: string[][] }).posted.at(-1));
-    await expect.poll(lastPosted).toEqual(expect.arrayContaining(["a"]));
-    expect(await lastPosted()).not.toContain("b");
+    // A list the frame posted before the removal landed still names b; wait for one that doesn't.
+    const posted = () =>
+      preview.page.evaluate(() => (window as unknown as { posted: string[][] }).posted);
+    const firstWithoutB = async () =>
+      (await posted()).findIndex((ids) => ids.includes("a") && !ids.includes("b"));
+    await expect.poll(firstWithoutB).toBeGreaterThanOrEqual(0);
+    const after = (await posted()).slice(await firstWithoutB());
+    expect(after.filter((ids) => ids.includes("b"))).toEqual([]);
   } finally {
     await preview.page.close();
   }
