@@ -244,7 +244,6 @@ export {
 export const EDITING_PROTOCOL_VERSION = 2 as const;
 /** Parent to frame, on the window: carries the runtime's port in its transfer list. */
 export const EDITING_CONNECT = "editing-connect";
-/** Posted by a runtime page as it starts and as it goes, with the same `page` id. */
 export const PAGE_SHOWN = "page-shown";
 export const PAGE_LEFT = "page-left";
 
@@ -962,7 +961,6 @@ export function createEditingPortClient(options: {
   iframe: HTMLIFrameElement;
   timeoutMs?: number;
   host?: Window;
-  /** Connects only once this resolves true; false disposes the client. */
   gate?: Promise<boolean>;
 }): EditingPortClient {
   const { iframe, timeoutMs = EDITING_REQUEST_TIMEOUT_MS, host = window, gate } = options;

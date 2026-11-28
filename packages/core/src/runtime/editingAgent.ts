@@ -423,8 +423,6 @@ const waiting = portMap<true>();
 let takeAtLoad: (port: MessagePort) => void = (port) => waiting.set(port, true);
 let stopAtLoad: (() => void) | null = null;
 
-/** Tells the parent this page started and that it is going: as a navigation starts (Chrome runs pagehide only
- * after the next page commits), or when document.open replaces it. */
 export function announcePageLife(parent = parentAtLoad): () => void {
   if (!parent || parent === window) return () => {};
   const page = crypto.randomUUID?.() ?? String(performance.timeOrigin + Math.random());
