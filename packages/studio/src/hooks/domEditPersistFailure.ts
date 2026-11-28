@@ -1,5 +1,9 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
-import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
+import {
+  StudioSaveHttpError,
+  studioSaveErrorKey,
+  type StudioSaveErrorKey,
+} from "../utils/studioSaveDiagnostics";
 import type { PatchOperation } from "../utils/sourcePatcher";
 
 export class DomEditPersistUnresolvableError extends Error {
@@ -68,7 +72,7 @@ export function reportDomEditPersistFailure(
   selection: DomEditPersistFailureSelection,
   operations: PatchOperation[],
   error: unknown,
-  showToast: (message: string, tone?: "error" | "info") => void,
+  showToast: (message: string, tone?: "error" | "info", cause?: StudioSaveErrorKey) => void,
 ): void {
   const detail = getErrorDetail(error);
   console.warn("[Studio] DOM edit persist failed", {
@@ -79,7 +83,11 @@ export function reportDomEditPersistFailure(
 
   if (wasAlreadyToasted(error)) return;
 
-  showToast(`Couldn't save "${getSelectionLabel(selection)}": ${detail}`, "error");
+  showToast(
+    `Couldn't save "${getSelectionLabel(selection)}": ${detail}`,
+    "error",
+    studioSaveErrorKey(error),
+  );
 }
 
 export function warnDomEditPersistNoOp(

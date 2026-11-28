@@ -196,22 +196,28 @@ export function buildStudioSaveFailureProperties(
 }
 
 const isNamed = (name: string) => (error: unknown) => error instanceof Error && error.name === name;
-const ERROR_KEYS: ReadonlyArray<readonly [string, (error: unknown) => boolean]> = [
-  ["conflict", (error) => findCause(error, StudioFileConflictError) !== null],
-  ["held", (error) => findCause(error, StudioSaveHttpError)?.heldFile === true],
-  ["http", (error) => findCause(error, StudioSaveHttpError) !== null],
-  ["network", (error) => findCause(error, StudioSaveNetworkError) !== null],
+const ERROR_KEYS = [
+  ["conflict", (error: unknown) => findCause(error, StudioFileConflictError) !== null],
+  ["held", (error: unknown) => findCause(error, StudioSaveHttpError)?.heldFile === true],
+  ["http", (error: unknown) => findCause(error, StudioSaveHttpError) !== null],
+  ["network", (error: unknown) => findCause(error, StudioSaveNetworkError) !== null],
   ["aborted", isNamed("AbortError")],
   ["blocked", isNamed("GsapEditBlockedError")],
-];
+  ["unresolvable", isNamed("DomEditPersistUnresolvableError")],
+  ["unsafe-value", isNamed("DomEditPersistUnsafeValueError")],
+] as const;
+
+export type StudioSaveErrorKey = (typeof ERROR_KEYS)[number][0] | "unknown";
+
+export const studioSaveErrorKey = (error: unknown): StudioSaveErrorKey =>
+  ERROR_KEYS.find(([, matches]) => matches(error))?.[0] ?? "unknown";
 
 export function studioSaveErrorCodes(error: unknown): Record<string, StudioTelemetryValue> {
   const failure = error instanceof Error ? error : null;
   const http = findCause(error, StudioSaveHttpError);
-  const errorKey = ERROR_KEYS.find(([, matches]) => matches(error))?.[0] ?? "unknown";
   return {
     error_class: failure?.name ?? typeof error,
-    error_key: errorKey,
+    error_key: studioSaveErrorKey(error),
     server_why: http ? (http.why ?? "other") : undefined,
     block_reason: blockReason(error),
   };
