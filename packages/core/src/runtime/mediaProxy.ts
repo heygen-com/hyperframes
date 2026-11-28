@@ -409,7 +409,7 @@ export function isRenderMode(el: HTMLMediaElement): boolean {
 }
 
 const stills = new WeakSet<HTMLMediaElement>();
-// The poster each still put up (its URL, or a sealed frame's object URL), and the hold a sealed fetch belongs to.
+// The poster each still put up (its URL, or a sealed frame's data URL), and the hold a sealed fetch belongs to.
 const stillPosters = new WeakMap<HTMLMediaElement, string>();
 const stillHolds = new WeakMap<HTMLMediaElement, object>();
 
@@ -431,12 +431,19 @@ function showStill(
   const hold = {};
   stillHolds.set(el, hold);
   void fetch(url.href)
-    .then((res) => (res.ok ? res.blob() : null))
-    .then((blob) => {
-      if (blob && stillHolds.get(el) === hold && !el.hasAttribute("poster"))
-        putUpStill(el, URL.createObjectURL(blob));
+    .then((res) => (res.ok ? dataUrlOf(res) : null))
+    .then((still) => {
+      if (still && stillHolds.get(el) === hold && !el.hasAttribute("poster")) putUpStill(el, still);
     })
     .catch((err) => swallow("runtime.mediaProxy.still", err));
+}
+
+// A data URL, like the held frame's own still: nothing to release on any way the clip goes.
+async function dataUrlOf(res: Response): Promise<string> {
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `data:${res.headers.get("content-type") ?? "image/jpeg"};base64,${btoa(binary)}`;
 }
 
 function putUpStill(el: HTMLMediaElement, poster: string): void {
@@ -457,7 +464,6 @@ function dropStill(el: HTMLMediaElement): void {
   stillPosters.delete(el);
   if (poster === undefined) return;
   if (el.getAttribute("poster") === poster) el.removeAttribute("poster");
-  if (poster.startsWith("blob:")) URL.revokeObjectURL(poster);
 }
 
 function appendProxyParam(

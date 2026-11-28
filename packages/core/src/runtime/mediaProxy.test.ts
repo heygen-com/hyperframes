@@ -82,6 +82,9 @@ function isProxied(el: HTMLMediaElement): boolean {
 const settle = () => new Promise((resolveSettle) => setTimeout(resolveSettle, 0));
 
 const STILL = "data:image/jpeg;base64,c3RpbGw=";
+/** The server's answer for a still, and the poster a sealed frame shows from it. */
+const jpegStill = () => new Response("jpeg", { headers: { "Content-Type": "image/jpeg" } });
+const JPEG_STILL = "data:image/jpeg;base64,anBlZw==";
 /** The element shows a frame, and a 2D canvas can draw it (jsdom has none). */
 function showingFrame(el: HTMLVideoElement) {
   Object.defineProperty(el, "readyState", { configurable: true, value: 4 });
@@ -748,7 +751,7 @@ describe("waiting for the proxy copy", () => {
         "fetch",
         vi.fn(async (input: RequestInfo | URL) => {
           if (new URL(String(input), document.baseURI).searchParams.has("hf-proxy-still"))
-            return new Response("jpeg");
+            return jpegStill();
           if (served) return new Response("x", { status: 206 });
           served = true;
           return new Response(null, { status: 202, headers: { "Retry-After": "2" } });
@@ -758,12 +761,10 @@ describe("waiting for the proxy copy", () => {
 
     for (const origin of ["null", "http://localhost:3000"]) {
       // fails without the fix: the copy swap kept the runtime's still as the page's own poster and put it back after
-      // the still was dropped, so the clip kept a stale still (open) or a revoked object URL (sealed) as its poster.
+      // the still was dropped, so the clip kept a stale still (open) or its fetched still (sealed) as its poster.
       it(`never puts its still back once dropped, when the copy draws only after seeking (origin ${origin})`, async () => {
         vi.useFakeTimers();
         vi.stubGlobal("origin", origin);
-        vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:still");
-        const revoked = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
         routeServedLater();
         const el = createVideo("/active.mp4");
         showingFrame(el);
@@ -772,7 +773,7 @@ describe("waiting for the proxy copy", () => {
         swapToProxy(el, HEVC_ENTRY, "proactive");
         await vi.advanceTimersByTimeAsync(0);
         expect(el.getAttribute("poster")).toMatch(
-          origin === "null" ? /^blob:still$/ : /hf-proxy-still=5\.0/,
+          origin === "null" ? /^data:image\/jpeg;base64,/ : /hf-proxy-still=5\.0/,
         );
         await vi.advanceTimersByTimeAsync(10_000);
         Object.defineProperty(el, "seeking", { configurable: true, value: true });
@@ -783,7 +784,6 @@ describe("waiting for the proxy copy", () => {
         await vi.advanceTimersByTimeAsync(0);
 
         expect(el.hasAttribute("poster")).toBe(false);
-        if (origin === "null") expect(revoked).toHaveBeenCalledWith("blob:still");
       });
     }
 
@@ -844,23 +844,20 @@ describe("waiting for the proxy copy", () => {
     it("fetches the still and shows it from the answer, then drops it with the copy", async () => {
       vi.useFakeTimers();
       vi.stubGlobal("origin", "null");
-      vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:still");
-      const revoked = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-      const route = routeWithStill(Promise.resolve(new Response("jpeg")));
+      const route = routeWithStill(Promise.resolve(jpegStill()));
       const el = createVideo("/active.mp4");
       atPlayhead(el);
 
       swapToProxy(el, HEVC_ENTRY, "proactive");
       await vi.advanceTimersByTimeAsync(0);
       expect(stillAsked(route)?.searchParams.get("hf-proxy-still")).toBe("5.0");
-      expect(el.getAttribute("poster")).toBe("blob:still");
+      expect(el.getAttribute("poster")).toBe(JPEG_STILL);
 
       route.mockImplementation(async () => new Response("x", { status: 206 }));
       await vi.advanceTimersByTimeAsync(10_000);
       el.dispatchEvent(new Event("loadeddata"));
       await vi.advanceTimersByTimeAsync(0);
       expect(el.hasAttribute("poster")).toBe(false);
-      expect(revoked).toHaveBeenCalledWith("blob:still");
     });
 
     // fails without the fix: the answer replaced a poster the page set while the still was being fetched, and the
@@ -868,7 +865,6 @@ describe("waiting for the proxy copy", () => {
     it("keeps a poster the page sets while the still is fetched", async () => {
       vi.useFakeTimers();
       vi.stubGlobal("origin", "null");
-      const created = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:late");
       let answerStill: (res: Response) => void = () => {};
       const route = routeWithStill(new Promise((answer) => (answerStill = answer)));
       const el = createVideo("/active.mp4");
@@ -877,9 +873,8 @@ describe("waiting for the proxy copy", () => {
       swapToProxy(el, HEVC_ENTRY, "proactive");
       await vi.advanceTimersByTimeAsync(0);
       el.setAttribute("poster", "/cover.jpg");
-      answerStill(new Response("jpeg"));
+      answerStill(jpegStill());
       await vi.advanceTimersByTimeAsync(0);
-      expect(created).not.toHaveBeenCalled();
       expect(el.getAttribute("poster")).toBe("/cover.jpg");
 
       route.mockImplementation(async () => new Response("x", { status: 206 }));
@@ -892,7 +887,6 @@ describe("waiting for the proxy copy", () => {
     it("never shows a still that answers after its copy has landed", async () => {
       vi.useFakeTimers();
       vi.stubGlobal("origin", "null");
-      const created = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:late");
       let answerStill: (res: Response) => void = () => {};
       const route = routeWithStill(new Promise((answer) => (answerStill = answer)));
       const el = createVideo("/active.mp4");
@@ -905,9 +899,8 @@ describe("waiting for the proxy copy", () => {
       el.dispatchEvent(new Event("loadeddata"));
       await vi.advanceTimersByTimeAsync(0);
 
-      answerStill(new Response("jpeg"));
+      answerStill(jpegStill());
       await vi.advanceTimersByTimeAsync(0);
-      expect(created).not.toHaveBeenCalled();
       expect(el.hasAttribute("poster")).toBe(false);
     });
   });
@@ -1517,6 +1510,106 @@ describe("preview quality: lighter copies of heavy files", () => {
       return { ...staged, el, proxySrc, preload, asks: () => copyAsks };
     }
     const making = () => new Response(null, { status: 202, headers: { "Retry-After": "2" } });
+
+    for (const origin of ["null", "http://localhost:3000"]) {
+      // A held clip whose newer copy started with no src gets its file back, not an empty src, so its file's first
+      // frame drops the still.
+      it(`drops its still once its file draws again, after a copy that started with no src (origin ${origin})`, async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("origin", origin);
+        let made = false;
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async (url: string) => {
+            if (String(url).includes("hf-proxy-still")) return jpegStill();
+            if (!String(url).includes("hf-proxy")) return new Response("x", { status: 206 });
+            return made ? new Response("x", { status: 206 }) : making();
+          }),
+        );
+        // Heavy below Full, not oversized at Full: Full puts the original back.
+        const staged = await stage({ "/video.mp4": MID });
+        const el = staged.video();
+        const media = await import("./media");
+        media.syncRuntimeMedia({
+          getCompositionDuration: () => 0,
+          clips: [
+            {
+              el,
+              start: 0,
+              mediaStart: 4,
+              duration: 10,
+              end: 10,
+              volume: null,
+              playbackRate: 1,
+              loop: false,
+              sourceDuration: null,
+            },
+          ],
+          timeSeconds: 1,
+          playing: false,
+          playbackRate: 1,
+        });
+        staged.setPreviewQuality(0.5);
+        await vi.advanceTimersByTimeAsync(0);
+        // The level drops again while the clip is held: the new copy's job starts with no src on the clip.
+        staged.setPreviewQuality(0.25);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.hasAttribute("src")).toBe(false);
+        expect(el.hasAttribute("poster")).toBe(true);
+
+        made = true;
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(params(el).get("hf-proxy-light")).toBe("1");
+        staged.setPreviewQuality(1);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.getAttribute("src")).toBe("/video.mp4");
+        el.dispatchEvent(new Event("loadeddata"));
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(el.hasAttribute("poster")).toBe(false);
+      });
+
+      it(`drops its still when the clip leaves the page while its copy is made (origin ${origin})`, async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("origin", origin);
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async (url: string) =>
+            String(url).includes("hf-proxy-still") ? jpegStill() : making(),
+          ),
+        );
+        const staged = await stage({ "/video.mp4": HEAVY });
+        const el = staged.video();
+        const media = await import("./media");
+        media.syncRuntimeMedia({
+          getCompositionDuration: () => 0,
+          clips: [
+            {
+              el,
+              start: 0,
+              mediaStart: 4,
+              duration: 10,
+              end: 10,
+              volume: null,
+              playbackRate: 1,
+              loop: false,
+              sourceDuration: null,
+            },
+          ],
+          timeSeconds: 1,
+          playing: false,
+          playbackRate: 1,
+        });
+        staged.maybeProxyProactively(el);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(el.hasAttribute("poster")).toBe(true);
+
+        el.remove();
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(el.hasAttribute("poster")).toBe(false);
+      });
+    }
 
     it("never loads the file while its copy is made, and plays a copy at the shown box", async () => {
       let made = false;
