@@ -95,6 +95,9 @@ function hasOwnIdentity({ id, selector }: Fields): boolean {
   );
 }
 
+const withFitLayout = (value: Fields) =>
+  value.layout === undefined || isLayout(value.layout) ? value : { ...value, layout: undefined };
+
 /** Frame data checked against `EditingElementDescription`; null when any field is off. */
 export function readPreviewElement(value: unknown): PreviewElement | null {
   if (!readHit(value) || !isFields(value)) return null;
@@ -104,7 +107,7 @@ export function readPreviewElement(value: unknown): PreviewElement | null {
   if (!isSource(value.source) || typeof value.locked !== "boolean") return null;
   if (!isStyles(value.inlineStyles) || !isLongText(value.text)) return null;
   if (value.textMarkup !== undefined && typeof value.textMarkup !== "boolean") return null;
-  return hasPlainFields(value) ? (value as unknown as PreviewElement) : null;
+  return hasPlainFields(value) ? (withFitLayout(value) as unknown as PreviewElement) : null;
 }
 
 /** The elements under a frame viewport point, topmost first; null when the runtime cannot answer. */

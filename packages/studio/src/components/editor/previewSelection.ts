@@ -437,6 +437,7 @@ export async function resolvePreviewSelection(
     textMarkup: current.textMarkup,
     capabilities,
     existsInSource,
+    ...(current.layout && { layout: current.layout }),
   };
 }
 

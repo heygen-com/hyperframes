@@ -64,7 +64,7 @@ function shared(selection: DomEditSelection | null) {
   if (!selection) return null;
   const { element: _element, handle: _handle, textFields: _fields, ...rest } = selection;
   // Read off the description only when `element` is a stand-in; checked on their own below.
-  const { hasAudio: _audio, src: _src, textMarkup: _markup, ...compared } = rest;
+  const { hasAudio: _audio, src: _src, textMarkup: _markup, layout: _layout, ...compared } = rest;
   return compared;
 }
 
@@ -157,6 +157,22 @@ describe("opaque frame selections match same-origin ones", () => {
       canApplyManualOffset: false,
     });
     expect((await pick("#plain")).capabilities.canApplyManualOffset).toBe(true);
+  });
+
+  // fails without the fix: the selection carried no size of the element, so its crop handles waited for a read.
+  it("carries the frame's layout box of a sealed pick on its selection", async () => {
+    document.body.innerHTML = FIXTURE;
+    const plain = document.querySelector<HTMLElement>("#plain")!;
+    Object.defineProperties(plain, {
+      offsetWidth: { configurable: true, value: 240 },
+      offsetHeight: { configurable: true, value: 160 },
+    });
+    const opaque = sealedPreviewFrame().iframe;
+    const described = await describedOnOpaque(opaque, plain);
+    expect((await resolvePreviewSelection(opaque, described, CONTEXT))!.layout).toEqual({
+      width: 240,
+      height: 160,
+    });
   });
 
   it("follows a drilled-into group: its nested group, then its children, else the top level", async () => {

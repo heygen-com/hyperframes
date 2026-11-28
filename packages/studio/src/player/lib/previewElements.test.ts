@@ -118,6 +118,15 @@ describe("readPreviewElement", () => {
     }
   });
 
+  it("keeps an element whose layout box is off, without that box", () => {
+    const sized = described(1, { layout: { width: 200, height: 100 } });
+    expect(readPreviewElement(sized)).toEqual(sized);
+    for (const layout of [{ width: -5, height: 1 }, { width: 1e9, height: 1 }, { width: "2" }]) {
+      const read = readPreviewElement(described(1, { layout: layout as never }));
+      expect(read).toEqual({ ...described(1), layout: undefined });
+    }
+  });
+
   it("refuses a description longer anywhere than the runtime ever sends one", () => {
     const value = "x".repeat(MAX_ELEMENT_VALUE);
     const atLimit = described(1, {

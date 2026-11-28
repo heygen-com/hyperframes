@@ -21,6 +21,7 @@ import {
   type EditingElementSource,
 } from "./editingElement";
 import { buildElementLabel, NO_TEXT, renderedTextOf } from "./elementLabel";
+import { layoutOf } from "./drawnBox";
 import { isEditableText } from "./editing/textMarkup";
 
 // Drawn on first use, not at load: a render seeds getRandomValues, and a draw here would shift the
@@ -182,6 +183,7 @@ function describeElement(element: Element): EditingElementDescription | null {
     children: children(element, state),
     truncated: state.truncated,
     textMarkup: isEditableText(element),
+    layout: layoutOf(element),
   };
 }
 

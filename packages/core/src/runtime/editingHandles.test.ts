@@ -89,11 +89,23 @@ describe("element handles over the editing port", () => {
       rect: { x: 0, y: 0, width: 0, height: 0 },
       truncated: false,
       textMarkup: true,
+      layout: { width: 0, height: 0 },
     });
     expect(root).toMatchObject({ tag: "div", selector: '[data-composition-id="card__hf1"]' });
     expect(root!.textMarkup).toBe(false);
     expect(root!.matchesBefore).toBeNull();
     expect(JSON.parse(JSON.stringify(described))).toEqual(described);
+  });
+
+  // fails without the fix: a selection got no size of the element, so a sealed crop drew after an open one.
+  it("describes an element's layout box, as a gesture start measures it", async () => {
+    document.body.innerHTML = `<div id="card" style="transform: scale(2)"></div>`;
+    const card = document.getElementById("card")!;
+    Object.defineProperties(card, {
+      offsetWidth: { configurable: true, value: 200 },
+      offsetHeight: { configurable: true, value: 100 },
+    });
+    expect((await describeOne(card)).layout).toEqual({ width: 200, height: 100 });
   });
 
   it("names an element by its rendered text, never its script or style source", async () => {
