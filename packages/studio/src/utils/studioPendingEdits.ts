@@ -263,37 +263,88 @@ export function revertNewestStudioPendingEdit(): (() => void) | null {
 }
 
 const openEdits = new Set<() => unknown>();
+const MAX_ROUNDS_WHILE_EDITS_KEEP_OPENING = 5;
+const MAX_LISTENER_REASKS = 5;
 
 export function settleOnDrain(settle: () => unknown): () => void {
   openEdits.add(settle);
   return () => openEdits.delete(settle);
 }
 
+function blurFocusedFieldOrNullWhenNone(): Promise<void> | null {
+  const active = focusedField();
+  if (!active) return null;
+  active.blur();
+  // ponytail: keep blur commits, then cross one task so effects the blur runs can add their listener.
+  return Promise.resolve().then(waitForPostBlurEffects);
+}
+
 export async function flushStudioPendingEdits({
   onlyCurrent = false,
 } = {}): Promise<StudioPendingEditsDrainResult> {
-  const active = focusedField();
-  if (active) {
-    active.blur();
-    // ponytail: keep blur commits, then cross one task so effects the blur runs can add their listener.
-    await Promise.resolve();
-    await waitForPostBlurEffects();
-  }
-  for (const settle of [...openEdits]) trackStudioPendingEdit(settle());
+  const blurred = blurFocusedFieldOrNullWhenNone();
+  if (blurred) await blurred;
+  const settled = new Set<() => unknown>();
+  const settleOpened = () => {
+    const opened = [...openEdits].filter((settle) => !settled.has(settle));
+    for (const settle of opened) {
+      settled.add(settle);
+      trackStudioPendingEdit(settle());
+    }
+    return opened.length > 0;
+  };
+  settleOpened();
   const detail: StudioFlushPendingEditsDetail = { promises: [] };
-  window.dispatchEvent(
-    new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
-  );
+  const listenerSaves = new Set<unknown>();
+  const askListeners = () => {
+    window.dispatchEvent(
+      new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
+    );
+    for (const save of detail.promises) listenerSaves.add(save);
+    return detail.promises.length > 0;
+  };
+  askListeners();
   const current = onlyCurrent ? new Set(pendingEdits.keys()) : null;
   const waiting = () => [...pendingEdits.keys()].filter((edit) => !current || current.has(edit));
   let conflict: StudioFileConflictError | undefined;
   let firstFailure: PromiseRejectedResult | undefined;
-  while (detail.promises.length > 0 || waiting().length > 0) {
-    const promises = [...detail.promises, ...waiting()];
-    detail.promises = [];
-    const batchFailures = inspectDrainFailures(await Promise.allSettled(promises));
-    conflict ??= batchFailures.conflict;
-    firstFailure ??= batchFailures.firstFailure;
+  const waitForWrites = async () => {
+    let waitedOnOtherWrites = false;
+    while (detail.promises.length > 0 || waiting().length > 0) {
+      const promises = [...detail.promises, ...waiting()];
+      detail.promises = [];
+      waitedOnOtherWrites ||= promises.some((promise) => !listenerSaves.has(promise));
+      const batchFailures = inspectDrainFailures(await Promise.allSettled(promises));
+      conflict ??= batchFailures.conflict;
+      firstFailure ??= batchFailures.firstFailure;
+    }
+    return waitedOnOtherWrites;
+  };
+  let roundsThatOpenedEdits = 0;
+  let listenerReasks = 0;
+  const editsKeptOpening = () => {
+    roundsThatOpenedEdits += 1;
+    return roundsThatOpenedEdits >= MAX_ROUNDS_WHILE_EDITS_KEEP_OPENING;
+  };
+  const reaskListenersAfter = (waitedOnOtherWrites: boolean) => {
+    if (!waitedOnOtherWrites || listenerReasks >= MAX_LISTENER_REASKS) return false;
+    const queued = askListeners();
+    if (queued) listenerReasks += 1;
+    return queued;
+  };
+  for (;;) {
+    const waitedOnOtherWrites = await waitForWrites();
+    if (onlyCurrent) break;
+    const opened = settleOpened();
+    const queued = reaskListenersAfter(waitedOnOtherWrites);
+    if (!opened && !queued) break;
+    if (opened && editsKeptOpening()) {
+      firstFailure ??= {
+        status: "rejected",
+        reason: new Error("Edits kept opening while the pending edits were saved."),
+      };
+      break;
+    }
   }
   if (conflict) return { status: "conflict", error: conflict };
   return firstFailure ? { status: "failed", error: firstFailure.reason } : { status: "clean" };
