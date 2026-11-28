@@ -82,6 +82,21 @@ describe("soft-reload", () => {
     expect(seeks).toEqual([1.5]);
   });
 
+  // fails without the fix: GSAP's `translate: none` mask stayed on an element the file does not author, so the
+  // re-run read no stylesheet translate and drew it without one.
+  it("lifts GSAP's masks from a reset element with no authored style, as a fresh load would", async () => {
+    preview(
+      `<div data-composition-id="main"><div id="a" data-hf-id="live" style="translate: none; rotate: none; scale: none; transform: translate(40px, 30px)"></div></div>`,
+    );
+    const el = document.getElementById("a")!;
+    Object.assign(el, { _gsap: {} });
+
+    expect(await softReload(params())).toEqual({ result: "applied" });
+
+    const { translate, rotate, scale, transform } = el.style;
+    expect([translate, rotate, scale, transform]).toEqual(["", "", "", ""]);
+  });
+
   it("restores what a removed standalone set wrote, from the selector and names Studio sent", async () => {
     preview(`<div data-composition-id="main"><div id="a" style="left: 10px"></div></div>`);
     const el = document.getElementById("a")!;
