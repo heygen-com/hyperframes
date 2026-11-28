@@ -522,7 +522,7 @@ test("gitignore capture preserves common filename and directory globs", async (t
   const { default: ignore } = await import("ignore");
   const root = await project({});
   t.after(() => rm(root, { recursive: true, force: true }));
-  const rules = ["*draft*", "*.min.*", "**/cache/**", "!**/cache/keep.txt", "report-*-*.pdf"];
+  const rules = ["**/*draft*", "*.min.*", "**/cache/**", "!**/cache/keep.txt", "report-*-*.pdf"];
   await writeFile(join(root, ".hyperframesignore"), rules.join("\n"));
   const ignored = await readSourceIgnore(root, { syntax: "gitignore" });
   const reference = ignore().add(rules);
@@ -557,7 +557,15 @@ test("gitignore bounds ancestor checks and aborts a capture that exceeds them", 
   await writeFile(file, "only-this-name");
   const ignored = await readSourceIgnore(root, { syntax: "gitignore" });
   assert.equal(ignored(directory, true), false);
-  assert.throws(() => ignored(directory + "/note.txt"), SourceIgnoreError);
+  assert.throws(
+    () => ignored(directory + "/note.txt"),
+    (error) => {
+      assert.ok(error instanceof SourceIgnoreError);
+      assert.ok(error.relativePath?.endsWith("/note.txt"));
+      assert.doesNotMatch(error.message + JSON.stringify(error), /note[.]txt/);
+      return true;
+    },
+  );
   assert.throws(() => ignored("a".repeat(1025)), SourceIgnoreError);
   await assert.rejects(captureProject(root, { ignoreSyntax: "gitignore" }), SourceIgnoreError);
   await writeFile(file, "# notes only");

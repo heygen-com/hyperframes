@@ -76,7 +76,7 @@ Hosts that opt into gitignore syntax through `readSourceIgnore` also support anc
 `**`, and ordered `!` rules. The gitignore reader accepts 256 active rules of 256 UTF-16 code units each. A rule can have
 up to four wildcard components with one star apiece, including one recursive globstar.
 Two stars within a filename pattern, such as `*draft*` or `*.min.*`, are supported when the
-other components are literal. A recursive contents rule such as `**/cache/**` is supported
+other components are literal or the filename is prefixed with `**/`. A recursive contents rule such as `**/cache/**` is supported
 with literal components between the globstars. Avoid bracket expressions and backslash escapes
 in rules containing multiple stars. With active rules, capture stops if a path exceeds 64
 components or 1024 UTF-16 code units. Simplify the rules or shorten the path to resume.

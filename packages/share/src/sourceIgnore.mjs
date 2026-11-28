@@ -4,10 +4,20 @@ import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 
 export class SourceIgnoreError extends Error {
-  /** @param {string} [message] @param {ErrorOptions & {reason?: "rule" | "file" | "path"}} [options] */
+  #relativePath;
+
+  /** @param {string} [message] @param {ErrorOptions & {reason?: "rule" | "file" | "read" | "path", relativePath?: string | undefined}} [options] */
   constructor(message, options) {
     super(message, options);
     this.reason = options?.reason ?? "rule";
+    this.#relativePath = options?.relativePath ? localPathLabel(options.relativePath) : undefined;
+  }
+
+  /** A relative path for local display, kept out of the message and enumerable error fields. */
+  // Package hosts read this field when presenting a capture failure.
+  // fallow-ignore-next-line unused-class-member
+  get relativePath() {
+    return this.#relativePath;
   }
 
   code = "invalid_source_ignore";
@@ -37,7 +47,7 @@ export async function readSourceIgnore(root, { syntax } = {}) {
       if (path.length > 1024 || path.split("/").length > 64)
         throw new SourceIgnoreError(
           ".hyperframesignore supports paths up to 1024 characters and 64 components.",
-          { reason: "path" },
+          { reason: "path", relativePath: path },
         );
       return scratch(path) || rules.ignores(directory ? `${path}/` : path);
     };
@@ -48,6 +58,15 @@ export async function readSourceIgnore(root, { syntax } = {}) {
     .filter((line) => line && !line.startsWith("#"));
   const entries = paths.map(ignorePattern);
   return (path) => scratch(path) || entries.some((entry) => entry.test(path));
+}
+
+/** @param {string} path */
+function localPathLabel(path) {
+  if (/^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)/i.test(path)) return undefined;
+  const brief = path.length > 160 ? path.slice(0, 60) + "…" + path.slice(-96) : path;
+  return JSON.stringify(brief)
+    .slice(1, -1)
+    .replace(/[\u202a-\u202e\u2066-\u2069]/g, "�");
 }
 
 /** @param {string} pattern */
@@ -80,7 +99,10 @@ function boundedGitignoreRule(line) {
   if (line.length > 256)
     throw new SourceIgnoreError(".hyperframesignore rules may contain up to 256 characters.");
   const pattern = line.replace(/^!/, "");
-  checkWildcardComponents(pattern);
+  // A leading **/ before a single filename is the ordinary basename match. Only
+  // simplify validation; pass the original rule to the matcher to preserve its semantics.
+  const basename = /^\*\*\/([^/]+)$/.exec(pattern)?.[1];
+  checkWildcardComponents(basename && basename !== "**" ? basename : pattern);
   // Count stars before interpreting escapes and classes, which can change component boundaries.
   if (pattern.indexOf("*") !== pattern.lastIndexOf("*") && /[\\[]/.test(pattern))
     throw new SourceIgnoreError(
@@ -97,6 +119,9 @@ function boundedGitignoreRules(text) {
   return lines.map(boundedGitignoreRule);
 }
 
+const unreadableIgnoreFile = () =>
+  new SourceIgnoreError(".hyperframesignore could not be read.", { reason: "read" });
+
 const invalidIgnoreFile = () =>
   new SourceIgnoreError(
     ".hyperframesignore must be a regular file inside the project, smaller than 64 KiB.",
@@ -109,11 +134,12 @@ async function openIgnoreFile(file) {
     file,
     constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
   ).catch(async (/** @type {NodeJS.ErrnoException} */ error) => {
-    if (error.code !== "ENOENT") throw invalidIgnoreFile();
+    if (error.code === "ELOOP" || error.code === "EMLINK") throw invalidIgnoreFile();
+    if (error.code !== "ENOENT") throw unreadableIgnoreFile();
     // An absent file means no exclusions; a dangling symlink is invalid.
     const named = await lstat(file).catch((/** @type {NodeJS.ErrnoException} */ missing) => {
       if (missing.code === "ENOENT") return null;
-      throw invalidIgnoreFile();
+      throw unreadableIgnoreFile();
     });
     if (named) throw invalidIgnoreFile();
     return null;

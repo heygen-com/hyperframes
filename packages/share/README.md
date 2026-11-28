@@ -112,10 +112,11 @@ once per capture. Pass the resulting `ignored` function to the inventory walk as
 even when an ignore rule re-includes a path. The gitignore reader accepts 256 active rules of 256 UTF-16 code units each. A rule can have
 up to four wildcard components with one star apiece, including one recursive globstar.
 Two stars within a filename pattern, such as `*draft*` or `*.min.*`, are supported when the
-other components are literal. A recursive contents rule such as `**/cache/**` is supported
+other components are literal or the filename is prefixed with `**/`. A recursive contents rule such as `**/cache/**` is supported
 with literal components between the globstars. Avoid bracket expressions and backslash escapes
 in rules containing multiple stars. With active rules, capture stops if a path exceeds 64
-components or 1024 UTF-16 code units. Simplify the rules or shorten the path to resume.
+components or 1024 UTF-16 code units. For a path-limit failure, `SourceIgnoreError.relativePath`
+provides an abbreviated project-relative path for local display. Simplify the rules or shorten the path to resume.
 
 Editable source includes referenced WOFF, WOFF2, TTF and OTF files with dot-prefixed names, such as
 `.brand/.Atlas.woff2`. The same private-path and ignore rules apply to these fonts. Preview and render servers can call
