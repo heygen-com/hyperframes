@@ -140,6 +140,8 @@ export interface StudioApiAdapter {
 
   loadSharp?: () => Promise<typeof import("sharp").default>;
 
+  outsideAssetsAllowed?: (projectDir: string) => boolean | Promise<boolean>;
+
   /** Lint a single HTML string. */
   lint(
     html: string,

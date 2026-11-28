@@ -53,7 +53,6 @@ import {
 } from "@hyperframes/core/compiler/html-document";
 import { hasAuthoredCode } from "../helpers/authoredCode.js";
 import { THUMBNAIL_NO_AUTHORED_CODE_META } from "../helpers/screenshotClip.js";
-import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import {
   isPrivateProjectFile,
@@ -67,6 +66,7 @@ import {
   statOrNull,
 } from "../helpers/projectDisk.js";
 import { getMimeType } from "../helpers/mime.js";
+import { servesProjectPath } from "../helpers/outsideFile.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 import { openRangeEnd } from "../helpers/mediaRange.js";
 import { hasBaseElement } from "../helpers/subComposition.js";
@@ -974,12 +974,10 @@ export function registerPreviewRoutes(
     if (!project) return c.json({ error: "not found" }, 404);
     const subPath = requestSubPath(c.req.url, "projects/:id/preview");
     if (subPath === null) return c.text("not found", 404);
-    // Assets are read-only and should mirror the renderer: permit a path that
-    // is lexically inside the project even if an explicit project symlink
-    // targets a shared directory outside it. Composition source files still
+    // A link out of the project serves what a render of it brings in. Composition source files still
     // use resolveWithinProject because saves write their data-hf-id values.
     const candidate = resolve(project.dir, subPath);
-    const file = isWithinProjectRoot(project.dir, candidate) ? candidate : null;
+    const file = (await servesProjectPath(adapter, project.dir, candidate)) ? candidate : null;
     if (!file) return c.text("not found", 404);
     if (await isPrivateProjectFileOff(project.dir, file)) {
       if (new URL(c.req.url).searchParams.has(PREVIEW_PROXY_PARAM)) return c.text("not found", 404);

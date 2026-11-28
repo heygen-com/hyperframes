@@ -600,6 +600,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     resolveProject: (id: string) => (id === projectId ? project : null),
 
+    outsideAssetsAllowed: (dir) => outsideAssetsAllowed(dir, undefined, warnPreviewOnce),
+
     async bundle(dir, options): Promise<string | null> {
       try {
         const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");

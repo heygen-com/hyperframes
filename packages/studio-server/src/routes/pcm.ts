@@ -2,7 +2,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { PassThrough, Readable } from "node:stream";
-import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { requireFfBinary } from "@hyperframes/parsers/ff-binaries";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
@@ -10,14 +9,19 @@ import { probeAudioTrack } from "../helpers/mediaMetadata.js";
 import { mediaInputArgs } from "../helpers/mediaExtensions.js";
 import { inAudioDecodeSlot } from "../helpers/audioDecodes.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { servesProjectPath } from "../helpers/outsideFile.js";
 
 const RATES = new Set([48_000, 24_000]);
 
 /** The file at `sub` inside the project, or null for no path, one outside it or one missing. */
-async function projectFile(dir: string, sub: string | null): Promise<string | null> {
+async function projectFile(
+  adapter: StudioApiAdapter,
+  dir: string,
+  sub: string | null,
+): Promise<string | null> {
   if (sub === null) return null;
   const path = resolve(dir, sub);
-  if (!isWithinProjectRoot(dir, path)) return null;
+  if (!(await servesProjectPath(adapter, dir, path))) return null;
   return (await stat(path).catch(() => null)) ? path : null;
 }
 
@@ -41,7 +45,11 @@ export function registerPcmRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (!RATES.has(rate)) return c.json({ error: "rate must be 48000 or 24000" }, 400);
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
-    const audioPath = await projectFile(project.dir, requestSubPath(c.req.url, "projects/:id/pcm"));
+    const audioPath = await projectFile(
+      adapter,
+      project.dir,
+      requestSubPath(c.req.url, "projects/:id/pcm"),
+    );
     if (!audioPath) return c.json({ error: "file not found" }, 404);
     const track = await probeAudioTrack(audioPath);
     if (!track) return c.json({ error: "no audio stream" }, 422);
