@@ -15,6 +15,9 @@ import {
 import { cn } from "./cn";
 import { floatingMotion, POPUP_LAYER } from "./Menu";
 
+/** Default hover delay in ms before opening a tooltip. */
+export const TOOLTIP_HOVER_DELAY_MS = 400;
+
 interface TooltipProps {
   label: string;
   /** A single element, wrapped in a box-less span so a disabled one still gets hover. */
@@ -25,6 +28,12 @@ interface TooltipProps {
   side?: "top" | "bottom" | "left" | "right";
   /** Wraps a long label at a reading width and cuts it at this many lines with an ellipsis. Unset, one line. */
   lines?: number;
+  /** Controlled open state. When passed without `onOpenChange`, skips the Trigger wrapper span. */
+  open?: boolean;
+  /** Controlled open-change handler; keeps Trigger-driven hover/focus when provided with `open`. */
+  onOpenChange?: (open: boolean) => void;
+  /** Positioning anchor when using controlled `open` without a Trigger wrapper. */
+  anchor?: Element | null | (() => Element | null);
 }
 
 /** Matches the old bubble's gap from its trigger, and its viewport margin. */
@@ -34,25 +43,36 @@ const VIEWPORT_MARGIN = 8;
 export function Tooltip({
   label,
   children,
-  delay = 400,
+  delay = TOOLTIP_HOVER_DELAY_MS,
   side = "top",
   disabled = false,
   lines,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  anchor,
 }: TooltipProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const boxRef = useRef<HTMLSpanElement>(null);
   const tooltipId = useId();
+  const useTrigger = controlledOpen === undefined || controlledOnOpenChange !== undefined;
+  const open = controlledOpen ?? internalOpen;
+  const onOpenChange = controlledOnOpenChange ?? setInternalOpen;
+  const describedChild = cloneElement(children, {
+    "aria-describedby": open && !disabled ? tooltipId : children.props["aria-describedby"],
+  });
 
   return (
-    <BaseTooltip.Root open={open} onOpenChange={setOpen} disabled={disabled}>
-      <BaseTooltip.Trigger delay={delay} render={<span ref={boxRef} className="contents" />}>
-        {cloneElement(children, {
-          "aria-describedby": open && !disabled ? tooltipId : children.props["aria-describedby"],
-        })}
-      </BaseTooltip.Trigger>
+    <BaseTooltip.Root open={open} onOpenChange={onOpenChange} disabled={disabled}>
+      {useTrigger ? (
+        <BaseTooltip.Trigger delay={delay} render={<span ref={boxRef} className="contents" />}>
+          {describedChild}
+        </BaseTooltip.Trigger>
+      ) : (
+        describedChild
+      )}
       <BaseTooltip.Portal>
         <BaseTooltip.Positioner
-          anchor={() => boxRef.current?.firstElementChild ?? null}
+          anchor={anchor ?? (() => boxRef.current?.firstElementChild ?? null)}
           side={side}
           sideOffset={SIDE_OFFSET}
           collisionPadding={VIEWPORT_MARGIN}

@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { TimelineClip } from "./TimelineClip";
 import { ClipFadesContext } from "./TimelineClipFades";
+import { ClipPeakDescriptionContext } from "./ClipPeakTooltip";
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { defaultTimelineTheme, type TimelineTheme } from "./timelineTheme";
+import { TOOLTIP_HOVER_DELAY_MS } from "../../components/ui/Tooltip";
 
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
@@ -29,13 +31,19 @@ function renderClip({
   pps = 100,
   isSelected = false,
   hasCustomContent = true,
+  isComposition = false,
+  tabIndex = -1,
   theme = defaultTimelineTheme,
+  children,
 }: {
   element: TimelineElement;
   pps?: number;
   isSelected?: boolean;
   hasCustomContent?: boolean;
+  isComposition?: boolean;
+  tabIndex?: 0 | -1;
   theme?: TimelineTheme;
+  children?: React.ReactNode;
 }) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -53,13 +61,14 @@ function renderClip({
         hasCustomContent={hasCustomContent}
         capabilities={capabilities}
         theme={theme}
-        isComposition={false}
+        isComposition={isComposition}
+        tabIndex={tabIndex}
         onHoverStart={vi.fn()}
         onHoverEnd={vi.fn()}
         onClick={onClick}
         onDoubleClick={vi.fn()}
       >
-        <div data-custom-content="true" />
+        {children ?? <div data-custom-content="true" />}
       </TimelineClip>,
     );
   });
@@ -311,6 +320,182 @@ describe("TimelineClip", () => {
     expect(clip.getAttribute("aria-pressed")).toBe("true");
     act(() => clip.click());
     expect(onClick).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+  });
+
+  function setScrollMetrics(el: Element, scrollWidth: number, clientWidth: number) {
+    Object.defineProperty(el, "scrollWidth", { configurable: true, value: scrollWidth });
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: clientWidth });
+  }
+
+  it("shows the full label in the shared tooltip when truncated on hover and focus, and none when it fits", async () => {
+    vi.useFakeTimers();
+    try {
+      const longClip = renderClip({
+        element: {
+          id: "long",
+          label: "Very Long Timeline Clip Title That Does Not Fit",
+          tag: "div",
+          start: 1,
+          duration: 2,
+          track: 0,
+        },
+        tabIndex: 0,
+      });
+      const clipButton = longClip.host.querySelector<HTMLButtonElement>(".timeline-clip")!;
+      // Remains a direct child of its container (no wrapper span breaking TimelineLanes sibling selectors).
+      expect(clipButton.parentElement).toBe(longClip.host);
+      const longName = longClip.host.querySelector(".timeline-clip__name")!;
+      setScrollMetrics(longName, 220, 80);
+
+      act(() => {
+        clipButton.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+      });
+      // Respects the shared hover delay before opening.
+      act(() => {
+        vi.advanceTimersByTime(TOOLTIP_HOVER_DELAY_MS - 1);
+      });
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      const tooltip = document.querySelector('[role="tooltip"]');
+      expect(tooltip?.textContent).toBe(
+        "Very Long Timeline Clip Title That Does Not Fit • 1.0s to 3.0s",
+      );
+      expect(clipButton.getAttribute("aria-describedby")).toBe(tooltip?.id);
+      expect(clipButton.hasAttribute("title")).toBe(false);
+
+      // Pressing or leaving closes the tooltip and restores the native title.
+      act(() => {
+        clipButton.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+      });
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      expect(clipButton.getAttribute("title")).toBe(
+        "Very Long Timeline Clip Title That Does Not Fit • 1.0s to 3.0s",
+      );
+
+      // Focus opens immediately and blur closes.
+      await act(async () => clipButton.focus());
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+        "Very Long Timeline Clip Title That Does Not Fit • 1.0s to 3.0s",
+      );
+      act(() => clipButton.blur());
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      act(() => longClip.root.unmount());
+
+      // Short label that fits never opens the shared tooltip.
+      const shortClip = renderClip({
+        element: { id: "short", label: "Intro", tag: "div", start: 0, duration: 2, track: 0 },
+        tabIndex: 0,
+      });
+      const shortButton = shortClip.host.querySelector<HTMLButtonElement>(".timeline-clip")!;
+      const shortName = shortClip.host.querySelector(".timeline-clip__name")!;
+      setScrollMetrics(shortName, 40, 80);
+
+      await act(async () => {
+        shortButton.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+        vi.advanceTimersByTime(TOOLTIP_HOVER_DELAY_MS + 50);
+      });
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      await act(async () => shortButton.focus());
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      expect(shortButton.getAttribute("title")).toBe("Intro • 0.0s to 2.0s");
+      act(() => shortClip.root.unmount());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows the composition name and double-click hint when a composition clip label is cut off", async () => {
+    const { host, root } = renderClip({
+      element: {
+        id: "comp",
+        label: "Long Subcomposition Title",
+        compositionSrc: "compositions/sub.html",
+        tag: "div",
+        start: 0,
+        duration: 2,
+        track: 0,
+      },
+      isComposition: true,
+      tabIndex: 0,
+    });
+    const clipButton = host.querySelector<HTMLButtonElement>(".timeline-clip")!;
+    setScrollMetrics(host.querySelector(".timeline-clip__name")!, 180, 60);
+
+    await act(async () => clipButton.focus());
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+      "Long Subcomposition Title • Double-click to open",
+    );
+    act(() => root.unmount());
+  });
+
+  it("shows truncated label on audio clips while keeping peak warnings higher priority", async () => {
+    function PeakSetter({ detail }: { detail: string | null }) {
+      const setDetail = React.useContext(ClipPeakDescriptionContext);
+      React.useEffect(() => {
+        setDetail?.(detail);
+      }, [detail, setDetail]);
+      return null;
+    }
+
+    const { host, root } = renderClip({
+      element: {
+        id: "aud",
+        label: "Long Background Narration Track",
+        tag: "audio",
+        start: 0,
+        duration: 2,
+        track: 1,
+      },
+      tabIndex: 0,
+      children: <PeakSetter detail={null} />,
+    });
+    const clipButton = host.querySelector<HTMLButtonElement>(".timeline-clip")!;
+    setScrollMetrics(host.querySelector(".timeline-clip__label")!, 200, 70);
+
+    await act(async () => clipButton.focus());
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+        "Long Background Narration Track • 0.0s to 2.0s",
+      ),
+    );
+
+    act(() => {
+      root.render(
+        <TimelineClip
+          el={{
+            id: "aud",
+            label: "Long Background Narration Track",
+            tag: "audio",
+            start: 0,
+            duration: 2,
+            track: 1,
+          }}
+          pps={100}
+          clipY={0}
+          isSelected={false}
+          isHovered={false}
+          hasCustomContent
+          capabilities={capabilities}
+          isComposition={false}
+          tabIndex={0}
+          onHoverStart={vi.fn()}
+          onHoverEnd={vi.fn()}
+          onClick={vi.fn()}
+          onDoubleClick={vi.fn()}
+        >
+          <PeakSetter detail="Peaks −0.2 dBFS at this volume; export lowers the whole mix" />
+        </TimelineClip>,
+      );
+    });
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+        "Peaks −0.2 dBFS at this volume; export lowers the whole mix",
+      ),
+    );
     act(() => root.unmount());
   });
 });
