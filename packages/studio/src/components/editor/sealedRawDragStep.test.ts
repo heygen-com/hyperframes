@@ -544,6 +544,18 @@ describe("a sealed gesture steps each pointer position once", () => {
     (opts.groupGestureRef as { current: unknown }).current = null;
   });
 
+  it("steps a pointermove back at a raw update's position once a pointermove stepped elsewhere", () => {
+    const { handlers } = sealedDrag("resize");
+    handlers.onPointerMove(pointer(110, 100));
+    rawUpdate(130, 104);
+    handlers.onPointerMove(pointer(140, 108));
+    vi.mocked(applyStudioBoxSizeDraft).mockClear();
+
+    handlers.onPointerMove(pointer(130, 104));
+
+    expect(applyStudioBoxSizeDraft).toHaveBeenCalledTimes(1);
+  });
+
   it("still steps a pointermove at a position no raw update drew", () => {
     const { handlers } = sealedDrag("resize");
     handlers.onPointerMove(pointer(110, 100));
