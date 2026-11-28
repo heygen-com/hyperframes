@@ -42,6 +42,7 @@ const hashInput: SegmentPlanHashInput = {
   bitrate: undefined,
   pixelFormat: "yuv420p",
   imageFormat: "jpeg",
+  containerExtension: ".mp4",
   useGpu: false,
   outputWidth: 1920,
   outputHeight: 1080,
@@ -79,6 +80,8 @@ describe("computeSegmentPlanHash", () => {
     expect(computeSegmentPlanHash({ ...hashInput, bitrate: "8M" })).not.toBe(a);
     expect(computeSegmentPlanHash({ ...hashInput, pixelFormat: "yuv420p10le" })).not.toBe(a);
     expect(computeSegmentPlanHash({ ...hashInput, imageFormat: "png" })).not.toBe(a);
+    expect(computeSegmentPlanHash({ ...hashInput, containerExtension: ".webm" })).not.toBe(a);
+    expect(computeSegmentPlanHash({ ...hashInput, containerExtension: ".mov" })).not.toBe(a);
     // Review findings on the Phase 2b PR: three byte-affecting inputs that
     // used to be missing. NVENC and libx264 both report codec "h264"; a DPR
     // change captures at a different pixel size than the composition's; a
@@ -226,7 +229,7 @@ describe("validateCompletedSegments", () => {
     index,
     startFrame: index * 3,
     endFrame: index * 3 + 3,
-    path: segmentOutputPath(dir, index),
+    path: segmentOutputPath(dir, index, ".mp4"),
     bytes,
     sha256: XX_SHA256,
     completedAt: "",
@@ -254,6 +257,7 @@ describe("validateCompletedSegments", () => {
   ) => ({
     expectedHash,
     segmentDir: dir,
+    containerExtension: ".mp4",
     totalFrames,
     segmentFrames: 3,
     key: KEY,
@@ -269,8 +273,8 @@ describe("validateCompletedSegments", () => {
 
   it("keeps only segments whose file exists and whose frame count matches", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    const ok = segmentOutputPath(dir, 0);
-    const short = segmentOutputPath(dir, 1);
+    const ok = segmentOutputPath(dir, 0, ".mp4");
+    const short = segmentOutputPath(dir, 1, ".mp4");
     writeFileSync(ok, "xx");
     writeFileSync(short, "xx");
     const manifest = manifestOf([entry(0), entry(1), entry(2)]);
@@ -278,11 +282,37 @@ describe("validateCompletedSegments", () => {
     expect([...(await validateCompletedSegments(manifest, check(9, probe)))]).toEqual([0]);
   });
 
+  it("rejects completed segments when the resolved container changes", async () => {
+    // Same codec and options, only the container differs: the old .mp4
+    // segments must not be reused for a .mov render.
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-container-"));
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "xx");
+    const planHash = computeSegmentPlanHash(hashInput);
+    const manifest = manifestOf([entry(0)], { planHash });
+    expect(
+      (
+        await validateCompletedSegments(
+          manifest,
+          check(3, async () => 3, planHash),
+        )
+      ).size,
+    ).toBe(1);
+    const changed = computeSegmentPlanHash({ ...hashInput, containerExtension: ".webm" });
+    expect(
+      (
+        await validateCompletedSegments(
+          manifest,
+          check(3, async () => 3, changed),
+        )
+      ).size,
+    ).toBe(0);
+  });
+
   it("rejects a segment whose size no longer matches the manifest", async () => {
     // A half-written file from a kill can still exist and still probe; the
     // recorded size is what proves it is the same file that was finished.
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    writeFileSync(segmentOutputPath(dir, 0), "x");
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "x");
     const manifest = manifestOf([entry(0, 999)]);
     expect(await reuses(manifest, 3)).toBe(0);
   });
@@ -305,7 +335,7 @@ describe("validateCompletedSegments", () => {
     // frame count — so only the hash check can reject it. With an empty
     // `completed` list this assertion would pass with the check deleted.
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "xx");
     const manifest = manifestOf([entry(0)], { planHash: "old" });
     const probe = async () => 3;
     expect((await validateCompletedSegments(manifest, check(3, probe, "old"))).size).toBe(1);
@@ -318,7 +348,7 @@ describe("validateCompletedSegments", () => {
     const elsewhere = join(dir, "elsewhere.mp4");
     writeFileSync(elsewhere, "xx");
     const named = [elsewhere, "/etc/hosts", "\\\\host\\share\\segment.mp4"];
-    for (const index of named.keys()) writeFileSync(segmentOutputPath(dir, index), "xx");
+    for (const index of named.keys()) writeFileSync(segmentOutputPath(dir, index, ".mp4"), "xx");
     const manifest = manifestOf(named.map((path, index) => ({ ...entry(index), path })));
     const probed: string[] = [];
     const probe = async (path: string) => {
@@ -333,14 +363,14 @@ describe("validateCompletedSegments", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     const target = join(dir, "real.mp4");
     writeFileSync(target, "xx");
-    symlinkSync(target, segmentOutputPath(dir, 0));
+    symlinkSync(target, segmentOutputPath(dir, 0, ".mp4"));
     const manifest = manifestOf([entry(0)]);
     expect(await reuses(manifest, 3)).toBe(0);
   });
 
   it("rejects a hard-linked segment before probing it", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    const path = segmentOutputPath(dir, 0);
+    const path = segmentOutputPath(dir, 0, ".mp4");
     writeFileSync(path, "xx");
     const manifest = manifestOf([entry(0)]);
     linkSync(path, join(dir, "second-name.mp4"));
@@ -351,7 +381,7 @@ describe("validateCompletedSegments", () => {
 
   it("ignores entries for segments this plan does not have", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    for (const index of [0, 1, 5]) writeFileSync(segmentOutputPath(dir, index), "xx");
+    for (const index of [0, 1, 5]) writeFileSync(segmentOutputPath(dir, index, ".mp4"), "xx");
     const shifted = { ...entry(1), startFrame: 2, endFrame: 5 };
     const manifest = manifestOf([entry(0), shifted, entry(5), { ...entry(0), index: 0.5 }], {
       totalFrames: 6,
@@ -361,7 +391,7 @@ describe("validateCompletedSegments", () => {
   });
   it("reuses segments only from a manifest this user signed", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "xx");
     expect(await reuses(manifestOf([entry(0)]), 3)).toBe(1);
     // Copied from another user or machine, or written by hand without a signature.
     expect(await reuses(manifestOf([entry(0)], { key: Buffer.alloc(32, 2) }), 3)).toBe(0);
@@ -370,17 +400,17 @@ describe("validateCompletedSegments", () => {
 
   it("rejects a signed manifest whose entries were edited afterwards", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "xx");
     const signed = manifestOf([entry(0, 3)]);
     expect(await reuses({ ...signed, completed: [entry(0, 2)] }, 3)).toBe(0);
   });
 
   it("re-captures a segment replaced by a different file of the same size, without probing it", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "xx");
     const manifest = manifestOf([entry(0)]);
     expect(await reuses(manifest, 3)).toBe(1);
-    writeFileSync(segmentOutputPath(dir, 0), "yy");
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "yy");
     let probed = 0;
     const probe = async () => {
       probed += 1;
@@ -394,8 +424,8 @@ describe("validateCompletedSegments", () => {
     "recaptures an unreadable segment and still validates the next checkpoint",
     async () => {
       dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-      const unreadable = segmentOutputPath(dir, 0);
-      const readable = segmentOutputPath(dir, 1);
+      const unreadable = segmentOutputPath(dir, 0, ".mp4");
+      const readable = segmentOutputPath(dir, 1, ".mp4");
       writeFileSync(unreadable, "xx");
       writeFileSync(readable, "xx");
       const manifest = manifestOf([entry(0), entry(1)]);
@@ -408,13 +438,13 @@ describe("validateCompletedSegments", () => {
 
   it("hashes a segment file's contents", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    writeFileSync(segmentOutputPath(dir, 0), "xx");
-    expect(await hashSegmentFile(segmentOutputPath(dir, 0))).toBe(XX_SHA256);
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "xx");
+    expect(await hashSegmentFile(segmentOutputPath(dir, 0, ".mp4"))).toBe(XX_SHA256);
   });
 
   it("reuses nothing when this user has no key", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    writeFileSync(segmentOutputPath(dir, 0, ".mp4"), "xx");
     const noKey = { ...check(3, async () => 3), key: null };
     expect((await validateCompletedSegments(manifestOf([entry(0)]), noKey)).size).toBe(0);
   });

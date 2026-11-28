@@ -5274,6 +5274,7 @@ async function executeRenderPipeline(input: {
           gopSize: deliveryEncoder.gopSize,
           pixelFormat: preset.pixelFormat,
           imageFormat: segmentImageFormat,
+          containerExtension: videoExt,
           useGpu: job.config.useGpu === true,
           // Device-scaled: the capture buffer, not the CSS composition size.
           outputWidth: captureCompositionWidth ?? width,
@@ -5298,6 +5299,7 @@ async function executeRenderPipeline(input: {
           completedSegments = await validateCompletedSegments(existing, {
             expectedHash: segmentPlanHash,
             segmentDir,
+            containerExtension: videoExt,
             totalFrames,
             segmentFrames,
             key: manifestKey,

@@ -67,6 +67,7 @@ export interface SegmentPlanHashInput {
   gopSize: number | undefined;
   pixelFormat: string | undefined;
   imageFormat: string;
+  containerExtension: string;
   /** Hardware encoder or not: h264_nvenc and libx264 both report codec "h264" but produce different bytes. */
   useGpu: boolean;
   /** Device-scaled capture size; `width`/`height` are the composition's CSS size. */
@@ -95,6 +96,7 @@ export function computeSegmentPlanHash(input: SegmentPlanHashInput): string {
     input.bitrate ?? "",
     input.pixelFormat ?? "",
     input.imageFormat,
+    input.containerExtension,
     input.useGpu ? "gpu" : "cpu",
     `${input.outputWidth}x${input.outputHeight}`,
     input.motionBlur,
@@ -263,6 +265,7 @@ export async function probeSegmentFrameCount(
 export interface SegmentResumeCheck {
   expectedHash: string;
   segmentDir: string;
+  containerExtension: string;
   totalFrames: number;
   segmentFrames: number;
   key: Buffer | null;
@@ -319,7 +322,7 @@ export async function validateCompletedSegments(
   for (const entry of manifest.completed) {
     const slice = plannedSlice(entry, plan);
     if (!slice) continue;
-    const path = segmentOutputPath(check.segmentDir, slice.index);
+    const path = segmentOutputPath(check.segmentDir, slice.index, check.containerExtension);
     if (entry.path !== path || !(await matchesSegmentFile(path, entry))) continue;
     const frames = await check.probeFrames(path);
     if (frames !== slice.endFrame - slice.startFrame) continue;
