@@ -150,15 +150,19 @@ export function useDomEditOverlayRects({
     return { members, hover, targets, key: JSON.stringify(targets) };
   };
 
-  /** The opaque frame's rects, one geometry read in flight per set of targets; a stale answer is dropped. */
+  /**
+   * The opaque frame's rects, one geometry read in flight at a time; a stale answer is dropped. A selection just set
+   * (`set`) asks even while an older selection's read is in flight, once per set of targets.
+   */
   const updateOverChannel = (
     iframe: HTMLIFrameElement,
     overlayEl: HTMLDivElement,
-    sel: DomEditSelection | null = selectionRef.current,
-    group: readonly DomEditSelection[] = groupSelectionsRef.current,
+    set?: { sel: DomEditSelection | null; group: readonly DomEditSelection[] },
   ) => {
+    const sel = set ? set.sel : selectionRef.current;
+    const group = set ? set.group : groupSelectionsRef.current;
     const { members, hover, targets, key: readKey } = overChannelTargets(sel, group);
-    if (channelReadRef.current === readKey) return;
+    if (channelReadRef.current !== null && (!set || channelReadRef.current === readKey)) return;
     if (!sel && !members.length && !hover) {
       setOverlayRect(null);
       setChildRects([]);
@@ -362,7 +366,7 @@ export function useDomEditOverlayRects({
       const overlayEl = overlayRef.current;
       if (rafPausedRef.current || !iframe || !overlayEl || iframe.contentDocument) return;
       if (previewFrameOpaque(iframe) && (sel || group.length))
-        updateOverChannel(iframe, overlayEl, sel, group);
+        updateOverChannel(iframe, overlayEl, { sel, group });
     }),
   );
 
