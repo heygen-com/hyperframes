@@ -308,7 +308,7 @@ describe("style values in a frame's computed-styles reply", () => {
     "border-top-style": "u\\72l(https://probe.invalid/e)",
     "font-family": "Inter, sans-serif",
     "background-image": 'url("https://cdn.example/a.png")',
-    "mix-blend-mode": `normal${" ".repeat(5_000)}`,
+    "backdrop-filter": "-webkit-image-set(url(https://probe.invalid/f) 1x)",
   };
 
   it("reach Studio only when they cannot load anything in Studio's page", async () => {
@@ -325,6 +325,23 @@ describe("style values in a frame's computed-styles reply", () => {
       "font-family": "Inter, sans-serif",
       "background-image": 'url("https://cdn.example/a.png")',
     });
+  });
+
+  it("keep long values a browser computes and names that only look like a call", async () => {
+    const real: Record<string, string> = {
+      "background-image": `url("data:image/png;base64,${"iVBORw0KGgo".repeat(600)}")`,
+      "clip-path": `polygon(${Array.from({ length: 400 }, (_, i) => `${i % 100}% ${(i * 7) % 100}%`).join(", ")})`,
+      "font-family": '"Stock image (bold)", sans-serif',
+    };
+    const { iframe } = servedFrame((kind) =>
+      kind === "computed-styles" ? { styles: real } : null,
+    );
+    const read = await previewComputedStyles(
+      iframe,
+      { handle: "0123456789abcdef:1" },
+      Object.keys(real),
+    );
+    expect(read).toEqual(real);
   });
 });
 
