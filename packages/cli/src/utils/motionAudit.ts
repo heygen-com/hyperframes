@@ -162,6 +162,36 @@ function staysInFrame(frames: MotionFrame[], selector: string, canvas: Canvas): 
   return [];
 }
 
+function visibleDuring(
+  frames: MotionFrame[],
+  selector: string,
+  fromSec: number,
+  toSec: number,
+): LayoutIssue[] {
+  if (!everMatched(frames, selector)) return [missingIssue(selector, 0)];
+
+  for (const frame of frames) {
+    if (frame.time < fromSec || frame.time > toSec) continue;
+    const sample = frame.data[selector];
+    if (sample && sample.visible && sample.opacity >= APPEAR_OPACITY) continue;
+
+    return [
+      {
+        code: "motion_hidden_in_window",
+        severity: "error",
+        time: frame.time,
+        selector,
+        message: sample
+          ? `${selector} is hidden at ${round(frame.time)}s (opacity ${round(sample.opacity)}) but must remain visible from ${round(fromSec)}s to ${round(toSec)}s`
+          : `${selector} disappears at ${round(frame.time)}s but must remain visible from ${round(fromSec)}s to ${round(toSec)}s`,
+        rect: sample ? sample.rect : ZERO_RECT,
+        fixHint: "Ensure the element stays on-screen with opacity >= 0.5 across the entire window.",
+      },
+    ];
+  }
+  return [];
+}
+
 export function frozenSpans(
   frames: MotionFrame[],
   scope: string,
@@ -245,6 +275,8 @@ export function evaluateMotion(
           assertion.maxStaticSec ?? DEFAULT_MAX_STATIC_SEC,
           endCardStart,
         );
+      case "visibleDuring":
+        return visibleDuring(frames, assertion.selector, assertion.fromSec, assertion.toSec);
     }
   });
 }
@@ -256,6 +288,7 @@ export function assertionTargets(assertion: MotionAssertion): {
   switch (assertion.kind) {
     case "appearsBy":
     case "staysInFrame":
+    case "visibleDuring":
       return { selectors: [assertion.selector], scopes: [] };
     case "before":
       return { selectors: [assertion.a, assertion.b], scopes: [] };

@@ -184,6 +184,67 @@ describe("keepsMoving", () => {
   });
 });
 
+describe("visibleDuring", () => {
+  const assertion: MotionAssertion = {
+    kind: "visibleDuring",
+    selector: "#limit",
+    fromSec: 2,
+    toSec: 4,
+  };
+
+  it("passes when the element stays visible throughout the window", () => {
+    const f = frames([1, 2, 3, 4, 5], () => ({
+      data: { "#limit": visible() },
+    }));
+    expect(evaluateMotion(f, [assertion], CANVAS)).toEqual([]);
+  });
+
+  it("flags an element that disappears mid-window", () => {
+    const f = frames([1, 2, 3, 4], (t) => ({
+      data: { "#limit": t === 3 ? hidden : visible() },
+    }));
+    const issue = expectOne(evaluateMotion(f, [assertion], CANVAS));
+    expect(issue.code).toBe("motion_hidden_in_window");
+    expect(issue.time).toBe(3);
+    expect(issue.message).toContain("3s");
+    expect(issue.message).toContain("2s to 4s");
+  });
+
+  it("flags an element whose opacity drops below appear threshold mid-window", () => {
+    const f = frames([2, 3, 4], (t) => ({
+      data: {
+        "#limit": t === 3 ? { rect: rect(10, 10, 50, 50), opacity: 0.3, visible: true } : visible(),
+      },
+    }));
+    const issue = expectOne(evaluateMotion(f, [assertion], CANVAS));
+    expect(issue.code).toBe("motion_hidden_in_window");
+    expect(issue.time).toBe(3);
+    expect(issue.message).toContain("opacity 0.3");
+  });
+
+  it("flags an element that has not appeared by the window start", () => {
+    const f = frames([1, 2, 3, 4], (t) => ({
+      data: { "#limit": t >= 3 ? visible() : hidden },
+    }));
+    const issue = expectOne(evaluateMotion(f, [assertion], CANVAS));
+    expect(issue.code).toBe("motion_hidden_in_window");
+    expect(issue.time).toBe(2);
+  });
+
+  it("ignores invisibility outside the window", () => {
+    const f = frames([0.5, 1, 2, 3, 4, 5, 6], (t) => ({
+      data: { "#limit": t >= 2 && t <= 4 ? visible() : hidden },
+    }));
+    expect(evaluateMotion(f, [assertion], CANVAS)).toEqual([]);
+  });
+
+  it("flags a selector that matched no element in any frame", () => {
+    const f = frames([1, 2, 3, 4], () => ({ data: { "#limit": null } }));
+    const issue = expectOne(evaluateMotion(f, [assertion], CANVAS));
+    expect(issue.code).toBe("motion_selector_missing");
+  });
+});
+
 describe("evaluateMotion edge cases", () => {
   it("returns nothing for an empty frame set", () => {
     expect(evaluateMotion([], [{ kind: "appearsBy", selector: "#h", bySec: 1 }], CANVAS)).toEqual(
@@ -198,10 +259,11 @@ describe("collectSamplingTargets", () => {
       { kind: "appearsBy", selector: "#h", bySec: 0.5 },
       { kind: "before", a: "#h", b: "#cta" },
       { kind: "staysInFrame", selector: ".card" },
+      { kind: "visibleDuring", selector: "#limit", fromSec: 2, toSec: 4 },
       { kind: "keepsMoving", withinSelector: ".scene" },
       { kind: "keepsMoving" },
     ]);
-    expect(targets.selectors.sort()).toEqual(["#cta", "#h", ".card"]);
+    expect(targets.selectors.sort()).toEqual(["#cta", "#h", "#limit", ".card"]);
     expect(targets.livenessScopes.sort()).toEqual(["*", ".scene"]);
   });
 });
