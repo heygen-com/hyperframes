@@ -36,7 +36,6 @@ import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 import { roundTo3, roundToLayoutSize } from "../../utils/rounding";
 import { isStudioManualEditGestureActive } from "./manualEditGesture";
-import { gestureStartLayout } from "./gestureStartLayouts";
 import { previewStandInHandle } from "./previewDrafts";
 
 /* ── CSS custom-property readers ──────────────────────────────────── */
@@ -331,15 +330,17 @@ function restoreStaleStudioScaleResize(element: HTMLElement): void {
   element.removeAttribute(STUDIO_ORIGINAL_TRANSFORM_ORIGIN_ATTR);
 }
 
-function layoutBox(element: HTMLElement): { width: number; height: number } {
-  const handle = previewStandInHandle(element);
-  const pressed = handle ? gestureStartLayout(handle) : null;
-  return pressed ?? { width: element.offsetWidth, height: element.offsetHeight };
+export type LayoutBox = { width: number; height: number };
+
+function layoutBox(element: HTMLElement, frameBox?: LayoutBox | null): LayoutBox {
+  if (frameBox && previewStandInHandle(element)) return frameBox;
+  return { width: element.offsetWidth, height: element.offsetHeight };
 }
 
 function writeStudioBoxSizeVars(
   element: HTMLElement,
   size: { width: number; height: number },
+  frameBox?: LayoutBox | null,
 ): void {
   // Keep the measurement on its own migration-safe guard. Elements drafted by
   // an older Studio can already carry the box-size marker without these newer
@@ -347,7 +348,7 @@ function writeStudioBoxSizeVars(
   // and height are overwritten, so this is the last honest layout box to save.
   // Offset sizes are layout values, so a running scale animation does not
   // distort them.
-  const box = layoutBox(element);
+  const box = layoutBox(element, frameBox);
   if (!element.hasAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR)) {
     element.setAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR, String(box.width));
   }
@@ -405,9 +406,10 @@ function writeStudioBoxSizeVars(
 function applyStudioBoxSizeDimensions(
   element: HTMLElement,
   wantedSize: { width: number; height: number },
+  frameBox?: LayoutBox | null,
 ): { width: number; height: number } {
   const size = roundToLayoutSize(wantedSize);
-  writeStudioBoxSizeVars(element, size);
+  writeStudioBoxSizeVars(element, size, frameBox);
   restoreStaleStudioScaleResize(element);
 
   element.style.setProperty("box-sizing", "border-box");
@@ -433,9 +435,10 @@ function applyStudioBoxSizeDimensions(
 export function applyStudioBoxSize(
   element: HTMLElement,
   size: { width: number; height: number },
+  frameBox?: LayoutBox | null,
 ): void {
   promoteInlineForTransform(element);
-  applyStudioBoxSizeDimensions(element, size);
+  applyStudioBoxSizeDimensions(element, size, frameBox);
 }
 
 // The element's box before a resize draft first changed it; gone once the resize saves or is restored.
@@ -454,12 +457,13 @@ export function forgetStudioBoxSizeDraftBase(element: HTMLElement): void {
 export function applyStudioBoxSizeDraft(
   element: HTMLElement,
   size: { width: number; height: number },
+  frameBox?: LayoutBox | null,
 ): { width: number; height: number } {
   if (!boxSizeDraftBases.has(element)) {
-    boxSizeDraftBases.set(element, layoutBox(element));
+    boxSizeDraftBases.set(element, layoutBox(element, frameBox));
   }
   promoteInlineForTransform(element);
-  return applyStudioBoxSizeDimensions(element, size);
+  return applyStudioBoxSizeDimensions(element, size, frameBox);
 }
 
 /* ── Rotation apply ───────────────────────────────────────────────── */

@@ -13,6 +13,7 @@ import {
   restoreStudioBoxSize,
 } from "../components/editor/manualEdits";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { sealedResizeStartBox } from "../components/editor/resizeStartBox";
 
 type ResizeCommit = (
   selection: DomEditSelection,
@@ -21,13 +22,16 @@ type ResizeCommit = (
   restore?: () => void,
 ) => Promise<void | import("../utils/previewFeatureUsage").GeometryCommitResult>;
 
-export function resizeSelectionFromAgent(
+export async function resizeSelectionFromAgent(
   selection: DomEditSelection,
   next: { width: number; height: number },
   commit: ResizeCommit,
 ): Promise<void | import("../utils/previewFeatureUsage").GeometryCommitResult> {
+  const element = selection.element;
+  const pending = sealedResizeStartBox(element);
+  const startBox = pending && (await pending);
   const previous = captureStudioBoxSize(selection.element);
-  applyStudioBoxSizeDraft(selection.element, next);
+  applyStudioBoxSizeDraft(selection.element, next, startBox);
   return commit(selection, next, undefined, () => {
     restoreStudioBoxSize(selection.element, previous);
   });

@@ -17,6 +17,7 @@ import {
 import { stageElementOffset } from "./elementOffsetStager";
 import { savePlainRotation } from "./plainRotation";
 import { prepareCropResize } from "../components/editor/cropResize";
+import { sealedResizeStartBox } from "../components/editor/resizeStartBox";
 import { writePlainMove } from "../components/editor/plainTranslate";
 import {
   buildBoxSizePatches,
@@ -69,19 +70,21 @@ export function useDomGeometryCommits({
   );
 
   const handleDomBoxSizeCommit = useCallback(
-    (
+    async (
       selection: DomEditSelection,
       next: { width: number; height: number },
       offset?: { x: number; y: number },
       restore?: () => void,
       undoKey?: string,
     ) => {
-      if (readOnlyPreview) return Promise.resolve(undefined);
+      if (readOnlyPreview) return undefined;
       const element = selection.element;
+      const pending = sealedResizeStartBox(element);
+      const startBox = pending && (await pending);
       const beforeSize = captureStudioBoxSize(element);
       const beforeOffset = captureStudioPathOffset(element);
       const stageCrop = prepareCropResize(element);
-      applyStudioBoxSize(element, next);
+      applyStudioBoxSize(element, next, startBox);
       const crop = stageCrop();
       // One commit, one undo entry: the size, the crop that follows it, and the translate
       // (as a move writes it) that keeps the centre planted.
