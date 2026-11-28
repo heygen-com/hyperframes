@@ -56,7 +56,7 @@ const FORMATTING_STYLE_PROPS = new Set([
  * contenteditable is a paste target, and an event handler or an id that
  * shadows a composition's own is not formatting.
  */
-const FORMATTING_ATTRS = new Set(["data-hf-text-key", "data-hf-id"]);
+const FORMATTING_ATTRS = new Set(["data-hf-text-key", "data-hf-id", "data-hf-space"]);
 
 /**
  * What those attributes are allowed to look like: a bare token, nothing else.

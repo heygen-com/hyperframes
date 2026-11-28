@@ -84,6 +84,11 @@ describe.each(PARSERS)("sanitizeRichTextChildren (%s)", (_name, parse) => {
     expect(out).toContain('data-hf-id="hf-abc"');
   });
 
+  // fails without the fix: a canvas edit stripped the edges Studio spaces around a layer added from the panel.
+  it("keeps the edges Studio spaces around a text layer added from the panel", () => {
+    expect(clean('<span data-hf-space="both">x</span>', parse)).toContain('data-hf-space="both"');
+  });
+
   it("drops an identity attribute whose value is not a bare token", () => {
     const out = clean(`<span data-hf-text-key='a" onload="alert(1)'>x</span>`, parse);
     expect(out).not.toContain("onload");

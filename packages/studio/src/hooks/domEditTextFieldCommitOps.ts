@@ -36,6 +36,8 @@ export function buildTextFieldChildOperations(
   if (originalFields.some((field) => field.source !== "child")) return null;
 
   const originalByKey = new Map(originalFields.map((field) => [field.key, field]));
+  if (nextFields.some((field) => field.spaceBefore !== originalByKey.get(field.key)?.spaceBefore))
+    return null;
   const operations: PatchOperation[] = [];
 
   for (const nextField of nextFields) {

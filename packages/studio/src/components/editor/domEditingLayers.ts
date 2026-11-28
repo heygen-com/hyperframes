@@ -1,4 +1,5 @@
 import { isClipHiddenByRuntime, PREVIEW_ONLY_ATTRS } from "@hyperframes/core/studio-preview-mark";
+import { withTextNodeEdgesAsSeparators } from "./textFieldSpacing";
 import { existsInSourceFile } from "./probeSourceElement";
 import { isAudibleVideoNode } from "../../player/lib/timelineElementHelpers";
 import type { PatchOperation } from "../../utils/sourcePatcher";
@@ -135,7 +136,7 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
           childIdx++;
         }
       }
-      return fields;
+      return withTextNodeEdgesAsSeparators(fields);
     }
 
     return childElements.map((child, index) => ({

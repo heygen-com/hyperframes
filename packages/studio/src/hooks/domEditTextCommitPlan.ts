@@ -6,6 +6,7 @@ import {
 } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { buildTextFieldChildOperations } from "./domEditTextFieldCommitOps";
+import { respaceAddedFields } from "../components/editor/textFieldSpacing";
 
 interface DomTextCommitPlan {
   usesSerializedTextFields: boolean;
@@ -31,10 +32,12 @@ export function planDomTextCommit(
   plainTextContent: string,
 ): DomTextCommitPlan {
   const serialized = usesSerializedTextFields(nextTextFields);
-  const nextContent = serialized ? serializeDomEditTextFields(nextTextFields) : plainTextContent;
-  const childOperations = serialized
-    ? buildTextFieldChildOperations(originalTextFields, nextTextFields)
-    : null;
+  const markup = serialized ? serializeDomEditTextFields(nextTextFields) : plainTextContent;
+  const nextContent = serialized ? respaceAddedFields(markup) : markup;
+  const childOperations =
+    serialized && nextContent === markup
+      ? buildTextFieldChildOperations(originalTextFields, nextTextFields)
+      : null;
   // Per-child operations when the layers still line up one-for-one. Structure
   // changes write the element's markup because no stable child address exists.
   const operations =

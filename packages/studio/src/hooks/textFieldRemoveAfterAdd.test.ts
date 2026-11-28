@@ -90,7 +90,7 @@ describe.each(["live", "sealed"] as const)("a Design panel remove on a %s previe
     await act(() => flushStudioPendingEdits());
     await act(() => commits().handleDomRemoveTextField(two!.key));
     await act(() => flushStudioPendingEdits());
-    expect(text()).toBe("<span>One</span><span>New text</span>");
+    expect(text()).toBe("<span>One</span> <span>New text</span>");
   });
 
   it("removes only the row clicked while an add made just before it is still saving", async () => {
@@ -100,6 +100,6 @@ describe.each(["live", "sealed"] as const)("a Design panel remove on a %s previe
     const removing = commits().handleDomRemoveTextField(two!.key);
     await act(() => Promise.allSettled([adding, removing]));
     await act(() => flushStudioPendingEdits());
-    expect(text()).toBe("<span>One</span><span>New text</span>");
+    expect(text()).toBe("<span>One</span> <span>New text</span>");
   });
 });
