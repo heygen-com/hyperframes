@@ -29,7 +29,7 @@ npm install -g hyperframes
 | Look at it, or share it  | [`share`](#share), [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                                   |
 | Rebuild a video          | [`reverse`](#reverse), [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                     |
-| Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
+| Edit from the terminal   | [`timeline`](#timeline), [`history`](#history), [`narration`](#narration)                                                                                                                                                                                   |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
 | Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`update`](#update), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions), [`clean`](#clean)                                                                   |
@@ -1992,6 +1992,30 @@ use is refused before anything is written.
 
 A refused edit, such as a move that would overlap a neighbour, writes nothing,
 exits 2 and says how to fix it.
+
+### `narration`
+
+Keep each voice-over line, its audio clip and its captions in step. `narration.json` at the project
+root is the script: each line's text, voice and audio file, and what it was last voiced from. The
+clip that plays a line carries `data-narration-line="<id>"`, and caption words can carry
+`"line": "<id>"` (untagged words are matched by their clip's time window). Each line's length and
+word timings are read from media-use's `audio_meta.json` by the same id. `hyperframes lint` reports
+drift between them.
+
+```bash
+npx hyperframes narration init                       # adopt a voiced project (media-use's audio_meta.json, or tagged clips)
+npx hyperframes narration list                       # each line and whether it is in sync
+npx hyperframes narration check                      # exits 1 when voice, clips and captions drifted
+```
+
+| Command | What it does                                                                                                                                                                                                  |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`  | Write `narration.json` from media-use's `audio_meta.json` and `audio_request.json`, or from clips already tagged with `data-narration-line`, and tag each line's clip. `--force` replaces an existing file. |
+| `list`  | Each line with its length and its narration findings, or "in sync".                                                                                                                                           |
+| `check` | The narration findings from `lint`; exits 1 when any warning remains.                                                                                                                                         |
+
+Every command also takes `--dir` and `--json`; `init` takes `--who` (your agent name, for the
+`history` entry).
 
 ### `history`
 

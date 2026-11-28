@@ -107,6 +107,7 @@ const GROUPS: Group[] = [
       ],
       ["models", "List or download on-device models (models list, models install parakeet)"],
       ["tts", "Generate speech audio from text using a local AI model (Kokoro-82M)"],
+      ["narration", "Keep each voice-over line, its audio clip and its captions in step"],
       ["remove-background", "Remove background from a video or image to produce transparent media"],
     ],
   },

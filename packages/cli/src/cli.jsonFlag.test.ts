@@ -57,7 +57,8 @@ const WITH_JSON = names(`
   measure frames, measure hands, measure ink, measure look, measure probe, measure sync,
   media-treatment, media-use adopt, media-use analyze, media-use avatars, media-use candidates,
   media-use doctor, media-use from, media-use generate, media-use params, media-use resolve,
-  media-use reuse, media-use stats, media-use voices, models, normalize-audio, open, preview,
+  media-use reuse, media-use stats, media-use voices, models, narration check,
+  narration init, narration list, normalize-audio, open, preview,
   remove-background, render, reverse start, share, skills check, skills update, snapshot,
   telemetry, timeline apply, timeline delete, timeline duplicate, timeline ids, timeline move,
   timeline set, timeline split, timeline trim, timeline undo, transcribe, tts, update, upgrade,
@@ -70,7 +71,7 @@ const WITHOUT_JSON = names(`
 
 // Command words that take subcommands, run on their own. REFUSED answer `json_unsupported`.
 const REFUSED_PARENTS = names("auth, cloud, figma, media-use, skills");
-const OTHER_PARENTS = names("history, measure, reverse, timeline");
+const OTHER_PARENTS = names("history, measure, narration, reverse, timeline");
 
 interface Leaf {
   path: string[];
