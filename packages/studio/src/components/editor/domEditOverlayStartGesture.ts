@@ -319,6 +319,7 @@ export function startGesture(
       originHeight: rect.height,
       actualWidth,
       actualHeight,
+      startLayout: start ? start.layout : null,
       actualRotation: rotation.angle,
       plainRotation,
       editScaleX: rect.editScaleX,

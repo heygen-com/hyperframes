@@ -37,13 +37,20 @@ export function sealedPreviewFrame(
     get: () => onPageUntilPlayerRemovesIt,
   });
   iframe.remove = () => void (onPageUntilPlayerRemovesIt = false);
-  const wrap = options.wrapHandedOverPort ?? ((port: MessagePort) => port);
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      postLater({ source: frame as unknown as Window, data, ports: ports.map(wrap) }),
-  } as unknown as Window;
+  const wrap = options.wrapHandedOverPort;
+  const parent = {} as unknown as Window;
   let agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) => postLater({ source: parent, data });
+  const portForRuntime = (sent: MessagePort): MessagePort => {
+    if (!wrap) return sent;
+    const { port1, port2 } = new MessageChannel();
+    const studioEnd = wrap(port1);
+    sent.onmessage = (event) => studioEnd.postMessage(event.data);
+    studioEnd.onmessage = (event) => sent.postMessage(event.data);
+    sent.addEventListener("close", () => studioEnd.close());
+    return port2;
+  };
+  frame.postMessage = (data: unknown, _origin: string, sent: MessagePort[] = []) =>
+    postLater({ source: parent, data, ports: sent.map(portForRuntime) });
   onTestFinished(() => agent.dispose());
   const reload = () => {
     agent.dispose();

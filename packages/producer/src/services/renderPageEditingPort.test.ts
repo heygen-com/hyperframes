@@ -20,8 +20,8 @@ describe("a render page", () => {
     await browser?.close();
   });
 
-  // Studio's drag chrome only arrives over the editing port, so a page that never hands one over never paints it.
-  it("hands out no editing port, so it never paints drag chrome", async () => {
+  // Studio's drag chrome only arrives over the editing port, so a page that never serves one never paints it.
+  it("serves no editing port, so it never paints drag chrome", async () => {
     const page = await browser.newPage();
     try {
       await page.setContent(`<!doctype html>
@@ -41,16 +41,21 @@ describe("a render page", () => {
         window.addEventListener("message", (event) => {
           if (event.origin === location.origin) types.push(event.data?.type);
         });
-        window.postMessage({ source: "hf-parent", type: "editing-connect", v: 1 }, "*");
-        // A port handed over while the connect is handled is queued ahead of the second marker.
+        const { port1, port2 } = new MessageChannel();
+        let answered = false;
+        port1.onmessage = () => (answered = true);
+        window.postMessage({ source: "hf-parent", type: "editing-connect", v: 2 }, "*", [port2]);
+        port1.postMessage({ v: 2, id: 1, kind: "hello", params: {} });
+        // A port served while the connect is handled answers before the later timer runs.
         await marker("first-marker");
         await marker("second-marker");
+        await new Promise((resolve) => setTimeout(resolve, 200));
         window.__player!.renderSeek!(1);
         const tags = Array.from(document.documentElement.children, (child) => child.tagName);
-        return { types, tags };
+        return { types, tags, answered };
       });
       expect(seen.types).toContain("editing-connect");
-      expect(seen.types).not.toContain("editing-port");
+      expect(seen.answered).toBe(false);
       expect(seen.tags).toEqual(["HEAD", "BODY"]);
     } finally {
       await page.close();

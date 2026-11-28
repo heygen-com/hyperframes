@@ -4,6 +4,22 @@ import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 
 export class SourceIgnoreError extends Error {
+  #relativePath;
+
+  /** @param {string} [message] @param {ErrorOptions & {reason?: "rule" | "file" | "read" | "path", relativePath?: string | undefined}} [options] */
+  constructor(message, options) {
+    super(message, options);
+    this.reason = options?.reason ?? "rule";
+    this.#relativePath = options?.relativePath ? localPathLabel(options.relativePath) : undefined;
+  }
+
+  /** A relative path for local display, kept out of the message and enumerable error fields. */
+  // Package hosts read this field when presenting a capture failure.
+  // fallow-ignore-next-line unused-class-member
+  get relativePath() {
+    return this.#relativePath;
+  }
+
   code = "invalid_source_ignore";
 }
 const scratch = (/** @type {string} */ path) => /(?:^|\/)[^/]+\.(?:log|swp)$/.test(path);
@@ -18,13 +34,23 @@ export async function readSourceIgnore(root, { syntax } = {}) {
   const text = await readIgnoreText(root);
   if (!text) return scratch;
   if (syntax === "gitignore") {
+    const lines = boundedGitignoreRules(text);
+    if (!lines.length) return scratch;
     const { default: ignore } = await import("ignore");
-    const rules = ignore({ allowRelativePaths: true }).add(text);
+    const rules = ignore({ allowRelativePaths: true }).add(lines);
     if (rules.ignores("index.html"))
       throw new SourceIgnoreError(
         ".hyperframesignore must include index.html at the project root.",
       );
-    return (path, directory) => scratch(path) || rules.ignores(directory ? `${path}/` : path);
+    return (path, directory) => {
+      // The matcher checks each ancestor. Bound that work before entering it, including on a cold cache.
+      if (path.length > 1024 || path.split("/").length > 64)
+        throw new SourceIgnoreError(
+          ".hyperframesignore supports paths up to 1024 characters and 64 components.",
+          { reason: "path", relativePath: path },
+        );
+      return scratch(path) || rules.ignores(directory ? `${path}/` : path);
+    };
   }
   const paths = text
     .split(/\r?\n/)
@@ -34,9 +60,72 @@ export async function readSourceIgnore(root, { syntax } = {}) {
   return (path) => scratch(path) || entries.some((entry) => entry.test(path));
 }
 
+/** @param {string} path */
+function localPathLabel(path) {
+  if (/^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)/i.test(path)) return undefined;
+  const brief = path.length > 160 ? path.slice(0, 60) + "…" + path.slice(-96) : path;
+  return JSON.stringify(brief)
+    .slice(1, -1)
+    .replace(/[\u202a-\u202e\u2066-\u2069]/g, "�");
+}
+
+/** @param {string} pattern */
+function checkWildcardComponents(pattern) {
+  const wildcardParts = pattern.split("/").filter((part) => part.includes("*"));
+  if (wildcardParts.length > 4)
+    throw new SourceIgnoreError(
+      ".hyperframesignore allows up to four wildcard path components per rule.",
+    );
+  const ordinary = wildcardParts.filter((part) => part !== "**");
+  const globstars = wildcardParts.length - ordinary.length;
+  // A trailing /** only tests for contents. Keep the common **/folder/** form.
+  const contentsOnly =
+    wildcardParts.length === 2 && /(?:^|\/)\*\*\/(?:[^*?/]+\/)+\*\*$/.test(pattern);
+  if (globstars > 1 && !contentsOnly)
+    throw new SourceIgnoreError(
+      ".hyperframesignore allows one recursive wildcard and an optional trailing /**.",
+    );
+  // A two-star filename such as *.min.* is confined to one component. Keep the remaining
+  // components literal so matching one filename cannot multiply work in another.
+  const maxStars = wildcardParts.length === 1 ? 2 : 1;
+  if (ordinary.some((part) => part.split("*").length - 1 > maxStars))
+    throw new SourceIgnoreError(
+      ".hyperframesignore allows a two-star filename with otherwise literal components.",
+    );
+}
+
+/** @param {string} line */
+function boundedGitignoreRule(line) {
+  if (line.length > 256)
+    throw new SourceIgnoreError(".hyperframesignore rules may contain up to 256 characters.");
+  const pattern = line.replace(/^!/, "");
+  // A leading **/ before a single filename is the ordinary basename match. Only
+  // simplify validation; pass the original rule to the matcher to preserve its semantics.
+  const basename = /^\*\*\/([^/]+)$/.exec(pattern)?.[1];
+  checkWildcardComponents(basename && basename !== "**" ? basename : pattern);
+  // Count stars before interpreting escapes and classes, which can change component boundaries.
+  if (pattern.indexOf("*") !== pattern.lastIndexOf("*") && /[\\[]/.test(pattern))
+    throw new SourceIgnoreError(
+      ".hyperframesignore rule combines unsupported wildcards or escapes.",
+    );
+  // A standalone globstar has no adjacent path component to span.
+  return /^!?\/?\*\*\/?$/.test(line) ? line.replace("**", "*") : line;
+}
+
+/** @param {string} text */
+function boundedGitignoreRules(text) {
+  const lines = text.split(/\r?\n/).filter((line) => !line.startsWith("#") && line.trim());
+  if (lines.length > 256) throw new SourceIgnoreError(".hyperframesignore allows up to 256 rules.");
+  return lines.map(boundedGitignoreRule);
+}
+
+const unreadableIgnoreFile = () =>
+  new SourceIgnoreError(".hyperframesignore could not be read.", { reason: "read" });
+
 const invalidIgnoreFile = () =>
   new SourceIgnoreError(
     ".hyperframesignore must be a regular file inside the project, smaller than 64 KiB.",
+    { reason: "file" },
   );
 
 /** @param {string} file */
@@ -45,11 +134,12 @@ async function openIgnoreFile(file) {
     file,
     constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
   ).catch(async (/** @type {NodeJS.ErrnoException} */ error) => {
-    if (error.code !== "ENOENT") throw invalidIgnoreFile();
+    if (error.code === "ELOOP" || error.code === "EMLINK") throw invalidIgnoreFile();
+    if (error.code !== "ENOENT") throw unreadableIgnoreFile();
     // An absent file means no exclusions; a dangling symlink is invalid.
     const named = await lstat(file).catch((/** @type {NodeJS.ErrnoException} */ missing) => {
       if (missing.code === "ENOENT") return null;
-      throw invalidIgnoreFile();
+      throw unreadableIgnoreFile();
     });
     if (named) throw invalidIgnoreFile();
     return null;

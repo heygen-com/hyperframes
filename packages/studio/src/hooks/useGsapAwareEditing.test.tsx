@@ -9,6 +9,7 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import { mountReactHarness, withInlineLayoutBox } from "./domSelectionTestHarness";
 import { DomEditCropHandles } from "../components/editor/DomEditCropHandles";
 import { applyStudioBoxSizeDraft } from "../components/editor/manualEdits";
+import { registerPreviewStandIn } from "../components/editor/previewDrafts";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -482,6 +483,7 @@ describe("useGsapAwareEditing anchored resize", () => {
       undefined,
       expect.any(Function),
       expect.objectContaining({ frozen: true }),
+      null,
     );
     act(() => h.root.unmount());
   });
@@ -611,6 +613,54 @@ describe("useGsapAwareEditing anchored resize", () => {
       { type: "inline-style", property: "clip-path", value: scaled },
     ]);
     act(() => h.crop.unmount());
+    act(() => h.root.unmount());
+  });
+
+  /** A cropped element as a sealed preview's stand-in: no layout here; the frame laid it out 300 x 200. */
+  function sealedCropped() {
+    const h = mountResizeHandler([]);
+    const el = gsapPositioned("div");
+    el.id = "clip";
+    el.style.setProperty("clip-path", "inset(0px 60px 0px 0px)");
+    document.body.append(el);
+    registerPreviewStandIn(el, document.createElement("iframe"), "a:1");
+    applyStudioBoxSizeDraft(el, { width: 450, height: 300 }, { width: 300, height: 200 });
+    return { ...h, selection: { ...h.selection, element: el } };
+  }
+
+  function resizeSaves(outcome: { status: "persisted"; savedAsScale?: boolean }) {
+    mocks.resize.mockImplementation(async (selection, _next, _a, _i, commit) => {
+      await commit(selection, { type: "size" }, { label: "Resize", softReload: true });
+      return outcome;
+    });
+  }
+
+  // fails without the fix: the crop read the stand-in's own 0 x 0 box after the resize and kept its inset.
+  it("in a sealed preview, scales the crop to the size the resize laid out", async () => {
+    const h = sealedCropped();
+    resizeSaves({ status: "persisted" });
+    await act(() =>
+      h.resize(h.selection, { width: 450, height: 300 }, undefined, undefined, {
+        plainTranslate: false,
+      }),
+    );
+
+    expect(h.commitPatch.mock.calls[0]![1]).toEqual([
+      { type: "inline-style", property: "clip-path", value: scaled },
+    ]);
+    act(() => h.root.unmount());
+  });
+
+  it("in a sealed preview, keeps the crop when the resize saved a scale", async () => {
+    const h = sealedCropped();
+    resizeSaves({ status: "persisted", savedAsScale: true });
+    await act(() =>
+      h.resize(h.selection, { width: 450, height: 300 }, undefined, undefined, {
+        plainTranslate: false,
+      }),
+    );
+
+    expect(h.commitPatch).not.toHaveBeenCalled();
     act(() => h.root.unmount());
   });
 

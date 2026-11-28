@@ -1,16 +1,16 @@
 /**
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
- * Each connect from `window.parent` gets a fresh port, so only the parent holds a channel and a
- * remounted client is served too; any other connect, or any in a page served to another site, is
- * ignored. Earlier ports stay open: a client may take any of them; a disposed one closes its own.
+ * Each connect from `window.parent` carries a port the parent made, and the runtime serves it, so
+ * only the parent holds the other end and a remounted client is served too. The connect ends at
+ * the runtime's listener, which is added when the runtime first evaluates; one that is not served
+ * (another version, or a page served to another site) has its port closed.
  * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   EDITING_CONNECT,
-  EDITING_PORT,
   EDITING_PROTOCOL_VERSION,
   EDITING_REQUEST_KINDS,
   EDITING_REQUEST_TIMEOUT_MS,
@@ -75,7 +75,14 @@ import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
 import { portPausedVideoProvider } from "./editing/pausedFrames";
 import { armCanvasKeys, resetCanvasKeys, resolveCanvasKeyAction } from "./editing/canvasKeys";
-import { closePort, createRuntimeChannel, onPortMessage, portMap, postOnPort } from "./runtimePort";
+import {
+  canServePorts,
+  closePort,
+  onPortMessage,
+  portMap,
+  postOnPort,
+  endMessageAndTakePorts,
+} from "./runtimePort";
 import { measureStageDocument } from "./editing/stageMeasure";
 import { endStageAct, stageAct } from "./editing/stageAct";
 
@@ -390,40 +397,57 @@ function isConnectRequest(event: MessageEvent<unknown>, parent: Window): boolean
   // A top-level page is its own parent, so a self-post would pass the source check.
   if (parent === window || event.source !== parent) return false;
   const data = event.data;
-  if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
-    return false;
-  return data.v === EDITING_PROTOCOL_VERSION && markedForStudio(document);
+  return isPlainRecord(data) && data.source === "hf-parent" && data.type === EDITING_CONNECT;
 }
 
-export function installEditingAgent(parent: Window = parentAtLoad ?? window.parent): {
+function listenForConnects(parent: Window, take: (port: MessagePort) => void): () => void {
+  const onMessage = (event: MessageEvent<unknown>) => {
+    if (!isConnectRequest(event, parent)) return;
+    const ports = endMessageAndTakePorts(event);
+    const version = (event.data as { v?: unknown }).v;
+    const served =
+      ports.length === 1 &&
+      version === EDITING_PROTOCOL_VERSION &&
+      canServePorts(event) &&
+      markedForStudio(document);
+    if (served) return take(ports[0]!);
+    for (let i = 0; i < ports.length; i += 1) closePort(ports[i]!);
+  };
+  window.addEventListener("message", onMessage, true);
+  return () => window.removeEventListener("message", onMessage, true);
+}
+
+const waiting = portMap<true>();
+let takeAtLoad: (port: MessagePort) => void = (port) => waiting.set(port, true);
+let stopAtLoad: (() => void) | null = null;
+
+export function listenForEditingConnect(): void {
+  if (!parentAtLoad || stopAtLoad) return;
+  stopAtLoad = listenForConnects(parentAtLoad, (port) => takeAtLoad(port));
+}
+
+export function installEditingAgent(parent?: Window): {
   dispose: () => void;
 } {
   const ports = portMap<true>();
-  const onMessage = (event: MessageEvent<unknown>) => {
-    const channel = isConnectRequest(event, parent) ? createRuntimeChannel() : null;
-    if (!channel) return;
-    const port = channel.port1;
+  const take = (port: MessagePort) => {
     ports.set(port, true);
     serve(port);
-    try {
-      // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
-      parent.postMessage(
-        { source: "hf-preview", type: EDITING_PORT, v: EDITING_PROTOCOL_VERSION },
-        "*",
-        [channel.port2],
-      );
-    } catch (err) {
-      swallow("editingAgent.handoff", err);
-      closePort(port);
-      ports.delete(port);
-      return;
-    }
     preloadMotionPath();
   };
-  window.addEventListener("message", onMessage);
+  let stop: () => void;
+  if (!parent && stopAtLoad) {
+    stop = stopAtLoad;
+    stopAtLoad = null;
+    takeAtLoad = take;
+    waiting.forEach((_, port) => take(port));
+    waiting.clear();
+  } else {
+    stop = listenForConnects(parent ?? parentAtLoad ?? window.parent, take);
+  }
   return {
     dispose() {
-      window.removeEventListener("message", onMessage);
+      stop();
       ports.forEach((_, port) => closePort(port));
       ports.clear();
       consoleWatch?.stop();

@@ -8,8 +8,14 @@ import {
   resolvePreviewSelection,
 } from "../components/editor/previewSelection";
 import { drawPreviewDraft } from "../components/editor/previewDrafts";
+import { captureStudioBoxSize, restoreStudioBoxSize } from "../components/editor/manualEdits";
+import {
+  STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
+  STUDIO_ORIGINAL_BOX_WIDTH_ATTR,
+} from "../components/editor/manualEditsTypes";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { resizeSelectionFromAgent } from "../webmcp/StudioAgentTools";
+import { writeSizeWithCrop } from "../components/editor/cropResize";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useDomGeometryCommits } from "./useDomGeometryCommits";
@@ -26,7 +32,7 @@ afterEach(() => {
 /** Studio's geometry commits on a sealed preview of CARD, saving through `persist`. */
 async function sealedCard(persist: PersistDomEditOperations) {
   document.body.innerHTML = CARD;
-  const card = document.getElementById("card")!;
+  const card = laidOut(document.getElementById("card")!);
   const { iframe } = sealedPreviewFrame();
   const found = await findPreviewElementForSelection(
     iframe,
@@ -56,6 +62,20 @@ async function sealedCard(persist: PersistDomEditOperations) {
   act(() => createRoot(document.createElement("div")).render(createElement(Harness)));
   return { card, selection, commits: commits! };
 }
+
+/** happy-dom lays nothing out: the element's box follows its inline size, as a browser's would here. */
+function laidOut(element: HTMLElement) {
+  Object.defineProperties(element, {
+    offsetWidth: { configurable: true, get: () => Number.parseFloat(element.style.width) || 0 },
+    offsetHeight: { configurable: true, get: () => Number.parseFloat(element.style.height) || 0 },
+  });
+  return element;
+}
+
+const originalBox = (element: HTMLElement) => [
+  element.getAttribute(STUDIO_ORIGINAL_BOX_WIDTH_ATTR),
+  element.getAttribute(STUDIO_ORIGINAL_BOX_HEIGHT_ATTR),
+];
 
 /** Lets the port's request and the frame's reply land. */
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)));
@@ -132,4 +152,81 @@ describe("geometry commits in a sealed preview", () => {
     expect(card.style.cssText).toBe(frameBefore);
     expect(selection.element.style.cssText).toBe(shownBefore);
   });
+});
+
+// fails without the fix: a resize with no press read the stand-in's own box (0 x 0) or the last press's.
+describe("a sealed resize with no press saves the box the frame lays out now", () => {
+  it("from a size typed in the inspector", async () => {
+    const { selection, commits } = await sealedCard(saved());
+
+    await commits.handleDomBoxSizeCommit(selection, { width: 160, height: 90 });
+
+    expect(originalBox(selection.element)).toEqual(["100", "50"]);
+  });
+
+  it("from the agent's resize", async () => {
+    const { selection, commits } = await sealedCard(saved());
+
+    await resizeSelectionFromAgent(
+      selection,
+      { width: 200, height: 80 },
+      commits.handleDomBoxSizeCommit,
+    );
+
+    expect(originalBox(selection.element)).toEqual(["100", "50"]);
+  });
+
+  it("after a resize is undone, the same as an open element", async () => {
+    const { card, selection, commits } = await sealedCard(saved());
+    const open = laidOut(document.createElement("div"));
+    open.style.cssText = card.style.cssText;
+    document.body.append(open);
+    const openSelection = { ...selection, element: open };
+    const source = card.style.cssText;
+    const sealedBefore = captureStudioBoxSize(selection.element);
+    const openBefore = captureStudioBoxSize(open);
+
+    for (const sel of [selection, openSelection])
+      await commits.handleDomBoxSizeCommit(sel, { width: 160, height: 90 });
+    await settle();
+    card.style.cssText = source;
+    restoreStudioBoxSize(selection.element, sealedBefore);
+    restoreStudioBoxSize(open, openBefore);
+    for (const sel of [selection, openSelection])
+      await commits.handleDomBoxSizeCommit(sel, { width: 120, height: 70 });
+
+    expect(originalBox(open)).toEqual(["100", "50"]);
+    expect(originalBox(selection.element)).toEqual(originalBox(open));
+  });
+});
+
+// fails without the fix: the crop step read the stand-in's own box (0 x 0) after the resize, so the crop kept its old inset.
+it("rescales the crop with a sealed resize, the same as an open element", async () => {
+  const { card, selection, commits } = await sealedCard(saved());
+  card.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  selection.element.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  const open = laidOut(document.createElement("div"));
+  open.style.cssText = card.style.cssText;
+  document.body.append(open);
+
+  for (const sel of [selection, { ...selection, element: open }])
+    await commits.handleDomBoxSizeCommit(sel, { width: 200, height: 100 });
+
+  expect(open.style.getPropertyValue("clip-path")).toBe("inset(20px 40px 20px 40px)");
+  expect(selection.element.style.getPropertyValue("clip-path")).toBe(
+    open.style.getPropertyValue("clip-path"),
+  );
+});
+
+it("rescales the crop with a size typed on an animated element, from the box the frame lays out", async () => {
+  const { card, selection } = await sealedCard(saved());
+  card.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  selection.element.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  const commit = vi.fn(async () => undefined);
+
+  await writeSizeWithCrop(selection, { width: 200 }, vi.fn(), commit, async () => {});
+
+  expect(commit.mock.calls[0]?.[1]).toEqual([
+    { type: "inline-style", property: "clip-path", value: "inset(10px 40px 10px 40px)" },
+  ]);
 });

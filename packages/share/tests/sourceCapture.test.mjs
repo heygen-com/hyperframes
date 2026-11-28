@@ -485,6 +485,94 @@ test("hosts can reuse gitignore rules for inventory and referenced assets", asyn
   assert.ok(observed.has("index.html"));
 });
 
+test("gitignore capture refuses unsupported rules before walking files", async (t) => {
+  const { readSourceIgnore, SourceIgnoreError } = await import("../src/sourceIgnore.mjs");
+  const root = await project({});
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, ".hyperframesignore");
+  for (const text of [
+    "exports/*/*/*/*/*/draft",
+    "**/images/**/draft",
+    "x".repeat(257),
+    "draft\n".repeat(257),
+  ]) {
+    await writeFile(file, text);
+    await assert.rejects(readSourceIgnore(root, { syntax: "gitignore" }), (error) => {
+      assert.ok(error instanceof SourceIgnoreError);
+      assert.equal(error.code, "invalid_source_ignore");
+      assert.equal(error.reason, "rule");
+      return true;
+    });
+  }
+  await writeFile(
+    file,
+    "# notes\n".repeat(300) + "assets/**/draft-*.png\n!assets/**/draft-final.png",
+  );
+  const ignored = await readSourceIgnore(root, { syntax: "gitignore" });
+  assert.equal(ignored("assets/2025/draft-old.png"), true);
+  assert.equal(ignored("assets/2025/draft-final.png"), false);
+  await writeFile(file, "**/\n");
+  const folders = await readSourceIgnore(root, { syntax: "gitignore" });
+  assert.equal(folders("assets", true), true);
+  assert.equal(folders("index.html"), false);
+});
+
+test("gitignore capture preserves common filename and directory globs", async (t) => {
+  const { readSourceIgnore } = await import("../src/sourceIgnore.mjs");
+  const { default: ignore } = await import("ignore");
+  const root = await project({});
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const rules = ["**/*draft*", "*.min.*", "**/cache/**", "!**/cache/keep.txt", "report-*-*.pdf"];
+  await writeFile(join(root, ".hyperframesignore"), rules.join("\n"));
+  const ignored = await readSourceIgnore(root, { syntax: "gitignore" });
+  const reference = ignore().add(rules);
+  for (const path of [
+    "index.html",
+    "art/draft.png",
+    "redraft",
+    "app.min.js",
+    "APP.MIN.CSS",
+    "report-q3-v2.pdf",
+    "cache",
+    "cache/output",
+    "assets/cache/keep.txt",
+    "assets/cache/folder/preview",
+  ]) {
+    for (const directory of [true, false]) {
+      assert.equal(
+        ignored(path, directory),
+        reference.ignores(directory ? path + "/" : path),
+        path,
+      );
+    }
+  }
+});
+
+test("gitignore bounds ancestor checks and aborts a capture that exceeds them", async (t) => {
+  const { readSourceIgnore, SourceIgnoreError } = await import("../src/sourceIgnore.mjs");
+  const directory = Array(64).fill("set").join("/");
+  const root = await project({ "index.html": "project", [directory + "/note.txt"]: "notes" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, ".hyperframesignore");
+  await writeFile(file, "only-this-name");
+  const ignored = await readSourceIgnore(root, { syntax: "gitignore" });
+  assert.equal(ignored(directory, true), false);
+  assert.throws(
+    () => ignored(directory + "/note.txt"),
+    (error) => {
+      assert.ok(error instanceof SourceIgnoreError);
+      assert.ok(error.relativePath?.endsWith("/note.txt"));
+      assert.doesNotMatch(error.message + JSON.stringify(error), /note[.]txt/);
+      return true;
+    },
+  );
+  assert.throws(() => ignored("a".repeat(1025)), SourceIgnoreError);
+  await assert.rejects(captureProject(root, { ignoreSyntax: "gitignore" }), SourceIgnoreError);
+  await writeFile(file, "# notes only");
+  const withoutRules = await readSourceIgnore(root, { syntax: "gitignore" });
+  assert.equal(withoutRules(directory + "/note.txt"), false);
+});
+
 test("gitignore rules use the verified ignore file and must leave the root entrypoint included", async (t) => {
   const { readSourceIgnore } = await import("@hyperframes/share/projectSnapshot.mjs");
   const root = await project({ ".hyperframesignore": "*.html\n!/index.html\n" });

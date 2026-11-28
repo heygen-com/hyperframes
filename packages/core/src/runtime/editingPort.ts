@@ -241,11 +241,9 @@ export {
   type LayerKind,
 } from "./editingLayers";
 
-export const EDITING_PROTOCOL_VERSION = 1 as const;
-/** Parent to frame, on the window: asks the runtime for the port. */
+export const EDITING_PROTOCOL_VERSION = 2 as const;
+/** Parent to frame, on the window: carries the runtime's port in its transfer list. */
 export const EDITING_CONNECT = "editing-connect";
-/** Frame to parent, on the window: carries the port in its transfer list. */
-export const EDITING_PORT = "editing-port";
 
 export const EDITING_REQUEST_KINDS = [
   "hello",
@@ -898,7 +896,7 @@ export class EditingPortError extends Error {
 }
 
 export interface EditingPortClient {
-  /** Settles when the frame's runtime has handed over its port. */
+  /** Settles when the frame's runtime serves the port this client sent it. */
   readonly ready: Promise<void>;
   request<K extends EditingRequestKind>(
     kind: K,
@@ -934,25 +932,17 @@ function replyOutcome(data: Record<string, unknown>): Outcome {
   return { error: new EditingPortError(error.code as EditingErrorCode, message) };
 }
 
-/** The port this frame handed over, "ready" when its runtime came up, else null. */
-function readHandoff(
-  event: MessageEvent<unknown>,
-  frame: Window | null,
-): MessagePort | "ready" | null {
+/** True for the frame's own note that its runtime came up. */
+function runtimeCameUp(event: MessageEvent<unknown>, frame: Window | null): boolean {
   const data = event.data;
-  if (!frame || event.source !== frame || !isPlainRecord(data) || data.source !== "hf-preview") {
-    return null;
-  }
-  if (data.type === "ready") return "ready";
-  return data.type === EDITING_PORT && data.v === EDITING_PROTOCOL_VERSION
-    ? onlyPort(event.ports)
-    : null;
+  return (
+    !!frame &&
+    event.source === frame &&
+    isPlainRecord(data) &&
+    data.source === "hf-preview" &&
+    data.type === "ready"
+  );
 }
-
-const onlyPort = (ports: readonly MessagePort[]): MessagePort | null =>
-  ports.length === 1 ? (ports[0] ?? null) : null;
-
-const portsTaken = new WeakSet<MessagePort>();
 
 type Pending = {
   resolve: (result: unknown) => void;
@@ -961,9 +951,9 @@ type Pending = {
 };
 
 /**
- * The parent's end of the editing channel for one preview frame load. Asks for
- * the port at once and again on the runtime's `ready`, and takes the first port
- * that frame sends. Replies are data from the frame, so callers validate results.
+ * The parent's end of the editing channel for one preview frame load. Makes the channel and sends
+ * the frame one end, at once and again on the runtime's `ready`; it never takes a port from the
+ * frame. Replies are data from the frame, so callers validate results.
  */
 export function createEditingPortClient(options: {
   iframe: HTMLIFrameElement;
@@ -1018,25 +1008,35 @@ export function createEditingPortClient(options: {
     if (typeof data.id === "number") return settle(data.id, replyOutcome(data));
     onPush(data);
   };
+  let offered: MessagePort | null = null;
   const connect = () => {
+    if (port || disposed) return;
+    offered?.close();
+    const { port1, port2 } = new MessageChannel();
+    offered = port1;
+    port1.onmessage = (event: MessageEvent<unknown>) => {
+      if (port === port1) return onReply(event);
+      const data = event.data;
+      if (port || port1 !== offered || !isPlainRecord(data)) return;
+      if (data.v !== EDITING_PROTOCOL_VERSION || data.ok !== true) return;
+      port = port1;
+      host.removeEventListener("message", onWindowMessage);
+      resolveReady();
+    };
     try {
       iframe.contentWindow?.postMessage(
         { source: "hf-parent", type: EDITING_CONNECT, v: EDITING_PROTOCOL_VERSION },
         "*",
+        [port2],
       );
+      // Waits in the port until the runtime serves it; the reply is what makes this client ready.
+      port1.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, kind: "hello", params: {} });
     } catch {
       // The frame is mid-navigation; its runtime's `ready` asks again.
     }
   };
   const onWindowMessage = (event: MessageEvent<unknown>) => {
-    const handoff = readHandoff(event, iframe.contentWindow);
-    if (handoff === "ready") return connect();
-    if (!handoff || portsTaken.has(handoff)) return;
-    portsTaken.add(handoff);
-    port = handoff;
-    host.removeEventListener("message", onWindowMessage);
-    port.onmessage = onReply;
-    resolveReady();
+    if (runtimeCameUp(event, iframe.contentWindow)) connect();
   };
   host.addEventListener("message", onWindowMessage);
   connect();
@@ -1119,7 +1119,7 @@ export function createEditingPortClient(options: {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
         port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, ...stop });
       }
-      port?.close();
+      offered?.close();
       rejectReady(new EditingPortError("disposed", "client disposed"));
       for (const id of [...pending.keys()]) {
         settle(id, { error: new EditingPortError("disposed", "client disposed") });

@@ -312,25 +312,28 @@ describe("frameSamplerScript in a sealed preview", () => {
   };
 
   // The frame's document and location throw, as a cross-origin frame's do; only postMessage reaches it.
-  function sealedFrame(studioReplies, watchHeld = null) {
-    const channel = new MessageChannel();
+  function sealedFrame(watchHeld = null) {
+    const served = [];
     const asked = [];
-    channel.port1.onmessage = async ({ data: { id, kind, params } }) => {
-      asked.push({ kind, params });
-      if (kind === "watch-geometry" && watchHeld) await watchHeld;
-      const result =
-        kind === "query"
-          ? {
-              matches: BOXES[params.selector] ? [{ handle: params.selector }] : [],
-              truncated: false,
-            }
-          : kind === "watch-geometry"
-            ? { watching: params.handles.length }
-            : kind === "computed-styles"
-              ? { styles: { width: "100px", height: "50px", "box-sizing": "border-box" } }
-              : null;
-      channel.port1.postMessage({ v: 1, id, ok: true, result });
-    };
+    const serve =
+      (port) =>
+      async ({ data: { id, kind, params } }) => {
+        if (kind === "hello") return port.postMessage({ v: 2, id, ok: true, result: {} });
+        asked.push({ kind, params });
+        if (kind === "watch-geometry" && watchHeld) await watchHeld;
+        const result =
+          kind === "query"
+            ? {
+                matches: BOXES[params.selector] ? [{ handle: params.selector }] : [],
+                truncated: false,
+              }
+            : kind === "watch-geometry"
+              ? { watching: params.handles.length }
+              : kind === "computed-styles"
+                ? { styles: { width: "100px", height: "50px", "box-sizing": "border-box" } }
+                : null;
+        port.postMessage({ v: 2, id, ok: true, result });
+      };
     const win = {
       get document() {
         throw new Error("cross-origin");
@@ -338,17 +341,10 @@ describe("frameSamplerScript in a sealed preview", () => {
       get location() {
         throw new Error("cross-origin");
       },
-      postMessage(message) {
-        if (message.type !== "editing-connect") return;
-        // Studio already holds the port when the bench's handoff arrives: both listen on it.
-        channel.port2.onmessage = ({ data }) => studioReplies.push(data);
-        queueMicrotask(() =>
-          on.message({
-            source: win,
-            data: { source: "hf-preview", type: "editing-port", v: 1 },
-            ports: [channel.port2],
-          }),
-        );
+      postMessage(message, _origin, [port]) {
+        if (message.type !== "editing-connect" || message.v !== 2) return;
+        served.push(port);
+        port.onmessage = serve(port);
       },
     };
     const on = {};
@@ -365,14 +361,14 @@ describe("frameSamplerScript in a sealed preview", () => {
     };
     // A push as the frame sends one each time it paints, stamped `at` on the shared clock.
     const push = (at, x = 0) =>
-      channel.port1.postMessage({
-        v: 1,
+      served.at(-1).postMessage({
+        v: 2,
         event: "geometry",
         at,
         elements: [geometry("#target", x), geometry('[data-composition-id="main"]')],
       });
-    const close = () => (channel.port1.close(), channel.port2.close());
-    return { iframe, on, asked, push, close, channel };
+    const close = () => served.forEach((port) => port.close());
+    return { iframe, on, asked, push, close, served };
   }
 
   // Runs the page script in a top page whose previews are `iframe`; ticks stand in for painted frames.
@@ -403,6 +399,7 @@ describe("frameSamplerScript in a sealed preview", () => {
       clearTimeout,
       URL,
       DOMMatrix: class {},
+      MessageChannel,
     };
     runInNewContext(frameSamplerScript, page);
     const rec = window.__editBenchFrames;
@@ -428,9 +425,8 @@ describe("frameSamplerScript in a sealed preview", () => {
     return { rec, tick, clock, settle, watching, move, studio, frame, pageApi };
   }
 
-  it("measures the element from the preview's pushes, in top-frame px, and Studio keeps the shared port", async () => {
-    const studioReplies = [];
-    const { iframe, on, asked, push, close, channel } = sealedFrame(studioReplies);
+  it("measures the element from the preview's pushes, in top-frame px, over a channel of its own", async () => {
+    const { iframe, on, asked, push, close, served } = sealedFrame();
     const { rec, tick, settle, watching, move } = samplerFor(iframe, on);
     try {
       move(150);
@@ -453,16 +449,14 @@ describe("frameSamplerScript in a sealed preview", () => {
       expect(sample.size).toEqual([100, 50]);
       expect(sample.root[2]).toEqual([1920, 1080]);
       expect(sample.pointer).toEqual([150, 225]);
-      channel.port2.postMessage({ v: 1, id: 1, kind: "query", params: { selector: "#target" } });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(studioReplies.map((r) => r.id)).toContain(1);
+      expect(served).toHaveLength(1);
     } finally {
       close();
     }
   });
 
   it("pairs each push with the pointer at its own stamp, not where the pointer is when it lands", async () => {
-    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { iframe, on, asked, push, close } = sealedFrame();
     const { rec, tick, clock, settle, watching, move } = samplerFor(iframe, on);
     try {
       await watching(asked);
@@ -488,7 +482,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   });
 
   it("pairs a push with the raw step the preview drew, before that step's pointermove", async () => {
-    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { iframe, on, asked, push, close } = sealedFrame();
     const { rec, tick, clock, settle, watching, move } = samplerFor(iframe, on);
     try {
       await watching(asked);
@@ -510,7 +504,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   });
 
   it("leaves out a push painted before this drag started", async () => {
-    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { iframe, on, asked, push, close } = sealedFrame();
     const { rec, tick, settle, watching, move } = samplerFor(iframe, on);
     try {
       move(150);
@@ -527,7 +521,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   });
 
   it("starts recording only once a frame has measured the element, so a drag's first sample is before the press", async () => {
-    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { iframe, on, asked, push, close } = sealedFrame();
     const { rec, tick, settle, watching, move, frame, pageApi } = samplerFor(iframe, on);
     try {
       move(150);
@@ -551,7 +545,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   it("drops pushes that land before the frame confirms the new watch, and pushes with a box that is not finite", async () => {
     let confirm = () => {};
     const held = new Promise((resolve) => (confirm = resolve));
-    const { iframe, on, asked, push, close } = sealedFrame([], held);
+    const { iframe, on, asked, push, close } = sealedFrame(held);
     const { rec, tick, settle, move } = samplerFor(iframe, on);
     try {
       move(150);
@@ -574,8 +568,8 @@ describe("frameSamplerScript in a sealed preview", () => {
   });
 
   it("takes a newly shown preview's pushes only from the moment it is the one on screen", async () => {
-    const first = sealedFrame([]);
-    const second = sealedFrame([]);
+    const first = sealedFrame();
+    const second = sealedFrame();
     let shownFrame = first.iframe;
     for (const x of [first, second]) x.iframe.checkVisibility = () => x.iframe === shownFrame;
     const { rec, tick, clock, settle, move } = samplerFor([first.iframe, second.iframe], first.on);
@@ -607,7 +601,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   });
 
   it("pairs each push with the outline Studio showed at its stamp, not when the push lands", async () => {
-    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { iframe, on, asked, push, close } = sealedFrame();
     const { rec, tick, clock, settle, watching, move, studio } = samplerFor(iframe, on);
     const outline = {
       ownerDocument: topDocument,
@@ -642,7 +636,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   });
 
   it("stops every watch when recording stops", async () => {
-    const { iframe, on, asked, close } = sealedFrame([]);
+    const { iframe, on, asked, close } = sealedFrame();
     const { rec, settle, watching } = samplerFor(iframe, on);
     try {
       await watching(asked);
@@ -655,7 +649,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   });
 
   it("leaves a frame unmeasured while a larger shown preview cannot answer yet", async () => {
-    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { iframe, on, asked, push, close } = sealedFrame();
     // Studio's next preview, shown and larger, before its page has handed out a port.
     const next = {
       ...iframe,

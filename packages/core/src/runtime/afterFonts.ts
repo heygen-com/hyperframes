@@ -8,8 +8,44 @@ export const FONT_WAIT_TIMEOUT_MS = 5000;
 
 (window as unknown as Record<string, unknown>)[AFTER_FONTS_CLAIM] = true;
 
-/** Resolves once the page's web fonts are ready or the timeout passes, reporting faces still loading. */
+/** Past this the scripts run in a document still without layout, as they did before the wait. */
+export const LAYOUT_WAIT_TIMEOUT_MS = 5000;
+
+const hasLayout = (root: Element) => root.getClientRects().length > 0;
+
+// A frame with no layout yet (hidden, or out of process before its size arrives): GSAP caches transforms as none.
+function waitForLayout(): Promise<void> | undefined {
+  const root = document.documentElement;
+  if (!root || typeof ResizeObserver === "undefined" || hasLayout(root)) return undefined;
+  return new Promise((resolve) => {
+    const done = (laidOut: boolean) => {
+      observer.disconnect();
+      wallClearTimeout(timer);
+      if (!laidOut) reportNoLayout();
+      resolve();
+    };
+    const observer = new ResizeObserver(() => hasLayout(root) && done(true));
+    const timer = wallSetTimeout(() => done(false), LAYOUT_WAIT_TIMEOUT_MS);
+    observer.observe(root);
+  });
+}
+
+function reportNoLayout(): void {
+  console.warn(
+    `[hyperframes] no layout after ${LAYOUT_WAIT_TIMEOUT_MS} ms, composition scripts run without it`,
+  );
+  postRuntimeMessage({
+    source: "hf-preview",
+    type: "diagnostic",
+    code: "runtime_layout_wait_timeout",
+    details: { timeoutMs: LAYOUT_WAIT_TIMEOUT_MS },
+  });
+}
+
+/** Resolves once the page has layout and its web fonts are ready, or each timeout passes, reporting what it waited for. */
 export async function waitForFonts(): Promise<void> {
+  const layout = waitForLayout();
+  if (layout) await layout;
   const fonts = document.fonts;
   if (!fonts) return;
   // Layout starts the faces laid-out text uses; load() starts the rest so ready covers them too.

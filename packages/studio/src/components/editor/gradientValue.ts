@@ -1,5 +1,6 @@
 import { roundToCenti } from "../../utils/rounding";
 import { parseCssColor, type ParsedColor } from "./colorValue";
+import { cssValueCanLoad, parensCloseInOrder } from "../../utils/cssLoads";
 
 export type GradientKind = "linear" | "radial" | "conic";
 
@@ -311,9 +312,11 @@ export function buildDefaultGradientModel(fallbackColor?: string): GradientModel
 
 export function parseGradient(value: string | undefined): GradientModel | null {
   if (!value || value === "none") return null;
+  if (cssValueCanLoad(value, { varInsideOneClosedGradient: true })) return null;
   const trimmed = value.trim();
   const openParenIndex = trimmed.indexOf("(");
   if (openParenIndex <= 0 || !trimmed.endsWith(")")) return null;
+  if (!parensCloseInOrder(trimmed.slice(openParenIndex + 1, -1))) return null;
 
   const functionName = trimmed.slice(0, openParenIndex).toLowerCase();
   const kindByFunctionName: Record<string, { kind: GradientKind; repeating: boolean }> = {
