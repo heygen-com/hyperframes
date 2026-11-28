@@ -455,6 +455,20 @@ describe("auth/oauth", () => {
       expect(loopback.close).toHaveBeenCalled();
     });
 
+    // fails without the fix: a stopped sign-in kept waiting for the browser and stored the login it got.
+    it("stops waiting for the browser when its signal fires, and stores nothing", async () => {
+      await writeStore({ oauth: { access_token: "kept_at" } });
+      const loopback = loopbackStub("60 minutes");
+      vi.mocked(startLoopback).mockResolvedValueOnce(loopback);
+      const stop = new AbortController();
+      vi.mocked(openBrowser).mockImplementationOnce(async () => (stop.abort(), { opened: true }));
+
+      await expect(startAuthorizationCodeFlow({ signal: stop.signal })).rejects.toThrow();
+
+      expect(loopback.close).toHaveBeenCalled();
+      expect((await readStore()).credentials.oauth?.access_token).toBe("kept_at");
+    });
+
     it("states the listener's own limit while waiting", async () => {
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       vi.mocked(startLoopback).mockResolvedValueOnce({

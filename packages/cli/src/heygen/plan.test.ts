@@ -8,7 +8,12 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.example.test",
   refreshIfNeeded: async (credential: unknown) => credential,
 }));
-const signIn = vi.hoisted(() => ({ source: "file_json", hints: [] as unknown[] }));
+const signIn = vi.hoisted(() => ({
+  source: "file_json",
+  hints: [] as unknown[],
+  stored: [] as unknown[],
+  whileWaiting: undefined as (() => void) | undefined,
+}));
 vi.mock("../auth/resolver.js", () => ({
   resolveCredential: async () => ({ type: "oauth", access_token: "t", source: signIn.source }),
   envCredentialVar: (source: string) => (source.startsWith("env") ? "HEYGEN_API_KEY" : undefined),
@@ -19,8 +24,13 @@ vi.mock("../auth/client.js", () => ({
   },
 }));
 vi.mock("../auth/oauth.js", () => ({
-  startAuthorizationCodeFlow: async (opts: { workspaceHint?: string }) =>
-    void signIn.hints.push(opts.workspaceHint),
+  startAuthorizationCodeFlow: async (opts: { workspaceHint?: string; persist?: boolean }) => {
+    signIn.hints.push(opts.workspaceHint);
+    signIn.whileWaiting?.();
+    if (opts.persist !== false) signIn.stored.push("by the flow");
+    return { tokens: { access_token: "own" } };
+  },
+  persistFreshOAuth: async (tokens: unknown) => void signIn.stored.push(tokens),
 }));
 const returnRefused = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/events.js", () => ({ trackBillingCheckoutReturnRefused: returnRefused }));
@@ -47,7 +57,7 @@ const answer = (data: unknown) =>
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
-  Object.assign(signIn, { source: "file_json", hints: [] });
+  Object.assign(signIn, { source: "file_json", hints: [], stored: [], whileWaiting: undefined });
 });
 
 describe("readPlan", () => {
@@ -248,18 +258,34 @@ describe("a team member's checkout", () => {
     });
   });
 
+  const stop = new AbortController().signal;
+
   it("signs in again with the person's own space picked, and says whether it landed there", async () => {
     signedInAs("me0123");
-    expect(await signInToOwnSpace(60_000)).toBe(true);
+    const switching = vi.fn();
+    expect(await signInToOwnSpace(60_000, stop, switching)).toBe(true);
     expect(signIn.hints).toEqual(["me0123"]);
+    expect(signIn.stored).toEqual([{ access_token: "own" }]);
+    expect(switching).toHaveBeenCalledOnce();
     signedInAs("team-space");
-    expect(await signInToOwnSpace(60_000)).toBe(false);
+    expect(await signInToOwnSpace(60_000, stop, switching)).toBe(false);
+  });
+
+  // fails without the fix: billing stopped while the browser was open, and the sign-in still stored its login.
+  it("stores no login once billing stops it during the sign-in", async () => {
+    signedInAs("me0123");
+    const stopping = new AbortController();
+    signIn.whileWaiting = () => stopping.abort();
+    const switching = vi.fn();
+    await expect(signInToOwnSpace(60_000, stopping.signal, switching)).rejects.toThrow();
+    expect(signIn.stored).toEqual([]);
+    expect(switching).not.toHaveBeenCalled();
   });
 
   it("never opens a sign-in for a key or token from the environment, which a new sign-in cannot replace", async () => {
     signIn.source = "env";
     signedInAs("me0123");
-    expect(await signInToOwnSpace(60_000)).toBe(false);
+    expect(await signInToOwnSpace(60_000, stop, vi.fn())).toBe(false);
     expect(signIn.hints).toEqual([]);
   });
 });

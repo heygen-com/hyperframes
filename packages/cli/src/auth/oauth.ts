@@ -86,6 +86,10 @@ export interface AuthorizeFlowOptions {
   /** Override timeout in ms (default 60 minutes). */
   timeoutMs?: number;
   workspaceHint?: string;
+  /** Ends the wait for the browser; once it fires nothing is stored. */
+  signal?: AbortSignal;
+  /** false: return the tokens unstored, for a caller that stores them with `persistFreshOAuth`. */
+  persist?: boolean;
 }
 
 export interface AuthorizeFlowResult {
@@ -146,6 +150,7 @@ export async function startAuthorizationCodeFlow(
   const pkce = generatePkcePair();
   const state = generateState();
 
+  opts.signal?.throwIfAborted();
   const loopback = await startLoopback({ state, timeoutMs: opts.timeoutMs });
   let codeResult;
   try {
@@ -171,7 +176,7 @@ export async function startAuthorizationCodeFlow(
       `Waiting for callback on ${c.accent(loopback.redirectUri)} (up to ${loopback.timeoutLabel}, Ctrl+C to cancel) ...`,
     );
 
-    codeResult = await loopback.result;
+    codeResult = await untilStopped(loopback.result, opts.signal);
   } finally {
     await loopback.close().catch(() => {});
   }
@@ -184,9 +189,19 @@ export async function startAuthorizationCodeFlow(
     fetchImpl: opts.fetchImpl,
   });
 
+  opts.signal?.throwIfAborted();
   // Fresh login → clean OAuth block (no inherited refresh_token).
-  await persistOAuth(tokens);
+  if (opts.persist !== false) await persistOAuth(tokens);
   return { tokens };
+}
+
+function untilStopped<T>(result: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return result;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  const stopped = new Promise<never>((_, reject) =>
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+  );
+  return Promise.race([result, stopped]);
 }
 
 /**

@@ -1,7 +1,7 @@
 // The HyperFrames plan and credits the signed-in account holds, and the web pages that change them.
 import { randomUUID } from "node:crypto";
 import { AuthClient } from "../auth/client.js";
-import { startAuthorizationCodeFlow } from "../auth/oauth.js";
+import { persistFreshOAuth, startAuthorizationCodeFlow } from "../auth/oauth.js";
 import { envCredentialVar, resolveCredential } from "../auth/resolver.js";
 import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { trackBillingCheckoutReturnRefused } from "../telemetry/events.js";
@@ -97,12 +97,25 @@ async function signedInSpace(): Promise<string | undefined> {
   }
 }
 
-export async function signInToOwnSpace(timeoutMs: number): Promise<boolean> {
+/** Signs in with the person's own space picked; `switching` runs just before the new login is stored. */
+export async function signInToOwnSpace(
+  timeoutMs: number,
+  stop: AbortSignal,
+  switching: () => void,
+): Promise<boolean> {
   const credential = await refreshIfNeeded(await resolveCredential());
   if (credential.type !== "oauth" || envCredentialVar(credential.source)) return false;
   const { username } = await new AuthClient().getCurrentUser(credential);
   if (!username) return false;
-  await startAuthorizationCodeFlow({ workspaceHint: username, timeoutMs });
+  const { tokens } = await startAuthorizationCodeFlow({
+    workspaceHint: username,
+    timeoutMs,
+    signal: stop,
+    persist: false,
+  });
+  stop.throwIfAborted();
+  switching();
+  await persistFreshOAuth(tokens);
   return (await signedInSpace()) === username;
 }
 

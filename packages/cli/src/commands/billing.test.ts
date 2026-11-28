@@ -14,6 +14,10 @@ const terminal = vi.hoisted(() => ({
   errorOnce: false,
   switches: 0,
   lands: true,
+  asked: 0,
+  inOwn: false,
+  signInWaits: false,
+  signInStopped: false,
 }));
 const events = vi.hoisted(() => ({ failed: [] as unknown[], timeout: [] as unknown[] }));
 const never = vi.hoisted(() => ({ paid: true }));
@@ -25,6 +29,8 @@ const held = vi.hoisted(() => ({
   holdHeadersAfter: undefined as number | undefined,
   stallPoll: false,
   reads: undefined as Array<{ plan: string; credits: number } | null> | undefined,
+  team: undefined as { plan: string; credits: number } | undefined,
+  own: undefined as { plan: string; credits: number } | undefined,
 }));
 
 vi.mock("../telemetry/events.js", () => ({
@@ -38,14 +44,16 @@ vi.mock("../utils/attendedTerminal.js", () => ({
 }));
 vi.mock("node:readline/promises", () => ({
   createInterface: () => ({
-    question: (_q: string, opts: { signal: AbortSignal }) =>
-      new Promise((resolve, reject) =>
+    question: (_q: string, opts: { signal: AbortSignal }) => {
+      terminal.asked++;
+      return new Promise((resolve, reject) =>
         terminal.enter
           ? resolve("")
           : opts.signal.addEventListener("abort", () =>
               reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
             ),
-      ),
+      );
+    },
     close: () => undefined,
   }),
 }));
@@ -60,13 +68,31 @@ vi.mock("../cloud/auth.js", () => ({
       : Promise.resolve({ "x-api-key": "k" }),
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
+const scriptedRead = (calls: number) =>
+  held.team
+    ? terminal.inOwn
+      ? held.own
+      : held.team
+    : held.reads?.[Math.min(calls, held.reads.length) - 1];
+
 vi.mock("../heygen/plan.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../heygen/plan.js")>();
   return {
     ...real,
     readOffer: async (stop?: AbortSignal) =>
       held.realOffer ? real.readOffer(stop) : (held.offer ?? {}),
-    signInToOwnSpace: async () => (terminal.switches++, terminal.lands),
+    signInToOwnSpace: async (_ms: number, stop?: AbortSignal, switching?: () => void) => {
+      terminal.switches++;
+      if (terminal.signInWaits)
+        await new Promise((_, reject) =>
+          stop?.addEventListener("abort", () => reject((terminal.signInStopped = true)), {
+            once: true,
+          }),
+        );
+      switching?.();
+      terminal.inOwn = true;
+      return terminal.lands;
+    },
     createCheckout: async (...args: unknown[]) => {
       const error = terminal.checkoutError;
       if (terminal.errorOnce) terminal.checkoutError = null;
@@ -78,7 +104,8 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
     readPlan: async (stop?: AbortSignal) => {
       if (++plan.calls > 1 && held.stallPoll)
         return new Promise((resolve) => stop?.addEventListener("abort", () => resolve(null)));
-      if (held.reads) return held.reads[Math.min(plan.calls, held.reads.length) - 1];
+      const scripted = scriptedRead(plan.calls);
+      if (scripted !== undefined) return scripted;
       return {
         plan: plan.calls === 1 || !never.paid ? "none" : "pro",
         credits: plan.calls === 1 || !never.paid ? 0 : 500,
@@ -105,7 +132,16 @@ afterEach(() => {
   terminal.args.length = 0;
   terminal.checkoutError = null;
   terminal.enter = false;
-  Object.assign(terminal, { headless: false, errorOnce: false, switches: 0, lands: true });
+  Object.assign(terminal, {
+    headless: false,
+    errorOnce: false,
+    switches: 0,
+    lands: true,
+    asked: 0,
+    inOwn: false,
+    signInWaits: false,
+    signInStopped: false,
+  });
   events.failed.length = 0;
   events.timeout.length = 0;
   never.paid = true;
@@ -117,6 +153,8 @@ afterEach(() => {
     holdHeadersAfter: undefined,
     stallPoll: false,
     reads: undefined,
+    team: undefined,
+    own: undefined,
   });
   vi.restoreAllMocks();
   consumeCommandResult();
@@ -440,6 +478,82 @@ describe("billing from a team space", () => {
     await subscribe();
     expect(terminal.checkouts).toBe(0);
     expect(opened).not.toContain("https://checkout.stripe.com/c/pay/cs_test_1");
+    expect(events.failed).toEqual([{ reason: "checkout_team_role" }]);
+  });
+
+  const addCredits = async (...extra: string[]) => {
+    terminal.attended = true;
+    terminal.enter = true;
+    terminal.checkoutError = await teamRefusal();
+    terminal.errorOnce = true;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, {
+      rawArgs: ["add-credits", ...extra, "--timeout", "4"],
+    }).catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(6000);
+    await done;
+    vi.useRealTimers();
+    return log.mock.calls.flat().join("\n");
+  };
+
+  // fails without the fix: the checkout in the person's own space still bought the team's shortfall.
+  it("sizes the purchase from the person's own balance and asks again before buying it", async () => {
+    held.team = { plan: "pro", credits: 100 };
+    held.own = { plan: "pro", credits: 250 };
+    const printed = await addCredits("--needed", "400");
+    expect(terminal.args.map((a) => a[2])).toEqual([150]);
+    expect(terminal.asked).toBe(2);
+    expect(printed).toContain("Signed in to your own workspace: pro plan, 250 credits.");
+  });
+
+  it("opens no checkout when the person's own space already covers the run", async () => {
+    held.team = { plan: "pro", credits: 100 };
+    held.own = { plan: "pro", credits: 500 };
+    const printed = await addCredits("--needed", "400");
+    expect(terminal.checkouts).toBe(0);
+    expect(printed).toContain("Your own workspace already covers this");
+    expect(printed).toContain("✓ Done: pro plan, 500 credits.");
+  });
+
+  it("waits for the person's own balance to grow, not past the team's", async () => {
+    held.team = { plan: "pro", credits: 100 };
+    held.own = { plan: "pro", credits: 500 };
+    const printed = await addCredits();
+    expect(printed).not.toContain("✓ Done");
+    expect(terminal.args.map((a) => (a[3] as { baseline?: number }).baseline)).toEqual([500]);
+  });
+
+  // fails without the fix: the sign-in kept waiting after the open page had taken the payment.
+  it("stops the sign-in when the open page takes the payment while it waits", async () => {
+    terminal.checkoutError = await teamRefusal();
+    terminal.errorOnce = true;
+    terminal.signInWaits = true;
+    held.reads = [
+      { plan: "none", credits: 0 },
+      { plan: "none", credits: 0 },
+      { plan: "pro", credits: 500 },
+    ];
+    const printed = await subscribe();
+    expect(terminal.signInStopped).toBe(true);
+    expect(terminal.inOwn).toBe(false);
+    expect(terminal.checkouts).toBe(0);
+    expect(printed).toContain("✓ Done: pro plan, 500 credits.");
+  });
+
+  it("opens no sign-in when no one is at the terminal", async () => {
+    terminal.checkoutError = await teamRefusal();
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] }).catch(
+      () => undefined,
+    );
+    await vi.advanceTimersByTimeAsync(6000);
+    await done;
+    vi.useRealTimers();
+    expect(terminal.switches).toBe(0);
     expect(events.failed).toEqual([{ reason: "checkout_team_role" }]);
   });
 
