@@ -3,6 +3,7 @@ import { clampAudioGain, withUnclampedVolume } from "../audioGain.js";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isMediaElement } from "./domRealm";
+import { showHiddenClips } from "./timedClipHide";
 
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
@@ -315,10 +316,16 @@ export function probeAndCacheElementVolume(
         ? Number(timeline.seek())
         : 0;
   const probeWindow = resolveVolumeProbeWindow(mediaEl, compositionDuration);
-  const keyframes = probeKeyframesInWindow(mediaEl, seekFn, compositionDuration, 60, probeWindow);
-  if (Number.isFinite(originalTime)) seekFn(originalTime);
-  if (keyframes) {
-    const envelope = normaliseEnvelope(keyframes, probeWindow.start, probeWindow.staticVolume);
-    if (envelope.length > 0) cache.set(mediaEl, envelope);
+  // Lift the until-first-pass hide during the sweep so first renders don't capture it (#7193).
+  const restoreHiddenClips = showHiddenClips();
+  try {
+    const keyframes = probeKeyframesInWindow(mediaEl, seekFn, compositionDuration, 60, probeWindow);
+    if (Number.isFinite(originalTime)) seekFn(originalTime);
+    if (keyframes) {
+      const envelope = normaliseEnvelope(keyframes, probeWindow.start, probeWindow.staticVolume);
+      if (envelope.length > 0) cache.set(mediaEl, envelope);
+    }
+  } finally {
+    restoreHiddenClips();
   }
 }
