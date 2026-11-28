@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, sep } from "node:path";
 import { MIME_TYPES } from "./mime.js";
@@ -12,6 +12,8 @@ import {
   VIDEO_EXTS,
 } from "./mediaExtensions.js";
 import { realFilePath } from "./safePath.js";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
+import type { StudioApiAdapter } from "../types.js";
 
 export {
   AUDIO_EXTS,
@@ -154,6 +156,22 @@ export function isPrivateOutsideFile(projectDir: string, absPath: string): boole
 export const linksOutside = (projectDir: string, filePath: string): boolean =>
   isOutside(relative(realFilePath(projectDir), realFilePath(filePath)));
 
+export interface OutsideFilePolicy {
+  includeScripts?: boolean;
+}
+
+export function outsideLinkRefusal(
+  projectDir: string,
+  path: string,
+  policy: OutsideFilePolicy = {},
+): LeftOutReason | null {
+  if (isPrivateOutsideFile(projectDir, path)) return "blocklisted";
+  const folder = statSync(path, { throwIfNoEntry: false })?.isDirectory();
+  if (folder || isUploadedOutsideFileType(path)) return null;
+  if (!isCopiedOutsideFileType(path)) return "file_type";
+  return policy.includeScripts ? null : "script";
+}
+
 /** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy; `network_share`: on another computer; `script`: a script a local render was not told to run; `not_approved`: the person has not approved uploading it. */
 export type LeftOutReason =
   | "blocklisted"
@@ -197,4 +215,15 @@ export function leftOutWarning(
   if (reason === "not_approved") return `${warning} ${INCLUDE_OUTSIDE_FILES_HINT}`;
   if (reason !== "script") return warning;
   return `${warning} Move it into the project, or pass --include-outside-files to hyperframes render, to run it.`;
+}
+
+export async function servesProjectPath(
+  adapter: Pick<StudioApiAdapter, "outsideAssetsAllowed">,
+  projectDir: string,
+  path: string,
+): Promise<boolean> {
+  if (!isWithinProjectRoot(projectDir, path)) return false;
+  if (!linksOutside(projectDir, path)) return true;
+  if (outsideLinkRefusal(projectDir, path) !== null) return false;
+  return (await adapter.outsideAssetsAllowed?.(projectDir)) ?? true;
 }

@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
-import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
+import { servesProjectPath } from "../helpers/outsideFile.js";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import { readCachedPeaks, writeWaveformCache } from "../helpers/waveform.js";
@@ -20,7 +20,7 @@ export function registerPeakRoutes(
     const assetPath = requestSubPath(c.req.url, "projects/:id/peaks");
     if (assetPath === null) return c.json({ error: "file not found" }, 404);
     const mediaPath = resolve(project.dir, assetPath);
-    if (!isWithinProjectRoot(project.dir, mediaPath))
+    if (!(await servesProjectPath(adapter, project.dir, mediaPath)))
       return c.json({ error: "file not found" }, 404);
     const stats = await stat(mediaPath).catch(() => undefined);
     if (!stats?.isFile()) return c.json({ error: "file not found" }, 404);
