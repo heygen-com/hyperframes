@@ -409,6 +409,46 @@ export async function resolveRenderBrowser(signal?: AbortSignal): Promise<Browse
   );
 }
 
+export async function checkSystemFonts(
+  signal?: AbortSignal,
+): Promise<EnvironmentCheckOutcome | undefined> {
+  if (process.platform !== "linux") return undefined;
+  try {
+    const { stdout } = await runCancellableProcess("fc-list", [], {
+      signal,
+      timeoutMs: 10_000,
+      maxBufferBytes: 4 * 1024 * 1024,
+    });
+    const count = stdout.split("\n").filter((line) => line.trim().length > 0).length;
+    if (count === 0) {
+      return {
+        name: "System fonts",
+        ok: false,
+        level: "error",
+        title: "No system fonts found",
+        detail:
+          "fontconfig lists 0 fonts: Chromium renders no text at all when fontconfig has no fonts, including embedded web fonts.",
+        hint: "Install a system font package (for example: sudo apt install fonts-dejavu-core) or point fontconfig at a directory with fonts via FONTCONFIG_FILE.",
+      };
+    }
+    return {
+      name: "System fonts",
+      ok: true,
+      level: "ok",
+      detail: `fontconfig fonts: ${count}`,
+    };
+  } catch {
+    if (signal?.aborted) signal.throwIfAborted();
+    return {
+      name: "System fonts",
+      ok: true,
+      level: "warn",
+      detail: "Could not list system fonts with fc-list.",
+      hint: "Install fontconfig (fc-list) so the render can verify fonts are available.",
+    };
+  }
+}
+
 export function checkDisk(
   path = ".",
   freeDiskMb: (path: string) => number | null = getFreeDiskMb,
@@ -467,6 +507,8 @@ export async function runEnvironmentChecks(
       };
     }
     browserVersionMajor = chrome.versionMajor;
+    const fonts = await checkSystemFonts(options.signal);
+    if (fonts) outcomes.push(fonts);
   }
 
   if (options.includeDisk) {
