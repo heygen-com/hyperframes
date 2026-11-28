@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AFTER_FONTS_CLAIM,
   AFTER_FONTS_SCRIPT_TYPE,
@@ -63,6 +63,9 @@ function compilePage(scripts = `<script>${logs("a")}</script><script>${logs("b")
 }
 
 describe("runtime entry: composition scripts after web fonts", () => {
+  // The runtime's module graph transforms once, cold; outside a test's budget, a loaded runner keeps under it.
+  beforeAll(() => import("./init"), 30_000);
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
