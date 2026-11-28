@@ -260,7 +260,7 @@ function holdShownFrame(el: HTMLMediaElement): void {
   if (!isVideoElement(el) || heldPosters.has(el)) return;
   const still = stillOf(el);
   if (!still) return;
-  heldPosters.set(el, { poster: el.getAttribute("poster"), since: performance.now() });
+  heldPosters.set(el, { poster: pagePoster(el), since: performance.now() });
   el.setAttribute("poster", still);
   const letGo = () => {
     for (const type of RELEASE_EVENTS) el.removeEventListener(type, release);
@@ -409,6 +409,9 @@ export function isRenderMode(el: HTMLMediaElement): boolean {
 }
 
 const stills = new WeakSet<HTMLMediaElement>();
+// The poster each still put up (its URL, or a sealed frame's data URL), and the hold a sealed fetch belongs to.
+const stillPosters = new WeakMap<HTMLMediaElement, string>();
+const stillHolds = new WeakMap<HTMLMediaElement, object>();
 
 /** While a file the browser cannot play is being copied, its own frame at the playhead stands in as the poster. */
 function showStill(
@@ -423,11 +426,48 @@ function showStill(
   const url = new URL(appendProxyParam(originalSrc, variant, box, light), document.baseURI);
   url.searchParams.set(PREVIEW_PROXY_STILL_PARAM, at.toFixed(1));
   stills.add(el);
-  el.setAttribute("poster", url.href);
+  if (window.origin !== "null") return putUpStill(el, url.href);
+  // A sealed frame's poster load can wait behind its other loads; its fetch goes out at once.
+  const hold = {};
+  stillHolds.set(el, hold);
+  void fetch(url.href)
+    .then((res) => (res.ok ? dataUrlOf(res) : null))
+    .then((still) => {
+      if (still && stillHolds.get(el) === hold && !el.hasAttribute("poster")) putUpStill(el, still);
+    })
+    .catch((err) => swallow("runtime.mediaProxy.still", err));
+}
+
+// A data URL, like the held frame's own still: nothing to release on any way the clip goes. Encoded natively.
+async function dataUrlOf(res: Response): Promise<string> {
+  const type = res.headers.get("content-type") ?? "image/jpeg";
+  const blob = new Blob([await res.arrayBuffer()], { type });
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function putUpStill(el: HTMLMediaElement, poster: string): void {
+  stillPosters.set(el, poster);
+  el.setAttribute("poster", poster);
+}
+
+/** The poster as the page set it: none while the runtime's own still is up. */
+function pagePoster(el: HTMLMediaElement): string | null {
+  const poster = el.getAttribute("poster");
+  return poster !== null && poster === stillPosters.get(el) ? null : poster;
 }
 
 function dropStill(el: HTMLMediaElement): void {
-  if (stills.delete(el)) el.removeAttribute("poster");
+  if (!stills.delete(el)) return;
+  stillHolds.delete(el);
+  const poster = stillPosters.get(el);
+  stillPosters.delete(el);
+  if (poster === undefined) return;
+  if (el.getAttribute("poster") === poster) el.removeAttribute("poster");
 }
 
 function appendProxyParam(
@@ -620,10 +660,35 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
   loadProxy(el, proxiedSrc, originalSrc, variant, box, lightFacts !== undefined);
   // The shown size may have grown while this copy was being made.
   if (displayScale !== null) keepSized(el, displayScale);
-  return new Promise((landed) => {
-    el.addEventListener("loadeddata", landed, { once: true });
-    el.addEventListener("error", landed, { once: true });
-  }).then(() => dropStill(el));
+  return copyLoadEnds(el, proxiedSrc).then(() => dropStill(el));
+}
+
+const ENDS_A_LOAD = ["loadeddata", "error", "abort", "emptied"] as const;
+const leaving = new Map<HTMLMediaElement, () => void>();
+let leavingObserver: MutationObserver | null = null;
+
+/** Settles once the copy draws or fails, the clip loads something else, or it leaves the page. */
+function copyLoadEnds(el: HTMLMediaElement, href: string): Promise<void> {
+  return new Promise((ended) => {
+    const end = (event?: Event) => {
+      const restarted = event?.type === "abort" || event?.type === "emptied";
+      if (restarted && el.getAttribute("src") === href) return;
+      for (const type of ENDS_A_LOAD) el.removeEventListener(type, end);
+      if (leaving.get(el) === end) leaving.delete(el);
+      if (leaving.size === 0) {
+        leavingObserver?.disconnect();
+        leavingObserver = null;
+      }
+      ended();
+    };
+    for (const type of ENDS_A_LOAD) el.addEventListener(type, end);
+    leaving.set(el, end);
+    if (leavingObserver || typeof MutationObserver === "undefined") return;
+    leavingObserver = new MutationObserver(() => {
+      for (const [clip, left] of leaving) if (!clip.isConnected) left();
+    });
+    leavingObserver.observe(document, { childList: true, subtree: true });
+  });
 }
 
 /**
