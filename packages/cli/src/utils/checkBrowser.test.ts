@@ -651,6 +651,122 @@ it("round-trips the browser script's raw contrast candidates back into finish", 
   }
 });
 
+async function collectContrastCandidates(fixture: string): Promise<Array<Record<string, unknown>>> {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture(fixture);
+  const root = document.querySelector("[data-composition-id]");
+  if (!root) throw new Error("Contrast fixture failed to mount");
+  vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360));
+  const textElements = Array.from(document.querySelectorAll("#root > div > div"));
+  textElements.forEach((element, index) => {
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(50, 50 + index * 50, 300, 40),
+    );
+  });
+  vi.spyOn(window, "getComputedStyle").mockImplementation(
+    () =>
+      ({
+        display: "block",
+        visibility: "visible",
+        opacity: "1",
+        color: "rgb(255,255,255)",
+        fill: "",
+        backgroundColor: "rgba(0,0,0,0)",
+        backgroundImage: "none",
+        fontSize: "32px",
+        fontWeight: "700",
+      }) as unknown as CSSStyleDeclaration,
+  );
+
+  // happy-dom can't decode PNGs: stub Image (sync onload) and the canvas 2D
+  // context the way the round-trip test above does, so the REAL
+  // __contrastAuditFinish runs its sampling path end to end.
+  class MockImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    naturalWidth = 640;
+    naturalHeight = 360;
+
+    set src(_value: string) {
+      this.onload?.();
+    }
+  }
+  vi.stubGlobal("Image", MockImage);
+  const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+    mockReturnValue(value: CanvasRenderingContext2D): void;
+  };
+  getContextSpy.mockReturnValue({
+    drawImage() {},
+    getImageData() {
+      return { data: new Uint8ClampedArray(640 * 360 * 4).fill(255) };
+    },
+  } as unknown as CanvasRenderingContext2D);
+
+  const received: Array<Record<string, unknown>> = [];
+  const page = fakePage();
+  const injectScript = page.addScriptTag;
+  page.addScriptTag = vi.fn(async (arg: { content: string }) => {
+    await injectScript(arg);
+    const w = window as unknown as {
+      __contrastAuditFinish?: ((...args: unknown[]) => Promise<unknown>) & { wrapped?: boolean };
+    };
+    const finish = w.__contrastAuditFinish;
+    if (finish && !finish.wrapped) {
+      const wrapper = Object.assign(
+        async (...args: unknown[]) => {
+          const candidates = args[2];
+          if (Array.isArray(candidates)) {
+            received.push(...(candidates as Array<Record<string, unknown>>));
+          }
+          return finish(...args);
+        },
+        { wrapped: true },
+      );
+      w.__contrastAuditFinish = wrapper;
+    }
+  });
+  page.screenshot = vi.fn(async () => "c3R1Yg==");
+  installSessionMock(page);
+
+  await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: true },
+    { kind: "none" },
+    runAuditGrid,
+  );
+  return received;
+}
+
+it("anchors a contrast finding at the nearest ancestor with an id", async () => {
+  const received = await collectContrastCandidates(`
+      <div id="root"><div><div>First line</div><div>Second line</div></div></div>
+  `);
+  const selectors = received.map((candidate) => candidate.selector as string);
+  expect(selectors).toContain("#root > div > div:nth-of-type(1)");
+  expect(selectors).toContain("#root > div > div:nth-of-type(2)");
+});
+
+it("falls back to the body-rooted path when the id anchor is ambiguous", async () => {
+  const received = await collectContrastCandidates(`
+      <div id="root"><div><div>First A</div><div>Second A</div></div></div>
+      <div id="root"><div><div>First B</div><div>Second B</div></div></div>
+  `);
+  const selectors = received
+    .map((candidate) => candidate.selector as string)
+    .filter((selector) => /div:nth-of-type\([12]\)$/.test(selector));
+  expect(selectors).toHaveLength(4);
+  for (const selector of selectors) {
+    expect(selector.startsWith("#root")).toBe(false);
+    expect(document.querySelectorAll(selector)).toHaveLength(1);
+  }
+  expect(selectors.sort()).toEqual([
+    "div > div:nth-of-type(1) > div > div:nth-of-type(1)",
+    "div > div:nth-of-type(1) > div > div:nth-of-type(2)",
+    "div > div:nth-of-type(2) > div > div:nth-of-type(1)",
+    "div > div:nth-of-type(2) > div > div:nth-of-type(2)",
+  ]);
+});
+
 it.each([
   { snapshots: true, shots: 2, saved: ["text-visible-base64"] },
   { snapshots: false, shots: 1, saved: [] },

@@ -1983,26 +1983,50 @@ async function prepareContrast(page: Page, time: number): Promise<unknown[]> {
       typeof CSS !== "undefined" && typeof CSS.escape === "function"
         ? CSS.escape(value)
         : value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+    const nthOfType = (current: Element): string => {
+      const tag = current.tagName.toLowerCase();
+      const siblings = current.parentElement
+        ? Array.from(current.parentElement.children).filter(
+            (item) => item.tagName === current.tagName,
+          )
+        : [];
+      return siblings.length > 1 ? `${tag}:nth-of-type(${siblings.indexOf(current) + 1})` : tag;
+    };
+    const anchoredSelector = (
+      parts: string[],
+      anchorIndex: number,
+      anchorId: string,
+      full: string,
+    ): string => {
+      if (anchorIndex < 0) return full;
+      const anchored = parts.slice(parts.length - 1 - anchorIndex);
+      anchored[0] = `#${escape(anchorId)}`;
+      const selector = anchored.join(" > ");
+      try {
+        return document.querySelectorAll(selector).length === 1 ? selector : full;
+      } catch {
+        return full;
+      }
+    };
     const selectorFor = (element: Element | null, fallback: string): string => {
       if (!element) return fallback;
       if (element.id) return `#${escape(element.id)}`;
       const parts: string[] = [];
+      let anchorIndex = -1;
+      let anchorId = "";
       for (
         let current: Element | null = element;
         current && current !== document.body;
         current = current.parentElement
       ) {
-        const tag = current.tagName.toLowerCase();
-        const siblings = current.parentElement
-          ? Array.from(current.parentElement.children).filter(
-              (item) => item.tagName === current?.tagName,
-            )
-          : [];
-        parts.push(
-          siblings.length > 1 ? `${tag}:nth-of-type(${siblings.indexOf(current) + 1})` : tag,
-        );
+        if (anchorIndex < 0 && current.id) {
+          anchorIndex = parts.length;
+          anchorId = current.id;
+        }
+        parts.push(nthOfType(current));
       }
-      return parts.reverse().join(" > ") || fallback;
+      const full = parts.reverse().join(" > ") || fallback;
+      return anchoredSelector(parts, anchorIndex, anchorId, full);
     };
     // Part of the serialized evaluate body above; cannot delegate to Node helpers.
     // fallow-ignore-next-line complexity
