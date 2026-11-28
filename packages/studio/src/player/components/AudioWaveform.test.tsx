@@ -135,6 +135,14 @@ describe("AudioWaveform", () => {
   });
 
   it("repaints a waveform near the screen on an <html> change only when its colours changed", async () => {
+    let bar = "0, 0, 0";
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          getPropertyValue: (name: string) =>
+            name === "--timeline-waveform-bar-rgb" ? bar : "9, 9, 9",
+        }) as CSSStyleDeclaration,
+    );
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     setStrip({ width: 1000, height: 40, inViewStart: 0, inViewEnd: 1000 });
     renderReadyWaveform();
@@ -143,10 +151,12 @@ describe("AudioWaveform", () => {
     document.documentElement.style.setProperty("--notice-right", "12px");
     await act(async () => {});
     expect(getContext.mock.calls.length, "a toast moved: same colours").toBe(drawn);
-    document.documentElement.style.setProperty("--timeline-waveform-bar-rgb", "1, 2, 3");
+    bar = "1, 2, 3";
+    document.documentElement.setAttribute("data-theme", "light");
     await act(async () => {});
     expect(getContext.mock.calls.length, "the theme changed the bars").toBe(drawn + 1);
     document.documentElement.removeAttribute("style");
+    document.documentElement.removeAttribute("data-theme");
   });
 
   it("paints a baseline and peak bar for every mapped waveform bin", () => {
