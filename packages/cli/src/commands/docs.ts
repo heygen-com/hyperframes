@@ -133,7 +133,7 @@ export default defineCommand({
     }
 
     // Look up the topic
-    const entry = TOPICS[topic];
+    const entry = Object.hasOwn(TOPICS, topic) ? TOPICS[topic] : undefined;
     if (entry === undefined) {
       printFailureLine((show) => c.error(`Unknown topic: ${show(topic)}`));
       console.error();
