@@ -996,6 +996,40 @@ describe("renderLocal browser GPU config", () => {
     }
   });
 
+  it("reports the length of a --start/--end window, not the whole film", async () => {
+    // A 24 s film rendered from 11 s to 12 s: the producer sets job.duration to the window.
+    producerState.executeImpl = async (job) => {
+      job.duration = 1;
+      job.perfSummary = {
+        compositionDurationSeconds: 24,
+        totalFrames: 30,
+        resolution: { width: 1080, height: 1920 },
+        stages: {},
+      };
+    };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const result = await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+        skipFeedback: true,
+        range: { startSeconds: 11, endSeconds: 12 },
+      });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+      expect(human).toContain("1.0s video");
+      expect(human).not.toContain("24.0s video");
+      expect(result.durationMs).toBe(1000);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {
     setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
 
