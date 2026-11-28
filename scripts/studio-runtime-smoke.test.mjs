@@ -56,6 +56,21 @@ describe("Studio runtime smoke fixtures", () => {
     assert.equal(response.contentType, "image/svg+xml");
   });
 
+  // fails without the fix: the smoke answered the runtime a sealed player loads with 501, so Studio failed to load.
+  it("lets the runtime a sealed player loads come from Studio's dev server", () => {
+    assert.equal(studioSmokeApiResponse("GET", "http://localhost:5199/api/runtime.js"), undefined);
+  });
+
+  it("serves a sealed preview's frame token and the preview under it", () => {
+    const { token } = bodyOf("GET", "/api/projects/smoke-test/frame-token");
+    assert.match(token, /^[\w-]{43}$/);
+    const preview = studioSmokeApiResponse(
+      "GET",
+      `http://localhost:5199/api/projects/smoke-test/preview/~${token}/index.html`,
+    );
+    assert.equal(preview?.body, SMOKE_COMPOSITION_HTML);
+  });
+
   it("marks unknown API requests as fixture failures", () => {
     assert.equal(studioSmokeApiResponse("GET", "http://localhost:5199/api/new-endpoint"), null);
     assert.equal(studioSmokeApiResponse("GET", "http://localhost:5199/src/main.tsx"), undefined);

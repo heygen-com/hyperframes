@@ -14,12 +14,34 @@ const SELECTION_BOX = '[data-dom-edit-selection-box="true"]';
 const CANVAS_MENU = "body > div.fixed.z-200";
 const TEXT_TOOLBAR = '[role="toolbar"][aria-label="Text formatting"]';
 
+// Studio handles the frame's load after the player paints, and that load clears a failure shown before it.
+function countFrameLoads() {
+  window.__frameLoads = 0;
+  const onLoad = (event) => {
+    if (event.target.src || event.target.srcdoc) window.__frameLoads++;
+  };
+  const attach = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function (init) {
+    const root = attach.call(this, init);
+    if (this.localName !== "hyperframes-player") return root;
+    new MutationObserver(() =>
+      root.querySelector("iframe")?.addEventListener("load", onLoad),
+    ).observe(root, { childList: true, subtree: true });
+    return root;
+  };
+}
+
+const frameLoads = (page) => page.evaluate(() => window.__frameLoads ?? 0);
+const frameLoadedSince = (page, before) =>
+  page.waitForFunction((before) => window.__frameLoads > before, { timeout: 60_000 }, before);
+
 const painted = (page) =>
   page.waitForFunction(() => document.querySelector("hyperframes-player")?.painted === true, {
     timeout: 60_000,
   });
 
 async function open(page, project) {
+  await page.evaluate(() => (window.__frameLoads = 0));
   await page.goto(`${ORIGIN}/#project/${project}`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(
     (project) => {
@@ -31,16 +53,27 @@ async function open(page, project) {
     { timeout: 60_000 },
     project,
   );
+  await frameLoadedSince(page, 0);
+}
+
+// A sealed frame is reached as a frame, never through contentDocument, which Studio's page cannot read.
+async function previewFrame(page) {
+  const iframe = await page.waitForFunction(
+    () => document.querySelector("hyperframes-player")?.shadowRoot?.querySelector("iframe"),
+    { timeout: 60_000 },
+  );
+  return { iframe: iframe.asElement(), frame: await iframe.asElement().contentFrame() };
 }
 
 async function stagePoint(page, id) {
-  return page.evaluate((id) => {
-    const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
-    const el = frame.contentDocument.getElementById(id).getBoundingClientRect();
-    const box = frame.getBoundingClientRect();
-    const scale = box.width / frame.contentWindow.innerWidth;
-    return { x: box.x + (el.x + el.width / 2) * scale, y: box.y + (el.y + el.height / 2) * scale };
+  const { iframe, frame } = await previewFrame(page);
+  const box = await iframe.boundingBox();
+  const el = await frame.evaluate((id) => {
+    const rect = document.getElementById(id).getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, viewport: innerWidth };
   }, id);
+  const scale = box.width / el.viewport;
+  return { x: box.x + (el.x + el.width / 2) * scale, y: box.y + (el.y + el.height / 2) * scale };
 }
 
 // As the player reports a film with no timeline by its load limit; then a real click on its retry button.
@@ -75,6 +108,7 @@ async function failThenRetry(page) {
     };
   }, center);
   assert.ok(onTop.isRetry, `a click at the retry button lands on ${onTop.hit}`);
+  const before = await frameLoads(page);
   await page.mouse.click(center.x, center.y);
   await page.waitForFunction(
     () =>
@@ -85,6 +119,7 @@ async function failThenRetry(page) {
     { timeout: 10_000 },
   );
   await painted(page);
+  await frameLoadedSince(page, before);
   await page.waitForFunction(
     () => !document.querySelector('[aria-label="Composition canvas"]')?.closest("[inert]"),
     { timeout: 10_000 },
@@ -97,6 +132,7 @@ const selectedId = (page) =>
 const { browser } = await launchStudioChrome();
 try {
   const page = await browser.newPage();
+  await page.evaluateOnNewDocument(countFrameLoads);
   await page.setViewport({ width: 1440, height: 900 });
 
   await open(page, "fade-handles");
@@ -135,14 +171,11 @@ try {
     { timeout: 10_000 },
   );
   await page.keyboard.press("Enter");
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector("hyperframes-player")
-        .shadowRoot.querySelector("iframe")
-        .contentDocument.querySelector("[contenteditable]") !== null,
-    { timeout: 10_000 },
-  );
+  await (
+    await previewFrame(page)
+  ).frame.waitForFunction(() => document.querySelector("[contenteditable]") !== null, {
+    timeout: 10_000,
+  });
   await page.keyboard.press("End");
   await page.keyboard.type(" kept");
   // The toolbar shows only over a selection, never a bare caret.

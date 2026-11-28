@@ -39,6 +39,8 @@ const GET_RESPONSES = new Map([
     }),
   ],
   [`${PROJECT_PATH}/preview`, text(SMOKE_COMPOSITION_HTML, "text/html")],
+  // A sealed preview loads under its project's frame token: the server answers 43 URL-safe characters.
+  [`${PROJECT_PATH}/frame-token`, json({ token: "t".repeat(43) })],
   [`${PROJECT_PATH}/thumbnail/index.html`, text(SMOKE_THUMBNAIL_SVG, "image/svg+xml")],
   [`${PROJECT_PATH}/renders`, json({ renders: [] })],
   [`${PROJECT_PATH}/lint`, json({ findings: [] })],
@@ -104,9 +106,13 @@ function studioSmokeApiPathResponse(method, pathname) {
     : (MUTATION_RESPONSES.get(pathname) ?? null);
 }
 
+// A sealed player loads the runtime from Studio's own dev server, which serves it, as in real use.
+const SERVED_BY_STUDIO = new Set(["/api/runtime.js"]);
+
 export function studioSmokeApiResponse(method, requestUrl) {
   const { pathname } = new URL(requestUrl);
-  return pathname.startsWith("/api/") ? studioSmokeApiPathResponse(method, pathname) : undefined;
+  if (!pathname.startsWith("/api/") || SERVED_BY_STUDIO.has(pathname)) return undefined;
+  return studioSmokeApiPathResponse(method, pathname);
 }
 
 // CI renders Studio's system font stack with Linux's fallback, which sets the default tab labels
