@@ -13,6 +13,8 @@ import { applyRotationDraft } from "./rotationDraft";
 import { applyStudioBoxSizeDraft } from "./manualEdits";
 import { armSealedRawSteps } from "./gestureSteps";
 import { startGesture, startGroupDrag } from "./domEditOverlayStartGesture";
+import { resolveResizeDraftRect } from "./resizeDraft";
+import * as readout from "./domEditGestureReadoutState";
 
 vi.mock("../../player/lib/previewChannel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../player/lib/previewChannel")>()),
@@ -31,6 +33,15 @@ vi.mock("./resizeDraft", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./resizeDraft")>()),
   resolveResizeDraftRect: vi.fn(() => ({ left: 0, top: 0, width: 1, height: 1 })),
 }));
+vi.mock("./domEditGestureReadoutState", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./domEditGestureReadoutState")>();
+  return {
+    ...actual,
+    updateGestureReadout: vi.fn(),
+    updateGestureReadoutAngle: vi.fn(),
+    updateGestureReadoutSize: vi.fn(),
+  };
+});
 vi.mock("./manualOffsetDrag", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./manualOffsetDrag")>()),
   applyManualOffsetDragDraft: vi.fn(() => ({ x: 0, y: 0 })),
@@ -456,5 +467,91 @@ describe("releasing right after a raw update commits what the raw update drew", 
       { x: 1, y: 0 },
       expect.anything(),
     );
+  });
+});
+
+// fails without the fix: the raw update stepped the gesture, then the pointermove for the same position stepped it
+// again, so every sealed step drew and resolved twice.
+describe("a sealed gesture steps each pointer position once", () => {
+  const rawThenMove = (
+    handlers: ReturnType<typeof sealedDrag>["handlers"],
+    x: number,
+    y: number,
+  ) => {
+    rawUpdate(x, y);
+    handlers.onPointerMove(pointer(x, y));
+  };
+
+  it("a resize draws and resolves once, and its readout shows the size", () => {
+    const { handlers } = sealedDrag("resize");
+    handlers.onPointerMove(pointer(110, 100));
+    vi.mocked(applyStudioBoxSizeDraft).mockClear();
+    vi.mocked(resolveResizeDraftRect).mockClear();
+    vi.mocked(readout.updateGestureReadoutSize).mockClear();
+
+    rawThenMove(handlers, 130, 104);
+
+    expect(applyStudioBoxSizeDraft).toHaveBeenCalledTimes(1);
+    expect(resolveResizeDraftRect).toHaveBeenCalledTimes(1);
+    expect(readout.updateGestureReadoutSize).toHaveBeenCalledWith(
+      undefined,
+      { left: 0, top: 0, width: 1, height: 1 },
+      vi.mocked(applyStudioBoxSizeDraft).mock.results[0]?.value,
+    );
+  });
+
+  it("a rotation draws once, and its readout shows the angle", () => {
+    const { handlers } = sealedDrag("rotate");
+    handlers.onPointerMove(pointer(110, 100));
+    vi.mocked(applyRotationDraft).mockClear();
+    vi.mocked(readout.updateGestureReadoutAngle).mockClear();
+
+    rawThenMove(handlers, 0, 200);
+
+    expect(applyRotationDraft).toHaveBeenCalledTimes(1);
+    expect(readout.updateGestureReadoutAngle).toHaveBeenCalledWith(undefined, 90, 0);
+  });
+
+  it("a move draws once, and its readout shows the box", () => {
+    const { handlers } = sealedDrag();
+    handlers.onPointerMove(pointer(110, 100));
+    vi.mocked(applyManualOffsetDragDraft).mockClear();
+    vi.mocked(readout.updateGestureReadout).mockClear();
+
+    rawThenMove(handlers, 130, 104);
+
+    expect(applyManualOffsetDragDraft).toHaveBeenCalledTimes(1);
+    expect(readout.updateGestureReadout).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ left: 40, top: 24, width: 50, height: 40 }),
+    );
+  });
+
+  it("a group move draws each member once", () => {
+    const { opts, handlers } = sealedDrag();
+    const members = ["a", "b"].map((key) => ({ key, element: document.createElement("div") }));
+    opts.gestureRef.current = null;
+    (opts.groupGestureRef as { current: unknown }).current = {
+      ...{ pointerId: 1, startX: 100, startY: 100 },
+      ...{ originItems: [], members },
+    };
+    handlers.onPointerMove(pointer(110, 100));
+    vi.mocked(applyManualOffsetDragDraft).mockClear();
+
+    rawThenMove(handlers, 130, 104);
+
+    expect(applyManualOffsetDragDraft).toHaveBeenCalledTimes(members.length);
+    (opts.groupGestureRef as { current: unknown }).current = null;
+  });
+
+  it("still steps a pointermove at a position no raw update drew", () => {
+    const { handlers } = sealedDrag("resize");
+    handlers.onPointerMove(pointer(110, 100));
+    rawUpdate(130, 104);
+    vi.mocked(applyStudioBoxSizeDraft).mockClear();
+
+    handlers.onPointerMove(pointer(140, 108));
+
+    expect(applyStudioBoxSizeDraft).toHaveBeenCalledTimes(1);
   });
 });
