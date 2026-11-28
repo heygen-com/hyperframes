@@ -139,6 +139,10 @@ export function trackEvent(
   );
 }
 
+export function hasShownTelemetryNotice(): boolean {
+  return shouldTrack() && readConfig().telemetryNoticeShown;
+}
+
 /**
  * Show the first-run telemetry notice if it hasn't been shown yet.
  * Must be called BEFORE any tracking calls so the user sees the disclosure
