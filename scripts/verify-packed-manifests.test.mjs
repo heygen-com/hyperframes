@@ -72,6 +72,62 @@ describe("packed manifest verifier", () => {
     );
   });
 
+  it("names the budget to raise to when a package is over", () => {
+    const issues = listPackageSizeIssues(
+      "pkg",
+      { packed: 1011, unpacked: 3900 },
+      { packed: 1000, unpacked: 4000 },
+    );
+    assert.match(issues[0], /raise the budget to 1062 in/);
+  });
+
+  // fails without the fix: a budget raised to the bare measured size passed, and the next queued change crossed it
+  it("refuses a budget a change raised without its 5% headroom", () => {
+    const issues = listPackageSizeIssues(
+      "@hyperframes/inspector",
+      { packed: 943048, unpacked: 3900 },
+      { packed: 945000, unpacked: 4000 },
+      { packed: 933584, unpacked: 4000 },
+    );
+    assert.equal(issues.length, 1);
+    assert.match(issues[0], /packed budget was raised to 945000, .*raise it to 990201 in/);
+  });
+
+  it("lets two queued changes that each grow a package about 1% both pass once the first raise keeps headroom", () => {
+    const base = { packed: 1000, unpacked: 4000 };
+    // The first change grows packed to 1040 and has to raise its budget.
+    assert.equal(
+      listPackageSizeIssues(
+        "pkg",
+        { packed: 1040, unpacked: 3900 },
+        { ...base, packed: 1040 },
+        base,
+      ).length,
+      1,
+    );
+    const raised = { ...base, packed: 1092 };
+    assert.deepEqual(
+      listPackageSizeIssues("pkg", { packed: 1040, unpacked: 3900 }, raised, base),
+      [],
+    );
+    // The second change, queued behind it, adds about 1.2%: the merge group holds both.
+    assert.deepEqual(listPackageSizeIssues("pkg", { packed: 1053, unpacked: 3900 }, raised), []);
+    assert.equal(
+      listPackageSizeIssues("pkg", { packed: 1053, unpacked: 3900 }, { ...base, packed: 1040 })
+        .length,
+      1,
+    );
+  });
+
+  it("judges a raise only where the base's budgets were read, and never an unchanged budget", () => {
+    const budget = { packed: 945000, unpacked: 4000 };
+    assert.deepEqual(listPackageSizeIssues("pkg", { packed: 943048, unpacked: 3900 }, budget), []);
+    assert.deepEqual(
+      listPackageSizeIssues("pkg", { packed: 943048, unpacked: 3900 }, budget, budget),
+      [],
+    );
+  });
+
   it("makes a budget follow a package down once it shrinks", () => {
     const issues = listPackageSizeIssues(
       "pkg",
