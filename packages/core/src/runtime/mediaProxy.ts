@@ -438,12 +438,16 @@ function showStill(
     .catch((err) => swallow("runtime.mediaProxy.still", err));
 }
 
-// A data URL, like the held frame's own still: nothing to release on any way the clip goes.
+// A data URL, like the held frame's own still: nothing to release on any way the clip goes. Encoded natively.
 async function dataUrlOf(res: Response): Promise<string> {
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return `data:${res.headers.get("content-type") ?? "image/jpeg"};base64,${btoa(binary)}`;
+  const type = res.headers.get("content-type") ?? "image/jpeg";
+  const blob = new Blob([await res.arrayBuffer()], { type });
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 function putUpStill(el: HTMLMediaElement, poster: string): void {

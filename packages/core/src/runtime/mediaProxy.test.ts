@@ -771,7 +771,7 @@ describe("waiting for the proxy copy", () => {
         atPlayhead(el);
 
         swapToProxy(el, HEVC_ENTRY, "proactive");
-        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(10);
         expect(el.getAttribute("poster")).toMatch(
           origin === "null" ? /^data:image\/jpeg;base64,/ : /hf-proxy-still=5\.0/,
         );
@@ -849,7 +849,7 @@ describe("waiting for the proxy copy", () => {
       atPlayhead(el);
 
       swapToProxy(el, HEVC_ENTRY, "proactive");
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(10);
       expect(stillAsked(route)?.searchParams.get("hf-proxy-still")).toBe("5.0");
       expect(el.getAttribute("poster")).toBe(JPEG_STILL);
 
@@ -874,7 +874,7 @@ describe("waiting for the proxy copy", () => {
       await vi.advanceTimersByTimeAsync(0);
       el.setAttribute("poster", "/cover.jpg");
       answerStill(jpegStill());
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(10);
       expect(el.getAttribute("poster")).toBe("/cover.jpg");
 
       route.mockImplementation(async () => new Response("x", { status: 206 }));
@@ -900,7 +900,7 @@ describe("waiting for the proxy copy", () => {
       await vi.advanceTimersByTimeAsync(0);
 
       answerStill(jpegStill());
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(10);
       expect(el.hasAttribute("poster")).toBe(false);
     });
   });
@@ -1553,7 +1553,7 @@ describe("preview quality: lighter copies of heavy files", () => {
         await vi.advanceTimersByTimeAsync(0);
         // The level drops again while the clip is held: the new copy's job starts with no src on the clip.
         staged.setPreviewQuality(0.25);
-        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(10);
         expect(el.hasAttribute("src")).toBe(false);
         expect(el.hasAttribute("poster")).toBe(true);
 
@@ -1601,7 +1601,7 @@ describe("preview quality: lighter copies of heavy files", () => {
           playbackRate: 1,
         });
         staged.maybeProxyProactively(el);
-        await vi.advanceTimersByTimeAsync(0);
+        await vi.advanceTimersByTimeAsync(10);
         expect(el.hasAttribute("poster")).toBe(true);
 
         el.remove();
