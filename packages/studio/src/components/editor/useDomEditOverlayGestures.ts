@@ -146,6 +146,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
 
     const raw = held?.rawStep;
     if (raw && raw.x === e.clientX && raw.y === e.clientY) return raw.showReadout();
+    if (held) held.rawStep = undefined;
 
     if (groupG) {
       if (!isDomEditGestureTap(groupG, e)) groupG.travelled = true;
