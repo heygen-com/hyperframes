@@ -113,10 +113,15 @@ jobs:
           echo "::error::changes=${{ needs.changes.result }} preflight=${{ needs.preflight.result }}; this required check cannot pass."
           exit 1
 
-      - name: Disable Windows Defender real-time monitoring
+      - name: Disable Windows Defender real-time monitoring and update its signatures now
         shell: pwsh
         continue-on-error: true
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        timeout-minutes: 3
+        # The image's signatures are days old, so Defender updates them on its own 5-10 min into the job and takes the
+        # CPU for ~20 s, stalling tests past their timeouts. Updating first (15-40 s) moves that work before the tests.
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          try { Update-MpSignature -ErrorAction Stop } catch { "::warning::Defender signatures were not updated before the tests: $_" }
 
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -451,10 +456,15 @@ jobs:
             process_tests: true
 
     steps:
-      - name: Disable Windows Defender real-time monitoring
+      - name: Disable Windows Defender real-time monitoring and update its signatures now
         shell: pwsh
         continue-on-error: true
-        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        timeout-minutes: 3
+        # The image's signatures are days old, so Defender updates them on its own 5-10 min into the job and takes the
+        # CPU for ~20 s, stalling tests past their timeouts. Updating first (15-40 s) moves that work before the tests.
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          try { Update-MpSignature -ErrorAction Stop } catch { "::warning::Defender signatures were not updated before the tests: $_" }
 
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
