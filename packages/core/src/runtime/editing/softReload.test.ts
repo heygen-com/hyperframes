@@ -97,6 +97,19 @@ describe("soft-reload", () => {
     expect([translate, rotate, scale, transform]).toEqual(["", "", "", ""]);
   });
 
+  it("leaves a translate the re-run script sets itself on an element its file does not style", async () => {
+    preview(
+      `<div data-composition-id="main"><div id="a" data-hf-id="live" style="translate: none; transform: translate(40px, 30px)"></div></div>`,
+    );
+    const el = document.getElementById("a")!;
+    Object.assign(el, { _gsap: {} });
+    const script = `${SCRIPT} document.getElementById("a").style.translate = "12px 6px";`;
+
+    expect(await softReload(params({ script }))).toEqual({ result: "applied" });
+
+    expect([el.style.translate, el.style.transform]).toEqual(["12px 6px", ""]);
+  });
+
   it("restores what a removed standalone set wrote, from the selector and names Studio sent", async () => {
     preview(`<div data-composition-id="main"><div id="a" style="left: 10px"></div></div>`);
     const el = document.getElementById("a")!;
