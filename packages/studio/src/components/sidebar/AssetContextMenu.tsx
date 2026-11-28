@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { filename } from "./assetHelpers";
 import { menuClasses } from "../ui/menuStyle";
+import { isImeComposing } from "../../utils/imeComposition";
 
 /** Reject names that would escape the asset directory or break paths. */
 function isValidAssetName(name: string): boolean {
@@ -174,6 +175,7 @@ export function ContextMenu({
                 setRenameError(null);
               }}
               onKeyDown={(e) => {
+                if (isImeComposing(e)) return;
                 if (e.key === "Enter") commitRename();
                 if (e.key === "Escape") {
                   e.stopPropagation();
