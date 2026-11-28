@@ -15,7 +15,7 @@ import {
 import { setElementGsapPosition, setElementGsapSize } from "../utils/elementGsap";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readGsapProperty } from "./gsapRuntimeReaders";
-import { gestureStartLayout } from "../components/editor/gestureStartLayouts";
+import { gestureStartLayout } from "../components/editor/previewGestureStartRead";
 import {
   commitStaticGsapPosition,
   commitStaticGsapSize,

@@ -15,9 +15,9 @@ import {
   createManualOffsetDragMember,
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
-import { gestureStartLayout } from "./gestureStartLayouts";
 import {
   askShownGestureStarts,
+  gestureStartLayout,
   measureLiveGrow,
   measurePreviewGestureStart,
   UNANSWERED,

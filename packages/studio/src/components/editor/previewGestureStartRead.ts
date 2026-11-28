@@ -18,6 +18,8 @@ import { findPreviewElementForSelection, standInFor } from "./previewSelection";
 import { snapContextFromRects, type SnapContext } from "./snapTargetCollection";
 import { rememberGestureStartLayouts } from "./gestureStartLayouts";
 
+export { gestureStartLayout } from "./gestureStartLayouts";
+
 export interface PreviewGestureStart {
   /** The transform-free border box a resize grows from; 0 for an element with none. */
   layout: { width: number; height: number };
