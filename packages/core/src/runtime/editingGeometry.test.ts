@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { connectFrom, installMarkedEditingAgent } from "./editingAgent.test-helpers";
+import { offeredPort, installMarkedEditingAgent } from "./editingAgent.test-helpers";
 import {
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
@@ -84,11 +84,8 @@ describe("overlay geometry over the editing port", () => {
 
   beforeEach(() => {
     Object.assign(window, { DOMMatrix: FakeDOMMatrix, DOMPoint: FakeDOMPoint });
-    const iframe = document.createElement("iframe");
-    document.body.appendChild(iframe);
-    const parent = iframe.contentWindow!;
-    agent = installMarkedEditingAgent(parent);
-    port = connectFrom(parent);
+    agent = installMarkedEditingAgent();
+    port = offeredPort();
   });
   afterEach(() => {
     agent.dispose();

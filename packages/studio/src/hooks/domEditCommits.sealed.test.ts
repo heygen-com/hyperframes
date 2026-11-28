@@ -4,7 +4,11 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 // The frame's real runtime agent, serving the opaque frame from this document.
-import { installMarkedEditingAgent } from "../../../core/src/runtime/editingAgent.test-helpers";
+import {
+  installMarkedEditingAgent,
+  offeredPort,
+} from "../../../core/src/runtime/editingAgent.test-helpers";
+import { openPreviewPortsForTests } from "../player/lib/previewChannel";
 import { detachedFakeIframe } from "../player/hooks/timelinePlayerTestHarness";
 import {
   findPreviewElementForSelection,
@@ -38,10 +42,8 @@ function opaqueFrame(): HTMLIFrameElement {
       throw new DOMException("blocked", "SecurityError");
     },
   });
-  const parent = {} as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown, _origin: string, ports: MessagePort[]) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data, ports }));
+  const agent = installMarkedEditingAgent();
+  closers.push(openPreviewPortsForTests(iframe, offeredPort));
   closers.push(() => agent.dispose());
   return iframe;
 }

@@ -1,9 +1,9 @@
 // Runtime-state reads over a preview frame's editing port; an opaque frame's window is out of reach.
 import {
   createEditingPortClient,
+  EDITING_PORT,
+  EDITING_PROTOCOL_VERSION,
   EditingPortError,
-  PAGE_LEFT,
-  PAGE_SHOWN,
   MAX_FONT_FACES,
   MAX_QUERY_MATCHES,
   type EditingParams,
@@ -38,58 +38,106 @@ const beforeOtherLoadHandlers = { capture: true } as const;
 type StudioLoads = {
   writes: number;
   wrote: boolean;
-  shown: Set<unknown>;
-  shownPageLeft: boolean;
-  open: Promise<boolean>;
+  offered: MessagePort | null;
+  awaiting: ReturnType<typeof setTimeout> | null;
+  port: Promise<MessagePort | null>;
+  settle: ((port: MessagePort | null) => void) | null;
+  unclaimed: MessagePort | null;
 };
 const studioLoads = new WeakMap<HTMLIFrameElement, StudioLoads>();
+
+function portOffer(event: MessageEvent<unknown>): MessagePort | null {
+  const data = event.data as { source?: unknown; type?: unknown; v?: unknown } | null;
+  if (data?.source !== "hf-preview" || data.type !== EDITING_PORT) return null;
+  return data.v === EDITING_PROTOCOL_VERSION && event.ports.length === 1 ? event.ports[0]! : null;
+}
 
 export function watchStudioNavigations(iframe: HTMLIFrameElement): () => void {
   if (studioLoads.has(iframe)) return () => {};
   const state: StudioLoads = {
     writes: 0,
     wrote: false,
-    shown: new Set(),
-    shownPageLeft: false,
-    open: Promise.resolve(true),
+    offered: null,
+    awaiting: null,
+    port: null!,
+    settle: null,
+    unclaimed: null,
   };
+  state.port = new Promise((resolve) => (state.settle = resolve));
   studioLoads.set(iframe, state);
+  const hand = (port: MessagePort | null) => {
+    if (state.awaiting) clearTimeout(state.awaiting);
+    state.awaiting = null;
+    state.unclaimed?.close();
+    state.unclaimed = state.settle ? null : port;
+    if (state.settle) state.settle(port);
+    else state.port = Promise.resolve(port);
+    state.settle = null;
+  };
   const writes = new MutationObserver(() => {
     state.writes += 1;
     state.wrote = true;
-    state.shown.clear();
-    state.shownPageLeft = false;
+    state.offered?.close();
+    state.offered = null;
   });
   writes.observe(iframe, { attributeFilter: ["src", "srcdoc"] });
-  const onPageLife = (event: MessageEvent<unknown>) => {
-    const data = event.data as { source?: unknown; type?: unknown; page?: unknown } | null;
-    if (event.source !== iframe.contentWindow || data?.source !== "hf-preview") return;
-    if (data.type === PAGE_SHOWN) state.shown.add(data.page);
-    else if (data.type === PAGE_LEFT && state.shown.has(data.page)) state.shownPageLeft = true;
+  const onOffer = (event: MessageEvent<unknown>) => {
+    if (event.source !== iframe.contentWindow) return;
+    const port = portOffer(event);
+    if (!port) return;
+    if (state.awaiting) hand(port);
+    else if (state.wrote && state.writes === 1 && !state.offered) state.offered = port;
+    else port.close();
   };
-  window.addEventListener("message", onPageLife);
+  window.addEventListener("message", onOffer);
   const onLoad = () => {
-    const firstWriteLoaded = state.wrote && state.writes === 1;
+    const frameEmptyFirstDocument = state.writes === 0;
+    if (frameEmptyFirstDocument) return;
+    const writesLoad = state.wrote && state.writes === 1;
+    const port = writesLoad ? state.offered : null;
     state.wrote = false;
-    state.open = new Promise((resolve) =>
-      setTimeout(() => resolve(firstWriteLoaded && !state.shownPageLeft)),
-    );
+    state.offered = null;
+    if (writesLoad && !port) {
+      state.awaiting = setTimeout(() => hand(null), AGENT_PROBE_MS);
+      return;
+    }
+    hand(port);
   };
   iframe.addEventListener("load", onLoad, beforeOtherLoadHandlers);
   return () => {
     writes.disconnect();
-    window.removeEventListener("message", onPageLife);
+    window.removeEventListener("message", onOffer);
     iframe.removeEventListener("load", onLoad, beforeOtherLoadHandlers);
+    if (state.awaiting) clearTimeout(state.awaiting);
+    state.offered?.close();
+    state.unclaimed?.close();
+    state.settle?.(null);
     studioLoads.delete(iframe);
   };
+}
+
+const testPorts = new WeakMap<HTMLIFrameElement, () => MessagePort>();
+export function openPreviewPortsForTests(
+  iframe: HTMLIFrameElement,
+  open: () => MessagePort,
+): () => void {
+  testPorts.set(iframe, open);
+  return () => testPorts.delete(iframe);
 }
 
 /** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
   if (open) return open.client;
-  const gate = studioLoads.get(iframe)?.open;
-  const client = createEditingPortClient(gate ? { iframe, gate } : { iframe });
+  const loads = studioLoads.get(iframe);
+  const opened = testPorts.get(iframe)?.();
+  const beforeLoad = !opened && !!loads?.settle;
+  const port = opened ? Promise.resolve(opened) : (loads?.port ?? Promise.resolve(null));
+  if (loads) {
+    loads.port = Promise.resolve(null);
+    loads.unclaimed = null;
+  }
+  const client = createEditingPortClient({ port });
   const onTextEditSelection = client.onTextEditSelection;
   client.onTextEditSelection = (listener) =>
     onTextEditSelection((event) => listener(frameColoursOnly(event)));
@@ -99,7 +147,12 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
     if (clients.get(iframe)?.client === client) clients.delete(iframe);
   };
   clients.set(iframe, { client, retire });
-  iframe.addEventListener("load", retire, { ...beforeOtherLoadHandlers, once: true });
+  const retireOnNextLoad = () => {
+    if (clients.get(iframe)?.client === client)
+      iframe.addEventListener("load", retire, { ...beforeOtherLoadHandlers, once: true });
+  };
+  if (beforeLoad) void port.then(retireOnNextLoad);
+  else retireOnNextLoad();
   return client;
 }
 

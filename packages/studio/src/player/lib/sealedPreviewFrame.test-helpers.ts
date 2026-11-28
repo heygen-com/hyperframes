@@ -1,19 +1,18 @@
 // A preview frame Studio cannot script, served by the frame's real runtime agent over this document.
 import { onTestFinished } from "vitest";
-import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
+import {
+  installMarkedEditingAgent,
+  offeredPort,
+} from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { detachedFakeIframe } from "../hooks/timelinePlayerTestHarness";
-
-/** A browser's postMessage: delivered on a later task, to every listener present then. */
-function postLater(init: MessageEventInit): void {
-  setTimeout(() => window.dispatchEvent(new MessageEvent("message", init)));
-}
+import { openPreviewPortsForTests } from "./previewChannel";
 
 const SCENE_OPENED_ON_ITS_OWN =
   "http://localhost/api/projects/demo/preview/comp/compositions/scene5.html";
 
 export interface SealedPreviewFrame {
   iframe: HTMLIFrameElement;
-  /** The frame's window as Studio sees it: only `postMessage` answers, and it reaches the runtime. */
+  /** The frame's window as Studio sees it: only `postMessage` answers, and Studio never calls it. */
   frame: Record<string, unknown>;
   reload: () => void;
 }
@@ -38,23 +37,23 @@ export function sealedPreviewFrame(
   });
   iframe.remove = () => void (onPageUntilPlayerRemovesIt = false);
   const wrap = options.wrapHandedOverPort;
-  const parent = {} as unknown as Window;
-  let agent = installMarkedEditingAgent(parent);
-  const portForRuntime = (sent: MessagePort): MessagePort => {
-    if (!wrap) return sent;
-    const { port1, port2 } = new MessageChannel();
-    const studioEnd = wrap(port1);
-    sent.onmessage = (event) => studioEnd.postMessage(event.data);
-    studioEnd.onmessage = (event) => sent.postMessage(event.data);
-    sent.addEventListener("close", () => studioEnd.close());
-    return port2;
+  let agent = installMarkedEditingAgent();
+  const portOfThisLoad = (): MessagePort => {
+    const runtime = offeredPort();
+    if (!wrap) return runtime;
+    const { port1: studio, port2: relay } = new MessageChannel();
+    const tapped = wrap(runtime);
+    relay.onmessage = (event) => tapped.postMessage(event.data);
+    tapped.onmessage = (event) => relay.postMessage(event.data);
+    relay.addEventListener("close", () => tapped.close());
+    return studio;
   };
-  frame.postMessage = (data: unknown, _origin: string, sent: MessagePort[] = []) =>
-    postLater({ source: parent, data, ports: sent.map(portForRuntime) });
+  target.postMessage = () => {};
+  onTestFinished(openPreviewPortsForTests(iframe, portOfThisLoad));
   onTestFinished(() => agent.dispose());
   const reload = () => {
     agent.dispose();
-    agent = installMarkedEditingAgent(parent);
+    agent = installMarkedEditingAgent();
     iframe.dispatchEvent(new Event("load"));
   };
   return { iframe, frame, reload };

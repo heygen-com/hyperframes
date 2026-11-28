@@ -10,13 +10,10 @@
 import { swallow } from "./diagnostics";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
-  EDITING_CONNECT,
-  PAGE_LEFT,
-  PAGE_SHOWN,
+  EDITING_PORT,
   EDITING_PROTOCOL_VERSION,
   EDITING_REQUEST_KINDS,
   EDITING_REQUEST_TIMEOUT_MS,
-  isPlainRecord,
   type FramePresentedParams,
   parseEditingRequest,
   type EditingKeyMessage,
@@ -77,14 +74,7 @@ import { editElement } from "./editing/editElement";
 import { endTextEdit, textEdit } from "./editing/textEdit";
 import { portPausedVideoProvider } from "./editing/pausedFrames";
 import { armCanvasKeys, resetCanvasKeys, resolveCanvasKeyAction } from "./editing/canvasKeys";
-import {
-  canServePorts,
-  closePort,
-  onPortMessage,
-  portMap,
-  postOnPort,
-  endMessageAndTakePorts,
-} from "./runtimePort";
+import { closePort, onPortMessage, portMap, postOnPort, openRuntimeChannel } from "./runtimePort";
 import { measureStageDocument } from "./editing/stageMeasure";
 import { endStageAct, stageAct } from "./editing/stageAct";
 
@@ -362,7 +352,17 @@ function serve(port: MessagePort): void {
       else swallow("editingAgent.reply", err);
     }
   };
+  let connected = false;
   onPortMessage(port, (data) => {
+    if (!markedForStudio(document)) return closePort(port);
+    if (!connected) {
+      connected = true;
+      try {
+        preloadMotionPath();
+      } catch (err) {
+        swallow("editingAgent.preloadMotionPath", err);
+      }
+    }
     const request = parseEditingRequest(data);
     if (!request.ok) {
       reply({
@@ -395,89 +395,40 @@ function failure(id: number, err: unknown): EditingReply {
 
 const parentAtLoad = typeof window !== "undefined" ? window.parent : undefined;
 
-function isConnectRequest(event: MessageEvent<unknown>, parent: Window): boolean {
-  // A top-level page is its own parent, so a self-post would pass the source check.
-  if (parent === window || event.source !== parent) return false;
-  const data = event.data;
-  return isPlainRecord(data) && data.source === "hf-parent" && data.type === EDITING_CONNECT;
-}
-
-function listenForConnects(parent: Window, take: (port: MessagePort) => void): () => void {
-  const onMessage = (event: MessageEvent<unknown>) => {
-    if (!isConnectRequest(event, parent)) return;
-    const ports = endMessageAndTakePorts(event);
-    const version = (event.data as { v?: unknown }).v;
-    const served =
-      ports.length === 1 &&
-      version === EDITING_PROTOCOL_VERSION &&
-      canServePorts(event) &&
-      markedForStudio(document);
-    if (served) return take(ports[0]!);
-    for (let i = 0; i < ports.length; i += 1) closePort(ports[i]!);
-  };
-  window.addEventListener("message", onMessage, true);
-  return () => window.removeEventListener("message", onMessage, true);
-}
-
 const waiting = portMap<true>();
-let takeAtLoad: (port: MessagePort) => void = (port) => waiting.set(port, true);
-let stopAtLoad: (() => void) | null = null;
+const hold = (port: MessagePort) => void waiting.set(port, true);
+let takeAtLoad: (port: MessagePort) => void = hold;
 
-export function announcePageLife(parent = parentAtLoad): () => void {
-  if (!parent || parent === window) return () => {};
-  const page = crypto.randomUUID?.() ?? String(performance.timeOrigin + Math.random());
-  const post = (type: string) => {
-    try {
-      parent.postMessage({ source: "hf-preview", type, page }, "*");
-    } catch {}
-  };
-  post(PAGE_SHOWN);
-  let gone = false;
-  const left = () => {
-    if (gone) return;
-    gone = true;
-    post(PAGE_LEFT);
-  };
-  const going = ["beforeunload", "pagehide"] as const;
-  for (const type of going) window.addEventListener(type, left, { capture: true });
-  const root = document.documentElement;
-  const replaced = new MutationObserver(() => {
-    if (document.documentElement !== root) left();
-  });
-  replaced.observe(document, { childList: true });
-  return () => {
-    for (const type of going) window.removeEventListener(type, left, { capture: true });
-    replaced.disconnect();
-  };
+export function offerEditingPort(parent = parentAtLoad): void {
+  if (!parent || parent === window) return;
+  const channel = openRuntimeChannel();
+  if (!channel) return;
+  takeAtLoad(channel.keep);
+  try {
+    parent.postMessage(
+      { source: "hf-preview", type: EDITING_PORT, v: EDITING_PROTOCOL_VERSION },
+      "*",
+      [channel.give],
+    );
+  } catch {
+    closePort(channel.keep);
+  }
 }
 
-export function listenForEditingConnect(): void {
-  if (!parentAtLoad || stopAtLoad) return;
-  stopAtLoad = listenForConnects(parentAtLoad, (port) => takeAtLoad(port));
-}
-
-export function installEditingAgent(parent?: Window): {
+export function installEditingAgent(): {
   dispose: () => void;
 } {
   const ports = portMap<true>();
   const take = (port: MessagePort) => {
     ports.set(port, true);
     serve(port);
-    preloadMotionPath();
   };
-  let stop: () => void;
-  if (!parent && stopAtLoad) {
-    stop = stopAtLoad;
-    stopAtLoad = null;
-    takeAtLoad = take;
-    waiting.forEach((_, port) => take(port));
-    waiting.clear();
-  } else {
-    stop = listenForConnects(parent ?? parentAtLoad ?? window.parent, take);
-  }
+  takeAtLoad = take;
+  waiting.forEach((_, port) => take(port));
+  waiting.clear();
   return {
     dispose() {
-      stop();
+      takeAtLoad = hold;
       ports.forEach((_, port) => closePort(port));
       ports.clear();
       consoleWatch?.stop();

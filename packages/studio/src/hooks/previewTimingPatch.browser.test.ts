@@ -284,7 +284,10 @@ async function loadShadow(preview: Preview, html: string, mode: string) {
       const shadow = document.createElement("iframe");
       if (sealed) shadow.setAttribute("sandbox", "allow-scripts");
       shadow.id = "shadow";
-      shadow.srcdoc = srcdoc;
+      const loads = (
+        window as unknown as { __studioLoads: (frame: HTMLIFrameElement, page: string) => void }
+      ).__studioLoads;
+      loads(shadow, srcdoc);
       document.body.append(shadow);
     },
     html,
@@ -571,7 +574,10 @@ it("a sealed delete holding a stand-in from the frame's previous load looks the 
     await selectB(preview);
     await preview.page.evaluate(() => {
       const iframe = document.querySelector("iframe")!;
-      iframe.setAttribute("srcdoc", iframe.getAttribute("srcdoc")!);
+      const loads = (
+        window as unknown as { __studioLoads: (frame: HTMLIFrameElement, page: string) => void }
+      ).__studioLoads;
+      loads(iframe, iframe.getAttribute("srcdoc")!);
     });
     await expect
       .poll(() => preview.page.evaluate(() => (window as unknown as Selected).__loads))

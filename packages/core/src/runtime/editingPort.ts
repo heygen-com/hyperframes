@@ -242,10 +242,8 @@ export {
 } from "./editingLayers";
 
 export const EDITING_PROTOCOL_VERSION = 2 as const;
-/** Parent to frame, on the window: carries the runtime's port in its transfer list. */
-export const EDITING_CONNECT = "editing-connect";
-export const PAGE_SHOWN = "page-shown";
-export const PAGE_LEFT = "page-left";
+/** Frame to parent, on the window, once per page as the runtime loads: carries its port in the transfer list. */
+export const EDITING_PORT = "editing-port";
 
 export const EDITING_REQUEST_KINDS = [
   "hello",
@@ -934,18 +932,6 @@ function replyOutcome(data: Record<string, unknown>): Outcome {
   return { error: new EditingPortError(error.code as EditingErrorCode, message) };
 }
 
-/** True for the frame's own note that its runtime came up. */
-function runtimeCameUp(event: MessageEvent<unknown>, frame: Window | null): boolean {
-  const data = event.data;
-  return (
-    !!frame &&
-    event.source === frame &&
-    isPlainRecord(data) &&
-    data.source === "hf-preview" &&
-    data.type === "ready"
-  );
-}
-
 type Pending = {
   resolve: (result: unknown) => void;
   reject: (error: EditingPortError) => void;
@@ -953,17 +939,15 @@ type Pending = {
 };
 
 /**
- * The parent's end of the editing channel for one preview frame load. Makes the channel and sends
- * the frame one end, at once and again on the runtime's `ready`; it never takes a port from the
- * frame. Replies are data from the frame, so callers validate results.
+ * The parent's end of the editing channel for one preview frame load: `port` is the runtime's own, which the
+ * parent took from the frame's load, or null when that load has none. Replies are data from the frame, so
+ * callers validate results.
  */
 export function createEditingPortClient(options: {
-  iframe: HTMLIFrameElement;
+  port: Promise<MessagePort | null>;
   timeoutMs?: number;
-  host?: Window;
-  gate?: Promise<boolean>;
 }): EditingPortClient {
-  const { iframe, timeoutMs = EDITING_REQUEST_TIMEOUT_MS, host = window, gate } = options;
+  const { timeoutMs = EDITING_REQUEST_TIMEOUT_MS } = options;
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
@@ -975,6 +959,7 @@ export function createEditingPortClient(options: {
   const stageInputListeners = new Set<(event: StageInputEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
+  let held: MessagePort | null = null;
   let disposed = false;
   let lastId = 0;
   let resolveReady!: () => void;
@@ -1011,43 +996,21 @@ export function createEditingPortClient(options: {
     if (typeof data.id === "number") return settle(data.id, replyOutcome(data));
     onPush(data);
   };
-  let offered: MessagePort | null = null;
-  const connect = () => {
-    if (port || disposed) return;
-    offered?.close();
-    const { port1, port2 } = new MessageChannel();
-    offered = port1;
-    port1.onmessage = (event: MessageEvent<unknown>) => {
-      if (port === port1) return onReply(event);
+  void options.port.then((runtime) => {
+    if (!runtime) return client.dispose();
+    if (disposed) return runtime.close();
+    runtime.onmessage = (event: MessageEvent<unknown>) => {
+      if (port === runtime) return onReply(event);
       const data = event.data;
-      if (port || port1 !== offered || !isPlainRecord(data)) return;
-      if (data.v !== EDITING_PROTOCOL_VERSION || data.ok !== true) return;
-      port = port1;
-      host.removeEventListener("message", onWindowMessage);
+      if (port || !isPlainRecord(data) || data.v !== EDITING_PROTOCOL_VERSION || data.ok !== true)
+        return;
+      port = runtime;
       resolveReady();
     };
-    try {
-      iframe.contentWindow?.postMessage(
-        { source: "hf-parent", type: EDITING_CONNECT, v: EDITING_PROTOCOL_VERSION },
-        "*",
-        [port2],
-      );
-      // Waits in the port until the runtime serves it; the reply is what makes this client ready.
-      port1.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, kind: "hello", params: {} });
-    } catch {
-      // The frame is mid-navigation; its runtime's `ready` asks again.
-    }
-  };
-  const onWindowMessage = (event: MessageEvent<unknown>) => {
-    if (runtimeCameUp(event, iframe.contentWindow)) connect();
-  };
-  const start = () => {
-    if (disposed) return;
-    host.addEventListener("message", onWindowMessage);
-    connect();
-  };
-  if (gate) void gate.then((open) => (open ? start() : client.dispose()));
-  else start();
+    held = runtime;
+    // Waits in the port until the runtime serves it; the reply is what makes this client ready.
+    runtime.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, kind: "hello", params: {} });
+  });
 
   const client: EditingPortClient = {
     ready,
@@ -1122,12 +1085,11 @@ export function createEditingPortClient(options: {
       canvasKeyActionListeners.clear();
       stageReadyListeners.clear();
       stageInputListeners.clear();
-      host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
         port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, ...stop });
       }
-      offered?.close();
+      held?.close();
       rejectReady(new EditingPortError("disposed", "client disposed"));
       for (const id of [...pending.keys()]) {
         settle(id, { error: new EditingPortError("disposed", "client disposed") });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { connectFrom, installMarkedEditingAgent } from "./editingAgent.test-helpers";
+import { offeredPort, installMarkedEditingAgent } from "./editingAgent.test-helpers";
 import { trackedHandleCount } from "./editingHandles";
 import {
   EDITING_ELEMENT_HANDLE,
@@ -39,11 +39,8 @@ describe("element handles over the editing port", () => {
     });
 
   beforeEach(() => {
-    const iframe = document.createElement("iframe");
-    document.body.appendChild(iframe);
-    const parent = iframe.contentWindow!;
-    agent = installMarkedEditingAgent(parent);
-    port = connectFrom(parent);
+    agent = installMarkedEditingAgent();
+    port = offeredPort();
   });
   afterEach(() => {
     agent.dispose();

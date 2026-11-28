@@ -6,6 +6,7 @@ import { vi } from "vitest";
 import { useTimelinePlayer, type UseTimelinePlayerOptions } from "./useTimelinePlayer";
 import { usePlayerStore } from "../store/playerStore";
 import { setPreviewFrame } from "../store/previewFrameStore";
+import { openPreviewPortsForTests } from "../lib/previewChannel";
 
 export type TimelinePlayerApi = ReturnType<typeof useTimelinePlayer>;
 
@@ -60,8 +61,11 @@ export function renderTimelinePlayerHarness(options?: UseTimelinePlayerOptions) 
   };
 }
 
+const fakeIframes = new WeakMap<object, HTMLIFrameElement>();
+
 export function detachedFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
+  fakeIframes.set(iframeWindow, iframe);
   Object.defineProperty(iframe, "contentWindow", { value: iframeWindow, configurable: true });
   Object.defineProperty(iframe, "contentDocument", {
     value: document.implementation.createHTMLDocument("preview"),
@@ -159,15 +163,12 @@ export function serveEditingRequests(
   answer: (kind: string, params: unknown) => unknown,
   onPort?: (port: MessagePort) => void,
 ): () => void {
+  const iframe = fakeIframes.get(frame);
+  if (!iframe) throw new Error("serveEditingRequests serves a frame made by detachedFakeIframe");
   const ports: MessagePort[] = [];
-  frame.postMessage = (
-    message: { type?: string } | null,
-    _origin: string,
-    sent?: MessagePort[],
-  ) => {
-    const port = sent?.[0];
-    if (message?.type !== "editing-connect" || !port) return;
-    ports.push(port);
+  const stop = openPreviewPortsForTests(iframe, () => {
+    const { port1, port2: port } = new MessageChannel();
+    ports.push(port1, port);
     onPort?.(port);
     let greeted = false;
     port.onmessage = (event: MessageEvent<{ id: number; kind: string; params: unknown }>) => {
@@ -177,6 +178,10 @@ export function serveEditingRequests(
       const result = helloThatConnects ? {} : answer(kind, params);
       port.postMessage({ v: 2, id, ok: true, result });
     };
+    return port1;
+  });
+  return () => {
+    stop();
+    ports.forEach((port) => port.close());
   };
-  return () => ports.forEach((port) => port.close());
 }

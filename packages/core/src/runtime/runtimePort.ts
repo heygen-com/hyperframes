@@ -74,24 +74,15 @@ function bound(port: MessagePort): PortMethods | null {
   throw new Error("not a runtime port");
 }
 
-const eventPorts = accessor(native?.eventProto ?? null, "ports", "get");
-const stopImmediate =
-  typeof Event !== "undefined" ? Event.prototype.stopImmediatePropagation : null;
-
-export function endMessageAndTakePorts(event: MessageEvent<unknown>): readonly MessagePort[] {
-  if (stopImmediate) apply(stopImmediate, event, []);
-  else event.stopImmediatePropagation();
-  const own = !!native && !!eventPorts && protoOf(event) === native.eventProto;
-  if (own) return apply(eventPorts!, event, []) as readonly MessagePort[];
-  return standIns ? event.ports : [];
+/** A channel made with the browser's own constructor and getters read at load; null when they could not be read. */
+export function openRuntimeChannel(): { keep: MessagePort; give: MessagePort } | null {
+  if (!NativeMessageChannel || (!native && !standIns)) return null;
+  const channel = new NativeMessageChannel();
+  return {
+    keep: channelPort(channel, native?.port1 ?? null, "port1"),
+    give: channelPort(channel, native?.port2 ?? null, "port2"),
+  };
 }
-
-/** False when the browser's own port methods could not be read at load: the agent then never serves. */
-export function canServePorts(event: MessageEvent<unknown>): boolean {
-  if (standIns) return true;
-  return !!native?.eventData && event.isTrusted;
-}
-
 export function postOnPort(port: MessagePort, message: unknown, transfer?: Transferable[]): void {
   const methods = bound(port);
   if (methods) apply(methods.post, port, [message, transfer ?? []]);

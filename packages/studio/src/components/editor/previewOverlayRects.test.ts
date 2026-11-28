@@ -2,10 +2,11 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { makeSelection, installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { queryPreviewElements } from "../../player/lib/previewElements";
+import { watchStudioNavigations } from "../../player/lib/previewChannel";
 import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import type { DomEditSelection } from "./domEditing";
 import { orientedGroupAwareOverlayRect, type OverlayRect } from "./domEditOverlayGeometry";
@@ -373,6 +374,9 @@ function silentFrame() {
   });
   const iframe = detachedFakeIframe(frameWindow);
   Object.defineProperty(iframe, "contentDocument", { value: null });
+  // Studio wrote the frame and its load has not come, so a client waits for its port.
+  onTestFinished(watchStudioNavigations(iframe));
+  iframe.setAttribute("src", "/api/projects/demo/preview");
   return sized(iframe, [100, 50, 960, 540]) as HTMLIFrameElement;
 }
 
