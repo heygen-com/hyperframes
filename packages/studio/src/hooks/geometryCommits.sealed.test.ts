@@ -12,7 +12,11 @@ import {
   previewDraftsSent,
   previewStandIn,
 } from "../components/editor/previewDrafts";
-import { captureStudioBoxSize, restoreStudioBoxSize } from "../components/editor/manualEdits";
+import {
+  applyStudioBoxSizeDraft,
+  captureStudioBoxSize,
+  restoreStudioBoxSize,
+} from "../components/editor/manualEdits";
 import {
   STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
   STUDIO_ORIGINAL_BOX_WIDTH_ATTR,
@@ -249,6 +253,26 @@ it("rescales the crop with a sealed resize, the same as an open element", async 
   expect(selection.element.style.getPropertyValue("clip-path")).toBe(
     open.style.getPropertyValue("clip-path"),
   );
+});
+
+// fails without the fix: with the resize's draft still live, the commit drew nothing on the frame, so the frame kept
+// the old crop on the new box until a reload.
+it("draws the rescaled crop on the frame while the resize's draft is still live", async () => {
+  const { card, selection, commits } = await sealedCard(saved());
+  card.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  selection.element.style.setProperty("clip-path", "inset(10px 20px 10px 20px)");
+  const pressed = { width: 100, height: 50 };
+  const next = { width: 200, height: 100 };
+  drawPreviewDraft(selection.element, {
+    size: applyStudioBoxSizeDraft(selection.element, next, pressed),
+  });
+  await settle();
+
+  await commits.handleDomBoxSizeCommit(selection, next);
+  await settle();
+
+  expect(card.style.getPropertyValue("clip-path")).toBe("inset(20px 40px 20px 40px)");
+  expect([card.style.width, card.style.height]).toEqual(["200px", "100px"]);
 });
 
 it("rescales the crop with a size typed on an animated element, from the box the frame lays out", async () => {
