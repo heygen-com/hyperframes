@@ -1626,7 +1626,13 @@ export async function createCaptureSession(
   throwIfCaptureAborted(config?.signal);
   const gpuConfig = { ...config, browserGpuMode: resolvedGpuMode };
   const chromeArgs = buildChromeArgs(
-    { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
+    {
+      width: options.width,
+      height: options.height,
+      captureMode: preMode,
+      requiresWebGpu,
+      injectsVideoFrames: options.injectsVideoFrames,
+    },
     gpuConfig,
   );
 

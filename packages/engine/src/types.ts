@@ -180,6 +180,7 @@ export interface CaptureOptions {
   compositionDurationSeconds?: number;
   /** The composition declares `data-requires-webgpu`; skips createCaptureSession's own fetch. */
   requiresWebGpu?: boolean;
+  injectsVideoFrames?: boolean;
   /**
    * Live Chrome memory samples during capture (browser/renderer RSS peaks,
    * last total, GPU process presence). Invoked from an unref'd interval; must

@@ -394,6 +394,20 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).toContain("--use-angle=swiftshader");
   });
 
+  it("lifts the frame-rate limit only for macOS screenshot capture of a film with no injected video", () => {
+    const flag = "--disable-frame-rate-limit";
+    const mac = { ...base, platform: "darwin" as const, captureMode: "screenshot" as const };
+    expect(buildChromeArgs({ ...mac, injectsVideoFrames: false })).toContain(flag);
+    expect(buildChromeArgs({ ...mac, injectsVideoFrames: true })).not.toContain(flag);
+    expect(buildChromeArgs(mac)).not.toContain(flag);
+    for (const platform of ["win32", "linux"] as const) {
+      expect(buildChromeArgs({ ...mac, platform, injectsVideoFrames: false })).not.toContain(flag);
+    }
+    expect(
+      buildChromeArgs({ ...mac, captureMode: "beginframe", injectsVideoFrames: false }),
+    ).not.toContain(flag);
+  });
+
   it("is byte-identical to the requiresWebGpu-absent case for a non-declaring composition", () => {
     expect(buildChromeArgs({ ...base, requiresWebGpu: false })).toEqual(buildChromeArgs(base));
   });
