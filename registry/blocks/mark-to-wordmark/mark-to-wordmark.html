@@ -1,0 +1,1162 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <!--
+      Mark to Wordmark: a Motionboard shot recipe, https://motionboard.app/recipes/logo-wordmark-reveal/
+      By Motionboard, https://motionboard.app. MIT License, Copyright (c) 2026 Motionboard.
+      Brand names, people and copy in this file are invented placeholders.
+    -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --bg: #efece4;
+        --ink: #14130f;
+        --muted: #8a867b;
+        --accent: #ff4a1f;
+        --font-ui: "Inter", sans-serif;
+        --font-mono: "JetBrains Mono", monospace;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      #mtw-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+        font-family: var(--font-ui);
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
+      }
+      .full {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+
+      /* ---------- shot 1: product camera ---------- */
+      #mtw-stage {
+        z-index: 1;
+        overflow: hidden;
+        perspective: 1600px;
+        perspective-origin: 50% 50%;
+      }
+      #mtw-win {
+        position: absolute;
+        left: 180px;
+        top: 110px;
+        width: 1560px;
+        height: 860px;
+        border-radius: 11px;
+        overflow: hidden;
+        background: #f3f3f4;
+        box-shadow:
+          0 34px 90px rgba(40, 30, 10, 0.2),
+          0 0 0 1px rgba(0, 0, 0, 0.13);
+        font-size: 13px;
+        color: #3b3e44;
+        font-variant-numeric: tabular-nums;
+      }
+      #mtw-side {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 232px;
+        height: 860px;
+        overflow: hidden;
+      }
+      #mtw-panel {
+        position: absolute;
+        left: 232px;
+        top: 8px;
+        width: 1320px;
+        height: 844px;
+        overflow: hidden;
+        background: #fff;
+        border: 1px solid #e6e6e9;
+        border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(20, 20, 30, 0.04);
+      }
+      .grow {
+        flex: 1;
+      }
+      .ic {
+        flex: none;
+        display: block;
+      }
+      .ci {
+        display: flex;
+        flex: none;
+      }
+
+      /* sidebar */
+      .tl {
+        height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-left: 14px;
+      }
+      .tl i {
+        display: block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.18);
+      }
+      .ws {
+        height: 32px;
+        display: flex;
+        align-items: center;
+        padding: 0 8px 0 16px;
+        margin-bottom: 8px;
+      }
+      .slot {
+        width: 26px;
+        height: 16.508px;
+        flex: none;
+      }
+      .wn {
+        margin-left: 9px;
+        margin-right: 3px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #1b1c1f;
+        letter-spacing: -0.005em;
+      }
+      .ws > .ic {
+        color: #8b8f97;
+      }
+      .ib {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        color: #6c7078;
+        flex: none;
+      }
+      .si {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 28px;
+        margin: 0 8px;
+        padding: 0 8px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #3b3e44;
+        white-space: nowrap;
+      }
+      .si > .ic {
+        color: #6c7078;
+      }
+      .si.on {
+        background: rgba(0, 0, 0, 0.055);
+        color: #16171a;
+      }
+      .si.sub {
+        padding-left: 32px;
+      }
+      .si b {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 500;
+        color: #8b8f97;
+      }
+      .sh {
+        height: 28px;
+        margin: 14px 8px 0;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        font-size: 12px;
+        font-weight: 500;
+        color: #8b8f97;
+      }
+      .tile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        flex: none;
+      }
+      #mtw-foot {
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        width: 232px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+      }
+
+      /* main panel */
+      .ph,
+      .pf {
+        position: absolute;
+        left: 0;
+        width: 1320px;
+        background: #fff;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid #ececee;
+      }
+      .ph {
+        top: 0;
+        height: 44px;
+        padding: 0 14px 0 16px;
+        gap: 10px;
+      }
+      .pf {
+        top: 44px;
+        height: 40px;
+        padding: 0 16px;
+        gap: 8px;
+      }
+      .pt {
+        font-size: 13px;
+        font-weight: 600;
+        color: #1b1c1f;
+        margin-left: -2px;
+      }
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin-left: 10px;
+      }
+      .tab {
+        height: 26px;
+        padding: 0 10px;
+        display: flex;
+        align-items: center;
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 500;
+        color: #6c7078;
+        border: 1px solid transparent;
+      }
+      .tab.on {
+        background: #f1f1f3;
+        border-color: #e6e6e9;
+        color: #1f2023;
+      }
+      .btn {
+        height: 28px;
+        padding: 0 11px 0 9px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        background: var(--accent);
+        color: #fff;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+      }
+      .fb {
+        height: 26px;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 6px;
+        font-size: 12.5px;
+        font-weight: 500;
+        color: #6c7078;
+      }
+      .chip {
+        height: 24px;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #e4e4e7;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #3b3e44;
+      }
+      .chip .mu {
+        color: #8b8f97;
+        font-weight: 400;
+      }
+      #mtw-lclip {
+        position: absolute;
+        left: 0;
+        top: 84px;
+        width: 1320px;
+        bottom: 0;
+        overflow: hidden;
+      }
+      #mtw-list {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1320px;
+      }
+      #mtw-hl {
+        position: absolute;
+        left: 0;
+        width: 1320px;
+        height: 40px;
+        background: #f1f2f9;
+        z-index: 0;
+      }
+      .gh {
+        position: relative;
+        z-index: 1;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px 0 14px;
+        background: #f8f8f9;
+        border-bottom: 1px solid #efeff1;
+        font-size: 13px;
+        font-weight: 600;
+        color: #1f2023;
+        opacity: 0;
+      }
+      .gh .ct {
+        font-size: 12px;
+        font-weight: 500;
+        color: #8b8f97;
+        margin-left: 2px;
+      }
+      .gh .ic {
+        color: #8b8f97;
+      }
+      .rw {
+        position: relative;
+        z-index: 1;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px 0 20px;
+        border-bottom: 1px solid #f1f1f3;
+        opacity: 0;
+      }
+      .rw .id {
+        width: 74px;
+        margin-left: 12px;
+        font-size: 12.5px;
+        color: #8b8f97;
+        flex: none;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .rw .ti {
+        margin-left: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #1f2023;
+        white-space: nowrap;
+      }
+      .lb {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 20px;
+        padding: 0 8px;
+        margin-left: 8px;
+        border: 1px solid #e7e7ea;
+        border-radius: 10px;
+        font-size: 11.5px;
+        font-weight: 500;
+        color: #555a62;
+        white-space: nowrap;
+        flex: none;
+      }
+      .lb i {
+        display: block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+      }
+      .pj {
+        width: 150px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #6c7078;
+        white-space: nowrap;
+      }
+      .av {
+        width: 20px;
+        height: 20px;
+        margin-left: 4px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 600;
+        color: #fff;
+        flex: none;
+      }
+      .av.un {
+        background: transparent;
+        border: 1.2px dashed #b5b8be;
+        color: #9a9ea6;
+      }
+      .dt {
+        width: 46px;
+        margin-left: 14px;
+        text-align: right;
+        font-size: 12px;
+        color: #8b8f97;
+        flex: none;
+      }
+      #mtw-toast {
+        position: absolute;
+        left: 540px;
+        top: 784px;
+        height: 36px;
+        padding: 0 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 8px;
+        background: #1f2023;
+        color: #f4f4f5;
+        font-size: 12.5px;
+        font-weight: 500;
+        z-index: 4;
+        opacity: 0;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+        white-space: nowrap;
+      }
+
+      #mtw-uimark {
+        position: absolute;
+        width: 26px;
+        height: 16.508px;
+      }
+      #mtw-uimark svg {
+        display: block;
+        width: 26px;
+        height: 16.508px;
+        overflow: visible;
+      }
+
+      /* ---------- shot 2: brand lockup ---------- */
+      #mtw-final {
+        z-index: 2;
+      }
+      #mtw-lock {
+        position: absolute;
+        left: 474px;
+        top: 397px;
+        width: 1000px;
+        height: 286px;
+        font-family: var(--font-ui);
+        font-size: 286px;
+        line-height: 1;
+        font-weight: 600;
+        color: var(--ink);
+        white-space: nowrap;
+        letter-spacing: 0;
+      }
+      #mtw-mk {
+        display: inline-block;
+        vertical-align: baseline;
+        width: 328px;
+        height: 208.25px;
+        margin-right: 72px;
+        position: relative;
+        z-index: 2;
+        opacity: 0;
+        overflow: visible;
+      }
+      #mtw-wm {
+        display: inline-block;
+        vertical-align: baseline;
+        position: relative;
+        z-index: 1;
+      }
+      .lt {
+        display: inline-block;
+        text-align: center;
+        opacity: 0;
+      }
+      #mtw-tag {
+        position: absolute;
+        left: 400px;
+        top: 338px;
+        font-family: var(--font-mono);
+        font-size: 22px;
+        line-height: 28px;
+        font-weight: 400;
+        letter-spacing: 0.26em;
+        color: #6e6b62;
+        opacity: 0;
+        white-space: nowrap;
+      }
+
+      #mtw-vig {
+        z-index: 3;
+        pointer-events: none;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(40, 30, 10, 0) 58%,
+          rgba(40, 30, 10, 0.12) 100%
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="mtw-root"
+      data-composition-id="mark-to-wordmark"
+      data-start="0"
+      data-duration="9.4"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="mtw-stage" class="clip full" data-start="0" data-duration="9.4" data-track-index="0">
+        <div id="mtw-tilt" class="full" data-layout-allow-overlap>
+          <div id="mtw-cam" class="full" data-layout-allow-overlap>
+            <div id="mtw-ui" class="full">
+              <div id="mtw-win" data-layout-allow-overlap data-layout-ignore></div>
+            </div>
+            <div id="mtw-uimark" data-layout-allow-overlap></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="mtw-final" class="clip full" data-start="0" data-duration="9.4" data-track-index="1">
+        <div id="mtw-lock" data-layout-allow-overlap></div>
+      </div>
+
+      <div
+        id="mtw-vig"
+        class="clip full"
+        data-start="0"
+        data-duration="9.4"
+        data-track-index="2"
+      ></div>
+    </div>
+
+    <script>
+      const S = '[data-composition-id="mark-to-wordmark"] ';
+      const EXPO = "expo.out";
+
+      /* ---------- brand: Vela. Two quarter discs, one ink and one accent, like a pair of sails ---------- */
+      const MARK_PATHS =
+        '<path class="sa" d="M0 160V0A160 160 0 0 1 160 160Z" fill="#14130f"/>' +
+        '<path class="sb" d="M252 160V80A80 80 0 0 0 172 160Z" fill="#ff4a1f"/>';
+      const markSVG = (cls) =>
+        '<svg class="' +
+        cls +
+        '" viewBox="0 0 252 160" xmlns="http://www.w3.org/2000/svg">' +
+        MARK_PATHS +
+        "</svg>";
+
+      /* ---------- geometry shared by the two shots ---------- */
+      const WIN_L = 180,
+        WIN_T = 110;
+      const MARK_W = 26,
+        MARK_H = (26 * 160) / 252;
+      const ROW_T = 44,
+        ROW_H = 32; // workspace row inside the sidebar
+      const MX = WIN_L + 16 + MARK_W / 2; // centre of the sidebar mark in stage coordinates
+      const MY = WIN_T + ROW_T + ROW_H / 2;
+      const K = 328 / MARK_W; // sidebar mark becomes the 328px lockup mark
+      const PUSH_X = 960 - MX,
+        PUSH_Y = 540 - MY;
+      const MARK_OFFSET = 322; // centred mark -> its slot at the left of the lockup
+      const CLIP_START = 250,
+        CLIP_END = -72; // wordmark clip edge follows the mark's right edge
+
+      /* ---------- icons (16px grid, 1.5px stroke) ---------- */
+      const IC = {
+        inbox:
+          '<path d="M2.5 9.5h3l1 1.5h3l1-1.5h3"/><path d="M2.5 9.5l1.8-5.2a1 1 0 0 1 .9-.7h5.6a1 1 0 0 1 .9.7l1.8 5.2v3a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"/>',
+        me: '<circle cx="8" cy="8" r="5.75"/><circle cx="8" cy="6.6" r="1.7"/><path d="M4.8 12.2c.6-1.4 1.8-2.1 3.2-2.1s2.6.7 3.2 2.1"/>',
+        views:
+          '<path d="M8 2.5l5.5 2.8L8 8.1 2.5 5.3z"/><path d="M2.5 8l5.5 2.8L13.5 8"/><path d="M2.5 10.7L8 13.5l5.5-2.8"/>',
+        search: '<circle cx="7" cy="7" r="4.25"/><path d="M10.2 10.2l3 3"/>',
+        compose:
+          '<path d="M7 3H4.5A1.5 1.5 0 0 0 3 4.5v7A1.5 1.5 0 0 0 4.5 13h7a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M11.2 2.8a1.2 1.2 0 0 1 1.7 1.7L8 9.4 5.8 10l.6-2.2z"/>',
+        chev: '<path d="M4.5 6.5L8 10l3.5-3.5"/>',
+        triage: '<path d="M3 3.5h10v9H3z"/><path d="M3 9h3l1 1.5h2L10 9h3"/>',
+        cycles:
+          '<path d="M12.5 8a4.5 4.5 0 0 1-7.7 3.2"/><path d="M3.5 8a4.5 4.5 0 0 1 7.7-3.2"/><path d="M11.5 2.5V5H9"/><path d="M4.5 13.5V11H7"/>',
+        box: '<path d="M8 2l5 2.5v7L8 14 3 11.5v-7z"/><path d="M3 4.5L8 7l5-2.5M8 7v7"/>',
+        list: '<path d="M3.5 4.5h9M3.5 8h9M3.5 11.5h6"/>',
+        plus: '<path d="M8 3.5v9M3.5 8h9"/>',
+        filter: '<path d="M2.5 4h11M4.5 8h7M6.5 12h3"/>',
+        sliders:
+          '<path d="M3 5h5M11 5h2M3 11h2M8 11h5"/><circle cx="9.5" cy="5" r="1.5"/><circle cx="6.5" cy="11" r="1.5"/>',
+        star: '<path d="M8 2.8l1.6 3.3 3.6.5-2.6 2.5.6 3.6L8 11l-3.2 1.7.6-3.6L2.8 6.6l3.6-.5z"/>',
+        help: '<circle cx="8" cy="8" r="5.75"/><path d="M6.4 6.4a1.7 1.7 0 1 1 2.4 1.5c-.5.3-.8.6-.8 1.2"/><path d="M8 11.4v.01"/>',
+        userplus:
+          '<circle cx="6.5" cy="5.5" r="2.2"/><path d="M2.5 13c.4-2.2 2-3.4 4-3.4s3.2.8 3.8 2.2"/><path d="M12 6v4M10 8h4"/>',
+        panel: '<rect x="2.5" y="3" width="11" height="10" rx="1.8"/><path d="M6.2 3v10"/>',
+        user: '<circle cx="8" cy="6" r="2.2"/><path d="M3.8 13c.5-2.2 2.2-3.2 4.2-3.2s3.7 1 4.2 3.2"/>',
+        link: '<path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.8.8"/><path d="M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.8-.8"/>',
+        download: '<path d="M8 2.5v7.5M4.8 7l3.2 3.2L11.2 7M3 13h10"/>',
+      };
+      const ic = (n, s) =>
+        '<svg class="ic" viewBox="0 0 16 16" width="' +
+        (s || 16) +
+        '" height="' +
+        (s || 16) +
+        '" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+        IC[n] +
+        "</svg>";
+      const cic = (n, c, s) => '<span class="ci" style="color:' + c + '">' + ic(n, s) + "</span>";
+      const tile = (c, l) => '<span class="tile" style="background:' + c + '">' + l + "</span>";
+
+      const STATUS = {
+        b: '<circle cx="8" cy="8" r="5.25" fill="none" stroke="#9a9ea6" stroke-width="1.5" stroke-dasharray="2 2.12"/>',
+        t: '<circle cx="8" cy="8" r="5.25" fill="none" stroke="#9a9ea6" stroke-width="1.5"/>',
+        p: '<circle cx="8" cy="8" r="5.25" fill="none" stroke="#e8a900" stroke-width="1.5"/><path d="M8 8V5.25A2.75 2.75 0 0 1 8 10.75Z" fill="#e8a900"/>',
+        r: '<circle cx="8" cy="8" r="5.25" fill="none" stroke="#3fae73" stroke-width="1.5"/><path d="M8 8V5.25A2.75 2.75 0 1 1 5.25 8Z" fill="#3fae73"/>',
+        d: '<circle cx="8" cy="8" r="6.25" fill="#5e6ad2"/><path d="M5.2 8.2l1.9 1.9 3.6-3.8" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
+      };
+      const st = (c, s) =>
+        '<svg class="ic" viewBox="0 0 16 16" width="' +
+        (s || 16) +
+        '" height="' +
+        (s || 16) +
+        '">' +
+        STATUS[c] +
+        "</svg>";
+
+      const PR_ON = "#5f6369",
+        PR_OFF = "#d3d5d9";
+      const bars = (a, b, c) =>
+        '<rect x="2.5" y="9" width="2.5" height="4" rx=".6" fill="' +
+        a +
+        '"/><rect x="6.75" y="6" width="2.5" height="7" rx=".6" fill="' +
+        b +
+        '"/><rect x="11" y="3" width="2.5" height="10" rx=".6" fill="' +
+        c +
+        '"/>';
+      const PRIO = {
+        u: '<rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="#f2663f"/><rect x="7.25" y="4.2" width="1.5" height="5.3" rx=".75" fill="#fff"/><circle cx="8" cy="11.5" r=".95" fill="#fff"/>',
+        h: bars(PR_ON, PR_ON, PR_ON),
+        m: bars(PR_ON, PR_ON, PR_OFF),
+        l: bars(PR_ON, PR_OFF, PR_OFF),
+        n: '<path d="M3 8h2M7 8h2M11 8h2" stroke="#b1b4ba" stroke-width="1.6" stroke-linecap="round"/>',
+      };
+      const pr = (c) =>
+        '<svg class="ic" viewBox="0 0 16 16" width="16" height="16">' + PRIO[c] + "</svg>";
+
+      const PEOPLE = {
+        mc: ["MC", "#7c66dc"],
+        lo: ["LO", "#2f9e8f"],
+        pr: ["PR", "#e07a3f"],
+        nf: ["NF", "#3b82c4"],
+        sr: ["SR", "#c2548f"],
+        ep: ["EP", "#5b8c3a"],
+        ac: ["AC", "#b8862b"],
+      };
+      const avatar = (k) =>
+        k
+          ? '<span class="av" style="background:' + PEOPLE[k][1] + '">' + PEOPLE[k][0] + "</span>"
+          : '<span class="av un">' + ic("user", 11) + "</span>";
+      const LABELS = {
+        Bug: "#e5484d",
+        Feature: "#8e6fe3",
+        Improvement: "#3e8ef7",
+        Infra: "#f08a30",
+        Design: "#1fb0c4",
+        Security: "#d6409f",
+        Performance: "#e2a400",
+        Integration: "#2fa77a",
+      };
+      const label = (k) =>
+        '<span class="lb"><i style="background:' + LABELS[k] + '"></i>' + k + "</span>";
+      const PROJECTS = {
+        sync: ["Calendar sync", "#2fa77a"],
+        tl: ["Timeline", "#4c7cf0"],
+        wl: ["Workload", "#8e6fe3"],
+        pf: ["Platform", "#f08a30"],
+        rp: ["Reports", "#1fb0c4"],
+        au: ["Auth & SSO", "#d6409f"],
+      };
+      const proj = (k) =>
+        '<span class="pj">' + cic("box", PROJECTS[k][1], 13) + PROJECTS[k][0] + "</span>";
+
+      /* ---------- sidebar ---------- */
+      const si = (icon, text, badge, cls) =>
+        '<div class="si' +
+        (cls ? " " + cls : "") +
+        '">' +
+        icon +
+        "<span>" +
+        text +
+        "</span>" +
+        (badge ? "<b>" + badge + "</b>" : "") +
+        "</div>";
+      let s =
+        '<div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>';
+      s +=
+        '<div class="ws"><div class="slot"></div><span class="wn">Northwind</span>' +
+        ic("chev", 12) +
+        '<div class="grow"></div><div class="ib">' +
+        ic("search") +
+        '</div><div class="ib">' +
+        ic("compose") +
+        "</div></div>";
+      s += si(ic("inbox"), "Inbox", "3");
+      s += si(ic("me"), "My issues");
+      s += si(ic("views"), "Views");
+      s += '<div class="sh">Favorites</div>';
+      s += si(cic("box", "#f08a30"), "Mobile app v2");
+      s += si(cic("cycles", "#3e8ef7"), "Cycle 24");
+      s += si(cic("views", "#e5484d"), "My open bugs");
+      s += '<div class="sh">Your teams</div>';
+      s += si(tile("#4c7cf0", "E"), "Engineering");
+      s += si(ic("triage"), "Triage", "4", "sub");
+      s += si(ic("list"), "Issues", "", "sub on");
+      s += si(ic("cycles"), "Cycles", "", "sub");
+      s += si(ic("box"), "Projects", "", "sub");
+      s += si(ic("views"), "Views", "", "sub");
+      s += si(tile("#b266e6", "D"), "Design");
+      s += si(tile("#2fa77a", "G"), "Growth");
+      s += si(tile("#f08a30", "M"), "Mobile");
+      s += si(tile("#1fb0c4", "S"), "Support");
+      s += '<div class="sh">Try</div>';
+      s += si(ic("download"), "Import issues");
+      s += si(ic("userplus"), "Invite people");
+      s += si(ic("link"), "Link repository");
+      s += '<div id="mtw-foot"><div class="ib">' + ic("help") + "</div></div>";
+
+      /* ---------- issue list ---------- */
+      const GROUPS = [
+        [
+          "p",
+          "In Progress",
+          [
+            [
+              "ENG-2141",
+              "Fix WebSocket reconnect when switching calendar views",
+              "u",
+              ["Bug"],
+              "sync",
+              "mc",
+              "Oct 29",
+            ],
+            [
+              "ENG-2138",
+              "Timeline drag-to-resize drops minute precision",
+              "h",
+              ["Bug"],
+              "tl",
+              "lo",
+              "Oct 30",
+            ],
+            [
+              "ENG-2127",
+              "Add capacity heatmap to team workload view",
+              "h",
+              ["Feature"],
+              "wl",
+              "pr",
+              "Nov 4",
+            ],
+            [
+              "ENG-2119",
+              "Migrate recurring events to RRULE storage",
+              "m",
+              ["Improvement"],
+              "pf",
+              "nf",
+              "Nov 6",
+            ],
+            [
+              "ENG-2112",
+              "Calendar two-way sync: handle deleted instances",
+              "h",
+              ["Integration"],
+              "sync",
+              "sr",
+              "Nov 5",
+            ],
+            [
+              "ENG-2104",
+              "Cycle burndown chart renders blank for archived cycles",
+              "m",
+              ["Bug"],
+              "rp",
+              "ep",
+              "Nov 1",
+            ],
+          ],
+        ],
+        [
+          "t",
+          "Todo",
+          [
+            [
+              "ENG-2150",
+              "Chat reminders for blocked issues older than 3 days",
+              "m",
+              ["Feature"],
+              "sync",
+              "ac",
+              "Nov 8",
+            ],
+            [
+              "ENG-2149",
+              "Add ⌘⇧T shortcut to jump to today on timeline",
+              "l",
+              ["Improvement"],
+              "tl",
+              "mc",
+              "Nov 7",
+            ],
+            [
+              "ENG-2146",
+              "Rate limit public API at 600 req/min per workspace",
+              "h",
+              ["Infra", "Security"],
+              "pf",
+              "lo",
+              "Nov 12",
+            ],
+            [
+              "ENG-2144",
+              "Upgrade database 14 to 16 on staging",
+              "m",
+              ["Infra"],
+              "pf",
+              "nf",
+              "Nov 13",
+            ],
+            [
+              "ENG-2143",
+              "Audit log export times out above 50k rows",
+              "m",
+              ["Bug", "Performance"],
+              "rp",
+              "pr",
+              "Nov 11",
+            ],
+            [
+              "ENG-2139",
+              "Empty state for projects without milestones",
+              "l",
+              ["Design"],
+              "tl",
+              "sr",
+              "Nov 9",
+            ],
+          ],
+        ],
+        [
+          "b",
+          "Backlog",
+          [
+            [
+              "ENG-2155",
+              "SSO: map directory groups to Vela teams",
+              "h",
+              ["Feature", "Security"],
+              "au",
+              null,
+              "Nov 21",
+            ],
+            [
+              "ENG-2153",
+              "Rotate iCal feed tokens every 90 days",
+              "l",
+              ["Security"],
+              "au",
+              "ep",
+              "Nov 18",
+            ],
+            [
+              "ENG-2151",
+              "Reduce initial bundle of /timeline below 280 kB",
+              "m",
+              ["Performance"],
+              "tl",
+              null,
+              "Nov 20",
+            ],
+            [
+              "ENG-2148",
+              "Workspace-level holiday calendars",
+              "n",
+              ["Feature"],
+              "wl",
+              "ac",
+              "Dec 2",
+            ],
+            [
+              "ENG-2132",
+              "Dark mode contrast on sidebar section headers",
+              "n",
+              ["Design"],
+              "pf",
+              null,
+              "Dec 4",
+            ],
+          ],
+        ],
+      ];
+      let L = '<div id="mtw-hl"></div>';
+      const rowTop = [];
+      let y = 0,
+        ri = 0;
+      GROUPS.forEach((g, gi) => {
+        L +=
+          '<div class="gh g' +
+          gi +
+          '">' +
+          ic("chev", 12) +
+          st(g[0], 14) +
+          "<span>" +
+          g[1] +
+          '</span><span class="ct">' +
+          g[2].length +
+          '</span><div class="grow"></div>' +
+          ic("plus", 14) +
+          "</div>";
+        y += 36;
+        g[2].forEach((r) => {
+          rowTop[ri] = y;
+          L +=
+            '<div class="rw r' +
+            ri +
+            '">' +
+            pr(r[2]) +
+            '<span class="id">' +
+            r[0] +
+            "</span>" +
+            st(g[0]) +
+            '<span class="ti">' +
+            r[1] +
+            "</span>" +
+            r[3].map(label).join("") +
+            '<div class="grow"></div>' +
+            proj(r[4]) +
+            avatar(r[5]) +
+            '<span class="dt">' +
+            r[6] +
+            "</span></div>";
+          y += 40;
+          ri++;
+        });
+      });
+      const ROWS = ri;
+
+      let P = '<div id="mtw-lclip"><div id="mtw-list">' + L + "</div></div>";
+      P +=
+        '<div class="ph">' +
+        tile("#4c7cf0", "E") +
+        '<span class="pt">Engineering</span><div class="ib" style="width:22px;height:22px">' +
+        ic("star", 14) +
+        "</div>" +
+        '<div class="tabs"><span class="tab on">All issues</span><span class="tab">Active</span><span class="tab">Backlog</span></div><div class="grow"></div>' +
+        '<div class="btn">' +
+        ic("plus", 14) +
+        'New issue</div><div class="ib">' +
+        ic("panel") +
+        "</div></div>";
+      P +=
+        '<div class="pf"><div class="fb">' +
+        ic("filter", 14) +
+        "Filter</div>" +
+        '<div class="chip">' +
+        ic("cycles", 12) +
+        'Cycle <span class="mu">is</span> Cycle 24</div>' +
+        '<div class="chip">' +
+        ic("list", 12) +
+        'Priority <span class="mu">is any of</span> Urgent, High, Medium</div>' +
+        '<div class="chip">' +
+        ic("user", 12) +
+        'Assignee <span class="mu">is</span> Maya Chen, Liam Ortiz +3</div>' +
+        '<div class="grow"></div><div class="fb">' +
+        ic("sliders", 14) +
+        "Display</div></div>";
+      P += '<div id="mtw-toast">' + ic("link", 14) + "Issue link copied to clipboard</div>";
+
+      const win = document.getElementById("mtw-win");
+      win.innerHTML =
+        '<div id="mtw-side">' +
+        s +
+        '</div><div id="mtw-panel" data-layout-allow-overlap>' +
+        P +
+        "</div>";
+      const uimark = document.getElementById("mtw-uimark");
+      uimark.style.left = WIN_L + 16 + "px";
+      uimark.style.top = MY - MARK_H / 2 + "px";
+      uimark.innerHTML = markSVG("m");
+      document.getElementById("mtw-hl").style.top = rowTop[1] + "px";
+
+      /* ---------- lockup ---------- */
+      const LETTERS = [
+        ["v", 162],
+        ["e", 170],
+        ["l", 74],
+        ["a", 166],
+      ];
+      let lk =
+        '<svg id="mtw-mk" viewBox="0 0 252 160" xmlns="http://www.w3.org/2000/svg">' +
+        MARK_PATHS +
+        '</svg><span id="mtw-wm">';
+      LETTERS.forEach((l) => {
+        lk += '<span class="lt" style="width:' + l[1] + 'px">' + l[0] + "</span>";
+      });
+      lk += '</span><div id="mtw-tag">PLAN TOGETHER. SHIP ON TIME.</div>';
+      document.getElementById("mtw-lock").innerHTML = lk;
+
+      const tl = gsap.timeline({ paused: true });
+      function F(target, from, to, at) {
+        tl.fromTo(target, from, Object.assign({ immediateRender: false }, to), at);
+      }
+
+      gsap.set(S + "#mtw-tilt", { transformOrigin: MX + "px " + MY + "px" });
+      gsap.set(S + "#mtw-cam", { transformOrigin: MX + "px " + MY + "px" });
+      gsap.set(S + "#mtw-lock", { transformOrigin: "486px 143px" });
+      gsap.set(S + "#mtw-wm", { clipPath: "inset(-60px -60px -60px " + CLIP_START + "px)" });
+      gsap.set(S + "#mtw-mk", { x: MARK_OFFSET });
+
+      /* ===== shot 1 (0 - 3.6): Vela issue list at an angle, slow drift, then a fast push into the sidebar mark ===== */
+      F(S + "#mtw-win", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power1.out" }, 0);
+      F(S + "#mtw-uimark", { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power1.out" }, 0);
+      F(S + ".gh", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: EXPO, stagger: 0.12 }, 0.1);
+      for (let i = 0; i < ROWS; i++) {
+        F(
+          S + ".r" + i,
+          { opacity: 0, y: 6 },
+          { opacity: 1, y: 0, duration: 0.5, ease: EXPO },
+          0.12 + i * 0.022,
+        );
+      }
+
+      // list scrolls slowly under the filter bar; keyboard focus steps down the rows
+      tl.set(S + "#mtw-hl", { top: rowTop[2] }, 1.15);
+      tl.set(S + "#mtw-hl", { top: rowTop[3] }, 1.95);
+
+      // copy-link toast
+      F(
+        S + "#mtw-toast",
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.45, ease: EXPO },
+        1.4,
+      );
+      tl.to(S + "#mtw-toast", { opacity: 0, duration: 0.3, ease: "power1.out" }, 2.3);
+
+      // camera: slow slanted drift, then a fast push that lands the mark at the centre of frame
+      F(
+        S + "#mtw-cam",
+        { scale: 1.06, x: 0, y: 0 },
+        { scale: 1.16, x: -24, y: -8, duration: 2.6, ease: "none" },
+        0,
+      );
+      F(
+        S + "#mtw-tilt",
+        { rotationY: 9, rotationX: -5, rotation: -1.4 },
+        { rotationY: 5.5, rotationX: -3, rotation: -0.7, duration: 2.6, ease: "none" },
+        0,
+      );
+      F(
+        S + "#mtw-cam",
+        { scale: 1.16, x: -24, y: -8 },
+        { scale: K, x: PUSH_X, y: PUSH_Y, duration: 1.0, ease: EXPO },
+        2.6,
+      );
+      F(
+        S + "#mtw-tilt",
+        { rotationY: 5.5, rotationX: -3, rotation: -0.7 },
+        { rotationY: 0, rotationX: 0, rotation: 0, duration: 1.0, ease: EXPO },
+        2.6,
+      );
+      tl.to(S + "#mtw-ui", { opacity: 0, duration: 0.4, ease: "power2.out" }, 2.6);
+
+      // hand-off to the vector mark in the lockup, same size and place
+      tl.set(S + "#mtw-uimark", { opacity: 0 }, 3.6);
+      tl.set(S + "#mtw-mk", { opacity: 1 }, 3.6);
+
+      /* ===== shot 2 (3.6 - 9.4): small gesture, mark yields, wordmark unfolds, slow residual push ===== */
+      // the accent sail leans back before the mark moves
+      F(
+        S + "#mtw-mk .sb",
+        { rotation: 0, svgOrigin: "252 160" },
+        { rotation: -20, svgOrigin: "252 160", duration: 0.3, ease: "power2.out" },
+        3.75,
+      );
+      F(
+        S + "#mtw-mk .sb",
+        { rotation: -20, svgOrigin: "252 160" },
+        { rotation: 0, svgOrigin: "252 160", duration: 0.9, ease: "back.out(2.2)" },
+        4.15,
+      );
+
+      // mark moves left, clip edge on the wordmark follows its right side
+      F(S + "#mtw-mk", { x: MARK_OFFSET }, { x: 0, duration: 1.3, ease: EXPO }, 4.15);
+      F(
+        S + "#mtw-wm",
+        { clipPath: "inset(-60px -60px -60px " + CLIP_START + "px)" },
+        { clipPath: "inset(-60px -60px -60px " + CLIP_END + "px)", duration: 1.3, ease: EXPO },
+        4.15,
+      );
+
+      // letters pulled out from behind the mark one by one: blur to sharp
+      let pos = 0;
+      LETTERS.forEach((l, i) => {
+        const x0 = 960 - 874 - l[1] / 2 - pos;
+        pos += l[1];
+        const at = 4.2 + i * 0.08;
+        F(
+          S + ".lt:nth-child(" + (i + 1) + ")",
+          { x: x0, filter: "blur(12px)" },
+          { x: 0, filter: "blur(0px)", duration: 1.25, ease: EXPO },
+          at,
+        );
+        F(
+          S + ".lt:nth-child(" + (i + 1) + ")",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.4, ease: "power1.out" },
+          at,
+        );
+      });
+
+      F(
+        S + "#mtw-tag",
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.8, ease: EXPO },
+        6.3,
+      );
+
+      // residual motion on the hold: very slow push, 1.00 -> 1.05
+      F(S + "#mtw-lock", { scale: 1 }, { scale: 1.05, duration: 5.8, ease: "none" }, 3.6);
+
+      tl.set({}, {}, 9.4);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["mark-to-wordmark"] = tl;
+    </script>
+  </body>
+</html>

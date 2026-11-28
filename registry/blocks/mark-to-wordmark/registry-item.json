@@ -1,0 +1,23 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "mark-to-wordmark",
+  "type": "hyperframes:block",
+  "title": "Mark to Wordmark",
+  "description": "A tilted product window pushes in on its tiny sidebar logo, which hands off to a large two-part mark; the mark slides aside and the wordmark unfolds from behind it letter by letter with a tagline.",
+  "tags": ["logo", "outro", "reveal", "wordmark", "showcase", "launch-film", "branding"],
+  "author": "Motionboard",
+  "authorUrl": "https://motionboard.app/recipes/logo-wordmark-reveal/",
+  "license": "MIT",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9.4,
+  "files": [
+    {
+      "path": "mark-to-wordmark.html",
+      "target": "compositions/mark-to-wordmark.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
