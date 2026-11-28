@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
-import { prepareCropResize, readCropFollowingResize, saveCropResize } from "./cropResize";
+import {
+  gsapResizeLaidOut,
+  prepareCropResize,
+  readCropFollowingResize,
+  saveCropResize,
+} from "./cropResize";
 import type { DomEditSelection } from "./domEditingTypes";
 import {
   applyStudioBoxSizeDraft,
@@ -9,6 +14,7 @@ import {
   restoreStudioBoxSize,
 } from "./manualEdits";
 import { withInlineLayoutBox } from "../../hooks/domSelectionTestHarness";
+import { registerPreviewStandIn } from "./previewDrafts";
 
 function sizedElement(width: number, height: number, clip: string): HTMLElement {
   const el = withInlineLayoutBox(document.createElement("div"));
@@ -137,4 +143,54 @@ describe("crop during a resize", () => {
     expect(resize({ keyframes: { width: [300, 600] } }, 4)).toEqual(widthOnly);
     expect(resize({ width: 600, height: 400 }, 4)).toEqual([[20, 60], null]);
   });
+});
+
+/** A sealed preview's stand-in: no layout here; the frame laid the element out 300 x 200. */
+function sealedStandIn(clip: string): HTMLElement {
+  const standIn = document.createElement("div");
+  standIn.style.setProperty("clip-path", clip);
+  registerPreviewStandIn(standIn, document.createElement("iframe"), "a:1");
+  return standIn;
+}
+const FRAME_BOX = { width: 300, height: 200 };
+
+// fails without the fix: a sealed stand-in's crop read its own 0 x 0 box, so it never followed a resize.
+describe("crop during a sealed resize", () => {
+  it("is drawn following the draft, from the box the frame measured", () => {
+    const standIn = sealedStandIn("inset(10px 60px 20px 30px)");
+    applyStudioBoxSizeDraft(standIn, { width: 600, height: 400 }, FRAME_BOX);
+    expect(readCropFollowingResize(standIn)).toMatchObject({
+      top: 20,
+      right: 120,
+      bottom: 40,
+      left: 60,
+    });
+    clearStudioBoxSize(standIn);
+  });
+
+  it("saves rescaled to the size the resize laid out, or kept when it saved a scale", () => {
+    const resized = sealedStandIn("inset(0px 60px 0px 0px)");
+    expect(prepareCropResize(resized, FRAME_BOX)({ width: 600, height: 200 })?.patch.value).toBe(
+      "inset(0px 120px 0px 0px)",
+    );
+    const scaled = sealedStandIn("inset(0px 60px 0px 0px)");
+    expect(prepareCropResize(scaled, FRAME_BOX)(null)).toBeNull();
+  });
+
+  it("waits for a box the frame is still measuring", async () => {
+    const standIn = sealedStandIn("inset(0px 60px 0px 0px)");
+    const stage = prepareCropResize(standIn, Promise.resolve(FRAME_BOX));
+    const commit = vi.fn(async () => undefined);
+    const selection = { element: standIn } as unknown as DomEditSelection;
+    await saveCropResize(stage, selection, commit, "k", { width: 600, height: 400 });
+    expect(commit.mock.calls[0]?.[1]).toEqual([
+      { type: "inline-style", property: "clip-path", value: "inset(0px 120px 0px 0px)" },
+    ]);
+  });
+});
+
+it("takes a GSAP resize's laid-out size, or none when it saved a scale", () => {
+  const next = { width: 300.4, height: 200.6 };
+  expect(gsapResizeLaidOut({ status: "persisted", savedAsScale: true }, next)).toBeNull();
+  expect(gsapResizeLaidOut({ status: "persisted" }, next)).toEqual({ width: 300, height: 201 });
 });
