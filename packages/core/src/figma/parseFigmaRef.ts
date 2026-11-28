@@ -1,6 +1,6 @@
 import type { FigmaRef } from "./types";
 
-const FILE_KEY_RE = /\/(?:design|file|proto)\/([A-Za-z0-9]+)/;
+const FILE_KEY_RE = /\/(?:design|file|proto)\/([A-Za-z0-9]+)(?:\/branch\/([A-Za-z0-9]+))?/;
 
 function normalizeNodeId(raw: string): string {
   return raw.replaceAll("-", ":");
@@ -20,7 +20,7 @@ export function parseFigmaRef(input: string): FigmaRef {
   }
 
   const keyMatch = trimmed.match(FILE_KEY_RE);
-  const fileKey = keyMatch?.[1];
+  const fileKey = keyMatch?.[2] ?? keyMatch?.[1];
   if (fileKey === undefined) throw new Error(`parseFigmaRef: no fileKey in "${input}"`);
 
   const q = trimmed.indexOf("?");
