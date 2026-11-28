@@ -14,6 +14,7 @@ import {
 } from "../components/editor/manualEdits";
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { sealedResizeStartBox } from "../components/editor/resizeStartBox";
+import { drawPreviewDraft, endPreviewDraft } from "../components/editor/previewDrafts";
 
 type ResizeCommit = (
   selection: DomEditSelection,
@@ -30,11 +31,13 @@ export async function resizeSelectionFromAgent(
   const element = selection.element;
   const pending = sealedResizeStartBox(element);
   const startBox = pending && (await pending);
-  const previous = captureStudioBoxSize(selection.element);
-  applyStudioBoxSizeDraft(selection.element, next, startBox);
-  return commit(selection, next, undefined, () => {
-    restoreStudioBoxSize(selection.element, previous);
+  const previous = captureStudioBoxSize(element);
+  drawPreviewDraft(element, { size: applyStudioBoxSizeDraft(element, next, startBox) });
+  const result = await commit(selection, next, undefined, () => {
+    restoreStudioBoxSize(element, previous);
   });
+  endPreviewDraft(element, "keep");
+  return result;
 }
 
 /**
