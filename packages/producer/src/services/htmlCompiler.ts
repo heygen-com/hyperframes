@@ -495,6 +495,14 @@ function runtimeRoot(document: ParentNode): Element | null {
   );
 }
 
+function hasElementMotionBlurOptIn(root: Element | null): boolean {
+  if (!root) return false;
+  for (const el of root.querySelectorAll('[data-motion-blur="on"]')) {
+    if (el.closest("[data-composition-id]") === root) return true;
+  }
+  return false;
+}
+
 export function detectRenderModeHints(html: string, pageMotionBlur?: "off"): RenderModeHints {
   const reasons: RenderModeHint[] = [];
   const { document } = parseHTML(html);
@@ -507,7 +515,8 @@ export function detectRenderModeHints(html: string, pageMotionBlur?: "off"): Ren
     });
   } else if (
     pageMotionBlur !== "off" &&
-    runtimeRoot(document)?.getAttribute("data-motion-blur") === "on"
+    (runtimeRoot(document)?.getAttribute("data-motion-blur") === "on" ||
+      hasElementMotionBlurOptIn(runtimeRoot(document)))
   ) {
     // Not pinned to one worker: k3-promo measured identical across 1 and 4 workers, 2× faster.
     reasons.push({

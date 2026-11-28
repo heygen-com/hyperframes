@@ -1,13 +1,13 @@
 # Motion Blur
 
-Fast-moving elements get a shutter smear along their path. It is opt-in: nothing blurs until the composition root has `data-motion-blur="on"`.
+Fast-moving elements get a shutter smear along their path. It is opt-in: nothing blurs until the composition root or an individual element has `data-motion-blur="on"`.
 
 ## Turn it on
 
-- `data-motion-blur` — `on` enables blur; `off` opts out, on the root or on any subtree
-- `data-motion-blur-shutter` — shutter angle in degrees, 0-720 (default: 240)
+- `data-motion-blur` — `on` enables blur on the root or opts an individual element in (even below the speed threshold, and even when the root is off); `off` opts out, on the root or on any subtree
+- `data-motion-blur-shutter` — shutter angle in degrees, 0-720 (default: 240); also overrides per element
 - `data-motion-blur-phase` — when the shutter opens, in degrees of a frame, -360 to 360: 0 opens on the frame (default: centred on the frame, which is minus half the shutter)
-- `data-motion-blur-samples` — samples per frame, 2-64 (default: at least 32, sized to the smear)
+- `data-motion-blur-samples` — samples per frame, 2-64 (default: at least 32, sized to the smear); also overrides per element
 - `data-motion-blur-events` — `on` runs timeline callbacks while blur looks for movers; needed when motion is set from a `render(t)` callback
 - `data-motion-blur-tier` — `auto` (default, draws with `filter`), `filter` or `capture`
 

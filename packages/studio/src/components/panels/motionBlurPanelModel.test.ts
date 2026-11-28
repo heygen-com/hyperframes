@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { openComposition } from "@hyperframes/sdk";
 import {
   changedEdits,
+  changedElementEdits,
+  elementSettingsOf,
   findCompositionRoot,
   readPreviewRootAttributes,
   sameAttributes,
@@ -150,5 +152,29 @@ describe("levelOf and patchForLevel", () => {
     for (const level of ["subtle", "strong"] as const) {
       expect(levelOf({ ...on(300), ...patchForLevel(level) })).toBe(level);
     }
+  });
+});
+
+describe("elementSettingsOf and changedElementEdits", () => {
+  it("reads and diffs per-element mode and shutter override", () => {
+    expect(elementSettingsOf({})).toEqual({ mode: "inherit", shutterDeg: null, samples: null });
+    expect(
+      changedElementEdits(
+        { "data-motion-blur": "on" },
+        { mode: "off", shutterDeg: 360, samples: null },
+      ),
+    ).toEqual([
+      { name: "data-motion-blur", value: "off" },
+      { name: "data-motion-blur-shutter", value: "360" },
+    ]);
+    expect(
+      changedElementEdits(
+        { "data-motion-blur": "on", "data-motion-blur-shutter": "360" },
+        { mode: "inherit", shutterDeg: null, samples: null },
+      ),
+    ).toEqual([
+      { name: "data-motion-blur", value: null },
+      { name: "data-motion-blur-shutter", value: null },
+    ]);
   });
 });

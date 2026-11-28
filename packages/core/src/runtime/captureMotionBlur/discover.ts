@@ -35,6 +35,8 @@ export interface DiscoverOptions {
   scene: HTMLElement;
   durationSeconds: number;
   fps: number;
+  /** When false, only elements with `data-motion-blur="on"` are candidates. */
+  rootEnabled?: boolean;
   /** Seek the composition (timeline + adapters) to a time. */
   seek: (t: number) => void;
   onStep?: (i: number, steps: number) => void;
@@ -59,6 +61,8 @@ function optedOut(el: Element, scene: Element): boolean {
   }
   return false;
 }
+
+const optedIn = (el: Element): boolean => el.getAttribute("data-motion-blur") === "on";
 
 function in3d(el: Element, scene: Element): boolean {
   for (let n: Element | null = el; n && n !== scene; n = n.parentElement) {
@@ -170,6 +174,7 @@ export function discoverMovers({
   scene,
   durationSeconds,
   fps,
+  rootEnabled = true,
   seek,
   onStep,
   onFast,
@@ -186,6 +191,7 @@ export function discoverMovers({
   const steps = Math.min(frames, SCAN_STEPS);
   const framesPerStep = frames / steps;
   const fast = new Set<HTMLElement>();
+  const moved = new Set<HTMLElement>();
   const threeD = new Set<HTMLElement>();
   const pads = new Map<HTMLElement, number>();
   const measure = (el: HTMLElement): void => {
@@ -211,9 +217,12 @@ export function discoverMovers({
       rects[j] = el.getBoundingClientRect();
     });
     onStepBoxes?.(i, rects);
-    const away = fresh.filter(
-      (j) => edgeShift(baseRects[j], rects[j]) / framesPerStep >= MIN_SPEED,
-    );
+    const away = fresh.filter((j) => {
+      const shift = edgeShift(baseRects[j], rects[j]);
+      if (shift <= 0) return false;
+      const el = all[j];
+      return shift / framesPerStep >= MIN_SPEED || (el ? optedIn(el) : false);
+    });
     const before = rectsAtStyle(
       away.map((j) => all[j] as HTMLElement),
       away.map((j) => first[j] ?? ""),
@@ -223,21 +232,32 @@ export function discoverMovers({
     });
     rects.forEach((box, j) => {
       const el = all[j];
-      if (!el || edgeShift(prev[j], box) / framesPerStep < MIN_SPEED) return;
-      if (!fast.has(el)) measure(el);
-      fast.add(el);
-      if (
-        box &&
-        largeArea > 0 &&
-        box.width * box.height >= largeArea &&
-        seesThrough(el, scene, alphaCache)
-      )
-        seeThrough.add(el);
+      if (!el) return;
+      const shift = edgeShift(prev[j], box);
+      if (shift <= 0) return;
+      const speed = shift / framesPerStep;
+      const isOptedIn = optedIn(el);
+      if (speed < MIN_SPEED && !isOptedIn) return;
+      if (speed >= MIN_SPEED) {
+        if (!fast.has(el)) measure(el);
+        fast.add(el);
+        if (
+          box &&
+          largeArea > 0 &&
+          box.width * box.height >= largeArea &&
+          seesThrough(el, scene, alphaCache)
+        )
+          seeThrough.add(el);
+      }
+      if (isOptedIn) {
+        if (!moved.has(el)) measure(el);
+        moved.add(el);
+      }
     });
     onFast?.(i, steps, fast);
     // Style reads up the chain are the costly part; every 10th step is enough to see a 3D turn.
     if (i % 10 === 0 || i === steps) {
-      for (const el of fast) {
+      for (const el of new Set([...fast, ...moved])) {
         if (in3d(el, scene)) threeD.add(el);
         measure(el);
       }
@@ -246,7 +266,11 @@ export function discoverMovers({
   }
 
   const candidates = all.filter(
-    (el) => fast.has(el) && !threeD.has(el) && !seeThrough.has(el) && !optedOut(el, scene),
+    (el) =>
+      (rootEnabled ? fast.has(el) || moved.has(el) : moved.has(el)) &&
+      !threeD.has(el) &&
+      !seeThrough.has(el) &&
+      !optedOut(el, scene),
   );
   const movers = candidates.filter((el) => !candidates.some((o) => o !== el && o.contains(el)));
   return { movers, dynamic, pads };

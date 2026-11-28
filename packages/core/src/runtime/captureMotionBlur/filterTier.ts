@@ -9,7 +9,7 @@ import { swallow } from "../diagnostics";
 import { scanMovers, whileCallbacksMuted } from "./discover";
 import { compositionFingerprint, coverageSampler } from "./fingerprint";
 import { planFilter, type FilterPlan } from "./filterPlan";
-import { holdsFixedChild, readMoverFrames, shutterTimes } from "./frames";
+import { holdsFixedChild, readMoverFrames, resolveMoverOverrides, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
 import type { MotionBlurFingerprint } from "../../motionBlurFingerprint";
 import type { CaptureMotionBlurHost, Config, Report, Tier } from "./tier";
@@ -156,6 +156,7 @@ export function createFilterTier(
         scene: root,
         durationSeconds: host.durationSeconds(),
         fps: host.fps,
+        rootEnabled: config.rootEnabled ?? true,
         seek: host.seek,
         events: config.events,
         onFast: coverage.sample,
@@ -226,6 +227,12 @@ export function createFilterTier(
         reads: engineMode ? RENDER_READS : PREVIEW_READS,
         ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
         taps: engineMode ? COPIES : previewCopies,
+        moverOverrides: resolveMoverOverrides(
+          movers,
+          config,
+          host.fps,
+          engineMode ? COPIES : previewCopies,
+        ),
         frameW: width,
         scene: root,
         frameH: height,
