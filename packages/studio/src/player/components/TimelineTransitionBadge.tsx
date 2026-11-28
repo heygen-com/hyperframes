@@ -1,4 +1,7 @@
 import type { CSSProperties } from "react";
+import { cssString } from "../../utils/cssLoads";
+import { usePlayerStore } from "../store/playerStore";
+import { authoredSrcPath, resolveMediaPreviewUrl } from "./thumbnailUtils";
 
 interface TimelineTransitionBadgeProps {
   centerPx: number;
@@ -8,6 +11,16 @@ interface TimelineTransitionBadgeProps {
   incomingSrc?: string;
 }
 
+export function clipPicture(
+  src: string | undefined,
+  projectId: string | null,
+  studioOrigin: string,
+): CSSProperties | undefined {
+  const url =
+    src && projectId ? resolveMediaPreviewUrl(authoredSrcPath(src), projectId, studioOrigin) : "";
+  return url ? { backgroundImage: `url(${cssString(url)})` } : undefined;
+}
+
 export function TimelineTransitionBadge({
   centerPx,
   top,
@@ -15,6 +28,8 @@ export function TimelineTransitionBadge({
   outgoingSrc,
   incomingSrc,
 }: TimelineTransitionBadgeProps) {
+  const projectId = usePlayerStore((s) => s.timelineProjectId);
+  const picture = (src?: string) => clipPicture(src, projectId, window.location.origin);
   const style = {
     left: centerPx,
     top,
@@ -25,11 +40,11 @@ export function TimelineTransitionBadge({
       <div className="timeline-transition__zone">
         <div
           className="timeline-transition__image timeline-transition__image--out"
-          style={outgoingSrc ? { backgroundImage: `url("${outgoingSrc}")` } : undefined}
+          style={picture(outgoingSrc)}
         />
         <div
           className="timeline-transition__image timeline-transition__image--in"
-          style={incomingSrc ? { backgroundImage: `url("${incomingSrc}")` } : undefined}
+          style={picture(incomingSrc)}
         />
       </div>
       <div className="timeline-transition__badge">

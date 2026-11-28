@@ -61,7 +61,8 @@ describe("InlineTextCaret", () => {
     expect(caret!.style.top).toBe(`${50 + 200 / 4}px`);
     expect(caret!.style.height).toBe(`${120 / 4}px`);
     expect(caret!.style.width).toBe(`${CARET_PX}px`);
-    expect(caret!.style.background).toBe("rgb(250, 250, 250)");
+    expect(caret!.style.backgroundColor).toBe("rgb(250, 250, 250)");
+    expect(caret!.getAttribute("style")).not.toMatch(/background(?:-image)?:/);
   });
 
   it("follows a pan or zoom of the preview, which moves the iframe with no event", async () => {

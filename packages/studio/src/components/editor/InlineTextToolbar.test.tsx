@@ -292,6 +292,12 @@ describe("swatchBackground", () => {
     expect(swatchBackground(["red"], "red")).toBe("red");
   });
 
+  it("leaves out a colour that could load something or end the sweep early", () => {
+    expect(swatchBackground(["red", "lime), url(https://probe.invalid/a"], undefined)).toBe("red");
+    expect(swatchBackground(["var(--none, url(https://probe.invalid/b))"], "red")).toBe("red");
+    expect(swatchBackground([], "image-set(url(https://probe.invalid/c) 1x)")).toBe("#ffffff");
+  });
+
   it("falls back to the agreed colour when the characters carry none", () => {
     expect(swatchBackground([], "rgb(1, 2, 3)")).toBe("rgb(1, 2, 3)");
     expect(swatchBackground([], undefined)).toBe("#ffffff");
