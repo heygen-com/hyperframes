@@ -17,6 +17,7 @@ import { ffmpegCwd } from "@hyperframes/parsers/ff-binaries";
 import { jpegInputError } from "../utils/jpegInput.js";
 import { spawn, type ChildProcess } from "child_process";
 import { once } from "events";
+import { constants, setPriority } from "os";
 import { trackChildProcess } from "../utils/processTracker.js";
 import {
   ManagedChildProcess,
@@ -187,7 +188,7 @@ export interface StreamingEncoderOptions {
   lockGopForChunkConcat?: boolean;
   /** Required when `lockGopForChunkConcat` is `true`. Frames per GOP. */
   gopSize?: number;
-  softwareEncoderThreads?: number;
+  belowNormalPriority?: boolean;
 }
 
 export interface StreamingEncoderResult {
@@ -366,7 +367,7 @@ export function buildStreamingArgs(
     } else {
       const encoderName = codec === "h264" ? "libx264" : "libx265";
       args.push("-c:v", encoderName, "-preset", preset);
-      appendSoftwareEncoderThreadsArg(args, encoderName, options.softwareEncoderThreads);
+      appendSoftwareEncoderThreadsArg(args, encoderName);
       if (bitrate) args.push("-b:v", bitrate);
       else args.push("-crf", String(quality));
 
@@ -528,6 +529,7 @@ export async function spawnStreamingEncoder(
   return spawnFfmpegStream(outputPath, args, {
     signal,
     config,
+    belowNormalPriority: options.belowNormalPriority,
     checkFrame: checksJpeg
       ? (frame, index) => {
           const error = jpegInputError(frame);
@@ -543,10 +545,12 @@ export function spawnFfmpegStream(
   {
     signal,
     config,
+    belowNormalPriority,
     checkFrame,
   }: {
     signal?: AbortSignal;
     config?: Partial<Pick<EngineConfig, "ffmpegStreamingTimeout">>;
+    belowNormalPriority?: boolean;
     checkFrame?: (frame: Buffer, index: number) => void;
   },
 ): StreamingEncoder {
@@ -560,6 +564,11 @@ export function spawnFfmpegStream(
     windowsHide: true,
   });
   trackChildProcess(ffmpeg);
+  if (belowNormalPriority && ffmpeg.pid !== undefined) {
+    try {
+      setPriority(ffmpeg.pid, constants.priority.PRIORITY_BELOW_NORMAL);
+    } catch {}
+  }
 
   let exitStatus: "running" | "success" | "error" = "running";
   let stderr = "";

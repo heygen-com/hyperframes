@@ -270,15 +270,7 @@ function resolveEngineConfig(input: VideoEncodeInput) {
   return input.engineConfig ?? input.job.config.producerConfig ?? resolveConfig();
 }
 
-export function overlapEncoderThreads(workerCount: number, cpuCount: number): number {
-  return Math.max(1, Math.floor(cpuCount) - Math.floor(workerCount));
-}
-
-export function videoEncoderOptions(
-  input: VideoEncodeInput,
-  engineCfg: Pick<EngineConfig, "vp9CpuUsed">,
-  softwareEncoderThreads?: number,
-) {
+function videoEncoderOptions(input: VideoEncodeInput, engineCfg: Pick<EngineConfig, "vp9CpuUsed">) {
   const { job, preset } = input;
   return {
     fps: job.config.fps,
@@ -299,7 +291,6 @@ export function videoEncoderOptions(
     // renders leave both undefined → preserves the existing open-GOP output.
     lockGopForChunkConcat: input.lockGopForChunkConcat === true,
     gopSize: input.gopSize,
-    softwareEncoderThreads,
   };
 }
 
@@ -354,12 +345,8 @@ async function readLandedFrame(workerPath: string | undefined, mergedPath: strin
 export function encodeWhileCapturing(
   input: VideoEncodeInput,
   totalFrames: number,
-  captureBudget?: { workerCount: number; cpuCount: number },
 ): EncodeWhileCapturing {
   const engineCfg = resolveEngineConfig(input);
-  const softwareEncoderThreads = captureBudget
-    ? overlapEncoderThreads(captureBudget.workerCount, captureBudget.cpuCount)
-    : undefined;
   const stop = new AbortController();
   const signal = input.abortSignal
     ? AbortSignal.any([input.abortSignal, stop.signal])
@@ -378,8 +365,9 @@ export function encodeWhileCapturing(
   const encoder = spawnStreamingEncoder(
     input.videoOnlyPath,
     {
-      ...videoEncoderOptions(input, engineCfg, softwareEncoderThreads),
+      ...videoEncoderOptions(input, engineCfg),
       imageFormat: "jpeg",
+      belowNormalPriority: true,
     },
     signal,
     engineCfg,
