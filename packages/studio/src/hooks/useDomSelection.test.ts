@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import { installReactActEnvironment, makeSelection } from "./domSelectionTestHarness";
 import { useDomSelection } from "./useDomSelection";
+import { onDomSelectionSet } from "./domSelectionSignal";
 import type { TimelineElement } from "../player";
 
 installReactActEnvironment();
@@ -219,6 +220,30 @@ describe("useDomSelection additive", () => {
     expect(harness.timeline.setSelectedTimelineElementId).toHaveBeenLastCalledWith("card", {
       preserveSet: true,
     });
+    harness.cleanup();
+  });
+
+  // fails without the fix: nothing heard of a set until React rendered it, so a sealed overlay asked a render late.
+  it.each([
+    ["shift+click adds a member", "additive"],
+    ["a marquee replaces the set", "marquee"],
+  ] as const)("tells listeners the new group when %s, before React renders it", (_, how) => {
+    const { harness, card, chip } = renderCardAndChip();
+    act(() => harness.current().applyDomSelection(card));
+    const heard: Array<{ group: number; rendered: number }> = [];
+    const stop = onDomSelectionSet((_selection, group) =>
+      heard.push({
+        group: group.length,
+        rendered: harness.current().domEditGroupSelections.length,
+      }),
+    );
+    act(() =>
+      how === "additive"
+        ? harness.current().applyDomSelection(chip, { additive: true })
+        : harness.current().applyMarqueeSelection([card, chip], "replace"),
+    );
+    stop();
+    expect(heard).toEqual([{ group: 2, rendered: 1 }]);
     harness.cleanup();
   });
 
