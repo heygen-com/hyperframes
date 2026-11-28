@@ -25,6 +25,7 @@ import { subscribeOverlayFrame } from "./overlayFrameLoop";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import { measurePreviewOverlay } from "./previewOverlayRects";
 import { frameFactsChanged } from "../../player/lib/frameFacts";
+import { onDomSelectionSet } from "../../hooks/domSelectionSignal";
 
 function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
   if (a.length !== b.length) return false;
@@ -78,7 +79,7 @@ export function useDomEditOverlayRects({
   const resolvedHoverElementRef = useRef<{ key: string; element: HTMLElement } | null>(null);
   const resolvedGroupElementRef = useRef<Map<string, HTMLElement>>(new Map());
   const childRectsRef = useRef<OverlayRect[]>([]);
-  const channelReadRef = useRef(false);
+  const channelReadRef = useRef<string | null>(null);
 
   const setOverlayRect = (next: OverlayRect | null) => {
     if (rectsEqual(overlayRectRef.current, next)) return;
@@ -138,18 +139,27 @@ export function useDomEditOverlayRects({
     return covered ? null : hoverSel;
   };
 
-  /** The opaque frame's rects, one geometry read in flight at a time; a stale answer is dropped. */
-  const updateOverChannel = (iframe: HTMLIFrameElement, overlayEl: HTMLDivElement) => {
-    if (channelReadRef.current) return;
-    const sel = selectionRef.current;
-    const group = groupSelectionsRef.current;
-    const members = distinctGroup(group);
-    const hover = hoverShown(sel, group);
+  const overChannelTargets = (sel: DomEditSelection | null, group: readonly DomEditSelection[]) => {
+    const members = distinctGroup([...group]);
+    const hover = hoverShown(sel, [...group]);
     const targets = {
       selection: sel?.handle ?? null,
       group: members.map(({ selection }) => selection.handle ?? null),
       hover: hover?.handle ?? null,
     };
+    return { members, hover, targets, key: JSON.stringify(targets) };
+  };
+
+  /** The opaque frame's rects, one geometry read in flight, which only a just-set selection (`set`) asks past. */
+  const updateOverChannel = (
+    iframe: HTMLIFrameElement,
+    overlayEl: HTMLDivElement,
+    set?: { sel: DomEditSelection | null; group: readonly DomEditSelection[] },
+  ) => {
+    const sel = set ? set.sel : selectionRef.current;
+    const group = set ? set.group : groupSelectionsRef.current;
+    const { members, hover, targets, key: readKey } = overChannelTargets(sel, group);
+    if (channelReadRef.current !== null && (!set || channelReadRef.current === readKey)) return;
     if (!sel && !members.length && !hover) {
       setOverlayRect(null);
       setChildRects([]);
@@ -157,13 +167,11 @@ export function useDomEditOverlayRects({
       setHoverRect(null);
       return;
     }
-    channelReadRef.current = true;
+    channelReadRef.current = readKey;
     void measurePreviewOverlay(iframe, overlayEl, targets, "behind-drafts")
       .then((rects) => {
         const current =
-          selectionRef.current === sel &&
-          groupSelectionsRef.current === group &&
-          hoverShown(sel, group) === hover;
+          overChannelTargets(selectionRef.current, groupSelectionsRef.current).key === readKey;
         if (!rects || !current || rafPausedRef.current || iframeRef.current !== iframe) return;
         const [shown, shownGroup] = [overlayRectRef.current, groupOverlayItemsRef.current];
         setOverlayRect(rects.selection);
@@ -179,7 +187,7 @@ export function useDomEditOverlayRects({
           frameFactsChanged("geometry");
       })
       .finally(() => {
-        channelReadRef.current = false;
+        if (channelReadRef.current === readKey) channelReadRef.current = null;
       });
   };
 
@@ -346,6 +354,17 @@ export function useDomEditOverlayRects({
     };
     return subscribeOverlayFrame(frame);
   });
+
+  // A set selection asks at once: on a sealed frame the read then waits during React's render, not after it.
+  useMountEffect(() =>
+    onDomSelectionSet((sel, group) => {
+      const iframe = iframeRef.current;
+      const overlayEl = overlayRef.current;
+      if (rafPausedRef.current || !iframe || !overlayEl || iframe.contentDocument) return;
+      if (previewFrameOpaque(iframe) && (sel || group.length))
+        updateOverChannel(iframe, overlayEl, { sel, group });
+    }),
+  );
 
   return {
     overlayRect,

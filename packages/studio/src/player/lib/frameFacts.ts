@@ -52,8 +52,10 @@ const FRAME_READS: ReadonlySet<EditingRequestKind> = new Set<EditingRequestKind>
   "stacking-family",
 ]);
 
+export const isFrameRead = (kind: EditingRequestKind): boolean => FRAME_READS.has(kind);
+
 export function frameRequestSent(kind: EditingRequestKind): void {
-  if (FRAME_READS.has(kind)) return;
+  if (isFrameRead(kind)) return;
   frameFactsChanged(kind === "draft" ? "draft" : "write");
 }
 

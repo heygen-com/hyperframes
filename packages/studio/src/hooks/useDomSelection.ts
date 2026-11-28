@@ -24,6 +24,7 @@ import { useStudioTestHooks } from "./useStudioTestHooks";
 import { logSelect } from "../utils/selectDebug";
 import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 import { announceTimelineSelection as announceSelectionToTimeline } from "./domSelectionTimelineMirror";
+import { domSelectionSet } from "./domSelectionSignal";
 import { buildTimelineSelection, sharingRunningBuilds } from "./timelineSelectionBuild";
 import type {
   ApplyDomSelectionOptions,
@@ -128,6 +129,7 @@ export function useDomSelection({
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
         setDomEditGroupSelections([]);
+        domSelectionSet(null, []);
         if (options?.announce !== false) announceTimelineSelection([], null);
         return;
       }
@@ -184,6 +186,7 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
+      domSelectionSet(nextSelection, nextGroup);
 
       // Selecting something outside the drilled-into group exits the drill-in, so
       // a later click on the group selects it as a unit again (non-sticky drill-in).
@@ -428,6 +431,7 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
+      domSelectionSet(nextSelection, nextGroup);
 
       announceTimelineSelection(nextGroup, nextSelection);
     },
@@ -530,6 +534,7 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
+      domSelectionSet(nextSelection, nextGroup);
       announceTimelineSelection(nextGroup, nextSelection, true);
       return { changed, count: nextGroup.length };
     },
