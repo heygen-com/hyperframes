@@ -16,6 +16,10 @@
       "type": "hyperframes:example"
     },
     {
+      "name": "path-traced-3d",
+      "type": "hyperframes:example"
+    },
+    {
       "name": "play-mode",
       "type": "hyperframes:example"
     },

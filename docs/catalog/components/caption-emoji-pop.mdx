@@ -270,7 +270,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         return rawWords
           .map(function (item) {
             var text = String(item.word || item.text || "").trim();
-            var clean = text.toLowerCase().replace(/[^a-z]/g, "");
+            var clean = text.toLowerCase().replace(/[^\p{L}]/gu, "");
             return {
               text: text,
               start: Math.max(0, Number(item.start) || 0),
@@ -290,7 +290,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
 
       function assignWordColors(words, groupIndex) {
         return words.map(function (word, index) {
-          var clean = word.text.toLowerCase().replace(/[^a-z]/g, "");
+          var clean = word.text.toLowerCase().replace(/[^\p{L}]/gu, "");
           if (KEYWORDS.has(clean)) {
             var ci = Math.floor(seededRandom(groupIndex * 23 + index * 31) * ACCENT_COLORS.length);
             return ACCENT_COLORS[ci];

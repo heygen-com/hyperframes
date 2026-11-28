@@ -301,7 +301,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       }
 
       function isKeyword(text) {
-        return KEYWORDS.has(text.toLowerCase().replace(/[^a-z]/g, ""));
+        return KEYWORDS.has(text.toLowerCase().replace(/[^\p{L}]/gu, ""));
       }
 
       function assignWordColors(words, groupIndex) {
@@ -310,7 +310,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             var colorIndex = Math.floor(seededRandom(groupIndex * 23 + 7) * ACCENT_COLORS.length);
             return ACCENT_COLORS[colorIndex];
           }
-          var clean = word.text.toLowerCase().replace(/[^a-z']/g, "");
+          var clean = word.text.toLowerCase().replace(/[^\p{L}']/gu, "");
           if (TRANSITION_WORDS.has(clean)) return PRIMARY_COLOR;
           var rand = seededRandom(groupIndex * 7 + words.indexOf(word));
           if (rand > 0.6) {
