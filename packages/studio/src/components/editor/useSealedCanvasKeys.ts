@@ -5,11 +5,16 @@ import type {
   CanvasKeyActionEvent,
   CanvasKeyNudgeCombo,
   EditingElementHandle,
+  EditingKeyEvent,
 } from "@hyperframes/core/runtime/editing-port";
 import { resetKeyframesMayClaim } from "../../hooks/appHotkeysDispatch";
 import { membersForDelete } from "../../hooks/domEditDeleteMembers";
 import { noteFrameRemovedHandles } from "../../hooks/previewTimingPatch";
-import { useStudioKeys, type StudioKeys } from "../../player/components/studioShortcuts";
+import {
+  getStudioKeys,
+  useStudioKeys,
+  type StudioKeys,
+} from "../../player/components/studioShortcuts";
 import {
   previewEditingClient,
   previewFrameOpaque,
@@ -201,6 +206,22 @@ type CanvasActionHandler = (event: CanvasKeyActionEvent) => void;
 const actionRoutes = new WeakMap<object, Map<number, CanvasActionHandler>>();
 
 const personActedJustNow = () => navigator.userActivation?.isActive === true;
+const canvasCancelListeners = new Set<(frame: HTMLIFrameElement) => void>();
+
+export function onSealedCanvasCancel(listener: (frame: HTMLIFrameElement) => void): () => void {
+  canvasCancelListeners.add(listener);
+  return () => void canvasCancelListeners.delete(listener);
+}
+
+export function cancelFromSealedCanvas(frame: HTMLIFrameElement): void {
+  for (const cancel of canvasCancelListeners) cancel(frame);
+}
+
+function isBareCancelEscape(key: EditingKeyEvent): boolean {
+  if (key.type !== "keydown" || key.key !== "Escape" || getStudioKeys().cancel !== "Escape")
+    return false;
+  return !key.altKey && !key.ctrlKey && !key.metaKey && !key.shiftKey;
+}
 
 /** One action listener per frame load, routing by arm revision; a Delete for no known arm rolls back. */
 function canvasActionRoute(iframe: HTMLIFrameElement): Map<number, CanvasActionHandler> {
@@ -223,7 +244,11 @@ function forwardSealedKeys(
   sameLoad: () => boolean,
 ): () => void {
   return previewEditingClient(iframe).onKey((key) => {
-    if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe) || !personActedJustNow()) return;
+    if (!sameLoad() || !hasSealedCanvasKeyboardHold(iframe)) return;
+    if (!personActedJustNow()) {
+      if (isBareCancelEscape(key)) cancelFromSealedCanvas(iframe);
+      return;
+    }
     (overlayRef.current ?? window).dispatchEvent(
       new KeyboardEvent(key.type, {
         key: key.key,

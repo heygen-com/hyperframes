@@ -30,14 +30,19 @@ vi.mock("../contexts/DomEditContext", () => ({
   }),
 }));
 
-vi.mock("./nle/NLEContext", () => ({
-  NLEProvider: ({ children }: { children: React.ReactNode }) => children,
-  useNLEContext: () => ({
-    compositionStack: [],
-    updateCompositionStack: vi.fn(),
-    containerRef: { current: null },
-  }),
-}));
+vi.mock("./nle/NLEContext", async () => {
+  const { createContext, createElement, useContext, useRef, useState } = await import("react");
+  const NLE = createContext<unknown>(null);
+  return {
+    NLEProvider: ({ children }: { children: React.ReactNode }) => {
+      const [compositionStack, updateCompositionStack] = useState<unknown[]>([]);
+      const containerRef = useRef(null);
+      const value = { compositionStack, updateCompositionStack, containerRef };
+      return createElement(NLE.Provider, { value }, children);
+    },
+    useNLEContext: () => useContext(NLE),
+  };
+});
 
 vi.mock("./nle/useTimelineEditCallbacks", () => ({
   useTimelineEditCallbacks: () => ({}),
