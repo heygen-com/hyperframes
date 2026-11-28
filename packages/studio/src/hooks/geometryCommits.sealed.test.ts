@@ -7,7 +7,11 @@ import {
   findPreviewElementForSelection,
   resolvePreviewSelection,
 } from "../components/editor/previewSelection";
-import { drawPreviewDraft } from "../components/editor/previewDrafts";
+import {
+  drawPreviewDraft,
+  previewDraftsSent,
+  previewStandIn,
+} from "../components/editor/previewDrafts";
 import { captureStudioBoxSize, restoreStudioBoxSize } from "../components/editor/manualEdits";
 import {
   STUDIO_ORIGINAL_BOX_HEIGHT_ATTR,
@@ -198,6 +202,35 @@ describe("a sealed resize with no press saves the box the frame lays out now", (
     expect(originalBox(open)).toEqual(["100", "50"]);
     expect(originalBox(selection.element)).toEqual(originalBox(open));
   });
+});
+
+// fails without the fix: the agent's draft stayed on the stand-in, so a scale resize found its drop point at the old
+// centre and saved no re-centring move.
+it("draws the agent's resize on the frame before its commit measures it", async () => {
+  const { card, selection } = await sealedCard(saved());
+  let drawn = "";
+
+  await resizeSelectionFromAgent(selection, { width: 200, height: 80 }, async () => {
+    await previewDraftsSent(previewStandIn(selection.element)!.iframe);
+    drawn = `${card.style.width} ${card.style.height}`;
+  });
+
+  expect(drawn).toBe("200px 80px");
+});
+
+it("hands the frame back once the agent's resize is saved", async () => {
+  const { card, selection, commits } = await sealedCard(saved());
+  await resizeSelectionFromAgent(
+    selection,
+    { width: 200, height: 80 },
+    commits.handleDomBoxSizeCommit,
+  );
+  await settle();
+
+  await commits.handleDomBoxSizeCommit(selection, { width: 160, height: 90 });
+  await settle();
+
+  expect([card.style.width, card.style.height]).toEqual(["160px", "90px"]);
 });
 
 // fails without the fix: the crop step read the stand-in's own box (0 x 0) after the resize, so the crop kept its old inset.
