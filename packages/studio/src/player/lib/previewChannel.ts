@@ -15,6 +15,7 @@ import { isMessageList } from "@hyperframes/core/runtime/protocol";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
 import { MAX_FRAME_CLIPS, wellFormedClips } from "./manifestClips";
 import { frameRequestSent } from "./frameFacts";
+import { cssValueCanLoad } from "../../utils/cssLoads";
 
 const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
@@ -60,8 +61,11 @@ function frameColoursOnly(event: TextEditSelectionEvent): TextEditSelectionEvent
   };
 }
 
+const URL_SHOWN_ONLY_AS_TEXT = "background-image";
+
 export function frameStyleValue(name: string, value: unknown): string | null {
   if (typeof value !== "string" || !value || name.startsWith("--")) return null;
+  if (cssValueCanLoad(value, { urlShownOnlyAsText: name === URL_SHOWN_ONLY_AS_TEXT })) return null;
   const probe = document.createElement("i").style;
   probe.setProperty(name, value);
   return probe.getPropertyValue(name) ? value : null;
@@ -328,8 +332,8 @@ function readStyles(styles: unknown, properties: string[]): Record<string, strin
   if (typeof styles !== "object" || styles === null) return null;
   const read: Record<string, string> = {};
   for (const name of properties) {
-    const value: unknown = Object.getOwnPropertyDescriptor(styles, name)?.value;
-    if (typeof value === "string" && value) read[name] = value;
+    const value = frameStyleValue(name, Object.getOwnPropertyDescriptor(styles, name)?.value);
+    if (value) read[name] = value;
   }
   return read;
 }

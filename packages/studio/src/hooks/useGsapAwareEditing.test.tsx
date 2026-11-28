@@ -482,6 +482,7 @@ describe("useGsapAwareEditing anchored resize", () => {
       undefined,
       expect.any(Function),
       expect.objectContaining({ frozen: true }),
+      null,
     );
     act(() => h.root.unmount());
   });

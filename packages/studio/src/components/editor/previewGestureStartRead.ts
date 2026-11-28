@@ -16,6 +16,9 @@ import { invertManualOffsetDragMatrix, type ManualOffsetDragMatrix } from "./man
 import { flatVisibleRect, groupAwareRect } from "./previewOverlayRects";
 import { findPreviewElementForSelection, standInFor } from "./previewSelection";
 import { snapContextFromRects, type SnapContext } from "./snapTargetCollection";
+import { rememberGestureStartLayouts } from "./gestureStartLayouts";
+
+export { gestureStartLayout } from "./gestureStartLayouts";
 
 export interface PreviewGestureStart {
   /** The transform-free border box a resize grows from; 0 for an element with none. */
@@ -34,10 +37,6 @@ export interface PreviewGestureStarts {
   elements: Array<{ rect: OverlayRect; start: PreviewGestureStart } | null>;
   snap: SnapContext;
 }
-
-const startLayouts = new Map<string, PreviewGestureStart["layout"]>();
-
-export const gestureStartLayout = (handle: string) => startLayouts.get(handle) ?? null;
 
 type Grow = NonNullable<EditingGestureStart["grow"]>;
 
@@ -76,11 +75,9 @@ function gestureStartsOnOverlay(
   overlayEl: HTMLDivElement,
   handles: string[],
 ): PreviewGestureStarts | null {
-  startLayouts.clear();
-  reply?.elements.forEach((start, i) => {
-    const { width = 0, height = 0 } = start?.layout ?? {};
-    if (width >= 1 && height >= 1) startLayouts.set(handles[i]!, { width, height });
-  });
+  rememberGestureStartLayouts(
+    handles.map((handle, i) => ({ handle, layout: reply?.elements[i]?.layout })),
+  );
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;
   const { iframeRect, overlayRect, rootScaleX: sx, rootScaleY: sy } = scale;

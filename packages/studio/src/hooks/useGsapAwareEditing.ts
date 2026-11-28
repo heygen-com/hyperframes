@@ -16,6 +16,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
+import { sealedResizeStartBox } from "../components/editor/resizeStartBox";
 import { computeDraggedGsapPosition, freezeDragStamp } from "./draggedGsapPosition";
 import { whileScriptWrites } from "../player/previewReloading";
 import { readGsapPositionFromIframe } from "./gsapPositionDetection";
@@ -221,6 +222,7 @@ export function useGsapAwareEditing({
       }
       return whileScriptWrites(async () => {
         const stamp = freezeDragStamp(selection.element);
+        const startBox = sealedResizeStartBox(selection.element);
         let targetAnimations: GsapAnimation[];
         try {
           const ownedAnimations = getGsapAnimationsForSelection(selection);
@@ -313,6 +315,7 @@ export function useGsapAwareEditing({
                   offset,
                   writes.drawKeepingUndone,
                   stamp,
+                  startBox,
                 );
                 assertGsapEditPersisted(outcome);
                 if (route)

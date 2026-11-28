@@ -9,7 +9,6 @@ import type { CommitMutation } from "./gsapScriptCommitTypes";
 import { computeCurrentPercentage } from "./gsapDragCommit";
 import { commitSizeAtPlayhead, tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { liveTween, previewWith, tween } from "./gsapParsedTween.test-helpers";
-import { measurePreviewGestureStart } from "../components/editor/previewGestureStartRead";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 vi.mock("../player/lib/previewElements", async (original) => ({
@@ -808,18 +807,11 @@ describe("a resize with auto-keyframe off nudges the whole tween", () => {
 
 it.each([
   ["the draft marked the element", false],
-  ["the element is a sealed frame's stand-in, measured at the press", true],
+  ["the element is a sealed frame's stand-in, given the box its resize started from", true],
 ])("a size written at the playhead backfills the box's other side when %s", async (_, sealed) => {
   const selection = titleSelection();
   const el = selection.element;
-  if (sealed) {
-    selection.handle = "0123456789abcdef:1";
-    await measurePreviewGestureStart(
-      document.createElement("iframe"),
-      document.createElement("div"),
-      [selection.handle],
-    );
-  } else {
+  if (!sealed) {
     el.setAttribute("data-hf-studio-original-width", "260");
     el.setAttribute("data-hf-studio-original-height", "160");
   }
@@ -843,7 +835,7 @@ it.each([
     { width: 300, height: 200 },
     previewWith(el, [live]),
     undefined,
-    { commitMutation },
+    { commitMutation, ...(sealed && { startBox: { width: 260, height: 160 } }) },
   );
 
   expect(outcome.status).toBe("persisted");

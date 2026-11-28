@@ -183,7 +183,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       if (g.pathOffsetMember) applyManualOffsetDragDraft(g.pathOffsetMember, dx, dy);
     } else {
       const nextSize = resizeSizeAt(g, e);
-      const writtenSize = applyStudioBoxSizeDraft(sel.element, nextSize);
+      const writtenSize = applyStudioBoxSizeDraft(sel.element, nextSize, g.startLayout);
 
       const overlayEl = opts.overlayRef.current;
       const iframe = opts.iframeRef.current;
@@ -399,7 +399,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     } else {
       opts.suppressNextBoxClickRef.current = true;
       const finalSize = readStudioBoxSize(sel.element);
-      applyStudioBoxSize(sel.element, finalSize);
+      applyStudioBoxSize(sel.element, finalSize, g.startLayout);
       // Save size and center-preserving offset together under one undo entry.
       const member = g.pathOffsetMember;
       const anchor = g.lastResizeAnchor;

@@ -1,5 +1,4 @@
 import { memo, useCallback, type ReactNode } from "react";
-import { matchesKey } from "../player/components/studioShortcuts";
 import { PreviewPane } from "./nle/PreviewPane";
 import { PreviewStage } from "./storyboard/PreviewStage";
 import { TimelinePane } from "./nle/TimelinePane";
@@ -10,6 +9,7 @@ import {
   type TimelineEditCallbackDeps,
 } from "./nle/useTimelineEditCallbacks";
 import { NLEProvider, useNLEContext } from "./nle/NLEContext";
+import { useCompositionEscape } from "./nle/useCompositionEscape";
 import { CaptionTimeline } from "../captions/components/CaptionTimeline";
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { useDomEditActionsContext, useDomEditSelectionContext } from "../contexts/DomEditContext";
@@ -284,7 +284,7 @@ function EditorShellBody({
   clipMenuItems,
   splitShortcut,
 }: EditorShellBodyProps) {
-  const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
+  const { updateCompositionStack, containerRef } = useNLEContext();
 
   // The caption track's blocks are seek targets; CaptionTimeline took an onSeek
   // prop that nothing ever passed, so clicking a block did nothing.
@@ -292,15 +292,7 @@ function EditorShellBody({
     usePlayerStore.getState().requestSeek(time);
   }, []);
 
-  // Keyboard: Escape to pop composition level
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (matchesKey(e, "cancel") && compositionStack.length > 1) {
-        updateCompositionStack((prev) => prev.slice(0, -1));
-      }
-    },
-    [compositionStack.length, updateCompositionStack],
-  );
+  const handleKeyDown = useCompositionEscape(updateCompositionStack, containerRef);
 
   return (
     <div

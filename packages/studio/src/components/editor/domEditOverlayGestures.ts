@@ -6,6 +6,7 @@ import type {
   StudioPathOffsetSnapshot,
   StudioRotationSnapshot,
 } from "./manualEdits";
+import type { LayoutBox } from "./manualEditsDom";
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
 import type { StudioElementLook } from "./gestureUndoRevert";
 import type { CssRotationTarget, RotationCommit } from "./rotationDraft";
@@ -72,6 +73,7 @@ export interface GestureState {
   originHeight: number;
   actualWidth: number;
   actualHeight: number;
+  startLayout: LayoutBox | null;
   actualRotation: number;
   /** Null when GSAP owns the rotate; else where its CSS turn is drawn and saved, read at press. */
   plainRotation: CssRotationTarget | null;

@@ -63,7 +63,7 @@ function drawGestureStep(
     return;
   }
   const wanted = resizeSizeAt(g, e);
-  const written = applyStudioBoxSizeDraft(element, wanted);
+  const written = applyStudioBoxSizeDraft(element, wanted, g.startLayout);
   const measure = () => null;
   outline(
     resolveResizeDraftRect(g, element, null, opts.iframeRef.current, measure, { wanted, written }),
