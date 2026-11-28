@@ -14,6 +14,7 @@ import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   PREVIEW_PROXY_BOX_PARAM,
+  PREVIEW_PROXY_LIGHT_PARAM,
   parsePreviewProxyBox,
   type PreviewProxyBox,
 } from "@hyperframes/core";
@@ -253,6 +254,7 @@ async function serveProxyRequest(
   filePath: string,
   request: ProxyVariantRequest,
   box: PreviewProxyBox | undefined,
+  light: boolean,
   autoProxy: boolean,
   rangeHeader: string | undefined,
   res: ServerResponse,
@@ -267,7 +269,7 @@ async function serveProxyRequest(
   }
   try {
     const facts = await probeAssetCodec(filePath);
-    const eligibility = decideMediaProxyEligibility(facts);
+    const eligibility = decideMediaProxyEligibility(facts, light ? box : undefined);
     if (!eligibility.eligible) {
       res.writeHead(422, { "Content-Type": "text/plain" });
       res.end(`media proxy unavailable: ${eligibility.reason}`);
@@ -399,7 +401,8 @@ export async function serveStaticProjectHtml(
       proxyParam !== null && isProxyVariantRequest(proxyParam) ? proxyParam : null;
     const boxParam = query.get(PREVIEW_PROXY_BOX_PARAM);
     const proxyBox = boxParam === null ? undefined : parsePreviewProxyBox(boxParam);
-    if (proxyBox === null || (proxyBox && !proxyRequest)) {
+    const proxyLight = query.get(PREVIEW_PROXY_LIGHT_PARAM) === "1";
+    if (proxyBox === null || (proxyBox && !proxyRequest) || (proxyLight && !proxyBox)) {
       res.writeHead(404);
       res.end();
       return;
@@ -423,6 +426,7 @@ export async function serveStaticProjectHtml(
             filePath,
             proxyRequest,
             proxyBox,
+            proxyLight,
             autoProxy,
             req.headers.range,
             res,
