@@ -116,7 +116,7 @@ import {
 import { resolveGsapWriter } from "./gsapMutationCapabilities.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { savesUnderItsOwnName, uploadedFileName } from "../helpers/uploadedFileName.js";
-import { canNameFiles, referenceRewriter, referenceSyntax } from "../helpers/fileReferences.js";
+import { canNameFiles, renameRewriter } from "../helpers/fileReferences.js";
 import {
   hasCompositionOutsideTemplates,
   insertBeforeCloseTag,
@@ -772,7 +772,7 @@ function updateReferences(
 ): { updated: number; unchanged: string[] } {
   const textFiles = walkFiles(projectDir, canNameFiles);
 
-  const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
+  const rewrite = renameRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
   let updatedCount = 0;
   const unchanged: string[] = [];
   for (const file of textFiles) {
@@ -780,10 +780,11 @@ function updateReferences(
     const content = readableText(file);
     if (content === null) continue;
 
-    const updated = rewrite(content, referenceSyntax(file));
+    const at = projectRelativePath(projectDir, file);
+    const updated = rewrite(content, at);
     if (updated === content) continue;
     if (!isWritableProjectFile(projectDir, file)) {
-      unchanged.push(projectRelativePath(projectDir, file));
+      unchanged.push(at);
       continue;
     }
     replaceFileAtomically(file, updated, statSync(file).mode);
