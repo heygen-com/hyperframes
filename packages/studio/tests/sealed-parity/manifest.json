@@ -1,0 +1,148 @@
+{
+  "_": "One row per behaviour of today's (unsealed) preview. A row is at parity when each listed test passes with HF_PARITY_MODE=unsealed and =sealed. scripts/ci/sealed-parity.mjs runs it; a sealed default is refused until every row is at parity.",
+  "rows": [
+    {
+      "id": "preview-loads",
+      "behaviour": "Studio preview loads and plays",
+      "tests": []
+    },
+    {
+      "id": "late-ready-recovers",
+      "behaviour": "A preview that answers after the player's first load check still comes up",
+      "tests": []
+    },
+    {
+      "id": "player-plays-without-runtime",
+      "behaviour": "The player plays a composition that does not include the runtime",
+      "tests": []
+    },
+    {
+      "id": "player-iphone-audio",
+      "behaviour": "The player keeps sound when the frame may not autoplay (iPhone)",
+      "tests": []
+    },
+    {
+      "id": "player-video-pixels",
+      "behaviour": "The player keeps a video's pixels readable for effects",
+      "tests": []
+    },
+    {
+      "id": "select-click",
+      "behaviour": "Clicking a layer selects it",
+      "tests": [
+        {
+          "kind": "vitest",
+          "package": "studio",
+          "file": "src/components/editor/previewSelection.test.ts",
+          "name": "opaque frame selections match same-origin ones"
+        },
+        {
+          "kind": "vitest",
+          "package": "studio",
+          "file": "src/components/editor/previewPointerTargets.test.ts",
+          "name": "canvas hit-tests on an opaque frame match same-origin ones"
+        }
+      ]
+    },
+    {
+      "id": "property-panel-edits",
+      "behaviour": "Property panel style and attribute edits show at once",
+      "tests": []
+    },
+    {
+      "id": "text-fields",
+      "behaviour": "Text fields and text edits show at once",
+      "tests": []
+    },
+    {
+      "id": "inline-text",
+      "behaviour": "Inline text editing on the canvas",
+      "tests": []
+    },
+    {
+      "id": "inline-text-long",
+      "behaviour": "Inline text editing on a text element over 200,000 characters",
+      "tests": []
+    },
+    {
+      "id": "move-nudge-resize",
+      "behaviour": "Move drag, arrow-key nudge and resize land where dropped",
+      "tests": []
+    },
+    {
+      "id": "scale-resize",
+      "behaviour": "A resize of a scaled layer lands where dropped",
+      "tests": []
+    },
+    {
+      "id": "rotate",
+      "behaviour": "Rotate lands where dropped",
+      "tests": []
+    },
+    {
+      "id": "crop",
+      "behaviour": "Crop drag, spin, scale and the idle crop frame",
+      "tests": []
+    },
+    {
+      "id": "crop-scaled-before-press",
+      "behaviour": "Crop of a scaled layer before its first press",
+      "tests": []
+    },
+    {
+      "id": "undo-in-place",
+      "behaviour": "Undo and redo show in place",
+      "tests": []
+    },
+    {
+      "id": "layers-after-undo",
+      "behaviour": "The layers panel after an undo",
+      "tests": []
+    },
+    {
+      "id": "reload-waits-for-drag",
+      "behaviour": "A reload waits for a drag in progress",
+      "tests": []
+    },
+    {
+      "id": "timeline-sync",
+      "behaviour": "Timeline live retime, playhead and the first timing edit",
+      "tests": []
+    },
+    {
+      "id": "gsap-route",
+      "behaviour": "A GSAP-animated layer is edited through its animation",
+      "tests": []
+    },
+    {
+      "id": "agent-tools",
+      "behaviour": "Studio's agent sees and edits the film",
+      "tests": []
+    },
+    {
+      "id": "agent-resize-draft",
+      "behaviour": "The agent's resize draft shows before it saves",
+      "tests": []
+    },
+    {
+      "id": "thumbnails",
+      "behaviour": "Thumbnails",
+      "tests": []
+    },
+    {
+      "id": "copy-paste",
+      "behaviour": "Copy and paste layers",
+      "tests": []
+    },
+    {
+      "id": "edit-accuracy",
+      "behaviour": "Edit accuracy bench",
+      "tests": []
+    },
+    {
+      "id": "captions-grading-hotkeys",
+      "behaviour": "Captions editing, colour grading and hotkeys after a reload",
+      "tests": []
+    }
+  ]
+}
