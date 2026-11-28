@@ -7,3 +7,6 @@ Sitemap: https://hyperframes.heygen.com/sitemap.xml
 Sitemap: https://hyperframes.heygen.com/blog/sitemap.xml
 Sitemap: https://hyperframes.heygen.com/vs/sitemap.xml
 Sitemap: https://hyperframes.heygen.com/tools/sitemap.xml
+Sitemap: https://hyperframes.heygen.com/use-cases/sitemap.xml
+Sitemap: https://hyperframes.heygen.com/integrations/sitemap.xml
+Sitemap: https://hyperframes.heygen.com/alternatives/sitemap.xml
